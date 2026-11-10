@@ -4,8 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SkiaSharp;
+using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Imaging.Workers;
@@ -14,20 +18,38 @@ namespace Tellma.Core.Imaging
 {
     /// <summary>
     ///     <c>core.imaging</c>: the processor's options are valid, Skia loads and works in this
-    ///     process, and a PDF worker starts, enters its sandbox, takes its limits and renders a tiny
-    ///     generated PDF.
+    ///     process, and, on a host that renders PDF thumbnails, a PDF worker starts, enters its
+    ///     sandbox, takes its limits and renders a tiny generated PDF.
     /// </summary>
     /// <remarks>
-    ///     A missing or mismatched native library, or a deployment a worker cannot start in (no
-    ///     installed runtime, no dependency manifest, a kernel that refuses the worker's
-    ///     system-call filter), otherwise surfaces on the first upload, as a missing thumbnail or a
-    ///     server error, rather than as a startup failure that names the fix.
+    ///     <para>
+    ///         A missing or mismatched native library, or a deployment a worker cannot start in (no
+    ///         installed runtime, no dependency manifest, a kernel that refuses the worker's
+    ///         system-call filter), otherwise surfaces on the first upload, as a missing thumbnail or
+    ///         a server error, rather than as a startup failure that names the fix.
+    ///     </para>
+    ///     <para>
+    ///         Two conditions are warnings in the host's log, not problems, since the host serves
+    ///         everything else as well without their fix. A host that renders no PDF thumbnails (on
+    ///         Windows or macOS outside Development, or on Linux without glibc) writes
+    ///         <c>BlobPdfThumbnailsDisabled</c> and starts no worker, here or later. A Linux host
+    ///         whose kernel lets a process open the memory of any other process of its account
+    ///         (Yama's <c>ptrace_scope</c> is 0, or Yama is not enabled) writes
+    ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: a worker taken over by a hostile document could
+    ///         reach the host's memory there, and only the machine's setting closes that.
+    ///     </para>
     /// </remarks>
     /// <param name="launcher">Starts the probe's worker; the PDF worker when null.</param>
-    internal sealed class ImagingStartupCheck(PdfWorkerLauncher? launcher = null) : IStartupCheck
+    /// <param name="pdfThumbnails">Whether the host renders PDF thumbnails; decided from the host's environment when null.</param>
+    /// <param name="readPtraceScope">Reads Yama's ptrace scope, null where the kernel has none; the kernel's own file when null.</param>
+    internal sealed class ImagingStartupCheck(
+        PdfWorkerLauncher? launcher = null, PdfThumbnailSupport? pdfThumbnails = null, Func<string?>? readPtraceScope = null) : IStartupCheck
     {
         /// <summary>The check's name.</summary>
         public const string CheckName = "core.imaging";
+
+        /// <summary>Where the kernel reports Yama's ptrace scope: 0 is unrestricted, 1 and above restrict it.</summary>
+        public const string PtraceScopePath = "/proc/sys/kernel/yama/ptrace_scope";
 
         /// <summary>How long the probe's worker may take to start and render, on a host still starting.</summary>
         public static readonly TimeSpan ProbeBudget = TimeSpan.FromSeconds(30);
@@ -59,7 +81,7 @@ namespace Tellma.Core.Imaging
                 problems.Add(new CompositionProblem(
                     Name,
                     $"The image processor's options are invalid: {string.Join(" ", exception.Failures)}",
-                    $"Set {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.ImageConcurrency)} to a positive number of concurrent image operations and {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.PdfWorkerMemoryLimit)} to at least {SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit} bytes, or remove them to take the defaults."));
+                    $"Set {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.ImageConcurrency)} to a positive number of concurrent image operations, {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.PdfWorkerConcurrency)} to a positive number of concurrent PDF workers and {SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.PdfWorkerMemoryLimit)} to at least {SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit} bytes, or remove them to take the defaults."));
                 options = new SkiaImageProcessorOptions();
             }
 
@@ -73,6 +95,16 @@ namespace Tellma.Core.Imaging
                     "Ship the SkiaSharp native assets for this platform with the application (runtimes/<rid>/native/libSkiaSharp), on the version the SkiaSharp package pins, or register another IImageProcessor instead of calling AddTellmaSkia."));
             }
 
+            // Section: a host that renders no PDF thumbnails starts no worker, so none is probed;
+            // its log says why, once, where an operator looks for a missing thumbnail's cause.
+            ILogger logger = services.GetService<ILogger<SkiaImageProcessor>>() ?? NullLogger<SkiaImageProcessor>.Instance;
+            PdfThumbnailSupport support = pdfThumbnails ?? PdfThumbnailPolicy.For(services.GetService<IHostEnvironment>());
+            if (support != PdfThumbnailSupport.Enabled)
+            {
+                ImagingLog.PdfThumbnailsDisabled(logger, PdfThumbnailPolicy.Reason(support));
+                return problems;
+            }
+
             // Section: PDFium, in a worker, through the whole path a thumbnail takes.
             CompositionProblem? worker = await ProbeWorkerAsync(Math.Max(options.PdfWorkerMemoryLimit, SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit), cancellationToken).ConfigureAwait(false);
             if (worker is not null)
@@ -80,7 +112,45 @@ namespace Tellma.Core.Imaging
                 problems.Add(worker);
             }
 
+            // Section: on Linux, whether the kernel keeps a worker out of the host's memory. The
+            // worker's filter refuses ptrace and its relatives, but /proc/<pid>/mem is a file, and
+            // only Yama's ptrace scope closes it to a process of the same account.
+            if (OperatingSystem.IsLinux() && UnrestrictedPtrace((readPtraceScope ?? ReadPtraceScope)()) is string detail)
+            {
+                ImagingLog.PtraceUnrestricted(logger, detail);
+            }
+
             return problems;
+        }
+
+        /// <summary>
+        ///     Whether a ptrace scope leaves a process free to open the memory of another process of
+        ///     its account, and how to say so.
+        /// </summary>
+        /// <param name="scope">The content of the kernel's ptrace scope file, or null when the kernel has none.</param>
+        /// <returns>Null when the scope restricts ptrace (1 or above); otherwise what the kernel reports.</returns>
+        internal static string? UnrestrictedPtrace(string? scope)
+        {
+            return scope is null
+                ? "the Yama security module is not enabled"
+                : !int.TryParse(scope.AsSpan().Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int value)
+                    ? "kernel.yama.ptrace_scope is not a number"
+                    : value >= 1 ? null : "kernel.yama.ptrace_scope is 0";
+        }
+
+        /// <summary>Reads the kernel's ptrace scope.</summary>
+        /// <returns>The file's content, or null when the kernel has no such file.</returns>
+        private static string? ReadPtraceScope()
+        {
+            try
+            {
+                return File.Exists(PtraceScopePath) ? File.ReadAllText(PtraceScopePath) : null;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable is unknown, and unknown is reported as it would be were it absent.
+                return null;
+            }
         }
 
         /// <summary>A minimal, well-formed one-page PDF, with a correct cross-reference table.</summary>
@@ -100,18 +170,18 @@ namespace Tellma.Core.Imaging
             for (int i = 0; i < objects.Length; i++)
             {
                 offsets.Add(text.Length);
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+                text.Append(CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
             }
 
             // Section: the table (twenty bytes per entry) and the trailer.
             int xref = text.Length;
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+            text.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
             foreach (int offset in offsets)
             {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+                text.Append(CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
             }
 
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+            text.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
             return Encoding.ASCII.GetBytes(text.ToString());
         }
 
@@ -163,11 +233,12 @@ namespace Tellma.Core.Imaging
             byte[] pdf = OnePagePdf();
             try
             {
-                // The conversation blocks; it runs on a thread of its own.
+                // The conversation blocks; it runs on a thread of its own, which ends with it. The
+                // rest of the check, and of the host's startup, continues on the pool.
                 RenderedPage page = await Task.Factory.StartNew(
                     () => client.Render(pdf, ProbeSize, ProbeBudget, budget.Token),
                     budget.Token,
-                    TaskCreationOptions.LongRunning,
+                    TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
                     TaskScheduler.Default).ConfigureAwait(false);
                 return page.Width == ProbeSize && page.Height == ProbeSize
                     ? null

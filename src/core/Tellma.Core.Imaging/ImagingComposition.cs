@@ -18,14 +18,23 @@ namespace Tellma.Core.Imaging
         ///     Registers <see cref="SkiaImageProcessor" /> as the process's one
         ///     <see cref="IImageProcessor" />, its options bound from <c>Tellma:Blobs</c>
         ///     (<see cref="SkiaImageProcessorOptions.ImageConcurrency" />,
+        ///     <see cref="SkiaImageProcessorOptions.PdfWorkerConcurrency" />,
         ///     <see cref="SkiaImageProcessorOptions.PdfWorkerMemoryLimit" />), and the
         ///     <c>core.imaging</c> startup check that loads Skia and starts a PDF worker before the
         ///     host serves traffic.
         /// </summary>
         /// <remarks>
-        ///     A process runs on at most one image processor, so no other processor is registered
-        ///     beside this one; a distribution preferring another library registers that instead and
-        ///     drops this package. Calling it twice registers the processor once.
+        ///     <para>
+        ///         A process runs on at most one image processor, so no other processor is registered
+        ///         beside this one; a distribution preferring another library registers that instead
+        ///         and drops this package. Calling it twice registers the processor once.
+        ///     </para>
+        ///     <para>
+        ///         PDF thumbnails render on Linux hosts with glibc, the production shape; a host on
+        ///         Windows or macOS renders them only in the Development environment, which the
+        ///         processor reads from the host's <c>IHostEnvironment</c> when one is registered. A
+        ///         host that renders none says so once in its log, at startup.
+        ///     </para>
         /// </remarks>
         /// <param name="services">The host's services.</param>
         /// <exception cref="ArgumentNullException"><paramref name="services" /> is null.</exception>

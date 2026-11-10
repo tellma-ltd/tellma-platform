@@ -19,8 +19,9 @@ namespace Tellma.Core.Imaging.Workers
     ///     Renders PDF thumbnails in disposable worker processes, one per document: starts a
     ///     worker, waits for it to be ready, caps its memory and CPU time, sends the document, and
     ///     checks the answer. The worker is killed when the call's token is cancelled, and always
-    ///     when the call ends, so a hostile document can stop or starve its own worker, never the
-    ///     host.
+    ///     when the call ends, so it never outlives the call; what else a hostile document could
+    ///     reach from inside its worker is what the operating system's controls on the worker leave
+    ///     open.
     /// </summary>
     /// <param name="launcher">Starts the workers.</param>
     /// <param name="memoryLimit">The memory each worker may add once ready, in bytes.</param>
@@ -41,12 +42,16 @@ namespace Tellma.Core.Imaging.Workers
         // The workers running now, so disposal can kill them.
         private readonly ConcurrentDictionary<WorkerProcess, byte> _live = new();
         private volatile bool _disposed;
+        private int _started;
 
         /// <summary>The launcher.</summary>
         public PdfWorkerLauncher Launcher => launcher;
 
         /// <summary>How many workers run now; for the suite.</summary>
         internal int LiveWorkers => _live.Count;
+
+        /// <summary>How many workers this client has started in all; for the suite.</summary>
+        internal int Started => Volatile.Read(ref _started);
 
         /// <summary>The process ids of the workers running now; for the suite.</summary>
         internal IReadOnlyList<int> LiveWorkerIds => [.. _live.Keys.Select(static worker => worker.Id)];
@@ -58,22 +63,24 @@ namespace Tellma.Core.Imaging.Workers
         /// <remarks>Blocks the calling thread for the worker's life; the processor calls it from its own.</remarks>
         /// <param name="pdf">The document, at most <see cref="WorkerProtocol.MaxInputBytes" />.</param>
         /// <param name="size">The thumbnail square's side, at most <see cref="WorkerProtocol.MaxThumbnailSize" />.</param>
-        /// <param name="cpuTime">The CPU time the worker may use once ready; null for no limit.</param>
+        /// <param name="cpuTime">The CPU time the worker may use once ready.</param>
         /// <param name="cancellationToken">Kills the worker when cancelled.</param>
         /// <returns>The checked page.</returns>
         /// <exception cref="ImageFailure">The worker refused the document: it cannot be rendered within the caps.</exception>
         /// <exception cref="PdfWorkerException">The worker failed: it could not start, died, or broke the protocol.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-        public RenderedPage Render(byte[] pdf, int size, TimeSpan? cpuTime, CancellationToken cancellationToken)
+        public RenderedPage Render(byte[] pdf, int size, TimeSpan cpuTime, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(pdf);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(pdf.Length, WorkerProtocol.MaxInputBytes, nameof(pdf));
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
             ArgumentOutOfRangeException.ThrowIfGreaterThan(size, WorkerProtocol.MaxThumbnailSize);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(cpuTime, TimeSpan.Zero);
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            WorkerProcess worker = launcher.Start();
+            _ = Interlocked.Increment(ref _started);
+            WorkerProcess worker = launcher.Start(memoryLimit);
             _live[worker] = 0;
             try
             {

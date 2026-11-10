@@ -10,8 +10,9 @@ using System.Runtime.Versioning;
 namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>
-    ///     The Win32 calls that start a worker inside a Job Object with exactly its three pipes
-    ///     inherited (processthreadsapi.h, jobapi2.h, winbase.h, psapi.h).
+    ///     The Win32 calls that start a worker on a restricted, low-integrity token inside a Job
+    ///     Object with exactly its three pipes inherited (processthreadsapi.h, securitybaseapi.h,
+    ///     jobapi2.h, winbase.h, psapi.h).
     /// </summary>
     [SupportedOSPlatform("windows")]
     internal static unsafe partial class WindowsInterop
@@ -55,7 +56,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <summary><c>JOB_OBJECT_LIMIT_PROCESS_MEMORY</c>: committed memory per process.</summary>
         public const uint JobLimitProcessMemory = 0x0000_0100;
 
-        /// <summary><c>JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION</c>: no error dialog, no hang on a crash.</summary>
+        /// <summary><c>JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION</c>: no error dialog for a crash to wait behind.</summary>
         public const uint JobLimitDieOnUnhandledException = 0x0000_0400;
 
         /// <summary><c>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</c>: the worker dies with the host's last handle to the job.</summary>
@@ -70,15 +71,112 @@ namespace Tellma.Core.Imaging.Workers
         /// <summary><c>ERROR_INSUFFICIENT_BUFFER</c>.</summary>
         public const int ErrorInsufficientBuffer = 122;
 
-        /// <summary><c>BOOL CreatePipe(PHANDLE, PHANDLE, LPSECURITY_ATTRIBUTES, DWORD)</c>.</summary>
-        /// <param name="readPipe">The read end.</param>
-        /// <param name="writePipe">The write end.</param>
-        /// <param name="attributes">Null: neither end is inheritable.</param>
-        /// <param name="size">The suggested buffer size.</param>
+        /// <summary>The pseudo handle <c>GetCurrentProcess()</c> returns.</summary>
+        public const nint CurrentProcess = -1;
+
+        /// <summary><c>TOKEN_ASSIGN_PRIMARY</c>.</summary>
+        public const uint TokenAssignPrimary = 0x0001;
+
+        /// <summary><c>TOKEN_DUPLICATE</c>.</summary>
+        public const uint TokenDuplicate = 0x0002;
+
+        /// <summary><c>TOKEN_QUERY</c>.</summary>
+        public const uint TokenQuery = 0x0008;
+
+        /// <summary><c>TOKEN_ADJUST_DEFAULT</c>, which lowering a token's integrity level needs.</summary>
+        public const uint TokenAdjustDefault = 0x0080;
+
+        /// <summary><c>DISABLE_MAX_PRIVILEGE</c>: every privilege removed but <c>SeChangeNotifyPrivilege</c>.</summary>
+        public const uint DisableMaxPrivilege = 0x1;
+
+        /// <summary><c>TokenIntegrityLevel</c>, of <c>TOKEN_INFORMATION_CLASS</c>.</summary>
+        public const int TokenIntegrityLevel = 25;
+
+        /// <summary><c>WinLowLabelSid</c>, of <c>WELL_KNOWN_SID_TYPE</c>: the low mandatory level, S-1-16-4096.</summary>
+        public const int WinLowLabelSid = 66;
+
+        /// <summary><c>SECURITY_MAX_SID_SIZE</c>.</summary>
+        public const int SecurityMaxSidSize = 68;
+
+        /// <summary><c>SE_GROUP_INTEGRITY</c>.</summary>
+        public const uint SeGroupIntegrity = 0x20;
+
+        /// <summary><c>DUPLICATE_SAME_ACCESS</c>.</summary>
+        public const uint DuplicateSameAccess = 0x2;
+
+        /// <summary><c>BOOL OpenProcessToken(HANDLE, DWORD, PHANDLE)</c>.</summary>
+        /// <param name="process">The process.</param>
+        /// <param name="access">The access wanted.</param>
+        /// <param name="token">Receives the token.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int OpenProcessToken(nint process, uint access, out nint token);
+
+        /// <summary><c>BOOL CreateRestrictedToken(HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE)</c>.</summary>
+        /// <param name="existing">The token restricted.</param>
+        /// <param name="flags"><c>DISABLE_MAX_PRIVILEGE</c>.</param>
+        /// <param name="disableSidCount">0.</param>
+        /// <param name="sidsToDisable">Null.</param>
+        /// <param name="deletePrivilegeCount">0.</param>
+        /// <param name="privilegesToDelete">Null.</param>
+        /// <param name="restrictedSidCount">0.</param>
+        /// <param name="sidsToRestrict">Null.</param>
+        /// <param name="restricted">Receives the restricted token, with the existing handle's access.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int CreateRestrictedToken(
+            nint existing,
+            uint flags,
+            uint disableSidCount,
+            void* sidsToDisable,
+            uint deletePrivilegeCount,
+            void* privilegesToDelete,
+            uint restrictedSidCount,
+            void* sidsToRestrict,
+            out nint restricted);
+
+        /// <summary><c>BOOL CreateWellKnownSid(WELL_KNOWN_SID_TYPE, PSID, PSID, DWORD*)</c>.</summary>
+        /// <param name="type">The SID.</param>
+        /// <param name="domain">Null.</param>
+        /// <param name="sid">Receives the SID.</param>
+        /// <param name="size">The buffer's size; receives the SID's.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int CreateWellKnownSid(int type, nint domain, void* sid, uint* size);
+
+        /// <summary><c>DWORD GetLengthSid(PSID)</c>.</summary>
+        /// <param name="sid">A valid SID.</param>
+        /// <returns>Its length in bytes.</returns>
+        [LibraryImport("advapi32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial uint GetLengthSid(void* sid);
+
+        /// <summary><c>BOOL SetTokenInformation(HANDLE, TOKEN_INFORMATION_CLASS, LPVOID, DWORD)</c>.</summary>
+        /// <param name="token">The token.</param>
+        /// <param name="informationClass">What is set.</param>
+        /// <param name="information">The information.</param>
+        /// <param name="length">Its size, the SID it points to included.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int SetTokenInformation(nint token, int informationClass, void* information, uint length);
+
+        /// <summary><c>BOOL DuplicateHandle(HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD)</c>.</summary>
+        /// <param name="sourceProcess">The process holding the handle.</param>
+        /// <param name="source">The handle, as that process knows it.</param>
+        /// <param name="targetProcess">The process receiving the copy.</param>
+        /// <param name="target">Receives the copy.</param>
+        /// <param name="access">Ignored with <c>DUPLICATE_SAME_ACCESS</c>.</param>
+        /// <param name="inherit">Zero: the copy is not inheritable.</param>
+        /// <param name="options"><c>DUPLICATE_SAME_ACCESS</c>.</param>
         /// <returns>Nonzero on success.</returns>
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        public static partial int CreatePipe(out nint readPipe, out nint writePipe, nint attributes, uint size);
+        public static partial int DuplicateHandle(
+            SafeProcessHandle sourceProcess, nint source, nint targetProcess, out nint target, uint access, int inherit, uint options);
 
         /// <summary><c>BOOL SetHandleInformation(HANDLE, DWORD, DWORD)</c>.</summary>
         /// <param name="handle">The handle.</param>
@@ -126,7 +224,8 @@ namespace Tellma.Core.Imaging.Workers
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         public static partial void DeleteProcThreadAttributeList(void* list);
 
-        /// <summary><c>BOOL CreateProcessW(...)</c>.</summary>
+        /// <summary><c>BOOL CreateProcessAsUserW(...)</c>.</summary>
+        /// <param name="token">The new process's primary token.</param>
         /// <param name="applicationName">The executable's full path.</param>
         /// <param name="commandLine">The command line, in a writable buffer.</param>
         /// <param name="processAttributes">Null: the process handle is not inheritable.</param>
@@ -138,9 +237,10 @@ namespace Tellma.Core.Imaging.Workers
         /// <param name="startupInfo">The extended startup information.</param>
         /// <param name="processInformation">The new process and thread.</param>
         /// <returns>Nonzero on success.</returns>
-        [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [LibraryImport("advapi32.dll", EntryPoint = "CreateProcessAsUserW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        public static partial int CreateProcess(
+        public static partial int CreateProcessAsUser(
+            nint token,
             string applicationName,
             char* commandLine,
             nint processAttributes,
@@ -236,6 +336,25 @@ namespace Tellma.Core.Imaging.Workers
         [LibraryImport("kernel32.dll", EntryPoint = "K32GetProcessMemoryInfo", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         public static partial int GetProcessMemoryInfo(SafeProcessHandle process, ProcessMemoryCounters* counters, uint size);
+
+        /// <summary><c>SID_AND_ATTRIBUTES</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SidAndAttributes
+        {
+            /// <summary>The SID.</summary>
+            public void* Sid;
+
+            /// <summary>Its attributes.</summary>
+            public uint Attributes;
+        }
+
+        /// <summary><c>TOKEN_MANDATORY_LABEL</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct TokenMandatoryLabel
+        {
+            /// <summary>The integrity level's SID, with <c>SE_GROUP_INTEGRITY</c>.</summary>
+            public SidAndAttributes Label;
+        }
 
         /// <summary><c>STARTUPINFOW</c>.</summary>
         [StructLayout(LayoutKind.Sequential)]

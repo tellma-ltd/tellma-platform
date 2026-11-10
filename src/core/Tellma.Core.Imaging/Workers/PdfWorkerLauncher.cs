@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Tellma.Core.Imaging.PdfWorker;
 
@@ -48,15 +49,51 @@ namespace Tellma.Core.Imaging.Workers
         public PdfWorkerFiles Files => _files.Value;
 
         /// <summary>
-        ///     The worker's whole environment: the runtime settings above and, on Windows, the
-        ///     system root, which system libraries look up. Nothing of the host's own environment,
-        ///     its secrets included, reaches a worker.
+        ///     The worker's whole environment: the runtime settings above, and what its operating
+        ///     system needs. Nothing of the host's own environment, its secrets included, reaches a
+        ///     worker.
         /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         On Linux, the managed heap is capped at the memory limit, and the C library keeps
+        ///         one malloc arena, which reserves no address space per thread. Without a heap
+        ///         limit the runtime reserves tens of gigabytes of address space for the heap when
+        ///         it starts, room that an address-space limit set above it would hand to whatever
+        ///         a compromised worker mapped in its place. With one it reserves five times the
+        ///         limit, its own choice of range, which is left to it: a narrower range runs out
+        ///         before the heap limit is reached, and the collector then crashes where an
+        ///         allocation failure was due. The runtime's reservation for compiled code, just
+        ///         under 2 GiB, has no setting that applies to a process started without an
+        ///         address-space limit, so it stays.
+        ///     </para>
+        ///     <para>
+        ///         On Windows, the Job Object caps the worker's committed memory whatever the runtime
+        ///         reserves, so the heap is left alone; the worker gets the system root, which system
+        ///         libraries look up.
+        ///     </para>
+        /// </remarks>
+        /// <param name="memoryLimit">The worker's memory limit, in bytes.</param>
         /// <returns>The variables.</returns>
-        internal static Dictionary<string, string> Environment()
+        internal static Dictionary<string, string> Environment(long memoryLimit)
+        {
+            return Environment(memoryLimit, OperatingSystem.IsWindows(), OperatingSystem.IsLinux());
+        }
+
+        /// <summary>The worker's whole environment on a given operating system.</summary>
+        /// <param name="memoryLimit">The worker's memory limit, in bytes.</param>
+        /// <param name="windows">Whether the worker runs on Windows.</param>
+        /// <param name="linux">Whether the worker runs on Linux.</param>
+        /// <returns>The variables.</returns>
+        internal static Dictionary<string, string> Environment(long memoryLimit, bool windows, bool linux)
         {
             var environment = new Dictionary<string, string>(RuntimeSettings, StringComparer.Ordinal);
-            if (OperatingSystem.IsWindows())
+            if (linux)
+            {
+                environment["DOTNET_GCHeapHardLimit"] = Hexadecimal(memoryLimit);
+                environment["MALLOC_ARENA_MAX"] = "1";
+            }
+
+            if (windows)
             {
                 environment["SystemRoot"] = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Windows);
             }
@@ -64,22 +101,30 @@ namespace Tellma.Core.Imaging.Workers
             return environment;
         }
 
-        /// <summary>The command line after the muxer.</summary>
+        /// <summary>
+        ///     The command line after the muxer: the host's runtime files, the worker, the host's
+        ///     process id (which the worker checks is its parent's), and the launcher's own arguments.
+        /// </summary>
         /// <returns>The arguments.</returns>
         internal List<string> Arguments()
         {
             PdfWorkerFiles files = Files;
-            return ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, .. _arguments];
+            string host = System.Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
+            return ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, .. _arguments];
         }
 
-        /// <summary>Starts a worker, under its operating system's controls.</summary>
+        /// <summary>
+        ///     Starts a worker, under its operating system's controls. On Linux the worker dies when the
+        ///     calling thread ends, so the caller keeps that thread until the worker is gone.
+        /// </summary>
+        /// <param name="memoryLimit">The memory limit the worker will be held to, in bytes; on Linux its managed heap is sized for it.</param>
         /// <returns>The started worker, not yet ready.</returns>
         /// <exception cref="PdfWorkerException">The worker could not be started.</exception>
-        public WorkerProcess Start()
+        public WorkerProcess Start(long memoryLimit)
         {
             PdfWorkerFiles files = Files;
             List<string> arguments = Arguments();
-            Dictionary<string, string> environment = Environment();
+            Dictionary<string, string> environment = Environment(memoryLimit);
 
             // The working directory is a system one, never the host's: nothing there is the worker's
             // to read, and a planted library in it could not be found by the loader.
@@ -136,6 +181,14 @@ namespace Tellma.Core.Imaging.Workers
             return string.IsNullOrEmpty(path) || !File.Exists(path)
                 ? throw Missing("the PDF worker assembly (Tellma.Core.Imaging.PdfWorker.dll)", "Ship it beside the host's assemblies; it comes with the Tellma.Core.Imaging package.")
                 : new PdfWorkerFiles(muxer, runtimeConfiguration, dependencies, path);
+        }
+
+        /// <summary>A number as the runtime's configuration reads it: hexadecimal.</summary>
+        /// <param name="value">The number.</param>
+        /// <returns>The text.</returns>
+        private static string Hexadecimal(long value)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"0x{value:X}");
         }
 
         /// <summary>Whether a file lies in a directory.</summary>

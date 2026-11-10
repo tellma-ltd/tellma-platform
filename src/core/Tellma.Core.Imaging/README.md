@@ -15,10 +15,11 @@ builder.Services.AddTellmaSkia();
 
 `AddTellmaSkia` registers the processor (once, however often it is called), binds its options from
 `Tellma:Blobs` (`ImageConcurrency`, default half the processor count, at least one;
+`PdfWorkerConcurrency`, default a quarter of the processor count, at least one;
 `PdfWorkerMemoryLimit`, default 256 MiB, at least 32 MiB), and registers the `core.imaging` startup
-check, which loads Skia and starts a PDF worker that renders a probe page before the host serves
-traffic: a missing or mismatched native asset, or a deployment a worker cannot start in, fails
-startup with the fix, not the first upload.
+check, which loads Skia and, on a host that renders PDF thumbnails, starts a PDF worker that renders
+a probe page before the host serves traffic: a missing or mismatched native asset, or a deployment a
+worker cannot start in, fails startup with the fix, not the first upload.
 
 ## What it does
 
@@ -47,8 +48,8 @@ refused as `decode-failed` too, never surfaced as a server error.
 **Renders thumbnails of stored files** (`ThumbnailAsync`): an image under the default 50-megapixel
 cap, fitted and oriented the same way, or a PDF's first page fitted to the thumbnail square on
 white. Anything else, a PDF that needs a password or is unparsable, an image over the cap, a render
-past its time budget, or a PDF worker that fails yields null, which is never a rejection of the
-file.
+past its time budget, a PDF worker that fails, or a PDF on a host that renders no PDF thumbnails
+yields null, which is never a rejection of the file.
 
 ## PDF thumbnails in a worker process
 
@@ -60,25 +61,31 @@ bounds what it can take.
 
 1. **Start.** The [PdfWorkerLauncher](Workers/PdfWorkerLauncher.cs) runs
    `dotnet exec --runtimeconfig <host>.runtimeconfig.json --depsfile <host>.deps.json
-   Tellma.Core.Imaging.PdfWorker.dll`, with the muxer of the runtime the host runs on, so the worker
-   resolves exactly the host's framework, PDFium and Skia in whatever layout the host was built or
-   published in. Its environment is only the worker's runtime settings (workstation GC, no
-   diagnostics, debugger or dumps, invariant globalization) and, on Windows, `SystemRoot`: nothing
-   of the host's, its secrets included. Its working directory is a system one.
-2. **Handles.** On Windows the worker is created suspended, put in its own Job Object, then
-   resumed, and a handle list lets it inherit its three pipes and nothing else. On Linux .NET opens
-   every descriptor close-on-exec; the host lists any descriptor some native library left
-   inheritable, and the worker closes each before it reads anything.
-3. **Sandbox and limits.** The worker reports ready once its runtime is up; on Linux it has then
-   installed a seccomp filter on all its threads that refuses sockets, new programs and processes,
-   access to other processes and the kernel interfaces exploits favour (the host refuses a Linux
-   worker without it). Only then does the host cap it from outside: on Windows, the job's
-   committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time (the
-   budget plus a second), one process, no crash dialog, no desktop or clipboard, and death with the
-   host's handle; on Linux, `prlimit` sets `RLIMIT_DATA` (the binding memory cap: the runtime
-   reserves tens of gigabytes of address space at start, so `RLIMIT_AS` alone would not cap the
-   managed heap), a looser `RLIMIT_AS`, `RLIMIT_CPU`, and zero core-dump and file sizes, soft and
-   hard alike. Then the host sends the document.
+   Tellma.Core.Imaging.PdfWorker.dll --host-pid <pid>`, with the muxer of the runtime the host runs
+   on, so the worker resolves exactly the host's framework, PDFium and Skia in whatever layout the
+   host was built or published in. Its environment is only the worker's runtime settings
+   (workstation GC, no diagnostics, debugger or dumps, invariant globalization), on Linux a managed
+   heap capped at `PdfWorkerMemoryLimit` and a single malloc arena, and on Windows `SystemRoot`:
+   nothing of the host's, its secrets included. Its working directory is a system one.
+2. **Handles and identity.** On Windows the worker is created suspended on a restricted copy of the
+   host's token (no privilege, low integrity), put in its own Job Object, then resumed, and a
+   handle list lets it inherit its three pipes and nothing else. On Linux .NET opens every
+   descriptor close-on-exec; the host lists any descriptor some native library left inheritable,
+   and the worker closes each before it reads anything. A Linux worker runs as the host's user.
+3. **Sandbox and limits.** The worker reports ready once its runtime is up. On Linux it has by then
+   asked the kernel to kill it when its host dies (and has stopped if the host was already gone),
+   dropped every capability, and installed a seccomp filter on all its threads that refuses
+   sockets, new programs and processes, SysV objects, every call that would signal, trace, read or
+   re-limit another process, and the kernel interfaces exploits favour (the host refuses a Linux
+   worker without the filter). Only then does the host cap it from outside: on Windows, the job's
+   committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time, one
+   process, no crash dialog, no desktop or clipboard, and death with the host's handle; on Linux,
+   `prlimit` sets `RLIMIT_DATA` (the private memory the worker holds once started plus
+   `PdfWorkerMemoryLimit`: the cap a document's memory meets), `RLIMIT_AS` (its address space once
+   started plus that limit and 128 MiB of slack, for what the data limit does not count),
+   `RLIMIT_CPU`, and zero core-dump and file sizes, soft and hard alike. The CPU limit is the
+   call's budget plus a second, at most 60 s, and 60 s for a call without a budget, so a worker
+   always ends on its own. Then the host sends the document.
 4. **Protocol.** Three length-prefixed, size-capped frames over the worker's standard input and
    output ([WorkerProtocol](../Tellma.Core.Imaging.PdfWorker/WorkerProtocol.cs)): ready, request
    (thumbnail size and the PDF, at most 32 MiB), result (a PNG, or a refusal or failure detail). Each
@@ -89,26 +96,54 @@ bounds what it can take.
    dimensions, and it is encoded in the policy's format exactly as a page rendered in-process was.
    A worker's detail text is reduced to one line of printable ASCII before it is logged.
 6. **End.** The worker is killed when the budget runs out or the caller cancels, and always when
-   the call ends; the call's image slot comes back only once the worker's process is gone. A worker
-   whose input closes (its host died, or gave up) exits at once even mid-render; on Windows the job
-   kills it with the host anyway, and on Linux its CPU limit bounds it regardless.
+   the call ends; the call's PDF slot comes back only once the worker's process is gone. On Windows
+   the kill also cancels the host's pending reads and writes on the worker's pipes, so a call ends
+   with its worker even when some other process inherited one of the worker's pipe ends. A worker
+   whose input closes (its host died, or gave up) exits at once even mid-render, which only a
+   worker still running its own code does. The operating system needs no such cooperation: on
+   Windows the job kills the worker with the host, and on Linux the kernel kills it when the host
+   thread that started it ends, a request the filter keeps the worker from withdrawing; the CPU
+   limit stands behind both.
 
 A worker renders one document and exits, so no upload ever shares a process with another tenant's.
 Starting one costs about 0.2 to 0.5 s; PDF thumbnails are rare (one per PDF upload) and the budget
-is 5 s, so a pool would buy little and lose that isolation. PDF work takes an image slot like any
-other image work, so at most `ImageConcurrency` workers run at once, each under its memory limit.
+is 5 s, so a pool would buy little and lose that isolation. PDF workers have slots of their own,
+`PdfWorkerConcurrency`, apart from the image slots: at most that many run at once, each under its
+memory limit, and image uploads never wait behind them. A PDF that finds every slot taken waits for
+one within its own budget, and gets no thumbnail when the budget runs out.
 
 A worker that fails in any way (it cannot start, crashes, is stopped by a limit, breaks the protocol
 or answers with a malformed image) is counted as `decode-failed` and logged as `BlobPdfWorkerFailed`
-at Warning; its document gets no thumbnail and its upload proceeds.
+at Warning; its document gets no thumbnail and its upload proceeds. On Windows a crashed worker
+stays alive, its pipes open, until Windows Error Reporting has written its report (seconds on a
+quiet machine, half a minute on a loaded one); a call whose budget runs out first ends there, with
+the worker killed, and is counted as `timeout`.
+
+## Where PDF thumbnails render
+
+A worker is only as contained as its operating system's hold on it, so a host renders PDF
+thumbnails only where that hold is good enough for production, and for developers elsewhere:
+
+| Host | PDF thumbnails |
+|---|---|
+| Linux with glibc | Rendered, in every environment. This is the production host. |
+| Windows, macOS | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). A Windows worker can still end its host's process and open other workers of the same account; a macOS worker runs under no operating-system limit. |
+| Linux with another C library (musl, as on Alpine) | Never. The .NET runtime there signals its threads with `tkill`, which the worker's filter refuses. |
+
+A host that renders none starts no worker: a PDF there gets no thumbnail, as a file of any other
+type gets none, which is no failure and is counted as none. Its `core.imaging` check passes and
+logs `BlobPdfThumbnailsDisabled` once, at Warning, with the reason. A processor constructed without
+a host environment is not in Development.
 
 ## Hostile input and native code
 
-- **Bounded image work.** A native decode cannot be stopped mid-call, so normalisations and
-  thumbnails run in `ImageConcurrency` slots, each released only when its native work really ends:
-  a decode's, or a PDF worker's process. A hostile file wastes one slot for a while; it never
-  starves the host, and memory is bounded by the slots times one decoded frame (four bytes per pixel
-  under the cap, a third more for the mipmaps of the downscaling draw) or one worker's limit.
+- **Bounded image work.** A native decode cannot be stopped mid-call, so normalisations and image
+  thumbnails run in `ImageConcurrency` slots, each released only when its native work really ends.
+  A hostile image wastes one slot for a while; it never starves the host, and memory is bounded by
+  the slots times one decoded frame (four bytes per pixel under the cap, a third more for the
+  mipmaps of the downscaling draw). PDF workers run in `PdfWorkerConcurrency` slots of their own,
+  each released only when its worker's process is gone, so a burst of hostile PDFs delays other
+  PDF thumbnails and never an upload.
 - **Budgets.** `ProcessAsync`'s budget bounds the wait for a slot and, separately, the work: no slot
   in time is `ImageProcessingBusyException` (the server is busy; 503 with `Retry-After`), work past
   its budget is a `timeout` rejection (the input is at fault). A thumbnail's budget covers the wait
@@ -134,18 +169,50 @@ at Warning; its document gets no thumbnail and its upload proceeds.
 
 ## Residual risks
 
-- **A compromised worker runs as the host's user.** An exploit of PDFium gains code execution in a
-  worker that can read what the host's account can read, the host's own `/proc` entries and
-  environment included where the kernel allows a same-user read, and can encode what it reads into
-  the pixels of the thumbnail it returns, the one output the host accepts. A filesystem sandbox
-  (Landlock on Linux, an AppContainer on Windows) would close that; neither is in place.
-- **Windows does not keep a worker off the network.** No unprivileged Windows mechanism denies one
-  process the network; the Linux worker's seccomp filter does.
-- **Memory is capped per worker, not per host.** `ImageConcurrency` workers may each take
+What a document does through PDFium's ordinary behaviour (taking memory and CPU, crashing) ends in
+its worker. The risks below need more: an exploit of PDFium that runs an attacker's code in the
+worker. On Linux, the production host:
+
+- **A compromised worker runs as the host's user and reaches its files.** It holds no capability
+  and can gain no privilege, and it cannot reach the network, start a program, or signal, trace or
+  re-limit another process. But it can read what the host's account can read, the host's
+  configuration files and environment (`/proc/<pid>/environ`) included, and encode what it reads
+  into the pixels of the thumbnail it returns, the one output the host accepts. The zero file-size
+  limit stops it creating file content or growing a file, not changing files the account may
+  already write: it can overwrite them in place through a mapping, and truncate, rename or delete
+  them, the application's own files included where the account owns them. A filesystem sandbox
+  (Landlock) would close both; none is in place. Until then, run the host as a user that cannot
+  write its own application files.
+- **The host's memory is kept from a worker by a kernel setting.** With `kernel.yama.ptrace_scope`
+  at 1 or more (Ubuntu's default, not every distribution's) a worker cannot open its host's
+  `/proc/<pid>/mem`. At 0, or on a kernel without Yama, it can read and write the host's memory.
+  The `core.imaging` check logs `BlobPdfWorkerPtraceUnrestricted` at Warning when it starts on such
+  a machine.
+- **The memory limit binds a document, not exploit code.** `RLIMIT_DATA` counts private memory,
+  which is what PDFium, Skia and the runtime allocate. Shared mappings are held only by the
+  address-space limit, and a started worker holds about 3.2 GiB of address space at the default
+  limit, nearly all of it the runtime's own reservations (just under 2 GiB for compiled code, and
+  five times the limit for the managed heap). Code in control of a worker could unmap those and
+  map shared memory in their place: about 3.5 GiB in all at the default limit, not 256 MiB. Kernel
+  memory held through descriptors (pipe buffers) and threads is counted by neither limit. All of
+  it is released when the worker dies, at the latest when the call's budget kills it. Only a memory
+  cgroup around each worker would bound it tighter; until one is in place, the container's own
+  memory limit is the outer bound.
+- **Memory is capped per worker, not per host.** `PdfWorkerConcurrency` workers may each take
   `PdfWorkerMemoryLimit`; size both for the host.
 - **Deployment.** A worker needs the host to run framework-dependent on an installed .NET runtime,
-  not as a single file or self-contained, and on Linux needs seccomp and `prlimit`; the startup
-  check fails where they are missing.
+  not as a single file or self-contained, on Linux with glibc, seccomp and `prlimit`; the startup
+  check fails where a worker cannot start.
+
+On Windows and macOS, where PDF thumbnails render only in Development:
+
+- **Windows.** The worker's low integrity level keeps it out of the host's memory, threads and
+  handles, and from writing the host's files. It can still end the host's process and open the
+  account's other low-integrity processes, other workers among them; it can read the account's
+  files; nothing keeps it off the network (no unprivileged Windows mechanism denies one process
+  the network); and memory mapped from pagefile-backed sections is not counted by the Job Object's
+  limit (768 MiB mapped and touched under a 128 MiB limit, measured).
+- **macOS.** A worker runs under no operating-system limit; only the budget's kill ends it.
 
 ## Telemetry
 
@@ -156,7 +223,10 @@ render. The `BlobImageRender` debug event is written immediately before native c
 an input (or a PDF worker is started); `BlobImageFailed` (debug) records each failure,
 `BlobImageUnexpectedFailure` (warning) an exception the processor does not anticipate,
 `BlobPdfWorkerFailed` (warning) a PDF worker that failed rather than refusing its document, and
-`BlobImageBusy` (warning) an upload that found every slot busy.
+`BlobImageBusy` (warning) an upload that found every slot busy. The startup check writes
+`BlobPdfThumbnailsDisabled` (warning) on a host that renders no PDF thumbnails, with the reason, and
+`BlobPdfWorkerPtraceUnrestricted` (warning) on a Linux machine whose kernel lets a worker open its
+host's memory.
 
 ## Native assets
 

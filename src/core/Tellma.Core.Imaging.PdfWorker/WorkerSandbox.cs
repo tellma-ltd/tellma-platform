@@ -32,13 +32,24 @@ namespace Tellma.Core.Imaging.PdfWorker
     /// <summary>
     ///     What the worker does to itself before it reads anything of the upload, while its own code
     ///     is still trustworthy: it closes descriptors it inherited by accident, keeps its protocol
-    ///     output away from native code, and on Linux installs its system-call filter. Limits on
-    ///     memory and CPU are not here: the host applies those from outside.
+    ///     output away from native code, and on Linux asks the kernel to kill it when its host dies,
+    ///     drops every capability, and installs its system-call filter, which keeps all of that from
+    ///     being undone. Limits on memory and CPU are not here: the host applies those from outside.
     /// </summary>
     internal static partial class WorkerSandbox
     {
         /// <summary>The argument naming an inherited descriptor to close: <c>--close-fd &lt;number&gt; &lt;target&gt;</c>.</summary>
         public const string CloseDescriptorArgument = "--close-fd";
+
+        /// <summary>The argument naming the host's process id: <c>--host-pid &lt;pid&gt;</c>.</summary>
+        public const string HostProcessArgument = "--host-pid";
+
+        // prctl options (linux/prctl.h) and the capability ABI (linux/capability.h).
+        private const int SetParentDeathSignal = 1;
+        private const int AmbientCapabilities = 47;
+        private const ulong ClearAllAmbient = 4;
+        private const uint CapabilityVersion3 = 0x2008_0522;
+        private const ulong KillSignal = 9;
 
         /// <summary>
         ///     Enters the sandbox: consumes the arguments it knows from <paramref name="arguments" />
@@ -54,6 +65,7 @@ namespace Tellma.Core.Imaging.PdfWorker
         {
             ArgumentNullException.ThrowIfNull(arguments);
             List<(int Descriptor, string Target)> inherited = TakeInheritedDescriptors(arguments);
+            int? host = TakeHostProcess(arguments);
 
             if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
@@ -76,15 +88,88 @@ namespace Tellma.Core.Imaging.PdfWorker
                 output = Console.OpenStandardOutput();
             }
 
-            // Section: on Linux, the kernel filter. Without one the worker does not run there: the
-            // filter is what keeps a compromised renderer off the network.
+            // Section: on Linux, the kernel's own guarantees. The parent-death signal kills the
+            // worker the moment its host dies, with no cooperation of the worker's code; the filter
+            // below forbids clearing it. With no capability left, a worker of a host that runs as
+            // root cannot raise its own limits or override file permissions. The filter itself is
+            // what keeps a compromised renderer off the network and away from the host; without it
+            // the worker does not run there.
             if (OperatingSystem.IsLinux())
             {
+                if (host is not int parent)
+                {
+                    throw new ArgumentException($"{HostProcessArgument} is required on Linux.", nameof(arguments));
+                }
+
+                DieWithHost(parent);
+                DropCapabilities();
                 SeccompFilter.Install();
                 return WorkerCapabilities.SystemCallFilter;
             }
 
             return WorkerCapabilities.None;
+        }
+
+        /// <summary>Removes the <c>--host-pid</c> pair from the arguments.</summary>
+        /// <param name="arguments">The command line.</param>
+        /// <returns>The host's process id, or null when the pair is absent.</returns>
+        internal static int? TakeHostProcess(List<string> arguments)
+        {
+            int index = arguments.IndexOf(HostProcessArgument);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            if (index + 1 >= arguments.Count
+                || !int.TryParse(arguments[index + 1], NumberStyles.None, CultureInfo.InvariantCulture, out int host)
+                || host < 1)
+            {
+                throw new ArgumentException($"{HostProcessArgument} takes the host's process id.", nameof(arguments));
+            }
+
+            arguments.RemoveRange(index, 2);
+            return host;
+        }
+
+        /// <summary>
+        ///     Asks the kernel to send SIGKILL to this process when its parent dies (strictly, when the
+        ///     parent's thread that started it ends), and stops at once when the parent is already
+        ///     gone, or is not the host it should be.
+        /// </summary>
+        /// <param name="host">The host's process id.</param>
+        [SupportedOSPlatform("linux")]
+        private static void DieWithHost(int host)
+        {
+            if (SeccompFilter.Prctl(SetParentDeathSignal, KillSignal, 0, 0, 0) != 0)
+            {
+                throw new InvalidOperationException($"The kernel refused the parent-death signal (errno {Marshal.GetLastPInvokeError()}).");
+            }
+
+            // The host may have died between starting this process and the call above, in which case
+            // no signal will come: this process now has another parent.
+            if (ParentProcessId() != host)
+            {
+                throw new InvalidOperationException("The host is gone.");
+            }
+        }
+
+        /// <summary>Empties this process's effective, permitted, inheritable and ambient capabilities.</summary>
+        [SupportedOSPlatform("linux")]
+        private static unsafe void DropCapabilities()
+        {
+            var header = new CapabilityHeader { Version = CapabilityVersion3, ProcessId = 0 };
+            CapabilitySet* sets = stackalloc CapabilitySet[2];
+            sets[0] = default;
+            sets[1] = default;
+            if (CapSet(&header, sets) != 0)
+            {
+                throw new InvalidOperationException($"The capabilities could not be dropped (errno {Marshal.GetLastPInvokeError()}).");
+            }
+
+            // Ambient capabilities need a permitted one to survive, which is gone; clearing them
+            // anyway costs nothing, and an old kernel without them refuses harmlessly.
+            _ = SeccompFilter.Prctl(AmbientCapabilities, ClearAllAmbient, 0, 0, 0);
         }
 
         /// <summary>
@@ -166,6 +251,47 @@ namespace Tellma.Core.Imaging.PdfWorker
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
         [UnsupportedOSPlatform("windows")]
         private static partial void ImmediateExit(int status);
+
+        /// <summary><c>pid_t getppid(void)</c>.</summary>
+        /// <returns>The parent's process id.</returns>
+        [LibraryImport("libc", EntryPoint = "getppid")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        internal static partial int ParentProcessId();
+
+        /// <summary><c>int capset(cap_user_header_t, const cap_user_data_t)</c>.</summary>
+        /// <param name="header">The ABI version and process.</param>
+        /// <param name="sets">Two capability sets, the low and high words.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "capset", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [SupportedOSPlatform("linux")]
+        private static unsafe partial int CapSet(CapabilityHeader* header, CapabilitySet* sets);
+
+        /// <summary><c>struct __user_cap_header_struct</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CapabilityHeader
+        {
+            /// <summary>The ABI version.</summary>
+            public uint Version;
+
+            /// <summary>The process; 0 for this one.</summary>
+            public int ProcessId;
+        }
+
+        /// <summary><c>struct __user_cap_data_struct</c>: one word of each set.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CapabilitySet
+        {
+            /// <summary>The effective capabilities.</summary>
+            public uint Effective;
+
+            /// <summary>The permitted capabilities.</summary>
+            public uint Permitted;
+
+            /// <summary>The inheritable capabilities.</summary>
+            public uint Inheritable;
+        }
 
         /// <summary><c>BOOL TerminateProcess(HANDLE process, UINT exitCode)</c>, on this process's pseudo handle.</summary>
         /// <param name="process">The process; -1 for this one.</param>

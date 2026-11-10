@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Diagnostics.Metrics;
@@ -30,14 +31,19 @@ namespace Tellma.Core.Imaging
     ///         <see cref="ThumbnailAsync" /> renders a stored file: an image under the default pixel
     ///         cap, or a PDF's first page. PDFium never runs in this process: each PDF thumbnail is
     ///         rendered by a new worker process, which walks page 1 against the caps, renders it and
-    ///         answers with a PNG, under an operating-system memory cap and CPU limit, killed when the
-    ///         budget runs out. A hostile document can stop or starve its own worker, never the host;
-    ///         a worker that fails in any way means no thumbnail, never a failed upload.
+    ///         answers with a PNG, under operating-system memory, CPU and access limits, killed when
+    ///         the budget runs out. A hostile document is contained in its worker as far as those
+    ///         limits reach (the package README lists what they do not cover); a worker that fails in
+    ///         any way means no thumbnail, never a failed upload. PDF thumbnails render where those
+    ///         limits hold: on Linux with glibc, and, for developers only, on Windows and macOS in
+    ///         the Development environment. Any other host renders none, and starts no worker: a
+    ///         PDF there has no thumbnail, as a file of any other type has none.
     ///     </para>
     ///     <para>
-    ///         Native work cannot be stopped mid-call, so it runs behind
-    ///         <see cref="SkiaImageProcessorOptions.ImageConcurrency" /> slots, released only when the
-    ///         native work ends: a decode's, or a PDF worker's, which ends with its process. A call's
+    ///         Native work cannot be stopped mid-call, so it runs behind slots released only when the
+    ///         native work ends: <see cref="SkiaImageProcessorOptions.ImageConcurrency" /> slots for
+    ///         images, and <see cref="SkiaImageProcessorOptions.PdfWorkerConcurrency" /> slots for PDF
+    ///         workers, whose work ends with their process. A call's
     ///         budget bounds its wait and its work; when it runs out the call returns at once, the
     ///         input is closed to the native reader, so a decode still in flight stops at its next
     ///         read, and a PDF worker is killed.
@@ -67,6 +73,9 @@ namespace Tellma.Core.Imaging
         // the CPU limit bounds it on its own should the host be gone.
         private static readonly TimeSpan CpuAllowance = TimeSpan.FromSeconds(1);
 
+        // The most CPU time any PDF worker may use, a long or infinite budget included.
+        private static readonly TimeSpan CpuCeiling = TimeSpan.FromSeconds(60);
+
         private readonly ILogger _logger;
         private readonly ImagingMetrics _metrics;
         private readonly TimeProvider _timeProvider;
@@ -77,16 +86,33 @@ namespace Tellma.Core.Imaging
         // when it ends, and the semaphore holds no handle unless one is asked for.
         private readonly SemaphoreSlim _imageSlots;
 
+        // The PDF worker slots, apart so that PDFs never hold the slots uploads need; never disposed,
+        // for the same reason as the image slots.
+        private readonly SemaphoreSlim _pdfSlots;
+
         /// <summary>Creates the processor.</summary>
         /// <param name="logger">The processor's logger.</param>
         /// <param name="meterFactory">The host's meter factory.</param>
         /// <param name="timeProvider">The clock the time budgets run on.</param>
         /// <param name="options">The processor's options.</param>
-        /// <exception cref="ArgumentNullException">An argument is null.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">The concurrency is not positive, or the worker memory limit is below its minimum.</exception>
+        /// <param name="environment">
+        ///     The host's environment, which decides whether a host on Windows or macOS renders PDF
+        ///     thumbnails: only in Development. A host that passes none is not in Development.
+        /// </param>
+        /// <exception cref="ArgumentNullException">An argument other than <paramref name="environment" /> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A concurrency is not positive, or the worker memory limit is below its minimum.</exception>
         public SkiaImageProcessor(
-            ILogger<SkiaImageProcessor> logger, IMeterFactory meterFactory, TimeProvider timeProvider, IOptions<SkiaImageProcessorOptions> options)
-            : this(logger, meterFactory, timeProvider, (options ?? throw new ArgumentNullException(nameof(options))).Value)
+            ILogger<SkiaImageProcessor> logger,
+            IMeterFactory meterFactory,
+            TimeProvider timeProvider,
+            IOptions<SkiaImageProcessorOptions> options,
+            IHostEnvironment? environment = null)
+            : this(
+                logger,
+                meterFactory,
+                timeProvider,
+                (options ?? throw new ArgumentNullException(nameof(options))).Value,
+                pdfThumbnails: PdfThumbnailPolicy.For(environment))
         {
         }
 
@@ -97,35 +123,46 @@ namespace Tellma.Core.Imaging
         /// <param name="options">The processor's options.</param>
         /// <param name="pdf">Renders PDF pages in workers; the PDF worker under the options' memory limit when null.</param>
         /// <param name="openInput">Opens an upload's bytes for the decoder; an in-memory stream when null.</param>
+        /// <param name="pdfThumbnails">Whether PDF thumbnails render at all.</param>
         internal SkiaImageProcessor(
             ILogger logger,
             IMeterFactory meterFactory,
             TimeProvider timeProvider,
             SkiaImageProcessorOptions options,
             PdfWorkerClient? pdf = null,
-            Func<byte[], Stream>? openInput = null)
+            Func<byte[], Stream>? openInput = null,
+            PdfThumbnailSupport pdfThumbnails = PdfThumbnailSupport.Enabled)
         {
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(meterFactory);
             ArgumentNullException.ThrowIfNull(timeProvider);
             ArgumentNullException.ThrowIfNull(options);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ImageConcurrency, nameof(options));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.PdfWorkerConcurrency, nameof(options));
             ArgumentOutOfRangeException.ThrowIfLessThan(options.PdfWorkerMemoryLimit, SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit, nameof(options));
 
             _logger = logger;
             _metrics = new ImagingMetrics(meterFactory);
             _timeProvider = timeProvider;
             PdfWorkers = pdf ?? new PdfWorkerClient(new PdfWorkerLauncher(), options.PdfWorkerMemoryLimit);
+            PdfThumbnails = pdfThumbnails;
             _openInput = openInput ?? (static bytes => new MemoryStream(bytes, writable: false));
             _concurrency = options.ImageConcurrency;
             _imageSlots = new SemaphoreSlim(_concurrency, _concurrency);
+            _pdfSlots = new SemaphoreSlim(options.PdfWorkerConcurrency, options.PdfWorkerConcurrency);
         }
 
         /// <summary>How many image slots are free now; for the suite.</summary>
         internal int FreeImageSlots => _imageSlots.CurrentCount;
 
+        /// <summary>How many PDF worker slots are free now; for the suite.</summary>
+        internal int FreePdfSlots => _pdfSlots.CurrentCount;
+
         /// <summary>The PDF workers.</summary>
         internal PdfWorkerClient PdfWorkers { get; }
+
+        /// <summary>Whether this host renders PDF thumbnails at all.</summary>
+        internal PdfThumbnailSupport PdfThumbnails { get; }
 
         /// <inheritdoc />
         /// <exception cref="ArgumentException"><paramref name="kind" /> is blank, or a policy value or the timeout is out of range.</exception>
@@ -268,6 +305,13 @@ namespace Tellma.Core.Imaging
                 return null;
             }
 
+            // Section: a host that renders no PDF thumbnails starts no worker for one. That is the
+            // host's shape, not the document's fault, so it counts as no failure either.
+            if (isPdf && PdfThumbnails != PdfThumbnailSupport.Enabled)
+            {
+                return null;
+            }
+
             const string operation = BlobTelemetryTagValues.ImageThumbnail;
 
             // Section: the time budget, covering the wait for a slot and the render. It closes the
@@ -303,9 +347,11 @@ namespace Tellma.Core.Imaging
                     return null;
                 }
 
-                // Section: an image slot, on the pool so the budget can end the wait. Until the work
-                // has taken the slot over, a failure gives it back here.
-                await _imageSlots.WaitAsync(token).ConfigureAwait(false);
+                // Section: a slot, on the pool so the budget can end the wait: a PDF worker slot for a
+                // PDF, so PDFs never hold the slots image uploads need, and an image slot otherwise.
+                // Until the work has taken the slot over, a failure gives it back here.
+                SemaphoreSlim slots = isPdf ? _pdfSlots : _imageSlots;
+                await slots.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
                     ImagingLog.Render(_logger, kind, operation, type, gated.Length);
@@ -316,7 +362,7 @@ namespace Tellma.Core.Imaging
                 }
                 catch
                 {
-                    _imageSlots.Release();
+                    _ = slots.Release();
                     throw;
                 }
 
@@ -403,11 +449,14 @@ namespace Tellma.Core.Imaging
         /// </summary>
         /// <param name="input">The gated PDF, at most the worker's input cap.</param>
         /// <param name="policy">The thumbnail policy.</param>
-        /// <param name="cpuTime">The worker's CPU limit; null for none.</param>
+        /// <param name="cpuTime">The worker's CPU limit.</param>
         /// <param name="token">The call's budget and cancellation, which kill the worker.</param>
         /// <returns>The running work.</returns>
-        private Task<byte[]> RunPdfInSlot(GatedReadStream input, ThumbnailPolicy policy, TimeSpan? cpuTime, CancellationToken token)
+        private Task<byte[]> RunPdfInSlot(GatedReadStream input, ThumbnailPolicy policy, TimeSpan cpuTime, CancellationToken token)
         {
+            // The thread is the worker's: it starts the worker, which on Linux the kernel kills when
+            // that thread ends, and it ends with this work. The caller's continuations run on the
+            // pool instead, so nothing the caller does next is tied to this thread's end.
             return Task.Factory.StartNew(
                 () =>
                 {
@@ -431,20 +480,24 @@ namespace Tellma.Core.Imaging
                     }
                     finally
                     {
-                        _imageSlots.Release();
+                        _pdfSlots.Release();
                     }
                 },
                 CancellationToken.None,
-                TaskCreationOptions.LongRunning,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
                 TaskScheduler.Default);
         }
 
-        /// <summary>A PDF worker's CPU limit for a call's budget: the budget and an allowance, or none for no budget.</summary>
+        /// <summary>
+        ///     A PDF worker's CPU limit for a call's budget: the budget and an allowance, never more
+        ///     than the ceiling, and the ceiling for no budget, so that a worker always ends on its
+        ///     own.
+        /// </summary>
         /// <param name="timeout">The call's budget.</param>
-        /// <returns>The limit, or null.</returns>
-        private static TimeSpan? CpuLimit(TimeSpan timeout)
+        /// <returns>The limit.</returns>
+        internal static TimeSpan CpuLimit(TimeSpan timeout)
         {
-            return timeout == Timeout.InfiniteTimeSpan ? null : timeout + CpuAllowance;
+            return timeout == Timeout.InfiniteTimeSpan || timeout + CpuAllowance > CpuCeiling ? CpuCeiling : timeout + CpuAllowance;
         }
 
         /// <summary>Kills the PDF workers still running; their slots come back as they exit.</summary>

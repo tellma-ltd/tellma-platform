@@ -5,7 +5,10 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
@@ -16,7 +19,9 @@ namespace Tellma.Core.Imaging.Tests.Composition
 {
     /// <summary>
     ///     <c>AddTellmaSkia</c>: one processor registration however often it is called, resolvable
-    ///     from a plain container, and the startup check that proves the natives load.
+    ///     from a plain container, and the startup check that proves the natives load; and where a
+    ///     host renders PDF thumbnails at all, which the processor and the check decide alike from
+    ///     the host's environment, the check saying so in the log.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class ImagingCompositionTests
@@ -40,7 +45,7 @@ namespace Tellma.Core.Imaging.Tests.Composition
         {
             var services = new ServiceCollection();
             services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-            services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+            services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
             services.AddTellmaSkia();
             using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
 
@@ -66,22 +71,44 @@ namespace Tellma.Core.Imaging.Tests.Composition
         }
 
         [Fact]
-        public void A_non_positive_concurrency_is_refused()
+        public void The_pdf_worker_concurrency_binds_from_the_blob_section()
         {
-            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:ImageConcurrency"] = "0" });
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:PdfWorkerConcurrency"] = "2" });
 
-            Assert.Throws<OptionsValidationException>(provider.GetRequiredService<IImageProcessor>);
+            Assert.Equal(2, provider.GetRequiredService<IOptions<SkiaImageProcessorOptions>>().Value.PdfWorkerConcurrency);
+            Assert.Equal(2, Assert.IsType<SkiaImageProcessor>(provider.GetRequiredService<IImageProcessor>()).FreePdfSlots);
         }
 
         [Fact]
-        public async Task A_non_positive_concurrency_fails_the_startup_check_naming_its_key()
+        public void The_pdf_worker_concurrency_defaults_to_a_quarter_of_the_processors_and_at_least_one()
         {
-            using ServiceProvider provider = Build(new Dictionary<string, string?> { ["Tellma:Blobs:ImageConcurrency"] = "0" });
+            using ServiceProvider provider = Build([]);
+
+            Assert.Equal(Math.Max(1, Environment.ProcessorCount / 4), provider.GetRequiredService<IOptions<SkiaImageProcessorOptions>>().Value.PdfWorkerConcurrency);
+        }
+
+        [Theory]
+        [InlineData("ImageConcurrency")]
+        [InlineData("PdfWorkerConcurrency")]
+        public void A_non_positive_concurrency_is_refused(string key)
+        {
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { [$"Tellma:Blobs:{key}"] = "0" });
+
+            OptionsValidationException exception = Assert.Throws<OptionsValidationException>(provider.GetRequiredService<IImageProcessor>);
+            Assert.Contains($"Tellma:Blobs:{key}", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("ImageConcurrency")]
+        [InlineData("PdfWorkerConcurrency")]
+        public async Task A_non_positive_concurrency_fails_the_startup_check_naming_its_key(string key)
+        {
+            using ServiceProvider provider = Build(new Dictionary<string, string?> { [$"Tellma:Blobs:{key}"] = "0" });
 
             IReadOnlyList<CompositionProblem> problems = await new ImagingStartupCheck().CheckAsync(provider, TestContext.Current.CancellationToken);
 
             CompositionProblem problem = Assert.Single(problems);
-            Assert.Contains("Tellma:Blobs:ImageConcurrency", problem.Fix, StringComparison.Ordinal);
+            Assert.Contains($"Tellma:Blobs:{key}", problem.Fix, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -100,9 +127,9 @@ namespace Tellma.Core.Imaging.Tests.Composition
         public async Task The_startup_check_passes_when_both_native_libraries_load()
         {
             var check = new ImagingStartupCheck();
+            using ServiceProvider provider = Build([]);
 
-            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(
-                new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
             Assert.Equal("core.imaging", check.Name);
             Assert.False(check.RequiresInfrastructure);
@@ -112,10 +139,10 @@ namespace Tellma.Core.Imaging.Tests.Composition
         [Fact]
         public async Task The_startup_check_fails_naming_the_fix_when_no_pdf_worker_can_start()
         {
-            var check = new ImagingStartupCheck(new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing", "Tellma.Core.Imaging.PdfWorker.dll")));
+            var check = new ImagingStartupCheck(MissingWorker());
+            using ServiceProvider provider = Build([]);
 
-            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(
-                new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
             CompositionProblem problem = Assert.Single(problems);
             Assert.Contains("PDF worker assembly", problem.Problem, StringComparison.Ordinal);
@@ -128,13 +155,131 @@ namespace Tellma.Core.Imaging.Tests.Composition
         public async Task The_startup_check_fails_when_the_pdf_worker_does_not_render_the_probe(string mode, string description)
         {
             var check = new ImagingStartupCheck(new PdfWorkerLauncher(TestWorkers.StandInPath, [mode]));
+            using ServiceProvider provider = Build([]);
 
-            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(
-                new ServiceCollection().BuildServiceProvider(), TestContext.Current.CancellationToken);
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
             CompositionProblem problem = Assert.Single(problems);
             Assert.Contains(description, problem.Problem, StringComparison.Ordinal);
             Assert.False(string.IsNullOrWhiteSpace(problem.Fix));
+        }
+
+        [Theory]
+        [InlineData("Development")]
+        [InlineData("Production")]
+        [InlineData("Staging")]
+        [InlineData(null)]
+        public void The_processor_renders_pdf_thumbnails_on_linux_and_elsewhere_only_in_development(string? environment)
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+            services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+            if (environment is not null)
+            {
+                services.AddSingleton<IHostEnvironment>(new TestHostEnvironment(environment));
+            }
+
+            services.AddTellmaSkia();
+            using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+
+            // A host that registers no environment is not in Development. The suites run on glibc.
+            SkiaImageProcessor processor = Assert.IsType<SkiaImageProcessor>(provider.GetRequiredService<IImageProcessor>());
+            PdfThumbnailSupport expected = OperatingSystem.IsLinux() || environment == "Development"
+                ? PdfThumbnailSupport.Enabled
+                : PdfThumbnailSupport.DisabledOutsideDevelopment;
+            Assert.Equal(expected, processor.PdfThumbnails);
+        }
+
+        [Theory]
+        [InlineData("DisabledOutsideDevelopment")]
+        [InlineData("DisabledOnMusl")]
+        public async Task A_host_that_renders_no_pdf_thumbnails_passes_the_startup_check_with_a_warning_and_starts_no_worker(string support)
+        {
+            // The check's worker is missing: starting it would be a problem.
+            PdfThumbnailSupport disabled = Enum.Parse<PdfThumbnailSupport>(support);
+            var check = new ImagingStartupCheck(MissingWorker(), disabled);
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            Assert.Empty(problems);
+            FakeLogRecord record = Assert.Single(logger.Collector.GetSnapshot());
+            Assert.Equal("BlobPdfThumbnailsDisabled", record.Id.Name);
+            Assert.Equal(LogLevel.Warning, record.Level);
+            Assert.Contains(PdfThumbnailPolicy.Reason(disabled), record.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_startup_check_decides_from_the_hosts_environment_whether_a_worker_is_probed()
+        {
+            // A Production host: on Linux it renders PDF thumbnails, so the missing worker is a
+            // problem; elsewhere it renders none, starts no worker, and says so.
+            var check = new ImagingStartupCheck(MissingWorker());
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection()
+                .AddSingleton<ILogger<SkiaImageProcessor>>(logger)
+                .AddSingleton<IHostEnvironment>(TestHostEnvironment.Production)
+                .BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            string?[] events = [.. logger.Collector.GetSnapshot().Select(static record => record.Id.Name)];
+            if (OperatingSystem.IsLinux())
+            {
+                Assert.Contains("PDF worker assembly", Assert.Single(problems).Problem, StringComparison.Ordinal);
+                Assert.DoesNotContain("BlobPdfThumbnailsDisabled", events);
+            }
+            else
+            {
+                Assert.Empty(problems);
+                Assert.Equal("BlobPdfThumbnailsDisabled", Assert.Single(events));
+            }
+        }
+
+        [Theory]
+        [InlineData("0\n", true)]
+        [InlineData(null, true)]
+        [InlineData("1\n", false)]
+        [InlineData("3", false)]
+        public async Task On_linux_the_startup_check_warns_when_the_kernel_lets_a_worker_open_the_hosts_memory(string? scope, bool warns)
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Yama's ptrace scope is a Linux kernel setting.");
+            var check = new ImagingStartupCheck(readPtraceScope: () => scope);
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            // A warning, never a problem: the host starts, and PDF thumbnails render.
+            Assert.Empty(problems);
+            FakeLogRecord[] records = [.. logger.Collector.GetSnapshot()];
+            if (warns)
+            {
+                FakeLogRecord record = Assert.Single(records);
+                Assert.Equal("BlobPdfWorkerPtraceUnrestricted", record.Id.Name);
+                Assert.Equal(LogLevel.Warning, record.Level);
+                Assert.Contains("kernel.yama.ptrace_scope", record.Message, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Empty(records);
+            }
+        }
+
+        [Theory]
+        [InlineData(null, "the Yama security module is not enabled")]
+        [InlineData("0", "kernel.yama.ptrace_scope is 0")]
+        [InlineData("0\n", "kernel.yama.ptrace_scope is 0")]
+        [InlineData("1\n", null)]
+        [InlineData("2", null)]
+        [InlineData("3", null)]
+        [InlineData("", "kernel.yama.ptrace_scope is not a number")]
+        [InlineData("-1", "kernel.yama.ptrace_scope is not a number")]
+        [InlineData("on", "kernel.yama.ptrace_scope is not a number")]
+        public void A_ptrace_scope_of_one_or_more_keeps_a_worker_out_of_the_hosts_memory(string? scope, string? reported)
+        {
+            Assert.Equal(reported, ImagingStartupCheck.UnrestrictedPtrace(scope));
         }
 
         [Fact]
@@ -171,14 +316,25 @@ namespace Tellma.Core.Imaging.Tests.Composition
             Assert.Throws<ArgumentNullException>(static () => ImagingComposition.AddTellmaSkia(null!));
         }
 
-        /// <summary>A container with configuration, logging and the processor.</summary>
+        /// <summary>A launcher whose worker assembly does not exist: starting a worker from it fails.</summary>
+        /// <returns>The launcher.</returns>
+        private static PdfWorkerLauncher MissingWorker()
+        {
+            return new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing", "Tellma.Core.Imaging.PdfWorker.dll"));
+        }
+
+        /// <summary>
+        ///     A container with configuration, logging and the processor, of a Development host, which
+        ///     renders PDF thumbnails on every operating system the suites run on.
+        /// </summary>
         /// <param name="settings">The configuration values.</param>
         /// <returns>The provider.</returns>
         private static ServiceProvider Build(Dictionary<string, string?> settings)
         {
             var services = new ServiceCollection();
             services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
-            services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+            services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+            services.AddSingleton<IHostEnvironment>(TestHostEnvironment.Development);
             services.AddTellmaSkia();
             return services.BuildServiceProvider();
         }

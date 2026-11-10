@@ -9,8 +9,9 @@ namespace Tellma.Core.Imaging
 {
     /// <summary>
     ///     The processor's own settings, bound from the blob section of configuration
-    ///     (<c>Tellma:Blobs:ImageConcurrency</c>, <c>Tellma:Blobs:PdfWorkerMemoryLimit</c>), beside
-    ///     the per-call time budgets the blob service passes in.
+    ///     (<c>Tellma:Blobs:ImageConcurrency</c>, <c>Tellma:Blobs:PdfWorkerConcurrency</c>,
+    ///     <c>Tellma:Blobs:PdfWorkerMemoryLimit</c>), beside the per-call time budgets the blob
+    ///     service passes in.
     /// </summary>
     public sealed class SkiaImageProcessorOptions
     {
@@ -24,18 +25,29 @@ namespace Tellma.Core.Imaging
         public const long MinimumPdfWorkerMemoryLimit = 32L * 1024 * 1024;
 
         /// <summary>
-        ///     How many image decodes, normalisations and thumbnails, PDF ones included, may run at
-        ///     once in the process. Each holds up to one decoded frame under the pixel cap, or one PDF
-        ///     worker under its memory limit, so this bounds the processor's memory and cores; a slot
-        ///     is released only when its native work ends. Default: half the processor count, at
+        ///     How many image decodes, normalisations and image thumbnails may run at once in the
+        ///     process. Each holds up to one decoded frame under the pixel cap, so this bounds the
+        ///     processor's memory and cores for images; a slot is released only when its native work
+        ///     ends. PDF thumbnails never take these slots. Default: half the processor count, at
         ///     least one.
         /// </summary>
         public int ImageConcurrency { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
 
         /// <summary>
+        ///     How many PDF workers may run at once in the process, apart from
+        ///     <see cref="ImageConcurrency" />, so that image uploads never wait behind PDF thumbnails.
+        ///     Each worker takes up to <see cref="PdfWorkerMemoryLimit" /> beyond its runtime, and its
+        ///     slot is released only when its process is gone; a PDF that finds every slot taken waits
+        ///     for one within its own time budget, and gets no thumbnail when the budget runs out.
+        ///     Default: a quarter of the processor count, at least one.
+        /// </summary>
+        public int PdfWorkerConcurrency { get; set; } = Math.Max(1, Environment.ProcessorCount / 4);
+
+        /// <summary>
         ///     The memory, in bytes, a PDF worker may take beyond what its .NET runtime holds once
         ///     started, enforced by the operating system: a Job Object's committed-memory limit on
-        ///     Windows, <c>RLIMIT_DATA</c> on Linux. A document that needs more is stopped and gets no
+        ///     Windows, <c>RLIMIT_DATA</c> on Linux, where it also caps the worker's managed heap and
+        ///     sizes its address-space limit. A document that needs more is stopped and gets no
         ///     thumbnail. Honest pages take a few tens of megabytes. Default: 256 MiB; at least 32 MiB.
         /// </summary>
         public long PdfWorkerMemoryLimit { get; set; } = DefaultPdfWorkerMemoryLimit;
@@ -54,6 +66,11 @@ namespace Tellma.Core.Imaging
             if (options.ImageConcurrency <= 0)
             {
                 failures.Add($"{SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.ImageConcurrency)} must be positive; it is {options.ImageConcurrency}.");
+            }
+
+            if (options.PdfWorkerConcurrency <= 0)
+            {
+                failures.Add($"{SkiaImageProcessorOptions.SectionName}:{nameof(SkiaImageProcessorOptions.PdfWorkerConcurrency)} must be positive; it is {options.PdfWorkerConcurrency}.");
             }
 
             if (options.PdfWorkerMemoryLimit < SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit)

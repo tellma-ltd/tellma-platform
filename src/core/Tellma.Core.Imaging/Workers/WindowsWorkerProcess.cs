@@ -5,6 +5,7 @@
 
 using Microsoft.Win32.SafeHandles;
 using System.ComponentModel;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using static Tellma.Core.Imaging.Workers.WindowsInterop;
@@ -12,17 +13,34 @@ using static Tellma.Core.Imaging.Workers.WindowsInterop;
 namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>
-    ///     A worker on Windows: created suspended, put in its own Job Object, then resumed, with a
-    ///     handle list that lets it inherit its three pipes and nothing else.
+    ///     A worker on Windows: created suspended on a restricted, low-integrity copy of the host's
+    ///     token, put in its own Job Object, then resumed, with a handle list that lets it inherit
+    ///     its three pipes and nothing else.
     /// </summary>
     /// <remarks>
+    ///     <para>
+    ///         The worker's token holds no privilege and runs at low integrity, so the mandatory
+    ///         integrity policy denies it every memory, thread, handle and settings access to the
+    ///         host's process and to any other process of the host's account at medium integrity or
+    ///         above, and every write to the host's files. Ending a process is not among the
+    ///         accesses that policy denies, so a worker can still terminate its host; and it can open
+    ///         the account's other low-integrity processes, other workers among them. Hosts therefore
+    ///         render PDF thumbnails on Windows only in Development.
+    ///     </para>
     ///     <para>
     ///         The job kills the worker when the host closes its handle, which the system does when
     ///         the host dies however it dies, so a worker never outlives its host. It allows one
     ///         process, so the worker cannot start another; it suppresses the crash dialog, so a
-    ///         crash ends the process at once; and it denies the worker the desktop, the clipboard
+    ///         crash never waits for a person; and it denies the worker the desktop, the clipboard
     ///         and other processes' windows. Once the worker is ready, the job also caps its
-    ///         committed memory and its user-mode CPU time.
+    ///         committed memory and its user-mode CPU time. A crashed worker still stays alive, its
+    ///         pipes open, while Windows Error Reporting writes its report, which can take longer
+    ///         than a call's budget; the budget's kill ends it then.
+    ///     </para>
+    ///     <para>
+    ///         The host's pipe ends are overlapped, and a kill cancels their pending reads and
+    ///         writes, so a call ends with its worker even while another process holds one of the
+    ///         worker's pipe ends open.
     ///     </para>
     ///     <para>
     ///         Windows offers an unprivileged process no way to deny another process the network,
@@ -32,9 +50,12 @@ namespace Tellma.Core.Imaging.Workers
     [SupportedOSPlatform("windows")]
     internal sealed unsafe class WindowsWorkerProcess : WorkerProcess
     {
-        // The pipes' suggested buffer sizes: the request and the answer stream through 64 KiB.
-        private const uint PipeBufferSize = 64 * 1024;
-        private const uint ErrorPipeBufferSize = 4 * 1024;
+        // The pipes' buffer sizes: the request and the answer stream through 64 KiB.
+        private const int PipeBufferSize = 64 * 1024;
+        private const int ErrorPipeBufferSize = 4 * 1024;
+
+        // How long the host's own connection to a pipe it has just created may take.
+        private const int ConnectTimeoutMilliseconds = 5_000;
 
         // STILL_ACTIVE: what GetExitCodeProcess reports for a running process.
         private const uint StillActive = 259;
@@ -43,27 +64,34 @@ namespace Tellma.Core.Imaging.Workers
         private readonly Lock _sync = new();
         private readonly SafeJobHandle _job;
         private readonly SafeProcessHandle _process;
-        private readonly FileStream _input;
-        private readonly FileStream _output;
+        private readonly CancellationTokenSource _killed;
+        private readonly KillableStream _input;
+        private readonly KillableStream _output;
         private readonly ErrorTail _error;
         private readonly int _id;
+        private readonly nint _childOutput;
         private bool _disposed;
 
         /// <summary>Wraps a started worker.</summary>
         /// <param name="job">Its job.</param>
         /// <param name="process">Its process handle.</param>
         /// <param name="id">Its process id.</param>
-        /// <param name="input">The write end of its standard input.</param>
-        /// <param name="output">The read end of its standard output.</param>
-        /// <param name="error">The read end of its standard error.</param>
-        private WindowsWorkerProcess(SafeJobHandle job, SafeProcessHandle process, int id, FileStream input, FileStream output, FileStream error)
+        /// <param name="killed">Cancelled when it is killed; owned from here.</param>
+        /// <param name="input">The host's end of its standard input.</param>
+        /// <param name="output">The host's end of its standard output.</param>
+        /// <param name="error">The host's end of its standard error.</param>
+        /// <param name="childOutput">The handle value of its standard output, as the worker knows it.</param>
+        private WindowsWorkerProcess(
+            SafeJobHandle job, SafeProcessHandle process, int id, CancellationTokenSource killed, Stream input, Stream output, Stream error, nint childOutput)
         {
             _job = job;
             _process = process;
             _id = id;
-            _input = input;
-            _output = output;
-            _error = new ErrorTail(error);
+            _killed = killed;
+            _input = new KillableStream(input, killed.Token);
+            _output = new KillableStream(output, killed.Token);
+            _error = new ErrorTail(new KillableStream(error, killed.Token));
+            _childOutput = childOutput;
         }
 
         /// <inheritdoc />
@@ -110,7 +138,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <inheritdoc />
         protected override ErrorTail Error => _error;
 
-        /// <summary>Starts a worker in its own job.</summary>
+        /// <summary>Starts a worker in its own job, on its own restricted token.</summary>
         /// <param name="application">The executable's full path.</param>
         /// <param name="arguments">Its arguments.</param>
         /// <param name="environment">Its whole environment.</param>
@@ -120,21 +148,28 @@ namespace Tellma.Core.Imaging.Workers
         public static WindowsWorkerProcess Start(
             string application, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment, string workingDirectory)
         {
-            nint childInput = 0, parentInput = 0, parentOutput = 0, childOutput = 0, parentError = 0, childError = 0;
+            NamedPipeServerStream? input = null, output = null, error = null;
+            NamedPipeClientStream? childInput = null, childOutput = null, childError = null;
             SafeJobHandle? job = null;
             SafeProcessHandle? process = null;
+            CancellationTokenSource? killed = null;
+            nint token = 0;
             try
             {
                 // Section: the job first, with the limits that hold from the worker's first
                 // instruction; memory and CPU follow once the worker is ready.
                 job = CreateJob();
 
-                // Section: three pipes. Only the worker's ends become inheritable, and only for as
-                // long as it takes to create the process.
-                CreatePipeOrThrow(out childInput, out parentInput, PipeBufferSize);
-                CreatePipeOrThrow(out parentOutput, out childOutput, PipeBufferSize);
-                CreatePipeOrThrow(out parentError, out childError, ErrorPipeBufferSize);
-                foreach (nint child in (ReadOnlySpan<nint>)[childInput, childOutput, childError])
+                // Section: three pipes, the host's ends overlapped and the worker's synchronous, as
+                // a console program expects. Only the worker's ends become inheritable, and only for
+                // as long as it takes to create the process.
+                (input, childInput) = CreatePipe(PipeDirection.Out, PipeBufferSize);
+                (output, childOutput) = CreatePipe(PipeDirection.In, PipeBufferSize);
+                (error, childError) = CreatePipe(PipeDirection.In, ErrorPipeBufferSize);
+                nint stdin = childInput.SafePipeHandle.DangerousGetHandle();
+                nint stdout = childOutput.SafePipeHandle.DangerousGetHandle();
+                nint stderr = childError.SafePipeHandle.DangerousGetHandle();
+                foreach (nint child in (ReadOnlySpan<nint>)[stdin, stdout, stderr])
                 {
                     if (SetHandleInformation(child, HandleFlagInherit, HandleFlagInherit) == 0)
                     {
@@ -142,9 +177,11 @@ namespace Tellma.Core.Imaging.Workers
                     }
                 }
 
-                // Section: the process, suspended, so it runs nothing before it is in its job.
+                // Section: the process, on its own token, suspended, so it runs nothing before it is
+                // in its job.
+                token = CreateWorkerToken();
                 ProcessInformation created = CreateSuspendedProcess(
-                    application, Win32Text.CommandLine(application, arguments), Win32Text.EnvironmentBlock(environment), workingDirectory, childInput, childOutput, childError);
+                    token, application, Win32Text.CommandLine(application, arguments), Win32Text.EnvironmentBlock(environment), workingDirectory, stdin, stdout, stderr);
                 process = new SafeProcessHandle(created.Process, ownsHandle: true);
                 try
                 {
@@ -169,46 +206,31 @@ namespace Tellma.Core.Imaging.Workers
                     _ = CloseHandle(created.Thread);
                 }
 
-                // Section: the host's ends, owned from here by safe handles, then wrapped as
-                // unbuffered streams over the synchronous pipes; should a wrap fail, the handles
-                // close and the job's disposal below kills the worker.
-                var inputHandle = new SafeFileHandle(parentInput, ownsHandle: true);
-                var outputHandle = new SafeFileHandle(parentOutput, ownsHandle: true);
-                var errorHandle = new SafeFileHandle(parentError, ownsHandle: true);
-                (parentInput, parentOutput, parentError) = (0, 0, 0);
-                try
-                {
-                    var worker = new WindowsWorkerProcess(
-                        job,
-                        process,
-                        (int)created.ProcessId,
-                        new FileStream(inputHandle, FileAccess.Write, bufferSize: 0, isAsync: false),
-                        new FileStream(outputHandle, FileAccess.Read, bufferSize: 0, isAsync: false),
-                        new FileStream(errorHandle, FileAccess.Read, bufferSize: 0, isAsync: false));
-                    (job, process) = (null, null);
-                    return worker;
-                }
-                catch
-                {
-                    inputHandle.Dispose();
-                    outputHandle.Dispose();
-                    errorHandle.Dispose();
-                    throw;
-                }
+                // Section: the host's ends, owned from here by the worker; the kill cancels their
+                // pending reads and writes.
+                killed = new CancellationTokenSource();
+                var worker = new WindowsWorkerProcess(job, process, (int)created.ProcessId, killed, input, output, error, stdout);
+                (job, process, killed, input, output, error) = (null, null, null, null, null, null);
+                return worker;
             }
             finally
             {
                 // Section: the worker holds its own copies of its ends; the host closes these at
                 // once, so a dead worker's pipes break instead of staying open on the host's side.
-                foreach (nint handle in (ReadOnlySpan<nint>)[childInput, childOutput, childError, parentInput, parentOutput, parentError])
+                // Should the start fail, the host's ends close too, and closing the job kills a
+                // worker that was created.
+                childInput?.Dispose();
+                childOutput?.Dispose();
+                childError?.Dispose();
+                input?.Dispose();
+                output?.Dispose();
+                error?.Dispose();
+                killed?.Dispose();
+                if (token != 0)
                 {
-                    if (handle != 0)
-                    {
-                        _ = CloseHandle(handle);
-                    }
+                    _ = CloseHandle(token);
                 }
 
-                // Closing the job of a worker that failed to start kills it.
                 job?.Dispose();
                 process?.Dispose();
             }
@@ -231,14 +253,9 @@ namespace Tellma.Core.Imaging.Workers
                 }
 
                 JobExtendedLimits job = BaseLimits();
-                job.Basic.LimitFlags |= JobLimitProcessMemory;
+                job.Basic.LimitFlags |= JobLimitProcessMemory | JobLimitProcessTime;
                 job.ProcessMemoryLimit = checked((nuint)((long)counters.PrivateUsage + limits.Memory));
-                if (limits.CpuTime is TimeSpan cpu)
-                {
-                    job.Basic.LimitFlags |= JobLimitProcessTime;
-                    job.Basic.PerProcessUserTimeLimit = cpu.Ticks;
-                }
-
+                job.Basic.PerProcessUserTimeLimit = limits.CpuTime.Ticks;
                 if (SetInformationJobObject(_job, JobObjectExtendedLimitInformation, &job, (uint)sizeof(JobExtendedLimits)) == 0)
                 {
                     throw Win32Failure("The worker's memory and CPU limits could not be applied");
@@ -253,7 +270,9 @@ namespace Tellma.Core.Imaging.Workers
             {
                 if (!_disposed)
                 {
+                    // The process first, then whatever reads and writes still wait on its pipes.
                     _ = TerminateJobObject(_job, KilledExitCode);
+                    _killed.Cancel();
                 }
             }
         }
@@ -275,6 +294,22 @@ namespace Tellma.Core.Imaging.Workers
             }
         }
 
+        /// <summary>
+        ///     For the suite: a copy, in the host, of the worker's standard output write end, as a
+        ///     child some other code started at the wrong moment would hold it.
+        /// </summary>
+        /// <returns>The copy, which the caller closes.</returns>
+        internal SafeFileHandle DuplicateChildOutput()
+        {
+            lock (_sync)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return DuplicateHandle(_process, _childOutput, CurrentProcess, out nint copy, 0, 0, DuplicateSameAccess) == 0
+                    ? throw Win32Failure("The worker's output could not be duplicated")
+                    : new SafeFileHandle(copy, ownsHandle: true);
+            }
+        }
+
         /// <inheritdoc />
         protected override void Dispose(bool disposing)
         {
@@ -287,6 +322,7 @@ namespace Tellma.Core.Imaging.Workers
 
                 // Closing the job kills the worker if it still runs.
                 _ = TerminateJobObject(_job, KilledExitCode);
+                _killed.Cancel();
                 _disposed = true;
             }
 
@@ -294,6 +330,7 @@ namespace Tellma.Core.Imaging.Workers
             _output.Dispose();
             _job.Dispose();
             _process.Dispose();
+            _killed.Dispose();
         }
 
         /// <summary>Creates the worker's job, with the limits that hold from its first instruction.</summary>
@@ -333,22 +370,107 @@ namespace Tellma.Core.Imaging.Workers
             return limits;
         }
 
-        /// <summary>Creates an anonymous pipe neither of whose ends is inheritable.</summary>
-        /// <param name="read">The read end.</param>
-        /// <param name="write">The write end.</param>
-        /// <param name="size">The suggested buffer size.</param>
-        private static void CreatePipeOrThrow(out nint read, out nint write, uint size)
+        /// <summary>
+        ///     Creates a pipe for one of the worker's standard streams: a local, single-instance named
+        ///     pipe that only the host's account may open, which the host connects to at once, so that
+        ///     no other process can take the worker's end. Neither end is inheritable.
+        /// </summary>
+        /// <param name="direction">The direction of the host's end.</param>
+        /// <param name="bufferSize">The pipe's buffer size.</param>
+        /// <returns>The host's end, overlapped, and the worker's end, synchronous.</returns>
+        private static (NamedPipeServerStream Host, NamedPipeClientStream Child) CreatePipe(PipeDirection direction, int bufferSize)
         {
-            if (CreatePipe(out read, out write, 0, size) == 0)
+            string name = $"tellma-pdf-worker-{Guid.NewGuid():N}";
+            NamedPipeServerStream? host = null;
+            NamedPipeClientStream? child = null;
+            try
             {
-                throw Win32Failure("A worker pipe could not be created");
+                host = new NamedPipeServerStream(
+                    name,
+                    direction,
+                    maxNumberOfServerInstances: 1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance,
+                    bufferSize,
+                    bufferSize);
+                child = new NamedPipeClientStream(".", name, direction == PipeDirection.Out ? PipeDirection.In : PipeDirection.Out, PipeOptions.None);
+                child.Connect(ConnectTimeoutMilliseconds);
+                host.WaitForConnection();
+                (NamedPipeServerStream, NamedPipeClientStream) pipe = (host, child);
+                (host, child) = (null, null);
+                return pipe;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or TimeoutException)
+            {
+                throw new PdfWorkerException(PdfWorkerFailure.Start, $"A worker pipe could not be created: {exception.Message}", exception);
+            }
+            finally
+            {
+                // On failure, whichever end exists closes.
+                child?.Dispose();
+                host?.Dispose();
             }
         }
 
         /// <summary>
-        ///     Creates the process suspended, inheriting exactly the three given handles, as its
-        ///     standard input, output and error.
+        ///     The worker's token: a copy of the host's with every privilege removed and its integrity
+        ///     lowered to low. A restricted copy of the caller's own token is one the caller may
+        ///     assign to a new process without any privilege.
         /// </summary>
+        /// <returns>The token, which the caller closes.</returns>
+        private static nint CreateWorkerToken()
+        {
+            nint own = 0, restricted = 0;
+            try
+            {
+                // Section: the host's own token, with the access its restricted copy inherits: to
+                // be assigned to a process, and to have its integrity level set.
+                if (OpenProcessToken(CurrentProcess, TokenDuplicate | TokenQuery | TokenAssignPrimary | TokenAdjustDefault, out own) == 0)
+                {
+                    throw Win32Failure("The host's token could not be opened");
+                }
+
+                // Section: every privilege removed, but the one every process holds to be told of
+                // file changes.
+                if (CreateRestrictedToken(own, DisableMaxPrivilege, 0, null, 0, null, 0, null, out restricted) == 0)
+                {
+                    throw Win32Failure("The worker's restricted token could not be created");
+                }
+
+                // Section: low integrity, below the host's medium or above.
+                byte* sid = stackalloc byte[SecurityMaxSidSize];
+                uint sidSize = SecurityMaxSidSize;
+                if (CreateWellKnownSid(WinLowLabelSid, 0, sid, &sidSize) == 0)
+                {
+                    throw Win32Failure("The low integrity level could not be named");
+                }
+
+                var label = new TokenMandatoryLabel { Label = new SidAndAttributes { Sid = sid, Attributes = SeGroupIntegrity } };
+                if (SetTokenInformation(restricted, TokenIntegrityLevel, &label, (uint)sizeof(TokenMandatoryLabel) + GetLengthSid(sid)) == 0)
+                {
+                    throw Win32Failure("The worker's token could not be lowered to low integrity");
+                }
+
+                (nint token, restricted) = (restricted, 0);
+                return token;
+            }
+            finally
+            {
+                foreach (nint handle in (ReadOnlySpan<nint>)[own, restricted])
+                {
+                    if (handle != 0)
+                    {
+                        _ = CloseHandle(handle);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Creates the process suspended, on the given token, inheriting exactly the three given
+        ///     handles, as its standard input, output and error.
+        /// </summary>
+        /// <param name="token">The worker's token.</param>
         /// <param name="application">The executable.</param>
         /// <param name="commandLine">The command line.</param>
         /// <param name="environment">The environment block.</param>
@@ -358,7 +480,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <param name="error">The worker's standard error.</param>
         /// <returns>The new process and its suspended thread.</returns>
         private static ProcessInformation CreateSuspendedProcess(
-            string application, string commandLine, string environment, string workingDirectory, nint input, nint output, nint error)
+            nint token, string application, string commandLine, string environment, string workingDirectory, nint input, nint output, nint error)
         {
             // Section: the attribute list holding the handle list; its value must outlive the list.
             nuint size = 0;
@@ -398,7 +520,7 @@ namespace Tellma.Core.Imaging.Workers
                     fixed (char* environmentPointer = environment)
                     {
                         const uint flags = CreateSuspended | CreateUnicodeEnvironment | ExtendedStartupInfoPresent | CreateDefaultErrorMode | CreateNoWindow;
-                        if (CreateProcess(application, commandPointer, 0, 0, 1, flags, environmentPointer, workingDirectory, &startup, &created) == 0)
+                        if (CreateProcessAsUser(token, application, commandPointer, 0, 0, 1, flags, environmentPointer, workingDirectory, &startup, &created) == 0)
                         {
                             throw Win32Failure($"The worker could not be started ({application})");
                         }

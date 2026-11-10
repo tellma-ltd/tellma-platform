@@ -24,13 +24,23 @@ namespace Tellma.Core.Imaging.Workers
     ///         before it reads anything.
     ///     </para>
     ///     <para>
-    ///         The memory cap is <c>RLIMIT_DATA</c>: the private writable memory the worker may add
-    ///         beyond what its runtime holds once started. <c>RLIMIT_AS</c> alone would not cap the
-    ///         managed heap, because the runtime reserves tens of gigabytes of address space at
-    ///         start and commits within that reservation, which the address-space limit no longer
-    ///         sees; making a reserved page writable, though, counts against the data limit. A
-    ///         looser <c>RLIMIT_AS</c> backs it up, <c>RLIMIT_CPU</c> bounds the worker's CPU time
-    ///         even if the host is gone, and core dumps and file writes are disabled.
+    ///         The memory cap is two limits. <c>RLIMIT_DATA</c> caps the private writable memory the
+    ///         worker may add beyond what its runtime holds once started, the managed heap's commits
+    ///         within its reservation included: it is the limit a document's own memory meets.
+    ///         <c>RLIMIT_AS</c> caps the worker's address space at what it holds once started plus
+    ///         the memory limit and a slack, which bounds what the data limit does not count,
+    ///         shared mappings among them. That bound is looser than the memory limit: a started
+    ///         worker holds about 3.2 GiB of address space at the default limit, nearly all of it
+    ///         the runtime's own reservations (just under 2 GiB for compiled code, and five times
+    ///         the limit for the managed heap), and code that took over a worker could unmap
+    ///         those and map as much shared memory in their place, until the worker is killed.
+    ///         <c>RLIMIT_CPU</c> bounds the worker's CPU time even if the host is gone, and core
+    ///         dumps and file writes are disabled.
+    ///     </para>
+    ///     <para>
+    ///         The worker asks the kernel to kill it when the host thread that started it ends, and
+    ///         its system-call filter keeps that request from being undone; so a worker is started
+    ///         from a thread that outlives it.
     ///     </para>
     /// </remarks>
     [UnsupportedOSPlatform("windows")]
@@ -48,6 +58,15 @@ namespace Tellma.Core.Imaging.Workers
 
         // O_CLOEXEC as /proc/<pid>/fdinfo shows it, in octal: 02000000.
         private const int CloseOnExec = 0x80000;
+
+        /// <summary>
+        ///     The address space a worker may map beyond its memory limit, for what the data limit
+        ///     does not count: the code and read-only data of the libraries and assemblies it has yet
+        ///     to load once ready (PDFium and Skia first among them), the runtime's shared mappings
+        ///     for compiled code, and guard pages. A render maps about 17 MiB of it on x64; the
+        ///     suite fails when one maps more than half the slack.
+        /// </summary>
+        internal const long AddressSpaceSlack = 128L * 1024 * 1024;
 
         private readonly Process _process;
         private readonly ErrorTail _error;
@@ -75,7 +94,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <inheritdoc />
         protected override ErrorTail Error => _error;
 
-        /// <summary>Starts a worker.</summary>
+        /// <summary>Starts a worker, which the kernel kills when the calling thread ends.</summary>
         /// <param name="application">The executable's full path.</param>
         /// <param name="arguments">Its arguments; the inherited descriptors to close are added.</param>
         /// <param name="environment">Its whole environment.</param>
@@ -183,16 +202,14 @@ namespace Tellma.Core.Imaging.Workers
 
                 // Section: the limits, soft and hard alike, so the worker cannot raise them again.
                 Set(id, DataLimit, data + limits.Memory, "data");
-                Set(id, AddressSpaceLimit, addressSpace + (2 * limits.Memory), "address space");
+                Set(id, AddressSpaceLimit, addressSpace + limits.Memory + AddressSpaceSlack, "address space");
                 Set(id, CoreLimit, 0, "core dump");
                 Set(id, FileSizeLimit, 0, "file size");
-                if (limits.CpuTime is TimeSpan cpu)
-                {
-                    // Whole seconds, rounded up, past what the worker has used already; with the soft
-                    // and hard limits equal, the kernel kills it with SIGKILL on reaching them.
-                    long seconds = (long)Math.Ceiling(((double)cpuUsed / TicksPerSecond) + cpu.TotalSeconds);
-                    Set(id, CpuLimit, Math.Max(1, seconds), "CPU time");
-                }
+
+                // Whole seconds, rounded up, past what the worker has used already; with the soft and
+                // hard limits equal, the kernel kills it with SIGKILL on reaching them.
+                long seconds = (long)Math.Ceiling(((double)cpuUsed / TicksPerSecond) + limits.CpuTime.TotalSeconds);
+                Set(id, CpuLimit, Math.Max(1, seconds), "CPU time");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or PdfWorkerException)
             {

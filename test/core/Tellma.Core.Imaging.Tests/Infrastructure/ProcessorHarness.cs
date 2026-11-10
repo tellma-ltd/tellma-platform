@@ -31,8 +31,15 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         /// <param name="pdf">Renders PDFs in workers; the real PDF worker when null.</param>
         /// <param name="concurrency">The image slots; four when null.</param>
         /// <param name="openInput">Opens an upload's bytes for the decoder; an in-memory stream when null.</param>
+        /// <param name="pdfConcurrency">The PDF worker slots; four when null.</param>
+        /// <param name="pdfThumbnails">Whether PDF thumbnails render at all; they do by default, whatever the suite's host.</param>
         public ProcessorHarness(
-            TimeProvider? timeProvider = null, PdfWorkerClient? pdf = null, int? concurrency = null, Func<byte[], Stream>? openInput = null)
+            TimeProvider? timeProvider = null,
+            PdfWorkerClient? pdf = null,
+            int? concurrency = null,
+            Func<byte[], Stream>? openInput = null,
+            int? pdfConcurrency = null,
+            PdfThumbnailSupport pdfThumbnails = PdfThumbnailSupport.Enabled)
         {
             _services = new ServiceCollection().AddMetrics().BuildServiceProvider();
             IMeterFactory meterFactory = _services.GetRequiredService<IMeterFactory>();
@@ -40,9 +47,9 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
             Logger = new FakeLogger<SkiaImageProcessor>();
             Duration = new MetricCollector<double>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageDuration);
             Failures = new MetricCollector<long>(meterFactory, BlobTelemetryNames.MeterName, BlobTelemetryNames.ImageFailures);
-            var options = new SkiaImageProcessorOptions { ImageConcurrency = concurrency ?? 4 };
+            var options = new SkiaImageProcessorOptions { ImageConcurrency = concurrency ?? 4, PdfWorkerConcurrency = pdfConcurrency ?? 4 };
             Pdf = pdf ?? TestWorkers.Real();
-            Processor = new SkiaImageProcessor(Logger, meterFactory, timeProvider ?? TimeProvider.System, options, Pdf, openInput);
+            Processor = new SkiaImageProcessor(Logger, meterFactory, timeProvider ?? TimeProvider.System, options, Pdf, openInput, pdfThumbnails);
         }
 
         /// <summary>The processor.</summary>

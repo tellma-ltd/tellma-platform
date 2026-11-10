@@ -9,8 +9,8 @@ namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>The limits the host puts on a worker once it is ready, before it sends the upload.</summary>
     /// <param name="Memory">The memory the worker may add to what its runtime holds at that moment, in bytes.</param>
-    /// <param name="CpuTime">The CPU time the worker may still use; null for no limit.</param>
-    internal readonly record struct WorkerLimits(long Memory, TimeSpan? CpuTime);
+    /// <param name="CpuTime">The CPU time the worker may still use; every worker has a limit.</param>
+    internal readonly record struct WorkerLimits(long Memory, TimeSpan CpuTime);
 
     /// <summary>
     ///     A started worker process and the host's three pipes to it, behind the operating system's

@@ -85,5 +85,32 @@ namespace Tellma.Core.Imaging
             Level = LogLevel.Warning,
             Message = "A {Kind} upload found all {Concurrency} image slots busy for its whole time budget; it was refused as busy.")]
         public static partial void Busy(ILogger logger, string kind, int concurrency);
+
+        /// <summary>
+        ///     Written once, at startup, by a host that renders no PDF thumbnails: a host on Windows
+        ///     or macOS outside Development, or a Linux host whose C library is not glibc. PDF uploads
+        ///     proceed without a thumbnail, and no worker is started.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="reason">Why, as one sentence.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfThumbnailsDisabled",
+            Level = LogLevel.Warning,
+            Message = "PDF thumbnails are disabled on this host; PDF uploads proceed without one. {Reason}")]
+        public static partial void PdfThumbnailsDisabled(ILogger logger, string reason);
+
+        /// <summary>
+        ///     Written once, at startup, by a Linux host whose kernel lets a process open the memory
+        ///     of any other process of its account: a PDF worker taken over by a hostile document
+        ///     could then read and write the host's memory through <c>/proc</c>. PDF thumbnails still
+        ///     render; the fix is the machine's.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="detail">What the kernel reports: the scope is 0, or Yama is not enabled.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerPtraceUnrestricted",
+            Level = LogLevel.Warning,
+            Message = "The kernel lets a process open the memory of any other process of its account ({Detail}), so a PDF worker taken over by a hostile document could read and write this host's memory. Set the kernel.yama.ptrace_scope sysctl to 1 or higher on the machine that runs this host.")]
+        public static partial void PtraceUnrestricted(ILogger logger, string detail);
     }
 }

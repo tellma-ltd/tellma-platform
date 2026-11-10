@@ -46,7 +46,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
         [MemberData(nameof(Failures))]
         public async Task A_failing_worker_yields_no_thumbnail_and_leaves_the_host_serving(string mode, string failure)
         {
-            using var harness = new ProcessorHarness(pdf: TestWorkers.StandIn(mode), concurrency: Slots);
+            using var harness = new ProcessorHarness(pdf: TestWorkers.StandIn(mode), pdfConcurrency: Slots);
 
             Assert.Null(await harness.ThumbnailAsync(DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf));
 
@@ -58,7 +58,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Assert.DoesNotContain('\n', warning.Message);
 
             // Section: the slot is back, no worker survives, and the host serves the next call.
-            await TestWorkers.WaitUntilAsync(() => harness.Processor.FreeImageSlots == Slots && harness.Pdf.LiveWorkers == 0);
+            await TestWorkers.WaitUntilAsync(() => harness.Processor.FreePdfSlots == Slots && harness.Pdf.LiveWorkers == 0);
             Assert.NotNull(await harness.ThumbnailAsync(ImageFixtures.QuadrantImage(SKEncodedImageFormat.Png, 32, 32), BlobContentTypes.Png));
         }
 
@@ -93,21 +93,21 @@ namespace Tellma.Core.Imaging.Tests.Workers
         {
             using var harness = new ProcessorHarness(
                 pdf: new PdfWorkerClient(new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing.dll")), SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit),
-                concurrency: Slots);
+                pdfConcurrency: Slots);
 
             Assert.Null(await harness.ThumbnailAsync(DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf));
 
             FakeLogRecord warning = Assert.Single(harness.Logger.Collector.GetSnapshot(), static r => r.Id.Name == "BlobPdfWorkerFailed");
             Assert.Equal(nameof(PdfWorkerFailure.Start), warning.GetStructuredStateValue("Failure"));
-            Assert.Equal(Slots, harness.Processor.FreeImageSlots);
+            Assert.Equal(Slots, harness.Processor.FreePdfSlots);
         }
 
         [Fact]
         public async Task Concurrent_pdf_thumbnails_run_in_separate_workers_bounded_by_the_slots()
         {
-            // Three thumbnails on two slots: at most two workers ever run at once, and all three
-            // render.
-            using var harness = new ProcessorHarness(concurrency: Slots);
+            // Three thumbnails on two PDF worker slots: at most two workers ever run at once, and all
+            // three render.
+            using var harness = new ProcessorHarness(pdfConcurrency: Slots);
             int most = 0;
             harness.Pdf.Ready += _ => InterlockedMax(ref most, harness.Pdf.LiveWorkers);
 
@@ -115,7 +115,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
 
             Assert.All(thumbnails, Assert.NotNull);
             Assert.InRange(most, 1, Slots);
-            Assert.Equal(Slots, harness.Processor.FreeImageSlots);
+            Assert.Equal(Slots, harness.Processor.FreePdfSlots);
         }
 
         /// <summary>Raises <paramref name="target" /> to <paramref name="value" /> when it is larger.</summary>

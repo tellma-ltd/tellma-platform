@@ -46,7 +46,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             byte[]? thumbnail = await harness.Processor.ThumbnailAsync(
                 ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(256), Budget, TestContext.Current.CancellationToken);
             TimeSpan answered = clock.Elapsed;
-            await TestWorkers.WaitUntilAsync(() => harness.Processor.FreeImageSlots == 4 && harness.Pdf.LiveWorkers == 0, Bound);
+            await TestWorkers.WaitUntilAsync(() => harness.Processor.FreePdfSlots == 4 && harness.Pdf.LiveWorkers == 0, Bound);
             TimeSpan gone = clock.Elapsed;
             long growth = HostMemory() - before;
 
@@ -68,16 +68,17 @@ namespace Tellma.Core.Imaging.Tests.Workers
         }
 
         [Fact]
-        public async Task A_fan_out_of_forms_never_takes_more_than_the_workers_memory_limit()
+        public void A_fan_out_of_forms_never_takes_more_than_the_workers_memory_limit()
         {
             // The worker's own memory, sampled while it expands a document that would take
-            // gigabytes: it grows to its limit and no further.
+            // gigabytes: it grows to its limit and no further. On Linux a worker dies with the
+            // thread that started it, so this test keeps its thread: it sleeps and awaits nothing.
             const long limit = SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit;
             var launcher = new PdfWorkerLauncher();
-            using WorkerProcess worker = launcher.Start();
+            using WorkerProcess worker = launcher.Start(limit);
             _ = WorkerProtocol.ReadReady(worker.Output);
             long baseline = CommittedMemory(worker.Id);
-            worker.ApplyLimits(new WorkerLimits(limit, null));
+            worker.ApplyLimits(new WorkerLimits(limit, TimeSpan.FromMinutes(5)));
             WorkerProtocol.WriteRequest(worker.Input, 64, DocumentFixtures.FormFanOut(depth: 8, breadth: 10));
 
             long peak = baseline;
@@ -85,7 +86,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             while (clock.Elapsed < Budget && worker.ExitCode is null)
             {
                 peak = Math.Max(peak, CommittedMemory(worker.Id));
-                await Task.Delay(25, TestContext.Current.CancellationToken);
+                Thread.Sleep(25);
             }
 
             bool running = worker.ExitCode is null;

@@ -16,22 +16,37 @@ namespace Tellma.Core.Imaging.SmokeHost
     /// <summary>
     ///     Composes the image processor on the generic host, as a distribution does, runs its
     ///     startup check, renders an honest PDF and a hostile one (nested forms that expand
-    ///     exponentially inside PDFium), and reports, one <c>key=value</c> line each, what happened
-    ///     and whether PDFium was ever loaded into this process. Exits 0 when everything held.
+    ///     exponentially inside PDFium, under the platform's 5-second budget), and reports, one
+    ///     <c>key=value</c> line each, what happened and whether PDFium was ever loaded into this
+    ///     process. Exits 0 when everything held.
     /// </summary>
     /// <remarks>
+    ///     <para>
+    ///         The host's environment is the generic host's (<c>DOTNET_ENVIRONMENT</c>, Production
+    ///         by default). A host that renders no PDF thumbnails (on Windows or macOS outside
+    ///         Development) reports that instead: its check passes, the honest PDF gets no thumbnail,
+    ///         and no worker starts.
+    ///     </para>
     ///     <para>
     ///         <c>--measure N</c> also renders the honest PDF N more times and reports the spread of
     ///         a whole thumbnail's cost, worker start included.
     ///     </para>
     ///     <para>
     ///         <c>--orphan &lt;stand-in&gt;</c> instead starts one thumbnail in a worker that never
-    ///         answers (the suite's stand-in), reports the worker's process id, and waits to be
+    ///         answers and ignores its input (the suite's stand-in), so that only the operating
+    ///         system can end it, reports the worker's process id, and waits to be
     ///         killed, so the suite can see the worker die with its host.
     ///     </para>
     /// </remarks>
     internal static class Program
     {
+        // The platform's thumbnail budget, within which the hostile page must be stopped.
+        private static readonly TimeSpan PlatformBudget = TimeSpan.FromSeconds(5);
+
+        // The honest pages' budget. What this host shows of them is that they render, and on a
+        // loaded machine a worker's start alone can outlast the platform's budget.
+        private static readonly TimeSpan HonestBudget = TimeSpan.FromSeconds(30);
+
         /// <summary>The host's entry point.</summary>
         /// <param name="args">Nothing, <c>--measure N</c> or <c>--orphan &lt;stand-in&gt;</c>.</param>
         /// <returns>0 when everything held; 1 otherwise.</returns>
@@ -59,18 +74,33 @@ namespace Tellma.Core.Imaging.SmokeHost
 
             IImageProcessor processor = host.Services.GetRequiredService<IImageProcessor>();
 
+            // Section: whether this host renders PDF thumbnails at all. One that does not gives the
+            // honest page none, starts no worker, and has nothing more to show.
+            PdfThumbnailSupport support = ((SkiaImageProcessor)processor).PdfThumbnails;
+            Report("pdf.thumbnails", support.ToString());
+            if (support != PdfThumbnailSupport.Enabled)
+            {
+                byte[]? none = await ThumbnailAsync(processor, HalfBlackPage(200, 100), HonestBudget);
+                Report("honest.bytes", none?.Length.ToString(CultureInfo.InvariantCulture) ?? "none");
+                Report("workers.started", ((SkiaImageProcessor)processor).PdfWorkers.Started.ToString(CultureInfo.InvariantCulture));
+                held &= none is null && ((SkiaImageProcessor)processor).PdfWorkers.Started == 0 && PdfiumStayedOut();
+                Report("result", held ? "held" : "failed");
+                return held ? 0 : 1;
+            }
+
             // Section: an honest page, 200 x 100 points, left half black: a 256 x 128 thumbnail.
             var clock = Stopwatch.StartNew();
-            byte[]? honest = await ThumbnailAsync(processor, HalfBlackPage(200, 100));
+            byte[]? honest = await ThumbnailAsync(processor, HalfBlackPage(200, 100), HonestBudget);
             Report("honest.milliseconds", clock.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture));
             Report("honest.bytes", honest?.Length.ToString(CultureInfo.InvariantCulture) ?? "none");
             held &= honest is { Length: > 0 };
 
             // Section: a hostile page of about 1.5 KB that expands to millions of objects inside
-            // PDFium. Its worker must be stopped, the host must stay small, and no thumbnail result.
+            // PDFium, under the platform's budget. Its worker must be stopped, the host must stay
+            // small, and no thumbnail result.
             long hostBefore = PrivateMemory();
             clock.Restart();
-            byte[]? hostile = await ThumbnailAsync(processor, FormFanOut(depth: 7, breadth: 10));
+            byte[]? hostile = await ThumbnailAsync(processor, FormFanOut(depth: 7, breadth: 10), PlatformBudget);
             Report("hostile.milliseconds", clock.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture));
             Report("hostile.thumbnail", hostile is null ? "none" : "rendered");
             long growth = PrivateMemory() - hostBefore;
@@ -84,7 +114,7 @@ namespace Tellma.Core.Imaging.SmokeHost
                 for (int i = 0; i < measure; i++)
                 {
                     clock.Restart();
-                    held &= await ThumbnailAsync(processor, HalfBlackPage(612, 792)) is not null;
+                    held &= await ThumbnailAsync(processor, HalfBlackPage(612, 792), HonestBudget) is not null;
                     times.Add(clock.ElapsedMilliseconds);
                 }
 
@@ -93,19 +123,27 @@ namespace Tellma.Core.Imaging.SmokeHost
             }
 
             // Section: PDFium and PDFtoImage must never have been loaded into the host.
-            bool pdfium = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
-                .Any(static module => module.ModuleName.Contains("pdfium", StringComparison.OrdinalIgnoreCase));
-            bool pdfToImage = AppDomain.CurrentDomain.GetAssemblies().Any(static assembly => assembly.GetName().Name == "PDFtoImage");
-            Report("host.pdfium-loaded", pdfium ? "yes" : "no");
-            Report("host.pdftoimage-loaded", pdfToImage ? "yes" : "no");
-            held &= !pdfium && !pdfToImage;
+            held &= PdfiumStayedOut();
 
             Report("result", held ? "held" : "failed");
             return held ? 0 : 1;
         }
 
+        /// <summary>Reports whether PDFium or PDFtoImage was ever loaded into this process.</summary>
+        /// <returns>True when neither was.</returns>
+        private static bool PdfiumStayedOut()
+        {
+            using var process = Process.GetCurrentProcess();
+            bool pdfium = process.Modules.Cast<ProcessModule>()
+                .Any(static module => module.ModuleName.Contains("pdfium", StringComparison.OrdinalIgnoreCase));
+            bool pdfToImage = AppDomain.CurrentDomain.GetAssemblies().Any(static assembly => assembly.GetName().Name == "PDFtoImage");
+            Report("host.pdfium-loaded", pdfium ? "yes" : "no");
+            Report("host.pdftoimage-loaded", pdfToImage ? "yes" : "no");
+            return !pdfium && !pdfToImage;
+        }
+
         /// <summary>
-        ///     Starts a thumbnail in a worker that never answers, with no budget, reports the
+        ///     Starts a thumbnail in a worker that never answers nor heeds its input, with no budget, reports the
         ///     worker's process id once it is ready, and waits forever.
         /// </summary>
         /// <param name="standIn">The stand-in worker assembly.</param>
@@ -113,7 +151,7 @@ namespace Tellma.Core.Imaging.SmokeHost
         private static async Task OrphanAsync(string standIn)
         {
             using ServiceProvider services = new ServiceCollection().AddMetrics().BuildServiceProvider();
-            using var client = new Workers.PdfWorkerClient(new Workers.PdfWorkerLauncher(standIn, ["hang-after-request"]), SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit);
+            using var client = new Workers.PdfWorkerClient(new Workers.PdfWorkerLauncher(standIn, ["hang-ignoring-input"]), SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit);
             client.Ready += static worker => Report("worker.pid", worker.Id.ToString(CultureInfo.InvariantCulture));
             using var processor = new SkiaImageProcessor(
                 Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
@@ -126,14 +164,15 @@ namespace Tellma.Core.Imaging.SmokeHost
             await Task.Delay(Timeout.Infinite);
         }
 
-        /// <summary>Renders a 256-pixel WebP thumbnail of a PDF under the platform's 5-second budget.</summary>
+        /// <summary>Renders a 256-pixel WebP thumbnail of a PDF within a budget.</summary>
         /// <param name="processor">The processor.</param>
         /// <param name="pdf">The PDF.</param>
+        /// <param name="budget">The call's time budget.</param>
         /// <returns>The thumbnail, or null.</returns>
-        private static async Task<byte[]?> ThumbnailAsync(IImageProcessor processor, byte[] pdf)
+        private static async Task<byte[]?> ThumbnailAsync(IImageProcessor processor, byte[] pdf, TimeSpan budget)
         {
             using var stream = new MemoryStream(pdf, writable: false);
-            return await processor.ThumbnailAsync("smoke", stream, BlobContentTypes.Pdf, new ThumbnailPolicy(256), TimeSpan.FromSeconds(5), CancellationToken.None);
+            return await processor.ThumbnailAsync("smoke", stream, BlobContentTypes.Pdf, new ThumbnailPolicy(256), budget, CancellationToken.None);
         }
 
         /// <summary>Writes one report line.</summary>

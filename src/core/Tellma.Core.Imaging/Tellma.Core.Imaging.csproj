@@ -26,6 +26,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <!-- AddMetrics(), which registers the IMeterFactory the image instruments are created from. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics" />
+    <!-- IHostEnvironment: PDF thumbnails render on Windows and macOS only in Development. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <!-- Referenced directly for its [LoggerMessage] source generator. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <!-- Binds the processor's options from configuration. -->
