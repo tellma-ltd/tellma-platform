@@ -286,8 +286,12 @@ namespace Tellma.Core.Tests.Tenancy
             changed.Profiles["default"] = "Authentication=Active Directory Managed Identity;Encrypt=False;Max Pool Size=20";
             changed.AllowedServers.Add(".database.windows.net");
             harness.Sql.Change(changed);
-            await WaitUntilAsync(() => harness.Catalog.Reloads == 2);
 
+            // The reader counts a reload when it is asked, before the new snapshot is swapped in;
+            // the reload's log line comes after the swap.
+            await WaitUntilAsync(() => harness.Events("TenantSnapshotReloaded").Count == 2);
+
+            Assert.Equal(2, harness.Catalog.Reloads);
             Assert.Empty(harness.TenantIds);
             Assert.Contains(harness.Events("TenantProfileRefused"), static record => record.Level == LogLevel.Error);
         }
