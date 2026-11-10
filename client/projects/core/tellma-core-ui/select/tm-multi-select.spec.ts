@@ -136,6 +136,27 @@ describe('tm-multi-select', () => {
       expect(await select.isOpen()).toBe(true);
     });
 
+    it('keys pressed within one render all reach the listbox, in order', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      host.value.set([3]); // Sale: the panel opens with Sale active
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+      await settle(fixture);
+      expect(activeText()).toBe('Sale');
+
+      // Home then Space with no render in between, as a fast typist or a
+      // loaded machine delivers them: Home must still move to Service first.
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      const press = (key: string) =>
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      press('Home');
+      await Promise.resolve();
+      press(' ');
+      await settle(fixture);
+      expect(host.value()).toEqual([1, 3]);
+      expect(activeText()).toBe('Service');
+    });
+
     it('Escape closes the panel and keeps the value', async () => {
       const { fixture, select } = await setup(Host);
       const host = fixture.componentInstance;

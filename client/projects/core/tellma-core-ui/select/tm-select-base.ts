@@ -439,6 +439,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
    * handling covers only ArrowDown/Enter/Space, all plain opens.
    */
   protected onTriggerKeydown(event: KeyboardEvent): void {
+    this.relayPromptly(event);
     if (
       this.expanded() ||
       this.disabled() ||
@@ -453,6 +454,35 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     }
     this.pendingTypeaheadKey = event.key;
     this.expanded.set(true);
+  }
+
+  /**
+   * Hands an open panel's key to the listbox before the next key can arrive.
+   * aria's combobox relays the keys it forwards (arrows, Home, End, Enter,
+   * Space, printables) by storing the event in a signal that one of its
+   * after-render effects dispatches on the listbox, so every key pressed
+   * within one render window but the last is silently dropped — Home then
+   * Space toggled the default active option instead of the first one. aria's
+   * host listener runs before the template's, so the event is already
+   * stored here: it is dispatched now, as the same clone aria would send,
+   * and the signal is cleared so aria's effect has nothing left to relay
+   * (version-locked internal seam, guarded by the tests). Anything else —
+   * a key aria handles itself, or a panel whose listbox has not rendered —
+   * is left to aria unchanged.
+   */
+  private relayPromptly(event: KeyboardEvent): void {
+    const pattern = untracked(() => this.combobox())?._pattern;
+    const listbox = untracked(() => this.listbox());
+    if (
+      pattern === undefined ||
+      listbox === undefined ||
+      untracked(() => pattern.keyboardEventRelay()) !== event ||
+      !untracked(() => pattern.isExpanded())
+    ) {
+      return;
+    }
+    pattern.keyboardEventRelay.set(undefined);
+    listbox.element.dispatchEvent(new KeyboardEvent(event.type, event));
   }
 
   /**

@@ -177,6 +177,26 @@ describe('tm-select (§3.4)', () => {
       expect(document.activeElement).toBe(trigger);
     });
 
+    it('keyboard: keys pressed within one render all move the active option', async () => {
+      const { fixture, select } = await setup(Host);
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW); // opens on the first option
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fixture.whenStable();
+      expect(activeText()).toBe('Saudi Arabia');
+
+      // Two arrows with no render in between, as a fast typist or a loaded
+      // machine delivers them: both must land.
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      const press = (key: string) =>
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      press('ArrowDown');
+      await Promise.resolve();
+      press('ArrowDown');
+      await fixture.whenStable();
+      expect(activeText()).toBe('Ethiopia');
+    });
+
     it('Escape closes without selecting (stage-1 Esc only, §3.4)', async () => {
       const { fixture, select } = await setup(Host);
       await select.open();
