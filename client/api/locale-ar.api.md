@@ -37,6 +37,9 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
+    readonly l10n: {
+        readonly quarter: "الربع {quarter} {year}";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "بحث متقدم…";
         readonly create: "إنشاء…";

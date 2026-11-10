@@ -14,6 +14,8 @@ import {
 } from '@angular/core';
 import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
+import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+
 import { TM_UI_STRINGS_EN } from './strings-en';
 import { TM_ACTIVE_LOCALE } from './tm-active-locale';
 import { ɵtmFormatMessage } from './tm-icu';
@@ -103,6 +105,10 @@ function missingKeyGuard(key: string): string {
  *
  * The library never loads a language itself: a table the app loads (or a
  * pack registers) re-renders every visible string when it lands.
+ *
+ * A resolved message carries no bidirectional control character: neither a
+ * direction mark `Intl` wrote beside a formatted number argument nor one a
+ * translator pasted reaches the text — markup sets direction.
  */
 export function tmDefaultUiTranslate(): TmUiTranslateFn {
   // TranslocoService is providedIn:'root', so an optional inject would still
@@ -119,7 +125,7 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
         const merged = { ...context(), ...params };
         const english = tmEnglishString(key);
         return english !== null
-          ? ɵtmFormatMessage(english, merged, locale(), format)
+          ? tmStripBidiControls(ɵtmFormatMessage(english, merged, locale(), format))
           : missingKeyGuard(key);
       });
   }
@@ -157,10 +163,12 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
         // Raw-key echo: the key is missing everywhere Transloco looked.
         const english = tmEnglishString(key);
         return english !== null
-          ? ɵtmFormatMessage(english, merged, locale(), format)
+          ? tmStripBidiControls(ɵtmFormatMessage(english, merged, locale(), format))
           : missingKeyGuard(key);
       }
-      return text;
+      // Spec 0010 §D.14: the set leaves every resolved message, whether an
+      // ICU number argument or a translator's paste brought it.
+      return tmStripBidiControls(text);
     });
 }
 

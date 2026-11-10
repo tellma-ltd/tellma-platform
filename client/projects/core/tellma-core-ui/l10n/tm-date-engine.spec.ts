@@ -5,8 +5,9 @@
 
 import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
 
+import { TM_BIDI_CONTROLS } from './tm-bidi';
 import { tmDatePlaceholder, tmFormatDate, tmParseDate } from './tm-date-engine';
-import { tmGregorianCalendar } from './tm-calendar';
+import { tmGregorianCalendar, type TmCalendar } from './tm-calendar';
 
 const TODAY = '2026-07-15';
 
@@ -34,6 +35,98 @@ describe('tmFormatDate', () => {
 
   it('formats years below 100 without the Date.UTC 1900-mapping trap', () => {
     expect(tmFormatDate('0044-03-15', 'en-US')).toBe('3/15/44');
+  });
+
+  it('writes the weekday style: the weekday before the medium date', () => {
+    expect(tmFormatDate('2026-11-02', 'en-GB', { dateStyle: 'weekday' })).toBe(
+      'Monday, 2 Nov 2026',
+    );
+    expect(tmFormatDate('2026-11-02', 'en-US', { dateStyle: 'weekday' })).toBe(
+      'Monday, Nov 2, 2026',
+    );
+    expect(tmFormatDate('2026-11-02', 'de', { dateStyle: 'weekday' })).toBe(
+      'Montag, 2. Nov. 2026',
+    );
+  });
+
+  it('writes the month and year period styles', () => {
+    expect(tmFormatDate('2026-11-02', 'en-GB', { dateStyle: 'month' })).toBe('Nov 2026');
+    expect(tmFormatDate('2026-11-30', 'en-GB', { dateStyle: 'month' })).toBe('Nov 2026');
+    expect(tmFormatDate('2026-11-02', 'de', { dateStyle: 'month' })).toBe('Nov. 2026');
+    expect(tmFormatDate('2026-11-02', 'en-GB', { dateStyle: 'year' })).toBe('2026');
+    expect(tmFormatDate('2026-11-02', 'ar-SA', { dateStyle: 'year' })).toBe('٢٠٢٦');
+  });
+
+  it('writes the quarter style through the pattern, three months to a quarter', () => {
+    const quarter = (iso: string): string => tmFormatDate(iso, 'en-GB', { dateStyle: 'quarter' });
+    expect(quarter('2026-01-01')).toBe('Q1 2026');
+    expect(quarter('2026-03-31')).toBe('Q1 2026');
+    expect(quarter('2026-04-01')).toBe('Q2 2026');
+    expect(quarter('2026-06-30')).toBe('Q2 2026');
+    expect(quarter('2026-07-01')).toBe('Q3 2026');
+    expect(quarter('2026-09-30')).toBe('Q3 2026');
+    expect(quarter('2026-10-01')).toBe('Q4 2026');
+    expect(quarter('2026-12-31')).toBe('Q4 2026');
+  });
+
+  it("fills a caller's quarter pattern with the locale's digits, the year ungrouped", () => {
+    expect(
+      tmFormatDate('2026-11-02', 'ar-SA', {
+        dateStyle: 'quarter',
+        quarterPattern: 'الربع {quarter} {year}',
+      }),
+    ).toBe('الربع ٤ ٢٠٢٦');
+    expect(
+      tmFormatDate('2026-11-02', 'en', { dateStyle: 'quarter', quarterPattern: '{year}-Q{quarter}' }),
+    ).toBe('2026-Q4');
+    // A placeholder may repeat or be absent; other braces are literal text.
+    expect(
+      tmFormatDate('2026-11-02', 'en', { dateStyle: 'quarter', quarterPattern: 'Q{quarter}' }),
+    ).toBe('Q4');
+    expect(
+      tmFormatDate('2026-11-02', 'en', {
+        dateStyle: 'quarter',
+        quarterPattern: '{quarter}/{quarter} {day}',
+      }),
+    ).toBe('4/4 {day}');
+    // The pattern is read by the quarter style alone.
+    expect(tmFormatDate('2026-11-02', 'en-GB', { quarterPattern: 'Q{quarter}' })).toBe('02/11/2026');
+  });
+
+  it("counts the quarter in the display calendar's months, capped at four", () => {
+    // A thirteen-month calendar: the thirteenth month is in the fourth quarter.
+    const thirteen: TmCalendar = {
+      ...tmGregorianCalendar(),
+      toParts: () => ({ year: 2018, month: 13, day: 3 }),
+    };
+    expect(tmFormatDate('2026-09-08', 'en-GB', { calendar: thirteen, dateStyle: 'quarter' })).toBe(
+      'Q4 2018',
+    );
+  });
+
+  it('returns a malformed input as-is in the period styles too', () => {
+    for (const dateStyle of ['weekday', 'month', 'quarter', 'year'] as const) {
+      expect(tmFormatDate('garbage', 'en', { dateStyle })).toBe('garbage');
+      expect(tmFormatDate('', 'en', { dateStyle })).toBe('');
+    }
+  });
+
+  it('carries no bidirectional control character', () => {
+    expect(tmFormatDate('2026-11-02', 'ar-SA')).toBe('٢/١١/٢٠٢٦');
+    for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
+      for (const dateStyle of [
+        'numeric',
+        'medium',
+        'long',
+        'weekday',
+        'month',
+        'quarter',
+        'year',
+      ] as const) {
+        const text = tmFormatDate('2026-11-02', locale, { dateStyle });
+        expect([...text.matchAll(TM_BIDI_CONTROLS)], `${locale} ${dateStyle}`).toEqual([]);
+      }
+    }
   });
 });
 
@@ -146,5 +239,12 @@ describe('tmDatePlaceholder', () => {
 
   it('accepts an explicit calendar', () => {
     expect(tmDatePlaceholder('en-GB', { calendar: tmGregorianCalendar() })).toBe('dd/mm/yyyy');
+  });
+
+  it('carries no bidirectional control character, as the value it hints at', () => {
+    expect(tmDatePlaceholder('ar-SA')).toBe('dd/mm/yyyy');
+    for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
+      expect([...tmDatePlaceholder(locale).matchAll(TM_BIDI_CONTROLS)], locale).toEqual([]);
+    }
   });
 });

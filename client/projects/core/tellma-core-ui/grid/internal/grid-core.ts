@@ -356,6 +356,11 @@ export interface ɵTmGridCellVm {
   readonly ariaColIndex: number;
   /** The cell's display text. */
   readonly text: string;
+  /**
+   * The text's own direction: `ltr` in `number` columns, so a minus shows at
+   * the left of its digits in an RTL grid; `null` (inherited) elsewhere.
+   */
+  readonly dir: 'ltr' | null;
   /** Resolved alignment. */
   readonly align: 'start' | 'end' | 'center' | 'left' | 'right';
   /** Whether the cell lies inside a selection range (drives `aria-selected`). */
@@ -2714,6 +2719,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           colIndex: column.index,
           ariaColIndex: column.ariaColIndex,
           text: engine.displayText(cell),
+          // Formatted numbers carry no direction marks (spec 0010 §D.14):
+          // markup keeps the sign and the digits in their LTR order.
+          dir: column.type === 'number' ? 'ltr' : null,
           align: column.align,
           selected,
           fill: selected && !suppressFill,

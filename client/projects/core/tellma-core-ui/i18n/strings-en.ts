@@ -41,6 +41,9 @@ export const TM_UI_STRINGS_EN = {
   select: {
     placeholder: 'Select an option',
   },
+  l10n: {
+    quarter: 'Q{quarter} {year}',
+  },
   entityPicker: {
     advancedSearch: 'Advanced search…',
     create: 'Create…',

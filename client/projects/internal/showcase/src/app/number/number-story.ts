@@ -11,9 +11,9 @@ import { TmNumber } from '@tellma/core-ui/number';
 
 /**
  * tmNumber demo host — locale round-trips, display rounding, percent mode,
- * min/max kinds, the precision envelope, and the physical right alignment
- * under RTL. Drives the Playwright battery; the model dump lets the tests
- * assert the typed values.
+ * ungrouped display (a year), min/max kinds, the precision envelope, and
+ * the physical right alignment under RTL. Drives the Playwright battery;
+ * the model dump lets the tests assert the typed values.
  */
 @Component({
   imports: [TmNumber, TmFormField, FormField],
@@ -48,6 +48,17 @@ import { TmNumber } from '@tellma/core-ui/number';
       <tm-form-field label="Free precision" hint="Envelope-guarded" data-testid="ff-free">
         <input tmNumber [formField]="f.free" data-testid="input-free" />
       </tm-form-field>
+
+      <!-- A year reads "2026", never "2,026": grouping off. -->
+      <tm-form-field label="Year" hint="No group separators" data-testid="ff-year">
+        <input
+          tmNumber
+          [formField]="f.year"
+          [maxDecimals]="0"
+          [grouping]="false"
+          data-testid="input-year"
+        />
+      </tm-form-field>
     </div>
 
     <output data-testid="model-json">{{ modelJson() }}</output>
@@ -72,7 +83,8 @@ export class NumberStory {
     qty: number | null;
     discount: number | null;
     free: number | null;
-  }>({ amount: 1483.8, qty: 5, discount: 0.155, free: null });
+    year: number | null;
+  }>({ amount: 1483.8, qty: 5, discount: 0.155, free: null, year: 2026 });
 
   readonly f = form(this.model, (p) => {
     required(p.amount);
