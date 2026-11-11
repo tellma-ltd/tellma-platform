@@ -135,6 +135,26 @@ namespace Tellma.Core.Tests.Data
         }
 
         [Fact]
+        public void A_factory_keeps_its_model_however_many_other_compositions_the_process_builds()
+        {
+            // EF's shared model cache holds about forty compositions before it stops taking new
+            // entries; fifty more fill it whatever the other tests have built.
+            TellmaModelFactory factory = new(TestModels.Definition([typeof(TestUser), typeof(TestJob)]), TestModels.Deployment);
+            IModel built = factory.BuildModel();
+            for (int i = 0; i < 50; i++)
+            {
+                _ = new TellmaModelFactory(TestModels.Definition([typeof(TestUser), typeof(TestJob)]), TestModels.Deployment).BuildModel();
+            }
+
+            using TellmaDbContext first = factory.CreateContext(null);
+            using TellmaDbContext second = factory.CreateContext(null);
+
+            Assert.Same(built, first.Model);
+            Assert.Same(built, second.Model);
+            Assert.Same(built, factory.BuildModel());
+        }
+
+        [Fact]
         public void The_definition_lists_children_after_their_parents_with_leaves_substituted()
         {
             var definition = TellmaModelDefinition.Create(

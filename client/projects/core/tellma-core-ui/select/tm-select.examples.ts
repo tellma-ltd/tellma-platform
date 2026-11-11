@@ -40,3 +40,15 @@ export const RichOptions = {
     </tm-select>
   `,
 };
+
+export const Grouped = {
+  template: `
+    <tm-select placeholder="Center type" style="max-width: 260px; display: block;">
+      <tm-option-group label="Operating">
+        <tm-option value="Service" label="Service">Service</tm-option>
+        <tm-option value="Operation" label="Operation">Operation</tm-option>
+      </tm-option-group>
+      <tm-option value="Sale" label="Sale">Sale</tm-option>
+    </tm-select>
+  `,
+};

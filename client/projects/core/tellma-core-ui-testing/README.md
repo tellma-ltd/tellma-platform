@@ -1,8 +1,9 @@
 # @tellma/core-ui-testing
 
 CDK `ComponentHarness` drivers for the `tm-*` controls, shipped for
-consumers: `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` +
-`TmOptionHarness`, and `TmFormFieldHarness`.
+consumers: `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` and
+`TmMultiSelectHarness` (with `TmOptionHarness` and `TmOptionGroupHarness`),
+and `TmFormFieldHarness`.
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

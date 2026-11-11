@@ -63,6 +63,9 @@ export const TM_LOCALE_AR_STRINGS = {
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',
   },
+  multiSelect: {
+    placeholder: '{gender, select, female {حددي خيارات} other {حدد خيارات}}',
+  },
   entityPicker: {
     advancedSearch: 'بحث متقدم…',
     create: 'إنشاء…',

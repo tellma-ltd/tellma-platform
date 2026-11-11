@@ -33,7 +33,7 @@ import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
-import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
@@ -55,6 +55,7 @@ import * as menuExamples from './menu/tm-menu.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
+import * as multiSelectExamples from './select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
@@ -128,8 +129,10 @@ class ExamplePage {}
     TmKbd,
     TmMenu,
     TmModalFooter,
+    TmMultiSelect,
     TmNumber,
     TmOption,
+    TmOptionGroup,
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
@@ -162,6 +165,9 @@ class ExamplePage {}
     </tm-tab-group>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
+    <tm-multi-select aria-label="placeholder">
+      <tm-option-group label="placeholder"><tm-option [value]="0">placeholder</tm-option></tm-option-group>
+    </tm-multi-select>
     <tm-spinner />
     <tm-icon name="plus" />
     <tm-kbd keys="Mod+K" />
@@ -431,6 +437,7 @@ const SUITES = [
   { source: 'files/tm-dropzone.examples.ts', examples: dropzoneExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
+  { source: 'select/tm-multi-select.examples.ts', examples: multiSelectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
   { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },

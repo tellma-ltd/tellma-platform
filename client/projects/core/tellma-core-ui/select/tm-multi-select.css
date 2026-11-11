@@ -1,0 +1,69 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-multi-select — what the multi-select adds to the shared select chrome
+   (tm-select.css): the checkbox on every row. The box is tm-checkbox's box
+   on the same tokens, so a row reads as the checkbox it behaves like, and
+   it sits at the row's inline end where tm-select draws its check. */
+
+.tm-option__box {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--checkbox-box-size);
+  block-size: var(--checkbox-box-size);
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  color: var(--color-on-primary);
+}
+
+/* The tick: tm-checkbox's glyph size inside tm-checkbox's box, drawn only
+   on a selected row. Its box is always reserved, so a toggle moves nothing. */
+.tm-option__box-check {
+  --icon-size: var(--checkbox-glyph-size);
+  visibility: hidden;
+}
+
+.tm-option__row[aria-selected='true'] .tm-option__box {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.tm-option__row[aria-selected='true'] .tm-option__box-check {
+  visibility: visible;
+}
+
+/* A disabled row's box goes dead like a disabled tm-checkbox: empty grey
+   when unselected, a muted fill with a muted tick when selected. */
+.tm-option__row[aria-disabled='true'] .tm-option__box {
+  background: var(--field-bg-disabled);
+  border-color: var(--field-border);
+  color: var(--field-text-disabled);
+}
+
+.tm-option__row[aria-disabled='true'][aria-selected='true'] .tm-option__box {
+  background: var(--border-default);
+  border-color: var(--border-default);
+  color: var(--text-muted);
+}
+
+@media (forced-colors: active) {
+  .tm-option__box {
+    border-color: FieldText;
+  }
+
+  /* The selected row is already Highlight, so its box is drawn in the
+     row's own text colour rather than vanishing into the same fill. */
+  .tm-option__row[aria-selected='true'] .tm-option__box {
+    border-color: HighlightText;
+    background: Highlight;
+    color: HighlightText;
+  }
+}

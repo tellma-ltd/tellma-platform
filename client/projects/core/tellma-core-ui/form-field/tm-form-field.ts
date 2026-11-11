@@ -23,6 +23,7 @@ import {
   OverlayModule,
   type ConnectedOverlayPositionChange,
 } from '@angular/cdk/overlay';
+import { CircleAlert } from 'lucide';
 
 import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
 import {
@@ -31,6 +32,7 @@ import {
   ɵtmControlSize,
   type TmControlSize,
 } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
 import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -79,7 +81,7 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-form-field',
-  imports: [TmSpinner, OverlayModule, ɵTmErrorPopover],
+  imports: [TmIcon, TmSpinner, OverlayModule, ɵTmErrorPopover],
   template: `
     @if (label() !== '') {
       <label
@@ -112,20 +114,7 @@ let nextUniqueId = 0;
            glyph itself (ownsErrorIcon) — the field cannot reach in front
            of that button from out here. -->
       @if (showError() && !chromeless() && !ownsErrorIcon()) {
-        <svg
-          class="tm-form-field__error-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" x2="12" y1="8" y2="12" />
-          <line x1="12" x2="12.01" y1="16" y2="16" />
-        </svg>
+        <tm-icon class="tm-form-field__error-icon" [svg]="errorIcon" />
       }
       <ng-content select="[tmSuffix]" />
       @if (pending() && !chromeless()) {
@@ -208,6 +197,9 @@ export class TmFormField {
 
   /** The projected control, discovered through the TM_FORM_FIELD_CONTROL token. */
   protected readonly control = contentChild(TM_FORM_FIELD_CONTROL);
+
+  /** The in-field invalid mark's icon data. */
+  protected readonly errorIcon = CircleAlert;
 
   /** Stable id of the label element, handed to non-labelable controls for aria-labelledby. */
   protected readonly labelId = `tm-ff-label-${this.uniqueId}`;

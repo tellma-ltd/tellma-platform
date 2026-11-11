@@ -359,6 +359,23 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-042 (orchestrator, 2026-11-11): PC-041 menu budget and review-1 routing
+- Ruling: the ./menu size ceiling is 8.5 KB, not spec 0010 §C.11's 7 (measured 8.21; Reviewer 1 confirmed nothing short of dropping a spec'd entry kind reaches 7: external glyphs 7.96, no dev diagnostics 8.10); the budget note must list the savings taken (D-031). The group-divider rule (above a group whenever a non-separator entry precedes it) replaces §C.10's "every group but the first". The pre-existing right-click close-on-release bug (R1-2, Firefox/WebKit) is fixed in PC-041's fix round rather than a new fix item, because it lives in the same files. A @cross-engine subset of the menu e2e is added.
+- Why: the raise fits D-031's arithmetic and the reviewer found nothing droppable; routing R1-2 to the owner of the files avoids a parallel edit.
+- Misalignment: spec 0010 §C.11 and §C.10 need bringing in line; recorded under LEDGER.md merge-time tasks.
+- Revisit if: a later menu feature pushes ./menu past 8.5.
+
+### D-041 (orchestrator, 2026-11-11): PC-F08 host-memory vector is not a residual
+- Ruling: PC-F08 Review 2 (R2-1) found that on Linux a compromised PDF worker can reopen the host's W^X doublemapper memfd through /proc/<host>/fd for writing and read /proc/<host>/environ; kernel.yama.ptrace_scope does not gate either path, so D-030 addendum 5's warning does not close the vector. It is fixed in PC-F08 fix2, not accepted: by default prctl(PR_SET_DUMPABLE, 0) in the host on Linux whenever PDF thumbnails are enabled, verified in the sdk:10.0 container (including a uid-0 host), with probes that assert both paths are refused. The ptrace_scope guidance is corrected. Losing core dumps of the host is accepted.
+- Why: host code execution and secret reads from a PDF are the exact threat PC-F08 exists for; the fix is cheap and needs no extra privileges, unlike a distinct worker uid or a PID namespace.
+- Revisit if: verification shows non-dumpable does not close both paths, or it breaks a diagnostics path operators rely on beyond core dumps.
+
+### D-040 (orchestrator, 2026-11-11): PC-F08 review-1 residuals
+- Ruling: (1) the RLIMIT_AS residual (a compromised worker can trade the runtime's reservations for about 3.55 GiB shared memory at the default limit) is accepted for now, with a memory cgroup as the deployment guidance; Reviewer 2 may escalate it. (2) The filesystem residual is wider than D-030 addendum 3 (in-place overwrite, truncate, rename, delete of files the host account may write); PC-F11 now covers writes as well as reads. (3) macOS is treated like Windows (PDF thumbnails only in Development), the conservative reading of addendum 5. (4) musl hosts are detected and get no PDF thumbnails; not exercised on a real musl host, accepted. (5) DOTNET_GCRegionRange stays unset (it crashed the collector at twice the limit).
+- Why: each choice keeps the worker's isolation at least as strict as D-030 asks, and none blocks Tier 1; the stricter alternatives (a re-exec under a soft RLIMIT_AS, a cgroup the host manages) are unmeasured.
+- Misalignment: spec 0017 lacks Tellma:Blobs:PdfWorkerConcurrency, the host rule and two log events; recorded under LEDGER.md merge-time tasks for Ahmad to bring the spec in line.
+- Revisit if: Reviewer 2 rates the RLIMIT_AS residual blocking, or a deployment target runs on musl or macOS in production.
+
 ### D-039 (Ahmad, 2026-11-10): Fable phase and the Fable-only reset
 - Ruling: Anthropic released Fable 5.2 and granted one manual Fable-only reset in the window starting Tue Nov 10. Until no new Fable agent fits, every newly spawned agent runs on `fable` at its role's effort, gated on the Fable meter as well as the all-models gates. Ahmad then presses the Fable-only reset, and the run reverts to the normal model lists. Rules: PROCESS.md §7.4.
 - Why: the Fable meter is a separate half-budget that the normal process leaves mostly unused (Fable was 31% when the last window closed at 100% all-models), and the reset makes it spendable twice in one week.

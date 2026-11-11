@@ -60,8 +60,11 @@ namespace Tellma.Core.Tests.Tenancy
             // A write elsewhere: the next interval reloads.
             catalog.Write(FakeCatalogReader.Row(1));
             time.Advance(TimeSpan.FromSeconds(15));
-            await WaitUntilAsync(() => catalog.Reloads == 2);
+            // The reader counts a reload when it is asked, before the new snapshot is swapped in,
+            // so the wait is on the snapshot the reload serves.
+            await WaitUntilAsync(() => registry.Tenants.Count == 1);
             Assert.Equal([1], registry.Tenants.Select(static tenant => tenant.Id));
+            Assert.Equal(2, catalog.Reloads);
 
             await host.StopAsync(Token);
         }
