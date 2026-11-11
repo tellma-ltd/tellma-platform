@@ -8,8 +8,8 @@ using Tellma.Queryex.Testing.Corpus;
 namespace Tellma.Core.Queryex.Tests.Coverage
 {
     /// <summary>
-    ///     Checks that every form a diagnostic's location can take inside a filter tree is one some
-    ///     corpus case pins, code, span and arguments included.
+    ///     Checks that every form a diagnostic's location can take inside a filter tree or a constant
+    ///     statement is one some corpus case pins, code, span and arguments included.
     /// </summary>
     /// <remarks>
     ///     A host parses locations to attribute a problem to the criterion that caused it. A form no
@@ -46,11 +46,61 @@ namespace Tellma.Core.Queryex.Tests.Coverage
                     && site.Location.Contains(component, StringComparison.Ordinal));
         }
 
+        /// <summary>
+        ///     The problems a constant statement reports about an item, each of which has to be
+        ///     pinned against the item it is about.
+        /// </summary>
+        public static TheoryData<string> ConstantProblems =>
+        [
+            "QX2002",
+            "QX2007",
+            "QX2009",
+            "QX3007",
+            "QX3200",
+            "QX4002",
+            "QX4009",
+            "QX5007",
+        ];
+
+        /// <summary>Each problem of a constant statement is pinned against an item by a corpus case.</summary>
+        /// <param name="code">The problem.</param>
+        [Theory]
+        [MemberData(nameof(ConstantProblems))]
+        public void EachConstantProblem_IsPinnedAgainstItsItem(string code)
+        {
+            Assert.Contains(
+                ConstantCorpus.All.SelectMany(entry => entry.Sites),
+                site => site.Code == code
+                    && site.Location is not null
+                    && site.Location.StartsWith("Constant[", StringComparison.Ordinal)
+                    && site.Location.EndsWith(']'));
+        }
+
+        /// <summary>
+        ///     Some case pins a problem against an item other than the first, so the index in the
+        ///     location is checked to be the item's and not a constant.
+        /// </summary>
+        [Fact]
+        public void ALaterConstantItem_IsPinnedByItsOwnIndex()
+        {
+            Assert.Contains(
+                ConstantCorpus.All.SelectMany(entry => entry.Sites),
+                site => site.Location is "Constant[2]");
+        }
+
         /// <summary>A pinned diagnostic's code is one its case lists among the codes it expects.</summary>
         [Fact]
         public void EveryPinnedCode_IsAnExpectedCode()
         {
             foreach (QueryCase entry in QueryCorpus.All)
+            {
+                foreach (DiagnosticSite site in entry.Sites)
+                {
+                    Assert.Contains(site.Code, entry.Diagnostics);
+                }
+            }
+
+            foreach (ConstantCase entry in ConstantCorpus.All)
             {
                 foreach (DiagnosticSite site in entry.Sites)
                 {

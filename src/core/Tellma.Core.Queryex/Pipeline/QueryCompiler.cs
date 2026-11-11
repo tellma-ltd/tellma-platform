@@ -28,17 +28,19 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="spec">The query.</param>
         /// <param name="options">The compilation options.</param>
         /// <param name="restrictions">The query's key-set restrictions, resolved against the schema.</param>
+        /// <param name="omitted">The parameters the compilation leaves out, resolved.</param>
         /// <returns>The compiled query, or the diagnostics that stopped it.</returns>
         internal static QueryexResult<CompiledQuery> Compile(
             ExpressionCompiler compiler,
             QuerySpec spec,
             QueryCompilationOptions options,
-            ImmutableArray<ResolvedRestriction> restrictions)
+            ImmutableArray<ResolvedRestriction> restrictions,
+            OmittedParameters omitted)
         {
             DiagnosticSink sink = new();
             CompilationBudget budget = new(options.Limits);
             NullityMap nullity = new();
-            QueryClauses clauses = new(compiler, spec, options, sink, budget, nullity, restrictions);
+            QueryClauses clauses = new(compiler, spec, options, sink, budget, nullity, restrictions, omitted);
 
             if (!clauses.TryBind())
             {

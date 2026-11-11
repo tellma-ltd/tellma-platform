@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
+using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Composition
@@ -106,7 +107,11 @@ namespace Tellma.Core.Composition
             }
 
             IReadOnlyList<ComposedFeature> ordered = OrderFeatures();
-            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves);
+            LanguageDeclaration languages = _builder.LanguageDeclaration;
+            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves, languages);
+
+            // --- What the distribution declared about languages, which the language catalogue reads ---
+            services.AddSingleton(languages);
 
             // --- Built-in startup checks, ahead of every contributed one: core is realised first ---
             RegisterBuiltInChecks();
@@ -131,11 +136,19 @@ namespace Tellma.Core.Composition
                 }
             }
 
+            // --- String localization: every localizer in the process renders ICU (spec 0013 §1.2) ---
+            LocalizationComposition.Register(services);
+
             // --- The tenant model, built from what the realizers recorded ---
             TellmaModelFactory.Register(services, _record);
 
-            // --- The tenancy runtime: the catalog, the registry, connections and the write side ---
+            // --- The tenancy runtime: the catalog, the registry, connections, the write side and the request context ---
             TenancyComposition.Register(services, _record, options);
+
+            // --- Server-built links (spec 0011 §5.10) ---
+            // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
+            services.TryAddSingleton<IStackRouteSource, NoStackRoutes>();
+            services.AddSingleton<ITellmaLinks, TellmaLinks>();
 
             // --- The realised gate, first among the hosted services ---
             // Hosted services start in registration order, and a host may have registered some
@@ -460,6 +473,10 @@ namespace Tellma.Core.Composition
                 new EntityShapesCheck(_record),
                 new ModelContributorsCheck(_record),
                 new EntityMetadataCheck(),
+                new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
+                new CalendarsCheck(),
+                new ValueSetsCheck(_record),
+                new TimeZonesCheck(TimeZonesCheck.HostResolves),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

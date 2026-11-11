@@ -8,16 +8,25 @@ context.
 Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions,
 the table-type binder and the entity metadata), the tenancy runtime (the catalog model, the tenant registry, connection
 resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
-file-system store) and the three calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
-localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
+file-system store), the three calendar systems and the core of localization (the language
+catalogue, the value sets, the negotiation of a request's language, region, calendar and time
+zone, and the ICU string localizer with Core's shared resources). The rest of data access, the CRUD
+pipeline, access control, settings, caching, the rest of localization and of blobs, Excel, jobs and
+notifications join it as namespaces.
 
 ## The composition root
 
 ```csharp
 services.AddTellma("acme", configuration, environment, tellma => tellma
     .AddFeature<GlFeature>()
-    .UseEntity<Center, MyCenter>());
+    .UseEntity<Center, MyCenter>()
+    .Languages(["en-GB", "ar-SA"]));
 ```
+
+`Languages` declares, once, the languages the distribution offers, the default first, each
+optionally with the region its users get by default; `AddLanguage` describes a language the
+catalogue lacks (see [Localization](#localization)). A distribution that declares none offers
+English.
 
 `AddTellma` runs four steps, then installs the second of two gates:
 
@@ -58,7 +67,7 @@ every problem `AddTellma` would throw.
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
 | `core.options` | a bound options type fails its data-annotation validation (one problem per failure) | yes |
-| `core.deployment-identity` | the registered `DeploymentIdentity` names another application, or no `ISandboxContext` resolves | no |
+| `core.deployment-identity` | the registered `DeploymentIdentity` names another application, or no `ISandboxContext` resolves (the composition registers one; a host removed it or replaced it with one that cannot be created) | no |
 | `core.globalization` | the process does not run ICU (invariant mode or Windows NLS) | no |
 | `core.key-vault-literals` | a value under `Tellma:` is an unresolved `@Microsoft.KeyVault(` reference | yes |
 | `core.sql-profiles` | no `default` credential profile; a profile that does not parse, has an unusable name, or does not set `Max Pool Size` within `Tellma:Sql:MaxPoolSizePerTenant`; outside Development, a profile or the catalog connection that does not set `Encrypt` (true or strict) or carries a password without `Tellma:Sql:AllowSqlPassword`; an unresolved Key Vault reference inside either; outside Development, an empty `Tellma:Sql:AllowedServers`; a malformed entry in it. Problems name a profile and a keyword, never a value | yes |
@@ -66,6 +75,10 @@ every problem `AddTellma` would throw.
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 | `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
+| `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
+| `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
+| `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
+| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
@@ -210,13 +223,53 @@ connection string and no secret: a tenant row names a server, a database and a c
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
 | `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. |
 | The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development; an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
-| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. `ITenantConnectionProvider` is the tenant-scope door the request context binds. |
+| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
+| `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
 | `ITenantCatalog` | Registration (`Provisioning`, the sequence's id or a requested one in 1–999), state transitions against the state table, renames and relocations of frozen or provisioning tenants. Each is one transaction that bumps the catalog version and whose own precondition settles a race (`THROW 50409` translated to `TenantStateException`), then refreshes the local registry. |
 | `ITenantMembershipDirectory` | A subject's memberships in one query; the best-effort upsert of the hint writers, never thrown; and the per-tenant reconciliation that also deletes the tenant's stale hints, through the membership table type bound by `TableTypeBinder`. |
 | `DatabaseCreation` | The migrator's `CREATE DATABASE` statement: the platform collation, and on Azure SQL Database the configured options and `CATALOG_COLLATION = DATABASE_DEFAULT`. |
 
 Options: `Tellma:Catalog` (`TellmaCatalogOptions`) and `Tellma:Sql` (`TellmaSqlOptions`), validated
 by the startup gate.
+
+### The request context
+
+Who a unit of work runs for, against which tenant and in which locale is one immutable
+`RequestContext` (`Tellma.Core.Abstractions.Tenancy`) held by the service scope. Nothing copies it
+into an `AsyncLocal`, a static or a singleton; a singleton that needs a tenant opens a tenant scope.
+
+| Piece | What it does |
+|---|---|
+| `IRequestContextHolder` / `IRequestContextAccessor` | One scoped instance behind both. Every service reads `Current`; until a writer binds one it is the tenantless context (English, Gregorian, UTC), stamped by the host's clock on the first read. A writer binds the tenant and the principal in one write. Once bound to a tenant, a scope refuses any other tenant, any other principal (kind or subject) and, once the connection bound one, any other user. |
+| `ITenantAccessGuard` | The request-side writer, called once by each tenant front door after the tenant and the principal are bound. In order: the tenant's state verdict (`tenant-suspended`; `tenant-frozen` for a mutation; `tenant-read-only` for a mutation the endpoint does not allow when read-only), every `IRequestContextInitializer` in `Order` (the user connection, which answers `tenant-not-found` for a non-member, then the locale negotiation), and the endpoint's assurance bar (`IndividualRequiredException` for a service account, `StepUpRequiredException` for a session below it). It opens no tenant database itself. When it returns, `UserId` is bound; an anonymous principal answers `tenant-not-found` before the state is looked at, and a composition whose initializers bind no user lets nobody through. |
+| `ITenantScopeFactory` | The background-side writer. It looks the tenant up afresh, serves only `Active` and `ReadOnly` (also `Provisioning` and `Frozen` for a `System` snapshot passing `allowNonActive`; any other kind with the flag is refused before a scope exists), binds the snapshot's principal, client and trace parent, runs the initializers with empty inputs, and disposes the scope if any of that fails. A refused state throws `TenantUnavailableException` carrying the state, and a tenant the catalog no longer holds throws it with `tenant-not-found` and no state; `TenantNotFoundException` means one thing only, a run-as user who is not an active member. It starts no activity and opens no logger scope: both are the caller's. |
+| `TenantSandboxContext` | The `ISandboxContext` of a tenant host, scoped: the bound tenant's category, and `InvalidOperationException` when no tenant is bound. Registered by `AddTellma` over whatever a host registered before it. |
+| Instruments | `tellma.tenancy.resolutions` by `outcome` (the guard counts `served`, `read_only`, `frozen`, `suspended`, `not_member` and a `catalog_unavailable` raised under an initializer; the tenant middleware counts the rest) and `tellma.tenancy.scopes` by `kind` (the factory counts `background`). |
+
+An initializer completes the context and never rebinds it: a result naming another tenant, kind or
+subject than it was given, or another user than the one already connected, is refused. The scope's
+context is replaced after each initializer, so the services the next one uses already read what the
+last one resolved.
+
+Neither writer sets `CultureInfo.CurrentCulture` or `CurrentUICulture`, and no initializer may rely
+on setting them: the current cultures flow into what a method awaits and never back to its caller,
+so a culture set inside `EnsureAccessAsync`, `CreateScopeAsync` or an initializer is gone before the
+handler or the job runs. The caller applies the completed context in its own method, with
+`RequestContext.ApplyCultures()`: a tenant front door after the guard returns and before it invokes
+the handler, a background caller after the factory returns and before it runs its work. It also
+applies the context's calendar and display zone as the flow's request localization (see
+[String localization](#string-localization)), resolving the zone's IANA name once per process; a
+caller that runs several units on one flow applies each unit's context inside the method that runs
+it.
+
+### Server-built links
+
+`ITellmaLinks` builds the links server code puts into an email or a notification from
+`Tellma:PublicOrigin`: `Tenant(42)` is `{origin}/42`, and `Target(42, "acme.SalesInvoice", 17)` is
+`{origin}/42/sales-invoices/17` when the resource names a stack whose operations include `Details`,
+and the tenant link otherwise (a null resource or id, an unknown resource, a stack without a details
+page). Which resources name a stack is answered through `IStackRouteSource`; a composition without
+a stack registry gets the empty one, so every target links to the tenant.
 
 ## Blobs: the file-system store
 
@@ -291,31 +344,199 @@ Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 `Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the
 server and the browser agree; `gc` takes the culture's own.
 
-Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
-name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
-`ar-SA` a Gregorian default calendar). The golden tests and every test of a concrete value therefore pin the
-culture data they assert; the tests over the host's own cultures assert properties, and the test of
+A culture's data comes from the host's ICU unless it is one a request was negotiated to, which
+carries the platform's pinned formats (see [Localization](#localization)). Two ICU releases can
+differ in a pattern's punctuation or a name's spelling (Windows' and Ubuntu's do, for `en-GB`'s
+full date and `am-ET`'s month names, and ICU 78 gives `ar-SA` a Gregorian default calendar). The
+golden tests therefore run over the negotiated cultures, the tests of the cleaning pin the raw
+culture data they assert, the tests over the host's own cultures assert properties, and the test of
 a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
+
+## Localization
+
+### The language catalogue
+
+`LanguageCatalog` (`ILanguageCatalog`) is data in code: fifteen languages (`en`, `ar`, `am`, `om`,
+`ti`, `so`, `sw`, `fr`, `es`, `pt`, `de`, `tr`, `ur`, `hi`, `zh`), each with its own name, the
+short symbol that labels its column of a multilingual field, its direction and its formats
+(`LanguageFormats`): the regions it is offered with (243 language and region pairs in all), its
+default region (the United Kingdom for English, otherwise CLDR's likely region) and its native
+digits (`arab` for Arabic, `arabext` for Urdu, `deva` for Hindi). The data is frozen so that a
+host's ICU release never changes what a user may store.
+
+A distribution's declaration (`tellma.Languages`, `tellma.AddLanguage`) selects what is *offered*;
+`All`, `Find` and `Formats` cover everything *described*, so a tenant whose stored language is no
+longer offered still resolves its labels. The declaration is resolved leniently (`LanguageSet`):
+whatever is wrong is skipped and reported by `core.languages`, and the catalogue itself never
+throws at construction, so a build step can compose it to report the problems.
+
+Offering a language other than English takes the platform's strings in it: `core.languages` fails
+startup when the `Tellma.Core` satellite assembly of an offered language is not deployed
+(`<code>/Tellma.Core.resources.dll`). The platform ships the Arabic and Amharic satellites. For a
+language added with `AddLanguage` the platform never ships one, so a distribution that offers the
+language supplies the satellite itself: a translation of `Resources/Strings.resx` built into the
+resource `Tellma.Core.Resources.Strings.<code>.resources`. A language that is described but not
+offered needs no strings.
+
+### Negotiation
+
+`LocalizationNegotiator` (`ILocalizationNegotiator`) turns a request's headers, the user's
+preferences and the tenant's settings into a `LocalizationContext`. Each choice falls through its
+sources in order and ignores a source whose value is not acceptable:
+
+| Choice | Sources, first acceptable wins | Acceptable when |
+|---|---|---|
+| Language | the first three `Accept-Language` ranges by quality, the user's preferred language, the tenant's primary language, the distribution's default | offered by the distribution |
+| Region | the region of the range that chose the language, the user's preferred region, the tenant's region, the language's default region | offered with the negotiated language |
+| Calendar | the calendar header, the user's preferred calendar, the tenant's primary calendar | one of the tenant's calendars |
+| Time zone | the time-zone header, the user's preferred zone, the tenant's zone | a value of `core.TimeZone` (ignoring case; an alias is not accepted) that the host resolves |
+
+A message's own language (an email or a notification rendered for a recipient) overrides the
+language when it is offered, and its region then heads the region row; a message's own calendar
+overrides the calendar when the registry has it. The index of the content language (which of the
+tenant's languages multilingual values display in) follows the reader's language, never the
+message's. A header that is present and refused is counted in
+`tellma.localization.headers.rejected` by a `header` tag (`accept-language`, `calendar`,
+`time-zone`): an `Accept-Language` with a malformed element (its sound ranges are still used), a
+calendar the tenant does not use, a zone outside the set. A well-formed language the distribution
+does not offer is ordinary and is not counted.
+
+### Negotiated cultures
+
+The culture of the outcome (`NegotiatedCultures.Get(language, region)`) is named by the pair
+(`ar-SA`), so resources fall back from the pair to the language to English, and it always formats
+with the Gregorian calendar, Latin digits and no bidirectional control characters: numbers and
+dates pasted from an email or an export stay numbers and dates. One read-only instance exists per
+pair.
+
+Its formats are not the host's. Every catalogue pair carries the formats pinned in
+`Localization/CultureData.txt`, an embedded resource generated once from CLDR 48 (ICU 78.2) by
+`eng/culture-data/Tellma.CultureData.Generator`: every date and time pattern and name
+`DateTimeFormatInfo` holds and every symbol, pattern and group size `NumberFormatInfo` holds, read
+from the pair's Latin-digit Gregorian culture and cleaned of bidirectional marks and eras. The
+generator lays a small table of corrections over CLDR where it regressed or contradicts the
+Latin-digit rule (`CultureDataSource.Corrections`). Server text is therefore identical on Windows
+and on every Linux image. What stays the host's is everything outside those two format objects:
+comparison, casing and the culture's display names. A pair outside the catalogue (a language a
+distribution added) has no pinned data and takes the host's Latin-digit Gregorian formats, cleaned
+the same way.
+
+### String localization
+
+`AddTellma` replaces the host's `IStringLocalizerFactory` with `IcuStringLocalizerFactory`, so every
+`IStringLocalizer` and `IStringLocalizer<T>` in the process renders a resource as an ICU message
+(MessageFormat.NET, one shared formatter):
+
+```csharp
+localizer["Problem_tree_cycle_Detail"];
+localizer["Validation_MaxLength", new { maxLength = 50 }];
+localizer["Notification_core_report_shared", new Dictionary<string, object?> { ["actorName"] = name, ["title"] = title }];
+```
+
+Arguments are named, in one object: a dictionary or an object whose properties name them (an
+anonymous type). A second object, or a lone value (a string, a number, a date), is a positional
+argument and throws `ArgumentException`. Plural and select follow the culture's CLDR rules (`ar`'s
+zero, one, two, few, many and other), and `#` and `{n, number}` format in that culture.
+`{d, date, short|medium|long|full}` and `{t, time, …}` render through the flow's calendar system in
+its display zone, with ASCII digits; a `DateOnly` and a `DateTime` of unspecified kind are dates
+on the wall clock and never shift.
+
+The culture, the calendar and the zone are the innermost `LocalizationScope`'s, so a job or a
+message renders for its recipient:
+
+```csharp
+using (LocalizationScope.Enter(recipientContext))
+{
+    subject = localizer["Notification_core_report_shared", new { actorName, title }];
+}
+```
+
+Outside every scope the culture is the thread's current UI culture, and the calendar and the zone
+are the request's, which `RequestContext.ApplyCultures()` applies (`LocalizationScope.Request`),
+else Gregorian and UTC. `LocalizationScope.ApplyRequest` applies one by hand and returns the value
+that undoes it, or clears it with null. A resource is looked
+up from the culture through its parents to the neutral English set (`ar-SA`, `ar`, English); no
+tenant or distribution override is consulted. A key absent everywhere comes back as the key itself,
+marked `ResourceNotFound`, logged once (`MissingResourceString`) and counted once per key and culture
+in `tellma.localization.missing`, tagged by the culture's language code (`other` for a language the
+distribution does not offer). A value that is not a well-formed ICU message, or does not format with
+its arguments, comes back raw and is logged once (`MessageFormatMalformed`). A value with
+placeholders read without arguments comes back raw, without a log: the caller reads the template.
+
+The host's `LocalizationOptions.ResourcesPath` does not apply: a type's resources are addressed by
+its full name (`Tellma.Core.Resources.Strings`), so every package addresses another's the same way.
+Core's shared resources are `CoreStrings.BaseName` in `CoreStrings.Assembly`:
+
+```csharp
+IStringLocalizer core = factory.Create(CoreStrings.BaseName, CoreStrings.Assembly);
+```
+
+### Core's resources
+
+`Resources/Strings.resx` (English, the neutral resources) and its `ar` and `am` satellites hold every
+string Core shows, keyed `PascalCase_Underscored`:
+
+| Family | Keys |
+|---|---|
+| Calendars | `Calendar_<code>`, `Calendar_<code>_Month<n>` |
+| Regions | `Region_<code>` for every region of the catalogue, generated (below) |
+| Problems | `Problem_<code>` and `Problem_<code>_Detail`, `-` written `_` |
+| Validation | each pipeline and settings code with `.` written `_` (`Validation_MaxLength`, `Settings_UnknownSetting`) |
+| Labels and actions | `Name`, `Code`, `CreatedAt`, …; `Action_<verb>`, `Entity_New`, `Entity_DisplayNameFallback` |
+| Startup | `Boot_*`, the page a host shows before it is ready |
+| Reports and dashboards | `ReportKind_*`, `ShareAccess_*`, `Core_Report_*`, `Core_Dashboard_*`, their notifications |
+| Query language | `Queryex_<code>` for every diagnostic code |
+
+`Strings.resx` reaches the browser through the string pack; `Resources/ServerStrings.resx` holds text
+only the server renders and is empty so far.
+
+The region names come from CLDR, never by hand: after the pinned culture data changes, regenerate
+them with a Node.js that bundles CLDR 48 (Node 24):
+
+```bash
+node eng/region-names/generate-region-names.mjs
+node eng/region-names/generate-region-names.mjs --check
+```
+
+### Value sets
+
+A value set is a named enumeration over string columns (`ValueSetDescriptor`): its values, each
+with a resource key or a literal label, and optional aliases. `ValueSetRegistry`
+(`IValueSetRegistry`) holds the platform's four, then every set a feature contributed with
+`contribution.ValueSet(descriptor)`:
+
+| Set | Values | Labels |
+|---|---|---|
+| `core.Language` | every described language, offered or not | each language's own name, a literal |
+| `core.Calendar` | the composed calendar systems' codes | the key `Calendar_<code>` |
+| `core.TimeZone` | `QueryexTimeZones.Ids`, with its aliases | the id itself, a literal |
+| `core.Region` | every described language's regions, in ordinal order | the key `Region_<code>` |
+
+The time-zone set is the query language's own table, so every zone a user can pick compiles in a
+query. A string property draws from a set with `[ValueSet("core.TimeZone")]`; the entity metadata
+carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain string.
+`core.value-sets` validates every set and every such property.
 
 ## Layout
 
 | Folder | Contents |
 |---|---|
-| `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
 | `Data/Metadata/` | `EntityMetadataProvider` and the builder that validates the model into it, the compiled accessors, the fingerprints, and the source the startup check and the host share. |
-| `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the log events and instruments. |
+| `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`, `IRequestContextHolder`, `ITenantAccessGuard`, `TenantAccessRequirement`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the request-context holder, the access guard, the scope factory, the sandbox context, the scope's connection provider, the log events and instruments. |
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests
 
 `test/core/Tellma.Core.Tests` (`dotnet test test/core/Tellma.Core.Tests`) runs without a database.
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
-write side, the registry and the membership hints against SQL Server.
+write side, the registry, the membership hints and the tenant scope factory against SQL Server.

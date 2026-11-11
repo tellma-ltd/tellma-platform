@@ -10,8 +10,8 @@ namespace Tellma.Core.Tenancy
 {
     /// <summary>
     ///     The tenancy runtime's instruments on the runtime meter: the catalog refresh's duration, the
-    ///     snapshot's age and tenants, and the membership-hint writes. No instrument carries a tenant
-    ///     or a user.
+    ///     snapshot's age and tenants, the membership-hint writes, the outcome of resolving a request
+    ///     to a tenant and the tenant scopes bound. No instrument carries a tenant or a user.
     /// </summary>
     internal sealed class TenancyMetrics
     {
@@ -32,6 +32,8 @@ namespace Tellma.Core.Tenancy
         private readonly Meter _meter;
         private readonly Histogram<double> _refreshDuration;
         private readonly Counter<long> _membershipWrites;
+        private readonly Counter<long> _resolutions;
+        private readonly Counter<long> _scopes;
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
@@ -48,6 +50,14 @@ namespace Tellma.Core.Tenancy
             _membershipWrites = _meter.CreateCounter<long>(
                 TenancyTelemetryNames.MembershipWrites,
                 description: "Membership-hint writes, by outcome and source.");
+
+            _resolutions = _meter.CreateCounter<long>(
+                TenancyTelemetryNames.Resolutions,
+                description: "Tenant requests resolved, by outcome.");
+
+            _scopes = _meter.CreateCounter<long>(
+                TenancyTelemetryNames.Scopes,
+                description: "Service scopes bound to a tenant, by kind.");
         }
 
         /// <summary>The tag value of a membership writer.</summary>
@@ -62,6 +72,52 @@ namespace Tellma.Core.Tenancy
                 TenantMembershipWriteSource.Provision => "provision",
                 _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Not a membership writer."),
             };
+        }
+
+        /// <summary>The tag value of a resolution outcome.</summary>
+        /// <param name="outcome">The outcome.</param>
+        /// <returns>The tag value.</returns>
+        public static string OutcomeValue(TenantResolutionOutcome outcome)
+        {
+            return outcome switch
+            {
+                TenantResolutionOutcome.Served => "served",
+                TenantResolutionOutcome.NotFound => "not_found",
+                TenantResolutionOutcome.Provisioning => "provisioning",
+                TenantResolutionOutcome.ReadOnly => "read_only",
+                TenantResolutionOutcome.Frozen => "frozen",
+                TenantResolutionOutcome.Suspended => "suspended",
+                TenantResolutionOutcome.NotMember => "not_member",
+                TenantResolutionOutcome.CatalogUnavailable => "catalog_unavailable",
+                _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Not a resolution outcome."),
+            };
+        }
+
+        /// <summary>The tag value of a scope kind.</summary>
+        /// <param name="kind">The kind.</param>
+        /// <returns>The tag value.</returns>
+        public static string KindValue(TenantScopeKind kind)
+        {
+            return kind switch
+            {
+                TenantScopeKind.Request => "request",
+                TenantScopeKind.Background => "background",
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a scope kind."),
+            };
+        }
+
+        /// <summary>Records how one tenant request was resolved.</summary>
+        /// <param name="outcome">The outcome.</param>
+        public void RecordResolution(TenantResolutionOutcome outcome)
+        {
+            _resolutions.Add(1, new KeyValuePair<string, object?>(TenancyTelemetryNames.OutcomeTag, OutcomeValue(outcome)));
+        }
+
+        /// <summary>Records one service scope bound to a tenant.</summary>
+        /// <param name="kind">Whether a request or background work bound it.</param>
+        public void RecordScope(TenantScopeKind kind)
+        {
+            _scopes.Add(1, new KeyValuePair<string, object?>(TenancyTelemetryNames.KindTag, KindValue(kind)));
         }
 
         /// <summary>Records one refresh.</summary>

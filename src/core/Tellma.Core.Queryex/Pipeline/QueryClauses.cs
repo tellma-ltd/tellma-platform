@@ -52,6 +52,9 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The key-set restrictions, resolved against the schema.</summary>
         private readonly ImmutableArray<ResolvedRestriction> _restrictions;
 
+        /// <summary>The parameters the compilation leaves out.</summary>
+        private readonly OmittedParameters _omitted;
+
         /// <summary>The root of the join tree, once lowering has created it.</summary>
         private JoinNode? _root;
 
@@ -60,6 +63,18 @@ namespace Tellma.Core.Queryex.Pipeline
 
         /// <summary>The bound ordering list.</summary>
         private BoundExpression _orderBy = new([], NullityMap.Empty, 0, []);
+
+        /// <summary>
+        ///     Which ordering terms leaving parameters out rewrote, by position; empty when it
+        ///     rewrote none.
+        /// </summary>
+        private bool[] _rewrittenTerms = [];
+
+        /// <summary>
+        ///     The positions of the ordering terms that leaving parameters out turned into repeats of
+        ///     an earlier term, and which are therefore not written.
+        /// </summary>
+        private readonly HashSet<int> _repeatedTerms = [];
 
         /// <summary>The bound row-level predicate, when there is one.</summary>
         private TypedExpr? _filter;
@@ -78,6 +93,7 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">Every clause's nullity answers, merged.</param>
         /// <param name="restrictions">The key-set restrictions, resolved against the schema.</param>
+        /// <param name="omitted">The parameters the compilation leaves out.</param>
         internal QueryClauses(
             ExpressionCompiler compiler,
             QuerySpec spec,
@@ -85,7 +101,8 @@ namespace Tellma.Core.Queryex.Pipeline
             DiagnosticSink sink,
             CompilationBudget budget,
             NullityMap nullity,
-            ImmutableArray<ResolvedRestriction> restrictions)
+            ImmutableArray<ResolvedRestriction> restrictions,
+            OmittedParameters omitted)
         {
             _compiler = compiler;
             _spec = spec;
@@ -95,6 +112,7 @@ namespace Tellma.Core.Queryex.Pipeline
             _nullity = nullity;
             _symbols = Symbols.From(options.Parameters);
             _restrictions = restrictions;
+            _omitted = omitted;
         }
 
         /// <summary>Binds every clause and checks the rules that span them.</summary>
@@ -114,10 +132,13 @@ namespace Tellma.Core.Queryex.Pipeline
                 return false;
             }
 
-            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(selectSyntax!);
+            // Folded before its shape is read: what an omitted parameter leaves behind is what the
+            // grouping is derived from, and what is bound.
+            ExpressionListSyntax select = _omitted.FoldValues(selectSyntax!, out AppliedFolding? folding);
+            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(select);
 
             BindFilter();
-            BindSelect(selectSyntax!, selectAt);
+            BindSelect(select, folding, selectAt);
             BindHaving();
             BindOrderBy();
 
@@ -262,13 +283,15 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Filter),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the select list.</summary>
-        /// <param name="syntax">The already-parsed list.</param>
+        /// <param name="syntax">The already-parsed list, folded.</param>
+        /// <param name="folding">What was folded out of the list, or null when nothing was.</param>
         /// <param name="location">Which input it is.</param>
-        private void BindSelect(ExpressionListSyntax syntax, DiagnosticLocation location)
+        private void BindSelect(ExpressionListSyntax syntax, AppliedFolding? folding, DiagnosticLocation location)
         {
             _select = _compiler.Bind(
                 _spec.Select,
@@ -277,7 +300,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 directions: false,
                 _options.Limits,
                 _sink,
-                location);
+                location,
+                folding);
             _nullity.Absorb(_select.Nullity);
             _budget.TryConsumeTypedNodes(_select.NodeCount, default, _sink.Scope(location));
         }
@@ -298,7 +322,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Having),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the ordering list.</summary>
@@ -310,20 +335,38 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             var location = DiagnosticLocation.Clause(QueryexClause.OrderBy);
-            _compiler.TryCompile(
+            if (!_compiler.TryParse(
                 _spec.OrderBy,
+                _options.Limits,
+                _sink,
+                location,
+                out ExpressionListSyntax? syntax))
+            {
+                return;
+            }
+
+            // An ordering term is a value: an omitted parameter in one is the typed absent value.
+            ExpressionListSyntax terms = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            if (folding is not null)
+            {
+                // Folding hands back the very item it was given wherever it changed nothing, so
+                // identity says which terms it rewrote.
+                _rewrittenTerms = new bool[terms.Items.Count];
+                for (int index = 0; index < _rewrittenTerms.Length; index++)
+                {
+                    _rewrittenTerms[index] = !ReferenceEquals(terms.Items[index], syntax!.Items[index]);
+                }
+            }
+
+            BoundExpression bound = _compiler.Bind(
+                _spec.OrderBy,
+                terms,
                 ValueContext(),
                 directions: true,
                 _options.Limits,
                 _sink,
                 location,
-                out _,
-                out BoundExpression? bound);
-
-            if (bound is null)
-            {
-                return;
-            }
+                folding);
 
             _orderBy = bound;
             _nullity.Absorb(bound.Nullity);
@@ -361,15 +404,35 @@ namespace Tellma.Core.Queryex.Pipeline
                 BoundItem item = _orderBy.Items[index];
                 for (int earlier = 0; earlier < index; earlier++)
                 {
-                    if (TypedEquivalence.AreEquivalent(
+                    if (!TypedEquivalence.AreEquivalent(
                         item.Expression,
                         _orderBy.Items[earlier].Expression))
+                    {
+                        continue;
+                    }
+
+                    if (WasRewritten(index) || WasRewritten(earlier))
+                    {
+                        // Two terms that are the same once a parameter was left out of one of them,
+                        // and that as a rule differed as written. Nobody mistyped anything, so there
+                        // is nothing to report: the later one could not change the order, and it is
+                        // left out of the statement because the backend refuses the repeat.
+                        _repeatedTerms.Add(index);
+                    }
+                    else
                     {
                         // The backend refuses the same column twice in one ordering, and a second
                         // mention could not change the order anyway, so it is a typo either way.
                         scope.Report(DiagnosticCodes.DuplicateOrderingTerm, item.Span);
-                        break;
                     }
+
+                    break;
+                }
+
+                if (_repeatedTerms.Contains(index))
+                {
+                    // Whatever else there is to say about it was said about the term it repeats.
+                    continue;
                 }
 
                 if (_spec.Aggregate && !OrdersWithinGrouping(item.Expression))
@@ -377,6 +440,14 @@ namespace Tellma.Core.Queryex.Pipeline
                     scope.Report(DiagnosticCodes.OrderingAltersGrouping, item.Span);
                 }
             }
+        }
+
+        /// <summary>Whether leaving parameters out rewrote an ordering term.</summary>
+        /// <param name="index">The term's position.</param>
+        /// <returns>True when it did.</returns>
+        private bool WasRewritten(int index)
+        {
+            return index < _rewrittenTerms.Length && _rewrittenTerms[index];
         }
 
         /// <summary>Whether an ordering term leaves the grouping alone.</summary>
@@ -591,6 +662,12 @@ namespace Tellma.Core.Queryex.Pipeline
 
             for (int index = 0; index < _orderBy.Items.Length; index++)
             {
+                if (_repeatedTerms.Contains(index))
+                {
+                    // The same as an earlier term once the omitted parameters were folded out.
+                    continue;
+                }
+
                 BoundItem item = _orderBy.Items[index];
                 bool descending = item.Direction == QueryexDirection.Descending;
 

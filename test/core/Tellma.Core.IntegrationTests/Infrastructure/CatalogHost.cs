@@ -18,8 +18,8 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
 {
     /// <summary>
     ///     A migrated catalog on the suite's server and the tenancy runtime composed over it, as a
-    ///     distribution composes it: the registry, the connection factory, the write side and the
-    ///     membership directory, without a host's hosted services.
+    ///     distribution composes it: the registry, the connection factory, the write side, the
+    ///     membership directory and the tenant scope factory, without a host's hosted services.
     /// </summary>
     internal sealed class CatalogHost : IAsyncDisposable
     {
@@ -52,6 +52,9 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
         /// <summary>The connection factory.</summary>
         public ITenantConnectionFactory Connections => _provider.GetRequiredService<ITenantConnectionFactory>();
 
+        /// <summary>The tenant scope factory.</summary>
+        public ITenantScopeFactory Scopes => _provider.GetRequiredService<ITenantScopeFactory>();
+
         /// <summary>Every log record of the runtime.</summary>
         public FakeLogCollector Logs => _provider.GetFakeLogCollector();
 
@@ -60,16 +63,18 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
         /// <param name="prefix">The prefix identifying the test.</param>
         /// <param name="configure">Changes the configuration before composing.</param>
         /// <param name="environmentName">The environment; Development, where every server is allowed unless listed.</param>
+        /// <param name="configureServices">Adds services after the composition, such as request-context initializers.</param>
         /// <returns>The host; the registry has loaded its first snapshot.</returns>
         public static async Task<CatalogHost> CreateAsync(
             SqlServerFixture sql,
             string prefix,
             Action<Dictionary<string, string?>>? configure = null,
-            string environmentName = "Development")
+            string environmentName = "Development",
+            Action<IServiceCollection>? configureServices = null)
         {
             string catalog = await sql.CreateEmptyCatalogAsync(prefix);
             await MigrateAsync(catalog);
-            return await ComposeAsync(sql, catalog, configure, environmentName);
+            return await ComposeAsync(sql, catalog, configure, environmentName, configureServices);
         }
 
         /// <summary>Composes the runtime over an existing catalog.</summary>
@@ -77,12 +82,14 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
         /// <param name="catalog">The catalog's connection string.</param>
         /// <param name="configure">Changes the configuration before composing.</param>
         /// <param name="environmentName">The environment.</param>
+        /// <param name="configureServices">Adds services after the composition, such as request-context initializers.</param>
         /// <returns>The host; the registry has loaded its first snapshot.</returns>
         public static async Task<CatalogHost> ComposeAsync(
             SqlServerFixture sql,
             string catalog,
             Action<Dictionary<string, string?>>? configure = null,
-            string environmentName = "Development")
+            string environmentName = "Development",
+            Action<IServiceCollection>? configureServices = null)
         {
             // The server's own credential is the profile: a catalog row names only server and database.
             SqlConnectionStringBuilder credential = new(sql.MasterConnectionString);
@@ -101,13 +108,13 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
             ServiceCollection services = new();
-            _ = services.AddSingleton(SandboxContext.Never);
             _ = services.AddFakeLogging();
             _ = services.AddTellma("acme", configuration, new SuiteEnvironment(environmentName), static _ => { });
 
             // The first-load bound is pinned by the unit suite on a fake clock; here a server busy
             // with the suite's parallel CREATE DATABASEs must not turn a verdict into a timeout.
             _ = services.Configure<TenantRegistryStartupOptions>(static startup => startup.FirstLoadTimeout = TimeSpan.FromMinutes(1));
+            configureServices?.Invoke(services);
 
             ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
             CatalogHost host = new(catalog, provider);

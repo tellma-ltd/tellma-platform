@@ -77,6 +77,20 @@ namespace Tellma.Core.Queryex.Diagnostics
             return new DiagnosticLocation(clause.ToString(), (int)clause);
         }
 
+        /// <summary>One item of a constant statement.</summary>
+        /// <param name="index">The zero-based item index.</param>
+        /// <returns>The location.</returns>
+        /// <remarks>
+        ///     Each item is a text of its own, so each is an input of its own; they are reported in
+        ///     the order they were supplied.
+        /// </remarks>
+        internal static DiagnosticLocation Constant(int index)
+        {
+            return new DiagnosticLocation(
+                string.Create(CultureInfo.InvariantCulture, $"Constant[{index}]"),
+                index);
+        }
+
         /// <summary>One item of a value list within this clause.</summary>
         /// <param name="index">The zero-based item index.</param>
         /// <returns>The location.</returns>

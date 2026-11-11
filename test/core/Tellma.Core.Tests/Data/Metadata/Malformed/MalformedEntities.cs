@@ -9,6 +9,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using TableTypeAttribute = Tellma.Core.Abstractions.Entities.TableTypeAttribute;
 
@@ -690,6 +691,25 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
     {
         [Searchable]
         public int Count { get; set; }
+    }
+
+    /// <summary>A value-set annotation on a number.</summary>
+    [Table("ValueSetNumbers", Schema = "fixture")]
+    [TableType]
+    public class ValueSetNumber : TopLevelEntity
+    {
+        [ValueSet("fixture.Grade")]
+        public int Grade { get; set; }
+    }
+
+    /// <summary>A value-set annotation on a property the model does not map.</summary>
+    [Table("UnmappedValueSets", Schema = "fixture")]
+    [TableType]
+    public class UnmappedValueSet : TopLevelEntity
+    {
+        [NotMapped]
+        [ValueSet("fixture.Grade")]
+        public string? Grade { get; set; }
     }
 
     /// <summary>A non-public property a configuration maps.</summary>

@@ -39,6 +39,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
             {
                 ["From"] = QxValue.Date(new DateOnly(2024, 1, 1)),
                 ["To"] = QxValue.Date(new DateOnly(2025, 12, 31)),
+
+                // The parameters the cases about omission declare. Every one has a value, the ones a
+                // case leaves out included, so leaving one out is never the same as supplying it.
+                ["AsOf"] = QxValue.Date(new DateOnly(2024, 6, 15)),
+                ["Customer"] = QxValue.Number(2),
+                ["Main"] = QxValue.Number(1),
+                ["Other"] = QxValue.Number(3),
+                ["Root"] = QxValue.Text("Assets"),
+                ["Posted"] = QxValue.Flag(true),
+                ["Floor"] = QxValue.Number(100000),
             },
         };
 
@@ -104,21 +114,18 @@ namespace Tellma.Core.Queryex.IntegrationTests
         public async Task Case_AnswersTheSameOnTheServer(string id)
         {
             QueryCase entry = QueryCorpus.All.Single(c => c.Id == id);
+
+            // The second reading leaves out what the compilation leaves out, and is still given a
+            // value for each of them: a reading that used one would answer differently.
             InterpreterContext context = (entry.HasUser ? Context : Context with { UserId = null }) with
             {
                 KeySets = entry.KeySets,
+                Omitted = entry.OmittedParameters.ToHashSet(StringComparer.OrdinalIgnoreCase),
             };
 
             QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                 entry.Spec,
-                new QueryCompilationOptions
-                {
-                    QueryexVersion = QueryexLanguage.Version,
-                    Schema = LedgerFixture.Schema,
-                    Parameters = entry.Parameters,
-                    HasUser = entry.HasUser,
-                    Limits = entry.Limits,
-                });
+                entry.Options(LedgerFixture.Schema));
 
             Assert.True(
                 result.Succeeded,

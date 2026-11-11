@@ -92,6 +92,14 @@ namespace Tellma.Core.Queryex.Tests.Coverage
                     yield return code;
                 }
             }
+
+            foreach (ConstantCase entry in ConstantCorpus.All)
+            {
+                foreach (string code in entry.Diagnostics)
+                {
+                    yield return code;
+                }
+            }
         }
     }
 }

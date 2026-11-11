@@ -8,15 +8,16 @@ using System.Globalization;
 namespace Tellma.Core.Tests.Calendars
 {
     /// <summary>
-    ///     en-GB, ar-SA and am-ET clones whose Gregorian date formats are fixed to the values .NET 10
-    ///     reads from ICU 74 (Ubuntu 24.04), so the golden strings do not move with the ICU release of
-    ///     the host running the tests: Windows' ICU differs (en-GB's full date has a comma there, and
-    ///     am-ET's Gregorian month names are spelled differently).
+    ///     en-GB, ar-SA and am-ET clones whose Gregorian date formats are fixed to the raw values
+    ///     .NET 10 reads from ICU 74 (Ubuntu 24.04), so the strings the calendar suites expect do not
+    ///     move with the ICU release of the host running them.
     /// </summary>
     /// <remarks>
-    ///     The pinned values keep the raw data's quirks (Arabic right-to-left marks in the patterns
-    ///     and the separator, the era the Arabic patterns end with), which the calendar systems must
-    ///     clean. Each clone's calendar is Gregorian, as a negotiated request culture's is.
+    ///     These stand for a culture the platform did not negotiate: the values keep the raw data's
+    ///     quirks (Arabic right-to-left marks in the patterns and the separator, the era the Arabic
+    ///     patterns end with), which the calendar systems must clean whatever culture they are
+    ///     handed. The cultures requests are negotiated to arrive already clean, and the golden
+    ///     renderings run over those. Each clone's calendar is Gregorian.
     /// </remarks>
     internal static class PinnedCultures
     {

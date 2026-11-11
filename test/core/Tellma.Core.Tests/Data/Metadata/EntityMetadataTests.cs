@@ -150,6 +150,20 @@ namespace Tellma.Core.Tests.Data.Metadata
         }
 
         [Fact]
+        public void A_string_property_names_the_value_set_it_draws_from_and_no_other_property_names_one()
+        {
+            PropertyMetadata zone = Property(typeof(MyRegion), "Zone");
+
+            // The column stays a plain string; only the metadata knows the set.
+            Assert.Equal(("core.TimeZone", typeof(string), 30), (zone.ValueSet, zone.ClrType, zone.MaxLength));
+            Assert.Null(zone.EnumValues);
+            Assert.Same(zone, Property(typeof(Region), "Zone"));
+            Assert.All(
+                _provider.All.SelectMany(static entity => entity.Properties).Where(property => !ReferenceEquals(property, zone)),
+                static property => Assert.Null(property.ValueSet));
+        }
+
+        [Fact]
         public void A_leafs_own_property_may_take_another_column_name()
         {
             Assert.Equal("ZoneCode", Property(typeof(MyRegion), "Zone").Column);

@@ -16,6 +16,13 @@ namespace Tellma.Core.Abstractions.Localization
         /// <summary>The offered languages, in the distribution's declaration order; the first is the distribution default.</summary>
         IReadOnlyList<LanguageInfo> Offered { get; }
 
+        /// <summary>
+        ///     Every language the platform can describe, offered or not: the catalogue's entries in
+        ///     catalogue order, then the languages the distribution added. What <see cref="Find" />
+        ///     searches, and the values of the language value set.
+        /// </summary>
+        IReadOnlyList<LanguageInfo> All { get; }
+
         /// <summary>A language of the whole catalogue, offered or not, or one the distribution added.</summary>
         /// <param name="code">The language code.</param>
         /// <returns>The language, or null when the catalogue does not describe it.</returns>
@@ -29,6 +36,7 @@ namespace Tellma.Core.Abstractions.Localization
         /// <summary>The regional formats of a catalogued or added language.</summary>
         /// <param name="language">The language code.</param>
         /// <returns>Its formats.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="language" /> is null.</exception>
         /// <exception cref="KeyNotFoundException">The catalogue does not describe the language.</exception>
         LanguageFormats Formats(string language);
 

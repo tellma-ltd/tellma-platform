@@ -17,8 +17,8 @@ namespace Tellma.Core.Tests.Tenancy
 {
     /// <summary>
     ///     The tenancy runtime as the composition root installs it, under a real generic host: the
-    ///     registrations, the startup load after the gate, the refresh loop on the host's clock, and a
-    ///     startup a behind catalog fails.
+    ///     registrations and their lifetimes, the startup load after the gate, the refresh loop on the
+    ///     host's clock, and a startup a behind catalog fails.
     /// </summary>
     public class TenancyCompositionTests
     {
@@ -37,6 +37,33 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.Same(provider.GetRequiredService<TenantMembershipDirectory>(), provider.GetRequiredService<ITenantMembershipDirectory>());
             Assert.Contains(provider.GetServices<IHostedService>(), static service => service is TenantRegistryRefreshService);
             Assert.IsType<TellmaStartupGate>(provider.GetServices<IHostedService>().First());
+        }
+
+        [Fact]
+        public async Task The_request_context_services_resolve_one_per_scope_and_the_scope_factory_as_a_singleton()
+        {
+            IServiceCollection services = TestComposition.Compose(static _ => { });
+            await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+            await using AsyncServiceScope one = provider.CreateAsyncScope();
+            await using AsyncServiceScope other = provider.CreateAsyncScope();
+
+            // --- The singleton writer ---
+            Assert.IsType<TenantScopeFactory>(provider.GetRequiredService<ITenantScopeFactory>());
+            Assert.Same(provider.GetRequiredService<ITenantScopeFactory>(), one.ServiceProvider.GetRequiredService<ITenantScopeFactory>());
+
+            // --- The scoped ones: the holder behind both of its interfaces, the guard, the connections, the sandbox flag ---
+            Assert.IsType<RequestContextHolder>(one.ServiceProvider.GetRequiredService<IRequestContextAccessor>());
+            Assert.Same(one.ServiceProvider.GetRequiredService<IRequestContextHolder>(), one.ServiceProvider.GetRequiredService<IRequestContextAccessor>());
+            Assert.IsType<TenantAccessGuard>(one.ServiceProvider.GetRequiredService<ITenantAccessGuard>());
+            Assert.IsType<TenantConnectionProvider>(one.ServiceProvider.GetRequiredService<ITenantConnectionProvider>());
+            Assert.IsType<TenantSandboxContext>(one.ServiceProvider.GetRequiredService<ISandboxContext>());
+            Assert.Same(one.ServiceProvider.GetRequiredService<ITenantAccessGuard>(), one.ServiceProvider.GetRequiredService<ITenantAccessGuard>());
+            Assert.NotSame(one.ServiceProvider.GetRequiredService<ITenantAccessGuard>(), other.ServiceProvider.GetRequiredService<ITenantAccessGuard>());
+            Assert.NotSame(one.ServiceProvider.GetRequiredService<ITenantConnectionProvider>(), other.ServiceProvider.GetRequiredService<ITenantConnectionProvider>());
+
+            // --- No initializer or session listener is the platform's own yet: each is a collection others fill ---
+            Assert.Empty(one.ServiceProvider.GetServices<IRequestContextInitializer>());
+            Assert.Empty(provider.GetServices<ISessionTerminationListener>());
         }
 
         [Fact]
@@ -140,7 +167,6 @@ namespace Tellma.Core.Tests.Tenancy
             });
 
             builder.Configuration.AddInMemoryCollection(configuration ?? TestComposition.SoundConfiguration);
-            builder.Services.AddSingleton(SandboxContext.Never);
             builder.Services.AddSingleton<TimeProvider>(time);
             builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, static _ => { }).UseFakeCatalog(catalog);
             return builder.Build();

@@ -520,6 +520,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - dotnet-ef 10.0.9 to re-scaffold the migrations host
 
 ## 0011
+- (PC-025) Once a tenant is bound, the request-context holder refuses a different Kind or Subject and a replaced or dropped UserId (null to a value stays allowed): a front door binds tenant and principal in one Set. The two-writers reflection pin searches only Tellma.*.dll referenced by Tellma.Core.Tests; the Tellma.Core.AspNetCore checkpoint must add the reference or run the same search in its own suite. Scope factory: a tenant missing from the snapshot throws TenantUnavailableException (tenant-not-found); TenantNotFoundException from CreateScopeAsync means only an inactive run-as member.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -561,6 +562,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - ICU on the host (core.globalization check; InvariantGlobalization must stay off; alpine images need icu-libs)
 - Azure (deployment only, not tests): Blob storage + Key Vault key for the Data Protection ring, Key Vault references/AddAzureKeyVault, managed identity for SQL, App Service settings (Always On, WEBSITES_CONTAINER_STOP_TIME_LIMIT=30), Application Insights connection string
 - Identity: in-proc engine signing keys for Development; Tellma:Identity:ClientSecret/ServiceClientSecret outside Development
+- (from PC-025) Front doors (tenant filter, MCP filter, the worker after CreateScopeAsync) must set CultureInfo.CurrentCulture/CurrentUICulture from RequestContext.CultureInfo after EnsureAccessAsync/CreateScopeAsync returns: an initializer's AsyncLocal change does not flow back (spec 0013 §9.3 step 5 cannot work as written). The guard meters only the outcomes it decides; the tenant middleware meters pre-binding outcomes and scopes{kind=request} and needs a seam into the internal TenancyMetrics. ITellmaLinks.Target reads stacks through the internal IStackRouteSource (default NoStackRoutes); the stack-registry checkpoint replaces it. AddTellma registers ISandboxContext → TenantSandboxContext (scoped; throws outside a tenant): in-process identity needs its own answer for tenantless mail and must not override host-wide with Never.
 
 ## 0012
 
@@ -598,6 +600,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - CI: a Windows LocalDB integration job (spec requires LocalDB and Testcontainers per PR); the design-e2e package flow must pack Tellma.Core.Queryex and the analyzer
 
 ## 0013
+- (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -636,6 +639,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - CLDR data for Region_<code> display names in each shipped language and for 'likely region' defaults — no source named; practical options: Node's Intl.DisplayNames from the client workspace toolchain, or unicode-org cldr-json
 - Arabic translations of every Core Strings key for Strings.ar.resx (the reference distribution declares ar-SA; §1.3 fails startup without the ar satellite) — content authorship, no source specified
 - Data Protection key ring for Secret settings in hosts that read them (ephemeral provider suffices in tests)
+- (from PC-025, for PC-049 and every front door) An IRequestContextInitializer cannot set CultureInfo.CurrentCulture/CurrentUICulture for the request (§9.3 step 5): it runs inside an async call and the AsyncLocal change does not flow back. The front door sets both from RequestContext.CultureInfo after EnsureAccessAsync/CreateScopeAsync returns.
 
 ## 0014
 
@@ -672,6 +676,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Microsoft.Extensions.Diagnostics.Testing (MetricCollector<T>) and Microsoft.Extensions.TimeProvider.Testing — already pinned centrally
 - No identity-server or third-party service: the identity client is spec 0018's and is stubbed (no Live=true suite)
 - Spec 0003's fixed Development subject 00000000-0000-0000-0000-000000000001 for the bootstrap's in-proc path
+- (from PC-025) The guard and scope factory fail closed when no initializer bound UserId: every guard call fails until the user-connection initializer exists. A reflection test pins which Tellma.Core types take IRequestContextHolder; the runner that re-runs the negotiation initializer must be added to its allow-list knowingly.
 
 ## 0015
 
@@ -747,6 +752,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - SQL Server for integration: LocalDB on Windows, Testcontainers.MsSql + Docker on Linux; the acme reference distribution and its migrator (0011 §1.2)
 - Nightly only: a running platform identity server (spec 0003 with 0010 Part A amendments) configured for the Live=true MCP cases
 - Already pinned test helpers: Microsoft.AspNetCore.TestHost 10.0.11, Microsoft.Extensions.TimeProvider.Testing, Microsoft.Extensions.Diagnostics.Testing
+- (from PC-025) The problem mapper must map TenantUnavailableException's new code tenant-not-found (a background scope refused for a Provisioning/Retired tenant) to 404, and map StepUpRequiredException.
 
 ## 0017
 
@@ -966,6 +972,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Browser features: Popover API (popover=manual) for the toast and busy-overlay hosts; the `inert` attribute; Intl.Segmenter (avatar initials); navigator.clipboard (copy, with fallback); document.execCommand('delete') for undoable clear; HTML5 DnD (no touch DnD on Samsung Internet or Firefox Android, Review flag 1).
 
 ## 0024
+- (PC-067) The app-config check reports `string-key-collision` only when the build passes the string packs to it (optional argument); the build/config-check checkpoint must pass them. (The declaration registry lives on globalThis under `Symbol.for`, so loading @tellma/core twice is safe.)
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -1009,6 +1016,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Acme PWA icons: public/icons/favicon.svg, icon-192.png, icon-512.png and icon-maskable-512.png (PNG header sizes are checked). These must be created.
 - Fonts: the existing Noto Sans/Mono and the locale-ar Arabic subset; preloads are injected by the build.
 - Azure SignalR origins in connect-src (only when Azure:SignalR:ConnectionString is set) and Azure App Service for the staging smoke. Deployment-time only.
+- (D-046, from PC-019) The server pins CLDR 48 culture data with two corrections: om-ET, om-KE, ti-ER and ti-ET numeric dates stay day-first (CLDR 48 switched them to M/d/yy), and ar-SA/ar-SO use '%' instead of U+066A. The client's §7.7 fallback formats for om/ti/so must apply the same day-first rule, or one user sees two date orders.
 
 ## 0025
 
@@ -1153,6 +1161,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Full ICU/IANA time-zone data and Intl.NumberFormat v3 string formatting (Node 24 and evergreen browsers) for exact decimal formatting and DST tests
 - The TypeScript compiler (already present) for the emitted .d.ts compile test
 - No new npm packages
+- (D-046, from PC-019) The enum-name clash startup check (<entity schema>.<EnumTypeName>) covers only entity-property enums. When the 0029 emit lands, extend it to setting-key and action-field enums.
 
 ## 0030
 

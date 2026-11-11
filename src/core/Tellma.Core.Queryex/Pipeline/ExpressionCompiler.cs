@@ -111,6 +111,11 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="limits">The ceilings for this call site.</param>
         /// <param name="sink">Where to record problems.</param>
         /// <param name="location">Which input this text is.</param>
+        /// <param name="folding">
+        ///     What was folded out of the tree since the text was parsed, when anything was. The tree
+        ///     is then no longer the parse of the text alone, and the binding is remembered under
+        ///     both.
+        /// </param>
         /// <returns>The bound expression.</returns>
         internal BoundExpression Bind(
             string text,
@@ -119,13 +124,14 @@ namespace Tellma.Core.Queryex.Pipeline
             bool directions,
             QueryexLimits limits,
             DiagnosticSink sink,
-            DiagnosticLocation location)
+            DiagnosticLocation location,
+            AppliedFolding? folding = null)
         {
             // Told before the cache is consulted, so an observer sees every request rather than
             // only the ones that missed.
             BindObserver?.Invoke(text, context);
 
-            BindKey? key = KeyFor(text, syntax, context, directions, limits);
+            BindKey? key = KeyFor(text, syntax, context, directions, limits, folding);
             if (key is not null
                 && _bindings.TryGet(key, out BoundExpression? cached)
                 && cached is not null)
@@ -145,6 +151,16 @@ namespace Tellma.Core.Queryex.Pipeline
             foreach (BoundItem item in items)
             {
                 nodes += item.Expression.NodeCount;
+            }
+
+            if (folding is not null && sink.Count == before)
+            {
+                // An absent value written where an omitted parameter stood binds to as many nodes
+                // as it has parts, and the parameter bound to one. Counted as that one, so that
+                // leaving a parameter out can never be what takes a query over a ceiling it fitted
+                // under when it was written. Only for a list that bound cleanly: a part that failed
+                // to bind is a single node whatever was written under it.
+                nodes -= OmittedParameterFolder.Surplus(syntax);
             }
 
             BoundExpression bound = new(items, nullity, nodes, []);
@@ -196,6 +212,7 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="context">What the expression depends on besides its own text.</param>
         /// <param name="directions">Whether direction suffixes are accepted here.</param>
         /// <param name="limits">The ceilings for this call site.</param>
+        /// <param name="folding">What was folded out of the tree, when anything was.</param>
         /// <returns>The key, or null when this binding is not worth remembering.</returns>
         /// <remarks>
         ///     A binding done without a schema resolves nothing, and one done while inferring
@@ -207,7 +224,8 @@ namespace Tellma.Core.Queryex.Pipeline
             ExpressionListSyntax syntax,
             BindingContext context,
             bool directions,
-            QueryexLimits limits)
+            QueryexLimits limits,
+            AppliedFolding? folding)
         {
             return context.Inference is not null || context.Schema is null || context.Root is null
                 ? null
@@ -221,7 +239,9 @@ namespace Tellma.Core.Queryex.Pipeline
                     context.HasGroupingKeys,
                     directions,
                     limits,
-                    BindKey.Project(syntax, context.Parameters));
+                    BindKey.Project(syntax, context.Parameters),
+                    folding?.Omitted ?? [],
+                    folding?.Negated ?? false);
         }
     }
 }
