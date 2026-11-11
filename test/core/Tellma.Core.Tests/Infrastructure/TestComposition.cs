@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
-using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Tenancy;
@@ -74,8 +73,8 @@ namespace Tellma.Core.Tests.Infrastructure
         }
 
         /// <summary>
-        ///     Composes into a fresh service collection with a sandbox context registered, so only the
-        ///     problem under test fails the gate.
+        ///     Composes into a fresh service collection over a fake catalog, so only the problem under
+        ///     test fails the gate.
         /// </summary>
         /// <param name="compose">The composition method.</param>
         /// <param name="configuration">The configuration; the sound configuration when null.</param>
@@ -94,7 +93,7 @@ namespace Tellma.Core.Tests.Infrastructure
             Func<bool>? icuProbe = null,
             IServiceCollection? services = null)
         {
-            services ??= new ServiceCollection().AddSingleton(SandboxContext.Never);
+            services ??= new ServiceCollection();
             return TellmaServiceCollectionExtensions.AddTellma(
                 services,
                 slug,
@@ -128,7 +127,7 @@ namespace Tellma.Core.Tests.Infrastructure
         /// <param name="configuration">The configuration; the sound configuration when null.</param>
         /// <param name="environment">The environment; Production when null.</param>
         /// <param name="icuProbe">The ICU probe; reports ICU when null.</param>
-        /// <param name="services">The collection to compose into; a fresh one with a sandbox context when null.</param>
+        /// <param name="services">The collection to compose into; a fresh one when null.</param>
         /// <returns>The problems the checks reported.</returns>
         public static async Task<IReadOnlyList<CompositionProblem>> CheckAsync(
             Action<TellmaBuilder> compose,

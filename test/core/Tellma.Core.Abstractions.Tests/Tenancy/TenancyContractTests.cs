@@ -64,12 +64,13 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
         }
 
         [Theory]
+        [InlineData("tenant-not-found")]
         [InlineData("catalog-unavailable")]
         [InlineData("tenant-schema-behind")]
         [InlineData("tenant-suspended")]
         [InlineData("tenant-read-only")]
         [InlineData("tenant-frozen")]
-        public void An_unavailable_tenant_carries_one_of_its_five_codes(string code)
+        public void An_unavailable_tenant_carries_one_of_its_six_codes(string code)
         {
             TenantUnavailableException unavailable = new(17, TenantState.Suspended, code, TimeSpan.FromSeconds(15));
 
@@ -80,7 +81,7 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
         [Fact]
         public void An_unavailable_tenant_refuses_another_code_or_a_negative_wait()
         {
-            _ = Assert.Throws<ArgumentException>(() => new TenantUnavailableException(17, null, "tenant-not-found", null));
+            _ = Assert.Throws<ArgumentException>(() => new TenantUnavailableException(17, null, "tenant-illegal-transition", null));
             _ = Assert.Throws<ArgumentException>(() => new TenantUnavailableException(17, null, "forbidden", null));
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => new TenantUnavailableException(17, null, "catalog-unavailable", TimeSpan.FromSeconds(-1)));
         }
