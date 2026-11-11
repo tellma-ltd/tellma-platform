@@ -22,12 +22,18 @@ import { type Page } from '@playwright/test';
  * whose keydown is not cancelled and whose target is a text input is
  * inserted at the caret with an `input` event: the browser's own default
  * action. Default actions beyond text insertion (Tab's focus move, a form
- * submit) do not run, so a test asserts what the page's handlers did.
+ * submit, an arrow's caret move) do not run, so a test asserts what the
+ * page's handlers did.
+ *
+ * A key may carry modifiers as a `+`-joined prefix, as Playwright's own
+ * keyboard writes them: `'Alt+ArrowDown'`, `'Control+Shift+z'`. A key with
+ * Alt, Control or Meta held inserts no text.
  */
 
 /**
- * Dispatches `keys` (KeyboardEvent `key` values: `'a'`, `'Enter'`, `'Tab'`)
- * in one task, with no render between them.
+ * Dispatches `keys` (KeyboardEvent `key` values: `'a'`, `'Enter'`, `'Tab'`,
+ * or a modified one such as `'Alt+ArrowDown'`) in one task, with no render
+ * between them.
  */
 export async function pressInOneTask(page: Page, keys: readonly string[]): Promise<void> {
   await page.evaluate(dispatchBurst, { keys, releaseName: null });
@@ -74,11 +80,26 @@ async function dispatchBurst({ keys, releaseName }: BurstArgs): Promise<void> {
     }
   }
   // The burst itself: every key in this same task.
-  for (const key of keys) {
+  for (const chord of keys) {
     const target = (document.activeElement ?? document.body) as HTMLElement;
-    const init: KeyboardEventInit = { key, bubbles: true, cancelable: true, composed: true };
+    // 'Alt+ArrowDown' is the key ArrowDown with Alt held; a lone '+' is the
+    // plus key itself (it splits into two empty parts).
+    const parts = chord.split('+');
+    const last = parts.pop();
+    const key = last === undefined || last === '' ? '+' : last;
+    const command = parts.includes('Alt') || parts.includes('Control') || parts.includes('Meta');
+    const init: KeyboardEventInit = {
+      key,
+      altKey: parts.includes('Alt'),
+      ctrlKey: parts.includes('Control'),
+      metaKey: parts.includes('Meta'),
+      shiftKey: parts.includes('Shift'),
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    };
     const proceed = target.dispatchEvent(new KeyboardEvent('keydown', init));
-    if (proceed && key.length === 1 && target instanceof HTMLInputElement) {
+    if (proceed && key.length === 1 && !command && target instanceof HTMLInputElement) {
       // The browser's default action for a printable key: insert at the caret.
       const start = target.selectionStart ?? target.value.length;
       const end = target.selectionEnd ?? start;
