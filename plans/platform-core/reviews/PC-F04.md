@@ -302,7 +302,7 @@ Runs (local Windows, 20 cores):
 
 ### Responses
 
-R1-1: fixed in @@SHA@@, with the preferred fix (one source). The footer rows are now one computed,
+R1-1: fixed in cafad9e, with the preferred fix (one source). The footer rows are now one computed,
 `footerRows`: the rows that render, in order, each with its option key (the sentinel) and its
 caption, under the conditions the three `@if` blocks used to spell out (not while loading; a page
 configured; Edit… only while the field names an entity). The template draws the footer from it
