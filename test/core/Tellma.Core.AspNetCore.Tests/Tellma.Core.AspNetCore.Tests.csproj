@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The suite hosts the real pipeline on a test server. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- Bearer tokens minted against the test issuer's key. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <!-- MetricCollector, for the CSRF and step-up instruments. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- FakeTimeProvider, so the registry's staleness bound runs on a clock the suite moves. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
+    <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
+  </ItemGroup>
+
+</Project>

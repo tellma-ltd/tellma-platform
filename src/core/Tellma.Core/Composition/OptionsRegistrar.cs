@@ -85,7 +85,7 @@ namespace Tellma.Core.Composition
         /// <typeparam name="TOptions">The options type.</typeparam>
         /// <param name="services">The services to resolve from.</param>
         /// <returns>Each validation or binding failure; empty when the options are valid.</returns>
-        private static IReadOnlyList<string> ValidateOptions<TOptions>(IServiceProvider services)
+        internal static IReadOnlyList<string> ValidateOptions<TOptions>(IServiceProvider services)
             where TOptions : class
         {
             try
