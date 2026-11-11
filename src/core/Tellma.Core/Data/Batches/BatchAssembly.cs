@@ -26,8 +26,16 @@ namespace Tellma.Core.Data.Batches
     ///             body to wrap; T-SQL refuses an empty block, so a prologue-only batch has no wrapper.
     ///         </item>
     ///         <item><c>BEGIN TRANSACTION;</c>, on an <see cref="TransactionMode.Auto" /> batch that declares a write.</item>
-    ///         <item>The transaction-head statements, the body statements and the epilogue statements.</item>
-    ///         <item><c>COMMIT TRANSACTION;</c>, then <c>END;</c>, closing what steps 3 and 4 opened.</item>
+    ///         <item>The transaction-head statements, such as an application lock.</item>
+    ///         <item>
+    ///             The persist re-checks (<see cref="PersistChecks" />), on a writing persist batch that
+    ///             carries the connect prologue: the version-tag guard, then the caller re-check.
+    ///         </item>
+    ///         <item>The body statements and the epilogue statements.</item>
+    ///         <item>
+    ///             <c>COMMIT TRANSACTION;</c>, the last statement inside the transaction, then
+    ///             <c>END;</c>, closing what steps 3 and 4 opened.
+    ///         </item>
     ///     </list>
     /// </remarks>
     internal sealed class BatchAssembly
@@ -65,13 +73,15 @@ namespace Tellma.Core.Data.Batches
         /// <param name="lines">Each text statement's line range.</param>
         /// <param name="guarded">Whether the body is wrapped in the guard.</param>
         /// <param name="inTextTransaction">Whether the text opens and commits its own transaction.</param>
+        /// <param name="checks">The persist re-checks the text carries, if any.</param>
         private BatchAssembly(
             string text,
             IReadOnlyList<BatchParameter> parameters,
             IReadOnlyList<BatchStatement> statements,
             List<(int First, int Last, int Ordinal)> lines,
             bool guarded,
-            bool inTextTransaction)
+            bool inTextTransaction,
+            PersistChecks? checks)
         {
             Text = text;
             Parameters = parameters;
@@ -79,6 +89,7 @@ namespace Tellma.Core.Data.Batches
             _lines = lines;
             Guarded = guarded;
             InTextTransaction = inTextTransaction;
+            Checks = checks;
         }
 
         /// <summary>The framed text.</summary>
@@ -99,6 +110,15 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Whether the text opens and commits its own transaction.</summary>
         public bool InTextTransaction { get; }
 
+        /// <summary>The persist re-checks the text carries after the transaction head, if any.</summary>
+        public PersistChecks? Checks { get; }
+
+        /// <summary>
+        ///     Whether every statement may run twice, so a round trip that lost its connection can be
+        ///     re-run whether or not it committed.
+        /// </summary>
+        public bool MayRunTwice => Statements.All(static statement => statement.MayRunTwice);
+
         /// <summary>How many statements carry text, the frame's own excluded.</summary>
         public int StatementCount => _lines.Count;
 
@@ -110,22 +130,25 @@ namespace Tellma.Core.Data.Batches
         /// <param name="fingerprint">The running model's storage fingerprint, bound as <c>@tm_schema</c>.</param>
         /// <param name="guarded">Whether the batch carries the connect prologue and its guard.</param>
         /// <param name="inTextTransaction">Whether the text opens and commits its own transaction.</param>
+        /// <param name="checks">The persist re-checks to emit after the transaction head, if any.</param>
         /// <returns>The assembly.</returns>
         /// <exception cref="InvalidOperationException">
         ///     Two statements bind one reserved name to different values, or the batch declares more
         ///     than <see cref="MaxParameters" /> parameters.
         /// </exception>
-        public static BatchAssembly Create(IReadOnlyList<BatchStatement> statements, string fingerprint, bool guarded, bool inTextTransaction)
+        public static BatchAssembly Create(
+            IReadOnlyList<BatchStatement> statements, string fingerprint, bool guarded, bool inTextTransaction, PersistChecks? checks = null)
         {
             ArgumentNullException.ThrowIfNull(statements);
             ArgumentException.ThrowIfNullOrEmpty(fingerprint);
 
             List<BatchStatement> ordered = [.. statements.OrderBy(static statement => statement.Section).ThenBy(static statement => statement.Ordinal)];
 
-            // --- The parameters: the fingerprint, then each statement's; a reserved name bound twice must bind one value ---
+            // --- The parameters: the fingerprint, the checks', then each statement's; a reserved name bound twice must bind one value ---
             List<BatchParameter> parameters = [SchemaFingerprintParameter(fingerprint)];
             Dictionary<string, BatchParameter> byName = new(StringComparer.OrdinalIgnoreCase) { [parameters[0].Name] = parameters[0] };
-            foreach (BatchParameter parameter in ordered.SelectMany(static statement => statement.Parameters))
+            IEnumerable<BatchParameter> candidates = (checks?.Parameters ?? []).Concat(ordered.SelectMany(static statement => statement.Parameters));
+            foreach (BatchParameter parameter in candidates)
             {
                 if (byName.TryGetValue(parameter.Name, out BatchParameter? bound))
                 {
@@ -158,7 +181,8 @@ namespace Tellma.Core.Data.Batches
             }
 
             // The wrapper only around a body with text: an empty BEGIN … END block does not compile.
-            bool wrapped = guarded && (inTextTransaction || ordered.Any(static statement => statement.Section != BatchSection.Prologue && statement.Text.Length > 0));
+            bool wrapped = guarded
+                && (inTextTransaction || checks is not null || ordered.Any(static statement => statement.Section != BatchSection.Prologue && statement.Text.Length > 0));
             if (wrapped)
             {
                 writer.Line(GuardOpen);
@@ -169,11 +193,24 @@ namespace Tellma.Core.Data.Batches
                 writer.Line(TransactionOpen);
             }
 
-            foreach (BatchStatement statement in ordered.Where(static statement => statement.Section != BatchSection.Prologue))
+            // The transaction head first (a lock is taken before any tag row's), then the re-checks,
+            // then the body and the epilogue; the checks are the frame's own lines and resolve to no statement.
+            foreach (BatchStatement statement in ordered.Where(static statement => statement.Section == BatchSection.TransactionHead))
             {
                 writer.Statement(statement, lines);
             }
 
+            if (checks is not null)
+            {
+                writer.Line(checks.Text);
+            }
+
+            foreach (BatchStatement statement in ordered.Where(static statement => statement.Section > BatchSection.TransactionHead))
+            {
+                writer.Statement(statement, lines);
+            }
+
+            // COMMIT is the last statement inside the transaction: nothing is written between it and END.
             if (inTextTransaction)
             {
                 writer.Line(TransactionCommit);
@@ -184,7 +221,7 @@ namespace Tellma.Core.Data.Batches
                 writer.Line(GuardClose);
             }
 
-            return new BatchAssembly(writer.ToString(), parameters, ordered, lines, guarded, inTextTransaction);
+            return new BatchAssembly(writer.ToString(), parameters, ordered, lines, guarded, inTextTransaction, checks);
         }
 
         /// <summary>The refusal of a batch with too many parameters: a platform defect, because lists ride table-valued parameters.</summary>

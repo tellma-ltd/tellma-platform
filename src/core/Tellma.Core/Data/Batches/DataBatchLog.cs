@@ -53,5 +53,30 @@ namespace Tellma.Core.Data.Batches
             Level = LogLevel.Warning,
             Message = "Rolling back the explicit transaction of {Operation} on tenant {TenantId} failed after the batch failed.")]
         public static partial void RollbackFailed(ILogger logger, Exception exception, string operation, int tenantId);
+
+        /// <summary>The commit probe failed, so whether the ambiguous round trip committed is unknown.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The probe's exception.</param>
+        /// <param name="operation">The scope's operation.</param>
+        /// <param name="tenantId">The tenant.</param>
+        [LoggerMessage(
+            EventName = "DataBatch.CommitProbeFailed",
+            Level = LogLevel.Warning,
+            Message = "The commit probe of {Operation} on tenant {TenantId} failed, so whether its round trip committed is unknown.")]
+        public static partial void CommitProbeFailed(ILogger logger, Exception exception, string operation, int tenantId);
+
+        /// <summary>A round trip failed and is sent again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The attempt's failure.</param>
+        /// <param name="operation">The scope's operation.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="attempt">The failed attempt, from 1.</param>
+        /// <param name="retryClass">Why it may be re-run: <c>reported</c> or <c>ambiguous</c>.</param>
+        /// <param name="delayMs">The wait before the next attempt, in milliseconds.</param>
+        [LoggerMessage(
+            EventName = "DataBatch.Retrying",
+            Level = LogLevel.Information,
+            Message = "Attempt {Attempt} of a round trip of {Operation} on tenant {TenantId} failed ({RetryClass}); it is sent again in {DelayMs} ms.")]
+        public static partial void Retrying(ILogger logger, Exception exception, string operation, int tenantId, int attempt, string retryClass, double delayMs);
     }
 }

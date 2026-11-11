@@ -5,7 +5,10 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Testing;
+using System.Data;
 using System.Data.Common;
+using System.Globalization;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
@@ -21,13 +24,27 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <param name="sql">The suite's server.</param>
     public sealed class DataBatchDatabase(SqlServerFixture sql) : IAsyncLifetime
     {
+        /// <summary>The caller <see cref="SeedCallerAsync" /> stores.</summary>
+        public const int CallerId = 1;
+
         /// <summary>The statements that return the database to its state after creation.</summary>
         private const string ResetText = """
             DELETE FROM [core].[Jobs];
             DELETE FROM [core].[VersionTags];
+            DELETE FROM [core].[UserStamps];
+            DELETE FROM [core].[Users];
             DELETE FROM [fixture].[WidgetExtras];
             DELETE FROM [dbo].[__TellmaSchema];
             """;
+
+        /// <summary>The <c>settings</c> tag <see cref="SeedCallerAsync" /> stores and <see cref="Premises" /> expects.</summary>
+        public static readonly Guid SettingsTag = new("5e771295-0000-0000-0000-000000000001");
+
+        /// <summary>The <c>permissions</c> tag <see cref="SeedCallerAsync" /> stores and <see cref="Premises" /> expects.</summary>
+        public static readonly Guid PermissionsTag = new("5e771295-0000-0000-0000-000000000002");
+
+        /// <summary>The caller's per-user permissions tag <see cref="SeedCallerAsync" /> stores and the prologue binds.</summary>
+        public static readonly Guid UserPermissionsTag = new("5e771295-0000-0000-0000-000000000003");
 
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;
@@ -38,8 +55,14 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The fixture host over the database.</summary>
         public FixtureTenant Tenant => _tenant ?? throw new InvalidOperationException("The database is not created yet.");
 
+        /// <summary>The server's administrative connection, which may end other sessions and see their requests.</summary>
+        public string MasterConnectionString => sql.MasterConnectionString;
+
         /// <summary>The host's log records.</summary>
         public FakeLogCollector Logs => Tenant.Services.GetFakeLogCollector();
+
+        /// <summary>What the connect-prologue stand-in confirms for a user's batch, matching the seeded caller.</summary>
+        internal static GuardPremises Premises => GuardPremises.ForUser(new VersionTag(SettingsTag), new VersionTag(PermissionsTag));
 
         /// <inheritdoc />
         public async ValueTask InitializeAsync()
@@ -59,7 +82,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
         /// <summary>
         ///     Deletes every row a test may have written, lists the running fingerprint again, and
-        ///     clears the log and the prologue's verdict.
+        ///     clears the log and the prologue's settings.
         /// </summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
@@ -67,7 +90,24 @@ namespace Tellma.Core.IntegrationTests.Data
             await SqlServerFixture.ExecuteAsync(Tenant.ConnectionString, ResetText);
             await FixtureDatabase.RecordFingerprintAsync(Tenant.ConnectionString, Tenant.Fingerprint, TestContext.Current.CancellationToken);
             Prologue.Passes = true;
+            Prologue.ExpectedUserPermissionsTag = UserPermissionsTag;
             Logs.Clear();
+        }
+
+        /// <summary>
+        ///     Stores what <see cref="Premises" /> and the prologue expect: the <c>settings</c> and
+        ///     <c>permissions</c> tags, and an active caller whose stamp carries its permissions tag.
+        /// </summary>
+        /// <returns>A task that completes when they are stored.</returns>
+        public async Task SeedCallerAsync()
+        {
+            await SqlServerFixture.ExecuteAsync(
+                Tenant.ConnectionString,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) VALUES (N'{VersionTagNames.Settings}', '{SettingsTag}'), (N'{VersionTagNames.Permissions}', '{PermissionsTag}');"),
+                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[Users] ([Id], [Name], [IsActive]) VALUES ({CallerId}, N'fx-caller', 1);"),
+                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[UserStamps] ([UserId], [PermissionsTag]) VALUES ({CallerId}, '{UserPermissionsTag}');"));
         }
 
         /// <inheritdoc />
@@ -78,12 +118,17 @@ namespace Tellma.Core.IntegrationTests.Data
 
         /// <summary>
         ///     A stand-in for the connect prologue: on a marked batch it declares the guard variable with
-        ///     the verdict the test chose, returns it, and reports it from its reader.
+        ///     the verdict the test chose, returns it, and reports it from its reader. For a user's batch
+        ///     it also declares the caller and binds the caller's permissions tag, which the persist
+        ///     re-checks name.
         /// </summary>
         public sealed class ConnectPrologue : IDataBatchContributor
         {
             /// <summary>The verdict the next batch's guard reports.</summary>
             public bool Passes { get; set; } = true;
+
+            /// <summary>The caller's per-user permissions tag the prologue confirmed.</summary>
+            public Guid ExpectedUserPermissionsTag { get; set; } = UserPermissionsTag;
 
             /// <inheritdoc />
             public int Order => 0;
@@ -91,16 +136,24 @@ namespace Tellma.Core.IntegrationTests.Data
             /// <inheritdoc />
             public void Contribute(IDataBatch batch, DataBatchStage stage)
             {
-                if (stage != DataBatchStage.Prologue || batch is not DataBatch { CarriesConnectPrologue: true } marked)
+                if (stage != DataBatchStage.Prologue || batch is not DataBatch { Premises: GuardPremises premises } marked)
                 {
                     return;
                 }
 
+                // --- The guard variable, and for a user the caller and the caller's tag ---
                 StatementDraft draft = marked.Begin();
                 int ordinal = draft.Ordinal;
+                string caller = string.Empty;
+                if (!premises.IsSystem)
+                {
+                    caller = string.Create(CultureInfo.InvariantCulture, $"DECLARE {ReservedSqlNames.UserId} int = {CallerId};\n");
+                    draft.Reserved(new ScalarParameter(ReservedSqlNames.ExpectedUserPermissionsTag, SqlDbType.UniqueIdentifier, ExpectedUserPermissionsTag));
+                }
+
                 marked.Append(
                     draft,
-                    $"DECLARE {ReservedSqlNames.Guard} bit = {(Passes ? 1 : 0)};\nSELECT {ReservedSqlNames.Guard} AS [Guard];",
+                    $"DECLARE {ReservedSqlNames.Guard} bit = {(Passes ? 1 : 0)};\n{caller}SELECT {ReservedSqlNames.Guard} AS [Guard];",
                     reader: async (cursor, cancellationToken) =>
                     {
                         DbDataReader reader = await cursor.NextAsync(ordinal, cancellationToken);
