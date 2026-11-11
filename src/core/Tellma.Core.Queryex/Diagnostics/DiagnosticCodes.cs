@@ -57,8 +57,11 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>A direction suffix is not the final token of its item at depth zero.</summary>
         internal const string DirectionMustTerminateItem = "QX2008";
 
-        /// <summary>A predicate position was given a list rather than a single expression.</summary>
-        internal const string PredicateListNotPermitted = "QX2009";
+        /// <summary>
+        ///     A position that takes a single expression — a predicate, or one item of a constant
+        ///     statement — was given a list.
+        /// </summary>
+        internal const string ListNotPermitted = "QX2009";
 
         /// <summary>A path segment names nothing the entity declares.</summary>
         internal const string UnknownProperty = "QX3001";
@@ -143,6 +146,9 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>Two ordering terms are the same expression.</summary>
         internal const string DuplicateOrderingTerm = "QX4008";
+
+        /// <summary>Paths are not permitted in this position, which has no row to read one from.</summary>
+        internal const string PathNotPermitted = "QX4009";
 
         /// <summary>The expression text is longer than this call site permits.</summary>
         internal const string MaxInputLength = "QX5001";

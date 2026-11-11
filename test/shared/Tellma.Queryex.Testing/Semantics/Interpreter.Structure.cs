@@ -28,7 +28,7 @@ namespace Tellma.Queryex.Testing.Semantics
         /// </remarks>
         private bool Rebased(TypedVia via)
         {
-            LedgerRow? current = _row;
+            LedgerRow? current = Row();
             foreach (NavigationDescriptor navigation in via.Navigations)
             {
                 current = LedgerData.Find(navigation.Target, current[navigation.ForeignKey.Name]);
@@ -53,7 +53,8 @@ namespace Tellma.Queryex.Testing.Semantics
         /// </remarks>
         private bool Found(TypedExists exists)
         {
-            QxValue key = _row[_row.Entity.Key.Name];
+            LedgerRow row = Row();
+            QxValue key = row[row.Entity.Key.Name];
             bool found = false;
             foreach (LedgerRow candidate in LedgerData.Rows(exists.Entity))
             {

@@ -357,14 +357,9 @@ namespace Tellma.Core.Queryex.Tests.Emit
         {
             foreach (QueryCase entry in QueryCorpus.All.Where(entry => entry.Diagnostics.Count == 0))
             {
-                QueryexResult<CompiledQuery> result = Engine.CompileQuery(entry.Spec, new QueryCompilationOptions
-                {
-                    QueryexVersion = QueryexLanguage.Version,
-                    Schema = LedgerFixture.Schema,
-                    Parameters = entry.Parameters,
-                    HasUser = entry.HasUser,
-                    Limits = entry.Limits,
-                });
+                QueryexResult<CompiledQuery> result = Engine.CompileQuery(
+                    entry.Spec,
+                    entry.Options(LedgerFixture.Schema));
 
                 Assert.True(result.Succeeded, entry.Id);
                 foreach (char sequence in "PXB")

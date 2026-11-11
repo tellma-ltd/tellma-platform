@@ -146,13 +146,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
                 QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                     entry.Spec,
-                    new QueryCompilationOptions
-                    {
-                        QueryexVersion = QueryexLanguage.Version,
-                        Schema = LedgerFixture.Schema,
-                        Parameters = entry.Parameters,
-                        HasUser = entry.HasUser,
-                    });
+                    entry.Options(LedgerFixture.Schema));
 
                 Assert.True(result.Succeeded, entry.Id);
 

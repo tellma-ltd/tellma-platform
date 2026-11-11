@@ -28,6 +28,7 @@ namespace Tellma.Queryex.Testing.Probe
         /// <param name="spec">The query.</param>
         /// <param name="schema">The schema to compile against.</param>
         /// <param name="parameters">The declared parameters.</param>
+        /// <param name="omitted">The declared parameters the compilation leaves out.</param>
         /// <returns>One line per offending value, empty when there are none.</returns>
         /// <remarks>
         ///     <para>
@@ -46,26 +47,31 @@ namespace Tellma.Queryex.Testing.Probe
         public static IReadOnlyList<string> Duplicated(
             QuerySpec spec,
             QueryexSchema schema,
-            IReadOnlyList<QueryexParameterDeclaration>? parameters = null)
+            IReadOnlyList<QueryexParameterDeclaration>? parameters = null,
+            IReadOnlyCollection<string>? omitted = null)
         {
             ArgumentNullException.ThrowIfNull(spec);
             ArgumentNullException.ThrowIfNull(schema);
+
+            QueryCompilationOptions options = new()
+            {
+                QueryexVersion = QueryexLanguage.Version,
+                Schema = schema,
+                Parameters = parameters ?? [],
+                OmittedParameters = omitted ?? [],
+            };
 
             DiagnosticSink sink = new();
             CompilationBudget budget = new(QueryexLimits.Default);
             QueryClauses clauses = new(
                 new ExpressionCompiler(new QueryexEngineOptions()),
                 spec,
-                new QueryCompilationOptions
-                {
-                    QueryexVersion = QueryexLanguage.Version,
-                    Schema = schema,
-                    Parameters = parameters ?? [],
-                },
+                options,
                 sink,
                 budget,
                 new NullityMap(),
-                HostStructure.ResolveRestrictions(spec));
+                HostStructure.ResolveRestrictions(spec),
+                OmittedParameters.Resolve(options, nameof(omitted)));
 
             if (!clauses.TryBind())
             {

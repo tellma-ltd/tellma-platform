@@ -36,6 +36,17 @@ namespace Tellma.Queryex.Inspection
     ///     navigation to the root, then optionally a colon and the criterion a pointing row must
     ///     satisfy: <c>InvoiceLine Invoice: Amount &gt; 10</c>.
     /// </param>
+    /// <param name="Parameters">
+    ///     The declared parameters, separated by commas, each a name and a type:
+    ///     <c>Customer numeric, AsOf date</c>. Every one may be absent, and binds no value when the
+    ///     query is run.
+    /// </param>
+    /// <param name="Omitted">The declared parameters the compilation leaves out, separated by commas.</param>
+    /// <param name="Constants">
+    ///     The items of a constant statement, separated by semicolons, each a type and an expression
+    ///     that reads no row: <c>date startOfMonth(today()); numeric me()</c>. When there are any,
+    ///     the page compiles the statement that answers them in place of the query.
+    /// </param>
     public sealed record InspectRequest(
         string? Select,
         string? Filter,
@@ -47,7 +58,10 @@ namespace Tellma.Queryex.Inspection
         string? Restrictions = null,
         string? UndeclaredColumns = null,
         string? Via = null,
-        string? Exists = null);
+        string? Exists = null,
+        string? Parameters = null,
+        string? Omitted = null,
+        string? Constants = null);
 
     /// <summary>One scanned token, as the page shows it.</summary>
     /// <param name="Kind">What kind of token it is.</param>
@@ -87,11 +101,13 @@ namespace Tellma.Queryex.Inspection
     /// <param name="IsGroupingKey">Whether it is one of the grouping keys.</param>
     public sealed record ColumnView(int Ordinal, string Text, string Type, string Nullity, bool IsGroupingKey);
 
-    /// <summary>Everything the page shows for one query.</summary>
-    /// <param name="Tokens">The scanned tokens of the select list.</param>
-    /// <param name="Canonical">The select list printed back in its shortest form.</param>
+    /// <summary>Everything the page shows for one query, or for one constant statement.</summary>
+    /// <param name="Tokens">
+    ///     The scanned tokens of the select list, or of a constant statement's first item.
+    /// </param>
+    /// <param name="Canonical">The same text printed back in its shortest form.</param>
     /// <param name="Explicit">The same, with every grouping written out.</param>
-    /// <param name="Nodes">The bound select list.</param>
+    /// <param name="Nodes">The same text, bound.</param>
     /// <param name="Diagnostics">Whatever went wrong.</param>
     /// <param name="Sql">The compiled SQL, when it compiled.</param>
     /// <param name="Parameters">The parameters, when it compiled.</param>
@@ -111,7 +127,8 @@ namespace Tellma.Queryex.Inspection
         string? Error);
 
     /// <summary>
-    ///     Runs one query through every stage and reports what each of them produced.
+    ///     Runs one query, or one constant statement, through every stage and reports what each of
+    ///     them produced.
     /// </summary>
     /// <remarks>
     ///     Reads the same fixture schema and the same stage-by-stage view the conformance suites do.
@@ -137,41 +154,77 @@ namespace Tellma.Queryex.Inspection
             EntityDescriptor root = LedgerFixture.Schema.FindEntity(request.Root ?? "Invoice")
                 ?? LedgerFixture.Invoice;
 
-            ProbeSyntax parsed = QueryexProbe.Parse(select);
+            // What the page declares and what it asks to have answered without a row, read from the
+            // page's own syntax before anything else: both decide what the stage-by-stage panes show.
+            List<QueryexParameterDeclaration> declared;
+            List<ConstantItem> constants;
+            try
+            {
+                declared = Declared(request.Parameters);
+                constants = Constants(request.Constants);
+            }
+            catch (ArgumentException problem)
+            {
+                return new InspectResponse([], string.Empty, string.Empty, [], [], null, [], [], null, problem.Message);
+            }
+
+            // The stage-by-stage panes follow the select list, or the first item of a constant
+            // statement when the page asked for one.
+            bool constant = constants.Count > 0;
+            string shown = constant ? constants[0].Text : select;
+            ProbeSyntax parsed = QueryexProbe.Parse(shown);
             List<TokenView> tokens = [.. parsed.Tokens.Select(
                 token => new TokenView(token.Kind, token.Text, token.Start, token.Length))];
 
-            List<NodeView> nodes = Bound(select, root, request.Aggregate);
+            List<NodeView> nodes = constant
+                ? BoundWithoutARow(shown)
+                : Bound(shown, root, request.Aggregate, declared);
 
-            QuerySpec spec;
-            IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables;
+            IReadOnlyList<(string Table, IReadOnlyList<string> Keys)> tables = [];
             QueryexResult<CompiledQuery> compiled;
             try
             {
-                // Host structure, read from the page's own syntax. A malformed entry is a caller
-                // error, and is shown the way the engine's own caller errors are.
-                (IReadOnlyList<KeySetRestriction> restrictions, tables) = Restrictions(request.Restrictions);
-                spec = new QuerySpec
+                if (constant)
                 {
-                    Root = root,
-                    Select = select,
-                    Aggregate = request.Aggregate,
-                    Filter = Filter(request.Filter, request.Via, request.Exists),
-                    Having = request.Aggregate ? Leaf(request.Having) : null,
-                    OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
-                    Restrictions = restrictions,
-                    UndeclaredColumns = Names(request.UndeclaredColumns),
-                };
-
-                compiled = Engine.CompileQuery(
-                    spec,
-                    new QueryCompilationOptions
+                    // A statement of its own: the clauses and the host structure beside them are
+                    // not part of it, and are left alone until the items are cleared.
+                    compiled = Engine.EvaluateConstant(
+                        constants,
+                        new ConstantCompilationOptions
+                        {
+                            QueryexVersion = QueryexLanguage.Version,
+                            Schema = LedgerFixture.Schema,
+                        });
+                }
+                else
+                {
+                    // Host structure, read from the page's own syntax. A malformed entry is a caller
+                    // error, and is shown the way the engine's own caller errors are.
+                    (IReadOnlyList<KeySetRestriction> restrictions, tables) = Restrictions(request.Restrictions);
+                    QuerySpec spec = new()
                     {
-                        // The current version, because the page compiles what is being typed right
-                        // now rather than something stored under a version of its own.
-                        QueryexVersion = QueryexLanguage.Version,
-                        Schema = LedgerFixture.Schema,
-                    });
+                        Root = root,
+                        Select = select,
+                        Aggregate = request.Aggregate,
+                        Filter = Filter(request.Filter, request.Via, request.Exists),
+                        Having = request.Aggregate ? Leaf(request.Having) : null,
+                        OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
+                        Restrictions = restrictions,
+                        UndeclaredColumns = Names(request.UndeclaredColumns),
+                    };
+
+                    compiled = Engine.CompileQuery(
+                        spec,
+                        new QueryCompilationOptions
+                        {
+                            // The current version, because the page compiles what is being typed
+                            // right now rather than something stored under a version of its own.
+                            QueryexVersion = QueryexLanguage.Version,
+                            Schema = LedgerFixture.Schema,
+                            Parameters = declared,
+                            OmittedParameters = Names(request.Omitted),
+                        });
+                }
             }
             catch (ArgumentException problem)
             {
@@ -303,6 +356,81 @@ namespace Tellma.Queryex.Inspection
             return (restrictions, tables);
         }
 
+        /// <summary>Reads the page's declared parameters.</summary>
+        /// <param name="text">The declarations, separated by commas.</param>
+        /// <returns>The declarations, each of a value that may be absent.</returns>
+        /// <exception cref="ArgumentException">An entry is not a name and a type.</exception>
+        private static List<QueryexParameterDeclaration> Declared(string? text)
+        {
+            List<QueryexParameterDeclaration> declared = [];
+            foreach (string entry in Split(text, ','))
+            {
+                // "<name> <type>", the name with or without the sign it is referred to by.
+                string[] parts = entry.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length != 2)
+                {
+                    throw new ArgumentException(
+                        "A parameter is declared as a name and a type, such as 'Customer numeric'.",
+                        nameof(text));
+                }
+
+                declared.Add(new QueryexParameterDeclaration(
+                    parts[0].TrimStart('@'),
+                    TypeNamed(parts[1]),
+                    IsNotNull: false));
+            }
+
+            return declared;
+        }
+
+        /// <summary>Reads the items of the page's constant statement.</summary>
+        /// <param name="text">The items, separated by semicolons.</param>
+        /// <returns>The items; none when the page asks about a query.</returns>
+        /// <exception cref="ArgumentException">An entry is not a type and an expression.</exception>
+        private static List<ConstantItem> Constants(string? text)
+        {
+            List<ConstantItem> items = [];
+            foreach (string entry in Split(text, ';'))
+            {
+                // "<type> <expression>": the first word is the type, and everything after it is the
+                // expression as typed.
+                int space = entry.IndexOf(' ', StringComparison.Ordinal);
+                if (space < 0)
+                {
+                    throw new ArgumentException(
+                        "A constant item is written as a type and an expression, such as 'date startOfMonth(today())'.",
+                        nameof(text));
+                }
+
+                items.Add(new ConstantItem(entry[(space + 1)..].Trim(), TypeNamed(entry[..space])));
+            }
+
+            return items;
+        }
+
+        /// <summary>Resolves a type by the name the language's conversions know it by.</summary>
+        /// <param name="name">The name, in any case: <c>numeric</c>, <c>date</c>, <c>string</c>.</param>
+        /// <returns>The type.</returns>
+        /// <exception cref="ArgumentException">No type goes by that name.</exception>
+        private static QueryexType TypeNamed(string name)
+        {
+            // The public names carry a prefix the page has no reason to make anybody type. Matched
+            // against the names themselves, so a number is never read as a member's value.
+            foreach (QueryexType type in Enum.GetValues<QueryexType>())
+            {
+                if (string.Equals("Qx" + name, type.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return type;
+                }
+            }
+
+            throw new ArgumentException(
+                "No type is named '" + name + "'; the types are "
+                    + string.Join(", ", Enum.GetNames<QueryexType>().Select(member => member[2..].ToLowerInvariant()))
+                    + ".",
+                nameof(name));
+        }
+
         /// <summary>Reads a comma-separated list of names.</summary>
         /// <param name="text">The names.</param>
         /// <returns>The names, trimmed.</returns>
@@ -326,17 +454,44 @@ namespace Tellma.Queryex.Inspection
         /// <param name="select">The select list.</param>
         /// <param name="root">The entity paths resolve from.</param>
         /// <param name="aggregate">Whether the query groups.</param>
+        /// <param name="declared">The declared parameters.</param>
         /// <returns>The bound nodes.</returns>
-        private static List<NodeView> Bound(string select, EntityDescriptor root, bool aggregate)
+        private static List<NodeView> Bound(
+            string select,
+            EntityDescriptor root,
+            bool aggregate,
+            IReadOnlyList<QueryexParameterDeclaration> declared)
         {
-            ProbeBinding bound = QueryexProbe.Bind(select, new ProbeBindOptions
+            return Flattened(QueryexProbe.Bind(select, new ProbeBindOptions
             {
                 Schema = LedgerFixture.Schema,
                 Root = root.Name,
                 Mode = aggregate ? QueryexMode.Aggregate : QueryexMode.Value,
                 HasGroupingKeys = aggregate,
-            });
+                Parameters = declared,
+            }));
+        }
 
+        /// <summary>Binds one item of a constant statement and flattens what came out.</summary>
+        /// <param name="item">The item's text.</param>
+        /// <returns>The bound nodes.</returns>
+        private static List<NodeView> BoundWithoutARow(string item)
+        {
+            // No entity goes by the empty name, so the item binds with no row to read a path from,
+            // which is how the statement itself binds it.
+            return Flattened(QueryexProbe.Bind(item, new ProbeBindOptions
+            {
+                Schema = LedgerFixture.Schema,
+                Root = string.Empty,
+                Mode = QueryexMode.Value,
+            }));
+        }
+
+        /// <summary>Flattens a bound list into the rows the page shows.</summary>
+        /// <param name="bound">The bound list.</param>
+        /// <returns>The bound nodes.</returns>
+        private static List<NodeView> Flattened(ProbeBinding bound)
+        {
             List<NodeView> nodes = [];
             foreach (ProbeBoundNode node in bound.Nodes)
             {

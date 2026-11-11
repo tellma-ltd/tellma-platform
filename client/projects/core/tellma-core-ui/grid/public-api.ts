@@ -15,13 +15,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export * from './tm-grid';
+export * from './tm-grid-base';
 export * from './tm-grid-column';
 export * from './tm-grid-context';
+export * from './tm-grid-keys';
 export * from './tm-grid-templates';
 export * from './tm-grid-state-store';
 
 // The shared-internals surface for the tree grid (golden-excluded ɵ names).
-export { ɵTmGridBase } from './internal/grid-base';
 export {
   ɵTmGridCore,
   type ɵTmGridCellVm,
@@ -33,4 +34,3 @@ export {
 } from './internal/grid-core';
 export { ɵTmGridView } from './internal/grid-view';
 export { ɵTmGridColumnResize } from './internal/column-resize';
-export { type ɵTmGridIconTemplates } from './internal/icons';

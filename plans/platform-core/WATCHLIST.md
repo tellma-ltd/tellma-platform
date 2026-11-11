@@ -520,6 +520,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - dotnet-ef 10.0.9 to re-scaffold the migrations host
 
 ## 0011
+- (PC-025) Once a tenant is bound, the request-context holder refuses a different Kind or Subject and a replaced or dropped UserId (null to a value stays allowed): a front door binds tenant and principal in one Set. The two-writers reflection pin searches only Tellma.*.dll referenced by Tellma.Core.Tests; the Tellma.Core.AspNetCore checkpoint must add the reference or run the same search in its own suite. Scope factory: a tenant missing from the snapshot throws TenantUnavailableException (tenant-not-found); TenantNotFoundException from CreateScopeAsync means only an inactive run-as member.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -599,6 +600,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - CI: a Windows LocalDB integration job (spec requires LocalDB and Testcontainers per PR); the design-e2e package flow must pack Tellma.Core.Queryex and the analyzer
 
 ## 0013
+- (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -1084,6 +1086,14 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - §4.2 step 5 versus §4.1: the modal rule admits 'the page shortcuts of the dialog's own context (spec 0026 registers those only while on top)', but TmShortcut carries no owner or context. A page shortcut of the routed page stays live while a context-less modal (TmConfirm, a slot drawer) is open, and the registry cannot tell it apart from the dialog's own. An internal ownership tag is needed.
 - §9.3 item 2: recents chips use 'spec 0035 §9.2's icon for its kind'. The launcher thus depends on a table owned by the home-page spec, which is likely deferred. The implementer must lift that map into the primary or /shell early.
 - §3.2: core.settings is 'visible with Read on any core.Settings.<category>' expressed through requires (TmSecurableRef[]). Settings categories are contributed per feature (spec 0032 §7.1), so the list must be computed from the securables section at runtime rather than written as a static requires array. This is under-specified.
+- §4.3's platform family against an editable grid's type-to-edit (lead raised in grid key-map
+  work). The grid seeds its editor only with a typed character, so Alt+Shift+<letter or digit>
+  and Mod+Alt+Shift+<key> reach the registry on a US layout. Two cases are unverified:
+  (a) Chromium on Windows may report AltGraph for a left Ctrl+Alt chord on a layout that has AltGr
+  (German, French). If so, Mod+Alt+Shift+<key> there counts as typing and seeds the cell editor.
+  (b) On Apple, Option+Shift+<letter> types a character (∏, Í) and seeds the editor by design.
+  Check both in the Appendix A manual pass, and decide whether the platform family needs another
+  chord on those layouts or platforms.
 - §1 says /shell imports /attention, and §5.2 has both shells render <tm-banner-host /> from /attention. Spec 0028 §1 also lists TmArrivals and TmAttention as tenant-shell-rooted services in /attention, so the tenantless shell must not instantiate them; nothing says how /attention scopes those roots versus the banner host. This is minor, but it is an ordering detail for the 0027-c and 0028-d split.
 
 **Slow or heavy tests (planning estimates):**

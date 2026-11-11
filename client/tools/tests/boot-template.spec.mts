@@ -201,7 +201,7 @@ describe('the boot script template', () => {
     const [main] = fake.host.children;
     expect(main?.className).toBe('tm-boot-page');
     expect(main?.children.map((child) => child.textContent)).toEqual([
-      "Acme couldn't start",
+      'Acme couldn’t start',
       ENGLISH.strings['en']!['Boot_Unsupported'],
       'Try again',
     ]);

@@ -187,15 +187,15 @@ namespace Tellma.Core.Queryex
         /// <exception cref="ArgumentException">
         ///     The root does not belong to the schema, a group-level predicate was supplied for a
         ///     query that does not group, the paging values are not usable, the batch ordinal is
-        ///     negative, the declarations are not usable, a key-set restriction does not fit the
-        ///     schema, the undeclared columns are not usable, or a rebase or semi-join does not fit
-        ///     the schema or sits in the group-level predicate.
+        ///     negative, the declarations are not usable, an omitted parameter is not declared, a
+        ///     key-set restriction does not fit the schema, the undeclared columns are not usable, or
+        ///     a rebase or semi-join does not fit the schema or sits in the group-level predicate.
         /// </exception>
         /// <remarks>
-        ///     The only door to SQL there is. A fragment compiled on its own could not share joins,
-        ///     aliases, or parameters with the query it would eventually be joined to, so offering
-        ///     one would be an invitation to paste two fragments together — which is the failure
-        ///     structural composition exists to rule out.
+        ///     The only door to a query's SQL there is. A fragment compiled on its own could not
+        ///     share joins, aliases, or parameters with the query it would eventually be joined to,
+        ///     so offering one would be an invitation to paste two fragments together — which is the
+        ///     failure structural composition exists to rule out.
         /// </remarks>
         public QueryexResult<CompiledQuery> CompileQuery(QuerySpec spec, QueryCompilationOptions options)
         {
@@ -211,19 +211,124 @@ namespace Tellma.Core.Queryex
             HostStructure.RequireUndeclaredColumns(spec);
             HostStructure.RequireFilters(spec, options.Schema);
 
-            var key = QueryKey.Of(spec, options);
+            // Before the cache is consulted, because the resolved set is part of what a compilation
+            // is remembered under — and so, like every other check of what the host passed, on
+            // every call.
+            var omitted = OmittedParameters.Resolve(options, nameof(options));
+            var key = QueryKey.Of(spec, options, omitted);
             if (_queries.TryGet(key, out CompiledQuery? cached) && cached is not null)
             {
                 return new QueryexResult<CompiledQuery>(Restamped(cached, spec));
             }
 
-            QueryexResult<CompiledQuery> result = QueryCompiler.Compile(_compiler, spec, options, restrictions);
+            QueryexResult<CompiledQuery> result = QueryCompiler.Compile(
+                _compiler,
+                spec,
+                options,
+                restrictions,
+                omitted);
             if (result.Succeeded)
             {
                 _queries.Set(key, result.Value);
             }
 
             return result;
+        }
+
+        /// <summary>
+        ///     Compiles expressions that read no row into one statement that answers them as one row.
+        /// </summary>
+        /// <param name="items">The expressions, each with the type its value has to have.</param>
+        /// <param name="options">The compilation options.</param>
+        /// <returns>The compiled statement, or the diagnostics that stopped it.</returns>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">
+        ///     There are no items or more than the ceiling on list items permits, an item or its text
+        ///     is null, an item's type is not one the language has, or the batch ordinal is negative.
+        /// </exception>
+        /// <remarks>
+        ///     <para>
+        ///         How a host learns the values of expressions that depend on nothing but when and by
+        ///         whom they run — the defaults a report run applies, say. The engine compiles the
+        ///         statement and the host executes it, exactly as with a query: the values that
+        ///         depend on the execution come out as the same named slots, so a host that binds
+        ///         them from the values it binds a query's with gets one consistent answer across
+        ///         both.
+        ///     </para>
+        ///     <para>
+        ///         The statement has a select list and no source, so it always answers with exactly
+        ///         one row, one column per item in the order supplied. An item names no path, no
+        ///         aggregation and no parameter, and is a single expression. Nothing is hoisted, so
+        ///         the declarations part of the result is empty.
+        ///     </para>
+        ///     <para>
+        ///         Complete in itself, like a compiled query: it shares nothing with another
+        ///         statement, and is not a fragment to paste into one.
+        ///     </para>
+        /// </remarks>
+        public QueryexResult<CompiledQuery> EvaluateConstant(
+            IReadOnlyList<ConstantItem> items,
+            ConstantCompilationOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+            ArgumentNullException.ThrowIfNull(options);
+
+            // Copied before anything is checked, so what was checked is what is compiled and what
+            // the compilation is remembered under, whatever the caller does with the list meanwhile.
+            ImmutableArray<ConstantItem> snapshot = [.. items];
+            RequireConstants(snapshot, options);
+
+            var key = QueryKey.OfConstant(snapshot, options);
+            if (_queries.TryGet(key, out CompiledQuery? cached) && cached is not null)
+            {
+                return new QueryexResult<CompiledQuery>(cached);
+            }
+
+            QueryexResult<CompiledQuery> result = ConstantCompiler.Compile(_compiler, snapshot, options);
+            if (result.Succeeded)
+            {
+                _queries.Set(key, result.Value);
+            }
+
+            return result;
+        }
+
+        /// <summary>Checks the parts of a constant statement the caller is responsible for.</summary>
+        /// <param name="items">The items.</param>
+        /// <param name="options">The compilation options.</param>
+        /// <exception cref="ArgumentException">One of them is not usable.</exception>
+        private static void RequireConstants(ImmutableArray<ConstantItem> items, ConstantCompilationOptions options)
+        {
+            if (items.Length == 0 || items.Length > options.Limits.MaxListItems)
+            {
+                // How many items there are is the host's doing, not something a user typed, so it is
+                // refused here rather than reported as a diagnostic nobody could act on.
+                throw new ArgumentException(
+                    "A constant statement takes at least one item and no more than the ceiling on list items.",
+                    nameof(items));
+            }
+
+            foreach (ConstantItem? item in items)
+            {
+                if (item is null || item.Text is null)
+                {
+                    throw new ArgumentException("A constant item and its text cannot be null.", nameof(items));
+                }
+
+                if (!Enum.IsDefined(item.Type))
+                {
+                    throw new ArgumentException(
+                        "A constant item's type must be one of the language's types.",
+                        nameof(items));
+                }
+            }
+
+            if (options.BatchOrdinal < 0)
+            {
+                throw new ArgumentException(
+                    "A batch ordinal names a position among the queries executed together.",
+                    nameof(options));
+            }
         }
 
         /// <summary>A cached compilation, carrying this call's page.</summary>

@@ -67,8 +67,9 @@ export function tmDecodeProfile(value: string): TmProfile | null {
         v,
         sub,
         sh,
-        name: typeof name === 'string' ? name : '',
-        email: typeof email === 'string' ? email : '',
+        // A missing or empty name or email is the empty string either way.
+        name: tmIsText(name) ? name : '',
+        email: tmIsText(email) ? email : '',
         locale: tmIsText(locale) ? locale : null,
       }
     : null;

@@ -32,8 +32,10 @@ namespace Tellma.Queryex.Testing.Corpus
                 .Concat(Emission())
                 .Concat(Composition())
                 .Concat(Structure())
+                .Concat(Omitted())
                 .Concat(Refusals())
-                .Concat(StructureRefusals());
+                .Concat(StructureRefusals())
+                .Concat(OmittedRefusals());
             return [.. all];
         }
 

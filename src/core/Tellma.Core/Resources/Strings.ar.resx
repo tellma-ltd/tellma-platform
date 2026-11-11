@@ -12,6 +12,17 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <!-- Calendars: the names of the calendar value set (core.Calendar) -->
+  <data name="Calendar_gc" xml:space="preserve">
+    <value>الميلادي</value>
+  </data>
+  <data name="Calendar_uq" xml:space="preserve">
+    <value>أم القرى</value>
+  </data>
+  <data name="Calendar_et" xml:space="preserve">
+    <value>الإثيوبي</value>
+  </data>
+  <!-- Calendars: month names of the calendars the framework knows no names for -->
   <data name="Calendar_uq_Month1" xml:space="preserve">
     <value>محرم</value>
   </data>
@@ -87,6 +98,65 @@
   <data name="Calendar_et_Month13" xml:space="preserve">
     <value>باجمن</value>
   </data>
+  <!-- Shared labels: the fallback of every entity property and navigation of these names -->
+  <data name="Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>الوصف</value>
+  </data>
+  <data name="IsActive" xml:space="preserve">
+    <value>نشط</value>
+  </data>
+  <data name="CreatedAt" xml:space="preserve">
+    <value>تاريخ الإنشاء</value>
+  </data>
+  <data name="CreatedBy" xml:space="preserve">
+    <value>أنشأه</value>
+  </data>
+  <data name="ModifiedAt" xml:space="preserve">
+    <value>تاريخ التعديل</value>
+  </data>
+  <data name="ModifiedBy" xml:space="preserve">
+    <value>عدّله</value>
+  </data>
+  <data name="Parent" xml:space="preserve">
+    <value>الأصل</value>
+  </data>
+  <!-- Actions: the fallback label of every entity action of these names -->
+  <data name="Action_Activate" xml:space="preserve">
+    <value>تفعيل</value>
+  </data>
+  <data name="Action_Deactivate" xml:space="preserve">
+    <value>إلغاء التفعيل</value>
+  </data>
+  <data name="Action_Share" xml:space="preserve">
+    <value>مشاركة</value>
+  </data>
+  <data name="Action_Publish" xml:space="preserve">
+    <value>نشر</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>نقل الملكية</value>
+  </data>
+  <!-- Entities: the create label and the display name of a record without one -->
+  <data name="Entity_New" xml:space="preserve">
+    <value>جديد</value>
+  </data>
+  <data name="Entity_DisplayNameFallback" xml:space="preserve">
+    <value>#{id}</value>
+  </data>
+  <!-- Settings and access -->
+  <data name="SettingCategory_general" xml:space="preserve">
+    <value>عام</value>
+  </data>
+  <data name="Access_Reason_self" xml:space="preserve">
+    <value>سجلاتهم الخاصة</value>
+  </data>
+  <!-- The boot page of the browser application -->
   <data name="Boot_Title" xml:space="preserve">
     <value>تعذّر تشغيل {displayName}</value>
   </data>
@@ -100,9 +170,1039 @@
     <value>تعذّر تسجيل دخولك. حاول مرة أخرى بعد قليل.</value>
   </data>
   <data name="Boot_LoadFailed" xml:space="preserve">
-    <value>تحقق من اتصالك وحاول مرة أخرى.</value>
+    <value>تحقّق من اتصالك وحاول مرة أخرى.</value>
   </data>
   <data name="Boot_TryAgain" xml:space="preserve">
     <value>حاول مرة أخرى</value>
   </data>
+  <!-- Problems: the title and detail of each problem code the platform answers with -->
+  <data name="Problem_bad_request" xml:space="preserve">
+    <value>تعذّر إتمام ذلك</value>
+  </data>
+  <data name="Problem_bad_request_Detail" xml:space="preserve">
+    <value>الطلب غير صالح.</value>
+  </data>
+  <data name="Problem_query_invalid" xml:space="preserve">
+    <value>عامل التصفية غير صالح</value>
+  </data>
+  <data name="Problem_query_invalid_Detail" xml:space="preserve">
+    <value>تحقّق من عامل التصفية وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_step_up_required" xml:space="preserve">
+    <value>أكّد هويتك</value>
+  </data>
+  <data name="Problem_step_up_required_Detail" xml:space="preserve">
+    <value>سجّل الدخول مرة أخرى للمتابعة.</value>
+  </data>
+  <data name="Problem_forbidden" xml:space="preserve">
+    <value>ليست لديك صلاحية لذلك</value>
+  </data>
+  <data name="Problem_forbidden_Detail" xml:space="preserve">
+    <value>{reason, select, no-grant {يتطلب ذلك صلاحية «{resource}: {action}». اطلب من المسؤول منحك إياها.} outside-filter {صلاحيتك «{resource}: {action}» تشمل بعض السجلات فقط. اطلب من المسؤول ذلك إن كنت تحتاج إلى هذا السجل.} restricted-path {لا يمكنك رؤية {path} هنا. اطلب من المسؤول ذلك إن كنت تحتاج إليه.} other {اطلب من المسؤول منحك الوصول.}}</value>
+  </data>
+  <data name="Problem_individual_required" xml:space="preserve">
+    <value>لا يقوم بذلك إلا شخص</value>
+  </data>
+  <data name="Problem_individual_required_Detail" xml:space="preserve">
+    <value>لا يمكن لحسابات الخدمة القيام بذلك. سجّل الدخول بحسابك.</value>
+  </data>
+  <data name="Problem_tenant_not_found" xml:space="preserve">
+    <value>هذه المنشأة غير موجودة أو لا يمكنك فتحها</value>
+  </data>
+  <data name="Problem_tenant_not_found_Detail" xml:space="preserve">
+    <value>اختر منشأة أخرى، أو اطلب من المسؤول منحك الوصول.</value>
+  </data>
+  <data name="Problem_tenant_suspended" xml:space="preserve">
+    <value>هذه المنشأة موقوفة</value>
+  </data>
+  <data name="Problem_tenant_suspended_Detail" xml:space="preserve">
+    <value>تواصل مع المسؤول.</value>
+  </data>
+  <data name="Problem_tenant_read_only" xml:space="preserve">
+    <value>هذه المنشأة للقراءة فقط</value>
+  </data>
+  <data name="Problem_tenant_read_only_Detail" xml:space="preserve">
+    <value>يمكنك عرض البيانات دون تغييرها. تواصل مع المسؤول.</value>
+  </data>
+  <data name="Problem_tenant_frozen" xml:space="preserve">
+    <value>هذه المنشأة قيد الصيانة</value>
+  </data>
+  <data name="Problem_tenant_frozen_Detail" xml:space="preserve">
+    <value>يمكنك عرض البيانات دون تغييرها حتى تنتهي الصيانة.</value>
+  </data>
+  <data name="Problem_tenant_schema_behind" xml:space="preserve">
+    <value>يجري تحديث هذه المنشأة</value>
+  </data>
+  <data name="Problem_tenant_schema_behind_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد دقيقة.</value>
+  </data>
+  <data name="Problem_tenant_registration_refused" xml:space="preserve">
+    <value>تعذّر تسجيل المنشأة</value>
+  </data>
+  <data name="Problem_tenant_illegal_transition" xml:space="preserve">
+    <value>لا يمكن نقل المنشأة إلى تلك الحالة</value>
+  </data>
+  <data name="Problem_tenant_location_refused" xml:space="preserve">
+    <value>تعذّر نقل المنشأة</value>
+  </data>
+  <data name="Problem_catalog_unavailable" xml:space="preserve">
+    <value>الخدمة مشغولة</value>
+  </data>
+  <data name="Problem_catalog_unavailable_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_not_found" xml:space="preserve">
+    <value>هذا السجل غير موجود أو لا يمكنك رؤيته</value>
+  </data>
+  <data name="Problem_not_found_Detail" xml:space="preserve">
+    <value>ربما حُذف، أو لا تشمله صلاحياتك.</value>
+  </data>
+  <data name="Problem_concurrency_conflict" xml:space="preserve">
+    <value>غيّر شخص آخر هذا السجل</value>
+  </data>
+  <data name="Problem_concurrency_conflict_Detail" xml:space="preserve">
+    <value>أعد التحميل لترى التغييرات، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_confirmation_required" xml:space="preserve">
+    <value>أكّد للمتابعة</value>
+  </data>
+  <data name="Problem_confirmation_required_Detail" xml:space="preserve">
+    <value>راجع التحذيرات وأكّد للمتابعة.</value>
+  </data>
+  <data name="Problem_count_mismatch" xml:space="preserve">
+    <value>تغيّرت السجلات قبل حذفها</value>
+  </data>
+  <data name="Problem_count_mismatch_Detail" xml:space="preserve">
+    <value>كنت تتوقع {expected, plural, zero {عدم وجود سجلات} one {سجلًا واحدًا} two {سجلين} few {# سجلات} many {# سجلًا} other {# سجل}}، لكن عدد السجلات المطابقة الآن {actual, number}. لم يُحذف شيء.</value>
+  </data>
+  <data name="Problem_limit_exceeded" xml:space="preserve">
+    <value>هذا الطلب كبير جدًا</value>
+  </data>
+  <data name="Problem_limit_exceeded_Detail" xml:space="preserve">
+    <value>يحتوي على {actual, number}، والحد الأقصى المسموح به {maximum, number}.</value>
+  </data>
+  <data name="Problem_validation" xml:space="preserve">
+    <value>فشل التحقق من القيم</value>
+  </data>
+  <data name="Problem_validation_Detail" xml:space="preserve">
+    <value>صحّح القيم المشار إليها وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_blob_rejected" xml:space="preserve">
+    <value>رُفض الملف</value>
+  </data>
+  <data name="Problem_blob_rejected_Detail" xml:space="preserve">
+    <value>تحقّق من الملف وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_partial_failure" xml:space="preserve">
+    <value>لم يكتمل جزء من ذلك</value>
+  </data>
+  <data name="Problem_partial_failure_Detail" xml:space="preserve">
+    <value>اكتملت بعض السجلات ولم يكتمل غيرها. حاول مرة أخرى للبقية.</value>
+  </data>
+  <data name="Problem_stale_context" xml:space="preserve">
+    <value>تغيّرت الإعدادات أثناء التنفيذ</value>
+  </data>
+  <data name="Problem_stale_context_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_dependency_unavailable" xml:space="preserve">
+    <value>الخدمة مشغولة</value>
+  </data>
+  <data name="Problem_dependency_unavailable_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_csrf_rejected" xml:space="preserve">
+    <value>حُظر الطلب</value>
+  </data>
+  <data name="Problem_csrf_rejected_Detail" xml:space="preserve">
+    <value>أعد تحميل الصفحة وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_client_outdated" xml:space="preserve">
+    <value>حُدّث التطبيق</value>
+  </data>
+  <data name="Problem_client_outdated_Detail" xml:space="preserve">
+    <value>أعد التحميل للمتابعة.</value>
+  </data>
+  <data name="Problem_internal" xml:space="preserve">
+    <value>حدث خطأ ما</value>
+  </data>
+  <data name="Problem_internal_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى. إن تكرر ذلك، أرسل هذا المرجع إلى الدعم.</value>
+  </data>
+  <data name="Problem_unauthenticated" xml:space="preserve">
+    <value>انتهت جلستك</value>
+  </data>
+  <data name="Problem_unauthenticated_Detail" xml:space="preserve">
+    <value>سجّل الدخول للمتابعة.</value>
+  </data>
+  <data name="Problem_unsupported_credential" xml:space="preserve">
+    <value>لا يمكن استخدام تسجيل الدخول هذا هنا</value>
+  </data>
+  <data name="Problem_route_not_found" xml:space="preserve">
+    <value>هذا العنوان غير موجود</value>
+  </data>
+  <data name="Problem_method_not_allowed" xml:space="preserve">
+    <value>هذا العنوان لا يقبل هذا الطلب</value>
+  </data>
+  <data name="Problem_unsupported_media" xml:space="preserve">
+    <value>نوع المحتوى هذا غير مقبول</value>
+  </data>
+  <data name="Problem_rate_limited" xml:space="preserve">
+    <value>طلبات كثيرة جدًا</value>
+  </data>
+  <data name="Problem_rate_limited_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_timeout" xml:space="preserve">
+    <value>استغرق ذلك وقتًا طويلًا</value>
+  </data>
+  <data name="Problem_timeout_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى.</value>
+  </data>
+  <!-- Validation codes of the settings service -->
+  <data name="Settings_FieldUnknown" xml:space="preserve">
+    <value>لا يوجد إعداد بهذا الاسم.</value>
+  </data>
+  <data name="Settings_LanguageNotOffered" xml:space="preserve">
+    <value>هذه اللغة غير متاحة.</value>
+  </data>
+  <data name="Settings_LanguagesNotDistinct" xml:space="preserve">
+    <value>لا يمكن اختيار اللغة نفسها أكثر من مرة.</value>
+  </data>
+  <data name="Settings_TertiaryRequiresSecondary" xml:space="preserve">
+    <value>اختر لغة ثانية قبل اختيار لغة ثالثة.</value>
+  </data>
+  <data name="Settings_CalendarNotRegistered" xml:space="preserve">
+    <value>هذا التقويم غير متاح.</value>
+  </data>
+  <data name="Settings_CalendarsNotDistinct" xml:space="preserve">
+    <value>يجب أن يختلف التقويم الثانوي عن التقويم الأساسي.</value>
+  </data>
+  <data name="Settings_TimeZoneUnknown" xml:space="preserve">
+    <value>هذه المنطقة الزمنية غير معروفة.</value>
+  </data>
+  <data name="Settings_RegionNotOffered" xml:space="preserve">
+    <value>هذه المنطقة غير متاحة.</value>
+  </data>
+  <data name="Settings_KeyUndeclared" xml:space="preserve">
+    <value>لا يوجد إعداد بهذا الاسم.</value>
+  </data>
+  <data name="Settings_EntryTypeMismatch" xml:space="preserve">
+    <value>نوع هذه القيمة لا يناسب الإعداد.</value>
+  </data>
+  <!-- Validation codes of the save and query pipeline -->
+  <data name="Required" xml:space="preserve">
+    <value>أدخل قيمة.</value>
+  </data>
+  <data name="MaxLength" xml:space="preserve">
+    <value>أدخل {maxLength, plural, zero {# حرفًا} one {حرفًا واحدًا} two {حرفين} few {# أحرف} many {# حرفًا} other {# حرف}} على الأكثر.</value>
+  </data>
+  <data name="Range" xml:space="preserve">
+    <value>هذه القيمة خارج النطاق المسموح به.</value>
+  </data>
+  <data name="Unique" xml:space="preserve">
+    <value>هذه القيمة مستخدمة في سجل آخر.</value>
+  </data>
+  <data name="WriteOnce" xml:space="preserve">
+    <value>لا يمكن تغيير هذه القيمة بعد تعيينها.</value>
+  </data>
+  <data name="Precision" xml:space="preserve">
+    <value>أدخل {precision, number} من الأرقام على الأكثر، منها {scale, number} بعد الفاصلة العشرية.</value>
+  </data>
+  <data name="Validation_ValueNotInSet" xml:space="preserve">
+    <value>هذه القيمة ليست من القيم المسموح بها.</value>
+  </data>
+  <data name="Entity_NotFound" xml:space="preserve">
+    <value>هذا السجل غير موجود أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Entity_DuplicateId" xml:space="preserve">
+    <value>السجل نفسه مكرر أكثر من مرة.</value>
+  </data>
+  <data name="Fk_NotFound" xml:space="preserve">
+    <value>السجل المختار غير موجود أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Fk_InUse" xml:space="preserve">
+    <value>هذا السجل مستخدم، لذا لا يمكن حذفه.</value>
+  </data>
+  <data name="Tree_Cycle" xml:space="preserve">
+    <value>لا يمكن وضع سجل تحت نفسه أو تحت أحد فروعه.</value>
+  </data>
+  <data name="Tree_TooDeep" xml:space="preserve">
+    <value>التسلسل الهرمي عميق جدًا.</value>
+  </data>
+  <data name="Blob_NotAttachable" xml:space="preserve">
+    <value>لا يمكن إرفاق هذا الملف. ارفعه مرة أخرى.</value>
+  </data>
+  <data name="Blob_DuplicateReference" xml:space="preserve">
+    <value>الملف نفسه مرفق أكثر من مرة.</value>
+  </data>
+  <data name="Concurrency_StampRequired" xml:space="preserve">
+    <value>أعد تحميل السجل، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Import_LanguageNotConfigured" xml:space="preserve">
+    <value>لغة هذا العمود ليست من لغات المنشأة.</value>
+  </data>
+  <data name="Query_GeographyNotSelectable" xml:space="preserve">
+    <value>لا يمكن اختيار قيمة جغرافية.</value>
+  </data>
+  <data name="Query_PathNotReachable" xml:space="preserve">
+    <value>لا يمكنك رؤية {path}.</value>
+  </data>
+  <data name="Query_UnknownNamedFilter" xml:space="preserve">
+    <value>لا يوجد عامل تصفية باسم {name}.</value>
+  </data>
+  <data name="Query_ArithmeticFailed" xml:space="preserve">
+    <value>{reason, select, divide-by-zero {قسم الاستعلام على صفر.} other {أحد الأرقام في الاستعلام كبير جدًا.}}</value>
+  </data>
+  <data name="DisplayName_PrefixSeparator" xml:space="preserve">
+    <value>لا يمكن أن تحتوي هذه القيمة على «{separator}».</value>
+  </data>
+  <!-- Reports and dashboards -->
+  <data name="ReportKind_List" xml:space="preserve">
+    <value>قائمة</value>
+  </data>
+  <data name="ReportKind_Summary" xml:space="preserve">
+    <value>ملخص</value>
+  </data>
+  <data name="ReportKind_Pivot" xml:space="preserve">
+    <value>جدول محوري</value>
+  </data>
+  <data name="ReportKind_Chart" xml:space="preserve">
+    <value>مخطط</value>
+  </data>
+  <data name="ShareAccess_View" xml:space="preserve">
+    <value>عرض</value>
+  </data>
+  <data name="ShareAccess_Edit" xml:space="preserve">
+    <value>تعديل</value>
+  </data>
+  <data name="Notification_core_report_shared" xml:space="preserve">
+    <value>شارك {actorName} معك {title}</value>
+  </data>
+  <data name="Notification_core_dashboard_shared" xml:space="preserve">
+    <value>شارك {actorName} معك لوحة المعلومات {title}</value>
+  </data>
+  <data name="Core_Report_Synonyms" xml:space="preserve">
+    <value>تقرير، تحليل، قائمة، ملخص، جدول محوري، مخطط</value>
+  </data>
+  <data name="Core_Dashboard_Synonyms" xml:space="preserve">
+    <value>لوحة معلومات، نظرة عامة، مؤشرات الأداء</value>
+  </data>
+  <data name="Core_Report_DefaultTitle" xml:space="preserve">
+    <value>{entity} – {kind, select, List {قائمة} Summary {ملخص} Pivot {جدول محوري} other {مخطط}}</value>
+  </data>
+  <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
+    <value>لوحة معلومات بلا عنوان</value>
+  </data>
+  <data name="Core_Job_ExportReport" xml:space="preserve">
+    <value>تصدير {title}</value>
+  </data>
+  <!-- Queryex diagnostics, with the arguments the engine gives each -->
+  <data name="Queryex_QX1001" xml:space="preserve">
+    <value>نص حرفي غير مغلق.</value>
+  </data>
+  <data name="Queryex_QX1002" xml:space="preserve">
+    <value>اسم بين أقواس معقوفة غير مغلق.</value>
+  </data>
+  <data name="Queryex_QX1003" xml:space="preserve">
+    <value>رقم غير صحيح الصيغة.</value>
+  </data>
+  <data name="Queryex_QX1004" xml:space="preserve">
+    <value>يحتوي الرقم على أرقام أكثر من المدعوم.</value>
+  </data>
+  <data name="Queryex_QX1005" xml:space="preserve">
+    <value>حرف غير متوقع.</value>
+  </data>
+  <data name="Queryex_QX2001" xml:space="preserve">
+    <value>لم يُتوقع {actual}؛ المتوقع أحد ما يلي: {expected}.</value>
+  </data>
+  <data name="Queryex_QX2002" xml:space="preserve">
+    <value>قوس غير متوازن.</value>
+  </data>
+  <data name="Queryex_QX2003" xml:space="preserve">
+    <value>عنصر قائمة فارغ.</value>
+  </data>
+  <data name="Queryex_QX2004" xml:space="preserve">
+    <value>وسيط فارغ.</value>
+  </data>
+  <data name="Queryex_QX2005" xml:space="preserve">
+    <value>قوسان فارغان.</value>
+  </data>
+  <data name="Queryex_QX2006" xml:space="preserve">
+    <value>لا يمكن تسلسل المقارنات.</value>
+  </data>
+  <data name="Queryex_QX2007" xml:space="preserve">
+    <value>الاتجاه (asc أو desc) غير مسموح به هنا.</value>
+  </data>
+  <data name="Queryex_QX2008" xml:space="preserve">
+    <value>يجب أن يأتي الاتجاه (asc أو desc) في نهاية عنصره.</value>
+  </data>
+  <data name="Queryex_QX2009" xml:space="preserve">
+    <value>الشرط تعبير واحد وليس قائمة.</value>
+  </data>
+  <data name="Queryex_QX3001" xml:space="preserve">
+    <value>خاصية غير معروفة {name} في {entity}.</value>
+  </data>
+  <data name="Queryex_QX3002" xml:space="preserve">
+    <value>{name} في {entity} رابط إلى سجل آخر؛ يجب أن ينتهي المسار بخاصية.</value>
+  </data>
+  <data name="Queryex_QX3003" xml:space="preserve">
+    <value>دالة غير معروفة {function}.</value>
+  </data>
+  <data name="Queryex_QX3004" xml:space="preserve">
+    <value>الدالة {function} لا تقبل {actual} من الوسائط. تقبل: {expected}.</value>
+  </data>
+  <data name="Queryex_QX3005" xml:space="preserve">
+    <value>لا توجد صيغة للدالة {function} تقبل أنواع الوسائط هذه. صيغها: {signatures}.</value>
+  </data>
+  <data name="Queryex_QX3006" xml:space="preserve">
+    <value>استدعاء الدالة {function} ملتبس.</value>
+  </data>
+  <data name="Queryex_QX3007" xml:space="preserve">
+    <value>معامل غير معرّف @{name}.</value>
+  </data>
+  <data name="Queryex_QX3100" xml:space="preserve">
+    <value>يجب أن يكون هذا الوسيط للدالة {function} قيمة حرفية.</value>
+  </data>
+  <data name="Queryex_QX3101" xml:space="preserve">
+    <value>الدالة {function} لا تقبل القيمة {name}.</value>
+  </data>
+  <data name="Queryex_QX3102" xml:space="preserve">
+    <value>لا يمكن تحويل {type} إلى {otherType}.</value>
+  </data>
+  <data name="Queryex_QX3103" xml:space="preserve">
+    <value>الدالة {function} تحتاج إلى قيمة في منطقة زمنية؛ ضع الوسيط داخل local.</value>
+  </data>
+  <data name="Queryex_QX3200" xml:space="preserve">
+    <value>المعامَل من النوع {type} غير متوافق هنا.</value>
+  </data>
+  <data name="Queryex_QX3201" xml:space="preserve">
+    <value>النوع {type} غير صالح لهذا العامل أو الموضع.</value>
+  </data>
+  <data name="Queryex_QX3202" xml:space="preserve">
+    <value>ليس للتعبير نوع؛ حوّل القيمة الفارغة (null) إلى نوع.</value>
+  </data>
+  <data name="Queryex_QX3300" xml:space="preserve">
+    <value>يجب أن يكون الوسيط الأول للدالة {function} مسارًا.</value>
+  </data>
+  <data name="Queryex_QX3301" xml:space="preserve">
+    <value>{function}: الكيان ليس تسلسلًا هرميًا.</value>
+  </data>
+  <data name="Queryex_QX3302" xml:space="preserve">
+    <value>{function}: الخاصية ليست فريدة.</value>
+  </data>
+  <data name="Queryex_QX3303" xml:space="preserve">
+    <value>{function}: لا يمكن أن يحتوي وسيط المفتاح على مسار.</value>
+  </data>
+  <data name="Queryex_QX3400" xml:space="preserve">
+    <value>المعامل @{name} مستخدم بأنواع متعارضة (هنا بالنوع {type}).</value>
+  </data>
+  <data name="Queryex_QX4001" xml:space="preserve">
+    <value>يجب أن يكون التعبير شرطًا هنا، لكنه من النوع {type}.</value>
+  </data>
+  <data name="Queryex_QX4002" xml:space="preserve">
+    <value>التجميعات غير مسموح بها هنا.</value>
+  </data>
+  <data name="Queryex_QX4003" xml:space="preserve">
+    <value>لا يمكن أن يظهر تجميع داخل تجميع آخر.</value>
+  </data>
+  <data name="Queryex_QX4004" xml:space="preserve">
+    <value>المسار خارج التجميع غير مسموح به في عامل تصفية التجميع.</value>
+  </data>
+  <data name="Queryex_QX4005" xml:space="preserve">
+    <value>مصطلح الترتيب هذا سيغيّر التجميع.</value>
+  </data>
+  <data name="Queryex_QX4006" xml:space="preserve">
+    <value>يتطلب تقسيم الصفحات ترتيبًا صريحًا.</value>
+  </data>
+  <data name="Queryex_QX4007" xml:space="preserve">
+    <value>لا يمكن أن يجمع عنصر بين مسارات داخل التجميعات وخارجها.</value>
+  </data>
+  <data name="Queryex_QX4008" xml:space="preserve">
+    <value>مصطلح ترتيب مكرر.</value>
+  </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>لا يمكن استخدام المسار {name} هنا: لا يوجد صف لقراءته منه.</value>
+  </data>
+  <data name="Queryex_QX5001" xml:space="preserve">
+    <value>التعبير أطول من {limit} حرفًا.</value>
+  </data>
+  <data name="Queryex_QX5002" xml:space="preserve">
+    <value>يحتوي التعبير على أكثر من {limit} رمزًا.</value>
+  </data>
+  <data name="Queryex_QX5003" xml:space="preserve">
+    <value>يتداخل التعبير بأكثر من {limit} مستوى.</value>
+  </data>
+  <data name="Queryex_QX5004" xml:space="preserve">
+    <value>يحتوي الاستعلام على أكثر من {limit} عقدة.</value>
+  </data>
+  <data name="Queryex_QX5005" xml:space="preserve">
+    <value>تحتوي القائمة على أكثر من {limit} عنصرًا.</value>
+  </data>
+  <data name="Queryex_QX5006" xml:space="preserve">
+    <value>يحتاج الاستعلام إلى أكثر من {limit} ربط.</value>
+  </data>
+  <data name="Queryex_QX5007" xml:space="preserve">
+    <value>يحتاج الاستعلام إلى أكثر من {limit} معاملًا.</value>
+  </data>
+  <!-- Region_ names: generated by eng/region-names from CLDR 48.0; regenerate them, never edit by hand -->
+  <data name="Region_AE" xml:space="preserve">
+    <value>الإمارات العربية المتحدة</value>
+  </data>
+  <data name="Region_AG" xml:space="preserve">
+    <value>أنتيغوا وبربودا</value>
+  </data>
+  <data name="Region_AI" xml:space="preserve">
+    <value>أنغويلا</value>
+  </data>
+  <data name="Region_AO" xml:space="preserve">
+    <value>أنغولا</value>
+  </data>
+  <data name="Region_AR" xml:space="preserve">
+    <value>الأرجنتين</value>
+  </data>
+  <data name="Region_AS" xml:space="preserve">
+    <value>ساموا الأمريكية</value>
+  </data>
+  <data name="Region_AT" xml:space="preserve">
+    <value>النمسا</value>
+  </data>
+  <data name="Region_AU" xml:space="preserve">
+    <value>أستراليا</value>
+  </data>
+  <data name="Region_BB" xml:space="preserve">
+    <value>بربادوس</value>
+  </data>
+  <data name="Region_BE" xml:space="preserve">
+    <value>بلجيكا</value>
+  </data>
+  <data name="Region_BF" xml:space="preserve">
+    <value>بوركينا فاسو</value>
+  </data>
+  <data name="Region_BH" xml:space="preserve">
+    <value>البحرين</value>
+  </data>
+  <data name="Region_BI" xml:space="preserve">
+    <value>بوروندي</value>
+  </data>
+  <data name="Region_BJ" xml:space="preserve">
+    <value>بنين</value>
+  </data>
+  <data name="Region_BL" xml:space="preserve">
+    <value>سان بارتليمي</value>
+  </data>
+  <data name="Region_BM" xml:space="preserve">
+    <value>برمودا</value>
+  </data>
+  <data name="Region_BO" xml:space="preserve">
+    <value>بوليفيا</value>
+  </data>
+  <data name="Region_BR" xml:space="preserve">
+    <value>البرازيل</value>
+  </data>
+  <data name="Region_BS" xml:space="preserve">
+    <value>جزر البهاما</value>
+  </data>
+  <data name="Region_BW" xml:space="preserve">
+    <value>بوتسوانا</value>
+  </data>
+  <data name="Region_BZ" xml:space="preserve">
+    <value>بليز</value>
+  </data>
+  <data name="Region_CA" xml:space="preserve">
+    <value>كندا</value>
+  </data>
+  <data name="Region_CC" xml:space="preserve">
+    <value>جزر كوكوس (كيلينغ)</value>
+  </data>
+  <data name="Region_CD" xml:space="preserve">
+    <value>الكونغو - كينشاسا</value>
+  </data>
+  <data name="Region_CF" xml:space="preserve">
+    <value>جمهورية أفريقيا الوسطى</value>
+  </data>
+  <data name="Region_CG" xml:space="preserve">
+    <value>الكونغو - برازافيل</value>
+  </data>
+  <data name="Region_CH" xml:space="preserve">
+    <value>سويسرا</value>
+  </data>
+  <data name="Region_CI" xml:space="preserve">
+    <value>ساحل العاج</value>
+  </data>
+  <data name="Region_CK" xml:space="preserve">
+    <value>جزر كوك</value>
+  </data>
+  <data name="Region_CL" xml:space="preserve">
+    <value>تشيلي</value>
+  </data>
+  <data name="Region_CM" xml:space="preserve">
+    <value>الكاميرون</value>
+  </data>
+  <data name="Region_CN" xml:space="preserve">
+    <value>الصين</value>
+  </data>
+  <data name="Region_CO" xml:space="preserve">
+    <value>كولومبيا</value>
+  </data>
+  <data name="Region_CR" xml:space="preserve">
+    <value>كوستاريكا</value>
+  </data>
+  <data name="Region_CU" xml:space="preserve">
+    <value>كوبا</value>
+  </data>
+  <data name="Region_CV" xml:space="preserve">
+    <value>الرأس الأخضر</value>
+  </data>
+  <data name="Region_CX" xml:space="preserve">
+    <value>جزيرة كريسماس</value>
+  </data>
+  <data name="Region_CY" xml:space="preserve">
+    <value>قبرص</value>
+  </data>
+  <data name="Region_DE" xml:space="preserve">
+    <value>ألمانيا</value>
+  </data>
+  <data name="Region_DJ" xml:space="preserve">
+    <value>جيبوتي</value>
+  </data>
+  <data name="Region_DK" xml:space="preserve">
+    <value>الدانمرك</value>
+  </data>
+  <data name="Region_DM" xml:space="preserve">
+    <value>دومينيكا</value>
+  </data>
+  <data name="Region_DO" xml:space="preserve">
+    <value>جمهورية الدومينيكان</value>
+  </data>
+  <data name="Region_DZ" xml:space="preserve">
+    <value>الجزائر</value>
+  </data>
+  <data name="Region_EC" xml:space="preserve">
+    <value>الإكوادور</value>
+  </data>
+  <data name="Region_EG" xml:space="preserve">
+    <value>مصر</value>
+  </data>
+  <data name="Region_ER" xml:space="preserve">
+    <value>إريتريا</value>
+  </data>
+  <data name="Region_ES" xml:space="preserve">
+    <value>إسبانيا</value>
+  </data>
+  <data name="Region_ET" xml:space="preserve">
+    <value>إثيوبيا</value>
+  </data>
+  <data name="Region_FI" xml:space="preserve">
+    <value>فنلندا</value>
+  </data>
+  <data name="Region_FJ" xml:space="preserve">
+    <value>فيجي</value>
+  </data>
+  <data name="Region_FK" xml:space="preserve">
+    <value>جزر فوكلاند</value>
+  </data>
+  <data name="Region_FM" xml:space="preserve">
+    <value>ميكرونيزيا</value>
+  </data>
+  <data name="Region_FR" xml:space="preserve">
+    <value>فرنسا</value>
+  </data>
+  <data name="Region_GA" xml:space="preserve">
+    <value>الغابون</value>
+  </data>
+  <data name="Region_GB" xml:space="preserve">
+    <value>المملكة المتحدة</value>
+  </data>
+  <data name="Region_GD" xml:space="preserve">
+    <value>غرينادا</value>
+  </data>
+  <data name="Region_GF" xml:space="preserve">
+    <value>غويانا الفرنسية</value>
+  </data>
+  <data name="Region_GG" xml:space="preserve">
+    <value>غيرنزي</value>
+  </data>
+  <data name="Region_GH" xml:space="preserve">
+    <value>غانا</value>
+  </data>
+  <data name="Region_GI" xml:space="preserve">
+    <value>جبل طارق</value>
+  </data>
+  <data name="Region_GM" xml:space="preserve">
+    <value>غامبيا</value>
+  </data>
+  <data name="Region_GN" xml:space="preserve">
+    <value>غينيا</value>
+  </data>
+  <data name="Region_GP" xml:space="preserve">
+    <value>غوادلوب</value>
+  </data>
+  <data name="Region_GQ" xml:space="preserve">
+    <value>غينيا الاستوائية</value>
+  </data>
+  <data name="Region_GT" xml:space="preserve">
+    <value>غواتيمالا</value>
+  </data>
+  <data name="Region_GU" xml:space="preserve">
+    <value>غوام</value>
+  </data>
+  <data name="Region_GW" xml:space="preserve">
+    <value>غينيا بيساو</value>
+  </data>
+  <data name="Region_GY" xml:space="preserve">
+    <value>غيانا</value>
+  </data>
+  <data name="Region_HK" xml:space="preserve">
+    <value>هونغ كونغ الصينية (منطقة إدارية خاصة)</value>
+  </data>
+  <data name="Region_HN" xml:space="preserve">
+    <value>هندوراس</value>
+  </data>
+  <data name="Region_HT" xml:space="preserve">
+    <value>هايتي</value>
+  </data>
+  <data name="Region_ID" xml:space="preserve">
+    <value>إندونيسيا</value>
+  </data>
+  <data name="Region_IE" xml:space="preserve">
+    <value>أيرلندا</value>
+  </data>
+  <data name="Region_IL" xml:space="preserve">
+    <value>إسرائيل</value>
+  </data>
+  <data name="Region_IM" xml:space="preserve">
+    <value>جزيرة مان</value>
+  </data>
+  <data name="Region_IN" xml:space="preserve">
+    <value>الهند</value>
+  </data>
+  <data name="Region_IO" xml:space="preserve">
+    <value>الإقليم البريطاني في المحيط الهندي</value>
+  </data>
+  <data name="Region_IQ" xml:space="preserve">
+    <value>العراق</value>
+  </data>
+  <data name="Region_IT" xml:space="preserve">
+    <value>إيطاليا</value>
+  </data>
+  <data name="Region_JE" xml:space="preserve">
+    <value>جيرسي</value>
+  </data>
+  <data name="Region_JM" xml:space="preserve">
+    <value>جامايكا</value>
+  </data>
+  <data name="Region_JO" xml:space="preserve">
+    <value>الأردن</value>
+  </data>
+  <data name="Region_KE" xml:space="preserve">
+    <value>كينيا</value>
+  </data>
+  <data name="Region_KI" xml:space="preserve">
+    <value>كيريباتي</value>
+  </data>
+  <data name="Region_KM" xml:space="preserve">
+    <value>جزر القمر</value>
+  </data>
+  <data name="Region_KN" xml:space="preserve">
+    <value>سانت كيتس ونيفيس</value>
+  </data>
+  <data name="Region_KW" xml:space="preserve">
+    <value>الكويت</value>
+  </data>
+  <data name="Region_KY" xml:space="preserve">
+    <value>جزر كايمان</value>
+  </data>
+  <data name="Region_LB" xml:space="preserve">
+    <value>لبنان</value>
+  </data>
+  <data name="Region_LC" xml:space="preserve">
+    <value>سانت لوسيا</value>
+  </data>
+  <data name="Region_LI" xml:space="preserve">
+    <value>ليختنشتاين</value>
+  </data>
+  <data name="Region_LR" xml:space="preserve">
+    <value>ليبيريا</value>
+  </data>
+  <data name="Region_LS" xml:space="preserve">
+    <value>ليسوتو</value>
+  </data>
+  <data name="Region_LU" xml:space="preserve">
+    <value>لوكسمبورغ</value>
+  </data>
+  <data name="Region_LY" xml:space="preserve">
+    <value>ليبيا</value>
+  </data>
+  <data name="Region_MA" xml:space="preserve">
+    <value>المغرب</value>
+  </data>
+  <data name="Region_MC" xml:space="preserve">
+    <value>موناكو</value>
+  </data>
+  <data name="Region_MF" xml:space="preserve">
+    <value>سان مارتن</value>
+  </data>
+  <data name="Region_MG" xml:space="preserve">
+    <value>مدغشقر</value>
+  </data>
+  <data name="Region_MH" xml:space="preserve">
+    <value>جزر مارشال</value>
+  </data>
+  <data name="Region_ML" xml:space="preserve">
+    <value>مالي</value>
+  </data>
+  <data name="Region_MO" xml:space="preserve">
+    <value>منطقة ماكاو الإدارية الخاصة</value>
+  </data>
+  <data name="Region_MP" xml:space="preserve">
+    <value>جزر ماريانا الشمالية</value>
+  </data>
+  <data name="Region_MQ" xml:space="preserve">
+    <value>جزر المارتينيك</value>
+  </data>
+  <data name="Region_MR" xml:space="preserve">
+    <value>موريتانيا</value>
+  </data>
+  <data name="Region_MS" xml:space="preserve">
+    <value>مونتسرات</value>
+  </data>
+  <data name="Region_MT" xml:space="preserve">
+    <value>مالطا</value>
+  </data>
+  <data name="Region_MU" xml:space="preserve">
+    <value>موريشيوس</value>
+  </data>
+  <data name="Region_MV" xml:space="preserve">
+    <value>جزر المالديف</value>
+  </data>
+  <data name="Region_MW" xml:space="preserve">
+    <value>ملاوي</value>
+  </data>
+  <data name="Region_MX" xml:space="preserve">
+    <value>المكسيك</value>
+  </data>
+  <data name="Region_MY" xml:space="preserve">
+    <value>ماليزيا</value>
+  </data>
+  <data name="Region_MZ" xml:space="preserve">
+    <value>موزمبيق</value>
+  </data>
+  <data name="Region_NA" xml:space="preserve">
+    <value>ناميبيا</value>
+  </data>
+  <data name="Region_NC" xml:space="preserve">
+    <value>كاليدونيا الجديدة</value>
+  </data>
+  <data name="Region_NE" xml:space="preserve">
+    <value>النيجر</value>
+  </data>
+  <data name="Region_NF" xml:space="preserve">
+    <value>جزيرة نورفولك</value>
+  </data>
+  <data name="Region_NG" xml:space="preserve">
+    <value>نيجيريا</value>
+  </data>
+  <data name="Region_NI" xml:space="preserve">
+    <value>نيكاراغوا</value>
+  </data>
+  <data name="Region_NL" xml:space="preserve">
+    <value>هولندا</value>
+  </data>
+  <data name="Region_NR" xml:space="preserve">
+    <value>ناورو</value>
+  </data>
+  <data name="Region_NU" xml:space="preserve">
+    <value>نيوي</value>
+  </data>
+  <data name="Region_NZ" xml:space="preserve">
+    <value>نيوزيلندا</value>
+  </data>
+  <data name="Region_OM" xml:space="preserve">
+    <value>عُمان</value>
+  </data>
+  <data name="Region_PA" xml:space="preserve">
+    <value>بنما</value>
+  </data>
+  <data name="Region_PE" xml:space="preserve">
+    <value>بيرو</value>
+  </data>
+  <data name="Region_PF" xml:space="preserve">
+    <value>بولينيزيا الفرنسية</value>
+  </data>
+  <data name="Region_PG" xml:space="preserve">
+    <value>بابوا غينيا الجديدة</value>
+  </data>
+  <data name="Region_PH" xml:space="preserve">
+    <value>الفلبين</value>
+  </data>
+  <data name="Region_PK" xml:space="preserve">
+    <value>باكستان</value>
+  </data>
+  <data name="Region_PM" xml:space="preserve">
+    <value>سان بيير ومكويلون</value>
+  </data>
+  <data name="Region_PN" xml:space="preserve">
+    <value>جزر بيتكيرن</value>
+  </data>
+  <data name="Region_PR" xml:space="preserve">
+    <value>بورتوريكو</value>
+  </data>
+  <data name="Region_PS" xml:space="preserve">
+    <value>الأراضي الفلسطينية</value>
+  </data>
+  <data name="Region_PT" xml:space="preserve">
+    <value>البرتغال</value>
+  </data>
+  <data name="Region_PW" xml:space="preserve">
+    <value>بالاو</value>
+  </data>
+  <data name="Region_PY" xml:space="preserve">
+    <value>باراغواي</value>
+  </data>
+  <data name="Region_QA" xml:space="preserve">
+    <value>قطر</value>
+  </data>
+  <data name="Region_RE" xml:space="preserve">
+    <value>روينيون</value>
+  </data>
+  <data name="Region_RW" xml:space="preserve">
+    <value>رواندا</value>
+  </data>
+  <data name="Region_SA" xml:space="preserve">
+    <value>المملكة العربية السعودية</value>
+  </data>
+  <data name="Region_SB" xml:space="preserve">
+    <value>جزر سليمان</value>
+  </data>
+  <data name="Region_SC" xml:space="preserve">
+    <value>سيشل</value>
+  </data>
+  <data name="Region_SD" xml:space="preserve">
+    <value>السودان</value>
+  </data>
+  <data name="Region_SE" xml:space="preserve">
+    <value>السويد</value>
+  </data>
+  <data name="Region_SG" xml:space="preserve">
+    <value>سنغافورة</value>
+  </data>
+  <data name="Region_SH" xml:space="preserve">
+    <value>سانت هيلينا</value>
+  </data>
+  <data name="Region_SI" xml:space="preserve">
+    <value>سلوفينيا</value>
+  </data>
+  <data name="Region_SL" xml:space="preserve">
+    <value>سيراليون</value>
+  </data>
+  <data name="Region_SN" xml:space="preserve">
+    <value>السنغال</value>
+  </data>
+  <data name="Region_SO" xml:space="preserve">
+    <value>الصومال</value>
+  </data>
+  <data name="Region_SS" xml:space="preserve">
+    <value>جنوب السودان</value>
+  </data>
+  <data name="Region_ST" xml:space="preserve">
+    <value>ساو تومي وبرينسيبي</value>
+  </data>
+  <data name="Region_SV" xml:space="preserve">
+    <value>السلفادور</value>
+  </data>
+  <data name="Region_SX" xml:space="preserve">
+    <value>سانت مارتن</value>
+  </data>
+  <data name="Region_SY" xml:space="preserve">
+    <value>سوريا</value>
+  </data>
+  <data name="Region_SZ" xml:space="preserve">
+    <value>إسواتيني</value>
+  </data>
+  <data name="Region_TC" xml:space="preserve">
+    <value>جزر توركس وكايكوس</value>
+  </data>
+  <data name="Region_TD" xml:space="preserve">
+    <value>تشاد</value>
+  </data>
+  <data name="Region_TG" xml:space="preserve">
+    <value>توغو</value>
+  </data>
+  <data name="Region_TK" xml:space="preserve">
+    <value>توكيلاو</value>
+  </data>
+  <data name="Region_TL" xml:space="preserve">
+    <value>تيمور - ليشتي</value>
+  </data>
+  <data name="Region_TN" xml:space="preserve">
+    <value>تونس</value>
+  </data>
+  <data name="Region_TO" xml:space="preserve">
+    <value>تونغا</value>
+  </data>
+  <data name="Region_TR" xml:space="preserve">
+    <value>تركيا</value>
+  </data>
+  <data name="Region_TT" xml:space="preserve">
+    <value>ترينيداد وتوباغو</value>
+  </data>
+  <data name="Region_TV" xml:space="preserve">
+    <value>توفالو</value>
+  </data>
+  <data name="Region_TW" xml:space="preserve">
+    <value>تايوان</value>
+  </data>
+  <data name="Region_TZ" xml:space="preserve">
+    <value>تنزانيا</value>
+  </data>
+  <data name="Region_UG" xml:space="preserve">
+    <value>أوغندا</value>
+  </data>
+  <data name="Region_UM" xml:space="preserve">
+    <value>جزر الولايات المتحدة النائية</value>
+  </data>
+  <data name="Region_US" xml:space="preserve">
+    <value>الولايات المتحدة</value>
+  </data>
+  <data name="Region_UY" xml:space="preserve">
+    <value>أورغواي</value>
+  </data>
+  <data name="Region_VC" xml:space="preserve">
+    <value>سانت فنسنت وجزر غرينادين</value>
+  </data>
+  <data name="Region_VE" xml:space="preserve">
+    <value>فنزويلا</value>
+  </data>
+  <data name="Region_VG" xml:space="preserve">
+    <value>جزر فيرجن البريطانية</value>
+  </data>
+  <data name="Region_VI" xml:space="preserve">
+    <value>جزر فيرجن الأمريكية</value>
+  </data>
+  <data name="Region_VU" xml:space="preserve">
+    <value>فانواتو</value>
+  </data>
+  <data name="Region_WF" xml:space="preserve">
+    <value>جزر والس وفوتونا</value>
+  </data>
+  <data name="Region_WS" xml:space="preserve">
+    <value>ساموا</value>
+  </data>
+  <data name="Region_YE" xml:space="preserve">
+    <value>اليمن</value>
+  </data>
+  <data name="Region_YT" xml:space="preserve">
+    <value>مايوت</value>
+  </data>
+  <data name="Region_ZA" xml:space="preserve">
+    <value>جنوب أفريقيا</value>
+  </data>
+  <data name="Region_ZM" xml:space="preserve">
+    <value>زامبيا</value>
+  </data>
+  <data name="Region_ZW" xml:space="preserve">
+    <value>زيمبابوي</value>
+  </data>
+  <!-- End of Region_ names -->
 </root>

@@ -54,6 +54,38 @@ namespace Tellma.Core.Queryex
         } = [];
 
         /// <summary>
+        ///     The declared parameters this compilation leaves out, by name, matched ignoring case.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         A parameter left out imposes no restriction, which is not what an absent value
+        ///         does: a comparison against an absent value is false for every row. In a row-level
+        ///         or group-level predicate, and in the condition of an aggregation wherever it sits,
+        ///         the smallest part that mentions an omitted parameter stops deciding anything — it
+        ///         reads as true where it is asserted and as false where it is negated — and an
+        ///         omitted parameter that is one element of a membership list, or one key of a
+        ///         hierarchy predicate, simply leaves the list. Everywhere else an omitted parameter
+        ///         is the absent value of its declared type.
+        ///     </para>
+        ///     <para>
+        ///         An omitted parameter gets no slot, and the part it folded away is never bound, so
+        ///         nothing is reported about it. Each name must be declared in
+        ///         <see cref="Parameters" />; one that is not is a caller error. The set is part of
+        ///         the compilation's identity, and with it empty a query compiles exactly as it does
+        ///         without it.
+        ///     </para>
+        /// </remarks>
+        public IReadOnlyCollection<string> OmittedParameters
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = [];
+
+        /// <summary>
         ///     Whether execution will have a signed-in user. Drives the current-user function, whose
         ///     result is provably absent without one — which makes a predicate comparing against it
         ///     provably false, and lets it fold away rather than be evaluated per row.
@@ -81,6 +113,93 @@ namespace Tellma.Core.Queryex
             // Refused rather than dereferenced later. An optional option still has a contract, and a
             // null that surfaces deep inside the engine reads as an engine defect rather than as the
             // caller's mistake.
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = QueryexLimits.Default;
+    }
+
+    /// <summary>Options for compiling a constant statement.</summary>
+    /// <remarks>
+    ///     A constant statement declares no parameters and reads no entity, so these are the options
+    ///     of a whole query less the ones that only a row source gives meaning to.
+    /// </remarks>
+    public sealed record ConstantCompilationOptions
+    {
+        /// <summary>
+        ///     The schema the items are compiled against: the one the statement's result is used
+        ///     with.
+        /// </summary>
+        /// <remarks>
+        ///     No item reads an entity of it. It is here because what the language accepts can
+        ///     depend on the schema, and because a compilation is remembered per schema.
+        /// </remarks>
+        public required QueryexSchema Schema
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        }
+
+        /// <summary>
+        ///     The Queryex version the items were validated under.
+        /// </summary>
+        /// <remarks>
+        ///     Supplied by the host from what it stored alongside the texts, never defaulted to the
+        ///     current version. An unsupported version is a caller error rather than a diagnostic.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     The version is one this engine does not compile.
+        /// </exception>
+        public required int QueryexVersion
+        {
+            get;
+            init
+            {
+                if (!QueryexLanguage.IsSupported(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value),
+                        value,
+                        "This engine does not compile that Queryex version.");
+                }
+
+                field = value;
+            }
+        }
+
+        /// <summary>
+        ///     Whether execution will have a signed-in user. Without one the result of the
+        ///     current-user function is provably absent: a comparison against it is settled while
+        ///     compiling, and a bare use reads a slot the host binds no value to.
+        /// </summary>
+        public bool HasUser { get; init; } = true;
+
+        /// <summary>
+        ///     The zero-based position of this statement among the compiled statements a host will
+        ///     execute as one command.
+        /// </summary>
+        /// <remarks>
+        ///     Namespaces every parameter the statement binds, exactly as a query's does, so a
+        ///     constant statement composes into one round trip with the queries that use its
+        ///     result.
+        /// </remarks>
+        public int BatchOrdinal { get; init; }
+
+        /// <summary>The resource ceilings for this call site.</summary>
+        /// <remarks>
+        ///     The ceiling on list items is also the ceiling on how many items one statement takes.
+        /// </remarks>
+        public QueryexLimits Limits
+        {
+            get;
+
+            // Refused rather than dereferenced later, as on every other options record.
             init
             {
                 ArgumentNullException.ThrowIfNull(value);
