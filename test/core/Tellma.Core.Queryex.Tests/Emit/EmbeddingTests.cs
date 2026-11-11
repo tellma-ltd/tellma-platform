@@ -84,6 +84,8 @@ namespace Tellma.Core.Queryex.Tests.Emit
         [InlineData("PostingDate >= startOfMonth(today(), 'uq')", null)]
         [InlineData("PostingDate >= startOfMonth(today(), 'uq') or Amount > 0", null)]
         [InlineData(null, "max(PostingDate) >= startOfYear(today(), 'uq')")]
+        [InlineData("diffMonths(PostingDate, startOfYear(today(), 'uq'), 'uq') >= 1", null)]
+        [InlineData("PostingDate >= addMonths(addDays(startOfYear(today(), 'uq'), 1), 1, 'et')", null)]
         public void AComputedValueInAFilter_IsPlannedAfresh(string? filter, string? having)
         {
             CompiledQuery query = Compile(new QuerySpec

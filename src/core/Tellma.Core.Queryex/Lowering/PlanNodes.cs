@@ -425,6 +425,18 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The argument's type in the language.</summary>
         internal BoundType ArgumentType { get; }
 
+        /// <summary>
+        ///     The root's key, when nothing the aggregation reads is a column; null otherwise.
+        /// </summary>
+        /// <remarks>
+        ///     Written into the aggregation only where it sits inside a subquery of its own, such as
+        ///     the operand of a calendar call. The backend gives an aggregation there to the outer
+        ///     statement only when what it reads refers to the outer statement's rows, and one that
+        ///     reads no column refers to nothing: it would count the subquery's single row, or be
+        ///     refused. The root's key is never absent on a row, so reading it changes no answer.
+        /// </remarks>
+        internal PlanColumn? Anchor { get; init; }
+
         /// <summary>The type the backend holds an aggregation's result in.</summary>
         /// <param name="kind">Which aggregate is computed.</param>
         /// <param name="argument">The value aggregated, when there is one.</param>

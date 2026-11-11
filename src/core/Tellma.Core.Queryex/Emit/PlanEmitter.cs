@@ -47,6 +47,13 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>Where the SQL is collected.</summary>
         private readonly SqlWriter _sql;
 
+        /// <summary>How many subqueries of a value's own the writer is inside, outermost first.</summary>
+        /// <remarks>
+        ///     Above zero, an aggregation that reads no column is written against the root's key, so
+        ///     the backend still aggregates it over the statement's rows.
+        /// </remarks>
+        private int _subqueries;
+
         /// <summary>Initializes an emitter.</summary>
         /// <param name="sql">Where the SQL is collected.</param>
         internal PlanEmitter(SqlWriter sql)
@@ -93,13 +100,17 @@ namespace Tellma.Core.Queryex.Emit
                     return;
 
                 case PlanScalarLookup scalar:
+                    _subqueries++;
                     _sql.Write('(');
                     WriteLevel(scalar, 0);
                     _sql.Write(')');
+                    _subqueries--;
                     return;
 
                 case PlanNamedScalar named:
+                    _subqueries++;
                     WriteNamedScalar(named);
+                    _subqueries--;
                     return;
 
                 case PlanNullValue absent:
@@ -772,7 +783,8 @@ namespace Tellma.Core.Queryex.Emit
         /// <param name="aggregate">The node.</param>
         private void WriteConditioned(PlanAggregate aggregate)
         {
-            if (aggregate.Condition is null)
+            PlanColumn? anchor = AnchorOf(aggregate);
+            if (aggregate.Condition is null && anchor is null)
             {
                 Value(aggregate.Argument!);
                 return;
@@ -781,10 +793,45 @@ namespace Tellma.Core.Queryex.Emit
             // Rows the condition excludes contribute no value at all rather than a zero, which is
             // what makes a filtered aggregate over a group that matched nothing yield nothing.
             _sql.Write("CASE WHEN ");
-            Predicate(aggregate.Condition);
+            WriteCondition(aggregate.Condition, anchor);
             _sql.Write(" THEN ");
             Value(aggregate.Argument!);
             _sql.Write(" END");
+        }
+
+        /// <summary>The root's key an aggregation is written against here, or null when it needs none.</summary>
+        /// <param name="aggregate">The node.</param>
+        /// <returns>The key, inside a value's own subquery and only for an aggregation reading no column.</returns>
+        private PlanColumn? AnchorOf(PlanAggregate aggregate)
+        {
+            return _subqueries > 0 ? aggregate.Anchor : null;
+        }
+
+        /// <summary>Writes an aggregation's per-row condition, with the root's key first when there is one.</summary>
+        /// <param name="condition">The condition, or null.</param>
+        /// <param name="anchor">The root's key, or null.</param>
+        /// <remarks>
+        ///     The key is never absent on a row, so testing it keeps every row the condition keeps; it
+        ///     is there only so that the aggregation reads the statement's rows.
+        /// </remarks>
+        private void WriteCondition(PlanPredicate? condition, PlanColumn? anchor)
+        {
+            if (anchor is not null)
+            {
+                Value(anchor);
+                _sql.Write(" IS NOT NULL");
+                if (condition is null)
+                {
+                    return;
+                }
+
+                _sql.Write(" AND (");
+                Predicate(condition);
+                _sql.Write(')');
+                return;
+            }
+
+            Predicate(condition!);
         }
 
         /// <summary>Writes a count that reads no value of its own.</summary>
@@ -794,14 +841,26 @@ namespace Tellma.Core.Queryex.Emit
             // The wide form: the narrow one stops at a little over two billion rows and raises
             // rather than returning a number, which is a limit a ledger reaches.
             _sql.Write("COUNT_BIG(");
+            PlanColumn? anchor = AnchorOf(aggregate);
             if (aggregate.Condition is null)
             {
-                _sql.Write("*)");
+                // Inside a value's own subquery, every row's key rather than every row: the same
+                // count, read off the statement's rows.
+                if (anchor is null)
+                {
+                    _sql.Write('*');
+                }
+                else
+                {
+                    Value(anchor);
+                }
+
+                _sql.Write(')');
                 return;
             }
 
             _sql.Write("CASE WHEN ");
-            Predicate(aggregate.Condition);
+            WriteCondition(aggregate.Condition, anchor);
             _sql.Write(" THEN 1 END)");
         }
 

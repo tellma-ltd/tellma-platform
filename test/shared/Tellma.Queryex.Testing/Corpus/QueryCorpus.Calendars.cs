@@ -186,6 +186,33 @@ namespace Tellma.Queryex.Testing.Corpus
                 Select = "Centre.Name, startOfMonth(addMonths(max(PostingDate), 1, 'et'), 'et'), count()",
                 Having = FilterTree.Leaf("addMonths(max(PostingDate), 1, 'et') > min(PostingDate)"),
             });
+
+            // Aggregations that read no column as calendar operands, which land inside a subquery
+            // of the call's own: named once in a value list, or sought by in a level's filter. Each
+            // is written against the root's key there, so it still counts the group's rows.
+            yield return Query("calendar-aggregate-no-column-select", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, addMonths(max(PostingDate), count(), 'et'),"
+                    + " addMonths(max(PostingDate), count(), 'uq'), addYears(max(PostingDate), count(), 'uq'),"
+                    + " addYears(max(PostingDate), sum(1), 'et'),"
+                    + " addMonths(min(PostingDate), count(today() >= cast('2000-01-01', 'date')), 'uq')",
+            });
+
+            // The same shapes in the group filter.
+            yield return Query("calendar-aggregate-no-column-having", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, count()",
+                Having = FilterTree.And(
+                [
+                    FilterTree.Leaf("addMonths(max(PostingDate), count(), 'et') > min(PostingDate)"),
+                    FilterTree.Leaf("addMonths(max(PostingDate), count(), 'uq') > min(PostingDate)"),
+                    FilterTree.Leaf("addYears(max(PostingDate), sum(1), 'uq') > min(PostingDate)"),
+                ]),
+            });
         }
     }
 }

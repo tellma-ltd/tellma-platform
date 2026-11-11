@@ -177,7 +177,19 @@ namespace Tellma.Core.Queryex.Lowering
             _hint = savedHint;
 
             BoundType argumentType = strategy.HasArgument ? call.Arguments[0].Type : BoundType.Numeric;
-            return new PlanAggregate(call.Span, strategy.Kind, argument, condition, argumentType);
+
+            // An aggregation that reads no column carries the root's key, which the writer adds to
+            // it wherever it lands inside a subquery, so the backend still aggregates it over the
+            // statement's rows rather than the subquery's one row.
+            bool readsAColumn = (argument is not null && PlanWalk.ReadsAColumn(argument))
+                || (condition is not null && PlanWalk.ReadsAColumn(condition));
+
+            return new PlanAggregate(call.Span, strategy.Kind, argument, condition, argumentType)
+            {
+                Anchor = readsAColumn || Root is null
+                    ? null
+                    : new PlanColumn(call.Span, Root, Root.Entity.Key, Here(call.Span)),
+            };
         }
 
         /// <summary>Lowers a hierarchy predicate.</summary>
