@@ -64,6 +64,18 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The bound ordering list.</summary>
         private BoundExpression _orderBy = new([], NullityMap.Empty, 0, []);
 
+        /// <summary>
+        ///     Which ordering terms leaving parameters out rewrote, by position; empty when it
+        ///     rewrote none.
+        /// </summary>
+        private bool[] _rewrittenTerms = [];
+
+        /// <summary>
+        ///     The positions of the ordering terms that leaving parameters out turned into repeats of
+        ///     an earlier term, and which are therefore not written.
+        /// </summary>
+        private readonly HashSet<int> _repeatedTerms = [];
+
         /// <summary>The bound row-level predicate, when there is one.</summary>
         private TypedExpr? _filter;
 
@@ -335,6 +347,17 @@ namespace Tellma.Core.Queryex.Pipeline
 
             // An ordering term is a value: an omitted parameter in one is the typed absent value.
             ExpressionListSyntax terms = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            if (folding is not null)
+            {
+                // Folding hands back the very item it was given wherever it changed nothing, so
+                // identity says which terms it rewrote.
+                _rewrittenTerms = new bool[terms.Items.Count];
+                for (int index = 0; index < _rewrittenTerms.Length; index++)
+                {
+                    _rewrittenTerms[index] = !ReferenceEquals(terms.Items[index], syntax!.Items[index]);
+                }
+            }
+
             BoundExpression bound = _compiler.Bind(
                 _spec.OrderBy,
                 terms,
@@ -381,15 +404,35 @@ namespace Tellma.Core.Queryex.Pipeline
                 BoundItem item = _orderBy.Items[index];
                 for (int earlier = 0; earlier < index; earlier++)
                 {
-                    if (TypedEquivalence.AreEquivalent(
+                    if (!TypedEquivalence.AreEquivalent(
                         item.Expression,
                         _orderBy.Items[earlier].Expression))
+                    {
+                        continue;
+                    }
+
+                    if (WasRewritten(index) || WasRewritten(earlier))
+                    {
+                        // Two terms that are the same once a parameter was left out of one of them,
+                        // and that as a rule differed as written. Nobody mistyped anything, so there
+                        // is nothing to report: the later one could not change the order, and it is
+                        // left out of the statement because the backend refuses the repeat.
+                        _repeatedTerms.Add(index);
+                    }
+                    else
                     {
                         // The backend refuses the same column twice in one ordering, and a second
                         // mention could not change the order anyway, so it is a typo either way.
                         scope.Report(DiagnosticCodes.DuplicateOrderingTerm, item.Span);
-                        break;
                     }
+
+                    break;
+                }
+
+                if (_repeatedTerms.Contains(index))
+                {
+                    // Whatever else there is to say about it was said about the term it repeats.
+                    continue;
                 }
 
                 if (_spec.Aggregate && !OrdersWithinGrouping(item.Expression))
@@ -397,6 +440,14 @@ namespace Tellma.Core.Queryex.Pipeline
                     scope.Report(DiagnosticCodes.OrderingAltersGrouping, item.Span);
                 }
             }
+        }
+
+        /// <summary>Whether leaving parameters out rewrote an ordering term.</summary>
+        /// <param name="index">The term's position.</param>
+        /// <returns>True when it did.</returns>
+        private bool WasRewritten(int index)
+        {
+            return index < _rewrittenTerms.Length && _rewrittenTerms[index];
         }
 
         /// <summary>Whether an ordering term leaves the grouping alone.</summary>
@@ -611,6 +662,12 @@ namespace Tellma.Core.Queryex.Pipeline
 
             for (int index = 0; index < _orderBy.Items.Length; index++)
             {
+                if (_repeatedTerms.Contains(index))
+                {
+                    // The same as an earlier term once the omitted parameters were folded out.
+                    continue;
+                }
+
                 BoundItem item = _orderBy.Items[index];
                 bool descending = item.Direction == QueryexDirection.Descending;
 

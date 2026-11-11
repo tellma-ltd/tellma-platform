@@ -130,18 +130,19 @@ namespace Tellma.Queryex.Testing.Corpus
                 Items =
                 [
                     new ConstantItem("1", QueryexType.QxNumeric),
-                    new ConstantItem("1 + Customer.Name + Amount", QueryexType.QxNumeric),
+                    new ConstantItem("1 + [Customer] . Name + Amount", QueryexType.QxNumeric),
                 ],
                 Diagnostics = ["QX4009"],
-                Sites = [Site("QX4009", "Constant[1]", 4, 13, ("name", "Customer.Name"))],
+                Sites = [Site("QX4009", "Constant[1]", 4, 17, ("name", "Customer.Name"))],
             };
 
+            // The path is named by its segments, not by how they were quoted or spaced.
             yield return new ConstantCase
             {
                 Id = "constant-refuse-bracketed-path",
                 Items = [new ConstantItem("[Posting Date]", QueryexType.QxDate)],
                 Diagnostics = ["QX4009"],
-                Sites = [Site("QX4009", "Constant[0]", 0, 14, ("name", "[Posting Date]"))],
+                Sites = [Site("QX4009", "Constant[0]", 0, 14, ("name", "Posting Date"))],
             };
 
             // Nor is there a group for an aggregation to range over.

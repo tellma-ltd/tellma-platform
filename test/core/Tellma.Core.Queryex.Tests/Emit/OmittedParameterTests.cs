@@ -442,16 +442,14 @@ namespace Tellma.Core.Queryex.Tests.Emit
         [Fact]
         public void OneEngine_KeepsTheCompilationsApart()
         {
+            const string Text = "(CustomerId = @Customer or IsPosted) and Amount > 0";
+
             QueryexEngine engine = new();
             QuerySpec spec = new()
             {
                 Root = LedgerFixture.Invoice,
                 Select = "Id",
-                Filter = FilterTree.And(
-                [
-                    FilterTree.Leaf("CustomerId = @Customer or Amount > 0"),
-                    FilterTree.Not(FilterTree.Leaf("CustomerId = @Customer or Amount > 0")),
-                ]),
+                Filter = FilterTree.And([FilterTree.Leaf(Text), FilterTree.Not(FilterTree.Leaf(Text))]),
             };
 
             CompiledQuery whole = Compile(engine, spec, Options([]));
@@ -463,11 +461,83 @@ namespace Tellma.Core.Queryex.Tests.Emit
             Assert.Same(folded.Sql, foldedAgain.Sql);
             Assert.NotEqual(whole.Sql, folded.Sql);
 
-            // The one leaf text binds three ways here — whole, folded where it is asserted, and
-            // folded where it is denied — and the folded statement shows the last two differ: the
-            // asserted leaf is gone and the denied one keeps its other half.
-            Assert.Contains("WHERE NOT (([T].[Amount] > @qx0_p0))\n", folded.Sql, StringComparison.Ordinal);
+            // The one leaf text is bound three ways on this engine: whole, folded where it is
+            // asserted, and folded where it is denied. Something is left of it under both
+            // polarities, and what is left differs: asserted it keeps only the amount, denied it
+            // keeps the posting flag as well.
+            Assert.Contains(
+                "WHERE (([T].[Amount] > @qx0_p0) AND NOT ((([T].[IsPosted] = 1) AND ([T].[Amount] > @qx0_p0))))\n",
+                folded.Sql,
+                StringComparison.Ordinal);
+
             Assert.DoesNotContain(folded.Parameters, slot => slot.DeclaredName is not null);
+
+            // The other way round on the same engine, so the denied binding is asked for first and
+            // the asserted one cannot be served it.
+            CompiledQuery mirrored = Compile(
+                engine,
+                spec with { Filter = FilterTree.And([FilterTree.Not(FilterTree.Leaf(Text)), FilterTree.Leaf(Text)]) },
+                Options(["Customer"]));
+
+            Assert.Contains(
+                "WHERE (NOT ((([T].[IsPosted] = 1) AND ([T].[Amount] > @qx0_p0))) AND ([T].[Amount] > @qx0_p0))\n",
+                mirrored.Sql,
+                StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///     Two ordering terms that are the same only because a parameter was left out of one of
+        ///     them are written once and not reported; two that were written the same still are.
+        /// </summary>
+        [Fact]
+        public void AnOrderingTerm_RepeatedOnlyByFolding_IsDroppedNotReported()
+        {
+            QuerySpec spec = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, sum(Amount, CustomerId = @Customer), sum(Amount, CustomerId = @Other)",
+                OrderBy = "sum(Amount, CustomerId = @Customer) desc, sum(Amount, CustomerId = @Other)",
+            };
+
+            // As written the two measures differ, and the query compiles with both terms.
+            CompiledQuery whole = Compile(spec, []);
+            Assert.EndsWith("ORDER BY [c1] DESC, [c2] ASC\n;\n", whole.Sql, StringComparison.Ordinal);
+
+            // With both parameters left out they are one measure: ordered by once, under the
+            // direction of the term that came first.
+            CompiledQuery folded = Compile(spec, ["Customer", "Other"]);
+            Assert.EndsWith("ORDER BY [c1] DESC\n;\n", folded.Sql, StringComparison.Ordinal);
+
+            // One left out is enough when what is left equals a term that was never touched.
+            CompiledQuery beside = Compile(
+                spec with { OrderBy = "sum(Amount, true), sum(Amount, CustomerId = @Other) desc" },
+                ["Other"]);
+
+            Assert.EndsWith("ORDER BY [c2] ASC\n;\n", beside.Sql, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///     A term written twice is still reported when other terms of the list had parameters
+        ///     left out of them: what is reported about a text does not depend on what was omitted
+        ///     beside it.
+        /// </summary>
+        [Fact]
+        public void AnOrderingTerm_WrittenTwice_IsStillReported()
+        {
+            QueryexResult<CompiledQuery> result = Engine.CompileQuery(
+                new QuerySpec
+                {
+                    Root = LedgerFixture.Invoice,
+                    Select = "Id",
+                    OrderBy = "coalesce(@Customer, Amount), Id, Id desc, coalesce(@Other, Amount)",
+                },
+                Options(["Customer", "Other"]));
+
+            QueryexDiagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("QX4008", diagnostic.Code);
+            Assert.Equal("OrderBy", diagnostic.Location);
+            Assert.Equal(new QueryexSpan(33, 7), diagnostic.Span);
         }
 
         /// <summary>
@@ -504,10 +574,15 @@ namespace Tellma.Core.Queryex.Tests.Emit
         }
 
         /// <summary>
-        ///     Every query of the corpus that declares parameters still compiles, or is refused with
-        ///     diagnostics, when each of them is left out in turn and when all of them are — and what
-        ///     compiles binds nothing for a parameter that was left out.
+        ///     Every query of the corpus that declares parameters and compiles with nothing left out
+        ///     still compiles when each of them is left out in turn and when all of them are — and
+        ///     binds nothing for a parameter that was left out.
         /// </summary>
+        /// <remarks>
+        ///     A stored definition is checked with nothing left out, and whoever runs it leaves out
+        ///     whatever they like, so leaving a parameter out must never be what gets a query
+        ///     refused: the author could not have seen it coming, and the reader cannot fix it.
+        /// </remarks>
         [Fact]
         public void EveryCorpusQuery_SurvivesLeavingItsParametersOut()
         {
@@ -522,11 +597,10 @@ namespace Tellma.Core.Queryex.Tests.Emit
                         entry.Spec,
                         entry.Options(LedgerFixture.Schema) with { OmittedParameters = omitted });
 
-                    if (!result.Succeeded)
-                    {
-                        Assert.NotEmpty(result.Diagnostics);
-                        continue;
-                    }
+                    Assert.True(
+                        result.Succeeded,
+                        entry.Id + " without " + string.Join(", ", omitted) + ": "
+                            + string.Join(", ", result.Diagnostics.Select(d => d.Code + "@" + d.Location)));
 
                     compiled++;
                     Assert.DoesNotContain(

@@ -143,7 +143,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     DiagnosticCodes.PathNotPermitted,
                     path.Span,
                     DiagnosticArgumentNames.Name,
-                    item.Text.Substring(path.Span.Start, path.Span.Length));
+                    string.Join('.', path.Segments.Select(static segment => segment.Name)));
             }
 
             Binder binder = new(context, scope);

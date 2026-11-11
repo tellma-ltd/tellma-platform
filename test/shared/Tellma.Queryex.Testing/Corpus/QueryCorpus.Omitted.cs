@@ -182,6 +182,25 @@ namespace Tellma.Queryex.Testing.Corpus
                 OrderBy = "Centre.Name",
             });
 
+            // Two ordering terms that differ only in a parameter each of them leaves out are one
+            // term once both are folded. The second is left out of the statement rather than
+            // reported: nothing was mistyped, and it could not change the order.
+            yield return Omitting("omit-ordering-repeated", ["Customer", "Other"], new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, sum(Amount, CustomerId = @Customer), sum(Amount, CustomerId = @Other)",
+                OrderBy = "sum(Amount, CustomerId = @Customer) desc, sum(Amount, CustomerId = @Other),"
+                    + " Centre.Name",
+            });
+
+            yield return Omitting("omit-ordering-repeated-values", ["Customer", "Other"], new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                OrderBy = "coalesce(@Customer, Amount) desc, coalesce(@Other, Amount), Id",
+            });
+
             // Anywhere else an omitted parameter is the absent value of its declared type: a column
             // of that type, an operand, an element of a list read as a value, and a condition that
             // is not an aggregation's.
@@ -248,7 +267,7 @@ namespace Tellma.Queryex.Testing.Corpus
             };
 
             // The absent value an omitted parameter becomes carries the parameter's own span.
-            yield return Omitting("refuse-omitted-operand", ["Customer"], new QuerySpec
+            yield return Omitting("refuse-omitted-operand", ["Root"], new QuerySpec
             {
                 Root = LedgerFixture.Invoice,
                 Select = "Id, Amount + @Root",
