@@ -92,26 +92,57 @@ describe('tm/no-platform-sniffing', () => {
   });
 });
 
-// The first lint loads the whole workspace config, which takes several seconds on a busy machine.
-describe('tm/no-platform-sniffing scope', { timeout: 60_000 }, () => {
-  const eslint = new ESLint({ cwd: process.cwd() });
+// The texts below are linted as if they were the named source files. The
+// @tellma/core files lint with type information, and under CI=true
+// typescript-eslint infers a one-shot CLI run that builds each TypeScript
+// program from the files on disk, without the text lintText supplies: the
+// committed file would be judged instead of the text under test. The tests
+// opt out of that inference, as an editor session does.
+//
+// The first lint loads the whole workspace config and a TypeScript program,
+// which takes several seconds on a busy machine.
+describe('tm/no-platform-sniffing scope', { timeout: 120_000 }, () => {
+  const eslint = new ESLint({
+    cwd: process.cwd(),
+    overrideConfig: {
+      languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } },
+    },
+  });
   const CODE = 'export const tmApple = /Mac/.test(navigator.platform);\n';
 
-  /** The rule's messages the workspace config reports for `CODE` at `filePath`. */
-  async function sniffingMessages(filePath: string): Promise<number> {
+  /**
+   * The rule ids the workspace config reports for `CODE` at `filePath`; a
+   * fatal parse message shows as its text, so it cannot pass for a clean file.
+   */
+  async function ruleIds(filePath: string): Promise<string[]> {
     const [result] = await eslint.lintText(CODE, { filePath });
-    return result.messages.filter((message) => message.ruleId === 'tm/no-platform-sniffing').length;
+    return (result?.messages ?? []).map((message) => message.ruleId ?? `fatal: ${message.message}`);
   }
 
   it('applies to the library and module packages, specs included', async () => {
-    expect(await sniffingMessages('projects/core/tellma-core-ui/grid/internal/x.ts')).toBe(1);
-    expect(await sniffingMessages('projects/core/tellma-core-ui/menu/x.spec.ts')).toBe(1);
-    expect(await sniffingMessages('projects/core/tellma-core/src/app/tm-app-config.ts')).toBe(1);
-    expect(await sniffingMessages('projects/module/tellma-module-x/src/x.ts')).toBe(1);
+    for (const filePath of [
+      'projects/core/tellma-core-ui/grid/internal/x.ts',
+      'projects/core/tellma-core-ui/menu/x.spec.ts',
+      'projects/core/tellma-core/src/app/tm-app-config.ts',
+      'projects/module/tellma-module-x/src/x.ts',
+    ]) {
+      const ids = await ruleIds(filePath);
+      expect(ids, filePath).not.toContainEqual(expect.stringMatching(/^fatal: /));
+      expect(
+        ids.filter((id) => id === 'tm/no-platform-sniffing'),
+        `${filePath}: ${JSON.stringify(ids)}`,
+      ).toHaveLength(1);
+    }
   });
 
   it('exempts kbd, which holds the one platform check', async () => {
-    expect(await sniffingMessages('projects/core/tellma-core-ui/kbd/x.ts')).toBe(0);
-    expect(await sniffingMessages('projects/core/tellma-core-ui/kbd/x.spec.ts')).toBe(0);
+    for (const filePath of [
+      'projects/core/tellma-core-ui/kbd/x.ts',
+      'projects/core/tellma-core-ui/kbd/x.spec.ts',
+    ]) {
+      const ids = await ruleIds(filePath);
+      expect(ids, filePath).not.toContainEqual(expect.stringMatching(/^fatal: /));
+      expect(ids, filePath).not.toContain('tm/no-platform-sniffing');
+    }
   });
 });
