@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Context.Propagation;
+using OpenTelemetry.Instrumentation.SqlClient;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -62,7 +64,13 @@ namespace Tellma.Core.AspNetCore.Observability
         public static void Register(
             IServiceCollection services, IConfiguration configuration, DeploymentIdentity deployment, DeploymentVersions versions)
         {
-            // --- Logs: Serilog, whose events also reach OpenTelemetry's provider ---
+            // --- Logs: Serilog, whose events also reach OpenTelemetry's provider and no other ---
+            // Serilog forwards every event to each registered logger provider, so the host's
+            // defaults (console, debug, event source, event log) would write each line a second
+            // time, past the Logging section's filters; Serilog's own sinks replace them. The host's
+            // logger stays its own: the process-wide static logger is left alone, so two hosts in one
+            // process (as in tests) never write through, or close, each other's sinks.
+            _ = services.RemoveAll<ILoggerProvider>();
             _ = services.AddSerilog(
                 (provider, logger) => logger
                     .ReadFrom.Configuration(configuration)
@@ -70,6 +78,7 @@ namespace Tellma.Core.AspNetCore.Observability
                     .Enrich.FromLogContext()
                     .Enrich.WithProperty("PlatformVersion", versions.PlatformVersion)
                     .Enrich.WithProperty("DistributionVersion", versions.DistributionVersion),
+                preserveStaticLogger: true,
                 writeToProviders: true);
 
             // --- Trace context: a browser's ids adopted, its flags, state and baggage not ---
@@ -94,7 +103,7 @@ namespace Tellma.Core.AspNetCore.Observability
                     .AddSource(Sources)
                     .AddAspNetCoreInstrumentation(options => options.Filter = static context => !IsClientTelemetry(context.Request))
                     .AddHttpClientInstrumentation()
-                    .AddSqlClientInstrumentation(options => options.EnrichWithSqlCommand = static (activity, _) => RemoveQueryText(activity)))
+                    .AddSqlClientInstrumentation(ConfigureSqlClient))
                 .WithMetrics(metrics => metrics
                     .AddMeter(Meters)
                     .AddAspNetCoreInstrumentation()
@@ -105,6 +114,17 @@ namespace Tellma.Core.AspNetCore.Observability
                     options.IncludeScopes = true;
                     options.IncludeFormattedMessage = true;
                 });
+        }
+
+        /// <summary>
+        ///     Configures the SqlClient instrumentation: a command's text and its summary are removed
+        ///     from its span. The instrumentation sets them when it starts the span and enriches it
+        ///     afterwards, so the enrichment is the last word.
+        /// </summary>
+        /// <param name="options">The instrumentation's options.</param>
+        internal static void ConfigureSqlClient(SqlClientTraceInstrumentationOptions options)
+        {
+            options.EnrichWithSqlCommand = static (activity, _) => RemoveQueryText(activity);
         }
 
         /// <summary>Removes a SQL span's batch text.</summary>

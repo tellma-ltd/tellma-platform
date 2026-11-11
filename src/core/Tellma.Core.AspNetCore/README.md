@@ -32,9 +32,11 @@ feature or entity added there would diverge the web host's model from the migrat
   repository fails `host.data-protection`;
 - forwarded headers from the configured proxies alone;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
-- Serilog from the `Serilog` section with the version enrichers, and OpenTelemetry over the
-  platform's meters and activity sources and the ASP.NET Core, HttpClient and SqlClient
-  instrumentation. SQL spans carry no batch text. No exporter is added here.
+- Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
+  static `Log.Logger` is left alone), replacing the framework's default logger providers: each event
+  goes to Serilog's sinks and to OpenTelemetry's logger provider, once;
+- OpenTelemetry over the platform's meters and activity sources and the ASP.NET Core, HttpClient
+  and SqlClient instrumentation. SQL spans carry no batch text. No exporter is added here.
 
 ## `UseTellma`
 
@@ -75,12 +77,22 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `Tenantless` | `/api` | each endpoint's own | none; each calls `AsTenantlessEndpoint` |
 
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
-`AllowMember()`. `WithMutation(bool)` states whether it changes data; without it, an endpoint
-answering only safe methods is a read and any other is a mutation.
+`AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with
+`WithMutation(bool)`, which also clears any read-only allowance; nothing is inferred from its HTTP
+methods. A `Hub` endpoint is always a read.
 
 The endpoint audit fails startup, naming the route and method, for any endpoint a tenant could be
-reached through without the platform's controls, and for a distribution route that takes a word the
-platform or the SPA owns.
+reached through without the platform's controls:
+
+- a tenant endpoint whose surface is not its group's, or that sits outside the tenant groups
+  (only MCP's, stamped by MCP's own front door, may);
+- a `Web`, `Api` or `Blobs` endpoint whose request delegate is not the one the access guard wraps;
+- a `Web`, `Api` or `Blobs` endpoint that does not state `WithMutation`;
+- a missing or doubled grant, another policy than the group's, anonymous access, CORS on a cookie
+  surface, or a cookie mutation answering `GET`.
+
+It also fails startup for a distribution route, or a stack's resource segment, that takes a word
+the platform or the SPA owns under `/{tenantId}`.
 
 ## CSRF
 

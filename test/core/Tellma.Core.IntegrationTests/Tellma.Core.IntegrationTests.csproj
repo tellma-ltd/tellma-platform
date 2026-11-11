@@ -5,6 +5,8 @@
     <!-- The platform-owned catalog migrations, applied to every fresh catalog the suite creates,
          and their design-time factory. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- The web host's tracing configuration, run against a real SQL Server. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
     <!-- In-memory configuration for the compositions the suite builds over its catalogs. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <!-- FakeLogger and MetricCollector, for the best-effort membership writes. -->

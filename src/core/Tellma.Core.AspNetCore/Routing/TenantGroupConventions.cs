@@ -4,8 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 
 namespace Tellma.Core.AspNetCore.Routing
 {
@@ -14,8 +12,9 @@ namespace Tellma.Core.AspNetCore.Routing
     {
         /// <summary>
         ///     Stamps <see cref="TenantEndpointMetadata" /> on an endpoint of a tenant group that carries
-        ///     none: the group's surface, the mutation flag <c>WithMutation</c> stamped or, failing that,
-        ///     the one its methods imply, and no read-only allowance.
+        ///     none: the group's surface, the mutation flag <c>WithMutation</c> stamped, and no read-only
+        ///     allowance. A hub endpoint is always a read, as its front door asks; any other endpoint
+        ///     that stated nothing is stamped a mutation and marked unstated, which the audit refuses.
         /// </summary>
         /// <param name="endpoint">The endpoint being built.</param>
         /// <param name="surface">The group's surface.</param>
@@ -29,25 +28,23 @@ namespace Tellma.Core.AspNetCore.Routing
                 return;
             }
 
-            bool isMutation = endpoint.Metadata.OfType<MutationStamp>().LastOrDefault() is { } stamp
-                ? stamp.IsMutation
-                : MethodsMutate(endpoint.Metadata.OfType<HttpMethodMetadata>().LastOrDefault());
-            endpoint.Metadata.Add(new TenantEndpointMetadata(surface, isMutation, AllowWhenReadOnly: false));
-        }
+            // --- The hub: its connections never write, whatever method SignalR maps them with ---
+            if (surface == TenantSurface.Hub)
+            {
+                endpoint.Metadata.Add(new TenantEndpointMetadata(surface, IsMutation: false, AllowWhenReadOnly: false));
+                return;
+            }
 
-        /// <summary>
-        ///     Whether an endpoint's methods may change data: anything but <c>GET</c>, <c>HEAD</c>,
-        ///     <c>OPTIONS</c> and <c>TRACE</c>, or any method at all when the endpoint names none. An
-        ///     unstated endpoint is a mutation, so a read-only tenant refuses it.
-        /// </summary>
-        /// <param name="methods">The endpoint's method metadata, or null.</param>
-        /// <returns>True when the endpoint may change data.</returns>
-        public static bool MethodsMutate(HttpMethodMetadata? methods)
-        {
-            return methods is null
-                || methods.HttpMethods.Count == 0
-                || methods.HttpMethods.Any(static method => !HttpMethods.IsGet(method) && !HttpMethods.IsHead(method)
-                    && !HttpMethods.IsOptions(method) && !HttpMethods.IsTrace(method));
+            // --- Every other surface: what WithMutation stated, or a refused, fail-safe mutation ---
+            if (endpoint.Metadata.OfType<MutationStamp>().LastOrDefault() is { } stamp)
+            {
+                endpoint.Metadata.Add(new TenantEndpointMetadata(surface, stamp.IsMutation, AllowWhenReadOnly: false));
+            }
+            else
+            {
+                endpoint.Metadata.Add(new TenantEndpointMetadata(surface, IsMutation: true, AllowWhenReadOnly: false));
+                endpoint.Metadata.Add(MutationUnstatedMetadata.Instance);
+            }
         }
     }
 }

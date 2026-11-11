@@ -28,6 +28,10 @@
     <!-- The suite drives the audit's walk, the CSRF rules and the principal binding directly,
          which keeps those seams out of the public surface. -->
     <InternalsVisibleTo Include="Tellma.Core.AspNetCore.Tests" />
+    <!-- The MCP feature stamps its front-door marker, which no distribution may forge. -->
+    <InternalsVisibleTo Include="Tellma.Core.Mcp" />
+    <!-- The integration suite runs the host's tracing configuration against a real SQL Server. -->
+    <InternalsVisibleTo Include="Tellma.Core.IntegrationTests" />
   </ItemGroup>
 
 </Project>

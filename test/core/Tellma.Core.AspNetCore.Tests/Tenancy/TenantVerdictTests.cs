@@ -99,6 +99,9 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
         [InlineData("Retired", "member", 404, TenantProblemCodes.NotFound)]
         [InlineData("Unknown", "member", 404, TenantProblemCodes.NotFound)]
         [InlineData("Active", "anonymous", 401, "unauthenticated")]
+        [InlineData("Suspended", "stranger", 403, TenantProblemCodes.Suspended)]
+        [InlineData("ReadOnly", "stranger", 404, TenantProblemCodes.NotFound)]
+        [InlineData("Frozen", "stranger", 404, TenantProblemCodes.NotFound)]
         public async Task The_hub_front_door_answers_as_the_web_surface_does_for_a_read(string state, string caller, int status, string? code)
         {
             TellmaTestHost host = matrix.Host;
@@ -122,6 +125,68 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
             if (code is null)
             {
                 Assert.Equal(TellmaTestHost.UserId, (await ProbeResult.ReadAsync(response)).UserId);
+            }
+            else
+            {
+                Assert.Equal(code, (await Problem.ReadAsync(response)).Code);
+            }
+        }
+
+        /// <summary>
+        ///     The guarded surfaces besides the web's: the blobs and the public API, for a cookie
+        ///     member and stranger, a user token's member and stranger, and a service account.
+        /// </summary>
+        public static TheoryData<string, string, string, string, int, string?> Surfaces()
+        {
+            TheoryData<string, string, string, string, int, string?> data = [];
+            foreach (string state in Tenants.Keys)
+            {
+                foreach ((string surface, string operation, string caller) in new[]
+                {
+                    ("blobs", "read", "member"),
+                    ("blobs", "read", "stranger"),
+                    ("api", "read", "member"),
+                    ("api", "read", "stranger"),
+                    ("api", "read", "service"),
+                    ("api", "write", "member"),
+                    ("api", "write", "stranger"),
+                })
+                {
+                    // A service account is a member as far as the scripted connection goes.
+                    (int status, string? code) = Expected(state, operation, caller == "service" ? "member" : caller);
+                    data.Add(state, surface, operation, caller, status, code);
+                }
+            }
+
+            return data;
+        }
+
+        [Theory]
+        [MemberData(nameof(Surfaces))]
+        public async Task The_blobs_and_api_surfaces_answer_each_tenant_state_as_the_web_surface_does(
+            string state, string surface, string operation, string caller, int status, string? code)
+        {
+            TellmaTestHost host = matrix.Host;
+            int tenantId = Tenants[state];
+            HttpMethod method = operation == "write" ? HttpMethod.Post : HttpMethod.Get;
+            using HttpRequestMessage request = surface == "blobs"
+                ? TellmaTestHost.SpaRequest(method, $"/{tenantId}/blobs/attachments/7", host.Cookie(caller == "stranger" ? TellmaTestHost.Stranger : "sub-1"))
+                : TellmaTestHost.BearerRequest(method, $"/{tenantId}/api/v1/probe", caller switch
+                {
+                    "service" => TellmaTestHost.ServiceToken(),
+                    "stranger" => TellmaTestHost.UserToken(TellmaTestHost.Stranger),
+                    _ => TellmaTestHost.UserToken(),
+                });
+
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(status, (int)response.StatusCode);
+            if (code is null)
+            {
+                // Served: the guard ran, so the connection bound the user.
+                ProbeResult probe = await ProbeResult.ReadAsync(response);
+                Assert.Equal(tenantId, probe.TenantId);
+                Assert.Equal(TellmaTestHost.UserId, probe.UserId);
             }
             else
             {

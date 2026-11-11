@@ -10,6 +10,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.AspNetCore.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {
@@ -31,29 +32,35 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         public static void Map(WebApplication app, TellmaEndpoints endpoints)
         {
             // --- The web surface: a read, a write, a write a read-only tenant allows, a step-up, an upload ---
-            _ = endpoints.Web.MapGet("/probe", Probe).AllowMember();
-            _ = endpoints.Web.MapPost("/probe", Probe).AllowMember();
+            _ = endpoints.Web.MapGet("/probe", Probe).WithMutation(false).AllowMember();
+            _ = endpoints.Web.MapPost("/probe", Probe).WithMutation(true).AllowMember();
             _ = endpoints.Web.MapPost("/tolerant", Probe)
                 .WithMetadata(new TenantEndpointMetadata(TenantSurface.Web, IsMutation: true, AllowWhenReadOnly: true))
                 .AllowMember();
             _ = endpoints.Web.MapPost("/stepup", Probe)
+                .WithMutation(true)
                 .WithMetadata(new RequireAssuranceMetadata(StepUpAcr, StepUpMaxAge))
                 .AllowMember();
-            _ = endpoints.Web.MapPost("/upload", Probe).AcceptsBinary(1024).AllowMember();
+            _ = endpoints.Web.MapPost("/upload", Probe).WithMutation(true).AcceptsBinary(1024).AllowMember();
 
-            // --- The hub's negotiate, the blobs, the public API ---
+            // --- The hub's negotiate (a read, as every hub endpoint is), the blobs, the public API ---
             _ = endpoints.Hub.MapPost("/negotiate", Probe).AllowMember();
-            _ = endpoints.Blobs.MapGet("/{kind}/{id:int}", Probe).AllowMember();
-            _ = endpoints.Api.MapGet("/probe", Probe).AllowMember();
-            _ = endpoints.Api.MapPost("/probe", Probe).AllowMember();
+            _ = endpoints.Blobs.MapGet("/{kind}/{id:int}", Probe).WithMutation(false).AllowMember();
+            _ = endpoints.Api.MapGet("/probe", Probe).WithMutation(false).AllowMember();
+            _ = endpoints.Api.MapPost("/probe", Probe).WithMutation(true).AllowMember();
             _ = endpoints.Api.MapPost("/stepup", Probe)
+                .WithMutation(true)
                 .WithMetadata(new RequireAssuranceMetadata(StepUpAcr, StepUpMaxAge))
                 .AllowMember();
 
-            // --- MCP, mapped by hand as its feature maps it ---
+            // --- MCP, mapped by hand as its feature maps it: its front door is a filter running the guard ---
             _ = app.MapGet("/{tenantId:int:min(1)}/mcp", Probe)
                 .RequireAuthorization(TellmaPolicies.Mcp)
-                .WithMetadata(new TenantEndpointMetadata(TenantSurface.Mcp, IsMutation: false, AllowWhenReadOnly: false), PlatformEndpointMetadata.Instance)
+                .AddEndpointFilter<TenantAccessFilter>()
+                .WithMetadata(
+                    new TenantEndpointMetadata(TenantSurface.Mcp, IsMutation: false, AllowWhenReadOnly: false),
+                    new TenantFrontDoorMetadata(TenantSurface.Mcp),
+                    PlatformEndpointMetadata.Instance)
                 .AllowMember();
 
             // --- Tenantless: one on the session fallback, one anonymous ---

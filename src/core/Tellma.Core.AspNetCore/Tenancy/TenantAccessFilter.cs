@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Tenancy
@@ -38,6 +39,10 @@ namespace Tellma.Core.AspNetCore.Tenancy
         ///     endpoint: endpoint filters reach only route handlers, and an endpoint a data source maps
         ///     onto a group by other means would otherwise run unguarded.
         /// </summary>
+        /// <remarks>
+        ///     The wrapper is stamped on the endpoint, so the endpoint audit can prove that the delegate
+        ///     the endpoint finally runs is the guarded one.
+        /// </remarks>
         /// <param name="endpoint">The endpoint being built, after its request delegate is set.</param>
         public static void Wrap(EndpointBuilder endpoint)
         {
@@ -48,12 +53,16 @@ namespace Tellma.Core.AspNetCore.Tenancy
                 return;
             }
 
-            endpoint.RequestDelegate = async context =>
+            async Task GuardedAsync(HttpContext context)
             {
                 await EnsureAsync(context).ConfigureAwait(false);
                 ApplyCultures(context);
                 await inner(context).ConfigureAwait(false);
-            };
+            }
+
+            RequestDelegate guarded = GuardedAsync;
+            endpoint.RequestDelegate = guarded;
+            endpoint.Metadata.Add(new TenantGuardMetadata(guarded));
         }
 
         /// <summary>Runs the guard for a request, once.</summary>

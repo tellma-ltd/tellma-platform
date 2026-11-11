@@ -12,6 +12,7 @@ using Microsoft.Extensions.Primitives;
 using System.Net;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
 
@@ -70,7 +71,7 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
                     },
                     RoutePatternFactory.Parse("/raw"),
                     order: 0,
-                    new EndpointMetadataCollection(new HttpMethodMetadata(["GET"]), new MemberEndpointMetadata()),
+                    new EndpointMetadataCollection(new HttpMethodMetadata(["GET"]), new MutationStamp(false), new MemberEndpointMetadata()),
                     "raw"),
             ];
 

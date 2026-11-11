@@ -3,13 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Core.Composition;
 
 namespace Tellma.Core.AspNetCore.Tests.Routing
 {
@@ -30,7 +36,7 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
 
             IReadOnlyList<CompositionProblem> problems = await TellmaEndpointAudit.AuditAsync(
                 host.Services.GetRequiredService<MappedEndpoints>().Endpoints(),
-                host.Services.GetRequiredService<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider>());
+                host.Services.GetRequiredService<IAuthorizationPolicyProvider>());
             Assert.Empty(problems);
         }
 
@@ -75,6 +81,11 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 { "tenant-second-segment", "GET /{tenantId:int:min(1)}/settings", "takes 'settings' as its second segment" },
                 { "tenant-metadata-off-tenant-route", "GET /custom", "does not begin with the tenantId parameter" },
                 { "unregistered-policy", "GET /unknown-policy", "names an authorization policy that is not registered" },
+                { "tenant-endpoint-off-group", "GET /{tenantId:int:min(1)}/reports", "is a Web tenant endpoint outside the platform's tenant groups" },
+                { "web-surface-on-hub-group", "GET /{tenantId:int:min(1)}/hub/state", "is stamped the Web surface on the Hub group" },
+                { "hub-surface-on-web-group", "POST /{tenantId:int:min(1)}/api/web/stream", "is stamped the Hub surface on the Web group" },
+                { "mcp-without-front-door", "GET /{tenantId:int:min(1)}/assistant", "is an MCP endpoint that MCP's front door did not install" },
+                { "unstated-mutation", "POST /{tenantId:int:min(1)}/api/web/save", "does not state whether it changes data" },
             };
         }
 
@@ -92,6 +103,99 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 Assert.Equal(TellmaEndpointAudit.CheckName, problem.Source);
                 Assert.StartsWith(where + " ", problem.Problem, StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public async Task An_endpoint_whose_guarded_delegate_was_replaced_is_refused()
+        {
+            // A later convention swaps the delegate the group's guard wrapped for an unguarded one.
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.MapProbes = false;
+                options.Map = static (application, endpoints) =>
+                {
+                    _ = endpoints.Blobs.MapGet("/raw", Nothing).WithMutation(false).AllowMember();
+                    ((IEndpointConventionBuilder)endpoints.Blobs).Finally(static endpoint => endpoint.RequestDelegate = Nothing);
+                };
+            });
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+                CompositionProblem problem = Assert.Single(exception.Problems);
+                Assert.StartsWith("GET /{tenantId:int:min(1)}/blobs/raw runs a request delegate the tenant access guard does not wrap", problem.Problem, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public async Task A_guard_marker_that_is_not_the_delegate_the_endpoint_runs_is_refused()
+        {
+            // The walk itself: a Web-group endpoint whose marker names another delegate.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options => options.MapProbes = false);
+            RouteEndpoint endpoint = new(
+                Nothing,
+                RoutePatternFactory.Parse("/{tenantId:int:min(1)}/api/web/raw"),
+                order: 0,
+                new EndpointMetadataCollection(
+                    new HttpMethodMetadata(["GET"]),
+                    new TellmaGroupMetadata(TellmaGroup.Web),
+                    new TenantEndpointMetadata(TenantSurface.Web, IsMutation: false, AllowWhenReadOnly: false),
+                    new TenantGuardMetadata(Guarded),
+                    new AuthorizeAttribute(TellmaPolicies.Web),
+                    new MemberEndpointMetadata()),
+                "raw");
+
+            IReadOnlyList<CompositionProblem> problems = await TellmaEndpointAudit.AuditAsync(
+                [endpoint], host.Services.GetRequiredService<IAuthorizationPolicyProvider>());
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("runs a request delegate the tenant access guard does not wrap", problem.Problem, StringComparison.Ordinal);
+
+            // A delegate the endpoint does not run, which the marker names.
+            static Task Guarded(HttpContext _)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        [Fact]
+        public async Task A_hub_endpoint_mapped_without_methods_passes_as_a_read()
+        {
+            // SignalR maps its connection endpoints with no method metadata.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+                options.Map = static (_, endpoints) => endpoints.Hub.Map("/connect", Nothing).AllowMember());
+
+            TenantEndpointMetadata metadata = Assert.Single(
+                host.Services.GetRequiredService<MappedEndpoints>().Endpoints().OfType<RouteEndpoint>(),
+                static endpoint => endpoint.RoutePattern.RawText == "/{tenantId:int:min(1)}/hub/connect").Metadata.GetRequiredMetadata<TenantEndpointMetadata>();
+            Assert.Equal(new TenantEndpointMetadata(TenantSurface.Hub, IsMutation: false, AllowWhenReadOnly: false), metadata);
+        }
+
+        [Fact]
+        public async Task WithMutation_clears_a_read_only_allowance()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+                options.Map = static (_, endpoints) => endpoints.Web.MapPost("/amend", Nothing)
+                    .WithMetadata(new TenantEndpointMetadata(TenantSurface.Web, IsMutation: false, AllowWhenReadOnly: true))
+                    .WithMutation(true)
+                    .AllowMember());
+
+            TenantEndpointMetadata metadata = Assert.Single(
+                host.Services.GetRequiredService<MappedEndpoints>().Endpoints().OfType<RouteEndpoint>(),
+                static endpoint => endpoint.RoutePattern.RawText == "/{tenantId:int:min(1)}/api/web/amend").Metadata.GetRequiredMetadata<TenantEndpointMetadata>();
+            Assert.Equal(new TenantEndpointMetadata(TenantSurface.Web, IsMutation: true, AllowWhenReadOnly: false), metadata);
+        }
+
+        [Theory]
+        [InlineData("settings")]
+        [InlineData("blobs")]
+        [InlineData("Hub")]
+        public void A_stack_whose_resource_segment_is_a_reserved_word_fails_startup(string segment)
+        {
+            TellmaCompositionException exception = Assert.Throws<TellmaCompositionException>(
+                () => TellmaTestHost.Build(options => options.ConfigureServices = services =>
+                    services.Replace(ServiceDescriptor.Singleton<IStackRouteSource>(new StackRoutes(new StackRoute("sales-invoices", StackOperations.All), new StackRoute(segment, StackOperations.All))))));
+            CompositionProblem problem = Assert.Single(exception.Problems);
+            Assert.StartsWith($"The stack at /{{tenantId}}/{segment} takes '{segment}'", problem.Problem, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -133,12 +237,12 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             _ = violation switch
             {
                 "tenant-route-without-metadata" => app.MapGet("/{tenantId:int}/custom", Nothing).RequireAuthorization(TellmaPolicies.Web).AllowMember(),
-                "tenant-endpoint-with-another-policy" => endpoints.Web.MapGet("/mixed", Nothing).RequireAuthorization(TellmaPolicies.Api).AllowMember(),
-                "tenant-endpoint-anonymous" => endpoints.Web.MapGet("/open", Nothing).AllowAnonymous().AsTenantlessEndpoint("x").AllowMember(),
-                "tenant-endpoint-without-grant" => endpoints.Web.MapGet("/ungranted", Nothing),
-                "tenant-endpoint-with-two-grants" => endpoints.Web.MapGet("/twice", Nothing).AllowMember().RequireSecurable("acme.Thing", "Read"),
+                "tenant-endpoint-with-another-policy" => endpoints.Web.MapGet("/mixed", Nothing).RequireAuthorization(TellmaPolicies.Api).WithMutation(false).AllowMember(),
+                "tenant-endpoint-anonymous" => endpoints.Web.MapGet("/open", Nothing).AllowAnonymous().AsTenantlessEndpoint("x").WithMutation(false).AllowMember(),
+                "tenant-endpoint-without-grant" => endpoints.Web.MapGet("/ungranted", Nothing).WithMutation(false),
+                "tenant-endpoint-with-two-grants" => endpoints.Web.MapGet("/twice", Nothing).WithMutation(false).AllowMember().RequireSecurable("acme.Thing", "Read"),
                 "cookie-get-mutation" => endpoints.Web.MapGet("/delete", Nothing).WithMutation(true).AllowMember(),
-                "cookie-cors" => endpoints.Web.MapPost("/shared", Nothing).RequireCors("anywhere").AllowMember(),
+                "cookie-cors" => endpoints.Web.MapPost("/shared", Nothing).RequireCors("anywhere").WithMutation(true).AllowMember(),
                 "anonymous-without-tenantless" => app.MapGet("/public", Nothing).AllowAnonymous(),
                 "no-authorization" => app.MapGet("/plain", Nothing),
                 "spa-first-segment" => app.MapGet("/tenants/list", Nothing).AllowAnonymous().AsTenantlessEndpoint("x"),
@@ -148,8 +252,32 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 "tenant-second-segment" => app.MapGet("/{tenantId:int:min(1)}/settings", Nothing).RequireAuthorization(TellmaPolicies.Web).WithMetadata(web).AllowMember(),
                 "tenant-metadata-off-tenant-route" => app.MapGet("/custom", Nothing).RequireAuthorization(TellmaPolicies.Web).WithMetadata(web),
                 "unregistered-policy" => app.MapGet("/unknown-policy", Nothing).RequireAuthorization("Nope"),
+                "tenant-endpoint-off-group" => app.MapGet("/{tenantId:int:min(1)}/reports", Nothing).RequireAuthorization(TellmaPolicies.Web).WithMetadata(web).AllowMember(),
+                "web-surface-on-hub-group" => endpoints.Hub.MapGet("/state", Nothing).WithMetadata(web).AllowMember(),
+                "hub-surface-on-web-group" => endpoints.Web.MapPost("/stream", Nothing)
+                    .WithMetadata(new TenantEndpointMetadata(TenantSurface.Hub, IsMutation: false, AllowWhenReadOnly: false))
+                    .AllowMember(),
+                "mcp-without-front-door" => app.MapGet("/{tenantId:int:min(1)}/assistant", Nothing)
+                    .RequireAuthorization(TellmaPolicies.Mcp)
+                    .WithMetadata(new TenantEndpointMetadata(TenantSurface.Mcp, IsMutation: false, AllowWhenReadOnly: false))
+                    .AllowMember(),
+                "unstated-mutation" => endpoints.Web.MapPost("/save", Nothing).AllowMember(),
                 _ => throw new ArgumentOutOfRangeException(nameof(violation), violation, "Not a violation of the suite."),
             };
+        }
+
+        /// <summary>A stack registry reduced to its routes.</summary>
+        /// <param name="routes">The stacks' routes.</param>
+        private sealed class StackRoutes(params StackRoute[] routes) : IStackRouteSource
+        {
+            /// <inheritdoc />
+            public IReadOnlyCollection<StackRoute> Routes => routes;
+
+            /// <inheritdoc />
+            public StackRoute? Find(string resource)
+            {
+                return null;
+            }
         }
     }
 }

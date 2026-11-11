@@ -69,8 +69,8 @@ namespace Tellma.Core.AspNetCore
                 _ = app.UseForwardedHeaders();
             }
 
-            // --- 3. Request logging ---
-            _ = app.UseSerilogRequestLogging();
+            // --- 3. Request logging, through the host's own logger rather than the static one ---
+            _ = app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<ILogger>());
 
             // --- 4. Exceptions as problem details ---
             _ = app.UseExceptionHandler(new ExceptionHandlerOptions

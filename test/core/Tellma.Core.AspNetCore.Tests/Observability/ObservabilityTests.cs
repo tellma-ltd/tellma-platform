@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net;
 using Tellma.Core.Abstractions.Api;
@@ -86,6 +88,30 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
         }
 
         [Fact]
+        public async Task Each_event_reaches_every_logger_provider_once_and_the_host_defaults_none()
+        {
+            CapturingProvider capture = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(capture));
+
+            // The host's defaults (console, debug, event source, event log) are gone: Serilog's sinks
+            // replace them, and OpenTelemetry's provider is the one Serilog forwards to.
+            string[] providers = [.. host.Services.GetServices<ILoggerProvider>()
+                .Where(provider => provider != capture)
+                .Select(static provider => provider.GetType().Name)];
+            Assert.Equal(["OpenTelemetryLoggerProvider"], providers);
+
+            const string Marker = "tellma-log-once-marker";
+            host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Tellma.Tests").Log(LogLevel.Warning, default, Marker, null, static (state, _) => state);
+            Assert.Equal(1, capture.Count(Marker));
+
+            // The request log goes through the host's own logger too, once.
+            using HttpResponseMessage response = await host.Client.GetAsync(new Uri("/health/live", UriKind.Relative), TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, capture.Count(" responded 200"));
+        }
+
+        [Fact]
         public void A_database_span_keeps_no_query_text()
         {
             using Activity activity = new("sql");
@@ -100,6 +126,56 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
             Assert.Null(activity.GetTagItem("db.query.summary"));
             Assert.Null(activity.GetTagItem("db.statement"));
             Assert.Equal("microsoft.sql_server", activity.GetTagItem("db.system.name"));
+        }
+
+        /// <summary>A logger provider that counts the messages it receives.</summary>
+        private sealed class CapturingProvider : ILoggerProvider
+        {
+            private readonly System.Collections.Concurrent.ConcurrentQueue<string> _messages = new();
+
+            /// <summary>How many messages contained a text.</summary>
+            /// <param name="text">The text.</param>
+            /// <returns>The count.</returns>
+            public int Count(string text)
+            {
+                return _messages.Count(message => message.Contains(text, StringComparison.Ordinal));
+            }
+
+            /// <inheritdoc />
+            public ILogger CreateLogger(string categoryName)
+            {
+                return new Logger(_messages);
+            }
+
+            /// <inheritdoc />
+            public void Dispose()
+            {
+            }
+
+            /// <summary>A logger that records each message.</summary>
+            /// <param name="messages">Where the messages go.</param>
+            private sealed class Logger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : ILogger
+            {
+                /// <inheritdoc />
+                public IDisposable? BeginScope<TState>(TState state)
+                    where TState : notnull
+                {
+                    return null;
+                }
+
+                /// <inheritdoc />
+                public bool IsEnabled(LogLevel logLevel)
+                {
+                    return true;
+                }
+
+                /// <inheritdoc />
+                public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                {
+                    ArgumentNullException.ThrowIfNull(formatter);
+                    messages.Enqueue(formatter(state, exception));
+                }
+            }
         }
     }
 }

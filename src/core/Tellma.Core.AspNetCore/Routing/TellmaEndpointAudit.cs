@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Composition;
 
 namespace Tellma.Core.AspNetCore.Routing
 {
@@ -21,7 +22,8 @@ namespace Tellma.Core.AspNetCore.Routing
     /// </summary>
     /// <param name="mapped">The application's endpoint sources.</param>
     /// <param name="policies">The authorization policy provider.</param>
-    internal sealed class TellmaEndpointAudit(MappedEndpoints mapped, IAuthorizationPolicyProvider policies) : IStartupCheck
+    /// <param name="stacks">The stacks' routes, whose resource segments the audit checks.</param>
+    internal sealed class TellmaEndpointAudit(MappedEndpoints mapped, IAuthorizationPolicyProvider policies, IStackRouteSource stacks) : IStartupCheck
     {
         /// <summary>The check's name.</summary>
         public const string CheckName = "host.endpoint-audit";
@@ -46,19 +48,34 @@ namespace Tellma.Core.AspNetCore.Routing
                     CheckName,
                     "MapTellma was not called, so the platform's endpoints and route groups are not mapped.",
                     "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")]
-                : await AuditAsync(mapped.Endpoints(), policies).ConfigureAwait(false);
+                : await AuditAsync(mapped.Endpoints(), policies, stacks.Routes).ConfigureAwait(false);
         }
 
         /// <summary>Audits endpoints.</summary>
         /// <param name="endpoints">The endpoints.</param>
         /// <param name="provider">The authorization policy provider.</param>
+        /// <param name="stacks">The stacks' routes; none when no stack registry is composed.</param>
         /// <returns>One problem per violation, each naming the route and method.</returns>
-        public static async Task<IReadOnlyList<CompositionProblem>> AuditAsync(IEnumerable<Endpoint> endpoints, IAuthorizationPolicyProvider provider)
+        public static async Task<IReadOnlyList<CompositionProblem>> AuditAsync(
+            IEnumerable<Endpoint> endpoints, IAuthorizationPolicyProvider provider, IEnumerable<StackRoute>? stacks = null)
         {
             ArgumentNullException.ThrowIfNull(endpoints);
             ArgumentNullException.ThrowIfNull(provider);
 
             List<CompositionProblem> problems = [];
+
+            // --- The stacks' segments sit at /{tenantId}/{segment}, beside the platform's words ---
+            foreach (string segment in (stacks ?? []).Select(static stack => stack.ResourceSegment).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (Contains(TellmaRoutes.ServerTenantSegments, segment) || Contains(TellmaRoutes.SpaTenantSegments, segment))
+                {
+                    problems.Add(Problem(
+                        $"The stack at /{{tenantId}}/{segment}",
+                        $"takes '{segment}' as its resource segment, which names a platform tenant surface or an SPA page under /{{tenantId}}.",
+                        $"Give the stack another resource segment than '{segment}'."));
+                }
+            }
+
             foreach (RouteEndpoint endpoint in endpoints.OfType<RouteEndpoint>())
             {
                 string where = Describe(endpoint);
@@ -92,7 +109,7 @@ namespace Tellma.Core.AspNetCore.Routing
                 // --- Tenant routes: the tenant controls, every one of them ---
                 if (BeginsWithTenantId(endpoint.RoutePattern))
                 {
-                    AuditTenantEndpoint(endpoint, where, tenant, policy, anonymous, problems);
+                    AuditTenantEndpoint(endpoint, where, group, tenant, policy, anonymous, problems);
                 }
                 else
                 {
@@ -108,7 +125,9 @@ namespace Tellma.Core.AspNetCore.Routing
                 }
 
                 // --- Cookie endpoints: side-effect-free GETs, same-origin only ---
-                if (cookie && tenant is { IsMutation: true } && AnswersGet(metadata))
+                // An unstated endpoint is refused as such, not as the mutation it is stamped for safety.
+                bool unstated = metadata.GetMetadata<MutationUnstatedMetadata>() is not null;
+                if (cookie && tenant is { IsMutation: true } && !unstated && AnswersGet(metadata))
                 {
                     problems.Add(Problem(where, "is a cookie-authenticated GET stamped as a mutation; a browser can be made to send a GET from any site.", "Map the mutation as a POST, or stamp WithMutation(false) on a GET that changes nothing."));
                 }
@@ -158,12 +177,19 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <summary>Audits an endpoint whose route begins with the tenant id.</summary>
         /// <param name="endpoint">The endpoint.</param>
         /// <param name="where">Its description.</param>
+        /// <param name="group">The platform group it was mapped on, if any.</param>
         /// <param name="tenant">Its tenant metadata, if any.</param>
         /// <param name="policy">Its effective policy.</param>
         /// <param name="anonymous">Whether it allows anonymous callers.</param>
         /// <param name="problems">The problems found so far.</param>
         private static void AuditTenantEndpoint(
-            RouteEndpoint endpoint, string where, TenantEndpointMetadata? tenant, AuthorizationPolicy? policy, bool anonymous, List<CompositionProblem> problems)
+            RouteEndpoint endpoint,
+            string where,
+            TellmaGroup? group,
+            TenantEndpointMetadata? tenant,
+            AuthorizationPolicy? policy,
+            bool anonymous,
+            List<CompositionProblem> problems)
         {
             EndpointMetadataCollection metadata = endpoint.Metadata;
             if (tenant is null)
@@ -172,6 +198,13 @@ namespace Tellma.Core.AspNetCore.Routing
             }
             else
             {
+                AuditGuard(endpoint, where, group, tenant, problems);
+
+                if (metadata.GetMetadata<MutationUnstatedMetadata>() is not null)
+                {
+                    problems.Add(Problem(where, "does not state whether it changes data, so no tenant state can be applied to it with certainty.", "Call WithMutation(true) or WithMutation(false) on the endpoint."));
+                }
+
                 // The surface's own policy, and no scheme beyond the one it names.
                 (string allowed, string scheme) = tenant.Surface switch
                 {
@@ -198,6 +231,73 @@ namespace Tellma.Core.AspNetCore.Routing
             {
                 string found = grants == 0 ? "neither SecurableEndpointMetadata nor MemberEndpointMetadata" : $"{grants} of SecurableEndpointMetadata and MemberEndpointMetadata";
                 problems.Add(Problem(where, $"carries {found}; a tenant endpoint carries exactly one.", "Call exactly one of RequireSecurable(resource, action) and AllowMember() on the endpoint."));
+            }
+        }
+
+        /// <summary>
+        ///     Proves an access guard reaches a tenant endpoint: its surface is its group's, the group's
+        ///     guard wraps the very delegate it runs, the hub's door keys on its surface, and an endpoint
+        ///     outside the groups is MCP's, stamped by MCP's own front door.
+        /// </summary>
+        /// <param name="endpoint">The endpoint.</param>
+        /// <param name="where">Its description.</param>
+        /// <param name="group">The platform group it was mapped on, if any.</param>
+        /// <param name="tenant">Its tenant metadata.</param>
+        /// <param name="problems">The problems found so far.</param>
+        private static void AuditGuard(RouteEndpoint endpoint, string where, TellmaGroup? group, TenantEndpointMetadata tenant, List<CompositionProblem> problems)
+        {
+            // --- The surface is the group's: the hub's door and the CSRF scope key on the surface ---
+            TenantSurface? groupSurface = group switch
+            {
+                TellmaGroup.Web => TenantSurface.Web,
+                TellmaGroup.Api => TenantSurface.Api,
+                TellmaGroup.Hub => TenantSurface.Hub,
+                TellmaGroup.Blobs => TenantSurface.Blobs,
+                TellmaGroup.Tenantless or null => null,
+                _ => throw new InvalidOperationException($"{group} is not a platform group."),
+            };
+            if (groupSurface is { } expected && expected != tenant.Surface)
+            {
+                problems.Add(Problem(where, $"is stamped the {tenant.Surface} surface on the {group} group, so the group's access guard and CSRF rules would not be the surface's.", $"Map a {tenant.Surface} endpoint on the {tenant.Surface} group, and stamp no other surface on the {group} group."));
+                return;
+            }
+
+            if (groupSurface is null && tenant.Surface != TenantSurface.Mcp)
+            {
+                problems.Add(Problem(where, $"is a {tenant.Surface} tenant endpoint outside the platform's tenant groups, so no access guard runs for it.", $"Map it on the {tenant.Surface} group of MapTellma."));
+                return;
+            }
+
+            // --- The guard each surface's front door stamps ---
+            EndpointMetadataCollection metadata = endpoint.Metadata;
+            switch (tenant.Surface)
+            {
+                case TenantSurface.Web:
+                case TenantSurface.Api:
+                case TenantSurface.Blobs:
+                    // The group's wrapper must be the delegate the endpoint runs: a convention after it
+                    // that replaced the delegate would have dropped the guard.
+                    if (metadata.GetMetadata<TenantGuardMetadata>() is not { } guard || !ReferenceEquals(guard.Guarded, endpoint.RequestDelegate))
+                    {
+                        problems.Add(Problem(where, "runs a request delegate the tenant access guard does not wrap.", "Leave the request delegate as the tenant group's guard wraps it; do not replace it in a later convention."));
+                    }
+
+                    break;
+
+                case TenantSurface.Hub:
+                    // The tenant middleware runs the hub's front door for every Hub endpoint.
+                    break;
+
+                case TenantSurface.Mcp:
+                    if (metadata.GetMetadata<TenantFrontDoorMetadata>() is not { Surface: TenantSurface.Mcp })
+                    {
+                        problems.Add(Problem(where, "is an MCP endpoint that MCP's front door did not install, so no access guard runs for it.", "Map the MCP endpoint through the MCP feature, whose request filter runs the access guard."));
+                    }
+
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"{tenant.Surface} is not a tenant surface.");
             }
         }
 

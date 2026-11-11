@@ -14,6 +14,7 @@ using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
+using Tellma.Core.Composition;
 
 namespace Tellma.Core.AspNetCore
 {
@@ -76,7 +77,9 @@ namespace Tellma.Core.AspNetCore
 
             // --- The audit of what the platform mapped ---
             IAuthorizationPolicyProvider policies = app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
-            IReadOnlyList<CompositionProblem> problems = TellmaEndpointAudit.AuditAsync(mapped.Endpoints(), policies).GetAwaiter().GetResult();
+            IReadOnlyList<CompositionProblem> problems = TellmaEndpointAudit.AuditAsync(mapped.Endpoints(), policies, app.Services.GetService<IStackRouteSource>()?.Routes)
+                .GetAwaiter()
+                .GetResult();
             return problems.Count > 0 ? throw new TellmaCompositionException(problems) : groups;
         }
 

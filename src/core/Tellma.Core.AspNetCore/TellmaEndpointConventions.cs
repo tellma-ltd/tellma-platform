@@ -30,9 +30,10 @@ namespace Tellma.Core.AspNetCore
         }
 
         /// <summary>
-        ///     States whether a hand-mapped tenant endpoint changes data. Without it, an endpoint
-        ///     answering only <c>GET</c> or <c>HEAD</c> is a read and any other is a mutation. A
-        ///     <c>ReadOnly</c> tenant refuses a hand-mapped mutation.
+        ///     States whether a hand-mapped tenant endpoint changes data. Every hand-mapped tenant
+        ///     endpoint but the hub's states it, or startup fails. A hand-mapped endpoint is never
+        ///     allowed on a <c>ReadOnly</c> tenant when it mutates, so this also clears any read-only
+        ///     allowance the endpoint carried.
         /// </summary>
         /// <typeparam name="TBuilder">The convention builder's type.</typeparam>
         /// <param name="builder">The endpoint, on a tenant group.</param>
@@ -47,7 +48,7 @@ namespace Tellma.Core.AspNetCore
                 // The group stamps its metadata in a final convention, after this one runs, so the
                 // stamp waits for it; metadata already present (stamped by hand) is amended in place.
                 TenantEndpointMetadata? stamped = endpoint.Metadata.OfType<TenantEndpointMetadata>().LastOrDefault();
-                endpoint.Metadata.Add(stamped is null ? new MutationStamp(isMutation) : stamped with { IsMutation = isMutation });
+                endpoint.Metadata.Add(stamped is null ? new MutationStamp(isMutation) : stamped with { IsMutation = isMutation, AllowWhenReadOnly = false });
             });
             return builder;
         }

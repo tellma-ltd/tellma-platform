@@ -49,4 +49,34 @@ namespace Tellma.Core.AspNetCore.Routing
     /// </summary>
     /// <param name="IsMutation">Whether the endpoint changes data.</param>
     internal sealed record MutationStamp(bool IsMutation);
+
+    /// <summary>
+    ///     Marks a tenant endpoint that stated neither <c>WithMutation</c> nor its own
+    ///     <see cref="TenantEndpointMetadata" />. The audit refuses it, so whether it changes data is
+    ///     always a decision someone made.
+    /// </summary>
+    internal sealed class MutationUnstatedMetadata
+    {
+        /// <summary>The one instance.</summary>
+        public static readonly MutationUnstatedMetadata Instance = new();
+
+        /// <summary>Prevents other instances.</summary>
+        private MutationUnstatedMetadata()
+        {
+        }
+    }
+
+    /// <summary>
+    ///     Stamped by the access guard's wrapper on the endpoint it wraps: the request delegate it
+    ///     produced, which the audit compares with the endpoint's own to prove nothing replaced it.
+    /// </summary>
+    /// <param name="Guarded">The guarded request delegate.</param>
+    internal sealed record TenantGuardMetadata(Microsoft.AspNetCore.Http.RequestDelegate Guarded);
+
+    /// <summary>
+    ///     Stamped by a surface's own front door on the endpoints it guards outside the platform's
+    ///     groups, as the MCP feature's request filter does for its endpoint.
+    /// </summary>
+    /// <param name="Surface">The surface whose front door runs the access guard.</param>
+    internal sealed record TenantFrontDoorMetadata(TenantSurface Surface);
 }
