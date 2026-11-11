@@ -50,6 +50,7 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './reports': { load: 'lazy', imports: [] },
   './report-studio': { load: 'lazy', imports: [] },
   './dashboards': { load: 'lazy', imports: [] },
+  './config-check': { load: 'lazy', imports: [] },
 });
 
 /**

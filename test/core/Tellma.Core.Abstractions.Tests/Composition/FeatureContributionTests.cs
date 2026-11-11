@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Abstractions.Tests.Composition
 {
@@ -49,6 +50,18 @@ namespace Tellma.Core.Abstractions.Tests.Composition
             FeatureContribution contribution = new FeatureContribution().Calendar<CalendarSystem>();
 
             Assert.Equal(new CalendarContributionItem(typeof(CalendarSystem)), Assert.Single(contribution.Items));
+        }
+
+        [Fact]
+        public void The_value_set_sugar_records_its_item_and_refuses_null()
+        {
+            ValueSetDescriptor set = new("gl.AccountClass", [new ValueSetEntry("Asset", "AccountClass_Asset", null)]);
+
+            FeatureContribution contribution = new FeatureContribution().ValueSet(set);
+
+            ValueSetContributionItem item = Assert.IsType<ValueSetContributionItem>(Assert.Single(contribution.Items));
+            Assert.Same(set, item.Descriptor);
+            _ = Assert.Throws<ArgumentNullException>(() => contribution.ValueSet(null!));
         }
 
         [Fact]

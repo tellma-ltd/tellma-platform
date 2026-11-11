@@ -217,6 +217,7 @@ tellma-platform/
 │   └── tsconfig.json                    # extends @tellma/core-tools/tsconfig.json and maps @tellma/* to the sources
 ├── docs/                                # repo-level docs not shipped in packages
 ├── eng/                                 # repo engineering scripts and developer tools; not shipped to distributions
+│   ├── culture-data/                    # generator of the culture data Tellma.Core pins (CLDR date and number formats per language and region); run in one SDK image
 │   └── queryex-inspection/              # self-hosted playground for the Queryex compiler; one static page, ephemeral port
 ├── infra/                               # Bicep for shared platform infra (Log Analytics, ASPs, SQL, …)
 │   ├── shared-platform.bicep
@@ -479,7 +480,7 @@ A non-exhaustive list of what each dimension's libraries can ship:
 - **Compliance** — jurisdictional rule sets (tax calculators, withholding rules, validation rules), document numbering sequences, statutory document templates (tax-invoice format, payslip format), regulatory filing entities and workflows, audit signature requirements, charts-of-accounts templates.
 - **Connector** — client library for a specific external system: HTTP client, authentication, retry policy, serialization, vendor-specific error model.
 - **Connector Adapter** — implementations of one or more upper-layer extension-point interfaces using the connector (e.g. `IBankTransactionFetcher` via the Rajhi connector; `IElectronicInvoiceClearance` via the Zatca connector).
-- **Locale** — `IAmountToText` (number-to-words), client-side assets (a locale's UI strings and font subset), language-specific text utilities. Implements interfaces declared in `Core.Abstractions`; never module-specific. Regional formats are *not* a Locale concern: a user's or tenant's region and digits choose date and number patterns from CLDR in Core, on the client and the server alike ([docs/specs/0024-client-app-foundation.md](docs/specs/0024-client-app-foundation.md)). Calendars are *not* a Locale concern either: `gc` (Gregorian), `uq` (Umm al-Qura), and `et` (Ethiopic) are implemented and registered by Core, and server-side `.resx` satellite assemblies ship with the package that owns the strings — see [docs/specs/0013-settings-localization-and-cache.md](docs/specs/0013-settings-localization-and-cache.md).
+- **Locale** — `IAmountToText` (number-to-words), client-side assets (a locale's UI strings and font subset), language-specific text utilities. Implements interfaces declared in `Core.Abstractions`; never module-specific. Regional formats are *not* a Locale concern: a user's or tenant's region and digits choose date and number patterns from CLDR in Core, on the client and the server alike; the server's are pinned in `Tellma.Core`, so server text does not vary with a host's ICU release ([docs/specs/0024-client-app-foundation.md](docs/specs/0024-client-app-foundation.md)). Calendars are *not* a Locale concern either: `gc` (Gregorian), `uq` (Umm al-Qura), and `et` (Ethiopic) are implemented and registered by Core, and server-side `.resx` satellite assemblies ship with the package that owns the strings — see [docs/specs/0013-settings-localization-and-cache.md](docs/specs/0013-settings-localization-and-cache.md).
 
 ### Distribution repo layout
 
@@ -864,7 +865,7 @@ A headless, separately-tested *engine* (the D4 pattern idea) is **reserved for t
 
 | Package | Role |
 |---|---|
-| `@tellma/core` | The runtime a distribution SPA imports. Its primary entry point is the warm-launch bundle: the distribution API, HTTP, session, localization, client store, telemetry, page context, navigation and entity summaries. `/shell` and `/attention` are preloaded with it. `/entity`, `/realtime`, `/support`, `/sharing` and every page family (`/search`, `/details`, `/admin`, `/attention-pages`, `/reports`, `/report-studio`, `/dashboards`) are lazy entry points. |
+| `@tellma/core` | The runtime a distribution SPA imports. Its primary entry point is the warm-launch bundle: the distribution API, HTTP, session, localization, client store, telemetry, page context, navigation and entity summaries. `/shell` and `/attention` are preloaded with it. `/entity`, `/realtime`, `/support`, `/sharing` and every page family (`/search`, `/details`, `/admin`, `/attention-pages`, `/reports`, `/report-studio`, `/dashboards`) are lazy entry points, as is `/config-check`, the configuration check the build and a development startup run. |
 | `@tellma/core-testing` | Page harnesses, a fake `TmApi`, hub and clock, metadata fixtures, and Playwright helpers (warm-up, multi-tab, offline, network hang). |
 | `@tellma/core-tools` | Node only: the `tellma-client` commands `emit`, `serve` and `build`, and the ESLint, stylelint and `tsconfig` presets. The first step of `build` checks the sources and its last step checks the output. |
 

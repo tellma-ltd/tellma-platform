@@ -5,7 +5,7 @@ end-to-end suites share.
 
 | Entry point | Holds | Runs in |
 |---|---|---|
-| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect; `TmFakeTelemetry`, which records every telemetry item and sends nothing | the unit-test browser |
+| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and provides the test client metadata; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member | the unit-test browser |
 | `@tellma/core-testing/e2e` | `expectNoAxeViolations` and `tmAxeViolations`: one axe-core scan of the WCAG 2.1 A and AA rules over a page or part of it | Node, inside Playwright tests; needs the optional peer `@playwright/test` |
 
 ```ts

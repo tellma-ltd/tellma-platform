@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Description>Regenerates the pinned culture data embedded in Tellma.Core (the date-time and number formats of every language and region of the language catalogue) from the ICU release of the host it runs on. A developer tool, never shipped.</Description>
+    <!-- eng/ has no Directory.Build.props, so the root one applies as written and would make this
+         packable. It is tooling; packing it would be meaningless. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The catalogue's pairs, the field table and the data's text form all live in Tellma.Core,
+         which grants this tool its internals: the data has one writer and one reader. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -7,12 +7,15 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
 {
     /// <summary>
     ///     What a distribution's composition method receives: it selects features, substitutes
-    ///     entity leaves and, for stores and other host-level choices, registers services directly.
+    ///     entity leaves, declares the languages it offers and, for stores and other host-level
+    ///     choices, registers services directly.
     /// </summary>
     /// <remarks>
     ///     Selection is explicit: there is no assembly scanning, so the composition method is the one
@@ -25,6 +28,8 @@ namespace Tellma.Core.Composition
         private readonly FeatureSet _features;
         private readonly Dictionary<Type, Type> _leaves = [];
         private readonly List<CompositionProblem> _problems = [];
+        private readonly List<AddedLanguage> _addedLanguages = [];
+        private IReadOnlyList<string>? _languageCodes;
         private bool _sealed;
 
         /// <summary>Creates the builder over one composition's state.</summary>
@@ -61,6 +66,9 @@ namespace Tellma.Core.Composition
 
         /// <summary>The problems the builder's calls produced.</summary>
         internal IReadOnlyList<CompositionProblem> Problems => _problems;
+
+        /// <summary>What <see cref="Languages(IReadOnlyList{string})" /> and <see cref="AddLanguage" /> recorded.</summary>
+        internal LanguageDeclaration LanguageDeclaration => new(_languageCodes, _addedLanguages);
 
         /// <summary>Adds a feature of <typeparamref name="TFeature" />. Idempotent: a type already added is not added again.</summary>
         /// <typeparam name="TFeature">The feature type.</typeparam>
@@ -121,6 +129,65 @@ namespace Tellma.Core.Composition
             return this;
         }
 
+        /// <summary>
+        ///     Declares the languages the distribution offers, once. The first is the distribution
+        ///     default: the language of a reader whose request, preference and tenant name none that
+        ///     is offered. A distribution that never calls this offers English.
+        /// </summary>
+        /// <remarks>
+        ///     Each code is a language of the catalogue or one added with <see cref="AddLanguage" />,
+        ///     optionally followed by the region its users get by default: <c>["en-GB", "ar-SA"]</c>
+        ///     offers <c>en</c> and <c>ar</c>. Only the language is offered and stored. An unknown
+        ///     language, a region the language does not have, or a language whose platform strings
+        ///     do not ship fails startup with the remedy.
+        /// </remarks>
+        /// <param name="codes">The offered codes, the default first.</param>
+        /// <returns>This builder, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="codes" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">The composition method has already returned.</exception>
+        public TellmaBuilder Languages(IReadOnlyList<string> codes)
+        {
+            ArgumentNullException.ThrowIfNull(codes);
+            ThrowIfSealed();
+
+            // The offered set is declared once: a second, different list would leave the default
+            // language to whichever call happened to run last.
+            if (_languageCodes is null)
+            {
+                _languageCodes = [.. codes];
+            }
+            else if (!_languageCodes.SequenceEqual(codes, StringComparer.Ordinal))
+            {
+                _problems.Add(new CompositionProblem(
+                    CompositionNames.Source,
+                    $"Languages was called twice, with [{string.Join(", ", _languageCodes)}] and with [{string.Join(", ", codes)}].",
+                    "Call tellma.Languages(codes) once, with every language the distribution offers, the default first."));
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        ///     Adds a language the catalogue does not describe, with its formats: its regions, its
+        ///     default region and its native digits. Adding a language does not offer it; name it
+        ///     in <see cref="Languages(IReadOnlyList{string})" /> as well.
+        /// </summary>
+        /// <param name="info">The language: its code, its name in itself, its symbol and its direction.</param>
+        /// <param name="formats">The language's formats, under the same code.</param>
+        /// <returns>This builder, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="info" /> or <paramref name="formats" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">The composition method has already returned.</exception>
+        public TellmaBuilder AddLanguage(LanguageInfo info, LanguageFormats formats)
+        {
+            ArgumentNullException.ThrowIfNull(info);
+            ArgumentNullException.ThrowIfNull(formats);
+            ThrowIfSealed();
+
+            // Recorded as given; the startup gate judges it against the catalogue.
+            _addedLanguages.Add(new AddedLanguage(info, formats));
+            return this;
+        }
+
         /// <summary>Refuses further selections; called when the composition method returns.</summary>
         internal void Seal()
         {
@@ -135,7 +202,7 @@ namespace Tellma.Core.Composition
             if (_sealed)
             {
                 throw new InvalidOperationException(
-                    "Features and leaf substitutions can only be added while the composition method runs.");
+                    "Features, leaf substitutions and languages can only be declared while the composition method runs.");
             }
         }
     }

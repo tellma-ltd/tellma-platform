@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Calendars;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Abstractions.Composition
 {
@@ -113,6 +114,20 @@ namespace Tellma.Core.Abstractions.Composition
             where TCalendar : class, ICalendarSystem
         {
             return Add(new CalendarContributionItem(typeof(TCalendar)));
+        }
+
+        /// <summary>
+        ///     Contributes a value set: a named enumeration over string properties. The platform
+        ///     composes it into the value-set registry after its own sets; a property draws from it
+        ///     through <see cref="ValueSetAttribute" />.
+        /// </summary>
+        /// <param name="descriptor">The set: its name, its values with their labels, and any aliases.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="descriptor" /> is null.</exception>
+        public FeatureContribution ValueSet(ValueSetDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+            return Add(new ValueSetContributionItem(descriptor));
         }
 
         /// <summary>
