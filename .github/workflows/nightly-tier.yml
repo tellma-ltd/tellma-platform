@@ -51,9 +51,11 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
+      # Not `install --with-deps`: the script installs the OS packages with bounded retries and, when
+      # the apt mirrors are down, lets the job go on with a warning as long as Chromium launches.
       - name: Install Chromium
         timeout-minutes: 10
-        run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
       # A filter that matches no test is not an error for `dotnet test`: each assembly reports
       # "No test matches the given testcase filter" and the step still exits 0.
       - name: Nightly-tier dotnet tests
@@ -103,9 +105,12 @@ jobs:
       # The one pnpm workspace is rooted at the repository root.
       - run: pnpm install --frozen-lockfile
         working-directory: .
+      # The script survives an apt-mirror outage as long as every engine still launches (see the
+      # dotnet job). Its path starts at the repository root, one level above this job's working
+      # directory.
       - name: Install browsers
         timeout-minutes: 15
-        run: pnpm exec playwright install chromium firefox webkit --with-deps
+        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- pnpm exec playwright
       # The tokens CSS is generated, not committed, and the showcase build needs it.
       - run: pnpm run tokens:build-css
       # Built up front, as in the PR tier, so the e2e web server reuses the bundle instead of
@@ -154,9 +159,10 @@ jobs:
       # The one pnpm workspace is rooted at the repository root.
       - run: pnpm install --frozen-lockfile
         working-directory: .
+      # As in client-e2e: survives an apt-mirror outage as long as every engine still launches.
       - name: Install browsers
         timeout-minutes: 15
-        run: pnpm exec playwright install chromium firefox webkit --with-deps
+        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- pnpm exec playwright
       - run: pnpm run tokens:build-css
       - run: pnpm run build:showcase
       # All projects, so a quarantined @cross-engine test still runs on every engine.

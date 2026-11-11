@@ -52,4 +52,7 @@ projects/core/tellma-core-tools/dist/
 
 # Generated token stylesheets (built by tokens:build-css)
 projects/core/tellma-core-ui-tokens/css/
+
+# Generated boot script template (built by tools/boot/build-boot-template.mts)
+projects/core/tellma-core/boot/
 .vitest-attachments/

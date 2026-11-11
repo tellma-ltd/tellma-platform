@@ -25,9 +25,44 @@ import { WritableSignal } from '@angular/core';
 export const TM_GRID_CONTEXT: InjectionToken<TmGridContext>;
 
 // @public
-export class TmGrid<T> extends ɵTmGridBase<T> {
+export const TM_GRID_KEYS: readonly TmGridKeyEntry[];
+
+// @public
+export class TmGrid<T> extends TmGridBase<T> {
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmGrid<any>, "tm-grid", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGrid<any>, never>;
+}
+
+// @public @sealed
+export abstract class TmGridBase<T> {
+    constructor();
+    applyTransaction(edits: readonly TmCellEdit[], opts?: {
+        label?: string;
+    }): void;
+    clearHistory(): void;
+    readonly columns: Signal<readonly TmGridColumn<any, any>[]>;
+    readonly contentKey: _angular_core.InputSignal<string | number | undefined>;
+    protected readonly core: ɵTmGridCore<T>;
+    readonly data: _angular_core.InputSignal<readonly T[] | undefined>;
+    readonly emptyDef: Signal<TmGridEmptyDef | undefined>;
+    readonly errorCount: Signal<number>;
+    readonly extraMenuItems: _angular_core.InputSignal<readonly TmMenuItem[]>;
+    readonly field: _angular_core.InputSignal<FieldTree<T[]> | undefined>;
+    focus(): void;
+    readonly gridId: _angular_core.InputSignal<string>;
+    readonly loading: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
+    readonly newRow: _angular_core.InputSignal<((parent?: T) => T) | undefined>;
+    readonly pendingCount: Signal<number>;
+    readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly rowId: _angular_core.InputSignal<(row: T) => TmRowId>;
+    readonly searchable: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly selectable: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly selectedIds: _angular_core.ModelSignal<ReadonlySet<string | number>>;
+    readonly size: _angular_core.InputSignal<TmControlSize>;
+    protected treeConfig(): ɵTmGridTreeConfig<T> | undefined;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridBase<any>, never, never, { "gridId": { "alias": "gridId"; "required": true; "isSignal": true; }; "contentKey": { "alias": "contentKey"; "required": false; "isSignal": true; }; "data": { "alias": "data"; "required": false; "isSignal": true; }; "field": { "alias": "field"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "newRow": { "alias": "newRow"; "required": false; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "searchable": { "alias": "searchable"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "extraMenuItems": { "alias": "extraMenuItems"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; }, ["columns", "emptyDef", "loadingDef"], never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridBase<any>, never>;
 }
 
 // @public
@@ -123,6 +158,12 @@ export class TmGridHeaderDef {
     readonly template: TemplateRef<any>;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridHeaderDef, "[tmGridHeader]", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridHeaderDef, never>;
+}
+
+// @public
+export interface TmGridKeyEntry {
+    readonly keys: TmKeys;
+    readonly labelKey: string;
 }
 
 // @public

@@ -137,6 +137,9 @@ namespace Tellma.Core.Composition
                 }
             }
 
+            // --- String localization: every localizer in the process renders ICU (spec 0013 §1.2) ---
+            LocalizationComposition.Register(services);
+
             // --- The tenant model, built from what the realizers recorded ---
             TellmaModelFactory.Register(services, _record);
 

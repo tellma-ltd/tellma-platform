@@ -3,8 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Concurrent;
 using System.Globalization;
 using Tellma.Core.Abstractions.Calendars;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 
 namespace Tellma.Core.Abstractions.Tenancy
@@ -42,6 +44,12 @@ namespace Tellma.Core.Abstractions.Tenancy
 
         /// <summary>The default client name.</summary>
         private const string DefaultClient = "web";
+
+        /// <summary>
+        ///     The display zones resolved so far, by IANA name: each is resolved once per process, never
+        ///     per request or per formatted value. Bounded by the zones the host knows.
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, TimeZoneInfo> DisplayZones = new(StringComparer.Ordinal);
 
         /// <summary>The tenant the work is bound to; null for tenantless work.</summary>
         public TenantDescriptor? Tenant { get; init; }
@@ -210,6 +218,17 @@ namespace Tellma.Core.Abstractions.Tenancy
             };
         }
 
+        /// <summary>
+        ///     The localization text renders in for this unit of work: <see cref="CultureInfo" />,
+        ///     <see cref="CalendarSystem" />, the display zone <see cref="TimeZone" /> resolved on the
+        ///     host, and <see cref="ContentLanguageIndex" />.
+        /// </summary>
+        /// <remarks>
+        ///     A display zone the host cannot resolve, which negotiation never yields because it
+        ///     accepts only zones the host resolves, renders in UTC rather than failing the work.
+        /// </remarks>
+        public LocalizationContext Localization => new(CultureInfo, CalendarSystem, ResolveDisplayZone(TimeZone), ContentLanguageIndex);
+
         /// <summary>The tenant the work is bound to, for code that only runs inside a tenant.</summary>
         /// <returns>The bound tenant.</returns>
         /// <exception cref="InvalidOperationException">The work is not bound to a tenant.</exception>
@@ -221,9 +240,10 @@ namespace Tellma.Core.Abstractions.Tenancy
 
         /// <summary>
         ///     Makes <see cref="CultureInfo" /> the current culture and the current UI culture of the
-        ///     calling flow, so text formatted and localized from here on reads as the context says.
-        ///     The context stays the source of truth: the current cultures are set from it, never
-        ///     read back into it.
+        ///     calling flow, and <see cref="Localization" /> its request localization
+        ///     (<see cref="LocalizationScope.Request" />), so text formatted and localized from here on
+        ///     reads as the context says, dates in its calendar and display zone included. The context
+        ///     stays the source of truth: the ambient values are set from it, never read back into it.
         /// </summary>
         /// <remarks>
         ///     The current cultures flow into what a method calls and awaits, never back to its caller:
@@ -231,12 +251,30 @@ namespace Tellma.Core.Abstractions.Tenancy
         ///     the work calls this itself, after the access guard or the tenant scope factory returned
         ///     the completed context: a tenant front door before it invokes the handler, a background
         ///     caller before it runs its work in the scope. A call made inside an
-        ///     <see cref="IRequestContextInitializer" /> reaches neither.
+        ///     <see cref="IRequestContextInitializer" /> reaches neither. A caller that runs several
+        ///     units of work on one flow applies each unit's context inside the method that runs that
+        ///     unit, so no unit renders in another's localization.
         /// </remarks>
         public void ApplyCultures()
         {
+            // --- The cultures: what resources are looked up and numbers formatted in ---
             CultureInfo.CurrentCulture = CultureInfo;
             CultureInfo.CurrentUICulture = CultureInfo;
+
+            // --- The calendar and display zone dates render in outside every localization scope ---
+            // Applied for the rest of the calling method, exactly as the cultures are; the undo
+            // value is for callers that apply a request localization by hand.
+            _ = LocalizationScope.ApplyRequest(Localization);
+        }
+
+        /// <summary>Resolves a display zone once per process.</summary>
+        /// <param name="zone">The zone's IANA name.</param>
+        /// <returns>The zone; UTC when the host does not know it.</returns>
+        private static TimeZoneInfo ResolveDisplayZone(string zone)
+        {
+            return DisplayZones.GetOrAdd(
+                zone,
+                static id => TimeZoneInfo.TryFindSystemTimeZoneById(id, out TimeZoneInfo? resolved) ? resolved : TimeZoneInfo.Utc);
         }
 
         /// <summary>Refuses a blank text member.</summary>
