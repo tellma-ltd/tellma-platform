@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, Injectable, signal, type Signal } from '@angular/core';
+import { inject, Injectable, signal, untracked, type Signal } from '@angular/core';
 
 import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
@@ -14,8 +14,9 @@ import { TM_SESSION_HOST, type TmSessionStorage } from './tm-session-host';
 import { TmSessionPaths, type TmSessionState } from './tm-session-paths';
 
 // The tab's session (spec 0024 §8.1-§8.3). The profile cookie is the
-// browser's synchronous signed-in signal: the session reads it at its first
-// injection and again at every check, and never asks the network. A sign-in
+// browser's synchronous signed-in signal: the session starts as the user the
+// boot script read from it (the cookie itself only when no boot script ran),
+// reads it again at every check, and never asks the network. A sign-in
 // and a step-up leave the tab for the BFF's login with the sign-in mark in
 // session storage, which the boot script consumes when the tab comes back.
 
@@ -63,9 +64,15 @@ export class TmSession {
   readonly #now = inject(TM_NOW);
   readonly #telemetry = inject(TmTelemetry);
   readonly #paths = inject(TmSessionPaths);
-  readonly #profile = signal<TmProfile | null>(tmParseProfileCookie(this.#host.cookies()));
+  readonly #boot = inject(TM_BOOT_RESULT);
+  // The user the boot script judged the launch for, when it ran: a cookie
+  // that changed since then reads as another user at the first check, so the
+  // changed-user path restarts the boot, which judges it.
+  readonly #profile = signal<TmProfile | null>(
+    this.#boot === null ? tmParseProfileCookie(this.#host.cookies()) : this.#boot.profile,
+  );
 
-  /** The signed-in user, or `null` when the tab started with no session. */
+  /** The signed-in user, or `null` when the tab started with no session; at start, the user the boot script read. */
   readonly profile: Signal<TmProfile | null> = this.#profile.asReadonly();
 
   /** Where the tab's session stands: active, expired, or signing out. */
@@ -79,11 +86,18 @@ export class TmSession {
   /**
    * Reads the profile cookie now and compares it with the tab's user. A
    * cookie of the same user with other details (a new name or locale)
-   * updates the profile.
+   * updates the profile. Safe in a reactive context: it tracks nothing.
    *
    * @returns `'same'` for the tab's user, `'missing'` for no session, `'changed'` for another user.
    */
   check(): TmSessionCheck {
+    // Untracked, so a computed or effect that checks neither depends on the
+    // profile nor trips over the profile update below.
+    return untracked(() => this.#check());
+  }
+
+  /** The body of `check()`, outside any reactive context. */
+  #check(): TmSessionCheck {
     const now = tmParseProfileCookie(this.#host.cookies());
     if (now === null) {
       return 'missing';
@@ -159,7 +173,7 @@ export class TmSession {
    */
   #consumeSignIn(): void {
     // Spec 0024 §8.1, "After a sign-in".
-    const mark = inject(TM_BOOT_RESULT)?.mark ?? null;
+    const mark = this.#boot?.mark ?? null;
     const profile = this.#profile();
     if (mark === null || profile === null) {
       return;

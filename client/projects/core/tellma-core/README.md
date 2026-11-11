@@ -26,9 +26,9 @@ browser too old for the app still parses it and shows the unsupported page) into
 `var TM_BOOT=/*TM_BOOT*/null;`: a distribution's build replaces the marker with its boot
 configuration (the offered languages and each one's boot strings, which Core's resources carry as
 `Boot_*`) and serves the result as `tm-boot.js`, the first script of `index.html`. Rendered with
-the platform's English strings it stays within 3 KB gzipped, and each further offered language
-may add 0.4 KB; a test in `client/tools/tests/` holds both the English-only and an English and
-Arabic configuration to that budget.
+the platform's English strings, which every distribution embeds as the fallback, it stays within
+3 KB gzipped, and each further string table may add 0.4 KB; a test in `client/tools/tests/` holds
+English-only, English and Arabic, and Arabic-only configurations to that budget.
 
 In order, the script:
 
@@ -55,15 +55,16 @@ client store test against.
 
 ## Session and launch
 
-`TmSession` reads the profile cookie at its first injection and on every `check()`, never the
-network: `same`, `missing` (the expiry path) or `changed` (the changed-user path, which restarts
+`TmSession` starts as the user the boot script read from the profile cookie, and reads the cookie
+again on every `check()`, never the network: `same`, `missing` (the expiry path) or `changed` (the changed-user path, which restarts
 the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out`. `signIn()` writes
 the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
 reports an expiry that led there and drops a previous user's drafts. Until the tab bus and the
 client store arrive, the paths beyond the tab's own state are tab-local: an expiry deletes the
 stale profile cookie and reloads, so the boot leads to the sign-in and the user's data leaves the
-screen.
+screen. An expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page
+instead, so a server that keeps refusing fresh sessions cannot loop the tab through sign-ins.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into

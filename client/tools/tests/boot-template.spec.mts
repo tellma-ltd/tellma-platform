@@ -46,12 +46,21 @@ const ACME: TmBootScriptConfig = {
   strings: { ...ENGLISH.strings, ar: { Distribution_DisplayName: 'أكمي', ...bootStrings('Strings.ar.resx') } },
 };
 
+/** The same strings, offering Arabic only; English stays embedded as the fallback. */
+const ARABIC: TmBootScriptConfig = {
+  ...ACME,
+  languages: [{ code: 'ar', dir: 'rtl' }],
+  defaultLanguage: 'ar',
+};
+
 /**
  * The gzip budget of a rendered boot script, in bytes: 3 KB for the code
- * with the English strings, plus 0.4 KB for each further offered language.
+ * with the English strings, which every script embeds as the fallback, plus
+ * 0.4 KB for each further string table.
  */
 function budget(config: TmBootScriptConfig): number {
-  return (3 + 0.4 * (config.languages.length - 1)) * 1024;
+  const further = Object.keys(config.strings).filter((code) => code !== 'en').length;
+  return (3 + 0.4 * further) * 1024;
 }
 
 /** The gzipped size of a rendered boot script, in bytes, at the level the budget is measured at. */
@@ -147,8 +156,14 @@ describe('the boot script template', () => {
     expect(gzipped(tmRenderBootScript(template, ENGLISH))).toBeLessThanOrEqual(budget(ENGLISH));
   });
 
-  it('stays within the budget with each further offered language: Acme in English and Arabic', () => {
+  it('stays within the budget with each further string table: Acme in English and Arabic', () => {
+    expect(budget(ACME)).toBe(3.4 * 1024);
     expect(gzipped(tmRenderBootScript(template, ACME))).toBeLessThanOrEqual(budget(ACME));
+  });
+
+  it('counts the English fallback as the base, not as a further table: Arabic only', () => {
+    expect(budget(ARABIC)).toBe(3.4 * 1024);
+    expect(gzipped(tmRenderBootScript(template, ARABIC))).toBeLessThanOrEqual(budget(ARABIC));
   });
 
   it('does nothing unrendered', () => {

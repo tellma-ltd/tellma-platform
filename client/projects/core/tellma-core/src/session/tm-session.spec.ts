@@ -3,11 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TM_LOGIN_MARK_KEY, type TmLoginMark } from './tm-login-mark';
+import { tmParseProfileCookie } from './tm-profile';
 import { tmProfileCookies, tmProfileCookieValue } from './tm-profile.testing.util';
 import { TmSession } from './tm-session';
 import { TmSessionPaths } from './tm-session-paths';
@@ -42,7 +44,7 @@ async function pending(promise: Promise<unknown>): Promise<boolean> {
 
 describe('TmSession', () => {
   describe('the profile', () => {
-    it('is read from the cookie at the first injection', () => {
+    it('is read from the cookie at the first injection when no boot script ran', () => {
       const { session } = setUp();
       expect(session().profile()).toMatchObject({ v: 2, sub: FARAH, locale: 'ar' });
       expect(session().state()).toBe('active');
@@ -50,6 +52,19 @@ describe('TmSession', () => {
 
     it('is null without a valid cookie', () => {
       expect(setUp({ cookies: 'tellma.profile=%%%' }).session().profile()).toBeNull();
+    });
+
+    it('starts as the user the boot script read, so a cookie that moved since reads as another user', () => {
+      const farah = tmParseProfileCookie(tmProfileCookies(FARAH, 'ar'));
+      const { session } = setUp({ cookies: tmProfileCookies(SARA), boot: { profile: farah, mark: null } });
+      expect(session().profile()).toEqual(farah);
+      expect(session().check()).toBe('changed');
+    });
+
+    it('starts with no user when the boot script read none, whatever the cookie says now', () => {
+      const { session } = setUp({ boot: { profile: null, mark: null } });
+      expect(session().profile()).toBeNull();
+      expect(session().check()).toBe('changed');
     });
   });
 
@@ -68,6 +83,23 @@ describe('TmSession', () => {
       host.cookieJar = `tellma.profile=${tmProfileCookieValue({ v: 2, sub: FARAH, sh: 'new', name: 'Farah N.', email: '', locale: 'en' })}`;
       expect(session().check()).toBe('same');
       expect(session().profile()).toEqual({ v: 2, sub: FARAH, sh: 'new', name: 'Farah N.', email: '', locale: 'en' });
+    });
+
+    it('tracks nothing, so a computed can check while the details change', () => {
+      const { host, session } = setUp();
+      let runs = 0;
+      const checked = computed(() => {
+        runs++;
+        return session().check();
+      });
+      expect(checked()).toBe('same');
+      host.cookieJar = `tellma.profile=${tmProfileCookieValue({ v: 2, sub: FARAH, sh: 'newer', name: 'Farah', email: '', locale: null })}`;
+      // A fresh computed reads the changed details and updates the profile without throwing.
+      expect(computed(() => session().check())()).toBe('same');
+      expect(session().profile()?.sh).toBe('newer');
+      // The first computed never depended on the profile, so the update left it alone.
+      expect(checked()).toBe('same');
+      expect(runs).toBe(1);
     });
 
     it('takes a cookie that appears in a tab that started without one as another user', () => {
@@ -202,6 +234,46 @@ describe('TmSessionPaths', () => {
     expect(host.reloads).toBe(1);
     expect(host.assigned).toEqual([]);
     expect(host.replaced).toEqual([]);
+  });
+
+  it('shows the sign-in-failed page instead of reloading within a minute of coming back from a sign-in', () => {
+    const host = new TmFakeSessionHost();
+    host.cookieJar = tmProfileCookies(FARAH);
+    const mark: TmLoginMark = { at: NOW - 59_999, expired: false, returnUrl: '/17', auto: false, sub: null, hash: '' };
+    let retry: (() => void) | undefined;
+    const showPage = vi.fn((_reason: string, again?: () => void) => void (retry = again));
+    TestBed.configureTestingModule({ providers: tmSessionTestingProviders(host, { mark, showPage }, NOW) });
+    TestBed.inject(TmSessionPaths).expired('401');
+    expect(TestBed.inject(TmSession).state()).toBe('expired');
+    expect(showPage).toHaveBeenCalledWith('sign-in-failed', expect.any(Function));
+    expect(host.reloads).toBe(0);
+    expect(host.cookieWrites).toEqual([]);
+    // Try again starts the next round: the cookie goes and the page reloads.
+    retry?.();
+    expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
+    expect(host.reloads).toBe(1);
+  });
+
+  it('reloads as usual once the sign-in is a minute old', () => {
+    const host = new TmFakeSessionHost();
+    host.cookieJar = tmProfileCookies(FARAH);
+    const mark: TmLoginMark = { at: NOW - 60_000, expired: false, returnUrl: '/17', auto: false, sub: null, hash: '' };
+    const showPage = vi.fn();
+    TestBed.configureTestingModule({ providers: tmSessionTestingProviders(host, { mark, showPage }, NOW) });
+    TestBed.inject(TmSessionPaths).expired('401');
+    expect(showPage).not.toHaveBeenCalled();
+    expect(host.reloads).toBe(1);
+  });
+
+  it('runs nothing for a 401 to a request sent under a session the cookie no longer names', () => {
+    const { host, session, telemetry } = setUp();
+    const paths = TestBed.inject(TmSessionPaths);
+    paths.expired('401', 'sh-of-an-older-session');
+    expect(session().state()).toBe('active');
+    expect([host.cookieWrites, host.reloads, telemetry.events]).toEqual([[], 0, []]);
+    paths.expired('401', `sh-${FARAH}`);
+    expect(session().state()).toBe('expired');
+    expect(host.reloads).toBe(1);
   });
 
   it('restarts the app at the root for a changed user, after sending the telemetry', () => {
