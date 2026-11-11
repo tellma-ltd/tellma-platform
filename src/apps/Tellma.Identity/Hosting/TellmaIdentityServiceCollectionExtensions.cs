@@ -53,6 +53,7 @@ namespace Tellma.Identity.Hosting
             // misconfigured host fails at startup with the full failure list.
             TellmaIdentityOptions snapshot = new();
             configure(snapshot);
+            snapshot.Seed.ApplyInterimClientIds();
 
             ValidateOptionsResult validation = new TellmaIdentityOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, snapshot);
             if (validation.Failed)
@@ -61,7 +62,12 @@ namespace Tellma.Identity.Hosting
                     "Tellma Identity configuration is invalid: " + string.Join(" ", validation.Failures ?? []));
             }
 
-            services.AddOptions<TellmaIdentityOptions>().Configure(configure).ValidateOnStart();
+            // An interim client's key is its client id; filled in before validation, so every
+            // reader of an entry sees it.
+            services.AddOptions<TellmaIdentityOptions>()
+                .Configure(configure)
+                .PostConfigure(static options => options.Seed.ApplyInterimClientIds())
+                .ValidateOnStart();
             services.AddSingleton<IValidateOptions<TellmaIdentityOptions>>(
                 static provider => new TellmaIdentityOptionsValidator(
                     provider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()));
@@ -87,6 +93,11 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<Services.AuthenticationPolicy.IAuthenticationPolicyService, Services.AuthenticationPolicy.AuthenticationPolicyService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();
+
+            // The one rule for `resource` parameters, and the one request-time decision point
+            // every endpoint's resource check asks.
+            services.AddSingleton<Services.IResourceGrantEvaluator, Services.ResourceGrantEvaluator>();
+            services.AddScoped<Services.ResourceGrantValidator>();
 
             // Every page in the sign-in flow needs this to name the pending client's callbacks in
             // its own policy, or the form that completes the flow submits and the browser refuses
@@ -127,7 +138,8 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.Tap.ITemporaryAccessPassService, Services.Tap.TemporaryAccessPassService>();
             services.AddSingleton<IdentityMetrics>();
 
-            // Management-API authorization policies (tellma_identity, tellma_control_plane).
+            // Management-API authorization policies (tellma_identity, tellma_control_plane), each
+            // requiring its scope and its own fixed audience.
             services.AddAuthorization();
             services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
 

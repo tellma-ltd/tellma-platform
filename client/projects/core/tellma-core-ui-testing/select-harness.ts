@@ -36,6 +36,22 @@ export class TmOptionHarness extends ComponentHarness {
   }
 }
 
+/** Harness for one `tm-option-group` as the open panel draws it: its heading and options. */
+export class TmOptionGroupHarness extends ComponentHarness {
+  /** The selector for a group rendered in the open panel. */
+  static hostSelector = '.tm-option-group';
+
+  /** Gets the group's heading text, trimmed — also its accessible name. */
+  async getLabel(): Promise<string> {
+    return (await (await this.locatorFor('.tm-option-group__heading')()).text()).trim();
+  }
+
+  /** Gets harnesses for the group's options, in order. */
+  async getOptions(): Promise<TmOptionHarness[]> {
+    return this.locatorForAll(TmOptionHarness)();
+  }
+}
+
 /**
  * Collection harness for `tm-select`: open the panel, list and
  * select options, read the trigger. The panel renders lazily on open; the
@@ -95,6 +111,12 @@ export class TmSelectHarness extends ComponentHarness {
   async getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]> {
     await this.open();
     return this.documentRootLocatorFactory().locatorForAll(filter ?? TmOptionHarness)();
+  }
+
+  /** Opens the panel and gets harnesses for its option groups, in order (none for a flat list). */
+  async getGroups(): Promise<TmOptionGroupHarness[]> {
+    await this.open();
+    return this.documentRootLocatorFactory().locatorForAll(TmOptionGroupHarness)();
   }
 
   /** Opens the panel and clicks the option with the given visible text. */

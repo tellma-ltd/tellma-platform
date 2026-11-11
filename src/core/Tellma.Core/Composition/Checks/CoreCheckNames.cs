@@ -20,6 +20,9 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>No configuration value under <c>Tellma:</c> is an unresolved Key Vault reference.</summary>
         public const string KeyVaultLiterals = "core.key-vault-literals";
 
+        /// <summary>The credential profiles and the catalog connection follow the connection rules, and the allowed servers are set.</summary>
+        public const string SqlProfiles = "core.sql-profiles";
+
         /// <summary><c>Tellma:PublicOrigin</c> is an absolute, path-less origin, https outside Development.</summary>
         public const string PublicOrigin = "core.public-origin";
 
@@ -28,5 +31,11 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Every leaf carries the shapes other features require of its entity.</summary>
         public const string EntityShapes = "core.entity-shapes";
+
+        /// <summary>Every model configuration Core contributes is an entity type configuration the model can apply.</summary>
+        public const string ModelContributors = "core.model-contributors";
+
+        /// <summary>The tenant model builds, and every entity leaf in it satisfies the entity contract.</summary>
+        public const string EntityMetadata = "core.entity-metadata";
     }
 }

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- The source-generated link(2) P/Invoke of the file-system blob store marshals its paths
@@ -6,11 +6,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Resources/Strings.resx is English, so an English lookup never probes for a satellite. -->
     <NeutralLanguage>en</NeutralLanguage>
-    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; and the file-system blob store. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
+    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; the tenant data model (TellmaDbContext, its conventions and the table-type binder); the tenancy runtime (the catalog model, the tenant registry, connection resolution, the catalog write side and the membership hints); and the file-system blob store. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+    <!-- The table-type (UDTT) extension the tenant model's conventions configure and the binder
+         reads. Never the Design package: that stays with the migrator. -->
+    <ProjectReference Include="..\Tellma.Core.EntityFrameworkCore\Tellma.Core.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,12 +30,26 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <!-- ValidateDataAnnotations for the same options. -->
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <!-- The tenant model's provider: TellmaDbContext is built through UseSqlServer. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <!-- The hierarchyid mapping of a tree's shadow Node column (UseHierarchyId). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer.HierarchyId" />
+    <!-- SqlMetaData and SqlDataRecord, which the table-type binder streams rows as. Referenced
+         directly rather than through EF, because the binder names these types itself. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- The suites drive the pipeline, the realizers and each check directly, with test
          realizers and probes, which keeps those seams out of the public surface. -->
     <InternalsVisibleTo Include="Tellma.Core.Tests" />
+    <!-- The catalog suite drives the catalog's statements and the registry's reads directly, and
+         holds a transaction open to make a transition lose its race on purpose. -->
+    <InternalsVisibleTo Include="Tellma.Core.IntegrationTests" />
+    <!-- The migrator is an adapter of this runtime that ships with it: it turns the registry's
+         startup verification off (it creates and migrates the catalog itself) and records membership
+         hints as the provisioning writer. -->
+    <InternalsVisibleTo Include="Tellma.Core.Migrator" />
   </ItemGroup>
 
 </Project>

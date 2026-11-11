@@ -116,6 +116,32 @@ namespace Tellma.Core.Abstractions.Composition
         }
 
         /// <summary>
+        ///     Contributes an entity with the platform's default service. The entity joins the tenant
+        ///     model; a distribution's leaf replaces it when one is registered for it.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution Entity<TEntity>()
+            where TEntity : class
+        {
+            return Add(new StackContributionItem(typeof(TEntity), null, null));
+        }
+
+        /// <summary>
+        ///     Contributes an entity whose stack runs through <typeparamref name="TService" />. The entity
+        ///     joins the tenant model; a distribution's leaf replaces it when one is registered for it.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity.</typeparam>
+        /// <typeparam name="TService">The service class of the entity's stack.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution Entity<TEntity, TService>()
+            where TEntity : class
+            where TService : class
+        {
+            return Add(new StackContributionItem(typeof(TEntity), typeof(TService), null));
+        }
+
+        /// <summary>
         ///     Requires the leaf registered for <typeparamref name="TEntity" /> to implement the
         ///     interface <typeparamref name="TShape" />. A leaf without it fails startup with the
         ///     interface's members listed as the remedy.

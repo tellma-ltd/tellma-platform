@@ -5,16 +5,30 @@
 
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Validation.AspNetCore;
+using System.Security.Claims;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.Infrastructure
 {
-    /// <summary>Authorization policy names and their scope requirements for the management APIs.</summary>
+    /// <summary>
+    ///     Authorization policy names and their requirements for the management APIs. Each policy
+    ///     requires both its scope and its own audience: a token is a credential at one of the
+    ///     identity server's APIs only when it was minted for that API, so a token minted for a
+    ///     distribution — which sits in that distribution's host and logs — is refused here even
+    ///     when its scopes would match.
+    /// </summary>
     public static class ApiPolicies
     {
-        /// <summary>The distribution-facing management surface (bulk invite, service accounts).</summary>
+        /// <summary>
+        ///     The distribution-facing management surface (bulk invite, service accounts): the
+        ///     management scope, and the management audience among the token's audiences.
+        /// </summary>
         public const string IdentityScope = "TellmaIdentityScope";
 
-        /// <summary>The operator/control-plane surface (user admin, temporary access passes, audit).</summary>
+        /// <summary>
+        ///     The operator/control-plane surface (user admin, temporary access passes): the
+        ///     control-plane scope, and the control-plane audience among the token's audiences.
+        /// </summary>
         public const string ControlPlaneScope = "TellmaControlPlaneScope";
 
         /// <summary>Registers the management-API authorization policies.</summary>
@@ -27,14 +41,16 @@ namespace Tellma.Identity.Infrastructure
             {
                 policy.AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
                 policy.RequireAuthenticatedUser();
-                policy.RequireAssertion(context => HasScope(context, TellmaIdentityConstants.IdentityScope));
+                policy.RequireAssertion(static context =>
+                    HasScope(context.User, TellmaIdentityConstants.IdentityScope)
+                    && HasAudience(context.User, TellmaIdentityConstants.IdentityAudience));
             });
 
             options.AddPolicy(ControlPlaneScope, policy =>
             {
                 policy.AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
                 policy.RequireAuthenticatedUser();
-                policy.RequireAssertion(context => HasScope(context, TellmaIdentityConstants.ControlPlaneScope));
+                policy.RequireAssertion(static context => HasControlPlaneAuthority(context.User));
             });
         }
 
@@ -45,19 +61,45 @@ namespace Tellma.Identity.Infrastructure
         /// <param name="principal">The authenticated principal.</param>
         /// <param name="scope">The scope to look for.</param>
         /// <returns>Whether the scope was granted.</returns>
-        public static bool HasScope(System.Security.Claims.ClaimsPrincipal principal, string scope)
+        public static bool HasScope(ClaimsPrincipal principal, string scope)
         {
             ArgumentNullException.ThrowIfNull(principal);
 
-            return principal.FindAll("scope")
+            return principal.FindAll(Claims.Scope)
                 .SelectMany(static claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 .Contains(scope, StringComparer.Ordinal);
         }
 
-        /// <summary>Whether the request's principal holds a scope.</summary>
-        private static bool HasScope(AuthorizationHandlerContext context, string scope)
+        /// <summary>
+        ///     Whether a principal's token was minted for an audience. A JWT's <c>aud</c> holds one
+        ///     value or an array; either way the validated principal carries one <c>aud</c> claim per
+        ///     audience, compared ordinally and never split or normalized.
+        /// </summary>
+        /// <param name="principal">The authenticated principal.</param>
+        /// <param name="audience">The audience to look for.</param>
+        /// <returns>Whether the audience is among the token's audiences.</returns>
+        public static bool HasAudience(ClaimsPrincipal principal, string audience)
         {
-            return HasScope(context.User, scope);
+            ArgumentNullException.ThrowIfNull(principal);
+
+            return !string.IsNullOrEmpty(audience)
+                && principal.FindAll(Claims.Audience).Any(claim => string.Equals(claim.Value, audience, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        ///     Whether a principal speaks for the control plane at the identity server: it holds the
+        ///     control-plane scope and its token was minted for the control-plane audience. A
+        ///     control-plane token minted for a distribution carries only that distribution's
+        ///     origin, so it never has this authority here.
+        /// </summary>
+        /// <param name="principal">The authenticated principal.</param>
+        /// <returns>Whether the principal has control-plane authority at the identity server.</returns>
+        public static bool HasControlPlaneAuthority(ClaimsPrincipal principal)
+        {
+            ArgumentNullException.ThrowIfNull(principal);
+
+            return HasScope(principal, TellmaIdentityConstants.ControlPlaneScope)
+                && HasAudience(principal, TellmaIdentityConstants.ControlPlaneAudience);
         }
     }
 }

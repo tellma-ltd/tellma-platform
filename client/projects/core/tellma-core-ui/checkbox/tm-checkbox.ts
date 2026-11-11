@@ -17,11 +17,13 @@ import {
   viewChild,
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
+import { Check, Minus } from 'lucide';
 
 import type { TmCellDisplay, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, TmL10n, tmResolveFieldErrors } from '@tellma/core-ui';
 import { tmFormatDate } from '@tellma/core-ui/l10n';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { TmIcon } from '@tellma/core-ui/icon';
 
 let nextUniqueId = 0;
 
@@ -47,6 +49,7 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-checkbox',
+  imports: [TmIcon],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmCheckbox }],
   template: `
     <label class="tm-checkbox__layout">
@@ -69,24 +72,11 @@ let nextUniqueId = 0;
         />
         <!-- The mark geometry is duplicated as a CSS mask in the grid
              (grid-view.css), which draws thousands of these as plain divs
-             rather than components. The two must stay identical or a
-             checkbox column and a checkbox visibly disagree. -->
+             rather than components. The two must stay identical — the same
+             Lucide paths at the same stroke — or a checkbox column and a
+             checkbox visibly disagree. -->
         <span class="tm-checkbox__box" aria-hidden="true">
-          <svg
-            class="tm-checkbox__glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            @if (indeterminate()) {
-              <path class="tm-checkbox__mark" d="M5 12h14" />
-            } @else {
-              <path class="tm-checkbox__mark" d="M20 6 9 17l-5-5" />
-            }
-          </svg>
+          <tm-icon class="tm-checkbox__glyph" [svg]="indeterminate() ? minusIcon : checkIcon" />
         </span>
       </span>
       <span class="tm-checkbox__label"><ng-content /></span>
@@ -148,6 +138,11 @@ export class TmCheckbox implements TmFormFieldControl {
    * merged AFTER them, never over them.
    */
   readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
+
+  /** The checked mark's icon data. */
+  protected readonly checkIcon = Check;
+  /** The indeterminate mark's icon data. */
+  protected readonly minusIcon = Minus;
 
   /** Stable generated id of the native input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-checkbox-${nextUniqueId++}`).asReadonly();

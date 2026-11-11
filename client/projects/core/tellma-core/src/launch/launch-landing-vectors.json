@@ -1,0 +1,294 @@
+[
+  {
+    "name": "no memberships land nowhere",
+    "tenants": [],
+    "expected": null
+  },
+  {
+    "name": "one active live membership lands on it",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "a read-only live tenant counts",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "ReadOnly",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "a frozen live tenant counts",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Frozen",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "a suspended live tenant is skipped",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Suspended",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "a provisioning live tenant is skipped",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Provisioning",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "an inactive membership is skipped",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": false
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "a sandbox alone never counts",
+    "tenants": [
+      {
+        "id": 18,
+        "name": "Acme Training",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Sandbox",
+        "state": "Active",
+        "liveTenantId": 17,
+        "isActive": true
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "a sandbox beside one live tenant leaves the live tenant",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": "أكمي",
+        "name3": null,
+        "languages": ["en", "ar"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 18,
+        "name": "Acme Training",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Sandbox",
+        "state": "Active",
+        "liveTenantId": 17,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "two live tenants leave the choice to the picker",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 1000,
+        "name": "Acme Trading",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "ReadOnly",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "a suspended second live tenant leaves the first",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 1000,
+        "name": "Acme Trading",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Suspended",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "a provisioning second live tenant leaves the first",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Frozen",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 1000,
+        "name": "Acme Trading",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Provisioning",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "an inactive second live membership leaves the first",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 1000,
+        "name": "Acme Trading",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": false
+      }
+    ],
+    "expected": 17
+  },
+  {
+    "name": "a tenant listed twice counts once",
+    "tenants": [
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      },
+      {
+        "id": 17,
+        "name": "Acme",
+        "name2": null,
+        "name3": null,
+        "languages": ["en"],
+        "category": "Live",
+        "state": "Active",
+        "liveTenantId": null,
+        "isActive": true
+      }
+    ],
+    "expected": 17
+  }
+]

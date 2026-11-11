@@ -1,0 +1,51 @@
+{
+  "name": "@tellma/core-tools",
+  "version": "0.1.0",
+  "description": "Node build tooling for Tellma distributions: the tellma-client command and the ESLint, stylelint and tsconfig presets.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "tellma-client": "bin/tellma-client.js"
+  },
+  "exports": {
+    "./eslint": {
+      "types": "./dist/eslint/index.d.ts",
+      "default": "./dist/eslint/index.js"
+    },
+    "./stylelint": {
+      "types": "./dist/stylelint/index.d.ts",
+      "default": "./dist/stylelint/index.js"
+    },
+    "./tsconfig.json": "./presets/tsconfig.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "presets"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepare": "tsc -b"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "@typescript-eslint/utils": "catalog:",
+    "angular-eslint": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "peerDependencies": {
+    "eslint": "^10.6.0",
+    "stylelint": "^17.14.0",
+    "typescript": "~6.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "stylelint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

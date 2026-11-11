@@ -29,6 +29,7 @@
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
     <Project Path="src/core/Tellma.Core.Imaging.PdfWorker/Tellma.Core.Imaging.PdfWorker.csproj" />
     <Project Path="src/core/Tellma.Core.Imaging/Tellma.Core.Imaging.csproj" />
+    <Project Path="src/core/Tellma.Core.Migrator/Tellma.Core.Migrator.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
     <Project Path="src/core/Tellma.Core.Queryex/Tellma.Core.Queryex.csproj" />
     <Project Path="src/core/Tellma.Core.Testing/Tellma.Core.Testing.csproj" />
@@ -53,6 +54,7 @@
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
+    <Project Path="test/core/Tellma.Core.IntegrationTests/Tellma.Core.IntegrationTests.csproj" />
     <Project Path="test/core/Tellma.Core.Imaging.Tests/Tellma.Core.Imaging.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Queryex.Tests/Tellma.Core.Queryex.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Queryex.IntegrationTests/Tellma.Core.Queryex.IntegrationTests.csproj" />

@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Realizers;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition
@@ -67,8 +68,9 @@ namespace Tellma.Core.Tests.Composition
                     .Singleton<IHostedService, ProbeHostedService>()
                     .Singleton<IConfigureOptions<SampleOptions>, ConfigureSampleCount>())));
 
-            // Both hosted services stay beside the startup gate, and both configure steps apply.
-            Assert.Equal(3, services.Count(static d => d.ServiceType == typeof(IHostedService)));
+            // Both hosted services stay beside the startup gate and the registry's refresh service, and
+            // both configure steps apply.
+            Assert.Equal(4, services.Count(static d => d.ServiceType == typeof(IHostedService)));
             using ServiceProvider provider = services.AddOptions().BuildServiceProvider();
             SampleOptions options = provider.GetRequiredService<IOptions<SampleOptions>>().Value;
             Assert.Equal(("configured", 5), (options.Name, options.Count));
@@ -184,10 +186,12 @@ namespace Tellma.Core.Tests.Composition
                     .RequiresShape<SampleEntity, IEInvoiceTracked>()))
                 .UseEntity<SampleEntity, TrackedLeaf>());
 
+            // Core's own table types and configurations come first; core is realised before every feature.
             TellmaCompositionRecord record = Record(services);
-            Assert.Equal("gl", Assert.Single(record.TableTypes).Owner.Name);
+            Assert.All(record.TableTypes.TakeWhile(static t => t.Owner is CoreFeature), static t => Assert.Equal("core", t.Owner.Name));
+            Assert.Equal("gl", Assert.Single(record.TableTypes, static t => t.Owner is not CoreFeature).Owner.Name);
             Type[] configurations = [typeof(SampleRowConfiguration), typeof(OpenConfiguration<>)];
-            Assert.Equal(configurations, record.ModelConfigurations.Select(static c => c.Type));
+            Assert.Equal(configurations, record.ModelConfigurations.Where(static c => c.Owner is not CoreFeature).Select(static c => c.Type));
             Assert.Single(record.ShapeRequirements);
             Assert.Equal(typeof(TrackedLeaf), record.LeafOf(typeof(SampleEntity)));
             Assert.Equal(typeof(SampleRow), record.LeafOf(typeof(SampleRow)));
@@ -261,7 +265,7 @@ namespace Tellma.Core.Tests.Composition
 
             ServiceDescriptor[] hosted = [.. services.Where(static d => d.ServiceType == typeof(IHostedService))];
             Assert.Equal(typeof(TellmaStartupGate), hosted[0].ImplementationType);
-            Assert.Equal(2, hosted.Length);
+            Assert.Equal([typeof(TellmaStartupGate), typeof(ProbeHostedService), typeof(TenantRegistryRefreshService)], hosted.Select(static d => d.ImplementationType));
         }
 
         private static TellmaCompositionRecord Record(IServiceCollection services)

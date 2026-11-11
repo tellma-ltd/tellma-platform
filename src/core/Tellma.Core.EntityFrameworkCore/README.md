@@ -59,8 +59,8 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    `modelBuilder.HasTableType("IdStateList", "dbo", t => t.Column<int>("Id")...)` or derived
    from a plain class via `modelBuilder.HasTableType<T>()` — the class then doubles as the TVP
    row DTO. The platform's canonical bulk shapes (`IdList`, `BigIdList`, `GuidList`,
-   `StringList`) are plain classes in `Tellma.Core.Abstractions`, registered by distributions
-   through this same route — one mechanism, no special handling. A column gets a collation
+   `StringList`) are plain classes in `Tellma.Core.Abstractions`, which the platform's tenant model
+   registers through this same route — one mechanism, no special handling. A column gets a collation
    through `UseCollation(column, collation)` in the build action, whether the class or
    `Column(…)` added it — e.g. `t => t.UseCollation("Subject", "Latin1_General_100_BIN2")` for a
    key compared with a binary-collated table column, which SQL Server otherwise refuses (Msg 468).
@@ -69,7 +69,13 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    unknown name fails the registration. Only `char`, `varchar`, `nchar` and `nvarchar` columns
    take a collation (any other store type, `json` included, fails model finalization). The
    collation is part of the definition, so adding, changing or removing one creates a new
-   version; a type without one serializes exactly as before.
+   version; a type without one serializes exactly as before. The build action can also replace a
+   column's store type and facets with `HasColumnType(column, storeType, …)` (applied before the
+   collations, so a retyped column can take one; the last call wins, also over the class's
+   `[Column(TypeName = …)]`) and drop a column with `ExcludeColumn(column)` (applied last; never a
+   key column) — the way a model that stores enums by name, or marks exclusions with an attribute
+   of its own, shapes a class-derived type. Both match names case-insensitively and fail the
+   registration for an unknown one.
 
 ## Rules this project lives by
 

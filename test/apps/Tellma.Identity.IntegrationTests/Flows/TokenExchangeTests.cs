@@ -104,6 +104,49 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal("invalid_scope", document.RootElement.GetProperty("error").GetString());
         }
 
+        [Theory]
+        [InlineData("https://globex.app.tellma.com")]
+        [InlineData(null)]
+        public async Task Exchange_cannot_retarget_to_another_distribution_or_to_every_distribution(string? resource)
+        {
+            // Two distributions are onboarded, so the distribution API scope's resources hold both
+            // origins. Naming the other one is refused, and naming none must never yield a token
+            // carrying them all.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteretarget");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
+                factory, allowTokenExchange: true);
+            await TestData.ProvisionDistributionAsync(factory, "globex");
+
+            using HttpClient client = factory.CreateClient();
+            using JsonDocument original = await GetClientCredentialsTokenAsync(
+                client, distribution.ServiceClientId, distribution.ServiceClientSecret,
+                scope: "tellma_api", resource: "https://acme.app.tellma.com");
+
+            Dictionary<string, string> parameters = new()
+            {
+                ["grant_type"] = "urn:ietf:params:oauth:grant-type:token-exchange",
+                ["client_id"] = distribution.ServiceClientId,
+                ["client_secret"] = distribution.ServiceClientSecret,
+                ["subject_token"] = original.RootElement.GetProperty("access_token").GetString()!,
+                ["subject_token_type"] = "urn:ietf:params:oauth:token-type:access_token",
+                ["scope"] = "tellma_api",
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(parameters),
+                TestContext.Current.CancellationToken);
+
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.False(response.IsSuccessStatusCode, body);
+            using var document = JsonDocument.Parse(body);
+            Assert.Equal("invalid_target", document.RootElement.GetProperty("error").GetString());
+        }
+
         [Fact]
         public async Task A_backend_cannot_exchange_a_token_issued_to_the_browser_client()
         {
