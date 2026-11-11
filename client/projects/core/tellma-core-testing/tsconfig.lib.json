@@ -1,8 +1,9 @@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
 /*
- * The package build compiles against the BUILT @tellma/core, as a consumer
- * would, so its paths point at dist/ rather than at the sources.
+ * The package build compiles against the BUILT @tellma/core, and the built
+ * @tellma/core-ui its declarations import, as a consumer would, so its paths
+ * point at dist/ rather than at the sources.
  */
 {
   "extends": "../../../tsconfig.json",
@@ -14,7 +15,9 @@
     "types": [],
     "paths": {
       "@tellma/core": ["../../../dist/core"],
-      "@tellma/core/*": ["../../../dist/core/*"]
+      "@tellma/core/*": ["../../../dist/core/*"],
+      "@tellma/core-ui": ["../../../dist/core-ui"],
+      "@tellma/core-ui/*": ["../../../dist/core-ui/*"]
     }
   },
   "include": ["**/*.ts"],

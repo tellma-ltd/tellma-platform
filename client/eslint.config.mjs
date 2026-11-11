@@ -33,6 +33,9 @@ const UNPREFIXED_EXPORTS = [
   'provideTmPageScope',
   // The Playwright assertion the app-foundation spec names for every suite.
   'expectNoAxeViolations',
+  // The app's one provider call, which the app-foundation spec names; the
+  // prefix pattern expects a suffix after `provideTellma`.
+  'provideTellma',
 ];
 
 /**
@@ -162,8 +165,7 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         project: [
-          './projects/core/tellma-core/tsconfig.lib.json',
-          './projects/core/tellma-core/tsconfig.spec.json',
+          './projects/core/tellma-core/tsconfig.json',
           './projects/core/tellma-core-testing/tsconfig.json',
         ],
         tsconfigRootDir: import.meta.dirname,
@@ -176,6 +178,17 @@ export default defineConfig(
       'tm/literal-declaration-keys': 'error',
       'tm/no-decimal-operators': 'error',
       '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
+    },
+  },
+
+  // Specs build declarations from stand-in components and computed keys to
+  // exercise the merge and the config check; the lazy-layout and literal-key
+  // rules guard app sources, not these fixtures.
+  {
+    files: ['projects/core/tellma-core/**/*.spec.ts', 'projects/core/tellma-core-testing/**/*.spec.ts'],
+    rules: {
+      'tm/lazy-layouts': 'off',
+      'tm/literal-declaration-keys': 'off',
     },
   },
 

@@ -26,6 +26,7 @@ import { IconStory } from './icon/icon-story';
 import { ImageStory } from './image/image-story';
 import { InputStory } from './input/input-story';
 import { KbdStory } from './kbd/kbd-story';
+import { MenuRichStory } from './menu/menu-rich-story';
 import { MenuStory } from './menu/menu-story';
 import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
@@ -88,6 +89,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'popover', title: 'Popover (tm-popover)', component: PopoverStory },
   { id: 'tooltip', title: 'Tooltip (tmTooltip)', component: TooltipStory },
   { id: 'menu', title: 'Menu', component: MenuStory },
+  { id: 'menu-rich', title: 'Menu (rich entries)', component: MenuRichStory },
   { id: 'grid-readonly', title: 'Grid (readonly)', component: GridReadonlyStory, wide: true },
   {
     id: 'grid-list-screen',
