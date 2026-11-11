@@ -336,6 +336,9 @@
     --progress-radius: var(--radius-full);
     --progress-track: var(--border-default);
     --progress-accent: var(--color-primary);
+    --progress-success: var(--success);
+    --progress-warning: color-mix(in srgb, var(--warning) 75%, var(--text-strong));
+    --progress-error: var(--error);
     --progress-min-visible: 250ms;
     --progress-sweep-duration: 1.4s;
     --progress-sweep-width: 40%;

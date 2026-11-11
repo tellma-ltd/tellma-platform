@@ -45,9 +45,8 @@ import { TmIcon } from '@tellma/core-ui/icon';
   styleUrl: './tm-empty-state.css',
   host: {
     class: 'tm-empty-state',
-    '[class.tm-empty-state--page]': 'size() === "page"',
-    '[class.tm-empty-state--panel]': 'size() === "panel"',
-    '[class.tm-empty-state--error]': 'tone() === "error"',
+    '[attr.data-size]': 'size()',
+    '[attr.data-tone]': 'tone()',
   },
 })
 export class TmEmptyState {

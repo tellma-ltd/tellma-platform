@@ -44,7 +44,7 @@ describe('tm-skeleton', () => {
   it('is hidden from assistive technology and draws one line by default', () => {
     const { element } = setup();
     expect(element.getAttribute('aria-hidden')).toBe('true');
-    expect(element.classList).toContain('tm-skeleton--line');
+    expect(element.getAttribute('data-shape')).toBe('line');
     expect(element.querySelectorAll('.tm-skeleton__bar').length).toBe(1);
     expect(element.style.inlineSize).toBe('100%');
   });
@@ -62,7 +62,7 @@ describe('tm-skeleton', () => {
     host.width.set('240px');
     host.height.set('120px');
     fixture.detectChanges();
-    expect(element.classList).toContain('tm-skeleton--block');
+    expect(element.getAttribute('data-shape')).toBe('block');
     expect(element.style.inlineSize).toBe('240px');
     expect(element.style.blockSize).toBe('120px');
     expect(element.children.length).toBe(0);
@@ -71,7 +71,7 @@ describe('tm-skeleton', () => {
     host.width.set('24px');
     host.height.set(undefined);
     fixture.detectChanges();
-    expect(element.classList).toContain('tm-skeleton--circle');
+    expect(element.getAttribute('data-shape')).toBe('circle');
     expect(element.style.blockSize).toBe('');
   });
 

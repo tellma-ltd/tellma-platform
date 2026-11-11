@@ -49,12 +49,12 @@
   display: none;
 }
 
-:host(.tm-counter--accent) {
+:host([data-tone='accent']) {
   --tm-counter-bg: var(--counter-accent-bg);
   --tm-counter-text: var(--counter-accent-text);
 }
 
-:host(.tm-counter--attention) {
+:host([data-tone='attention']) {
   --tm-counter-bg: var(--counter-attention-bg);
   --tm-counter-text: var(--counter-attention-text);
 }
@@ -75,7 +75,7 @@
   /* The fills are forced away: the transparent border is painted in the
      system text colour, and the attention tone keeps a system highlight
      fill so it still reads apart from the others. */
-  :host(.tm-counter--attention) {
+  :host([data-tone='attention']) {
     forced-color-adjust: none;
     border-color: Highlight;
     background: Highlight;

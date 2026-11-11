@@ -32,6 +32,13 @@ import { TmIcon } from '@tellma/core-ui/icon';
       <tm-badge tone="warning" dot>Held</tm-badge>
     </section>
 
+    <!-- Glyphs that reach below the baseline: Latin descenders and the
+         dots under Arabic letters, which the label must not clip. -->
+    <section class="row">
+      <tm-badge tone="warning" data-testid="badge-descenders">Typing quietly gjpqy</tm-badge>
+      <tm-badge tone="info" lang="ar" data-testid="badge-arabic">قيد المراجعة يجب</tm-badge>
+    </section>
+
     <!-- An inline count in a sentence, stepped by the button beside it. -->
     <section class="row">
       <span data-testid="inline-row"
@@ -64,7 +71,12 @@ import { TmIcon } from '@tellma/core-ui/icon';
         data-testid="overlay-button"
       >
         <tm-icon name="plus" />
-        <tm-counter [value]="3" tone="attention" placement="overlay" data-testid="counter-overlay" />
+        <tm-counter
+          [value]="3"
+          tone="attention"
+          placement="overlay"
+          data-testid="counter-overlay"
+        />
       </button>
       <button tmButton variant="ghost" type="button" class="corner" aria-label="Jobs, 120 queued">
         <tm-icon name="plus" />

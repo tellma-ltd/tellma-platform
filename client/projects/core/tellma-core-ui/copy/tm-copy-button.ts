@@ -178,6 +178,12 @@ export class TmCopyButton {
   /** Releases the fallback's place on the shared Escape stack. */
   private releaseEscape: (() => void) | null = null;
 
+  /** Set once the component is destroyed: a copy settling later does nothing. */
+  private destroyed = false;
+
+  /** The pending focus return after a copy from the manual input. */
+  private manualCopyTimer: ReturnType<typeof setTimeout> | undefined;
+
   constructor() {
     // The fallback, once rendered: focus the input, select its text and
     // point at it with the tooltip.
@@ -205,7 +211,9 @@ export class TmCopyButton {
       });
     });
     inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
       clearTimeout(this.copiedTimer);
+      clearTimeout(this.manualCopyTimer);
       this.dropManualTooltip();
     });
   }
@@ -269,17 +277,25 @@ export class TmCopyButton {
     }
   }
 
-  /** Shows "Copied" for two seconds, announces it, and emits `copied`. */
+  /**
+   * Shows "Copied" for two seconds, announces it, and emits `copied`; a
+   * clipboard answer that lands after the button is gone does nothing.
+   */
   private succeed(): void {
+    if (this.destroyed) {
+      return;
+    }
     clearTimeout(this.copiedTimer);
     this.isCopied.set(true);
     this.copiedTimer = setTimeout(() => this.isCopied.set(false), COPIED_MS);
     this.copied.emit();
   }
 
-  /** Brings up the manual fallback with `text` selected. */
+  /** Brings up the manual fallback with `text` selected, unless the button is gone. */
   private fallBack(text: string): void {
-    this.manualText.set(text);
+    if (!this.destroyed) {
+      this.manualText.set(text);
+    }
   }
 
   /**
@@ -287,7 +303,8 @@ export class TmCopyButton {
    * event has run its course, so the browser copies the selection first.
    */
   protected onManualCopy(): void {
-    setTimeout(() => {
+    clearTimeout(this.manualCopyTimer);
+    this.manualCopyTimer = setTimeout(() => {
       this.returnFocus();
       this.succeed();
     });

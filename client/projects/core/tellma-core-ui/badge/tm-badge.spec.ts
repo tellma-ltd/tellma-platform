@@ -37,16 +37,15 @@ describe('tm-badge', () => {
     const { element } = setup();
     expect(element.textContent?.trim()).toBe('Held');
     expect(element.getAttribute('role')).toBeNull();
-    expect(element.classList).toContain('tm-badge--neutral');
+    expect(element.getAttribute('data-tone')).toBe('neutral');
   });
 
-  it('carries exactly one tone class, following the input', () => {
+  it('carries its tone on the host, following the input', () => {
     const { fixture, host, element } = setup();
     for (const tone of ['accent', 'info', 'success', 'warning', 'error', 'neutral'] as const) {
       host.tone.set(tone);
       fixture.detectChanges();
-      const tones = [...element.classList].filter((name) => /^tm-badge--/.test(name));
-      expect(tones).toEqual([`tm-badge--${tone}`]);
+      expect(element.getAttribute('data-tone')).toBe(tone);
     }
   });
 

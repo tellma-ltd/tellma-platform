@@ -49,8 +49,11 @@ describe('tm-counter', () => {
     expect(await counter.isShown()).toBe(true);
     expect(await counter.getPlacement()).toBe('inline');
     expect(await counter.isHiddenFromAssistiveTechnology()).toBe(false);
+    // Only the digits are isolated left to right; the host keeps the
+    // inherited direction, which places an overlay on the logical corner.
     const element = fixture.nativeElement.querySelector('tm-counter') as HTMLElement;
-    expect(element.getAttribute('dir')).toBe('ltr');
+    expect(element.getAttribute('dir')).toBeNull();
+    expect(element.querySelector('.tm-counter__digits')!.getAttribute('dir')).toBe('ltr');
   });
 
   it('renders nothing for null and for zero, unless zero is asked for', async () => {

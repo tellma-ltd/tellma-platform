@@ -24,16 +24,16 @@
 
 /* Tones. */
 
-:host(.tm-progress-bar--success) {
-  --tm-progress-fill: var(--success);
+:host([data-tone='success']) {
+  --tm-progress-fill: var(--progress-success);
 }
 
-:host(.tm-progress-bar--warning) {
-  --tm-progress-fill: var(--warning);
+:host([data-tone='warning']) {
+  --tm-progress-fill: var(--progress-warning);
 }
 
-:host(.tm-progress-bar--error) {
-  --tm-progress-fill: var(--error);
+:host([data-tone='error']) {
+  --tm-progress-fill: var(--progress-error);
 }
 
 /* The track clips the fill to its rounded ends. It is a size container,

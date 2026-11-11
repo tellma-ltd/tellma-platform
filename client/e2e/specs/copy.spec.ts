@@ -86,9 +86,9 @@ test.describe('success', () => {
     await button.click();
     await expect(labelled.locator('[role="status"]')).toHaveText('Copied');
     await expect(labelled).toHaveClass(/tm-copy-button--copied/);
-    await expect(button.locator('.tm-copy-button__label:not(.tm-copy-button__label--off)')).toHaveText(
-      'Copied',
-    );
+    await expect(
+      button.locator('.tm-copy-button__label:not(.tm-copy-button__label--off)'),
+    ).toHaveText('Copied');
     expect(await button.boundingBox()).toEqual(before);
     expect(await written(page)).toEqual(['https://example.com/invoices/42']);
 
@@ -147,11 +147,15 @@ test.describe('manual fallback (clipboard permission denied)', () => {
     const prompt = (await manual.getAttribute('aria-label'))!;
     expect(prompt).toMatch(/^Press (Ctrl\+C|⌘C) to copy$/);
     await expect(page.locator('.tm-tooltip__panel')).toHaveText(prompt);
-    const selected = await manual.evaluate(
-      (el: HTMLInputElement) => el.value.slice(el.selectionStart!, el.selectionEnd!),
+    const selected = await manual.evaluate((el: HTMLInputElement) =>
+      el.value.slice(el.selectionStart!, el.selectionEnd!),
     );
     expect(selected).toBe('INV-0042');
     expect(await button.boundingBox()).toEqual(before);
+    // The fallback state (the focused, transparent input and its tooltip)
+    // holds the axe floor too.
+    await expectNoAxeViolations(page);
+    await expect(manual).toBeFocused();
 
     await page.keyboard.press('ControlOrMeta+KeyC');
     await expect(page.getByTestId('copies')).toHaveText('1');

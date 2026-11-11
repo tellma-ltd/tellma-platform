@@ -13,7 +13,7 @@
    ink draws the dot and the icon. */
 
 :host {
-  /* One local pair per tone, re-pointed by the tone classes below. */
+  /* One local set per tone, re-pointed by the data-tone rules below. */
   --tm-badge-bg: var(--badge-neutral-bg);
   --tm-badge-border: var(--badge-neutral-border);
   --tm-badge-ink: var(--badge-neutral-ink);
@@ -41,32 +41,32 @@
 
 /* Tones. */
 
-:host(.tm-badge--accent) {
+:host([data-tone='accent']) {
   --tm-badge-bg: var(--badge-accent-bg);
   --tm-badge-border: var(--badge-accent-bg);
   --tm-badge-ink: var(--badge-accent-text);
   --tm-badge-text: var(--badge-accent-text);
 }
 
-:host(.tm-badge--info) {
+:host([data-tone='info']) {
   --tm-badge-bg: var(--info-bg);
   --tm-badge-border: var(--info-border);
   --tm-badge-ink: var(--info);
 }
 
-:host(.tm-badge--success) {
+:host([data-tone='success']) {
   --tm-badge-bg: var(--success-bg);
   --tm-badge-border: var(--success-border);
   --tm-badge-ink: var(--success);
 }
 
-:host(.tm-badge--warning) {
+:host([data-tone='warning']) {
   --tm-badge-bg: var(--warning-bg);
   --tm-badge-border: var(--warning-border);
   --tm-badge-ink: var(--warning);
 }
 
-:host(.tm-badge--error) {
+:host([data-tone='error']) {
   --tm-badge-bg: var(--error-bg);
   --tm-badge-border: var(--error-border);
   --tm-badge-ink: var(--error);
@@ -86,10 +86,14 @@
   color: var(--tm-badge-ink);
 }
 
-/* The label ellipsizes rather than overflowing a narrow container. */
+/* The label ellipsizes rather than overflowing a narrow container. Its
+   line box is the font's own (not the host's line-height 1), so the clip
+   that the ellipsis needs never cuts a descender or an Arabic letter's
+   dots below the baseline. */
 .tm-badge__label {
   min-inline-size: 0;
   overflow: hidden;
+  line-height: normal;
   text-overflow: ellipsis;
 }
 

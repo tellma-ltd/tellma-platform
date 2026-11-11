@@ -157,9 +157,7 @@ describe('tmEmitCss', () => {
     // this — the invariants are brand faces before generics and no exact
     // stack pinning.
     const stack = /--font-ui: (.*);/.exec(css)?.[1] ?? '';
-    const order = ["'Noto Sans'", "'Noto Sans Arabic'", 'sans-serif'].map((f) =>
-      stack.indexOf(f),
-    );
+    const order = ["'Noto Sans'", "'Noto Sans Arabic'", 'sans-serif'].map((f) => stack.indexOf(f));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     // Typography never keys on direction: per-glyph face selection comes from
@@ -191,7 +189,9 @@ describe('tmEmitCss', () => {
   });
 
   it('emits the ::selection rule with per-scheme teal highlight tokens', () => {
-    expect(css).toMatch(/::selection \{\n\s*background-color: var\(--selection-bg\);\n\s*color: var\(--selection-text\);/);
+    expect(css).toMatch(
+      /::selection \{\n\s*background-color: var\(--selection-bg\);\n\s*color: var\(--selection-text\);/,
+    );
     const light = tmEmittedSchemeVars(tmTokensDefault, 'light');
     expect(light.get('--selection-bg')).toBe('var(--teal-100)');
     const dark = tmEmittedSchemeVars(tmTokensDefault, 'dark');
@@ -257,6 +257,41 @@ function luminance(hex: string): number {
 function contrast(a: string, b: string): number {
   const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (light + 0.05) / (dark + 0.05);
+}
+
+/** The `#RRGGBB` channels of a colour, 0-255. */
+function channels(hex: string): number[] {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+}
+
+/** Formats 0-255 channels as `#RRGGBB`. */
+function toHex(rgb: readonly number[]): string {
+  return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+}
+
+/** A `#RRGGBB` colour, or an `rgba()` one composited over the opaque `base`. */
+function opaque(color: string, base: string): string {
+  const rgba = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(color);
+  if (!rgba) {
+    return color;
+  }
+  const alpha = Number(rgba[4]);
+  const under = channels(base);
+  return toHex([1, 2, 3].map((i, k) => Number(rgba[i]) * alpha + under[k] * (1 - alpha)));
+}
+
+/**
+ * The `#RRGGBB` a resolved fill paints: a colour as is, or a
+ * `color-mix(in srgb, var(--a) P%, var(--b))` mixed channel by channel.
+ */
+function paint(value: string, vars: Map<string, string>): string {
+  const mix = /^color-mix\(in srgb, var\((--[a-z-]+)\) (\d+)%, var\((--[a-z-]+)\)\)$/.exec(value);
+  if (!mix) {
+    return value;
+  }
+  const share = Number(mix[2]) / 100;
+  const [a, b] = [mix[1], mix[3]].map((name) => channels(tmResolveVar(vars, name)!));
+  return toHex(a.map((c, k) => c * share + b[k] * (1 - share)));
 }
 
 describe('the categorical and sequential colour groups', () => {
@@ -348,6 +383,24 @@ describe('the categorical and sequential colour groups', () => {
     }
   });
 
+  it('reads every progress fill at 3:1 or more against its track, on the page and on a card, in both schemes', () => {
+    // The fill is the part that shows the share (a non-text graphic), so
+    // it needs 3:1 against the track around it. The dark track is a
+    // translucent white, composited over the surface the bar sits on.
+    for (const scheme of ['light', 'dark'] as const) {
+      const vars = tmEmittedSchemeVars(tmTokensDefault, scheme);
+      for (const surface of ['--surface-page', '--surface-card']) {
+        const track = opaque(tmResolveVar(vars, '--progress-track')!, tmResolveVar(vars, surface)!);
+        for (const tone of ['accent', 'success', 'warning', 'error']) {
+          const fill = paint(tmResolveVar(vars, `--progress-${tone}`)!, vars);
+          expect(contrast(fill, track), `${scheme} ${tone} on ${surface}`).toBeGreaterThanOrEqual(
+            3,
+          );
+        }
+      }
+    }
+  });
+
   it('fails the missing-ref gate on a step that references a missing teal stop', () => {
     const light = tmTokensDefault.semantic.colorScheme.light;
     const broken: TmTokens = {
@@ -361,8 +414,8 @@ describe('the categorical and sequential colour groups', () => {
       },
     };
     const issues = tmValidateTokens(broken);
-    expect(issues.some((i) => i.message.includes('--sequential-4') && i.message.includes('--teal-450'))).toBe(
-      true,
-    );
+    expect(
+      issues.some((i) => i.message.includes('--sequential-4') && i.message.includes('--teal-450')),
+    ).toBe(true);
   });
 });

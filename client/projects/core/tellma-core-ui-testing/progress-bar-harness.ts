@@ -31,14 +31,9 @@ export class TmProgressBarHarness extends ComponentHarness {
     return (await this.host()).getAttribute('aria-label');
   }
 
-  /** The fill tone, read off the host classes. */
+  /** The fill tone, read off the host's `data-tone`. */
   async getTone(): Promise<'accent' | 'success' | 'warning' | 'error'> {
-    const host = await this.host();
-    for (const tone of ['success', 'warning', 'error'] as const) {
-      if (await host.hasClass(`tm-progress-bar--${tone}`)) {
-        return tone;
-      }
-    }
-    return 'accent';
+    const tone = await (await this.host()).getAttribute('data-tone');
+    return tone === 'success' || tone === 'warning' || tone === 'error' ? tone : 'accent';
   }
 }

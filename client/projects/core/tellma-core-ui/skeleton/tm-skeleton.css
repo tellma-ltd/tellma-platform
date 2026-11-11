@@ -17,7 +17,7 @@
 
 /* ---- line: a stack of 8 px bars ---- */
 
-:host(.tm-skeleton--line) {
+:host([data-shape='line']) {
   display: flex;
   flex-direction: column;
   gap: var(--skeleton-line-gap);
@@ -33,19 +33,19 @@
 }
 
 /* A paragraph's last line is shorter (a lone line keeps the full width). */
-:host(.tm-skeleton--line) .tm-skeleton__bar:last-child:not(:first-child) {
+:host([data-shape='line']) .tm-skeleton__bar:last-child:not(:first-child) {
   inline-size: var(--skeleton-last-line-width);
 }
 
 /* ---- block and circle: the host is the shape ---- */
 
-:host(.tm-skeleton--block) {
+:host([data-shape='block']) {
   block-size: 100%;
   border-radius: var(--skeleton-radius);
   background: var(--skeleton-bg);
 }
 
-:host(.tm-skeleton--circle) {
+:host([data-shape='circle']) {
   aspect-ratio: 1;
   border-radius: var(--radius-full);
   background: var(--skeleton-bg);
@@ -53,7 +53,7 @@
 
 /* ---- table: a header row and body rows at the grid's row height ---- */
 
-:host(.tm-skeleton--table) {
+:host([data-shape='table']) {
   /* The cells per row; the component binds the real count inline. */
   --tm-skeleton-columns: 4;
   --tm-skeleton-row-height: var(--grid-row-height);
@@ -62,11 +62,11 @@
   flex-direction: column;
 }
 
-:host(.tm-skeleton--table[data-size='sm']) {
+:host([data-shape='table'][data-size='sm']) {
   --tm-skeleton-row-height: var(--grid-row-height-sm);
 }
 
-:host(.tm-skeleton--table[data-size='lg']) {
+:host([data-shape='table'][data-size='lg']) {
   --tm-skeleton-row-height: var(--grid-row-height-lg);
 }
 

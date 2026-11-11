@@ -31,21 +31,21 @@ export type TmCounterPlacement = 'inline' | 'overlay';
  * carries the count ("Notifications, 3 new").
  *
  * @tmGroup indicator
- * @tmA11yNotes Inline: plain text in a dir="ltr" run. Overlay:
+ * @tmA11yNotes Inline: plain text in an isolated dir="ltr" run. Overlay:
  *   aria-hidden, so put the count in the parent's accessible name. Under
  *   forced colours every counter keeps a border, and the attention tone a
  *   system highlight fill.
  */
 @Component({
   selector: 'tm-counter',
-  template: `{{ text() }}`,
+  // Only the digits run left to right: the host keeps the inherited
+  // direction, so the overlay's logical corner follows the page.
+  template: `<span class="tm-counter__digits" dir="ltr">{{ text() }}</span>`,
   styleUrl: './tm-counter.css',
   host: {
     class: 'tm-counter',
-    dir: 'ltr',
     '[class.tm-counter--overlay]': 'placement() === "overlay"',
-    '[class.tm-counter--accent]': 'tone() === "accent"',
-    '[class.tm-counter--attention]': 'tone() === "attention"',
+    '[attr.data-tone]': 'tone()',
     '[class.tm-counter--empty]': 'text() === ""',
     '[attr.aria-hidden]': 'placement() === "overlay" ? "true" : null',
   },

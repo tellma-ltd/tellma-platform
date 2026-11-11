@@ -25,14 +25,14 @@ export class TmEmptyStateHarness extends ComponentHarness {
     return (await this.locatorForOptional('.tm-empty-state__icon')()) !== null;
   }
 
-  /** The tone, read off the host classes. */
+  /** The tone, read off the host's `data-tone`. */
   async getTone(): Promise<'neutral' | 'error'> {
-    return (await (await this.host()).hasClass('tm-empty-state--error')) ? 'error' : 'neutral';
+    return (await (await this.host()).getAttribute('data-tone')) === 'error' ? 'error' : 'neutral';
   }
 
-  /** The size, read off the host classes. */
+  /** The size, read off the host's `data-size`. */
   async getSize(): Promise<'page' | 'panel'> {
-    return (await (await this.host()).hasClass('tm-empty-state--panel')) ? 'panel' : 'page';
+    return (await (await this.host()).getAttribute('data-size')) === 'panel' ? 'panel' : 'page';
   }
 
   /** Whether the state is announced: a polite live region. */

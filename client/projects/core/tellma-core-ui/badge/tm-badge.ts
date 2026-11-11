@@ -45,12 +45,7 @@ export type TmBadgeTone = 'neutral' | 'accent' | 'info' | 'success' | 'warning' 
   styleUrl: './tm-badge.css',
   host: {
     class: 'tm-badge',
-    '[class.tm-badge--neutral]': 'tone() === "neutral"',
-    '[class.tm-badge--accent]': 'tone() === "accent"',
-    '[class.tm-badge--info]': 'tone() === "info"',
-    '[class.tm-badge--success]': 'tone() === "success"',
-    '[class.tm-badge--warning]': 'tone() === "warning"',
-    '[class.tm-badge--error]': 'tone() === "error"',
+    '[attr.data-tone]': 'tone()',
   },
 })
 export class TmBadge {

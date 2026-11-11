@@ -710,13 +710,20 @@ export const tmTokensDefault: TmTokens = {
     // consumers overlay on an edge, so it takes no layout space; once shown
     // it stays at least `minVisible`, so a fast answer never flashes it.
     // The indeterminate sweep and the ring's spin are the only motion here,
-    // and both stop under reduced motion. The fill uses the action teal, not
-    // the lighter accent, so it reads at 3:1 against the page.
+    // and both stop under reduced motion. Every fill reads at 3:1 or more
+    // against the track in both schemes: the accent is the action teal, not
+    // the lighter accent teal, and the warning fill is the warning role
+    // pulled a quarter of the way to the strong text colour (darker in
+    // light, lighter in dark), since the warning role alone is 2.45:1
+    // against the light track.
     progress: {
       height: '4px',
       radius: '{radius.full}',
       track: '{border.default}',
       accent: '{action.primary}',
+      success: '{status.success.fg}',
+      warning: 'color-mix(in srgb, var(--warning) 75%, var(--text-strong))',
+      error: '{status.error.fg}',
       minVisible: '250ms',
       sweepDuration: '1.4s',
       sweepWidth: '40%',

@@ -20,13 +20,10 @@ export class TmCounterHarness extends ComponentHarness {
     return !(await (await this.host()).hasClass('tm-counter--empty'));
   }
 
-  /** The fill tone, read off the host classes. */
+  /** The fill tone, read off the host's `data-tone`. */
   async getTone(): Promise<'neutral' | 'accent' | 'attention'> {
-    const host = await this.host();
-    if (await host.hasClass('tm-counter--accent')) {
-      return 'accent';
-    }
-    return (await host.hasClass('tm-counter--attention')) ? 'attention' : 'neutral';
+    const tone = await (await this.host()).getAttribute('data-tone');
+    return tone === 'accent' || tone === 'attention' ? tone : 'neutral';
   }
 
   /** Whether the counter is inline or overlaid on its parent's corner. */

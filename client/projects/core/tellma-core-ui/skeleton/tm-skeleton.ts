@@ -71,10 +71,7 @@ function range(n: number): number[] {
   host: {
     class: 'tm-skeleton',
     'aria-hidden': 'true',
-    '[class.tm-skeleton--line]': 'shape() === "line"',
-    '[class.tm-skeleton--block]': 'shape() === "block"',
-    '[class.tm-skeleton--circle]': 'shape() === "circle"',
-    '[class.tm-skeleton--table]': 'shape() === "table"',
+    '[attr.data-shape]': 'shape()',
     '[attr.data-size]': 'shape() === "table" ? rowSize : null',
     '[style.inline-size]': 'width()',
     '[style.block-size]': 'height() ?? null',

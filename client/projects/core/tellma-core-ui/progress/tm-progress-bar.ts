@@ -73,9 +73,7 @@ function parseCssTime(value: string): number | null {
   host: {
     class: 'tm-progress-bar',
     '[class.tm-progress-bar--hidden]': '!shown()',
-    '[class.tm-progress-bar--success]': 'tone() === "success"',
-    '[class.tm-progress-bar--warning]': 'tone() === "warning"',
-    '[class.tm-progress-bar--error]': 'tone() === "error"',
+    '[attr.data-tone]': 'tone()',
     '[attr.role]': 'shown() ? "progressbar" : null',
     '[attr.aria-label]': 'shown() ? (label() ?? null) : null',
     '[attr.aria-labelledby]': 'shown() ? (labelledBy() ?? null) : null',
