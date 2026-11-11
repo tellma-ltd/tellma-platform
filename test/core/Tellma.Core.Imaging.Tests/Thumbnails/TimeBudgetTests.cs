@@ -12,10 +12,10 @@ using Tellma.Core.Imaging.Tests.Infrastructure;
 namespace Tellma.Core.Imaging.Tests.Thumbnails
 {
     /// <summary>
-    ///     The time budgets and gates, on a fake clock: work past its budget returns at once while its
-    ///     gate or slot stays held until the native work ends; work that cannot get a gate or slot in
-    ///     time never starts; an abandoned PDF render makes later thumbnails fail fast; and once a
-    ///     call returns, the caller's stream is never touched again.
+    ///     The time budgets and slots of image work, on a fake clock: work past its budget returns at
+    ///     once while its slot stays held until the native work ends; work that cannot get a slot in
+    ///     time never starts; and once a call returns, the caller's stream is never touched again.
+    ///     <see cref="PdfWorkerBudgetTests" /> covers the budgets of PDF workers.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class TimeBudgetTests
@@ -24,118 +24,6 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
 
         // How long a step that should be immediate may take on a loaded machine, in real time.
         private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
-
-        [Fact]
-        public async Task A_render_still_waiting_for_the_gate_when_the_budget_runs_out_yields_null_and_never_starts()
-        {
-            var time = new FakeTimeProvider();
-            using var rasterizer = new BlockingRasterizer(block: false);
-            using var harness = new ProcessorHarness(time, rasterizer);
-            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
-            Task<byte[]?> thumbnail;
-            try
-            {
-                thumbnail = PdfThumbnailAsync(harness);
-                Assert.False(thumbnail.IsCompleted);
-
-                time.Advance(Budget);
-
-                Assert.Null(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
-            }
-            finally
-            {
-                PdfRenderGate.Semaphore.Release();
-            }
-
-            Assert.Equal(0, rasterizer.Calls);
-            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
-            Assert.Equal(1, PdfRenderGate.Semaphore.CurrentCount);
-        }
-
-        [Fact]
-        public async Task A_render_past_the_budget_yields_null_at_once_keeps_the_gate_and_makes_later_pdfs_fail_fast()
-        {
-            var time = new FakeTimeProvider();
-            using var rasterizer = new BlockingRasterizer(block: true);
-            using var harness = new ProcessorHarness(time, rasterizer);
-
-            Task<byte[]?> thumbnail = PdfThumbnailAsync(harness);
-            Assert.True(rasterizer.Entered.Wait(Patience, TestContext.Current.CancellationToken));
-
-            time.Advance(Budget);
-
-            // The call gives up while the "native" render is still running and holding the gate.
-            Assert.Null(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
-            Assert.Equal(0, PdfRenderGate.Semaphore.CurrentCount);
-            Assert.Equal(BlobTelemetryTagValues.ImageThumbnail, harness.Duration.GetMeasurementSnapshot().Single().Tags[BlobTelemetryNames.OperationTag]);
-
-            // A later PDF does not wait out its budget behind the abandoned render: it fails at once.
-            Task<byte[]?> later = PdfThumbnailAsync(harness);
-            Assert.True(later.IsCompleted);
-            Assert.Null(await later);
-            Assert.Equal(1, rasterizer.Calls);
-            Assert.Equal([BlobTelemetryTagValues.ImageTimeoutReason, BlobTelemetryTagValues.ImageTimeoutReason], harness.FailureReasons);
-
-            // When the render returns, the gate is free and PDFs render again.
-            rasterizer.Release.Set();
-            await WaitUntilAsync(static () => PdfRenderGate.Semaphore.CurrentCount == 1 && !PdfRenderGate.IsHeldByAbandonedRender);
-            Assert.NotNull(await PdfThumbnailAsync(harness).WaitAsync(Patience, TestContext.Current.CancellationToken));
-        }
-
-        [Fact]
-        public async Task A_render_within_the_budget_returns_its_thumbnail()
-        {
-            using var harness = new ProcessorHarness(new FakeTimeProvider());
-
-            Assert.NotNull(await PdfThumbnailAsync(harness));
-            Assert.Empty(harness.FailureReasons);
-        }
-
-        [Fact]
-        public async Task An_infinite_budget_waits_for_the_gate()
-        {
-            using var harness = new ProcessorHarness();
-            using var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
-            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
-            Task<byte[]?> thumbnail;
-            try
-            {
-                thumbnail = harness.Processor.ThumbnailAsync(
-                    ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(64), Timeout.InfiniteTimeSpan, TestContext.Current.CancellationToken);
-                await Task.Delay(200, TestContext.Current.CancellationToken);
-                Assert.False(thumbnail.IsCompleted);
-            }
-            finally
-            {
-                PdfRenderGate.Semaphore.Release();
-            }
-
-            Assert.NotNull(await thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
-        }
-
-        [Fact]
-        public async Task The_callers_cancellation_surfaces_as_a_cancellation_not_as_no_thumbnail()
-        {
-            using var harness = new ProcessorHarness(new FakeTimeProvider());
-            using var cancellation = new CancellationTokenSource();
-            using var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
-            await PdfRenderGate.Semaphore.WaitAsync(TestContext.Current.CancellationToken);
-            try
-            {
-                Task<byte[]?> thumbnail = harness.Processor.ThumbnailAsync(
-                    ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(64), Budget, cancellation.Token);
-
-                await cancellation.CancelAsync();
-
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => thumbnail.WaitAsync(Patience, TestContext.Current.CancellationToken));
-            }
-            finally
-            {
-                PdfRenderGate.Semaphore.Release();
-            }
-
-            Assert.Empty(harness.FailureReasons);
-        }
 
         [Fact]
         public async Task A_read_in_flight_holds_the_call_until_it_returns_and_the_stream_is_never_touched_after()
@@ -281,66 +169,12 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             return Task.Run(() => time.Advance(Budget), TestContext.Current.CancellationToken);
         }
 
-        /// <summary>Starts a PDF thumbnail under the five-second budget.</summary>
-        /// <param name="harness">The harness.</param>
-        /// <returns>The call.</returns>
-        private static Task<byte[]?> PdfThumbnailAsync(ProcessorHarness harness)
-        {
-            var stream = new MemoryStream(DocumentFixtures.HalfBlackPage(100, 100), writable: false);
-            return harness.Processor.ThumbnailAsync(
-                ProcessorHarness.Kind, stream, BlobContentTypes.Pdf, new ThumbnailPolicy(64), Budget, TestContext.Current.CancellationToken);
-        }
-
         /// <summary>Polls until <paramref name="condition" /> holds, failing after the patience runs out.</summary>
         /// <param name="condition">The condition.</param>
         /// <returns>A task that completes when it holds.</returns>
-        private static async Task WaitUntilAsync(Func<bool> condition)
+        private static Task WaitUntilAsync(Func<bool> condition)
         {
-            DateTime deadline = DateTime.UtcNow + Patience;
-            while (!condition())
-            {
-                Assert.True(DateTime.UtcNow < deadline, "The condition did not hold in time.");
-                await Task.Delay(20, TestContext.Current.CancellationToken);
-            }
-        }
-
-        /// <summary>A stand-in for PDFium that blocks inside its render until released.</summary>
-        /// <param name="block">Whether a render blocks.</param>
-        private sealed class BlockingRasterizer(bool block) : IPdfRasterizer, IDisposable
-        {
-            private int _calls;
-
-            /// <summary>Set when a render has started.</summary>
-            public ManualResetEventSlim Entered { get; } = new();
-
-            /// <summary>Set by the suite to let a blocked render return.</summary>
-            public ManualResetEventSlim Release { get; } = new();
-
-            /// <summary>How many renders started.</summary>
-            public int Calls => Volatile.Read(ref _calls);
-
-            /// <inheritdoc />
-            public SKBitmap RenderFirstPage(GatedReadStream input, int size)
-            {
-                Interlocked.Increment(ref _calls);
-                Entered.Set();
-                if (block)
-                {
-                    Release.Wait(Patience);
-                }
-
-                var bitmap = new SKBitmap(new SKImageInfo(size, size, SKColorType.Bgra8888, SKAlphaType.Premul));
-                bitmap.Erase(SKColors.White);
-                return bitmap;
-            }
-
-            /// <inheritdoc />
-            public void Dispose()
-            {
-                Release.Set();
-                Entered.Dispose();
-                Release.Dispose();
-            }
+            return TestWorkers.WaitUntilAsync(condition, Patience);
         }
     }
 }

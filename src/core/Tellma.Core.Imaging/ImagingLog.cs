@@ -57,6 +57,25 @@ namespace Tellma.Core.Imaging
             Message = "The {Operation} of a {ContentType} input of a {Kind} blob failed unexpectedly.")]
         public static partial void UnexpectedFailure(ILogger logger, Exception exception, string kind, string operation, string contentType);
 
+        /// <summary>
+        ///     A PDF worker failed rather than refusing the document: it could not start, ended
+        ///     before it answered (crashed, or was stopped by its memory or CPU limit), broke the
+        ///     protocol, or reported its own failure. The thumbnail is not stored; the upload and the
+        ///     host are unaffected. Frequent events point at a hostile upload, a PDFium bug, or limits
+        ///     too tight for honest documents.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="kind">The blob kind.</param>
+        /// <param name="failure">How the worker failed: <c>Start</c>, <c>Exited</c>, <c>Protocol</c> or <c>Failed</c>.</param>
+        /// <param name="exitCode">The worker's exit code, when it had exited.</param>
+        /// <param name="detail">What failed.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerFailed",
+            Level = LogLevel.Warning,
+            Message = "The PDF worker rendering a {Kind} thumbnail failed ({Failure}, exit code {ExitCode}): {Detail}")]
+        public static partial void PdfWorkerFailed(ILogger logger, Exception exception, string kind, string failure, int? exitCode, string detail);
+
         /// <summary>No image slot became free within the budget: the server is busy, the upload is not at fault.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="kind">The blob kind.</param>
@@ -66,5 +85,34 @@ namespace Tellma.Core.Imaging
             Level = LogLevel.Warning,
             Message = "A {Kind} upload found all {Concurrency} image slots busy for its whole time budget; it was refused as busy.")]
         public static partial void Busy(ILogger logger, string kind, int concurrency);
+
+        /// <summary>
+        ///     Written once, at startup, by a host that renders no PDF thumbnails: a host on Windows
+        ///     or macOS outside Development, or a Linux host whose C library is not glibc. PDF uploads
+        ///     proceed without a thumbnail, and no worker is started.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="reason">Why, as one sentence.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfThumbnailsDisabled",
+            Level = LogLevel.Warning,
+            Message = "PDF thumbnails are disabled on this host; PDF uploads proceed without one. {Reason}")]
+        public static partial void PdfThumbnailsDisabled(ILogger logger, string reason);
+
+        /// <summary>
+        ///     Written once, at startup, by a Linux host whose kernel lets a process open the memory
+        ///     of any other process of its account. The host closes itself to its workers whatever
+        ///     that setting is; the warning is for the account's other processes, whose memory a PDF
+        ///     worker taken over by a hostile document could then read and write. A stricter setting
+        ///     closes their memory only: their environment and open files stay within such a
+        ///     worker's reach. PDF thumbnails still render; the fix is the machine's.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="detail">What the kernel reports: the scope is 0, or Yama is not enabled.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerPtraceUnrestricted",
+            Level = LogLevel.Warning,
+            Message = "The kernel lets a process open the memory of any other process of its account ({Detail}). This host closes itself to its PDF workers, but a worker taken over by a hostile document could read and write the memory of any other process that runs under the host's account. Set the kernel.yama.ptrace_scope sysctl to 1 or higher on the machine that runs this host; even then such a worker can read those processes' environment and open files, so run nothing else under the host's account.")]
+        public static partial void PtraceUnrestricted(ILogger logger, string detail);
     }
 }

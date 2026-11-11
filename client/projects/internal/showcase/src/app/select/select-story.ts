@@ -7,7 +7,7 @@ import { Component, signal } from '@angular/core';
 import { form, FormField, required } from '@angular/forms/signals';
 
 import { TmFormField } from '@tellma/core-ui/form-field';
-import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
 
 interface Country {
   readonly id: number;
@@ -26,9 +26,13 @@ const COUNTRIES: readonly Country[] = [
   { id: 9, name: 'Oman' },
 ];
 
-/** tm-select demo host — Playwright battery + visual verification (§3.4). */
+/**
+ * tm-select and tm-multi-select demo host — Playwright battery + visual
+ * verification: a flat select in a clipping box, async options, disabled,
+ * option groups in both selects, and a bottom-pinned select that flips up.
+ */
 @Component({
-  imports: [TmSelect, TmOption, TmFormField, FormField],
+  imports: [TmSelect, TmMultiSelect, TmOption, TmOptionGroup, TmFormField, FormField],
   template: `
     <h2>Select</h2>
 
@@ -65,6 +69,35 @@ const COUNTRIES: readonly Country[] = [
           <tm-option [value]="1" label="One">One</tm-option>
         </tm-select>
       </tm-form-field>
+
+      <!-- Option groups: headings over runs of options, in both selects. -->
+      <tm-form-field label="Center type (grouped)" data-testid="ff-grouped">
+        <tm-select [(value)]="groupedValue" data-testid="select-grouped">
+          @for (group of centerGroups; track group.label) {
+            <tm-option-group [label]="group.label">
+              @for (type of group.types; track type) {
+                <tm-option [value]="type" [label]="type">{{ type }}</tm-option>
+              }
+            </tm-option-group>
+          }
+          <tm-option value="Other" label="Other">Other</tm-option>
+        </tm-select>
+      </tm-form-field>
+
+      <tm-form-field label="Center types (multiple)" hint="Leave empty for all" data-testid="ff-multi">
+        <tm-multi-select [(value)]="multiValue" data-testid="multi-grouped">
+          @for (group of centerGroups; track group.label) {
+            <tm-option-group [label]="group.label">
+              @for (type of group.types; track type) {
+                <tm-option [value]="type" [label]="type">{{ type }}</tm-option>
+              }
+            </tm-option-group>
+          }
+          <tm-option value="Other" label="Other">Other</tm-option>
+          <tm-option value="Retired" label="Retired" disabled>Retired</tm-option>
+        </tm-multi-select>
+      </tm-form-field>
+      <span data-testid="multi-value">{{ multiValue().join(' | ') }}</span>
     </div>
 
     <!-- Pinned near the viewport bottom: the panel must flip up. -->
@@ -111,6 +144,16 @@ export class SelectStory {
   readonly displayName = (c: Country) => c.name;
 
   readonly disabledValue = signal<number | undefined>(1);
+
+  /** The center types under their group headings. */
+  readonly centerGroups: readonly { readonly label: string; readonly types: readonly string[] }[] = [
+    { label: 'Operating', types: ['Service', 'Operation'] },
+    { label: 'Commercial', types: ['Sale', 'Marketing'] },
+  ];
+  /** The grouped select's value, empty until a center type is picked. */
+  readonly groupedValue = signal<string | undefined>(undefined);
+  /** The grouped multi-select's values, starting with one selected. */
+  readonly multiValue = signal<readonly string[]>(['Sale']);
   readonly flipValue = signal<number | undefined>(undefined);
 
   loadOptions(): void {

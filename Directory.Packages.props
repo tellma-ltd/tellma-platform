@@ -105,8 +105,9 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.16.0" />
     <!-- PDF first-page thumbnails (MIT), rendered through PDFium. Referenced by
-         Tellma.Core.Imaging only: it and the Skia/PDFium natives below are the platform's one
-         native-binary package set, kept out of Tellma.Core. -->
+         Tellma.Core.Imaging.PdfWorker only, the worker process Tellma.Core.Imaging starts per
+         PDF: it, the processor and the Skia/PDFium natives below are the platform's one
+         native-binary package set, kept out of Tellma.Core and out of every host process. -->
     <PackageVersion Include="PDFtoImage" Version="5.4.0" />
     <!-- PDFium builds (Apache-2.0) PDFtoImage 5.4.0 is compiled against, pinned at the version it
          declares: they parse every uploaded PDF, so a move is a deliberate, reviewed change on the

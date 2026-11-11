@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 
-namespace Tellma.Core.Imaging
+namespace Tellma.Core.Imaging.PdfWorker
 {
     /// <summary>
     ///     Walks page 1 of a PDF through PDFium's own object API before it is rendered, and refuses a
@@ -17,39 +17,34 @@ namespace Tellma.Core.Imaging
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///         PDFium decodes an embedded image at its own resolution whatever the output size, and
-    ///         one render call cannot be interrupted, so these caps are checked on the declarations
-    ///         alone, before <c>FPDF_RenderPageBitmap</c> runs: decoding images and drawing are what
-    ///         the walk keeps from happening.
+    ///         PDFium decodes an embedded image at its own resolution whatever the output size, so
+    ///         these caps are checked on the declarations alone, before <c>FPDF_RenderPageBitmap</c>
+    ///         runs: decoding images and drawing are what the walk keeps from happening.
     ///     </para>
     ///     <para>
     ///         Loading page 1 is not bounded the same way. <c>FPDF_LoadPage</c> parses the page's
     ///         content and builds a separate instance of every form for every time it is drawn, so a
     ///         page that nests forms costs objects, memory and time exponential in the nesting depth,
-    ///         whatever the file's size: the input-length cap does not bound it, and the object cap
-    ///         applies only after the load has returned. That load cannot be interrupted either.
+    ///         whatever the file's size, before the object cap can act, and the load cannot be
+    ///         interrupted. That is why the walk runs here, in the worker, whose memory and CPU the
+    ///         operating system caps and whose process the host kills at the time budget: the walk
+    ///         keeps honest renders cheap, and the limits contain what it cannot.
     ///     </para>
     ///     <para>
-    ///         So these stay residual risks, which only rendering out of process (in a memory-limited,
-    ///         killable worker) removes: that expansion of nested forms inside the load, memory spent on
-    ///         non-image content, images inside patterns, soft masks and Type 3 glyphs, and PDFium's own
-    ///         bugs.
-    ///     </para>
-    ///     <para>
-    ///         Not thread-safe, like PDFium: the caller holds the process-wide render gate. The
-    ///         bindings target the same PDFium library PDFtoImage loads.
+    ///         Not thread-safe, like PDFium; the worker renders one document. The bindings target the
+    ///         same PDFium library PDFtoImage loads.
     ///     </para>
     /// </remarks>
     internal static partial class PdfPreflight
     {
-        /// <summary>The largest PDF the thumbnail renderer reads: 32 MiB, which bounds parsing and a damaged-file rebuild scan.</summary>
-        public const long MaxInputBytes = 32L * 1024 * 1024;
-
         /// <summary>The largest page side, in points: the PDF format's own limit of 200 inches.</summary>
         public const float MaxPageSide = 14_400f;
 
-        /// <summary>The largest image, in pixels, that any filter may declare.</summary>
-        public const long MaxImagePixels = Abstractions.Blobs.ImagePolicy.DefaultMaxInputPixels;
+        /// <summary>
+        ///     The largest image, in pixels, that any filter may declare: the processor's default
+        ///     input pixel cap for images.
+        /// </summary>
+        public const long MaxImagePixels = 50_000_000;
 
         /// <summary>
         ///     The largest JPEG 2000 or JBIG2 image, in pixels: their decoders hold the whole image in
@@ -70,35 +65,34 @@ namespace Tellma.Core.Imaging
         private const string Library = "pdfium";
 
         // PDFium keeps global state that is initialised once per process; the call is idempotent
-        // in PDFium, and this flag only saves the native call on every walk.
+        // in PDFium, and this flag only saves the native call on a second walk in one process.
         private static bool s_initialised;
 
         /// <summary>Checks page 1 of <paramref name="pdf" /> against the caps, where PDFium exists.</summary>
-        /// <param name="pdf">The whole document, at most <see cref="MaxInputBytes" />.</param>
-        /// <param name="cancellationToken">Stops the walk between objects.</param>
-        /// <exception cref="ImageFailure">The document cannot be opened, needs a password, or page 1 exceeds a cap.</exception>
-        public static void Run(byte[] pdf, CancellationToken cancellationToken)
+        /// <param name="pdf">The whole document.</param>
+        /// <exception cref="WorkerFailure">The document cannot be opened, needs a password, or page 1 exceeds a cap.</exception>
+        public static void Run(byte[] pdf)
         {
             // PDFium ships for exactly these operating systems; the platform analyzer recognises the
             // guard only in statement form.
             if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
-                Check(pdf, cancellationToken);
+                Check(pdf);
                 return;
             }
 
-            throw ImageFailure.DecodeFailed("PDF rendering is not available on this operating system.");
+            throw new WorkerFailure("PDF rendering is not available on this operating system.");
         }
 
         /// <summary>Checks page 1 of <paramref name="pdf" /> against the caps.</summary>
-        /// <param name="pdf">The whole document, at most <see cref="MaxInputBytes" />.</param>
-        /// <param name="cancellationToken">Stops the walk between objects.</param>
-        /// <exception cref="ImageFailure">The document cannot be opened, needs a password, or page 1 exceeds a cap.</exception>
+        /// <param name="pdf">The whole document.</param>
+        /// <exception cref="WorkerFailure">The document cannot be opened, needs a password, or page 1 exceeds a cap.</exception>
         [SupportedOSPlatform("windows")]
         [SupportedOSPlatform("linux")]
         [SupportedOSPlatform("macos")]
-        public static unsafe void Check(byte[] pdf, CancellationToken cancellationToken)
+        public static unsafe void Check(byte[] pdf)
         {
+            ArgumentNullException.ThrowIfNull(pdf);
             if (!s_initialised)
             {
                 InitLibrary();
@@ -113,26 +107,26 @@ namespace Tellma.Core.Imaging
                 {
                     uint error = (uint)GetLastError().Value;
                     throw error is PasswordError or SecurityError
-                        ? ImageFailure.DecodeFailed("The PDF requires a password or an unsupported security handler.")
-                        : ImageFailure.DecodeFailed($"The PDF could not be opened (PDFium error {error}).");
+                        ? new WorkerFailure("The PDF requires a password or an unsupported security handler.")
+                        : new WorkerFailure($"The PDF could not be opened (PDFium error {error}).");
                 }
 
                 try
                 {
                     if (GetPageCount(document) < 1)
                     {
-                        throw ImageFailure.DecodeFailed("The PDF has no pages.");
+                        throw new WorkerFailure("The PDF has no pages.");
                     }
 
                     IntPtr page = LoadPage(document, 0);
                     if (page == IntPtr.Zero)
                     {
-                        throw ImageFailure.DecodeFailed("Page 1 could not be loaded.");
+                        throw new WorkerFailure("Page 1 could not be loaded.");
                     }
 
                     try
                     {
-                        CheckPage(page, cancellationToken);
+                        CheckPage(page);
                     }
                     finally
                     {
@@ -148,14 +142,13 @@ namespace Tellma.Core.Imaging
 
         /// <summary>Checks the page size, then every object, forms included, without recursion.</summary>
         /// <param name="page">The loaded page.</param>
-        /// <param name="cancellationToken">Stops the walk between objects.</param>
-        private static void CheckPage(IntPtr page, CancellationToken cancellationToken)
+        private static void CheckPage(IntPtr page)
         {
             float width = GetPageWidthF(page);
             float height = GetPageHeightF(page);
             if (!(width <= MaxPageSide && height <= MaxPageSide))
             {
-                throw ImageFailure.DecodeFailed($"Page 1 measures {width} x {height} points, more than {MaxPageSide} on a side.");
+                throw new WorkerFailure($"Page 1 measures {width} x {height} points, more than {MaxPageSide} on a side.");
             }
 
             // Section: a breadth-first walk over the page's objects and every form's, counting all
@@ -171,7 +164,6 @@ namespace Tellma.Core.Imaging
 
             while (pending.TryDequeue(out IntPtr form))
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 int count = FormCountObjects(form);
                 for (int i = 0; i < count; i++)
                 {
@@ -188,7 +180,7 @@ namespace Tellma.Core.Imaging
         {
             if (++total > MaxObjects)
             {
-                throw ImageFailure.DecodeFailed($"Page 1 holds more than {MaxObjects} objects.");
+                throw new WorkerFailure($"Page 1 holds more than {MaxObjects} objects.");
             }
 
             switch (GetObjectType(pageObject))
@@ -212,14 +204,14 @@ namespace Tellma.Core.Imaging
         {
             if (!GetImagePixelSize(image, out uint width, out uint height))
             {
-                throw ImageFailure.DecodeFailed("An image on page 1 declares no readable size.");
+                throw new WorkerFailure("An image on page 1 declares no readable size.");
             }
 
             long pixels = (long)width * height;
             long cap = DecodesWhole(image) ? MaxWholeImagePixels : MaxImagePixels;
             if (pixels > cap)
             {
-                throw ImageFailure.DecodeFailed($"An image on page 1 declares {width} x {height} pixels, more than {cap}.");
+                throw new WorkerFailure($"An image on page 1 declares {width} x {height} pixels, more than {cap}.");
             }
         }
 

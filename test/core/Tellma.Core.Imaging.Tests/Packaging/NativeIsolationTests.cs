@@ -9,8 +9,8 @@ namespace Tellma.Core.Imaging.Tests.Packaging
 {
     /// <summary>
     ///     The package's dependency edges and native payload: it references no Tellma assembly but
-    ///     the abstractions, and its output carries both native libraries for every server platform
-    ///     the platform deploys to.
+    ///     the abstractions and its PDF worker, never loads PDFium itself, and its output carries both
+    ///     native libraries for every server platform the platform deploys to.
     /// </summary>
     public sealed class NativeIsolationTests
     {
@@ -44,27 +44,40 @@ namespace Tellma.Core.Imaging.Tests.Packaging
         }
 
         [Fact]
-        public void The_package_references_no_tellma_assembly_but_the_abstractions()
+        public void The_package_references_no_tellma_assembly_but_the_abstractions_and_its_worker()
         {
             string[] tellma = [.. typeof(SkiaImageProcessor).Assembly.GetReferencedAssemblies()
                 .Select(static name => name.Name!)
-                .Where(static name => name.StartsWith("Tellma.", StringComparison.Ordinal))];
+                .Where(static name => name.StartsWith("Tellma.", StringComparison.Ordinal))
+                .Order(StringComparer.Ordinal)];
 
-            Assert.Equal(["Tellma.Core.Abstractions"], tellma);
+            Assert.Equal(["Tellma.Core.Abstractions", "Tellma.Core.Imaging.PdfWorker"], tellma);
         }
 
         [Fact]
-        public void The_package_references_only_the_imaging_libraries_beyond_the_framework_and_extensions()
+        public void The_worker_references_no_tellma_assembly_and_only_pdftoimage_and_skia()
+        {
+            string[] references = [.. typeof(PdfWorker.WorkerProtocol).Assembly.GetReferencedAssemblies()
+                .Select(static name => name.Name!)
+                .Where(static name => !name.StartsWith("System", StringComparison.Ordinal) && name != "netstandard")
+                .Order(StringComparer.Ordinal)];
+
+            Assert.Equal(["PDFtoImage", "SkiaSharp"], references);
+        }
+
+        [Fact]
+        public void The_package_references_only_skia_beyond_the_framework_and_extensions()
         {
             string[] thirdParty = [.. typeof(SkiaImageProcessor).Assembly.GetReferencedAssemblies()
                 .Select(static name => name.Name!)
                 .Where(static name => !name.StartsWith("System", StringComparison.Ordinal)
                     && !name.StartsWith("Microsoft.Extensions.", StringComparison.Ordinal)
+                    && !name.StartsWith("Microsoft.Win32.", StringComparison.Ordinal)
                     && !name.StartsWith("Tellma.", StringComparison.Ordinal)
                     && name != "netstandard")
                 .Order(StringComparer.Ordinal)];
 
-            Assert.Equal(["PDFtoImage", "SkiaSharp"], thirdParty);
+            Assert.Equal(["SkiaSharp"], thirdParty);
         }
 
         [Fact]

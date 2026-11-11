@@ -135,13 +135,33 @@ namespace Tellma.Core.Tests.Data
         }
 
         [Fact]
+        public void A_factory_keeps_its_model_however_many_other_compositions_the_process_builds()
+        {
+            // EF's shared model cache holds about forty compositions before it stops taking new
+            // entries; fifty more fill it whatever the other tests have built.
+            TellmaModelFactory factory = new(TestModels.Definition([typeof(TestUser), typeof(TestJob)]), TestModels.Deployment);
+            IModel built = factory.BuildModel();
+            for (int i = 0; i < 50; i++)
+            {
+                _ = new TellmaModelFactory(TestModels.Definition([typeof(TestUser), typeof(TestJob)]), TestModels.Deployment).BuildModel();
+            }
+
+            using TellmaDbContext first = factory.CreateContext(null);
+            using TellmaDbContext second = factory.CreateContext(null);
+
+            Assert.Same(built, first.Model);
+            Assert.Same(built, second.Model);
+            Assert.Same(built, factory.BuildModel());
+        }
+
+        [Fact]
         public void The_definition_lists_children_after_their_parents_with_leaves_substituted()
         {
             var definition = TellmaModelDefinition.Create(
                 [typeof(Widget), typeof(Node)],
                 [],
                 [],
-                static type => type == typeof(Link) ? typeof(LinkLeaf) : type);
+                new Dictionary<Type, Type> { [typeof(Link)] = typeof(LinkLeaf) });
 
             Assert.Equal([typeof(Widget), typeof(WidgetPart), typeof(WidgetPartNote), typeof(Node), typeof(LinkLeaf)], definition.EntityTypes);
         }
@@ -153,7 +173,7 @@ namespace Tellma.Core.Tests.Data
                 [typeof(TestUser), typeof(Node)],
                 [],
                 [],
-                static type => type == typeof(Link) ? typeof(LinkLeaf) : type);
+                new Dictionary<Type, Type> { [typeof(Link)] = typeof(LinkLeaf) });
             IModel built = TestModels.DesignModel(definition);
 
             Assert.Null(built.FindEntityType(typeof(Link)));
@@ -165,7 +185,7 @@ namespace Tellma.Core.Tests.Data
         public void A_model_with_no_entity_holds_the_platform_tables_and_types()
         {
             IModel built = TestModels.DesignModel(TellmaModelDefinition.Create(
-                [], [typeof(IdList)], [typeof(TellmaSchemaRowConfiguration), typeof(TellmaProvisioningRowConfiguration)], static type => type));
+                [], [typeof(IdList)], [typeof(TellmaSchemaRowConfiguration), typeof(TellmaProvisioningRowConfiguration)], new Dictionary<Type, Type>()));
 
             Assert.Equal(2, built.GetEntityTypes().Count());
             Assert.Equal("IdList", Assert.Single(built.GetTableTypes()).Name);

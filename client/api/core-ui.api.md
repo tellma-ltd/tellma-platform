@@ -78,6 +78,9 @@ export const TM_UI_STRINGS_EN: {
     readonly select: {
         readonly placeholder: "Select an option";
     };
+    readonly multiSelect: {
+        readonly placeholder: "Select options";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "Advanced search…";
         readonly create: "Create…";

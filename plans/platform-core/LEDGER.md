@@ -16,7 +16,7 @@ It is committed by the snapshot procedure. Status values: `todo`, `impl`, `r1`, 
 | Parked at U | |
 | Fable phase | active (since 2026-11-10 20:10 UTC; PROCESS.md §7.4, D-039) |
 | Fable reset | pending (Ahmad presses it when the Fable phase is done) |
-| Fable alias resolves to | (check in the first Fable agent's transcript) |
+| Fable alias resolves to | claude-fable-5-2 (Fable 5.2; transcripts of impl-PC-013, impl-PC-041, fix-PC-F08, 2026-11-10 20:16) |
 | Full reset | pending (deadline Sat Nov 14 20:00 UTC; reminder cron Sat Nov 14 12:00 UTC) |
 | Agent tool supports name / effort / fable | name: **no** (address agents by id via SendMessage) / effort: yes / fable: yes (model enum) |
 | Environment check | git clean on platform-core, no prompt on `cd MAIN && …`; gh logged in (repo, workflow scopes); Docker 29.6.2; .NET SDK 10.0.401 (+9.0.314); Node 24.18.0; pnpm 11.9.0; check_deps 218 checkpoints, 0 problems |
@@ -31,6 +31,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-08 (prior, levers applied) | 0.115 | 0.36 | 0.80 | 4.0 / 0.8 / 1.5 |
 | 2026-11-08 15:10 (first measured ρ: 15 pts / 157.06M units since 05:03) | 0.0955 | 0.36 (prior; refit after more done) | 0.80 (prior) | not yet republished (due at 15 integrated) |
 | 2026-11-09 07:40 (first measured k, from 12 integrated checkpoints: real units × ρ ÷ estimated kLOC; one-review cycles scaled to full) | 0.0955 | 0.45 (range 0.20-0.89; PC-053 0.89, PC-005 0.20) | 0.60 (PC-008 0.46, PC-011 0.35, PC-065 1.48 outlier: workspace move) | forecast due at 15 integrated |
+| 2026-11-10 20:25 (forecast at 18 done; k EMA (0.3) over PC-018 0.53, PC-009 0.86, PC-024 0.45; raw fit over 14 backend: mean 0.58, median 0.53; client: no new done since 07:40, mean without PC-065 0.49) | 0.0955 (old window; re-measure once the new window spans 10 points) | 0.55 | 0.60 | **3.6 / 0.75 / 1.5** (T1: 123 pending, cycles 294 + 7 batch reviews 48 + orchestrator 18 = 361 pts; T2 75 pts; T3 150 pts; stop-the-line fixes not modelled, about 1 pt each; the Fable phase adds up to ~50 pts this week) |
 
 ## Usage
 
@@ -62,13 +63,22 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-09 09:40 | 93 | 31 | 2026-11-10 20:00 | DRAIN: R=7 < F≈7.5; no new launches. PC-065/F10 done (b0bb12e green); PC-009 fix2; PC-F08 r1; PC-021/024/060 impl |
 | 2026-11-09 10:40 | 96 | 31 | 2026-11-10 20:00 | drain; R=4: only next steps of started work (PC-024 fix1+integrate started) |
 | 2026-11-10 20:10 | 0 | 0 | 2026-11-17 20:00 | scheduled weekly rollover; resume (§7.3); new window start for ρ; Fable phase starts; CI 42608310703 green on f2b1591 (PC-F12, PC-009, PC-024 done) |
+| 2026-11-10 20:16 | 0 | 0 | 2026-11-17 20:00 | Fable phase: PC-013 + PC-041 impl and PC-F08 fix1 launched on fable (RF 50; F_fable ≈ 1.8 × (3.6×0.82 + 2.7×0.82 + 1.5) ≈ 12); PC-021/PC-060 integrating (Opus, resumed) |
+| 2026-11-10 21:00 | 4 | 7 | 2026-11-17 20:00 | PC-021 integrated d554208; pc-4 free (no ready checkpoint until CIs land); PC-F04 launched as filler (fable). ΔFable/ΔU = 7/4 = 1.75 with Opus integrations mixed in: keep the /2 for now |
+| 2026-11-10 21:40 | | | 2026-11-17 20:00 | PC-060 integrated 3d7aa7b; CI red on d554208 (windows unit, 2 tests) → stop the line, PC-F13 in pc-4 |
+| 2026-11-10 22:10 | 8 | 15 | 2026-11-17 20:00 | ΔFable/ΔU = 15/8 ≈ 1.9 (keep /2); RF 42.5. CI red on 3d7aa7b (flaky select e2e) → PC-F14 in pc-2; PC-F13 fix pushed, R1 queued behind the D-028 cap |
+| 2026-11-10 23:50 | 13 | 23 | 2026-11-17 20:00 | ΔFable/ΔU since 22:10 = 8/5 = 1.6 (Opus fixers mixed in; keep /2); RF 38.5. PC-F14 fix d24366d done; PC-F13 R1 spawned (fable); PC-F14 R1 queued behind the D-028 cap |
+| 2026-11-11 01:40 | | | 2026-11-17 20:00 | PC-F13 done (3d019e6; backend jobs green); CI still red on the PC-F14 flake (select.spec.ts:379) until PC-F14 integrates; PC-013 fix1; PC-F08 r2 |
+| 2026-11-11 02:00 | 19 | 34 | 2026-11-17 20:00 | ΔFable/ΔU since 23:50 = 11/6 ≈ 1.8 (keep /2); RF 33. PC-F04 impl done, R1 spawned (fable) |
+| 2026-11-11 03:20 | 24 | 45 | 2026-11-17 20:00 | ΔFable/ΔU since 02:00 = 11/5 = 2.2 (all Fable work now; supports /2); RF 27.5. PC-013 fix1 done (integrate after green); no ready checkpoint (check_deps --ready empty); 4 heavy agents, all fix rounds |
+| 2026-11-11 04:10 | | | 2026-11-17 20:00 | CI 42947124853 green on 8043295: line restored. PC-021, PC-060, PC-F13, PC-F14 done. PC-013 integrating |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-060 | pc-2 | pc/PC-060 | integrate (resumed 2026-11-10 20:15; c2 ed9759f) | impl-PC-060 / a517313f6813eaf8a (high) | r1-PC-060 / a4b8060eec110e79e | 2026-11-09 07:45 |
-| PC-021 | pc-4 | pc/PC-021 | integrate (resumed 2026-11-10 20:15; c2 5b20cd2) | impl-PC-021 / a71dae021826abce3 (high) | r1-PC-021 / a46a8bdd5d90161be | 2026-11-09 07:20 |
+| PC-013 | pc-1 | pc/PC-013 | integrate (2026-11-11 04:10, resumed afeddce016f4de2eb); fix1 done 2a90ae2 (all 4 fixed; zone label appended; plain-space rule on every Intl.DateTimeFormat text); R1 0/1/3 (zone label re-formats the hour in 25/49 locales; U+202F rule only in instants; column header/cells read the clock separately; range edges); open spec question for Ahmad: bare hour under hour:'numeric' is engine-dependent (Firefox 01:30) | impl-PC-013 / afeddce016f4de2eb (fable, high) | | 2026-11-10 20:15 |
+| PC-041 | pc-3 | pc/PC-041 | fix1 (2026-11-11 03:00, resumed a3abe7d47ec640a0e); R1 0/2/8 (ae21ec1888bd95ad5): held Space/Enter repeats keepOpen; right-click menu closes on release in Firefox/WebKit (pre-existing, fixed here); same-window key races; rulings D-042 | impl-PC-041 / a3abe7d47ec640a0e (fable, high) | | 2026-11-10 20:15 |
 
 ## Fix items
 
@@ -76,15 +86,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|
 | PC-F01 | PC-000 (CI red on 8a1ebf8) | done | 6ef6423, d1ab25e (pc) | 2.49 (impl 2.18, r1 0.31) | quarantined 5 flaky e2e; nightly job client-e2e-quarantine (non-blocking, per-test table); CI 42455962373 green; nightly 42456014559 green |
 | PC-F03 | entity-picker same-frame Enter race: Enter in the same frame as the last keystroke skips the highlight (reproduced, data-changing; frozen 0006 component) | done 000126e (R1 1/0/2 all fixed; CI 42505603036 green), fix-PC-F03 / a62d83dfcb72a8e4f (high); r1 aa9a0cc9ac7a293cb | af35d27, bcba0eb, 2645e7a, 000126e (pc) | 11.78M | arrow-key burst split out to PC-F04; from PC-F02 R1-2; brief: reviews/PC-F02.md R1-2 |
-| PC-F04 | entity-picker arrow keys in a burst: type + ArrowDown + Enter in one task picks row 1 where paced input picks row 2 (aria relays only the last arrow, after render) | todo (low; filler) | | | from PC-F03 R1 decisions; brief: reviews/PC-F03.md implementer notes "open risk" |
+| PC-F04 | entity-picker arrow keys in a burst: type + ArrowDown + Enter in one task picks row 1 where paced input picks row 2 (aria relays only the last arrow, after render) | fix1 (2026-11-11 02:50, resumed); R1 0/0/1 (optionKeys hand-kept copy of the template's rows), bursts 520/520 under load, aria 22.0.3 pinned; impl done efbfeca on d554208 (picker owns plain arrows while open; 3 same-family races fixed; 4 deviations from 0006 §4.3; 27 unit + 14 e2e tests, fail-before shown), pc-f2, fix-PC-F04 / a15b7b3b70625f925 (fable, high) | | | from PC-F03 R1 decisions; brief: reviews/PC-F03.md implementer notes "open risk" |
 | PC-F05 | e2e timing-sensitive tests: (a) grid-touch.spec.ts:206 double-tap opens the editor (wall-clock threshold; passed on retry locally); (b) entity-picker "axe floor › popup states" (five axe scans, 12-25 s against a 30 s cap, hit 30.1 s with 1 worker); (c) other heavy axe scans near the cap (grid-entity axe & RTL dropdown open (dark), grid-a11y-editable populated) | done 732a1af (CI green; R1 0/1/2 fixed), pc-f free, fix-PC-F05 / aa332812685080600 (high); r1 ae34baef2b7ac3576 | d67c757, 0073b2b, 1962b30, 732a1af (pc) | 9.76M | from PC-F03 fix1 + PC-008 r1 |
 | PC-F06 | CI red on 0b64145/f112880: tm-control-size.spec.ts 5/5 fail with CSP 'unsafe-eval' from Angular JIT; PC-008's tm-icu-csp.spec.ts CSP leaks into the shared vitest browser page (order-dependent) | done c71a009 (CI green), a6567bfbe1a75233d; r1 a9b4263ecc1f6dbc3 | ce1f544, ed4aa7e, c71a009 (pc) | | stop the line; PC-006 integration held |
 | PC-F07 | CI red on a6c928d and 35f367b: grid-menu.spec.ts:131 "a 3-row selection pluralizes the row items" flaky (menuLabels read [] before the menu rendered) | done 4220487 (CI green; R1 0/0/1 fixed), pc-f free, fix-PC-F07 = aa332812685080600; r1 a56b459f20f91c5fd | 97502a4, 4220487 (pc) | 7.34M | stop the line; PC-006/PC-016 integrations held |
-| PC-F08 | out-of-process PDF rendering for thumbnails: PDFium form-XObject fan-out expands in-process inside FPDF_LoadPage (memory unbounded, D-030 addendum 2) | BLOCKED/parked: fix1 half-done UNCOMMITTED in pc-f (24 modified + 2 new files; addendum-5 items not applied); agent responses withheld 3x (classifier block; Ahmad notified); resume after reset with a FRESH agent (§8.1 re-spawn) using scratchpad/PC-F08 notes; R1 0/2/4; xhigh; two reviews: security-bound), pc-f, fix-PC-F08 / a2885b9362b097797; r1 a8779ceb6a081e7d0; blocks=1 (rm empty scratch dir; Ahmad notified 08:4x); MUST land before PC-140; evidence: 1.4 KB PDF = 3-11 s CPU on Linux holding the PDF gate) | da3714f | | from PC-053 R2-1 |
+| PC-F08 | out-of-process PDF rendering for thumbnails: PDFium form-XObject fan-out expands in-process inside FPDF_LoadPage (memory unbounded, D-030 addendum 2) | fix2 (2026-11-11 02:30, resumed af299b7e06195163f; D-041). R2 0/1/1 (aeb0e1592089bed5d): host-memory vector via /proc/<host>/fd doublemapper memfd reopen, Yama does not gate it; environ readable; other D-040 residuals hold. fix1 done 7ea007f + bfa9e4a (fix-PC-F08b / af299b7e06195163f, fable xhigh, 20.04M): R1-1..6 fixed, addenda 4+5 applied, 7 deviations; points ruled in D-040; not verified: real musl host, restricted token under IIS, arm64 — earlier history: was BLOCKED/parked: fix1 half-done UNCOMMITTED in pc-f (24 modified + 2 new files; addendum-5 items not applied); agent responses withheld 3x (classifier block; Ahmad notified); resume after reset with a FRESH agent (§8.1 re-spawn) using scratchpad/PC-F08 notes; R1 0/2/4; xhigh; two reviews: security-bound), pc-f, fix-PC-F08 / a2885b9362b097797; r1 a8779ceb6a081e7d0; blocks=1 (rm empty scratch dir; Ahmad notified 08:4x); MUST land before PC-140; evidence: 1.4 KB PDF = 3-11 s CPU on Linux holding the PDF gate) | da3714f, 7ea007f, bfa9e4a | | from PC-053 R2-1 |
 | PC-F09 | CI red on 0492c35 (ubuntu only): CalendarFormattingTests umm-al-qura culture test assumes host ICU default calendar (UmAlQura) — Ubuntu gives Gregorian | done f8d5130 (CI green), pc-f free, fix-PC-F09 = impl-PC-016 a7a4c107c0b2fd2e0 (resumed); r1 a63ec536f92b2800c | c6ac197, ba9e69d, f8d5130 (pc) | | stop the line; PC-053 integration held |
 | PC-F10 | CI red on eee616f (client + client-windows): tools/tests/core-lint-scope.spec.mts 2/4 fail on a clean runner (lint sees no rules); passed locally (build-state dependency) | done b0bb12e (CI green), pc-f2 free (new 2nd fix slot, D-035), fix-PC-F10 = impl-PC-065 aa5429f429a3c864d (resumed); r1 a74b58946c4730232 | 4eb5789, b0bb12e (pc) | | stop the line |
-| PC-F11 | PDF worker filesystem confinement (Landlock on Linux; AppContainer or low-integrity on Windows) | todo (before GA, not MVP) | | | from PC-F08 residual risk (D-030 addendum 3) |
+| PC-F11 | PDF worker filesystem confinement (Landlock on Linux; AppContainer or low-integrity on Windows); covers writes too (in-place overwrite via shared mapping, truncate, rename, delete; D-040) | todo (before GA, not MVP) | | | from PC-F08 residual risk (D-030 addendum 3) |
 | PC-F12 | CI red on c9d40fc: identity-e2e AccessibilityTests.The_consent_screen_is_accessible times out waiting for "Authorize application" (PC-009 regression; E2E not run locally) | done f2b1591 (CI 42608310703 green), pc-f2 free, fix-PC-F12 = impl-PC-009 a584af71acfe37be7 (resumed); r1 a041cc926ee8db924 | b3a8f07, f2b1591 (pc) | | stop the line; PC-021/PC-060 integrations held |
+| PC-F13 | CI red on d554208 (build-test windows-latest, unit): ModelCompositionTests.One_definition_builds_one_model_and_another_composition_builds_its_own (Assert.Same on two RuntimeModels, PC-021) and TenantRegistryTests.A_reloaded_profile_that_breaks_the_connection_rules_carries_no_tenant (Assert.Empty, PC-024; also failed locally on Windows at 7f0462a per the PC-060 integrator) | done: integrated 3d019e6 (fast-forward; CI 42932109472: build-test windows+ubuntu, integration green; client red only on select.spec.ts:379, the PC-F14 flake, not yet integrated); R1-1..3 fixed, two new fake-clock tests fail on the old registry, fill-the-cache test fails on the old factory; cost fix ≈ 2.1M + r1 2.80M; R1 0/0/3 (null listener task faults the dispatch; two behaviour changes unpinned; commit-message test name), stability 57/57 under load; r1 ab502c409f6bf4ae2 (fable high); fix d8e214c pushed (3 causes: EF shared model cache eviction → factory pins its model via UseModel; fake reader counted reloads before the snapshot swap; listener bound started late); open: TenancyCompositionTests probes may advance the clock before the loop re-arms; commit message cites a wrong test name (real: The_host_loads_the_snapshot_at_start_and_the_loop_probes_every_interval); Windows only, Linux not run; pc-4, fix-PC-F13 = impl-PC-021 a71dae021826abce3 (resumed, Opus) | d8e214c (pc/PC-F13) | | stop the line; no integrations until green |
+| PC-F14 | CI red on 3d7aa7b (client, PR-tier e2e chromium): select.spec.ts:379 tm-multi-select Space/Enter toggle flaky (multi-value stayed "" after Home + Space; passed on retry) | done: integrated 8043295 (CI 42947124853 green); fix1 fc671dd (R1-1 setExpanded writes aria's model too; R1-2 keys before render queued and replayed; gates rerun; select.spec 320/320); R1 0/1/2 (tm-select expanded model stale after a relayed commit → double dispatch; keys before the panel renders still dropped; gates omitted), keyboard tests 80/80 under load; r1 a758ab4fefeabc8b0 (fable high); fix d24366d pushed (product bug: aria combobox keyboardEventRelay collapses two keys in one render window; tm-select-base relays open-panel keys synchronously; 2 new unit tests; e2e 20/20 under load), pc-2, fix-PC-F14 = impl-PC-060 a517313f6813eaf8a (resumed, Opus) | d24366d (pc/PC-F14) | | stop the line |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -99,11 +111,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | nightly-tier.yml: restore the schedule and a main guard, replacing the trampoline | PC-000, D-012 |
 | CONTRIBUTING.md: drop the platform-core-only sentences; .gitattributes: drop the plans/** line; delete plans/ | PC-000, D-012, PLAN.md header |
 | ARCHITECTURE.md CI/CD: client job is Ubuntu-only (spec 0024 target) — confirm wording | PC-000 impl note |
+| Spec 0017 to be brought in line with PC-F08: Tellma:Blobs:PdfWorkerConcurrency (§1.3/§3.5), the PDF-thumbnail host rule (Linux glibc only; Windows/macOS Development only; musl never), log events BlobPdfThumbnailsDisabled and BlobPdfWorkerPtraceUnrestricted (§10.2) | PC-F08 fix1, D-040 |
+| Spec 0010 §C.11: ./menu ceiling 8.5 KB (was 7; D-042); §C.10: group dividers drawn above a group whenever a non-separator entry precedes it | PC-041, D-042 |
 
 ## Flaky
 
 | Test | Since | Tracking |
 |---|---|---|
+| dotnet Tellma.Core.Tests TenantRegistryTests.A_hung_listener_never_holds_the_refresh_and_times_out_into_the_next_notification (failed once locally on Windows at 7f0462a, PC-060 integrate) | 2026-11-10 | watch; PC-F13 examines the class |
 | e2e entity-picker.spec.ts:584 modal round-trips › create page prefills… | 2026-11-08 (hidden by retries:2 before) | fixed by PC-F02 (4c36d45); un-quarantined |
 | e2e entity-picker.spec.ts:607 modal round-trips › edit page targets committed id… | 2026-11-08 | fixed by PC-F02; un-quarantined |
 | e2e grid-entity.spec.ts:132 unresolved commit text resolves… after editor teardown | 2026-11-08 | fixed by PC-F02; un-quarantined |
@@ -152,7 +167,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-010 | 0010-f3 | 1 | todo | | | |
 | PC-011 | 0010-d1 | 1 | done | d35f4fc, 672b257, 05cd337 (pc) | 20.20M | ./popover ceiling 4→4.5 KB under D-031 | | 9 deviations; budgets: popover 9 B, grid 3 B, image 53 B left (D-031) |
 | PC-012 | 0010-f5 | 1 | todo | | | |
-| PC-013 | 0010-d2 | 1 | todo | | | |
+| PC-013 | 0010-d2 | 1 | integrate (fix1 2a90ae2; R1 0/1/3; impl 4925846; 16 deviations, see reviews/PC-013.md; budgets ./l10n 8→10, ./grid 38→38.5 under D-031) | 4925846, 2a90ae2 | impl 12.64M, r1 4.92M (fable) | |
 | PC-014 | 0010-a5 | 1 | todo | | | |
 | PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
 | PC-016 | 0013-a | 1 | done (red run was the host-ICU test, fixed by PC-F09; green at f8d5130) | 2cf9477, 8210754, cb3438f, 0492c35 (pc) | 24.53M | 13 deviations; D-029 (Umm al-Qura authority, host-independent server text) |
@@ -160,7 +175,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
 | PC-019 | 0013-b | 1 | todo | | | |
 | PC-020 | 0023-b | 1 | todo | | | |
-| PC-021 | 0012-b | 1 | fix1 | 81f3ea1, 5b20cd2 | | 11 deviations; D-037 |
+| PC-021 | 0012-b | 1 | done (green at 8043295, CI 42947124853) | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | 11 deviations; D-037 |
 | PC-022 | 0013-c | 1 | todo | | | |
 | PC-023 | 0023-c | 1 | todo | | | |
 | PC-024 | 0011-b | 1 | done (CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green) | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | | 16 deviations; D-036 |
@@ -180,7 +195,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-038 | 0013-d | 1 | todo | | | |
 | PC-039 | 0014-b | 1 | todo | | | |
 | PC-040 | 0012-g | 1 | todo | | | |
-| PC-041 | 0010-c1 | 1 | todo | | | |
+| PC-041 | 0010-c1 | 1 | fix1 (R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) | 143f3df | impl 16.34M (fable) | |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | todo | | | |
 | PC-044 | 0013-e | 1 | todo | | | |
@@ -199,7 +214,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-057 | 0010-e1 | 1 | todo | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
 | PC-059 | 0010-d3 | 1 | todo | | | |
-| PC-060 | 0010-b2 | 1 | fix1 | 8c1dddd, ed9759f | | 7 deviations; ./select 8.28/9 |
+| PC-060 | 0010-b2 | 1 | done (green at 8043295, CI 42947124853) | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | todo | | | |
 | PC-063 | 0015-b | 1 | todo | | | |

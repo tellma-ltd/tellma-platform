@@ -11,6 +11,7 @@ import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 
 // @public
@@ -23,6 +24,7 @@ export class TmFormField {
     protected readonly chromeless: _angular_core.Signal<boolean>;
     protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;
+    protected readonly errorIcon: lucide.IconNode;
     protected readonly errorId: string;
     protected readonly errorPopoverAbove: _angular_core.WritableSignal<boolean>;
     protected readonly errorTexts: _angular_core.Signal<readonly string[]>;

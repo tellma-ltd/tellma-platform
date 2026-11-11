@@ -303,6 +303,22 @@ export class TmModalHarness extends ComponentHarness {
 }
 
 // @public
+export class TmMultiSelectHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getGroups(): Promise<TmOptionGroupHarness[]>;
+    getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
+    getValueText(): Promise<string>;
+    static hostSelector: string;
+    isDisabled(): Promise<boolean>;
+    isOpen(): Promise<boolean>;
+    isOptionSelected(label: string): Promise<boolean>;
+    isPlaceholderShown(): Promise<boolean>;
+    open(): Promise<void>;
+    sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
+    toggle(label: string): Promise<void>;
+}
+
+// @public
 export class TmNumberHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
@@ -312,6 +328,13 @@ export class TmNumberHarness extends ComponentHarness {
     isDisabled(): Promise<boolean>;
     isInvalid(): Promise<boolean>;
     setText(text: string): Promise<void>;
+}
+
+// @public
+export class TmOptionGroupHarness extends ComponentHarness {
+    getLabel(): Promise<string>;
+    getOptions(): Promise<TmOptionHarness[]>;
+    static hostSelector: string;
 }
 
 // @public
@@ -336,6 +359,7 @@ export class TmPopoverHarness extends ComponentHarness {
 // @public
 export class TmSelectHarness extends ComponentHarness {
     close(): Promise<void>;
+    getGroups(): Promise<TmOptionGroupHarness[]>;
     getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
     getTriggerText(): Promise<string>;
     static hostSelector: string;

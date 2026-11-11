@@ -36,6 +36,31 @@ namespace Tellma.Core.Imaging.Tests.Fixtures
         }
 
         /// <summary>
+        ///     A 120 x 90 point page that exercises more of the rasterizer than flat fills: a red
+        ///     rectangle, a thick blue diagonal (anti-aliased edges), a dashed green curve, and a line
+        ///     of text in Helvetica, which the PDF does not embed, so PDFium draws it from its own
+        ///     standard fonts.
+        /// </summary>
+        /// <returns>The PDF.</returns>
+        public static byte[] TextAndShapes()
+        {
+            const string content =
+                "1 0 0 rg 10 10 50 25 re f\n"
+                + "0 0 1 RG 4 w 5 85 m 115 40 l S\n"
+                + "0 0.6 0 RG 1.5 w [4 2] 0 d 10 60 m 40 90 80 20 110 70 c S\n"
+                + "BT /F1 16 Tf 0 0 0 rg 15 45 Td (Tellma 0123) Tj ET";
+            return Build(
+            [
+                "<< /Type /Catalog /Pages 2 0 R >>",
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 90] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+                string.Create(CultureInfo.InvariantCulture, $"<< /Length {content.Length} >>\nstream\n{content}\nendstream"),
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            ],
+            trailerExtra: string.Empty);
+        }
+
+        /// <summary>
         ///     A one-page PDF under the standard security handler (RC4, revision 2) whose user
         ///     password is not empty: it cannot be opened without the password.
         /// </summary>

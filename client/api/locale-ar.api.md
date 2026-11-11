@@ -37,6 +37,9 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
+    readonly multiSelect: {
+        readonly placeholder: "{gender, select, female {حددي خيارات} other {حدد خيارات}}";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "بحث متقدم…";
         readonly create: "إنشاء…";

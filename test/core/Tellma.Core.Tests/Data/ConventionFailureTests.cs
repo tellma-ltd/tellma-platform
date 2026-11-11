@@ -102,7 +102,7 @@ namespace Tellma.Core.Tests.Data
         public void An_ignored_capability_column_is_refused_with_the_entity_and_the_column_named()
         {
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => TestModels.DesignModel(TellmaModelDefinition.Create(
-                [typeof(TestUser), typeof(Target)], [], [typeof(IgnoreModifiedBy)], static type => type)));
+                [typeof(TestUser), typeof(Target)], [], [typeof(IgnoreModifiedBy)], new Dictionary<Type, Type>())));
 
             Assert.Contains("Target does not map ModifiedById, which the audit columns of its table needs", exception.Message, StringComparison.Ordinal);
         }

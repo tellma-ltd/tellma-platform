@@ -6,26 +6,21 @@
 using Microsoft.Extensions.Logging.Testing;
 using SkiaSharp;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Imaging.PdfWorker;
 using Tellma.Core.Imaging.Tests.Fixtures;
 using Tellma.Core.Imaging.Tests.Infrastructure;
 
 namespace Tellma.Core.Imaging.Tests.Thumbnails
 {
     /// <summary>
-    ///     The walk of page 1 before PDFium renders it: an image declaring too many pixels (fewer for
-    ///     JPEG 2000 and JBIG2), a fan-out of forms, an oversized page and an oversized file each
-    ///     yield no thumbnail, and the render is never called; honest PDFs, an encrypted one that
-    ///     needs no password, and a multi-page one still render page 1.
+    ///     The worker's walk of page 1 before PDFium renders it, end to end: an image declaring too
+    ///     many pixels (fewer for JPEG 2000 and JBIG2), an oversized page and an oversized file each
+    ///     yield no thumbnail, refused rather than failed; honest PDFs, an encrypted one that needs
+    ///     no password, and a multi-page one still render page 1.
     /// </summary>
     public sealed class PdfPreflightTests : IDisposable
     {
-        private readonly RecordingRasterizer _rasterizer = new();
-        private readonly ProcessorHarness _harness;
-
-        public PdfPreflightTests()
-        {
-            _harness = new ProcessorHarness(pdf: _rasterizer);
-        }
+        private readonly ProcessorHarness _harness = new();
 
         public void Dispose()
         {
@@ -37,38 +32,43 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             { "a 20000 x 20000 flate image", DocumentFixtures.DeclaringImage(20_000, 20_000, "FlateDecode"), "20000 x 20000" },
             { "a 5000 x 5000 JPEG 2000 image", DocumentFixtures.DeclaringImage(5_000, 5_000, "JPXDecode"), "5000 x 5000" },
             { "a 5000 x 5000 JBIG2 image", DocumentFixtures.DeclaringImage(5_000, 5_000, "JBIG2Decode"), "5000 x 5000" },
-            { "a fan-out of forms", DocumentFixtures.FormFanOut(depth: 6, breadth: 10), "objects" },
             { "a page wider than 14400 points", DocumentFixtures.HalfBlackPage(20_000, 100), "points" },
         };
 
         [Theory]
         [MemberData(nameof(Refused))]
-        public async Task A_page_over_a_cap_yields_no_thumbnail_and_is_never_rendered(string name, byte[] pdf, string detail)
+        public async Task A_page_over_a_cap_yields_no_thumbnail(string name, byte[] pdf, string detail)
         {
             Assert.True(await _harness.ThumbnailAsync(pdf, BlobContentTypes.Pdf) is null, name);
 
-            Assert.Equal(0, _rasterizer.Calls);
             Assert.Equal([ImageRejectedException.DecodeFailedReason], _harness.FailureReasons);
             FakeLogRecord failed = Assert.Single(_harness.Logger.Collector.GetSnapshot(), static r => r.Id.Name == "BlobImageFailed");
             Assert.Contains(detail, failed.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("BlobPdfWorkerFailed", _harness.EventNames);
         }
 
         [Fact]
-        public async Task An_image_within_the_cap_passes_the_walk()
+        public async Task An_image_within_the_cap_renders_through_the_worker()
         {
-            // 4000 x 4000 is 16 MP: within the general cap, so the walk lets it through; the render
-            // of its four bytes of data then simply draws nothing.
             Assert.NotNull(await _harness.ThumbnailAsync(DocumentFixtures.DeclaringImage(4_000, 4_000, "FlateDecode"), BlobContentTypes.Pdf));
-            Assert.Equal(1, _rasterizer.Calls);
+            Assert.Empty(_harness.FailureReasons);
         }
 
         [Fact]
         public async Task A_file_over_the_input_cap_is_not_read_at_all()
         {
-            byte[] pdf = DocumentFixtures.LongerThan(PdfPreflight.MaxInputBytes);
+            byte[] pdf = DocumentFixtures.LongerThan(WorkerProtocol.MaxInputBytes);
 
             Assert.Null(await _harness.ThumbnailAsync(pdf, BlobContentTypes.Pdf));
-            Assert.Equal(0, _rasterizer.Calls);
+            Assert.Equal([ImageRejectedException.DecodeFailedReason], _harness.FailureReasons);
+            Assert.DoesNotContain("BlobImageRender", _harness.EventNames);
+        }
+
+        [Fact]
+        public async Task A_thumbnail_larger_than_the_worker_renders_is_not_asked_for()
+        {
+            Assert.Null(await _harness.ThumbnailAsync(DocumentFixtures.HalfBlackPage(100, 100), BlobContentTypes.Pdf, size: WorkerProtocol.MaxThumbnailSize + 1));
+            Assert.Equal([ImageRejectedException.DecodeFailedReason], _harness.FailureReasons);
             Assert.DoesNotContain("BlobImageRender", _harness.EventNames);
         }
 
@@ -77,7 +77,6 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
         {
             Assert.Null(await _harness.ThumbnailAsync(DocumentFixtures.PasswordProtected(), BlobContentTypes.Pdf));
 
-            Assert.Equal(0, _rasterizer.Calls);
             FakeLogRecord failed = Assert.Single(_harness.Logger.Collector.GetSnapshot(), static r => r.Id.Name == "BlobImageFailed");
             Assert.Contains("password", failed.Message, StringComparison.Ordinal);
         }
@@ -102,22 +101,6 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
             DecodedOutput output = ImageInspector.Decode(thumbnail!);
             Assert.Equal((256, 128), (output.Width, output.Height));
             Assert.True(ImageInspector.Near(SKColors.White, output.At(192, 64)));
-        }
-
-        /// <summary>Counts renders and delegates them to PDFium.</summary>
-        private sealed class RecordingRasterizer : IPdfRasterizer
-        {
-            private int _calls;
-
-            /// <summary>How many renders were asked for.</summary>
-            public int Calls => Volatile.Read(ref _calls);
-
-            /// <inheritdoc />
-            public SKBitmap RenderFirstPage(GatedReadStream input, int size)
-            {
-                Interlocked.Increment(ref _calls);
-                return PdfiumRasterizer.Instance.RenderFirstPage(input, size);
-            }
         }
     }
 }
