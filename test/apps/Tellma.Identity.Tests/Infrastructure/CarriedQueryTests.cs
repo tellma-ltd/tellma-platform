@@ -201,6 +201,50 @@ namespace Tellma.Identity.Tests.Infrastructure
                     "/connect/authorize?scope=openid+profile&flag&empty=&ui_locales=ar&redirect_uri=https%3a%2f%2fa.test%2Fcb&x=1&x=2#state", "en"));
         }
 
+        [Fact]
+        public void The_one_value_of_a_name_is_rewritten_and_nothing_else_changes()
+        {
+            // The rewrite sees the value decoded, plus signs included. Its answer is written
+            // encoded under the name as it was spelled, and every other pair and the fragment
+            // stay as they were written.
+            string? seen = null;
+            string rewritten = CarriedQuery.WithValue(
+                "/Identity/Account/Login?scope=openid+profile&flag&ReturnUrl=%2Faccount%3Fa%3D1+2&empty=&x=%2f#state",
+                "returnUrl",
+                value =>
+                {
+                    seen = value;
+                    return "/account?a=3&b=4";
+                });
+
+            Assert.Equal("/account?a=1 2", seen);
+            Assert.Equal(
+                "/Identity/Account/Login?scope=openid+profile&flag&ReturnUrl=%2Faccount%3Fa%3D3%26b%3D4&empty=&x=%2f#state",
+                rewritten);
+        }
+
+        [Theory]
+
+        // No pair has the name.
+        [InlineData("/Identity/Account/Login")]
+        [InlineData("/Identity/Account/Login?return_url=%2Faccount#returnUrl=%2Faccount")]
+
+        // Two do, so there is no one value: which a reader takes is the reader's business.
+        [InlineData("/Identity/Account/Login?returnUrl=%2Faccount&ReturnUrl=%2Fother")]
+        public void A_name_given_never_or_twice_is_not_rewritten(string url)
+        {
+            Assert.Same(url, CarriedQuery.WithValue(url, "returnUrl", static _ => "/elsewhere"));
+        }
+
+        [Fact]
+        public void A_rewrite_that_returns_its_input_leaves_the_url_as_written()
+        {
+            // Not even the encoding of the value changes: the URL is the same instance.
+            const string Url = "/Identity/Account/Login?returnUrl=%2fconnect%2fauthorize%3Fscope%3Dopenid+profile";
+
+            Assert.Same(Url, CarriedQuery.WithValue(Url, "returnUrl", static value => value));
+        }
+
         /// <summary>Reads the carried values of a query string.</summary>
         /// <param name="query">The query string, with its leading question mark.</param>
         /// <returns>The carried values.</returns>

@@ -30,7 +30,7 @@ namespace Tellma.Identity.Controllers
         ///     or unknown name opens the profile.
         /// </param>
         /// <returns>A redirect to the section's page, carrying the caller's query values.</returns>
-        [HttpGet("account")]
+        [HttpGet(AccountSections.EntryRoute)]
         public IActionResult Index([FromQuery(Name = "section")] string? section)
         {
             string page = Url.Page(AccountSections.PageOf(section), new { area = TellmaIdentityConstants.AreaName })

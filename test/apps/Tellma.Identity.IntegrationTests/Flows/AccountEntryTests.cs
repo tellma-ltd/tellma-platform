@@ -302,6 +302,92 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         [Fact]
+        public async Task A_language_chosen_on_the_sign_in_page_holds_once_the_user_has_signed_in()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idacctswitch", Seed);
+            await TestData.ProvisionDistributionAsync(factory);
+            await TestData.CreateActiveUserAsync(factory, "switch@example.com");
+            await TestData.CreateActiveUserAsync(factory, "expired@example.com");
+
+            // Two ways an anonymous browser reaches the sign-in page with Arabic asked for: the
+            // account entry, and an account page whose session has run out. Either way the
+            // challenged address travels whole inside the sign-in page's own, Arabic included.
+            foreach ((string email, string challenged, string page) in ((string Email, string Challenged, string Page)[])
+                [
+                    ("switch@example.com", AccountUrl("sessions", Carried), "/Identity/Manage/Sessions"),
+                    ("expired@example.com", "/Identity/Manage/Passkeys?" + Carried, "/Identity/Manage/Passkeys"),
+                ])
+            {
+                using OidcFlowClient flow = new(factory);
+                string inEnglish = challenged.Replace("ui_locales=ar", "ui_locales=en", StringComparison.Ordinal);
+
+                using HttpResponseMessage challenge = await GetAsync(flow, challenged);
+                Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
+
+                // The user reads the Arabic sign-in page and switches to English.
+                string englishLogin;
+                using (HttpResponseMessage arabic = await GetAsync(flow, challenge.Headers.Location!.ToString()))
+                {
+                    (string action, Dictionary<string, string> fields) =
+                        await OidcFlowClient.ParseFormAsync(arabic, "form.tmi-lang-menu");
+                    Assert.Equal("ar", (await HtmlPage.ReadAsync(arabic)).DocumentElement.GetAttribute("lang"));
+
+                    fields["culture"] = "en";
+                    using HttpResponseMessage switched = await flow.PostFormAsync(action, fields);
+                    Assert.Equal(HttpStatusCode.Redirect, switched.StatusCode);
+                    englishLogin = switched.Headers.Location!.ToString();
+                }
+
+                // The sign-in page comes back stating English as its own language, and inside the
+                // address it returns to. Nothing else about that address has changed.
+                (string loginPath, Dictionary<string, StringValues> loginQuery) = HtmlPage.Split(englishLogin);
+                Assert.Equal("/Identity/Account/Login", loginPath);
+                Assert.Equal(2, loginQuery.Count);
+                Assert.Equal("en", (string?)loginQuery["ui_locales"]);
+                Assert.Equal(inEnglish, (string?)loginQuery["ReturnUrl"]);
+
+                using (HttpResponseMessage english = await GetAsync(flow, englishLogin))
+                {
+                    Assert.Equal("en", (await HtmlPage.ReadAsync(english)).DocumentElement.GetAttribute("lang"));
+                }
+
+                // Signing in returns to the challenged address, now asking for English.
+                string address = await flow.SignInWithEmailCodeAsync(email, englishLogin);
+                Assert.Equal(inEnglish, address);
+
+                // The entry redirects once more to its page; a page is already where it leads.
+                using (HttpResponseMessage first = await GetAsync(flow, address))
+                {
+                    if (first.StatusCode == HttpStatusCode.Redirect)
+                    {
+                        address = first.Headers.Location!.ToString();
+                    }
+                }
+
+                // The account page is in English, not in the language the application asked
+                // for, and so is every page it leads to. The way back is untouched.
+                (string path, Dictionary<string, StringValues> query) = HtmlPage.Split(address);
+                Assert.Equal(page, path);
+                Assert.Equal(3, query.Count);
+                Assert.Equal("en", (string?)query["ui_locales"]);
+                Assert.Equal("acme", (string?)query["client_id"]);
+                Assert.Equal(ReturnUrl, (string?)query["return_url"]);
+
+                using HttpResponseMessage arrived = await GetAsync(flow, address);
+                Assert.Equal(HttpStatusCode.OK, arrived.StatusCode);
+                IDocument document = await HtmlPage.ReadAsync(arrived);
+                Assert.Equal("en", document.DocumentElement.GetAttribute("lang"));
+                Assert.Equal("ltr", document.DocumentElement.GetAttribute("dir"));
+                Assert.Equal(ReturnUrl, BackLink(document));
+
+                IReadOnlyList<string> addresses = HtmlPage.IdentityPageAddresses(document);
+                Assert.True(addresses.Count >= 6, $"{page} renders {addresses.Count} internal addresses.");
+                Assert.All(addresses, static internalAddress =>
+                    Assert.Equal("en", (string?)HtmlPage.Split(internalAddress).Query["ui_locales"]));
+            }
+        }
+
+        [Fact]
         public async Task A_form_post_on_an_account_page_returns_with_the_way_back_intact()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idacctpost", Seed);
@@ -356,6 +442,43 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using HttpResponseMessage unprefixed = await browser.GetAsync(
                 new Uri("/account?section=sessions", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, unprefixed.StatusCode);
+        }
+
+        [Fact]
+        public async Task Mounted_in_a_host_a_page_handlers_redirect_keeps_what_the_page_was_given()
+        {
+            using InProcFactory factory = DatabaseBackedFactory.CreateInProc(fixture, "idacctinprocpost");
+            using HttpClient browser = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            // The sign-out page answers anyone, signed in or not, so it shows what a page
+            // handler's redirect does in a host that composes the engine into its own services,
+            // without a session. The form's own address already keeps the values.
+            using HttpResponseMessage signOut = await browser.GetAsync(
+                new Uri("/id/Identity/Account/Logout?ui_locales=ar&client_id=acme", UriKind.Relative),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, signOut.StatusCode);
+            (string action, Dictionary<string, string> fields) = await OidcFlowClient.ParseFormAsync(signOut);
+            (string actionPath, Dictionary<string, StringValues> actionQuery) = HtmlPage.Split(action);
+            Assert.Equal("/id/Identity/Account/Logout", actionPath);
+            Assert.Equal("ar", (string?)actionQuery["ui_locales"]);
+            Assert.Equal("acme", (string?)actionQuery["client_id"]);
+
+            // The handler redirects to a page by name. The address it is sent to is under the
+            // path base and states the language and the client the page was opened with.
+            using HttpResponseMessage signedOut = await browser.PostAsync(
+                new Uri(action, UriKind.RelativeOrAbsolute),
+                new FormUrlEncodedContent(fields),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+            (string path, Dictionary<string, StringValues> query) = HtmlPage.Split(signedOut.Headers.Location!.ToString());
+            Assert.Equal("/id/Identity/Account/LoggedOut", path);
+            Assert.Equal(2, query.Count);
+            Assert.Equal("ar", (string?)query["ui_locales"]);
+            Assert.Equal("acme", (string?)query["client_id"]);
+
+            using HttpResponseMessage page = await browser.GetAsync(
+                signedOut.Headers.Location, TestContext.Current.CancellationToken);
+            Assert.Equal("ar", (await HtmlPage.ReadAsync(page)).DocumentElement.GetAttribute("lang"));
         }
 
         [Fact]

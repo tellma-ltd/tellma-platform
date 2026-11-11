@@ -17,6 +17,9 @@ namespace Tellma.Identity.Infrastructure
     /// </summary>
     public static class AccountSections
     {
+        /// <summary>The route of the account entry itself, under the engine's mount point.</summary>
+        public const string EntryRoute = "account";
+
         /// <summary>The profile: name, language and how to address the user. Also the default.</summary>
         public const string Profile = "profile";
 

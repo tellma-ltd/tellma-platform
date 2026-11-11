@@ -21,10 +21,12 @@ namespace Tellma.Identity.Controllers
     /// </summary>
     /// <param name="languages">The languages this deployment offers.</param>
     /// <param name="userManager">The Identity user manager, to persist a signed-in user's choice.</param>
+    /// <param name="links">Puts the choice in place of a language the returned-to address states.</param>
     [AllowAnonymous]
     public sealed class CultureController(
         LanguageCatalog languages,
-        Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager) : Controller
+        Microsoft.AspNetCore.Identity.UserManager<Data.TellmaIdentityUser> userManager,
+        IdentityPageLinks links) : Controller
     {
         /// <summary>Applies a language choice and returns to the page it was made on.</summary>
         /// <param name="culture">The chosen culture name.</param>
@@ -69,10 +71,12 @@ namespace Tellma.Identity.Controllers
 
             // A page that was opened with a requested language states it in its own address,
             // where it outranks the cookie written above. The choice made here replaces it, or
-            // the user would be returned to the very language they just chose to leave.
+            // the user would be returned to the very language they just chose to leave — at
+            // once, or after signing in, when the address a sign-in page returns to states the
+            // requested language too.
             if (languages.IsOffered(culture))
             {
-                destination = CarriedQuery.WithUiLocales(destination, culture!);
+                destination = links.WithLanguage(Request.PathBase, destination, culture!);
             }
 
             return LocalRedirect(destination);

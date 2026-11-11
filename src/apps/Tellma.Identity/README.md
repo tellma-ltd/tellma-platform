@@ -294,7 +294,10 @@ another origin.
   request's language in place of the browser's preference, never over the cookie.
 - **The user's own choice.** The language switch and the profile's language field replace the
   `ui_locales` on the address they return to, so a language the user picks is not overridden by the
-  one the application asked for.
+  one the application asked for. On a sign-in page the switch also replaces it inside the address
+  the page returns to after sign-in (`IdentityPageLinks.WithLanguage`), when that address is a
+  sign-in page, an account page or the account entry: a user who switches before signing in keeps
+  the choice afterwards. A pending authorization request held there is left as it is.
 
 The `wwwroot/css/tokens.css` stylesheet is the **emitted build of `@tellma/core-ui-tokens`** (the
 client workspace's design-token package), and `wwwroot/fonts/` vendors the brand faces from

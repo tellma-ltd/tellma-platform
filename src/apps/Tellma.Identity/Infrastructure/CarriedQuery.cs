@@ -183,11 +183,71 @@ namespace Tellma.Identity.Infrastructure
                 }
                 else
                 {
-                    rebuilt.Append(separator).Append(pair.EncodedName.Span);
-                    if (!pair.EncodedValue.IsEmpty || HasEqualsSign(query, pair))
-                    {
-                        rebuilt.Append('=').Append(pair.EncodedValue.Span);
-                    }
+                    AppendAsWritten(rebuilt, separator, query, pair);
+                }
+
+                separator = '&';
+            }
+
+            return rebuilt.Append(fragment).ToString();
+        }
+
+        /// <summary>
+        ///     Rewrites the value of the one query pair of a URL that has the given name, and
+        ///     leaves the URL as it is when no pair has that name, when more than one does, or
+        ///     when the rewrite returns the value it was given. Every other part of the URL is
+        ///     kept exactly as written.
+        /// </summary>
+        /// <param name="url">The URL.</param>
+        /// <param name="name">The name of the pair, compared without case.</param>
+        /// <param name="rewrite">Receives the pair's decoded value and returns the value to write.</param>
+        /// <returns>The URL with the value rewritten, or the same URL.</returns>
+        public static string WithValue(string url, string name, Func<string, string> rewrite)
+        {
+            ArgumentNullException.ThrowIfNull(url);
+            ArgumentException.ThrowIfNullOrEmpty(name);
+            ArgumentNullException.ThrowIfNull(rewrite);
+
+            (string path, string query, string fragment) = Split(url);
+
+            // A name given twice has no one value to rewrite: which of the two a reader takes
+            // is the reader's business, and this does not guess.
+            int occurrences = 0;
+            string current = string.Empty;
+            foreach (QueryStringEnumerable.EncodedNameValuePair pair in new QueryStringEnumerable(query))
+            {
+                if (IsNamed(pair, name))
+                {
+                    occurrences++;
+                    current = pair.DecodeValue().ToString();
+                }
+            }
+
+            if (occurrences != 1)
+            {
+                return url;
+            }
+
+            string replacement = rewrite(current);
+            if (string.Equals(replacement, current, StringComparison.Ordinal))
+            {
+                return url;
+            }
+
+            // Rebuilt pair by pair, as the language replacement above is, so only the one value
+            // changes; the pair keeps its name as it was spelled.
+            StringBuilder rebuilt = new(url.Length);
+            rebuilt.Append(path);
+            char separator = '?';
+            foreach (QueryStringEnumerable.EncodedNameValuePair pair in new QueryStringEnumerable(query))
+            {
+                if (IsNamed(pair, name))
+                {
+                    rebuilt.Append(separator).Append(pair.EncodedName.Span).Append('=').Append(UrlEncoder.Default.Encode(replacement));
+                }
+                else
+                {
+                    AppendAsWritten(rebuilt, separator, query, pair);
                 }
 
                 separator = '&';
@@ -284,6 +344,21 @@ namespace Tellma.Identity.Infrastructure
         private static bool IsNamed(QueryStringEnumerable.EncodedNameValuePair pair, string name)
         {
             return pair.DecodeName().Span.Equals(name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Appends a query pair to a URL being rebuilt, exactly as it was written.</summary>
+        /// <param name="rebuilt">The URL so far.</param>
+        /// <param name="separator">The character that introduces the pair.</param>
+        /// <param name="query">The query the pair was read from.</param>
+        /// <param name="pair">The pair.</param>
+        private static void AppendAsWritten(
+            StringBuilder rebuilt, char separator, string query, QueryStringEnumerable.EncodedNameValuePair pair)
+        {
+            rebuilt.Append(separator).Append(pair.EncodedName.Span);
+            if (!pair.EncodedValue.IsEmpty || HasEqualsSign(query, pair))
+            {
+                rebuilt.Append('=').Append(pair.EncodedValue.Span);
+            }
         }
 
         /// <summary>
