@@ -907,8 +907,8 @@ making itself non-dumpable unless verification shows that does not close both pa
 first, on fixtures only; measure and document the cost. This round does that, and closes four
 further ways in that the verification turned up.
 
-- R2-1: fixed in the review 2 fixes commit. The finding is right for a host that runs as an
-  unprivileged user or as root without capabilities. A root host that keeps its capabilities was
+- R2-1: fixed in e123782. The finding is right for a host that runs as an unprivileged user or
+  as root without capabilities. A root host that keeps its capabilities was
   closed to this one path already, though not to the others below.
   - **Verified first, before and after.** Every target was a fixture of mine: a lab program that
     plays both roles, and then the suite's own test host with the stand-in worker under a worker's
@@ -1040,8 +1040,8 @@ further ways in that the verification turned up.
       world-readable, as every process's is.
     - The filesystem residual and the address-space residual of D-040 stand as they were.
 
-- R2-2: fixed in the review 2 fixes commit. Nothing claims any longer that `ptrace_scope`
-  closes the host's memory, or anything else of the host: the host does that itself now.
+- R2-2: fixed in e123782. Nothing claims any longer that `ptrace_scope` closes the host's
+  memory, or anything else of the host: the host does that itself now.
   - `ImagingLog.PtraceUnrestricted` (`BlobPdfWorkerPtraceUnrestricted`) says that the host closes
     itself to its workers, that at scope 0 a worker could read and write the memory of any
     *other* process of the host's account, and that even at scope 1 or more it can read those
