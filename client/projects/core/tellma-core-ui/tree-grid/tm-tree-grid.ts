@@ -5,7 +5,7 @@
 
 import { Component, input } from '@angular/core';
 
-import { ɵTmGridBase, ɵTmGridView, type ɵTmGridTreeConfig } from '@tellma/core-ui/grid';
+import { TmGridBase, ɵTmGridView, type ɵTmGridTreeConfig } from '@tellma/core-ui/grid';
 
 /**
  * Hierarchical data grid over a **flat** rows array (an adjacency list —
@@ -58,7 +58,7 @@ import { ɵTmGridBase, ɵTmGridView, type ɵTmGridTreeConfig } from '@tellma/cor
     '[style.--grid-template]': 'core.gridTemplate()',
   },
 })
-export class TmTreeGrid<T> extends ɵTmGridBase<T> {
+export class TmTreeGrid<T> extends TmGridBase<T> {
   /**
    * Reads a row's parent id; `null` marks a root. A parent id that does
    * not resolve to a bound row, or one that closes a cycle, renders the

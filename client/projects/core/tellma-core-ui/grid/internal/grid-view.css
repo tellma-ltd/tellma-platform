@@ -422,23 +422,10 @@
   cursor: pointer;
 }
 
-/* Expanded is the glyph's own orientation: a chevron pointing down. */
+/* The glyph (a tm-icon) swaps between a down chevron and a reading-direction
+   chevron; tm-icon mirrors the latter under the live computed direction. */
 .tm-grid__expander-glyph {
-  inline-size: var(--grid-twisty-size);
-  block-size: var(--grid-twisty-size);
-  /* Collapsed: rotated a quarter turn so it points along the reading
-     direction. The rotation has to be direction-aware — a chevron is not a
-     logical shape and would otherwise point back into the text in RTL. */
-  rotate: -90deg;
-}
-
-:host-context([dir='rtl']) .tm-grid__expander-glyph {
-  rotate: 90deg;
-}
-
-.tm-grid__expander--open .tm-grid__expander-glyph,
-:host-context([dir='rtl']) .tm-grid__expander--open .tm-grid__expander-glyph {
-  rotate: 0deg;
+  --icon-size: var(--grid-twisty-size);
 }
 
 /* ---- the single live editor (fills the cell box) ---- */

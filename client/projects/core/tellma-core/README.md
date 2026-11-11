@@ -7,12 +7,70 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the plain-JSON value types of the HTTP layer (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided | eager |
+| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the plain-JSON value types of the HTTP layer (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the boot script's result types and the app clock (`TM_NOW`) | eager |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
 The other entry points of the framework arrive with the features they hold, each in the folder of
-its name.
+its name. The package also ships two plain assets: `boot/tm-boot.template.js`, the boot script's
+template, and `styles/tm-boot-page.css`, the boot page's styles.
+
+## Boot
+
+Before Angular starts, a blocking classic script, `tm-boot.js`, decides the session, the language,
+the direction, the theme and the launch target with no network. Its logic is the pure function
+`tmBoot(env)` in `src/boot/`, over an injected environment; `src/boot/tm-boot.script.ts` calls it
+with the real globals. The package build bundles that entry with esbuild (one IIFE, ES2017, so a
+browser too old for the app still parses it and shows the unsupported page) into
+`boot/tm-boot.template.js`, generated and not checked in. Its first statement is
+`var TM_BOOT=/*TM_BOOT*/null;`: a distribution's build replaces the marker with its boot
+configuration (the offered languages and each one's boot strings, which Core's resources carry as
+`Boot_*`) and serves the result as `tm-boot.js`, the first script of `index.html`. Rendered with
+the platform's English strings, which every distribution embeds as the fallback, it stays within
+3 KB gzipped, and each further string table may add 0.4 KB; a test in `client/tools/tests/` holds
+English-only, English and Arabic, and Arabic-only configurations to that budget.
+
+In order, the script:
+
+1. shows the boot page (`unsupported`) when `navigator.locks`, `BroadcastChannel` or IndexedDB is
+   missing;
+2. runs `/signed-out` with no session;
+3. without a valid profile cookie: shows the boot page when cookies are off (`cookies`) or when a
+   sign-in came back without a session less than 60 s ago (`sign-in-failed`); deletes an expired
+   user's stored data (their key range in `tm-app` and the `tm-images-v1` cache, in a 1 s box,
+   never creating the database) after clearing the boot record's user; then writes the sign-in mark
+   (`sessionStorage['tm.login']`) and leaves for `/bff/login`;
+4. with one: consumes the mark, restores the fragment no server hop returns, decides warm or cold
+   against the boot record (`localStorage['tm.boot']`), picks the language, rewrites a warm `/` to
+   the last tenant, and works out whether the entry is automatic.
+
+It sets `<html lang dir data-theme>` and the title before the first paint, and leaves its decision
+on `window.__tmBoot`, which the app reads once. The boot page is built with DOM calls only, so a
+Trusted Types policy needs nothing, inside `<tm-app>`.
+
+The profile cookie parser, the sign-in mark and the boot record are shared by the script and the
+app, so both agree on what counts as a session. The client store's frozen layout
+(`src/state/store/`) is pinned by `tm-store-layout-vectors.json`, which the expiry delete and the
+client store test against.
+
+## Session and launch
+
+`TmSession` starts as the user the boot script read from the profile cookie, and reads the cookie
+again on every `check()`, never the network: `same`, `missing` (the expiry path) or `changed` (the changed-user path, which restarts
+the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out`. `signIn()` writes
+the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
+`acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
+reports an expiry that led there and drops a previous user's drafts. Until the tab bus and the
+client store arrive, the paths beyond the tab's own state are tab-local: an expiry deletes the
+stale profile cookie and reloads, so the boot leads to the sign-in and the user's data leaves the
+screen. An expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page
+instead, so a server that keeps refusing fresh sessions cannot loop the tab through sign-ins.
+
+`TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
+boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into
+another tenant, or when a `404 tenant-not-found` takes it. `tmSingleLiveTenant` is the
+single-membership rule, run over `src/launch/launch-landing-vectors.json`, which the server's
+landing test links too.
 
 ## Features and the merge rule
 

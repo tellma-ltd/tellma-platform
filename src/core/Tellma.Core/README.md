@@ -483,7 +483,7 @@ string Core shows, keyed `PascalCase_Underscored`:
 | Problems | `Problem_<code>` and `Problem_<code>_Detail`, `-` written `_` |
 | Validation | each pipeline and settings code with `.` written `_` (`Validation_MaxLength`, `Settings_UnknownSetting`) |
 | Labels and actions | `Name`, `Code`, `CreatedAt`, …; `Action_<verb>`, `Entity_New`, `Entity_DisplayNameFallback` |
-| Startup | `Boot_*`, the page a host shows before it is ready |
+| Startup | `Boot_*`, the browser application's boot page, which its build copies into the boot script |
 | Reports and dashboards | `ReportKind_*`, `ShareAccess_*`, `Core_Report_*`, `Core_Dashboard_*`, their notifications |
 | Query language | `Queryex_<code>` for every diagnostic code |
 

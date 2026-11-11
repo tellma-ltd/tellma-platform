@@ -22,7 +22,9 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
+import { ChevronDown, ChevronRight } from 'lucide';
 
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmMenu } from '@tellma/core-ui/menu';
 import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
 import { ɵTmErrorPopover } from '@tellma/core-ui/private';
@@ -30,9 +32,15 @@ import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
-import { ɵTmGridIcons } from './icons';
 import { ɵTmGridStatusBar } from './status-bar';
 import { ɵTmGridTouchHandles } from './touch-handles';
+
+// The tree expander's two glyphs, shared by every grid so tm-icon validates
+// each once. Expanded points down; collapsed points along the reading
+// direction, so it mirrors in right-to-left text (the down chevron is
+// symmetric and never needs to).
+const EXPANDED_GLYPH: TmIconSource = ChevronDown;
+const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
@@ -50,11 +58,11 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     CdkScrollable,
     NgTemplateOutlet,
     OverlayModule,
+    TmIcon,
     TmMenu,
     TmSpinner,
     ɵTmErrorPopover,
     ɵTmGridFindBar,
-    ɵTmGridIcons,
     ɵTmGridStatusBar,
     ɵTmGridTouchHandles,
   ],
@@ -208,29 +216,19 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                     ></span>
                     <span class="tm-grid__twisty" aria-hidden="true">
                       @if (cell.expander !== null) {
-                        <!-- One chevron, rotated: expanded points down, and
-                             collapsed points along the reading direction —
-                             which is the CSS's job, since the glyph itself
-                             cannot know it is in an RTL grid. -->
+                        <!-- Two glyphs, swapped: expanded points down, and
+                             collapsed points along the reading direction,
+                             mirrored under the live computed direction. -->
                         <button
                           type="button"
                           class="tm-grid__expander"
                           data-tm-expander
                           tabindex="-1"
-                          [class.tm-grid__expander--open]="cell.expander === 'expanded'"
                         >
-                          <svg
+                          <tm-icon
                             class="tm-grid__expander-glyph"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.75"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="m6 9 6 6 6-6" />
-                          </svg>
+                            [svg]="cell.expander === 'expanded' ? expandedGlyph : collapsedGlyph"
+                          />
                         </button>
                       }
                     </span>
@@ -324,7 +322,6 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     }
 
     <tm-menu [items]="core().menuItems()" />
-    <tm-grid-icons />
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
          or clearing never shift the grid's (or the page's) layout. The same
@@ -358,6 +355,11 @@ import { ɵTmGridTouchHandles } from './touch-handles';
 export class ɵTmGridView {
   /** The composition root this view renders from (built by the grid shell). */
   readonly core = input.required<ɵTmGridViewCore>();
+
+  /** The tree expander's glyph on an expanded row: a chevron pointing down. */
+  protected readonly expandedGlyph = EXPANDED_GLYPH;
+  /** The tree expander's glyph on a collapsed row, mirrored in right-to-left text. */
+  protected readonly collapsedGlyph = COLLAPSED_GLYPH;
 
   /** The select-all checkbox's `aria-checked` value (`mixed` is tri-state). */
   protected readonly checkAllAria = computed(() => {
@@ -470,7 +472,6 @@ export class ɵTmGridView {
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
   private readonly menu = viewChild(TmMenu);
-  private readonly icons = viewChild(ɵTmGridIcons);
 
   /**
    * Measures the loading/empty overlay's trailing insets, only while a
@@ -537,8 +538,7 @@ export class ɵTmGridView {
     afterRenderEffect(() => {
       const core = this.core();
       const menu = this.menu();
-      const icons = this.icons();
-      untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
+      untracked(() => core.attachMenu(menu ?? null));
     });
     // Measured after render so the scroller has its final box, re-running
     // when a layer goes up or the scroller arrives.

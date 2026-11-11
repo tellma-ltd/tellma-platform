@@ -3,5 +3,9 @@
   "dest": "../../../dist/core",
   "lib": {
     "entryFile": "public-api.ts"
-  }
+  },
+  "assets": [
+    "boot/tm-boot.template.js",
+    "styles/*.css"
+  ]
 }

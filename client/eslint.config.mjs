@@ -13,6 +13,7 @@ import { TM_RESTRICT_PLUS_OPERANDS, tmEslintPlugin } from '@tellma/core-tools/es
 import tmPrefixExports from './tools/eslint/tm-prefix-exports.mjs';
 import noStateBindingsOnFormField from './tools/eslint/no-state-bindings-on-form-field.mjs';
 import cspOnlyInCspSpecs from './tools/eslint/csp-only-in-csp-specs.mjs';
+import noPlatformSniffing from './tools/eslint/no-platform-sniffing.mjs';
 
 /**
  * The reviewed allowlist for deliberately-unprefixed library exports — the
@@ -50,6 +51,7 @@ const tmPlugin = {
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
     'csp-only-in-csp-specs': cspOnlyInCspSpecs,
+    'no-platform-sniffing': noPlatformSniffing,
   },
 };
 
@@ -96,6 +98,7 @@ export default defineConfig(
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
       'projects/core/tellma-core-tools/dist/',
+      'projects/core/tellma-core/boot/',
       '**/*.d.ts',
     ],
   },
@@ -507,6 +510,18 @@ export default defineConfig(
           message: 'The l10n entry point must stay DI-free (the calendar token lives in the primary entry point).',
         },
       ],
+    },
+  },
+
+  // One platform check (spec 0023 §3.2): only kbd's tmIsApplePlatform reads
+  // navigator.platform or navigator.userAgentData, in shipped code and specs
+  // alike.
+  {
+    files: ['projects/core/**/*.ts', 'projects/module/**/*.ts'],
+    ignores: ['projects/core/tellma-core-ui/kbd/**'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/no-platform-sniffing': 'error',
     },
   },
 
