@@ -5,6 +5,7 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics;
 using Tellma.Core.Abstractions.Data;
@@ -12,7 +13,6 @@ using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
-using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data
@@ -377,10 +377,11 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // The raw reader takes no time column. The server holds output until a packet fills or the
             // batch ends, so the NOWAIT message sends the set at once, while the delay keeps the server
-            // inside the batch for the client to stop it.
+            // inside the batch for the client to stop it. The delay is long so a loaded machine still
+            // stops it in time; a stopped batch returns at once.
             _ = batch.Sql($"SELECT CAST('10:00' AS time) AS [At];", new SqlOptions(resultSets: 1));
             _ = batch.Sql($"RAISERROR(N'', 0, 1) WITH NOWAIT;", null);
-            _ = batch.Sql($"WAITFOR DELAY '00:00:02';", null);
+            _ = batch.Sql($"WAITFOR DELAY '00:00:20';", null);
             bool committed = false;
             batch.OnCommitted(_ => committed = true);
 
@@ -428,6 +429,51 @@ namespace Tellma.Core.IntegrationTests.Data
 
             Assert.True(cancel.IsCancellationRequested);
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_throwing_commit_callback_is_logged_and_never_thrown_and_the_others_run_in_order()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            scope.ServiceProvider.GetRequiredService<DataAccessScope>().Operation = "fx-callbacks";
+            IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            _ = batch.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
+
+            List<int> ran = [];
+            batch.OnCommitted(_ => ran.Add(1));
+            batch.OnCommitted(_ =>
+            {
+                ran.Add(2);
+                throw new InvalidDataException("The second callback failed.");
+            });
+            batch.OnCommitted(_ => ran.Add(3));
+
+            _ = await batch.ExecuteAsync(Token);
+
+            // --- The batch committed, every callback ran in order, and the failure was only logged ---
+            Assert.Equal([1, 2, 3], ran);
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+            FakeLogRecord failure = Assert.Single(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "DataBatch.OnCommittedFailed");
+            Assert.Equal(LogLevel.Error, failure.Level);
+            _ = Assert.IsType<InvalidDataException>(failure.Exception);
+            Assert.Equal(("fx-callbacks", "1"), (failure.GetStructuredStateValue("Operation"), failure.GetStructuredStateValue("TenantId")));
+        }
+
+        [Fact]
+        public async Task An_explicit_transaction_counts_its_begin_and_commit_as_round_trips()
+        {
+            foreach ((TransactionMode mode, int expected) in new[] { (TransactionMode.Auto, 1), (TransactionMode.Explicit, 3) })
+            {
+                await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+                IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+                batch.TransactionMode = mode;
+                _ = batch.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
+
+                BatchOutcome outcome = await batch.ExecuteAsync(Token);
+
+                Assert.Equal((mode, expected, expected), (mode, outcome.RoundTrips, access.RoundTrips));
+            }
         }
 
         [Fact]

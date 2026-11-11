@@ -384,6 +384,89 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
+        public void A_read_repeated_after_a_declared_write_gets_its_own_statement()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            FormattableString count = $"SELECT COUNT(*) AS [N] FROM [fixture].[Widgets];";
+
+            // --- Within one write epoch the read collapses ---
+            BatchResult<RawResult> before = batch.Sql(count, new SqlOptions(resultSets: 1));
+            Assert.Same(before, batch.Sql(count, new SqlOptions(resultSets: 1)));
+
+            // --- A write through the caller channel ends the epoch ---
+            _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE [Id] = {1};", new SqlOptions(writes: new HashSet<TableName> { Widgets }));
+            BatchResult<RawResult> after = batch.Sql(count, new SqlOptions(resultSets: 1));
+            Assert.NotSame(before, after);
+            Assert.Same(after, batch.Sql(count, new SqlOptions(resultSets: 1)));
+
+            // --- So does one through the internal channel ---
+            batch.Append(batch.Begin(), "DELETE FROM [fixture].[Widgets];", new HashSet<TableName> { Widgets });
+            Assert.NotSame(after, batch.Sql(count, new SqlOptions(resultSets: 1)));
+
+            Assert.Equal(5, batch.Statements.Count);
+        }
+
+        [Fact]
+        public void A_statement_naming_a_declared_id_table_never_collapses_and_one_naming_a_table_valued_parameter_does()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Read);
+
+            // --- A fill of the id table declares no write, yet a later read must see it ---
+            SqlIdentifier ids = batch.DeclareIdTable();
+            BatchResult<RawResult> before = batch.Sql($"SELECT COUNT(*) AS [N] FROM {ids};", new SqlOptions(resultSets: 1));
+            _ = batch.Sql($"INSERT INTO {ids} ([Id]) VALUES (1);", null);
+            Assert.NotSame(before, batch.Sql($"SELECT COUNT(*) AS [N] FROM {ids};", new SqlOptions(resultSets: 1)));
+
+            // --- A table-valued parameter is read-only ---
+            IdList[] rows = [new() { Id = 1 }];
+            SqlIdentifier tvp = batch.Tvp(rows);
+            Assert.Same(
+                batch.Sql($"SELECT COUNT(*) AS [N] FROM {tvp};", new SqlOptions(resultSets: 1)),
+                batch.Sql($"SELECT COUNT(*) AS [N] FROM {tvp};", new SqlOptions(resultSets: 1)));
+        }
+
+        [Fact]
+        public void Values_equal_as_instants_or_numbers_that_bind_differently_never_collapse()
+        {
+            DataBatch batch = _harness.Batch();
+            DateTimeOffset local = new(2026, 11, 11, 1, 30, 0, TimeSpan.FromHours(3));
+            DateTimeOffset utc = local.ToUniversalTime();
+
+            // --- One instant in two offsets casts to two dates ---
+            BatchResult<RawResult> day = batch.Sql($"SELECT CAST({local} AS date) AS [Day];", new SqlOptions(resultSets: 1));
+            Assert.NotSame(day, batch.Sql($"SELECT CAST({utc} AS date) AS [Day];", new SqlOptions(resultSets: 1)));
+            Assert.Same(day, batch.Sql($"SELECT CAST({local} AS date) AS [Day];", new SqlOptions(resultSets: 1)));
+
+            // --- One number at two scales binds two scales ---
+            BatchResult<RawResult> number = batch.Sql($"SELECT {1.0m} AS [D];", new SqlOptions(resultSets: 1));
+            Assert.NotSame(number, batch.Sql($"SELECT {1.00m} AS [D];", new SqlOptions(resultSets: 1)));
+            Assert.Same(number, batch.Sql($"SELECT {1.0m} AS [D];", new SqlOptions(resultSets: 1)));
+
+            Assert.Equal(4, batch.Statements.Count);
+        }
+
+        [Fact]
+        public void A_reserved_name_bound_to_one_instant_in_two_offsets_or_one_number_at_two_scales_is_refused()
+        {
+            foreach ((SqlDbType type, object first, object second) in new (SqlDbType, object, object)[]
+            {
+                (SqlDbType.DateTimeOffset, new DateTimeOffset(2026, 11, 11, 1, 30, 0, TimeSpan.FromHours(3)), new DateTimeOffset(2026, 11, 10, 22, 30, 0, TimeSpan.Zero)),
+                (SqlDbType.Decimal, 1.0m, 1.00m),
+            })
+            {
+                DataBatch batch = _harness.Batch(BatchPurpose.Maintenance);
+                foreach (object value in new[] { first, second })
+                {
+                    StatementDraft draft = batch.Begin();
+                    draft.Reserved(new ScalarParameter("@tm_value", type, value));
+                    batch.Append(draft, "PRINT @tm_value;");
+                }
+
+                _ = Assert.Throws<InvalidOperationException>(batch.Assemble);
+            }
+        }
+
+        [Fact]
         public void A_caller_write_to_a_stack_owned_table_is_refused_outside_the_callers_authority()
         {
             using BatchHarness owned = new(new MapOwners(new Dictionary<TableName, string> { [Widgets] = "fixture.widgets" }));

@@ -110,6 +110,13 @@ namespace Tellma.Core.Abstractions.Data
         ///     Appends raw text. Each hole becomes a scalar parameter, a table-valued parameter (a
         ///     list of a table-type row), or an identifier (<see cref="SqlIdentifier" />).
         /// </summary>
+        /// <remarks>
+        ///     A statement that declares no writes, or is idempotent, returns the handle of an identical
+        ///     earlier statement (same text, values and options) instead of being appended again, as
+        ///     long as no statement that declares a write was appended between the two. A statement
+        ///     that names a table <see cref="DeclareIdTable" /> or the batch itself declared never
+        ///     collapses, since another statement may have filled that table in between.
+        /// </remarks>
         /// <param name="sql">The text with its holes.</param>
         /// <param name="options">What the statement declares, or null for a read without result sets.</param>
         /// <returns>The statement's result sets, after execution.</returns>

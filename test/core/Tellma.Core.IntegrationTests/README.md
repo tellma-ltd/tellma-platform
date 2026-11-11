@@ -19,8 +19,10 @@ starting a host.
 
 ## Running
 
-By default the suite starts a `mcr.microsoft.com/mssql/server:2022-latest` container through
-Testcontainers, identical locally and in CI; **Docker must be running**.
+The server is the shared `SqlServerFixture` of `Tellma.Testing.Support`, registered as an assembly fixture. By default it starts a
+`mcr.microsoft.com/mssql/server:2022-latest` container through Testcontainers, identical locally and
+in CI; **Docker must be running**. `Infrastructure/CatalogDatabases` adds the suite's own way of
+creating an empty catalog on it.
 
 ```bash
 dotnet test test/core/Tellma.Core.IntegrationTests --filter "Category=Integration"

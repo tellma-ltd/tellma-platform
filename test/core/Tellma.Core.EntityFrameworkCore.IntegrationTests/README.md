@@ -25,9 +25,10 @@ views.
 
 ## Running
 
-By default the suite starts a `mcr.microsoft.com/mssql/server:2022-latest` container through
-Testcontainers — identical locally and in CI. **Docker must be running**; if it is not, the
-fixture fails fast with an actionable message.
+The server is the shared `SqlServerFixture` of `Tellma.Testing.Support`, registered as an assembly fixture. By default it starts a
+`mcr.microsoft.com/mssql/server:2022-latest` container through Testcontainers — identical locally
+and in CI. **Docker must be running**; if it is not, the fixture fails fast with an actionable
+message.
 
 For a faster inner loop against an existing server:
 

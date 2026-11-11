@@ -9,7 +9,6 @@ using System.Data.Common;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
-using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data

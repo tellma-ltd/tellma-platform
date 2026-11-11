@@ -73,15 +73,23 @@ namespace Tellma.Core.Data.Batches
             };
         }
 
-        /// <summary>Whether two hole values are the same value: byte arrays by content, the rest by equality.</summary>
+        /// <summary>
+        ///     Whether two hole values bind the same: byte arrays by content, offsets with their offset,
+        ///     decimals with their scale, the rest by equality.
+        /// </summary>
         /// <param name="left">One value.</param>
         /// <param name="right">The other.</param>
-        /// <returns>True when they are.</returns>
+        /// <returns>True when they do.</returns>
         public static bool AreEqual(object? left, object? right)
         {
-            return left is byte[] leftBytes && right is byte[] rightBytes
-                ? leftBytes.AsSpan().SequenceEqual(rightBytes)
-                : Equals(left, right);
+            // Equals ignores what the parameter still carries: an offset's offset, a decimal's scale.
+            return (left, right) switch
+            {
+                (byte[] leftBytes, byte[] rightBytes) => leftBytes.AsSpan().SequenceEqual(rightBytes),
+                (DateTimeOffset leftOffset, DateTimeOffset rightOffset) => leftOffset.EqualsExact(rightOffset),
+                (decimal leftDecimal, decimal rightDecimal) => SameBits(leftDecimal, rightDecimal),
+                _ => Equals(left, right),
+            };
         }
 
         /// <summary>A hash consistent with <see cref="AreEqual" />.</summary>
@@ -96,7 +104,24 @@ namespace Tellma.Core.Data.Batches
                 return hash.ToHashCode();
             }
 
-            return value?.GetHashCode() ?? 0;
+            // Values equal under AreEqual are equal under Equals too, so their own hashes agree;
+            // the offset only spreads instants that differ in it.
+            return value is DateTimeOffset offset
+                ? HashCode.Combine(offset.UtcTicks, offset.Offset)
+                : value?.GetHashCode() ?? 0;
+        }
+
+        /// <summary>Whether two decimals have the same representation, scale included.</summary>
+        /// <param name="left">One decimal.</param>
+        /// <param name="right">The other.</param>
+        /// <returns>True when they do.</returns>
+        private static bool SameBits(decimal left, decimal right)
+        {
+            Span<int> leftBits = stackalloc int[4];
+            Span<int> rightBits = stackalloc int[4];
+            _ = decimal.GetBits(left, leftBits);
+            _ = decimal.GetBits(right, rightBits);
+            return leftBits.SequenceEqual(rightBits);
         }
 
         /// <summary>The name an enum member is stored as.</summary>

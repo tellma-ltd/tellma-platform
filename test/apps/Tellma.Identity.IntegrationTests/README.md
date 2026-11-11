@@ -3,9 +3,10 @@
 Integration tests (`[Trait("Category", "Integration")]`) that exercise every OAuth/OIDC flow
 end-to-end against a real SQL Server:
 
-- One Testcontainers SQL Server per assembly (same pattern as
-  `Tellma.Core.EntityFrameworkCore.IntegrationTests`); set `TELLMA_TEST_SQL` to target LocalDB or a
-  local SQL Server instead, and `TELLMA_TEST_SQL_IMAGE` to override the container image.
+- One SQL Server for the database-backed classes, the shared `SqlServerFixture` of `Tellma.Testing.Support` joined as the
+  `SqlServer` collection fixture (so protocol tests that never touch a database run without
+  Docker); set `TELLMA_TEST_SQL` to target LocalDB or a local SQL Server instead, and
+  `TELLMA_TEST_SQL_IMAGE` to override the container image.
 - **Databases come from the engine's model.** `SqlServerFixture.ReserveDatabase` only names one;
   the host starts with migrations on and EF creates it in the platform collation, as a developer's
   first start does. A test that needs a database up front — empty, or in another collation for the

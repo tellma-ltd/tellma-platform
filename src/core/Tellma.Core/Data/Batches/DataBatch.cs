@@ -276,8 +276,12 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- A read, or a statement declared idempotent, collapses into an identical one ---
+            // Only within a write epoch (Append clears the cache at each declared write), and never
+            // when it names a mutable batch table, whose fills no statement can declare.
             object?[] arguments = sql.GetArguments();
-            SqlStatementKey? key = options.Writes.Count == 0 || options.Idempotent ? new SqlStatementKey(sql.Format, arguments, options) : null;
+            SqlStatementKey? key = (options.Writes.Count == 0 || options.Idempotent) && !NamesMutableBatchTable(arguments)
+                ? new SqlStatementKey(sql.Format, arguments, options)
+                : null;
             if (key is not null && _shared.TryGetValue(key, out BatchResult<RawResult>? shared))
             {
                 return shared;
@@ -496,7 +500,16 @@ namespace Tellma.Core.Data.Batches
                 throw BatchAssembly.TooManyParameters(_parameterNames.Count + added);
             }
 
-            IReadOnlySet<TableName> written = writes is null || writes.Count == 0 ? [] : writes.ToFrozenSet();
+            FrozenSet<TableName> written = writes is null || writes.Count == 0 ? [] : writes.ToFrozenSet();
+
+            // A declared write ends the write epoch: a later read must see it, so no earlier handle
+            // is shared past this point. Cleared before the caller caches this statement's own key,
+            // so two adjacent identical idempotent writes still collapse.
+            if (written.Count > 0)
+            {
+                _shared.Clear();
+            }
+
             _statements.Add(new BatchStatement(draft.Ordinal, draft.Section, text, [.. draft.Parameters], written, idempotent, reader));
             _written.UnionWith(written);
             _parameterNames.UnionWith(draft.Parameters.Select(static parameter => parameter.Name));
@@ -653,6 +666,26 @@ namespace Tellma.Core.Data.Batches
                         $"The statement writes {table}, which the stack '{owner}' owns and the current caller may not write. Enlist the write with '{owner}', so it runs under that stack's authority.");
                 }
             }
+        }
+
+        /// <summary>
+        ///     Whether a statement's holes name a batch table that statements may fill: one a
+        ///     <see cref="DeclareIdTable" /> call or the batch itself declared. Table-valued parameters
+        ///     are read-only and do not count.
+        /// </summary>
+        /// <param name="arguments">The statement's hole values.</param>
+        /// <returns>True when one does.</returns>
+        private bool NamesMutableBatchTable(object?[] arguments)
+        {
+            foreach (object? argument in arguments)
+            {
+                if (argument is SqlIdentifier { IsVariable: true } identifier && !_parameterNames.Contains(identifier.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Renders one hole of a raw statement.</summary>

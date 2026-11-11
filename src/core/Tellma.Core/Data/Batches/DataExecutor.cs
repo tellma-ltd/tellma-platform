@@ -104,6 +104,7 @@ namespace Tellma.Core.Data.Batches
 
             int tenantId = batch.Connection.TenantId;
             string operation = batch.Access.Operation;
+            int roundTripsBefore = batch.Access.RoundTrips;
             bool bodyRan;
             SqlConnection connection = await batch.Connection.AcquireAsync(beforeSend).ConfigureAwait(false);
             try
@@ -138,7 +139,8 @@ namespace Tellma.Core.Data.Batches
                 _userSnapshots?.Replace(user);
             }
 
-            BatchOutcome outcome = new(tags, batch.ReadUserVersionTags, RoundTrips: 1);
+            // An explicit transaction's begin and commit are round trips of their own.
+            BatchOutcome outcome = new(tags, batch.ReadUserVersionTags, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
 
             // --- The commit callbacks: outside the transaction, never thrown ---
             if (bodyRan)
@@ -201,6 +203,7 @@ namespace Tellma.Core.Data.Batches
                 if (batch.TransactionMode == TransactionMode.Explicit)
                 {
                     transaction = (SqlTransaction)await connection.BeginTransactionAsync(beforeSend).ConfigureAwait(false);
+                    batch.Access.RoundTrips++;
                 }
 
                 await using SqlCommand command = connection.CreateCommand();
@@ -237,6 +240,7 @@ namespace Tellma.Core.Data.Batches
                 if (transaction is not null)
                 {
                     await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+                    batch.Access.RoundTrips++;
                 }
 
                 return bodyRan;
