@@ -9,7 +9,7 @@
     "test": "node scripts/test.mjs",
     "prelint": "tsc -b projects/core/tellma-core-tools",
     "lint": "eslint . && stylelint \"projects/**/*.css\" --allow-empty-input",
-    "typecheck": "tsc -p projects/core/tellma-core/tsconfig.lib.json --noEmit && tsc -p projects/core/tellma-core-testing/tsconfig.json --noEmit && tsc -p projects/core/tellma-core-tools/tsconfig.spec.json && tsc -p projects/core/tellma-core-ui/tsconfig.lib.json --noEmit && tsc -p tools/tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
+    "typecheck": "tsc -p projects/core/tellma-core/tsconfig.json && tsc -p projects/core/tellma-core-testing/tsconfig.json --noEmit && tsc -p projects/core/tellma-core-tools/tsconfig.spec.json && tsc -p projects/core/tellma-core-ui/tsconfig.lib.json --noEmit && tsc -p tools/tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "prelint:test": "tsc -b projects/core/tellma-core-tools",
     "lint:test": "vitest run --config tools/vitest.config.mts",
     "e2e": "node scripts/e2e.mjs",

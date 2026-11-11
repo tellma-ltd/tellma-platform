@@ -4,9 +4,11 @@
  * with the app; each lazy boundary of the framework is a secondary entry
  * point of its own.
  *
- * It holds the plain-JSON value types of the HTTP layer and the exact decimal
- * helpers, and the seams through which telemetry, the request log and page
- * scopes are provided.
+ * It holds the distribution API (`provideTellma`, `tmFeature` and the
+ * declaration functions), the client metadata's types and loaders, the
+ * plain-JSON value types of the HTTP layer and the exact decimal helpers, and
+ * the seams through which telemetry, the request log and page scopes are
+ * provided.
  *
  * @packageDocumentation
  */
@@ -17,7 +19,7 @@
 // LICENSE file in the root directory of this source tree.
 
 // Plain JSON and exact decimals.
-export type { TmDecimal, TmId, TmJson, TmJsonObject } from './src/json/tm-json';
+export type { TmDecimal, TmId, TmJson, TmJsonObject, TmJsonSchema } from './src/json/tm-json';
 export { TmDecimals } from './src/json/tm-decimals';
 
 // Telemetry.
@@ -40,3 +42,108 @@ export {
 
 // Page scopes.
 export { provideTmPageScope } from './src/context/tm-page-scope';
+
+// The distribution API: the app configuration and its providers.
+export type {
+  TmAppConfig,
+  TmCalendarDefinition,
+  TmLanguageDefinition,
+  TmStringTable,
+  TmStringTree,
+} from './src/app/tm-app-config';
+export { provideTellma, tmAppConfigOf } from './src/app/provide-tellma';
+export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-declarations';
+export type { TmRouteSkeleton } from './src/app/tm-route-data';
+export type { TmPageKind } from './src/context/tm-page-kind';
+
+// Features and the declaration functions.
+export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
+export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';
+export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
+export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
+export { tmEntity, type TmEntityDeclaration, type TmEntityDeclarationInput } from './src/entity/tm-entity-declaration';
+export {
+  tmCodedReport,
+  type TmCodedReportDeclaration,
+  type TmCodedReportMetadata,
+  type TmCodedReportPatch,
+  type TmCodedReportRun,
+  type TmReportArgs,
+  type TmReportChoice,
+  type TmReportDisplay,
+  type TmReportFormat,
+  type TmReportKind,
+  type TmReportParameter,
+  type TmReportParameterType,
+} from './src/reports/tm-coded-report';
+export {
+  tmWidget,
+  type TmWidgetDefinition,
+  type TmWidgetSize,
+  type TmWidgetTypeDeclaration,
+} from './src/dashboards/tm-widget';
+export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
+export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
+export type { TmShellSlot } from './src/nav/tm-shell-slot';
+export type {
+  TmDistributionIdentityInfo,
+  TmDistributionInfo,
+  TmDistributionLinks,
+  TmDistributionSessionInfo,
+  TmDistributionSupportInfo,
+  TmDistributionTelemetryInfo,
+} from './src/state/tm-distribution-info';
+
+// The merge rule, shared with the config check; not for app code.
+export {
+  ɵtmMergeAppDeclarations,
+  type ɵTmMergeProblem,
+  type ɵTmMergeProblemCode,
+  type ɵTmMergeResult,
+} from './src/declarations/tm-merge';
+
+// The client metadata: its chunks, their loaders and the loaded Core chunk.
+export {
+  TM_CLIENT_METADATA,
+  type TmClientMetadata,
+  type TmContracts,
+  type TmDistributionMetadata,
+  type TmEntitiesChunk,
+  type TmFeatureMetadata,
+  type TmLanguageMetadata,
+  type TmNotificationChannelMetadata,
+  type TmRoutingMetadata,
+} from './src/metadata/tm-client-metadata';
+export {
+  tmMetadataLoaders,
+  type TmMetadataLoaders,
+  type TmMetadataPaths,
+  type TmStringPack,
+} from './src/metadata/tm-metadata-loaders';
+export type {
+  TmActionField,
+  TmActionMetadata,
+  TmBlobKindPolicy,
+  TmChildMetadata,
+  TmDataType,
+  TmDisplayNameRule,
+  TmEntityMetadata,
+  TmEntityOperation,
+  TmEntitySummary,
+  TmEnumMetadata,
+  TmEnumValueMetadata,
+  TmNavigationMetadata,
+  TmPropertyMetadata,
+  TmValueDescriptor,
+} from './src/entity/tm-entity-metadata';
+export type {
+  TmJobHandlerMetadata,
+  TmJobResultMetadata,
+  TmSecurableMetadata,
+  TmSecurableOwnerMetadata,
+  TmSettingCategoryMetadata,
+  TmSettingKeyMetadata,
+  TmSettingValueType,
+  TmSettingVisibility,
+} from './src/admin/tm-admin-metadata';
+export type { TmNotificationSeverity, TmNotificationTypeMetadata } from './src/attention/tm-notification-metadata';

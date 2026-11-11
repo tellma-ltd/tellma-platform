@@ -4,12 +4,178 @@
 
 ```ts
 
+import { ApplicationConfig } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
+import { InjectionToken } from '@angular/core';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
+import { Type } from '@angular/core';
+
+// @public
+export function provideTellma(config: TmAppConfig): EnvironmentProviders;
 
 // @public
 export function provideTmPageScope(): Provider[];
+
+// @public
+export const TM_APP_DECLARATIONS: InjectionToken<TmAppDeclarations>;
+
+// @public
+export const TM_CLIENT_METADATA: InjectionToken<TmClientMetadata>;
+
+// @public
+export interface TmActionField {
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly name: string;
+    readonly required: boolean;
+    readonly value: TmValueDescriptor;
+}
+
+// @public
+export interface TmActionMetadata {
+    readonly action: string | null;
+    readonly allowWhenReadOnly?: true;
+    readonly arguments?: TmJsonSchema;
+    readonly builtIn: boolean;
+    readonly destructive: boolean;
+    readonly fields?: readonly TmActionField[];
+    readonly idempotent: boolean;
+    readonly kind: 'entity' | 'api';
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly mutation: boolean;
+    readonly name: string;
+    readonly result: 'entities' | 'own' | 'none';
+    readonly singleTarget: boolean;
+    readonly supportsFilter: boolean;
+}
+
+// @public
+export interface TmAppConfig {
+    readonly calendars?: readonly TmCalendarDefinition[];
+    readonly features: readonly TmFeature[];
+    readonly languages: readonly TmLanguageDefinition[];
+    readonly metadata: TmMetadataLoaders;
+}
+
+// @public
+export function tmAppConfigOf(appConfig: ApplicationConfig): TmAppConfig | null;
+
+// @public
+export interface TmAppDeclarations {
+    readonly appBar: readonly TmShellSlot[];
+    readonly entities: ReadonlyMap<string, TmEntityDeclaration>;
+    readonly entries: readonly TmNavEntry[];
+    readonly features: readonly string[];
+    readonly hiddenEntries: ReadonlySet<string>;
+    readonly home: TmLazyComponent | null;
+    readonly pages: readonly TmPageDeclaration[];
+    readonly reports: readonly (TmCodedReportMetadata & TmCodedReportPatch)[];
+    readonly sections: readonly TmNavSection[];
+    readonly settingsTabs: readonly TmSettingsTabDeclaration[];
+    readonly widgets: readonly TmWidgetTypeDeclaration[];
+}
+
+// @public
+export interface TmBlobKindPolicy {
+    readonly accept: readonly string[];
+    readonly image: {
+        readonly maxDimension: number;
+        readonly fit: 'contain' | 'cover-square';
+        readonly format: 'webp' | 'jpeg' | 'png';
+    } | null;
+    readonly kind: string;
+    readonly maxSize: number;
+    readonly readAccess: 'owner-read' | 'any-member';
+    readonly thumbnail: boolean;
+}
+
+// @public
+export interface TmCalendarDefinition {
+    readonly code: string;
+    readonly load: () => Promise<TmCalendar>;
+}
+
+// @public
+export interface TmChildMetadata {
+    readonly entity: string;
+    readonly json: string;
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly maxCount: number;
+    readonly name: string;
+    readonly parentKey: string;
+}
+
+// @public
+export interface TmClientMetadata {
+    readonly calendars: readonly string[];
+    readonly clientEvents: readonly string[];
+    readonly codedReports: readonly TmCodedReportMetadata[];
+    readonly distribution: TmDistributionMetadata;
+    readonly entities: readonly TmEntitySummary[];
+    readonly features: readonly TmFeatureMetadata[];
+    readonly formatVersion: 1;
+    readonly jobHandlers: readonly TmJobHandlerMetadata[];
+    readonly languages: readonly TmLanguageMetadata[];
+    readonly notificationChannels: readonly TmNotificationChannelMetadata[];
+    readonly notificationTypes: readonly TmNotificationTypeMetadata[];
+    readonly routing: TmRoutingMetadata;
+    readonly securables: readonly TmSecurableMetadata[];
+    readonly settingCategories: readonly TmSettingCategoryMetadata[];
+    readonly settingKeys: readonly TmSettingKeyMetadata[];
+    readonly widgetTypes: readonly string[];
+}
+
+// @public
+export function tmCodedReport(key: string, patch: TmCodedReportPatch): TmCodedReportDeclaration;
+
+// @public
+export interface TmCodedReportDeclaration extends TmCodedReportPatch {
+    readonly key: string;
+}
+
+// @public
+export interface TmCodedReportMetadata {
+    readonly descriptionKey?: string;
+    readonly export: 'Platform' | 'Custom' | 'None';
+    readonly feature: string;
+    readonly key: string;
+    readonly kind: TmReportKind;
+    readonly parameters: readonly TmReportParameter[];
+    readonly route?: string;
+    readonly securable: TmSecurableRef;
+    readonly titleKey: string;
+}
+
+// @public
+export interface TmCodedReportPatch {
+    readonly component?: TmLazyComponent;
+    readonly icon?: string;
+    readonly order?: number;
+    readonly run?: TmCodedReportRun;
+    readonly section?: string;
+    readonly synonymsKey?: string;
+    readonly visibleWhen?: (context: TmNavContext) => boolean;
+}
+
+// @public
+export type TmCodedReportRun = (api: never, args: TmReportArgs, options: {
+    readonly signal: AbortSignal;
+    readonly priority?: 'low';
+}) => Promise<unknown>;
+
+// @public
+export interface TmContracts {
+    readonly fingerprints: Readonly<Record<string, string>>;
+    readonly idempotent: readonly string[];
+    readonly long: readonly string[];
+}
+
+// @public
+export type TmDataType = 'string' | 'integer' | 'decimal' | 'float' | 'bool' | 'date' | 'datetime' | 'instant' | 'time' | 'guid' | 'enum' | 'json' | 'binary';
 
 // @public
 export type TmDecimal = string & {
@@ -28,7 +194,212 @@ export const TmDecimals: Readonly<{
 }>;
 
 // @public
+export type TmDeclarationKey = `${'page' | 'section' | 'entry' | 'settingsTab' | 'appBar'}:${string}`;
+
+// @public
+export type TmDeclarationPatch = TmEntityDeclaration | TmPageDeclaration | TmCodedReportDeclaration | TmWidgetTypeDeclaration | TmOverride;
+
+// @public
+export interface TmDisplayNameRule {
+    readonly multilingual: boolean;
+    readonly prefix?: string;
+    readonly source: string;
+}
+
+// @public
+export interface TmDistributionIdentityInfo {
+    readonly accountUrl: string;
+    readonly authority: string;
+    readonly mode: 'Standalone' | 'InProc';
+}
+
+// @public
+export interface TmDistributionInfo {
+    readonly adminVersions: readonly number[];
+    readonly deploymentId: string;
+    readonly displayName: string;
+    readonly distributionVersion: string;
+    readonly identity: TmDistributionIdentityInfo;
+    readonly links: TmDistributionLinks;
+    readonly login: string;
+    readonly platformVersion: string;
+    readonly session: TmDistributionSessionInfo;
+    readonly slug: string;
+    readonly support: TmDistributionSupportInfo;
+    readonly surfaces: Readonly<Record<string, string | null>>;
+    readonly telemetry: TmDistributionTelemetryInfo;
+}
+
+// @public
+export interface TmDistributionLinks {
+    readonly privacy?: string;
+    readonly terms?: string;
+}
+
+// @public
+export interface TmDistributionMetadata {
+    readonly copyright: string | null;
+    readonly displayName: string;
+    readonly platformVersion: string;
+    readonly slug: string;
+    readonly version: string;
+}
+
+// @public
+export interface TmDistributionSessionInfo {
+    readonly idleDays: number;
+}
+
+// @public
+export interface TmDistributionSupportInfo {
+    readonly enabled: boolean;
+    readonly providerAccess: boolean;
+}
+
+// @public
+export interface TmDistributionTelemetryInfo {
+    readonly enabled: boolean;
+    readonly sampleRate: number;
+}
+
+// @public
+export interface TmEntitiesChunk {
+    readonly entities: readonly TmEntityMetadata[];
+    readonly enums: readonly TmEnumMetadata[];
+}
+
+// @public
+export function tmEntity(name: string, declaration?: TmEntityDeclarationInput): TmEntityDeclaration;
+
+// @public
+export interface TmEntityDeclaration {
+    readonly [member: string]: unknown;
+    readonly name: string;
+}
+
+// @public
+export interface TmEntityDeclarationInput {
+    readonly [member: string]: unknown;
+    readonly icon?: string;
+    readonly order?: number;
+    readonly section?: string;
+    readonly synonymsKey?: string;
+    readonly visibleWhen?: (context: TmNavContext) => boolean;
+}
+
+// @public
+export interface TmEntityMetadata extends TmEntitySummary {
+    readonly actions: readonly TmActionMetadata[];
+    readonly children: readonly TmChildMetadata[];
+    readonly defaultOrderBy: string;
+    readonly extras: readonly string[];
+    readonly key: {
+        readonly property: string;
+        readonly type: 'int' | 'long';
+    };
+    readonly limits: {
+        readonly maxTake: number;
+        readonly countCap: number;
+        readonly maxSkipWindow: number;
+        readonly maxSearchLength: number;
+        readonly maxIds: number;
+        readonly maxExtras: number;
+        readonly maxFilterLength: number;
+    };
+    readonly naturalKeys: readonly string[];
+    readonly navigations: readonly TmNavigationMetadata[];
+    readonly owner?: {
+        readonly entity: string;
+        readonly navigation: string;
+        readonly collection: string;
+    };
+    readonly properties: readonly TmPropertyMetadata[];
+    readonly relatedSelect: readonly string[];
+    readonly searchable: readonly string[];
+}
+
+// @public
+export type TmEntityOperation = 'query' | 'details' | 'save' | 'delete' | 'import' | 'export';
+
+// @public
+export interface TmEntitySummary {
+    readonly capabilities: readonly string[];
+    readonly displayName: TmDisplayNameRule;
+    readonly icon?: string;
+    readonly kind: 'stack' | 'child' | 'readonly';
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly name: string;
+    readonly newLabelKey: string;
+    readonly operations: readonly TmEntityOperation[];
+    readonly pluralLabelKey: string;
+    readonly segment: string | null;
+}
+
+// @public
+export interface TmEnumMetadata {
+    readonly aliases?: Readonly<Record<string, string>>;
+    readonly name: string;
+    readonly values: readonly TmEnumValueMetadata[];
+}
+
+// @public
+export interface TmEnumValueMetadata {
+    readonly label?: string;
+    readonly labelFallback?: string;
+    readonly labelKey?: string;
+    readonly value: string;
+}
+
+// @public
+export type TmFeature = TmFeatureDefinition & {
+    readonly [tmFeatureBrand]: true;
+};
+
+// @public
+export function tmFeature(definition: TmFeatureDefinition): TmFeature;
+
+// @public
+export interface TmFeatureDefinition {
+    readonly appBar?: readonly TmShellSlot[];
+    readonly entities?: readonly TmEntityDeclaration[];
+    readonly entries?: readonly TmNavEntry[];
+    readonly hide?: readonly TmDeclarationKey[];
+    readonly home?: TmLazyComponent;
+    readonly icons?: Readonly<Record<string, TmIconSource>>;
+    readonly key: string;
+    readonly overrides?: readonly TmDeclarationPatch[];
+    readonly pages?: readonly TmPageDeclaration[];
+    readonly providers?: readonly (Provider | EnvironmentProviders)[];
+    readonly reports?: readonly TmCodedReportDeclaration[];
+    readonly sections?: readonly TmNavSection[];
+    readonly settingsTabs?: readonly TmSettingsTabDeclaration[];
+    readonly widgets?: readonly TmWidgetTypeDeclaration[];
+}
+
+// @public
+export interface TmFeatureMetadata {
+    readonly key: string;
+    readonly version: string;
+}
+
+// @public
 export type TmId = number | TmDecimal;
+
+// @public
+export interface TmJobHandlerMetadata {
+    readonly key: string;
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly result?: TmJobResultMetadata;
+    readonly schedulable: boolean;
+}
+
+// @public
+export interface TmJobResultMetadata {
+    readonly entity: string;
+    readonly via: string;
+}
 
 // @public
 export type TmJson = null | boolean | number | string | readonly TmJson[] | TmJsonObject;
@@ -37,6 +408,217 @@ export type TmJson = null | boolean | number | string | readonly TmJson[] | TmJs
 export type TmJsonObject = {
     readonly [key: string]: TmJson;
 };
+
+// @public
+export type TmJsonSchema = TmJsonObject;
+
+// @public
+export interface TmLanguageDefinition {
+    readonly code: string;
+    readonly dir: 'ltr' | 'rtl';
+    readonly strings: () => Promise<TmStringTable>;
+}
+
+// @public
+export interface TmLanguageMetadata {
+    readonly code: string;
+    readonly dir: 'ltr' | 'rtl';
+    readonly nativeDigits: string | null;
+    readonly nativeName: string;
+    readonly region: string;
+    readonly regions: readonly string[];
+}
+
+// @public
+export type TmLazyComponent = () => Promise<Type<unknown> | {
+    default: Type<unknown>;
+}>;
+
+// @public
+export interface TmMetadataLoaders {
+    readonly contracts: () => Promise<TmContracts>;
+    readonly core: () => Promise<TmClientMetadata>;
+    readonly entities: () => Promise<TmEntitiesChunk>;
+    readonly strings: Readonly<Record<string, () => Promise<TmStringPack>>>;
+}
+
+// @public
+export function tmMetadataLoaders(paths: TmMetadataPaths): TmMetadataLoaders;
+
+// @public
+export interface TmMetadataPaths {
+    readonly contracts: string;
+    readonly core: string;
+    readonly entities: string;
+    readonly strings: Readonly<Record<string, string>>;
+}
+
+// @public
+export interface TmNavContext {
+    readonly distribution: TmDistributionInfo;
+}
+
+// @public
+export interface TmNavEntry {
+    readonly helpKey?: string;
+    readonly icon?: string;
+    readonly id: string;
+    readonly labelKey: string;
+    readonly order?: number;
+    readonly requires?: TmSecurableRef | readonly TmSecurableRef[];
+    readonly section?: string;
+    readonly synonymsKey?: string;
+    readonly url: (t: number) => string;
+    readonly visibleWhen?: (context: TmNavContext) => boolean;
+}
+
+// @public
+export interface TmNavigationMetadata {
+    readonly foreignKey: string;
+    readonly json: string;
+    readonly kind: 'reference' | 'owner' | 'sibling';
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly name: string;
+    readonly nullable: boolean;
+    readonly target: string;
+}
+
+// @public
+export interface TmNavSection {
+    readonly icon: string;
+    readonly id: string;
+    readonly labelKey: string;
+    readonly order: number;
+}
+
+// @public
+export interface TmNotificationChannelMetadata {
+    readonly defaultEnabled: boolean;
+    readonly key: string;
+}
+
+// @public
+export type TmNotificationSeverity = 'Info' | 'Success' | 'Warning' | 'Error';
+
+// @public
+export interface TmNotificationTypeMetadata {
+    readonly category: string;
+    readonly inbox: boolean;
+    readonly key: string;
+    readonly mutable: boolean;
+    readonly severity: TmNotificationSeverity;
+    readonly targetResource?: string;
+    readonly toast: boolean;
+}
+
+// @public
+export interface TmOverride {
+    readonly key: TmDeclarationKey;
+    readonly members: Readonly<Record<string, unknown>>;
+}
+
+// @public
+export function tmOverride(key: TmDeclarationKey, members: Readonly<Record<string, unknown>>): TmOverride;
+
+// @public
+export function tmPage(path: string, page: TmPageDefinition): TmPageDeclaration;
+
+// @public
+export interface TmPageDeclaration extends TmPageDefinition {
+    readonly path: string;
+}
+
+// @public
+export interface TmPageDefinition {
+    readonly component: TmLazyComponent;
+    readonly icon?: string;
+    readonly kind?: TmPageKind;
+    readonly order?: number;
+    readonly section?: string;
+    readonly securable?: TmSecurableRef;
+    readonly skeleton?: TmRouteSkeleton;
+    readonly synonymsKey?: string;
+    readonly titleKey: string;
+    readonly visibleWhen?: (context: TmNavContext) => boolean;
+}
+
+// @public
+export type TmPageKind = 'home' | 'search' | 'details' | 'report' | 'studio' | 'dashboard' | 'settings' | 'access' | 'custom';
+
+// @public
+export interface TmPropertyMetadata {
+    readonly blob?: TmBlobKindPolicy;
+    readonly defaulted?: true;
+    readonly enum?: string;
+    readonly excel: boolean;
+    readonly foreignKeyOf?: string;
+    readonly json: string;
+    readonly labelFallback?: string;
+    readonly labelKey: string;
+    readonly long?: true;
+    readonly maxLength?: number;
+    readonly multilingual?: {
+        readonly group: string;
+        readonly slot: 1 | 2 | 3;
+    };
+    readonly name: string;
+    readonly nullable: boolean;
+    readonly ownership: 'editable' | 'write-once' | 'server-owned' | 'derived' | 'database-owned';
+    readonly precision?: number;
+    readonly queryable: boolean;
+    readonly scale?: number;
+    readonly type: TmDataType;
+    readonly unique?: true;
+}
+
+// @public
+export type TmReportArgs = Readonly<Record<string, TmJson>>;
+
+// @public
+export interface TmReportChoice {
+    readonly label?: string;
+    readonly label2?: string;
+    readonly label3?: string;
+    readonly labelKey?: string;
+    readonly value: string | number | boolean;
+}
+
+// @public
+export type TmReportDisplay = 'number' | 'integer' | 'percent' | 'monthName' | 'weekdayName' | 'text' | 'enum' | 'date' | 'month' | 'quarter' | 'year' | 'datetime' | 'instant' | 'bool';
+
+// @public
+export interface TmReportFormat {
+    readonly calendar?: 'gc' | 'uq' | 'et';
+    readonly choices?: readonly TmReportChoice[];
+    readonly dateStyle?: 'numeric' | 'medium' | 'long';
+    readonly decimals?: number;
+    readonly enum?: string;
+    readonly grouping?: boolean;
+}
+
+// @public
+export type TmReportKind = 'List' | 'Summary' | 'Pivot' | 'Chart';
+
+// @public
+export interface TmReportParameter {
+    readonly default?: string;
+    readonly display?: TmReportDisplay;
+    readonly entity?: string;
+    readonly format?: TmReportFormat;
+    readonly hasDefault?: boolean;
+    readonly integer?: true;
+    readonly key: string;
+    readonly label?: string;
+    readonly label2?: string;
+    readonly label3?: string;
+    readonly labelKey?: string;
+    readonly required?: boolean;
+    readonly type: TmReportParameterType;
+}
+
+// @public
+export type TmReportParameterType = 'Numeric' | 'String' | 'Bool' | 'Date' | 'DateTime' | 'DateTimeOffset' | 'Guid';
 
 // @public
 export interface TmRequestEnd {
@@ -83,6 +665,102 @@ export interface TmRequestRecord {
 export type TmRequestStart = Pick<TmRequestRecord, 'traceId' | 'route' | 'tenantId' | 'method' | 'background'>;
 
 // @public
+export type TmRouteSkeleton = 'search' | 'details' | 'report' | 'dashboard' | 'home' | 'me' | 'blank';
+
+// @public
+export interface TmRoutingMetadata {
+    readonly serverFirstSegments: readonly string[];
+    readonly serverTenantSegments: readonly string[];
+    readonly spaFirstSegments: readonly string[];
+    readonly spaTenantSegments: readonly string[];
+}
+
+// @public
+export interface TmSecurableMetadata {
+    readonly action: string;
+    readonly actionLabelFallback?: string;
+    readonly actionLabelKey: string;
+    readonly feature: string;
+    readonly featureLabelFallback?: string;
+    readonly featureLabelKey: string;
+    readonly filterRoot?: string;
+    readonly isSensitive: boolean;
+    readonly owner?: TmSecurableOwnerMetadata;
+    readonly resource: string;
+    readonly resourceLabelFallback?: string;
+    readonly resourceLabelKey: string;
+}
+
+// @public
+export interface TmSecurableOwnerMetadata {
+    readonly navigation: string;
+    readonly resource: string;
+}
+
+// @public
+export type TmSecurableRef = readonly [resource: string, action: string];
+
+// @public
+export interface TmSettingCategoryMetadata {
+    readonly labelKey: string;
+    readonly name: string;
+    readonly order: number;
+    readonly resource: string;
+}
+
+// @public
+export interface TmSettingKeyMetadata {
+    readonly category: string;
+    readonly defaultJson: TmJson;
+    readonly descriptionKey?: string;
+    readonly enumType?: string;
+    readonly enumValues?: readonly string[];
+    readonly group?: string;
+    readonly isArray: boolean;
+    readonly isNullable: boolean;
+    readonly labelKey: string;
+    readonly name: string;
+    readonly references?: string;
+    readonly valueType: TmSettingValueType;
+    readonly visibility: TmSettingVisibility;
+}
+
+// @public
+export interface TmSettingsTabDeclaration {
+    readonly category: string;
+    readonly component: TmLazyComponent;
+}
+
+// @public
+export type TmSettingValueType = 'Boolean' | 'Int32' | 'Int64' | 'Decimal' | 'String' | 'Date' | 'Time' | 'Guid' | 'Enum' | 'Json';
+
+// @public
+export type TmSettingVisibility = 'Server' | 'Client' | 'Secret';
+
+// @public
+export interface TmShellSlot {
+    readonly badge?: () => Signal<number | null>;
+    readonly icon: string;
+    readonly id: string;
+    readonly labelKey: string;
+    readonly panel: TmLazyComponent;
+}
+
+// @public
+export type TmStringPack = Readonly<Record<string, string>>;
+
+// @public
+export interface TmStringTable {
+    readonly tm: TmStringTree;
+    readonly tmUi: TmStringTree;
+}
+
+// @public
+export type TmStringTree = {
+    readonly [key: string]: string | TmStringTree;
+};
+
+// @public
 export abstract class TmTelemetry {
     abstract error(error: unknown, context?: Readonly<Record<string, string>>): void;
     abstract event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
@@ -110,5 +788,45 @@ export interface TmTelemetryOptions {
 
 // @public
 export type TmTelemetryProps = Readonly<Record<string, string | number | boolean>>;
+
+// @public
+export interface TmValueDescriptor {
+    readonly array?: true;
+    readonly enum?: string;
+    readonly long?: true;
+    readonly maxLength?: number;
+    readonly nullable: boolean;
+    readonly scale?: number;
+    readonly target?: string;
+    readonly type: TmDataType;
+}
+
+// @public
+export function tmWidget(key: string, definition: TmWidgetDefinition): TmWidgetTypeDeclaration;
+
+// @public
+export interface TmWidgetDefinition {
+    readonly component: TmLazyComponent;
+    readonly defaultSize: TmWidgetSize;
+    readonly descriptionKey?: string;
+    readonly icon: string;
+    readonly labelKey: string;
+    readonly minSize: TmWidgetSize;
+    readonly requires?: TmSecurableRef;
+    readonly settingsEditor?: TmLazyComponent;
+    readonly status?: boolean;
+}
+
+// @public
+export interface TmWidgetSize {
+    readonly h: number;
+    readonly w: number;
+}
+
+// @public
+export interface TmWidgetTypeDeclaration {
+    readonly [member: string]: unknown;
+    readonly key: string;
+}
 
 ```
