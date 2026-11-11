@@ -24,6 +24,8 @@ interface Modifiers {
   readonly alt: boolean;
   readonly shift: boolean;
   readonly meta: boolean;
+  /** Whether AltGraph is down (AltGr on Windows and Linux layouts). */
+  readonly altGraph?: boolean;
 }
 
 /** A physical key: its code and what it types, unshifted and shifted. */
@@ -42,6 +44,7 @@ function keydown(physical: PhysicalKey, modifiers: Modifiers, typed?: string): K
     altKey: modifiers.alt,
     shiftKey: modifiers.shift,
     metaKey: modifiers.meta,
+    modifierAltGraph: modifiers.altGraph ?? false,
     cancelable: true,
   });
 }
@@ -247,7 +250,16 @@ describe('tmResolveGridKey (nothing outside the table)', () => {
         for (const modifiers of modifierSets) {
           const event = keydown(physical, modifiers);
           const intent = tmResolveGridKey(event, ctx);
-          if (intent === null || isTypeToEdit(intent)) {
+          if (intent === null) {
+            continue;
+          }
+          if (isTypeToEdit(intent)) {
+            // Only typing seeds the editor: no Ctrl or Meta, and Alt only
+            // as Apple's Option (these events carry no AltGraph).
+            expect(
+              modifiers.ctrl || modifiers.meta || (modifiers.alt && !apple),
+              `${JSON.stringify(modifiers)} ${written}`,
+            ).toBe(false);
             continue;
           }
           const bound = TM_GRID_KEY_BINDINGS.filter((binding) =>
@@ -261,6 +273,89 @@ describe('tmResolveGridKey (nothing outside the table)', () => {
       }
     });
   }
+});
+
+describe('tmResolveGridKey (type-to-edit)', () => {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  // The US digit row: each digit and what Shift types on it.
+  const digits = [...'0123456789'].map((digit, index) => ({
+    code: `Digit${digit}`,
+    key: digit,
+    shifted: ')!@#$%^&*('[index]!,
+  }));
+  const keys: PhysicalKey[] = [...letters.map((letter) => physicalKey(letter)), ...digits];
+  const none = { ctrl: false, alt: false, shift: false, meta: false };
+
+  it('seeds the editor with plain and shifted typing on every platform', () => {
+    for (const { apple } of PLATFORMS) {
+      for (const physical of keys) {
+        for (const shift of [false, true]) {
+          const event = keydown(physical, { ...none, shift });
+          expect(tmResolveGridKey(event, everything(apple))).toEqual({
+            kind: 'edit',
+            mode: 'enter',
+            seed: event.key,
+          });
+        }
+      }
+    }
+  });
+
+  it('leaves Alt and Ctrl+Alt chords to the page on Windows and Linux', () => {
+    // Spec 0027's platform family (Alt+Shift+<letter or digit>,
+    // Mod+Alt+Shift+<key>) among them: Alt types nothing there.
+    const chords = [
+      { ...none, alt: true },
+      { ...none, alt: true, shift: true },
+      { ...none, ctrl: true, alt: true },
+      { ...none, ctrl: true, alt: true, shift: true },
+    ];
+    for (const physical of keys) {
+      for (const modifiers of chords) {
+        const event = keydown(physical, modifiers);
+        expect(
+          tmResolveGridKey(event, everything(false)),
+          `${JSON.stringify(modifiers)} ${physical.code}`,
+        ).toBeNull();
+      }
+    }
+  });
+
+  it('seeds the editor with an AltGr character on Windows and Linux', () => {
+    // Windows reports AltGr as Ctrl+Alt with AltGraph; Linux as AltGraph alone.
+    const windows = keydown(
+      { code: 'KeyQ', key: '@', shifted: '@' },
+      { ...none, ctrl: true, alt: true, altGraph: true },
+    );
+    const linux = keydown({ code: 'KeyE', key: '€', shifted: '€' }, { ...none, altGraph: true });
+    expect(tmResolveGridKey(windows, everything(false))).toEqual({
+      kind: 'edit',
+      mode: 'enter',
+      seed: '@',
+    });
+    expect(tmResolveGridKey(linux, everything(false))).toEqual({
+      kind: 'edit',
+      mode: 'enter',
+      seed: '€',
+    });
+  });
+
+  it('seeds the editor with an Option character on Apple, never with a Ctrl or Cmd chord', () => {
+    const option = keydown({ code: 'KeyE', key: 'é', shifted: 'é' }, { ...none, alt: true });
+    expect(tmResolveGridKey(option, everything(true))).toEqual({
+      kind: 'edit',
+      mode: 'enter',
+      seed: 'é',
+    });
+    for (const modifiers of [
+      { ...none, ctrl: true },
+      { ...none, meta: true, shift: true },
+      { ...none, ctrl: true, alt: true },
+    ]) {
+      const event = keydown(physicalKey('P'), modifiers);
+      expect(tmResolveGridKey(event, everything(true)), JSON.stringify(modifiers)).toBeNull();
+    }
+  });
 });
 
 describe('TM_GRID_KEYS', () => {
