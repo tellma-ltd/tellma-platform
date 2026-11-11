@@ -244,20 +244,52 @@ export class TmInputHarness extends ComponentHarness {
 }
 
 // @public
+export class TmMenuGroupHarness extends ComponentHarness {
+    getItemLabels(): Promise<string[]>;
+    getItems(): Promise<TmMenuItemHarness[]>;
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmMenuHarness extends ComponentHarness {
     clickItem(label: string): Promise<void>;
+    getDisabledReason(label: string): Promise<string | null>;
+    getGroups(): Promise<TmMenuGroupHarness[]>;
+    getHeaderText(): Promise<string | null>;
     getItemLabels(): Promise<string[]>;
     getItems(filter?: HarnessPredicate<TmMenuItemHarness>): Promise<TmMenuItemHarness[]>;
+    getLinkHref(label: string): Promise<string | null>;
+    getListId(): Promise<string | null>;
     static hostSelector: string;
+    isChecked(label: string): Promise<boolean>;
+    openSubmenu(label: string): Promise<TmMenuHarness>;
 }
 
 // @public
 export class TmMenuItemHarness extends ComponentHarness {
     click(): Promise<void>;
+    getDescription(): Promise<string | null>;
+    getDetail(): Promise<string | null>;
+    getHref(): Promise<string | null>;
     getText(): Promise<string>;
+    hasSubmenu(): Promise<boolean>;
     static hostSelector: string;
     isActive(): Promise<boolean>;
+    isChecked(): Promise<boolean | null>;
     isDisabled(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+}
+
+// @public
+export class TmMenuTriggerHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getMenu(): Promise<TmMenuHarness>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isOpen(): Promise<boolean>;
+    open(): Promise<void>;
+    toggle(): Promise<void>;
 }
 
 // @public

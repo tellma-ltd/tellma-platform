@@ -173,6 +173,9 @@ export const TM_LOCALE_AR_STRINGS = {
       close: 'إغلاق البحث',
     },
   },
+  menu: {
+    opensInNewTab: '(يفتح في تبويب جديد)',
+  },
   alert: {
     info: 'معلومة:',
     success: 'نجاح:',

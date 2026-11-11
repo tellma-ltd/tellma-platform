@@ -29,7 +29,12 @@ import { TmIcon, provideTellmaIcons } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmKbd } from '@tellma/core-ui/kbd';
-import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
+import {
+  TmContextMenuTrigger,
+  TmMenu,
+  TmMenuHeaderDef,
+  TmMenuTrigger,
+} from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
@@ -52,6 +57,7 @@ import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
 import * as kbdExamples from './kbd/tm-kbd.examples';
 import * as menuExamples from './menu/tm-menu.examples';
+import * as menuTriggerExamples from './menu/tm-menu-trigger.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
@@ -127,6 +133,8 @@ class ExamplePage {}
     TmInput,
     TmKbd,
     TmMenu,
+    TmMenuHeaderDef,
+    TmMenuTrigger,
     TmModalFooter,
     TmNumber,
     TmOption,
@@ -166,7 +174,10 @@ class ExamplePage {}
     <tm-icon name="plus" />
     <tm-kbd keys="Mod+K" />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
-    <tm-menu #placeholderMenu [items]="[]" />
+    <button [tmMenuTriggerFor]="placeholderMenu">placeholder</button>
+    <tm-menu #placeholderMenu [items]="[]">
+      <ng-template tmMenuHeader>placeholder</ng-template>
+    </tm-menu>
     <div tmModalFooter>placeholder</div>
     <tm-image src="" alt="" [width]="24" [height]="24">
       <ng-template tmImagePlaceholder>placeholder</ng-template>
@@ -324,6 +335,26 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmContextMenuTrigger)).length > 0,
   },
   {
+    name: 'TmMenuTrigger',
+    pattern: /\btmMenuTriggerFor\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmMenuTrigger)).length > 0,
+  },
+  {
+    // The header ng-template is unprojected content of tm-menu (the
+    // tm-option caveat), so the marker reads the component's content-query
+    // signal instead of the debug tree.
+    name: 'TmMenuHeaderDef',
+    pattern: /\btmMenuHeader\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmMenu))
+        .some(
+          (el) =>
+            (el.componentInstance as unknown as { header(): unknown }).header() !== undefined,
+        ),
+  },
+  {
     name: 'TmModalFooter',
     pattern: /\btmModalFooter\b/,
     instantiated: (fixture) =>
@@ -439,6 +470,7 @@ const SUITES = [
   { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
   { source: 'tooltip/tm-tooltip.examples.ts', examples: tooltipExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
+  { source: 'menu/tm-menu-trigger.examples.ts', examples: menuTriggerExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
   { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },
 ];

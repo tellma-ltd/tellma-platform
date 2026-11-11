@@ -177,6 +177,9 @@ export const TM_UI_STRINGS_EN: {
             readonly close: "Close find";
         };
     };
+    readonly menu: {
+        readonly opensInNewTab: "(opens in a new tab)";
+    };
     readonly alert: {
         readonly info: "Info:";
         readonly success: "Success:";

@@ -30,7 +30,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode, and `placeholderOnError` for a placeholder fallback (an avatar's initials) |
 | `@tellma/core-ui/files` | `tmFilePicker` + `tm-dropzone` — file selection over one guardrail engine |
 | `@tellma/core-ui/file-preview` | `TmFilePreview` — the modal file viewer (download-only for HTML/unknown) |
-| `@tellma/core-ui/menu` | `tm-menu` + `tmContextMenuTrigger` — programmatic and context menus |
+| `@tellma/core-ui/menu` | `tm-menu` + `tmMenuTriggerFor` + `tmContextMenuTrigger` — data-driven menus opened from a menu button, a right-click or code. Entries are items (plain, checkbox or radio; with a description, a detail, a key-cap shortcut, `keepOpen`, `disabledReason`), links, one level of submenus, labelled groups and separators; `ng-template[tmMenuHeader]` adds a header block |
 | `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |

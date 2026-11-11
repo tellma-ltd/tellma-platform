@@ -18,7 +18,8 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { ɵtmObserveLongPress, TmContextMenuTrigger } from '@tellma/core-ui/menu';
 import { TmMenuHarness } from '@tellma/core-ui-testing';
 
-import { TmMenu, type TmMenuEntry, type TmMenuItem } from './tm-menu';
+import { TmMenu } from './tm-menu';
+import type { TmMenuEntry, TmMenuItem } from './tm-menu-entries';
 
 @Component({
   imports: [TmMenu],
@@ -26,7 +27,7 @@ import { TmMenu, type TmMenuEntry, type TmMenuItem } from './tm-menu';
     <button type="button" #btn>Open menu</button>
 
     <ng-template #star>
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
         <path d="M8 2l1.8 3.9L14 6.5l-3 3 .7 4.2L8 11.6l-3.7 2.1.7-4.2-3-3 4.2-.6z" fill="currentColor" />
       </svg>
     </ng-template>
@@ -118,7 +119,9 @@ describe('tm-menu', () => {
       ]);
 
       // The separator renders with role=separator, between Copy and the localized item.
-      const children = Array.from(list.children).map((child) =>
+      // (The rows sit in the row set's box-less host, directly under the list.)
+      expect(list.children.length).toBe(1);
+      const children = Array.from(list.children[0].children).map((child) =>
         child.classList.contains('tm-menu__separator') ? 'separator' : 'item',
       );
       expect(children).toEqual(['item', 'item', 'separator', 'item', 'item', 'item']);
@@ -195,11 +198,11 @@ describe('tm-menu', () => {
 
   describe('keyboard & focus', () => {
     // Version-locked guard for the parentless-@angular/aria seam tm-menu is
-    // built on (aria 22.0.3): a Menu with no MenuTrigger/MenuItem parent
-    // reports visible()=true unconditionally, and its default-state effect
-    // activates the FIRST item once items render — tm-menu then focuses the
-    // list and keyboard interaction takes over from there. If an @angular/aria
-    // upgrade changes the parentless behavior, this spec is the tripwire.
+    // built on (aria 22.0.4): a Menu with no MenuTrigger/MenuItem parent
+    // reports visible()=true unconditionally, so tm-menu can move focus onto
+    // its first row as soon as the rows render, and keyboard interaction
+    // takes over from there. If an @angular/aria upgrade changes the
+    // parentless behavior, this spec is the tripwire.
     it('after open, focus is inside the menu and the FIRST item is active (parentless-aria guard)', async () => {
       const { fixture, host } = await setup();
       host.menu().open({ x: 80, y: 90 });
