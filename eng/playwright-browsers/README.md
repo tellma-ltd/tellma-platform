@@ -18,9 +18,14 @@ bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir client e
 bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
 ```
 
-The browsers are `chromium`, `firefox` and `webkit`. On Linux the script may run `sudo apt-get`
-through Playwright's `install-deps`, as `--with-deps` did; a hosted runner allows it without a
-password.
+The browsers are `chromium`, `firefox` and `webkit`.
+
+The apt step is meant for CI. It runs Playwright's `install-deps` as root, through `sudo -n`, which
+a hosted runner allows without a password. Where sudo asks for a password, as on most developer
+machines, the script does not prompt: it warns that it cannot install the OS dependencies and
+leaves the decision to the launch probe. To install them on such a machine, run the CLI's
+`install-deps` under sudo by hand, for example
+`sudo env "PATH=$PATH" pnpm --dir client exec playwright install-deps chromium`.
 
 ## What it does
 
@@ -28,9 +33,11 @@ password.
    come from Playwright's CDN, not from the apt mirrors; a failed download fails the step.
 2. **Install the OS dependencies** (Linux only). A dry run (`install-deps --dry-run`) first asks apt,
    from its local package lists, whether anything is missing; when nothing is, apt is not touched.
-   Otherwise `install-deps` runs up to twice, each attempt cut off after 150 seconds, 20 seconds
-   apart. When every attempt fails the script emits a `::warning::` that names the packages still
-   missing, and carries on to the probe instead of failing.
+   Otherwise `install-deps` runs up to twice, 20 seconds apart. Each attempt runs under a `timeout`
+   that is itself root, so that after 150 seconds it stops apt as well as the CLI and the retry
+   does not find the apt lock still held. When every attempt fails, or root is not available
+   without a password, the script emits a `::warning::` that names the packages still missing,
+   and carries on to the probe instead of failing.
 3. **Probe each browser**: launch it headlessly through the same CLI and screenshot a blank page.
    A browser that cannot launch fails the step, whatever happened in step 2.
 

@@ -1,0 +1,88 @@
+{
+  "layout": {
+    "database": "tm-app",
+    "version": 1,
+    "store": "docs",
+    "keyPath": ["p", "n"],
+    "imagesCache": "tm-images-v1"
+  },
+  "partitions": [
+    { "name": "the device", "partition": { "kind": "device" }, "p": "device" },
+    { "name": "a user", "partition": { "kind": "user", "sub": "0b4f" }, "p": "u:0b4f/" },
+    { "name": "a user's tenant", "partition": { "kind": "tenant", "sub": "0b4f", "tenantId": 17 }, "p": "u:0b4f/t17" },
+    {
+      "name": "a user's session",
+      "partition": { "kind": "session", "sub": "0b4f", "sessionHandle": "Y4kQ1x-_" },
+      "p": "u:0b4f/sY4kQ1x-_"
+    }
+  ],
+  "documents": [
+    ["device", "zone@1"],
+    ["u:0b4e/", "tenants@1"],
+    ["u:0b4e/t17", "me@1"],
+    ["u:0b4f/", "distribution@1"],
+    ["u:0b4f/", "tenants@1"],
+    ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+    ["u:0b4f/t1000", "settings@2"],
+    ["u:0b4f/t17", "entity:acme.Currency@1"],
+    ["u:0b4f/t17", "me@1"],
+    ["u:0b4f/t17", "settings@1"],
+    ["u:0b4f9/", "tenants@1"],
+    ["u:0b4f9/t17", "settings@1"],
+    ["u:7c1e/", "tenants@1"],
+    ["u:7c1e/t17", "me@1"]
+  ],
+  "userDeletes": [
+    {
+      "name": "a user's every partition goes, and a user whose subject starts with it stays",
+      "sub": "0b4f",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f9/", "tenants@1"],
+        ["u:0b4f9/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    },
+    {
+      "name": "the longer subject goes alone",
+      "sub": "0b4f9",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+        ["u:0b4f/t1000", "settings@2"],
+        ["u:0b4f/t17", "entity:acme.Currency@1"],
+        ["u:0b4f/t17", "me@1"],
+        ["u:0b4f/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    },
+    {
+      "name": "a user with no stored data leaves everything",
+      "sub": "9999",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+        ["u:0b4f/t1000", "settings@2"],
+        ["u:0b4f/t17", "entity:acme.Currency@1"],
+        ["u:0b4f/t17", "me@1"],
+        ["u:0b4f/t17", "settings@1"],
+        ["u:0b4f9/", "tenants@1"],
+        ["u:0b4f9/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    }
+  ]
+}

@@ -41,6 +41,15 @@ export { default } from '@tellma/core-tools/stylelint';
 { "extends": "@tellma/core-tools/tsconfig.json" }
 ```
 
+## The build's inputs
+
+`src/build/` holds what the `build` command will run on a distribution's sources: the rules of its
+`index.html` as data (`TM_INDEX_HTML_RULES`: the boot script first in `<head>`, `<tm-app>`, the
+manifest link, the `color-scheme` meta, no inline script, and in the built file no `on*`
+attribute; each failure is `index-html-invalid`), and `tmRenderBootScript`, which renders
+`tm-boot.js` from `@tellma/core`'s `boot/tm-boot.template.js` by replacing its one configuration
+marker with the checked boot configuration as JSON.
+
 ## Development
 
 The specs sit beside the sources (`src/**/*.spec.ts`) and run with the client's `lint:test`; their

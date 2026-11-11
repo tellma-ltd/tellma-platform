@@ -2,8 +2,8 @@
 
   <ItemGroup>
     <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
-         plumbing rather than a suite and references no test framework at all, so the global using
-         would not compile. -->
+         plumbing rather than a suite and references only xunit's extensibility core (for the SQL
+         Server fixture's lifetime), so files that need xunit say so with their own using. -->
     <Using Remove="Xunit" />
   </ItemGroup>
 
@@ -12,13 +12,22 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- No test-framework reference of any kind. These are plumbing types, not assertions, so the
-         project needs no xunit; omitting Microsoft.NET.Test.Sdk likewise keeps IsTestProject false,
-         so `dotnet test Tellma.slnx` never tries to run it. -->
+    <!-- No test SDK: omitting Microsoft.NET.Test.Sdk keeps IsTestProject false, so
+         `dotnet test Tellma.slnx` never tries to run it. -->
     <!-- IOptionsMonitor<T>, for the static monitor the adapters' senders take. -->
     <PackageReference Include="Microsoft.Extensions.Options" />
     <!-- IHttpClientFactory, for the single-client factory the HTTP-based senders take. -->
     <PackageReference Include="Microsoft.Extensions.Http" />
+    <!-- The SQL Server fixture every integration suite shares: the server, its container, and
+         xunit's fixture lifetime and test context. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <!-- Not used directly. Testcontainers brings SSH.NET in for its remote-Docker support, still at
+         a version NuGet audit flags (GHSA-q939-rpr3-3284, high); this direct reference lifts it to
+         the patched version, here and in every project that references this one. Drop it once
+         Testcontainers ships the bump. -->
+    <PackageReference Include="SSH.NET" />
   </ItemGroup>
 
 </Project>

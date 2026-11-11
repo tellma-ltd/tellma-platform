@@ -59,7 +59,8 @@ if ! "${cli[@]}" install "${browsers[@]}"; then
 fi
 
 # --- 2. The OS dependencies (Linux only) --------------------------------------------------------
-# One of: present (nothing was missing), installed, unavailable (apt failed on every attempt), or
+# One of: present (nothing was missing), installed, unavailable (apt failed on every attempt, or
+# could not run for want of root or passwordless sudo), or
 # not-applicable (not Linux: the apt mirrors are a Linux concern, and the Windows and macOS runner
 # images carry what the browsers need).
 deps_status=not-applicable
@@ -78,27 +79,47 @@ if [[ $(uname -s) == Linux ]]; then
     # only enriches the warning below, so a change in that format costs nothing but detail.
     missing_packages=$(printf '%s\n' "$dry_run_output" | sed -n 's/^  \([^ ][^ ]*\)$/\1/p' | paste -sd ' ' -)
 
-    # Bounded retries. `timeout` signals the CLI's whole process group; sudo relays the signal to
-    # apt, so a hung attempt does not outlive its budget.
-    for ((attempt = 1; ; attempt++)); do
-      echo "==> Installing the OS dependencies (attempt $attempt of $deps_attempts)"
-      if timeout --kill-after=15 "$deps_attempt_timeout_seconds" "${cli[@]}" install-deps "${browsers[@]}"; then
-        deps_status=installed
-        break
-      fi
-      if ((attempt >= deps_attempts)); then
-        deps_status=unavailable
-        break
-      fi
-      echo "Attempt $attempt failed; retrying in ${deps_retry_delay_seconds}s."
-      sleep "$deps_retry_delay_seconds"
-    done
+    # The time limit must run as root. Playwright's installer runs apt as root (through sudo when
+    # it is not root itself), and a `timeout` running as the runner user is not allowed to signal
+    # root processes: on expiry it would end the CLI but leave apt running, still holding the apt
+    # lock against the retry and installing packages into the middle of the test steps. A root
+    # `timeout` owns the whole tree: the CLI, seeing uid 0, runs apt directly, in the process group
+    # that `timeout` signals and then kills. `sudo -n` never prompts: where sudo needs a password,
+    # as on a developer's machine, it fails at once instead of hanging on a prompt it cannot show.
+    # `env PATH=...` keeps the CLI's tools (pnpm, node, pwsh) resolvable past sudo's reset PATH.
+    if (($(id -u) == 0)); then
+      as_root=()
+    elif command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+      as_root=(sudo -n env "PATH=$PATH")
+    else
+      as_root=(unavailable)
+    fi
 
-    # Out of attempts. Not fatal yet: the runner image usually carries every shared library the
-    # browsers link against, and what apt could not add is often only fonts. The launch probe
-    # below decides; the warning keeps the degraded install visible on the run's summary page.
-    if [[ $deps_status == unavailable ]]; then
-      echo "::warning title=Playwright OS dependencies::Could not install the OS dependencies of ${browsers[*]} after $deps_attempts attempts; is the apt mirror reachable? Still missing: ${missing_packages:-see the log}. Continuing only if every browser launches without them; a test that needs one of them (a font, for instance) can still fail."
+    if [[ ${as_root[*]} == unavailable ]]; then
+      deps_status=unavailable
+      echo "::warning title=Playwright OS dependencies::Cannot install the OS dependencies of ${browsers[*]}: that needs root or passwordless sudo, which CI runners have. On a developer machine, run the CLI's install-deps under sudo by hand. Still missing: ${missing_packages:-see the log}. Continuing only if every browser launches without them."
+    else
+      # Bounded retries, each attempt cut off by the root `timeout` above.
+      for ((attempt = 1; ; attempt++)); do
+        echo "==> Installing the OS dependencies (attempt $attempt of $deps_attempts)"
+        if "${as_root[@]}" timeout --kill-after=15 "$deps_attempt_timeout_seconds" "${cli[@]}" install-deps "${browsers[@]}"; then
+          deps_status=installed
+          break
+        fi
+        if ((attempt >= deps_attempts)); then
+          deps_status=unavailable
+          break
+        fi
+        echo "Attempt $attempt failed; retrying in ${deps_retry_delay_seconds}s."
+        sleep "$deps_retry_delay_seconds"
+      done
+
+      # Out of attempts. Not fatal yet: the runner image usually carries every shared library the
+      # browsers link against, and what apt could not add is often only fonts. The launch probe
+      # below decides; the warning keeps the degraded install visible on the run's summary page.
+      if [[ $deps_status == unavailable ]]; then
+        echo "::warning title=Playwright OS dependencies::Could not install the OS dependencies of ${browsers[*]} after $deps_attempts attempts; is the apt mirror reachable? Still missing: ${missing_packages:-see the log}. Continuing only if every browser launches without them; a test that needs one of them (a font, for instance) can still fail."
+      fi
     fi
   fi
 fi
