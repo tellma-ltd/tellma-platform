@@ -26,8 +26,9 @@ browser too old for the app still parses it and shows the unsupported page) into
 `var TM_BOOT=/*TM_BOOT*/null;`: a distribution's build replaces the marker with its boot
 configuration (the offered languages and each one's boot strings, which Core's resources carry as
 `Boot_*`) and serves the result as `tm-boot.js`, the first script of `index.html`. Rendered with
-the platform's English strings it stays within 3 KB gzipped; a test in `client/tools/tests/`
-holds it there.
+the platform's English strings it stays within 3 KB gzipped, and each further offered language
+may add 0.4 KB; a test in `client/tools/tests/` holds both the English-only and an English and
+Arabic configuration to that budget.
 
 In order, the script:
 
@@ -60,7 +61,9 @@ the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out
 the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
 reports an expiry that led there and drops a previous user's drafts. Until the tab bus and the
-client store arrive, the paths beyond the tab's own state are tab-local.
+client store arrive, the paths beyond the tab's own state are tab-local: an expiry deletes the
+stale profile cookie and reloads, so the boot leads to the sign-in and the user's data leaves the
+screen.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into

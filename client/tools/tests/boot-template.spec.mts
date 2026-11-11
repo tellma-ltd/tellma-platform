@@ -36,15 +36,28 @@ const ENGLISH: TmBootScriptConfig = {
   v: 1,
   languages: [{ code: 'en', dir: 'ltr' }],
   defaultLanguage: 'en',
-  strings: { en: { Distribution_DisplayName: 'Tellma', ...bootStrings('Strings.resx') } },
+  strings: { en: { Distribution_DisplayName: 'Acme', ...bootStrings('Strings.resx') } },
 };
 
-/** The same, offering Arabic too. */
-const ENGLISH_ARABIC: TmBootScriptConfig = {
+/** Acme's configuration: English and Arabic, with the platform's strings. */
+const ACME: TmBootScriptConfig = {
   ...ENGLISH,
   languages: [...ENGLISH.languages, { code: 'ar', dir: 'rtl' }],
-  strings: { ...ENGLISH.strings, ar: { Distribution_DisplayName: 'تلما', ...bootStrings('Strings.ar.resx') } },
+  strings: { ...ENGLISH.strings, ar: { Distribution_DisplayName: 'أكمي', ...bootStrings('Strings.ar.resx') } },
 };
+
+/**
+ * The gzip budget of a rendered boot script, in bytes: 3 KB for the code
+ * with the English strings, plus 0.4 KB for each further offered language.
+ */
+function budget(config: TmBootScriptConfig): number {
+  return (3 + 0.4 * (config.languages.length - 1)) * 1024;
+}
+
+/** The gzipped size of a rendered boot script, in bytes, at the level the budget is measured at. */
+function gzipped(script: string): number {
+  return gzipSync(script, { level: 9 }).length;
+}
 
 /** A minimal element: the members the boot page uses. */
 class FakeElement {
@@ -130,8 +143,12 @@ describe('the boot script template', () => {
   });
 
   it('stays within 3 KB gzip with the platform English strings', () => {
-    const rendered = tmRenderBootScript(template, ENGLISH);
-    expect(gzipSync(rendered, { level: 9 }).length).toBeLessThanOrEqual(3 * 1024);
+    expect(budget(ENGLISH)).toBe(3 * 1024);
+    expect(gzipped(tmRenderBootScript(template, ENGLISH))).toBeLessThanOrEqual(budget(ENGLISH));
+  });
+
+  it('stays within the budget with each further offered language: Acme in English and Arabic', () => {
+    expect(gzipped(tmRenderBootScript(template, ACME))).toBeLessThanOrEqual(budget(ACME));
   });
 
   it('does nothing unrendered', () => {
@@ -144,17 +161,17 @@ describe('the boot script template', () => {
   it('decides with the real globals: signed in, the app runs', () => {
     const value = Buffer.from(JSON.stringify({ v: 2, sub: '0b4f', sh: 'x', locale: 'ar' })).toString('base64url');
     const fake = browser({ cookie: `tellma.profile=${value}` });
-    run(tmRenderBootScript(template, ENGLISH_ARABIC), fake.window);
+    run(tmRenderBootScript(template, ACME), fake.window);
     expect(fake.window['__tmBoot']).toMatchObject({ state: 'run', cold: true, profile: { sub: '0b4f' } });
     expect([fake.document.documentElement.lang, fake.document.documentElement.dir]).toEqual(['ar', 'rtl']);
     expect(fake.document.documentElement.dataset['theme']).toBe('light');
-    expect(fake.document.title).toBe('تلما');
+    expect(fake.document.title).toBe('أكمي');
     expect(JSON.parse(fake.items.get('tm.boot')!)).toMatchObject({ v: 1, lang: 'ar', sub: null });
   });
 
   it('decides with the real globals: signed out, the tab leaves to sign in', () => {
     const fake = browser({ path: '/17/centers' });
-    run(tmRenderBootScript(template, ENGLISH_ARABIC), fake.window);
+    run(tmRenderBootScript(template, ACME), fake.window);
     expect(fake.window['__tmBoot']).toMatchObject({ state: 'redirect' });
     expect(fake.replaced).toEqual(['/bff/login?returnUrl=%2F17%2Fcenters&ui_locales=en']);
     expect(JSON.parse(fake.items.get('tm.login')!)).toMatchObject({ returnUrl: '/17/centers', auto: false });
@@ -169,7 +186,7 @@ describe('the boot script template', () => {
     const [main] = fake.host.children;
     expect(main?.className).toBe('tm-boot-page');
     expect(main?.children.map((child) => child.textContent)).toEqual([
-      "Tellma couldn't start",
+      "Acme couldn't start",
       ENGLISH.strings['en']!['Boot_Unsupported'],
       'Try again',
     ]);

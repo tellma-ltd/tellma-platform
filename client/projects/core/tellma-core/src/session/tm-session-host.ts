@@ -24,6 +24,8 @@ export interface TmSessionLocation {
   assign(url: string): void;
   /** Leaves for another page, replacing this one in the history. */
   replace(url: string): void;
+  /** Loads this page again. */
+  reload(): void;
 }
 
 /** The tab's session storage, as the session reads, writes and sweeps it; any member may throw. */
@@ -38,6 +40,8 @@ export interface TmSessionStorage extends TmStorageLike {
 export interface TmSessionHost {
   /** The cookie string now, as `document.cookie` returns it; empty when the browser refuses it. */
   cookies(): string;
+  /** Sets or deletes one cookie, as an assignment to `document.cookie` does; a refusing browser is ignored. */
+  writeCookie(cookie: string): void;
   /** The tab's session storage, or `null` when the browser refuses it. */
   readonly sessionStorage: TmSessionStorage | null;
   /** The address bar. */
@@ -64,6 +68,13 @@ export const TM_SESSION_HOST = new InjectionToken<TmSessionHost>('TM_SESSION_HOS
           return document.cookie;
         } catch {
           return '';
+        }
+      },
+      writeCookie: (cookie) => {
+        try {
+          document.cookie = cookie;
+        } catch {
+          // Nothing to do: a browser that refuses cookies holds none to delete.
         }
       },
       sessionStorage,

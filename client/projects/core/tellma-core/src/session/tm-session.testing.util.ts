@@ -30,6 +30,12 @@ export class TmFakeSessionHost implements TmSessionHost {
   /** The URLs `replace` went to. */
   readonly replaced: string[] = [];
 
+  /** How many times the page reloaded. */
+  reloads = 0;
+
+  /** The cookies written, in order. */
+  readonly cookieWrites: string[] = [];
+
   /** The address bar. */
   readonly location = {
     pathname: '/17/centers',
@@ -37,6 +43,7 @@ export class TmFakeSessionHost implements TmSessionHost {
     hash: '#d=abc',
     assign: (url: string): void => void this.assigned.push(url),
     replace: (url: string): void => void this.replaced.push(url),
+    reload: (): void => void this.reloads++,
   };
 
   /** The document's language. */
@@ -45,6 +52,11 @@ export class TmFakeSessionHost implements TmSessionHost {
   /** The cookie string now. */
   cookies(): string {
     return this.cookieJar;
+  }
+
+  /** Records a cookie write. */
+  writeCookie(cookie: string): void {
+    this.cookieWrites.push(cookie);
   }
 
   /** The document's language now. */
@@ -81,8 +93,13 @@ export class TmRecordingTelemetry extends TmTelemetry {
   /** Ignores an error. */
   override error(): void {}
 
-  /** Nothing to flush. */
-  override flush(): void {}
+  /** The number of events recorded at each flush, in order. */
+  readonly flushes: number[] = [];
+
+  /** Records a flush. */
+  override flush(): void {
+    this.flushes.push(this.events.length);
+  }
 }
 
 /**

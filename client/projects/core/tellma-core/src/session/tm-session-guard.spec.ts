@@ -41,6 +41,7 @@ describe('tmSessionGuard', () => {
     expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).events).toEqual([
       { name: 'tm.session.expired', props: { source: 'cookie' } },
     ]);
+    expect(host.reloads).toBe(1);
   });
 
   it('denies another user and runs the changed-user path', () => {

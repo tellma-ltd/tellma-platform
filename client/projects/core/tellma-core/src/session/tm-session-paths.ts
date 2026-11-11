@@ -3,27 +3,37 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { TM_PROFILE_COOKIE } from './tm-profile';
 import { TM_SESSION_HOST } from './tm-session-host';
-import { TmSessionStatus } from './tm-session-status';
 
 // What the session does beyond the tab's own state when it starts, expires
 // or finds another user (spec 0024 §8.1, §8.6, §8.7). The cross-tab paths
-// need the tab bus, the client store and the drafts (spec 0025), which build
-// on the session; until they arrive, this tab-local version runs: a start
-// tells no other tab, an expiry marks this tab's session expired and reports
-// it, and a changed user reloads the app at the root, whose boot sweeps the
-// previous user's data. The full paths replace these bodies, not their call
-// sites.
+// need the tab bus, the client store, the drafts and the session-ended
+// dialog (spec 0025), which build on the session; until they arrive, this
+// tab-local version runs: a start tells no other tab, an expiry deletes the
+// stale profile cookie and reloads, so that the boot takes the tab to the
+// sign-in and the user's data leaves the screen, and a changed user reloads
+// the app at the root, whose boot sweeps the previous user's data. The full
+// paths replace these bodies, not their call sites.
+//
+// The paths also hold the session's writable state, which `TmSession` shows
+// read-only: one injectable instead of two keeps the primary entry point
+// small.
 
-/** The session's paths beyond this tab's own state. */
+/** Where the tab's session stands. */
+export type TmSessionState = 'active' | 'expired' | 'signing-out';
+
+/** The session's paths beyond this tab's own state, and the state they write. */
 @Injectable({ providedIn: 'root' })
 export class TmSessionPaths {
-  readonly #status = inject(TmSessionStatus);
   readonly #telemetry = inject(TmTelemetry);
   readonly #host = inject(TM_SESSION_HOST);
+
+  /** The session's state: active until an expiry or a sign-out. */
+  readonly state = signal<TmSessionState>('active');
 
   /**
    * Announces that this tab's session started, after a sign-in, so that the
@@ -36,16 +46,23 @@ export class TmSessionPaths {
   }
 
   /**
-   * Runs the expiry path: the session is marked expired and the expiry is
-   * reported, once.
+   * Runs the expiry path, once: the session is marked expired, the expiry is
+   * reported, a stale profile cookie is deleted and the page reloads, which
+   * leads to the sign-in.
    *
    * @param source - What found the expiry: the cookie check, or a `401` from the server.
    */
   expired(source: 'cookie' | '401'): void {
-    if (this.#status.state() === 'active') {
-      this.#status.state.set('expired');
-      this.#telemetry.event('tm.session.expired', { source });
+    if (this.state() !== 'active') {
+      return;
     }
+    this.state.set('expired');
+    this.#telemetry.event('tm.session.expired', { source });
+    this.#telemetry.flush();
+    // After a 401 the cookie may still be present; deleting it keeps the
+    // reloaded boot from running the app again into the same 401.
+    this.#host.writeCookie(`${TM_PROFILE_COOKIE}=; Max-Age=0; Path=/; Secure`);
+    this.#host.location.reload();
   }
 
   /**
@@ -54,6 +71,7 @@ export class TmSessionPaths {
    */
   changedUser(): void {
     this.#telemetry.event('tm.session.changed-user');
+    this.#telemetry.flush();
     this.#host.location.replace('/');
   }
 }

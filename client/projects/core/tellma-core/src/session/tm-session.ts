@@ -11,8 +11,7 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { tmIsLocalPath, tmLoginUrl, tmRemoveLoginMark, tmWriteLoginMark } from './tm-login-mark';
 import { tmParseProfileCookie, type TmProfile } from './tm-profile';
 import { TM_SESSION_HOST, type TmSessionStorage } from './tm-session-host';
-import { TmSessionPaths } from './tm-session-paths';
-import { TmSessionStatus, type TmSessionState } from './tm-session-status';
+import { TmSessionPaths, type TmSessionState } from './tm-session-paths';
 
 // The tab's session (spec 0024 §8.1-§8.3). The profile cookie is the
 // browser's synchronous signed-in signal: the session reads it at its first
@@ -70,7 +69,7 @@ export class TmSession {
   readonly profile: Signal<TmProfile | null> = this.#profile.asReadonly();
 
   /** Where the tab's session stands: active, expired, or signing out. */
-  readonly state: Signal<TmSessionState> = inject(TmSessionStatus).state.asReadonly();
+  readonly state: Signal<TmSessionState> = this.#paths.state.asReadonly();
 
   /** Creates the session and consumes the sign-in the boot script reported, if any. */
   constructor() {
@@ -93,12 +92,9 @@ export class TmSession {
     if (current === null || current.sub !== now.sub) {
       return 'changed';
     }
-    if (
-      current.sh !== now.sh ||
-      current.name !== now.name ||
-      current.email !== now.email ||
-      current.locale !== now.locale
-    ) {
+    // Both are rebuilt by the decoder with the same members in the same
+    // order, so their JSON differs exactly when a detail does.
+    if (JSON.stringify(current) !== JSON.stringify(now)) {
       this.#profile.set(now);
     }
     return 'same';
@@ -157,11 +153,12 @@ export class TmSession {
   }
 
   /**
-   * Consumes the sign-in the boot script reported (spec 0024 §8.1): the
-   * session starts, an expiry that led to the sign-in is reported, and a
-   * previous user's drafts are dropped.
+   * Consumes the sign-in the boot script reported: the session starts, an
+   * expiry that led to the sign-in is reported, and a previous user's drafts
+   * are dropped.
    */
   #consumeSignIn(): void {
+    // Spec 0024 §8.1, "After a sign-in".
     const mark = inject(TM_BOOT_RESULT)?.mark ?? null;
     const profile = this.#profile();
     if (mark === null || profile === null) {

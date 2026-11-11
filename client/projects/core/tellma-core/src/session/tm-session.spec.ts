@@ -190,12 +190,26 @@ describe('TmSessionPaths', () => {
     paths.expired('cookie');
     expect(session().state()).toBe('expired');
     expect(telemetry.events).toEqual([{ name: 'tm.session.expired', props: { source: '401' } }]);
+    expect(telemetry.flushes).toEqual([1]);
   });
 
-  it('restarts the app at the root for a changed user', () => {
+  it("takes an expired tab off the user's data: the stale cookie is deleted and the page reloads, once", () => {
+    const { host } = setUp();
+    const paths = TestBed.inject(TmSessionPaths);
+    paths.expired('401');
+    paths.expired('cookie');
+    expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
+    expect(host.reloads).toBe(1);
+    expect(host.assigned).toEqual([]);
+    expect(host.replaced).toEqual([]);
+  });
+
+  it('restarts the app at the root for a changed user, after sending the telemetry', () => {
     const { host, telemetry } = setUp();
     TestBed.inject(TmSessionPaths).changedUser();
     expect(host.replaced).toEqual(['/']);
     expect(telemetry.events.map((event) => event.name)).toEqual(['tm.session.changed-user']);
+    expect(telemetry.flushes).toEqual([1]);
+    expect(host.reloads).toBe(0);
   });
 });

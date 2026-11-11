@@ -125,7 +125,7 @@ export {
   type TmSignInOptions,
   type TmStepUpChallenge,
 } from './src/session/tm-session';
-export type { TmSessionState } from './src/session/tm-session-status';
+export type { TmSessionState } from './src/session/tm-session-paths';
 export { tmSessionGuard } from './src/session/tm-session-guard';
 
 // The launch: the single-membership rule and the automatic-entry mark.

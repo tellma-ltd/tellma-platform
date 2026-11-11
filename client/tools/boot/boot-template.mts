@@ -3,8 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+// Spec 0024 §4.2: the generated tm-boot.js.
+
 /**
- * The boot script template (spec 0024 §4.2): bundles the boot script's
+ * The boot script template: bundles the boot script's
  * TypeScript entry in `@tellma/core` into one classic, minified script. The
  * template opens with the configuration marker, `var TM_BOOT=/*TM_BOOT*\/null;`,
  * which a distribution's build replaces with its boot configuration.
