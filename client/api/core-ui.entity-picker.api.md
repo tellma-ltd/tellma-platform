@@ -80,6 +80,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly namesEntity: Signal<boolean>;
     protected readonly noResultsText: Signal<string>;
     onContainerClick(): void;
+    protected onExpandedChange(open: boolean): void;
     protected onFocusin(): void;
     protected onFocusout(event: FocusEvent): void;
     protected onInput(): void;
