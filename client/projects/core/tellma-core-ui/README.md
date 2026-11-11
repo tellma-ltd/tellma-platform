@@ -9,9 +9,9 @@ disabled/readonly/required).
 
 | Import | Contents |
 |---|---|
-| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()` (with the translations loader, the theme seed and a live root `Directionality`), the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade, `TM_CALENDAR` + `provideTmCalendar()`, `TmBreakpoints` + `TM_BREAKPOINTS`, `TmTheme`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()` (with the translations loader, the theme seed and a live root `Directionality`), the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade (numbers, dates, instants with zone labels, relative times, month and weekday names), `TM_CALENDAR` + `provideTmCalendar()`, the display and device time zones (`TM_TIME_ZONE`, `TM_DEVICE_TIME_ZONE`) and the clock (`TM_NOW`), `TmBreakpoints` + `TM_BREAKPOINTS`, `TmTheme`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
 | `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces |
-| `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …) and the `TmCalendar` seam with the Gregorian default |
+| `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …), the instant formats in an explicit time zone (`tmFormatDateTime`, `tmFormatTime`, `tmFormatRelativeTime`, `tmFormatZoneOffset`, `tmFormatZoneName`), month and weekday names, `tmStripBidiControls` (no formatter writes a bidirectional control character), and the `TmCalendar` seam with the Gregorian default |
 | `@tellma/core-ui/calendar-umalqura` | `tmUmalquraCalendar()` — the Umm al-Qura (Hijri) calendar pack |
 | `@tellma/core-ui/calendar-ethiopic` | `tmEthiopicCalendar()` — the Ethiopic (Amete Mihret) calendar pack |
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |

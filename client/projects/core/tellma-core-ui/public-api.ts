@@ -2,7 +2,7 @@
  * Public API Surface of @tellma/core-ui (primary entry point).
  *
  * Carries only the cross-cutting, component-free surface: providers, i18n,
- * fonts, forms infrastructure, breakpoints and the theme. Components are exported from their own
+ * fonts, forms infrastructure, the formatting facade with its calendar and time-zone seams, breakpoints and the theme. Components are exported from their own
  * secondary entry points (@tellma/core-ui/input, /checkbox, /form-field,
  * /select, /spinner); the contract types from @tellma/core-ui/contracts.
  *
@@ -28,4 +28,5 @@ export * from './l10n-facade/tm-l10n';
 export * from './layout/tm-breakpoints';
 export * from './providers/provide-tellma-ui';
 export * from './providers/tm-calendar';
+export * from './providers/tm-time-zone';
 export { TmTheme, type TmThemeOptions, type TmThemeSetting } from './theme/tm-theme';

@@ -10,11 +10,13 @@
 
 import { TM_PARSE_ERROR, type TmParseError } from '@tellma/core-ui/contracts';
 
+import { tmStripBidiControls } from './tm-bidi';
+
 /**
  * Options shared by {@link tmFormatNumber} and {@link tmParseNumber}. The
  * option surface is a deliberately small closed set — locale ×
- * `minDecimals`/`maxDecimals`/`percent` — reproducible by a server-side
- * implementation from the same parameters.
+ * `minDecimals`/`maxDecimals`/`percent`/`grouping` — reproducible by a
+ * server-side implementation from the same parameters.
  */
 export interface TmNumberFormatOptions {
   /** Minimum fraction digits (padded with zeros). Default `0`. */
@@ -33,6 +35,15 @@ export interface TmNumberFormatOptions {
    * never treated as an already-scaled fraction). Default `false`.
    */
   readonly percent?: boolean;
+  /**
+   * Whether the formatted text carries group separators. Default `true`:
+   * the locale's own grouping, which honours its minimum grouping digits
+   * (Spanish writes `1234` and `12.345`). `false` writes none — a year, a
+   * code or a serial number reads `2026`, never `2,026`. The digits stay
+   * the locale's either way, and parsing accepts group separators
+   * whatever this says.
+   */
+  readonly grouping?: boolean;
 }
 
 /** Options of {@link tmParseNumber}. */
@@ -77,8 +88,8 @@ function formatterFor(locale: string): Intl.NumberFormat {
   return formatter;
 }
 
-// Display formatters (per locale × fraction-digit bounds × percent) are
-// cached apart from the parse/symbol formatter above, which must always
+// Display formatters (per locale × fraction-digit bounds × percent ×
+// grouping) are cached apart from the parse/symbol formatter above, which must always
 // keep its full 20-digit precision so localized separators and numerals
 // still round-trip.
 const displayFormatterCache = new Map<string, Intl.NumberFormat>();
@@ -88,14 +99,18 @@ function displayFormatterFor(
   min: number,
   max: number,
   percent: boolean,
+  grouping: boolean,
 ): Intl.NumberFormat {
-  const key = `${locale}|${min}|${max}|${percent ? 'p' : ''}`;
+  const key = `${locale}|${min}|${max}|${percent ? 'p' : ''}|${grouping ? '' : 'u'}`;
   let formatter = displayFormatterCache.get(key);
   if (formatter === undefined) {
     formatter = new Intl.NumberFormat(locale, {
       minimumFractionDigits: min,
       maximumFractionDigits: max,
       ...(percent ? { style: 'percent' as const } : {}),
+      // Grouping on is Intl's default ('auto'), which follows the locale's
+      // minimum grouping digits; only "off" is ever stated.
+      ...(grouping ? {} : { useGrouping: false }),
     });
     displayFormatterCache.set(key, formatter);
   }
@@ -108,7 +123,12 @@ function symbolsFor(locale: string): LocaleNumberSymbols {
     const parts = formatterFor(locale).formatToParts(-12345678.9);
     const group = parts.find((part) => part.type === 'group')?.value ?? ',';
     const decimal = parts.find((part) => part.type === 'decimal')?.value ?? '.';
-    const minus = parts.find((part) => part.type === 'minusSign')?.value ?? '-';
+    // ICU hands the minus over with a direction mark glued on (U+200E in
+    // ar and he, U+061C in ar-SA); the sign itself is what typed text and
+    // this codec's own output carry.
+    const minus = tmStripBidiControls(
+      parts.find((part) => part.type === 'minusSign')?.value ?? '-',
+    );
     const zero = formatterFor(locale).format(0);
     symbols = { group, decimal, minus, zeroCodePoint: zero.codePointAt(0) ?? 48 };
     symbolsCache.set(locale, symbols);
@@ -121,7 +141,10 @@ function symbolsFor(locale: string): LocaleNumberSymbols {
  * null/undefined/''). Fraction digits are bounded by
  * `minDecimals`/`maxDecimals` (default 0…20, i.e. "as many as needed");
  * in percent mode the value is a fraction and the bounds apply to the
- * displayed percent digits.
+ * displayed percent digits. `grouping: false` leaves the group separators
+ * out. The text carries no bidirectional control character: where ICU
+ * puts a direction mark beside a minus or a percent sign, it is removed,
+ * so a container's markup (`dir`) decides the order.
  */
 export function tmFormatNumber(
   value: unknown,
@@ -137,7 +160,15 @@ export function tmFormatNumber(
   }
   const min = Math.max(0, options?.minDecimals ?? 0);
   const max = Math.max(min, options?.maxDecimals ?? MAX_FRACTION_DIGITS);
-  return displayFormatterFor(locale, min, max, options?.percent === true).format(numeric);
+  return tmStripBidiControls(
+    displayFormatterFor(
+      locale,
+      min,
+      max,
+      options?.percent === true,
+      options?.grouping !== false,
+    ).format(numeric),
+  );
 }
 
 /**
@@ -194,7 +225,7 @@ export function tmParseNumber(
   // exponent), never JavaScript's full `Number` grammar: `0x1A` or
   // `Infinity` in a business numeric field must reject, not surprise.
   // Invisible format/bidi-control marks are stripped first — `String.trim`
-  // leaves them, so `'‎-12'` would otherwise be unrecognizable.
+  // leaves them, so `'\u200E-12'` would otherwise be unrecognizable.
   const plain = trimmed.replace(FORMAT_CONTROL, '');
   return MACHINE_DECIMAL.test(plain) ? finishParse(plain, percent) : TM_PARSE_ERROR;
 }

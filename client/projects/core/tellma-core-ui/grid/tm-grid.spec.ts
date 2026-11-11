@@ -11,7 +11,7 @@ import { TranslocoService } from '@jsverse/transloco';
 
 import { provideTellmaUi, provideTmCalendar } from '@tellma/core-ui';
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
-import { tmGregorianCalendar, type TmCalendar } from '@tellma/core-ui/l10n';
+import { TM_BIDI_CONTROLS, tmGregorianCalendar, type TmCalendar } from '@tellma/core-ui/l10n';
 import { TmGridHarness, TmGridRowHarness } from '@tellma/core-ui-testing';
 
 import { TmGrid } from './tm-grid';
@@ -511,6 +511,60 @@ describe('tm-grid display l10n (ambient locale and calendar)', () => {
       qty: 1234.5,
       due: '2026-03-05',
     });
+  });
+
+  it("gives a number cell's text its own left-to-right run; other cells inherit", async () => {
+    const { fixture, scroller } = await setupDisplay();
+    fixture.componentInstance.rows.set([{ id: 1, qty: -1234.5, due: '2026-03-05' }]);
+    await stable(fixture);
+    const qtyText = cellAt(scroller, 0, 0)?.querySelector('.tm-grid__text') as HTMLElement;
+    const dueText = cellAt(scroller, 0, 1)?.querySelector('.tm-grid__text') as HTMLElement;
+    expect(qtyText.textContent).toBe('-1,234.5');
+    expect(qtyText.getAttribute('dir')).toBe('ltr');
+    expect(dueText.hasAttribute('dir')).toBe(false);
+
+    // In a right-to-left grid the run keeps the minus at the left of its
+    // digits, Arabic-Indic ones included, with no direction mark in the text.
+    const wrapper = fixture.nativeElement as HTMLElement;
+    wrapper.dir = 'rtl';
+    try {
+      TestBed.inject(TranslocoService).setActiveLang('ar-SA');
+      await stable(fixture);
+      expect(qtyText.textContent).toBe('-١٬٢٣٤٫٥');
+      expect(getComputedStyle(qtyText).direction).toBe('ltr');
+      expect(getComputedStyle(dueText).direction).toBe('rtl');
+      // The minus is drawn at the left edge of the number.
+      const range = document.createRange();
+      const node = qtyText.firstChild as Text;
+      range.setStart(node, 0);
+      range.setEnd(node, 1);
+      const minus = range.getBoundingClientRect();
+      range.setStart(node, 1);
+      range.setEnd(node, node.length);
+      const digits = range.getBoundingClientRect();
+      expect(minus.right).toBeLessThanOrEqual(digits.left + 0.5);
+    } finally {
+      wrapper.removeAttribute('dir');
+    }
+  });
+
+  it('copies localized numbers and dates with no bidirectional control character', async () => {
+    const { fixture, scroller } = await setupDisplay();
+    fixture.componentInstance.rows.set([{ id: 1, qty: -1234.5, due: '2026-03-05' }]);
+    TestBed.inject(TranslocoService).setActiveLang('ar-SA');
+    await stable(fixture);
+    scroller.focus();
+    keydown(scroller, 'a', { ctrlKey: true });
+    await stable(fixture);
+
+    const data = new DataTransfer();
+    scroller.dispatchEvent(
+      new ClipboardEvent('copy', { clipboardData: data, cancelable: true, bubbles: true }),
+    );
+    const tsv = data.getData('text/plain');
+    expect(tsv.split('\r\n')[0].split('\t')).toEqual(['-١٬٢٣٤٫٥', '٥/٣/٢٠٢٦']);
+    expect([...tsv.matchAll(TM_BIDI_CONTROLS)]).toEqual([]);
+    expect([...data.getData('text/html').matchAll(TM_BIDI_CONTROLS)]).toEqual([]);
   });
 
   it('re-formats date cells in place when the ambient display calendar switches', async () => {
