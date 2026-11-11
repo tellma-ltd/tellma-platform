@@ -20,7 +20,7 @@ import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
 // @public
-export class TmTreeGrid<T> extends ɵTmGridBase<T> {
+export class TmTreeGrid<T> extends TmGridBase<T> {
     readonly defaultExpandedDepth: _angular_core.InputSignal<number | undefined>;
     readonly hasChildren: _angular_core.InputSignal<((row: T) => boolean) | undefined>;
     readonly loadChildren: _angular_core.InputSignal<((row: T) => Promise<void>) | undefined>;

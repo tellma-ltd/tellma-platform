@@ -13,13 +13,14 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { ChevronDown, ChevronUp, X } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
+import { tmKeysMatch } from '@tellma/core-ui/kbd';
 
 import type { ɵTmGridViewCore } from './grid-core';
-
-/** ⌘ is the find modifier on Apple platforms; Ctrl everywhere else. */
-const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+import { TM_GRID_FIND_KEYS } from './grid-keymap';
 
 /**
  * The find bar (`searchable` grids): a floating strip at the grid's top
@@ -28,13 +29,14 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
  * the core's `findOpen` is on; all find state and the chunked scan live in
  * the core — this component binds signals and routes input events back.
  *
- * Keyboard contract (§ the input's keydown): Enter / Shift+Enter cycle the
+ * Keyboard contract (the input's keydown): Enter / Shift+Enter cycle the
  * matches (activating each match's cell while focus STAYS here), Esc
  * clears and closes returning focus to the grid at the current match, and
  * Mod+F re-selects the query so the browser's find stays shadowed.
  */
 @Component({
   selector: 'tm-grid-find-bar',
+  imports: [TmIcon],
   template: `
     <input
       #findInput
@@ -55,15 +57,7 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [disabled]="core().findMatchCount() === 0"
       (click)="core().findStep(-1)"
     >
-      <svg viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true">
-        <path d="m18 15-6-6-6 6" />
-      </svg>
+      <tm-icon [svg]="previousGlyph" />
     </button>
     <button
       type="button"
@@ -73,15 +67,7 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [disabled]="core().findMatchCount() === 0"
       (click)="core().findStep(1)"
     >
-      <svg viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true">
-        <path d="m6 9 6 6 6-6" />
-      </svg>
+      <tm-icon [svg]="nextGlyph" />
     </button>
     <button
       type="button"
@@ -90,16 +76,7 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
       [attr.aria-label]="closeLabel()"
       (click)="core().closeFind()"
     >
-      <svg viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true">
-        <path d="M18 6 6 18" />
-        <path d="m6 6 12 12" />
-      </svg>
+      <tm-icon [svg]="closeGlyph" />
     </button>
   `,
   styleUrl: './find-bar.css',
@@ -120,6 +97,14 @@ export class ɵTmGridFindBar {
   protected readonly nextLabel = this.translate('grid.find.next');
   /** The close button's accessible name. */
   protected readonly closeLabel = this.translate('grid.find.close');
+
+  // The buttons' glyphs: vertical chevrons and a cross, none directional.
+  /** The previous-match glyph. */
+  protected readonly previousGlyph = ChevronUp;
+  /** The next-match glyph. */
+  protected readonly nextGlyph = ChevronDown;
+  /** The close glyph. */
+  protected readonly closeGlyph = X;
 
   constructor() {
     // Registers the input with the core (Mod+F focuses it, also while the
@@ -151,7 +136,7 @@ export class ɵTmGridFindBar {
       this.core().closeFind();
       return;
     }
-    if ((IS_MAC ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === 'f' && !event.altKey) {
+    if (tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
       event.preventDefault();
       event.stopPropagation();
       this.findInput().nativeElement.select();

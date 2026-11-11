@@ -4,11 +4,19 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Component, computed, inject, input } from '@angular/core';
+import { ChevronLeft, ChevronRight, CircleAlert } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import type { ɵTmGridViewCore } from './grid-core';
+
+// The tally's glyphs. The chevrons point along the reading direction
+// (previous toward its start, next toward its end), so they mirror in
+// right-to-left text; the error mark is symmetric.
+const PREVIOUS_GLYPH: TmIconSource = { node: ChevronLeft, mirrorInRtl: true };
+const NEXT_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
 
 /**
  * The editable grid's fixed-height status bar: the error tally chip
@@ -20,7 +28,7 @@ import type { ɵTmGridViewCore } from './grid-core';
  */
 @Component({
   selector: 'tm-grid-status-bar',
-  imports: [TmSpinner],
+  imports: [TmIcon, TmSpinner],
   template: `
     <div class="tm-grid__status-live" aria-live="polite">
       @if (core().errorCount() > 0) {
@@ -31,15 +39,7 @@ import type { ɵTmGridViewCore } from './grid-core';
           [attr.aria-label]="prevLabel()"
           (click)="core().gotoError(-1)"
         >
-          <svg viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <tm-icon [svg]="previousGlyph" />
         </button>
         <button
           type="button"
@@ -47,17 +47,7 @@ import type { ɵTmGridViewCore } from './grid-core';
           data-tm-status-chip
           (click)="core().gotoError(1)"
         >
-          <svg class="tm-grid__status-warn" viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" x2="12" y1="8" y2="12" />
-            <line x1="12" x2="12.01" y1="16" y2="16" />
-          </svg>
+          <tm-icon [svg]="errorGlyph" />
           {{ tallyText() }}
         </button>
         <button
@@ -67,15 +57,7 @@ import type { ɵTmGridViewCore } from './grid-core';
           [attr.aria-label]="nextLabel()"
           (click)="core().gotoError(1)"
         >
-          <svg viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true">
-            <path d="m9 18 6-6-6-6" />
-          </svg>
+          <tm-icon [svg]="nextGlyph" />
         </button>
       }
       @if (core().pendingCount() > 0) {
@@ -110,4 +92,11 @@ export class ɵTmGridStatusBar {
   protected readonly prevLabel = this.translate('grid.cellErrors.previous');
   /** The next-error button's accessible name. */
   protected readonly nextLabel = this.translate('grid.cellErrors.next');
+
+  /** The previous-error glyph, mirrored in right-to-left text. */
+  protected readonly previousGlyph = PREVIOUS_GLYPH;
+  /** The error tally's mark. */
+  protected readonly errorGlyph = CircleAlert;
+  /** The next-error glyph, mirrored in right-to-left text. */
+  protected readonly nextGlyph = NEXT_GLYPH;
 }
