@@ -17,6 +17,7 @@
     <File Path="taxonomy.json" />
   </Folder>
   <Folder Name="/eng/">
+    <Project Path="eng/culture-data/Tellma.CultureData.Generator/Tellma.CultureData.Generator.csproj" />
     <Project Path="eng/queryex-inspection/Tellma.Queryex.Inspection/Tellma.Queryex.Inspection.csproj" />
   </Folder>
   <Folder Name="/src/">

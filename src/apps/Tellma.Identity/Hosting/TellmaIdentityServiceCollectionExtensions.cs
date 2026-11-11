@@ -169,6 +169,12 @@ namespace Tellma.Identity.Hosting
             // it is scoped alongside the OpenIddict managers it depends on.
             services.AddScoped<ApplicationLinkResolver>();
 
+            // The client, return address and language a request arrived with stay on every link,
+            // form and redirect between the engine's pages (spec 0010 §A.9, §A.10): the tag
+            // helper covers what a view renders, the filter what a page handler redirects to.
+            services.AddSingleton<IdentityPageLinks>();
+            services.AddSingleton<CarriedQueryRedirectFilter>();
+
             // Every resource string is rendered through ICU MessageFormat, so a translation can
             // select on its own data — grammatical gender today, plurals when they arrive —
             // instead of the wording being decided by a branch in C#. Decorating rather than
@@ -215,6 +221,17 @@ namespace Tellma.Identity.Hosting
             services.AddControllersWithViews()
                 .AddApplicationPart(typeof(TellmaIdentityServiceCollectionExtensions).Assembly);
             services.AddRazorPages();
+
+            // Every page of the engine's area runs the filter that keeps the carried query on its
+            // redirects. Registered after AddRazorPages on purpose: the framework's own options
+            // setup, which that call registers, replaces the conventions collection, so a
+            // convention added by an earlier registration would be discarded with the old one.
+            services.Configure<Microsoft.AspNetCore.Mvc.RazorPages.RazorPagesOptions>(static pages =>
+                pages.Conventions.AddAreaFolderApplicationModelConvention(
+                    TellmaIdentityConstants.AreaName,
+                    "/",
+                    static model => model.Filters.Add(
+                        new Microsoft.AspNetCore.Mvc.ServiceFilterAttribute(typeof(CarriedQueryRedirectFilter)))));
 
             // The operator (control-plane) surface exists only in standalone mode; remove it from
             // the application model in-proc so its routes do not exist there at all.

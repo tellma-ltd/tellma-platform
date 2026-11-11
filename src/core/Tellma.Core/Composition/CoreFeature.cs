@@ -5,9 +5,11 @@
 
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
+using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
 {
@@ -46,6 +48,15 @@ namespace Tellma.Core.Composition
                 .Calendar<UmAlQuraCalendarSystem>()
                 .Calendar<EthiopianCalendarSystem>()
                 .Singleton<ICalendarRegistry, CalendarRegistry>();
+
+            // --- Languages, value sets and locale negotiation ---
+            // The catalogue reads the distribution's language declaration, which the composition
+            // root registers; the value-set registry composes the platform's four sets with every
+            // set a feature contributes.
+            _ = contribution
+                .Singleton<ILanguageCatalog, LanguageCatalog>()
+                .Singleton<IValueSetRegistry, ValueSetRegistry>()
+                .Singleton<ILocalizationNegotiator, LocalizationNegotiator>();
 
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution

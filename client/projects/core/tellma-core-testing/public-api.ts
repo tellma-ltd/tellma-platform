@@ -13,3 +13,4 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
+export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';

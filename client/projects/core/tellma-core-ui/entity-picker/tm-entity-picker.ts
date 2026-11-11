@@ -181,7 +181,8 @@ function isThenable<T>(
       dir="auto"
       [id]="controlId()"
       [class.tm-input--in-field]="!!formField"
-      [(expanded)]="expanded"
+      [expanded]="expanded()"
+      (expandedChange)="onExpandedChange($event)"
       [(value)]="comboText"
       [disabled]="disabled()"
       [softDisabled]="readonly() && !disabled()"
@@ -313,36 +314,16 @@ function isThenable<T>(
                 }
               </li>
             }
-            @if (showsFooterRows()) {
+            @if (footerRows().length > 0) {
               <li class="tm-entity-picker__separator" aria-hidden="true"></li>
-              @if (advancedSearch() !== undefined) {
+              @for (row of footerRows(); track row.key) {
                 <li
                   ngOption
                   class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionAdvanced"
-                  [label]="advancedRowLabel()"
+                  [value]="row.key"
+                  [label]="row.label"
                 >
-                  <span class="tm-entity-picker__option-label">{{ advancedRowLabel() }}</span>
-                </li>
-              }
-              @if (create() !== undefined) {
-                <li
-                  ngOption
-                  class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionCreate"
-                  [label]="createRowLabel()"
-                >
-                  <span class="tm-entity-picker__option-label">{{ createRowLabel() }}</span>
-                </li>
-              }
-              @if (showsEditRow()) {
-                <li
-                  ngOption
-                  class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionEdit"
-                  [label]="editRowLabel()"
-                >
-                  <span class="tm-entity-picker__option-label">{{ editRowLabel() }}</span>
+                  <span class="tm-entity-picker__option-label">{{ row.label }}</span>
                 </li>
               }
             }
@@ -483,7 +464,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   readonly controlId = signal(`tm-entity-picker-${nextUniqueId++}`).asReadonly();
 
   // ---- Internal state ----
-  /** Whether the dropdown is open (aria's combobox expanded model). */
+  /** Whether the dropdown is open; kept in step with aria's combobox model (see `setExpanded`). */
   protected readonly expanded = signal(false);
   /** The combobox text model — aria mirrors it into the native input. */
   protected readonly comboText = signal('');
@@ -582,17 +563,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** Whether the previous search invocation returned synchronously. */
   private lastSearchWasSync = false;
   /**
-   * The pending highlight-protocol application. A signal (not a one-shot
-   * render hook) because the popup mounts across MULTIPLE render passes —
-   * the overlay attaches first, aria's deferred content renders the listbox
-   * a pass later — and the request must survive until the listbox exists.
+   * The pending highlight-protocol application: the option a fresh result
+   * set or an arrow key has decided to highlight (`key`: an entity id or a
+   * footer-row sentinel, or `undefined` for no highlight). A signal (not a
+   * one-shot render hook) because the popup mounts across MULTIPLE render
+   * passes — the overlay attaches first, aria's deferred content renders
+   * the listbox a pass later — and the request must survive until the
+   * listbox exists.
    */
   private readonly highlightRequest = signal<{
-    readonly query: string;
-    readonly count: number;
+    readonly key: unknown;
     readonly seq: number;
   } | null>(null);
-  /** Monotonic sequence for highlight requests (each fresh result set re-applies). */
+  /** Monotonic sequence for highlight requests (each one is applied once). */
   private highlightSeq = 0;
   /**
    * The sequence of the request the after-render effect last applied. A
@@ -600,6 +583,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * rendered, so aria's active option still describes the previous ones.
    */
   private appliedHighlightSeq = 0;
+  /**
+   * Whether the popup's latest open or close has not been acted on yet: an
+   * open whose initial search has not been issued, or a close whose search
+   * state has not been reset. See `onExpandedChange`.
+   */
+  private popupPending = false;
 
   /** The raw text channel over the value model. */
   private readonly rawText = transformedValue<Id | null, string>(this.value, {
@@ -700,13 +689,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   // ---- Template helpers ----
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionAdvanced = ACTION_ADVANCED;
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionCreate = ACTION_CREATE;
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionEdit = ACTION_EDIT;
-
   /** The entity rows currently rendered (empty outside the results state). */
   protected readonly resultItems: Signal<readonly T[]> = computed(() => {
     const state = this.searchState();
@@ -723,24 +705,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     return kind === 'loading' || kind === 'empty' || kind === 'error' ? kind : null;
   });
   /**
-   * Whether the command footer rows render. They are configured-and-shown in
-   * every popup state EXCEPT loading: while the spinner is up the panel says
-   * one thing only ("results are coming"), and the commands — which would
-   * arrive, shift, and re-order under the user's cursor a moment later —
-   * stay out of it. They return the instant the state settles (results,
-   * empty, or failure), so "no results → Create…" is still one arrow away.
-   */
-  // §4.1 states the loading exclusion as the design; the reasoning above is
-  // why. Note the cost it accepts: while a search is loading there is no
-  // keyboard path to Advanced search…, the magnifier not being a tab stop.
-  // The window closes as soon as the state settles.
-  protected readonly showsFooterRows = computed(
-    () =>
-      this.statusKind() !== 'loading' &&
-      (this.advancedSearch() !== undefined || this.create() !== undefined || this.showsEditRow()),
-  );
-
-  /**
    * Whether the field currently NAMES an entity — as opposed to merely
    * holding one in the value channel.
    *
@@ -753,10 +717,41 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   protected readonly namesEntity = computed(() => this.value() !== null && this.rawText() !== '');
 
-  /** Whether the Edit… footer row renders. */
-  protected readonly showsEditRow = computed(
-    () => this.edit() !== undefined && this.namesEntity(),
-  );
+  /**
+   * The command footer rows, in the order they render: each row's option
+   * value (a footer-row sentinel) and its caption. The ONE list of them: the
+   * template draws its rows from it and the keyboard steps over it (see
+   * `optionKeys`), so the two cannot disagree.
+   *
+   * The rows are configured-and-shown in every popup state EXCEPT loading:
+   * while the spinner is up the panel says one thing only ("results are
+   * coming"), and the commands — which would arrive, shift, and re-order
+   * under the user's cursor a moment later — stay out of it. They return
+   * the instant the state settles (results, empty, or failure), so "no
+   * results → Create…" is still one arrow away. Edit… shows only while the
+   * field names an entity.
+   */
+  // §4.1 states the loading exclusion as the design; the reasoning above is
+  // why. Note the cost it accepts: while a search is loading there is no
+  // keyboard path to Advanced search…, the magnifier not being a tab stop.
+  // The window closes as soon as the state settles.
+  protected readonly footerRows = computed(() => {
+    const rows: { readonly key: symbol; readonly label: string }[] = [];
+    if (this.statusKind() === 'loading') {
+      return rows;
+    }
+    if (this.advancedSearch() !== undefined) {
+      rows.push({ key: ACTION_ADVANCED, label: this.defaultAdvancedLabel() });
+    }
+    if (this.create() !== undefined) {
+      // The consumer's caption wins over the localized default.
+      rows.push({ key: ACTION_CREATE, label: this.createLabel() ?? this.defaultCreateLabel() });
+    }
+    if (this.edit() !== undefined && this.namesEntity()) {
+      rows.push({ key: ACTION_EDIT, label: this.editLabel() ?? this.defaultEditLabel() });
+    }
+    return rows;
+  });
 
   /** The localized magnifier aria-label. */
   protected readonly magnifierLabel = this.translate('entityPicker.magnifier');
@@ -768,15 +763,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected readonly moreResultsText = computed(() =>
     this.translate('entityPicker.moreResults', { count: this.resultItems().length })(),
   );
+  /** The localized Advanced search… footer-row caption. */
   private readonly defaultAdvancedLabel = this.translate('entityPicker.advancedSearch');
+  /** The localized Create… footer-row caption, when the consumer gives none. */
   private readonly defaultCreateLabel = this.translate('entityPicker.create');
+  /** The localized Edit… footer-row caption, when the consumer gives none. */
   private readonly defaultEditLabel = this.translate('entityPicker.edit');
-  /** The Advanced search… footer-row caption. */
-  protected readonly advancedRowLabel = computed(() => this.defaultAdvancedLabel());
-  /** The Create… footer-row caption (consumer override wins). */
-  protected readonly createRowLabel = computed(() => this.createLabel() ?? this.defaultCreateLabel());
-  /** The Edit… footer-row caption (consumer override wins). */
-  protected readonly editRowLabel = computed(() => this.editLabel() ?? this.defaultEditLabel());
 
   /** The live-region text — announcements on fetch completion only. */
   protected readonly liveText = signal('');
@@ -989,7 +981,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // until the commit gesture, but the box no longer names it.
       const names = this.namesEntity();
       this.resultItems(); // re-apply on option turnover
-      this.showsFooterRows(); // …including footer-row turnover
+      this.footerRows(); // …including footer-row turnover
       const current = this.listboxValue();
       const desired: unknown[] = id === null || !names ? [] : [id];
       if (current.length !== desired.length || current[0] !== desired[0]) {
@@ -997,31 +989,18 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
     });
 
-    // Effect 6: dropdown open/close transitions. ANY re-run that reads
-    // "closed" is a close, even with no open observed before it: input
+    // Effect 6: dropdown open/close transitions. Every transition is
+    // recorded the moment it happens (see onExpandedChange); this effect
+    // acts on the latest one once the task that made it is over. It reads
+    // the record rather than comparing against what it saw last time: input
     // delivered faster than the page renders can open the popup (a
-    // keystroke) and close it again (a pick) between two runs of this
-    // effect, and the search state that keystroke built must still be
-    // reset, or the next open would re-apply the stale rows and their
-    // highlight. The effect only re-runs when the value changed, and the
-    // first run (closed, at construction) has nothing to reset.
-    let wasExpanded = false;
-    let firstRun = true;
+    // keystroke) and close it again (a pick) between two runs, and the
+    // search state that keystroke built must still be reset, or the next
+    // open would re-apply the stale rows and their highlight. A key that
+    // needs the open's search sooner runs the same step itself.
     effect(() => {
-      const isExpanded = this.expanded();
-      const opened = isExpanded && !wasExpanded;
-      wasExpanded = isExpanded;
-      if (firstRun) {
-        firstRun = false;
-        if (!isExpanded) {
-          return;
-        }
-      }
-      if (!isExpanded) {
-        untracked(() => this.onPopupClosed());
-      } else if (opened) {
-        untracked(() => this.onPopupOpened());
-      }
+      this.expanded();
+      untracked(() => this.syncPopup());
     });
 
     // Effect 7: disarm aria's default-highlight machinery on every (per-
@@ -1044,8 +1023,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // mounts a render pass after the overlay attaches (aria's deferred
     // content), so a one-shot hook registered at result time would fire too
     // early and find no listbox. aria's own default-activation machinery is
-    // disarmed (see the hasBeenInteracted effect), so this effect is the
-    // only highlight writer besides the user's arrow keys.
+    // disarmed (see the hasBeenInteracted effect) and the arrow keys issue
+    // requests of their own (see onCaptureKeydown), so this effect is the
+    // only writer that SETS a highlight, besides aria's pointer press.
     afterRenderEffect({
       write: () => {
         const request = this.highlightRequest();
@@ -1053,15 +1033,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         if (request === null || listbox === undefined || !untracked(this.expanded)) {
           return;
         }
-        // Untracked: gotoFirst() READS aria's item/active signals internally —
-        // tracked, this effect would re-run on every arrow-key move and snap
-        // the highlight back to the first result.
+        // Untracked: the option lookup and goto() READ aria's item/active
+        // signals — tracked, this effect would re-run whenever the highlight
+        // or the rows changed and re-apply a request that is long spent.
         untracked(() => {
-          if (request.query !== '' && request.count > 0) {
-            listbox.gotoFirst();
-            listbox.scrollActiveItemIntoView();
-          } else {
+          const option = this.ariaOptions().find((o) => o.value() === request.key);
+          if (option === undefined) {
             listbox._pattern.listBehavior.unfocus();
+          } else {
+            listbox._pattern.listBehavior.goto(option._pattern);
+            listbox.scrollActiveItemIntoView();
           }
         });
         // From here on aria's active option is the truth (see keyboardActiveKey).
@@ -1505,7 +1486,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         { count: items.length },
       );
     }
-    this.scheduleHighlight(query, items.length);
+    // The highlight protocol: a typed (non-pristine) query auto-highlights
+    // the FIRST result so type-then-Enter is the zero-arrow happy path; a
+    // pristine browse list and a fresh empty set highlight NOTHING
+    // (open-then-Tab must never change the selection; footer rows are never
+    // the auto-highlight target).
+    this.scheduleHighlight(
+      query !== '' && items.length > 0 ? untracked(this.itemId)(items[0]) : undefined,
+    );
   }
 
   /**
@@ -1529,35 +1517,94 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   /**
-   * Requests the highlight protocol for a fresh result set: a typed
-   * (non-pristine) query auto-highlights the FIRST result so type-then-
-   * Enter is the zero-arrow happy path; a pristine browse list and a fresh
-   * empty set highlight NOTHING (open-then-Tab must never change the
-   * selection; footer rows are never the auto-highlight target). Applied by
-   * the constructor's after-render effect once the rows exist.
+   * Requests that the option with `key` be highlighted (`undefined`: no
+   * highlight). Issued by a fresh result set and by every arrow key; applied
+   * by the constructor's after-render effect once the rows exist, and
+   * answered by `keyboardActiveKey` until then.
    */
-  private scheduleHighlight(query: string, count: number): void {
-    this.highlightRequest.set({ query, count, seq: ++this.highlightSeq });
+  private scheduleHighlight(key: unknown): void {
+    this.highlightRequest.set({ key, seq: ++this.highlightSeq });
   }
 
-  /** Clears the active option immediately (stale results must not commit). */
+  /**
+   * Clears the highlight immediately (stale results must not commit): both
+   * aria's active option and a request that has not been applied yet, which
+   * would otherwise outlive the rows it was made for.
+   */
   private clearHighlight(): void {
+    this.highlightRequest.set(null);
     untracked(() => this.listbox()?._pattern.listBehavior.unfocus());
   }
 
   /**
+   * The keys of the options the popup holds right now, in listbox order:
+   * the result rows, then the footer rows. Derived from this control's own
+   * state, which every keystroke and every answer updates at once — the
+   * rendered rows only catch up with it on the next render. It reads the
+   * same two lists the template draws its options from, in the same order.
+   */
+  private optionKeys(): unknown[] {
+    return untracked(() => [
+      ...this.resultItems().map((item) => this.idOf(item)),
+      ...this.footerRows().map((row) => row.key),
+    ]);
+  }
+
+  /**
    * Opens or closes the popup, writing aria's combobox model as well as this
-   * control's. The two are joined by a two-way binding, but a binding pushes
-   * only CHANGES, once per render: when aria opens the popup (a keystroke)
-   * and this control closes it again (a pick) before a render runs, the
-   * bound value reads closed at both checks, nothing is pushed, and aria
-   * stays expanded on its own. It would then announce a popup that is gone
-   * and consume the next Enter. Writing both keeps them in step whatever
-   * the timing.
+   * control's. The two are joined by a binding, but a binding pushes only
+   * CHANGES, once per render: when aria opens the popup (a keystroke) and
+   * this control closes it again (a pick) before a render runs, the bound
+   * value reads closed at both checks, nothing is pushed, and aria stays
+   * expanded on its own. It would then announce a popup that is gone and
+   * consume the next Enter. Writing both keeps them in step whatever the
+   * timing.
    */
   private setExpanded(open: boolean): void {
-    this.expanded.set(open);
+    this.onExpandedChange(open);
     untracked(this.combobox)?.expanded.set(open);
+  }
+
+  /**
+   * Records an open or a close of the popup the moment it happens, whether
+   * this control wrote it or aria did (a keystroke or a collapsed ArrowDown
+   * opens, Escape or a blur closes).
+   *
+   * What a transition owes is run later, by `syncPopup`: an open owes its
+   * initial search, a close owes the reset of the search state. A close in
+   * particular cannot be acted on here, because a cell commit closes the
+   * dropdown first and adopts the in-flight search after. But a REOPEN that
+   * arrives before that reset ran must not inherit the rows and the
+   * highlight of the open before it, so the reset is run first.
+   */
+  protected onExpandedChange(open: boolean): void {
+    if (open === untracked(this.expanded)) {
+      return;
+    }
+    if (open && this.popupPending) {
+      this.onPopupClosed(); // the close before this open, not acted on yet
+    }
+    this.expanded.set(open);
+    this.popupPending = true;
+  }
+
+  /**
+   * Acts on the popup's latest open or close, once: issues the initial
+   * search of an open, or resets the search state after a close. Run by the
+   * transition effect, and before it by any key that is decided against the
+   * popup's rows — a key that arrives in the same task as the one that
+   * opened the popup would otherwise meet no rows at all.
+   */
+  private syncPopup(): void {
+    if (!this.popupPending) {
+      return;
+    }
+    this.popupPending = false;
+    if (untracked(this.expanded)) {
+      this.onPopupOpened();
+    } else {
+      this.onPopupClosed();
+    }
   }
 
   /** The dropdown just opened: run the initial (browse or seeded) search. */
@@ -1799,7 +1846,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * The capture-phase keyboard layer on the host — the only reliable
    * pre-emption point against aria's own input listeners. Five cases, all
    * version-locked to aria's current behavior and each guarded by a test
-   * (the Enter case by the tests that deliver keys and Enter in one task):
+   * (the Enter and open-arrow cases by the tests that deliver several keys
+   * in one task):
    *
    * - Readonly, plain vertical arrows: aria expands the collapsed popup on
    *   ArrowDown and is stood down only by its OWN `disabled` input, which
@@ -1820,11 +1868,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    *   thread) would be decided against the previous rows, or dropped when
    *   the listbox has not mounted yet. In grid mode, Enter with no highlight
    *   is the grid's commit instead, handed over as a clean clone.
+   * - Dropdown open, plain vertical arrows: moved HERE, synchronously, over
+   *   the picker's own option list (see `optionKeys`). aria's relay holds
+   *   one key and delivers it after the render, so of several arrows in one
+   *   task only the last would move, among the previous rows, and a commit
+   *   key in that task would not see the move at all. ArrowUp from no
+   *   highlight reaches the LAST option, where aria's own stepping lands
+   *   second-to-last.
    * - Dropdown open, plain Home/End: aria's relay would consume them and
    *   move the highlight; the APG editable-combobox model gives them to the
    *   CARET, so the relay is suppressed and the native caret motion runs.
-   * - Dropdown open, ArrowUp from no highlight: must reach the LAST option,
-   *   where aria's own stepping lands second-to-last.
    */
   private readonly onCaptureKeydown = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -1848,12 +1901,34 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.redispatchAbove(event);
       return;
     }
-    if (isExpanded && event.key === 'Enter' && !this.disabled() && !this.readonly()) {
+    const vertical = event.key === 'ArrowDown' || event.key === 'ArrowUp';
+    if (isExpanded && (vertical || event.key === 'Enter') && !this.disabled() && !this.readonly()) {
       event.stopPropagation(); // aria's deferred relay never sees it
-      // The key that confirms an IME composition (`isComposing`, or WebKit's
-      // 229 status code) belongs to the composition: no pick, no commit, and
-      // no preventDefault, so the conversion completes untouched.
+      // A key pressed during an IME composition (`isComposing`, or WebKit's
+      // 229 status code) belongs to the composition — the Enter that
+      // confirms it, the arrows that walk its candidates: no pick, no
+      // commit, no highlight move, and no preventDefault, so the conversion
+      // runs untouched.
       if (event.isComposing || (event as { readonly keyCode: number }).keyCode === 229) {
+        return;
+      }
+      // The key is decided against the popup's rows: if the popup opened in
+      // this same task, its initial search has to be issued first.
+      this.syncPopup();
+      if (vertical) {
+        // The caret stays where it is while browsing (spec 0006 §4.3).
+        event.preventDefault();
+        // Step from the highlight the picker's state has decided, over the
+        // options that state lists, wrapping at both ends; with nothing
+        // highlighted ArrowDown takes the first option and ArrowUp the last.
+        // A held key's repeats step too, as under aria's own binding.
+        const keys = this.optionKeys();
+        const count = keys.length;
+        if (count > 0) {
+          const at = keys.indexOf(this.keyboardActiveKey()); // -1: nothing highlighted
+          const to = event.key === 'ArrowDown' ? at + 1 : Math.max(at, 0) + count - 1;
+          this.scheduleHighlight(keys[to % count]);
+        }
         return;
       }
       const key = this.keyboardActiveKey();
@@ -1876,22 +1951,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     }
     if (isExpanded && (event.key === 'Home' || event.key === 'End')) {
       event.stopPropagation();
-      return;
-    }
-    if (isExpanded && event.key === 'ArrowUp' && this.domActiveKey() === undefined) {
-      // ArrowUp with nothing highlighted must wrap to the LAST option.
-      // aria's prev() steps from an active index of -1, so it lands on the
-      // second-to-last row instead — skipping whatever sits at the bottom
-      // (Create…, or Edit… while the field names an entity).
-      const listbox = untracked(() => this.listbox());
-      if (listbox !== undefined) {
-        event.stopPropagation();
-        event.preventDefault();
-        untracked(() => {
-          listbox._pattern.listBehavior.last();
-          listbox.scrollActiveItemIntoView();
-        });
-      }
     }
   };
 
@@ -1916,6 +1975,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** Mirrors keystrokes into the raw channel and queues the search. */
   protected onInput(): void {
     const text = this.inputElement.value; // the DOM IS the source here
+    // Typing opens the popup. aria's own input listener does that too, but
+    // the open has to be recorded BEFORE the search below builds its state:
+    // an open that follows a close in the same task resets what that close
+    // left behind, and must not reset this keystroke's search with it. Doing
+    // it here keeps that order whichever listener runs first.
+    if (!this.disabled()) {
+      this.setExpanded(true);
+    }
     this.editedSinceFocus = true;
     this.authoredText = null; // whatever is on screen is the user's now
     this.settledResult = null; // …and the stored answer described the old text
@@ -2024,8 +2091,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * Input keyboard: `Alt+ArrowDown` opens the dropdown (both modes); plain
    * `ArrowUp` opens it standalone (plain `ArrowDown` is aria's own
    * collapsed binding); Tab commits a highlighted entity row without being
-   * consumed. Esc is aria's; Enter-while-open is the capture layer's
-   * (see `onCaptureKeydown`).
+   * consumed. Esc is aria's; Enter and the plain vertical arrows while
+   * open are the capture layer's (see `onCaptureKeydown`).
    */
   protected onInputKeydown(event: KeyboardEvent): void {
     if (this.disabled() || this.readonly()) {
@@ -2064,6 +2131,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (!untracked(this.expanded)) {
       return;
     }
+    this.syncPopup(); // a popup opened in this same task has rows only after its search
     const key = this.keyboardActiveKey();
     if (key !== undefined && typeof key !== 'symbol') {
       const item = untracked(this.resultItems).find((i) => untracked(this.itemId)(i) === key);
@@ -2082,36 +2150,32 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   /**
-   * The option a keyboard commit gesture (Enter, Tab) acts on: an entity id
-   * or a footer-row sentinel, or `undefined` when nothing is highlighted.
+   * The option the keyboard acts on — the one a commit gesture (Enter, Tab)
+   * commits and an arrow key steps from: an entity id or a footer-row
+   * sentinel, or `undefined` when nothing is highlighted.
    *
-   * Usually that is aria's active option. But the highlight protocol runs
-   * after the fresh rows render, and keys can arrive before that render: a
-   * barcode scanner, a text expander or a stalled main thread delivers the
-   * last keystroke and the commit key back to back. The DOM then still
-   * shows the previous rows, whose highlight the keystroke cleared. The
-   * fresh result set has already decided what the highlight will be, so a
-   * PENDING request answers instead: a typed query's first result, or
-   * nothing. The committed value then never depends on whether a render ran
-   * between the keystroke and the commit key.
+   * Usually that is aria's active option. But a highlight is applied after
+   * the rows render, and keys can arrive before that render: a barcode
+   * scanner, a text expander or a stalled main thread delivers keystrokes,
+   * arrows and the commit key back to back. The DOM then still shows the
+   * previous rows and the previous highlight. The fresh result set and the
+   * arrows have already decided what the highlight will be, so a PENDING
+   * request answers instead. What a key commits then never depends on
+   * whether a render ran before it.
    */
   private keyboardActiveKey(): unknown {
     // spec 0006 §4.3 ties the auto-highlight to the fresh result set, and
     // §4.2 renders a synchronous set "in the same turn": the highlight is a
-    // fact of the result set, not of the paint.
+    // fact of the picker's state, not of the paint.
     const request = untracked(this.highlightRequest);
-    if (request === null || request.seq === this.appliedHighlightSeq) {
-      return this.domActiveKey();
-    }
-    // A request whose rows were superseded before they rendered (a newer
-    // keystroke put the search back to loading) highlights nothing.
-    const state = untracked(this.searchState);
-    return request.query !== '' &&
-      request.count > 0 &&
-      state.kind === 'results' &&
-      state.query === request.query
-      ? untracked(this.itemId)(state.items[0])
-      : undefined;
+    const key =
+      request === null || request.seq === this.appliedHighlightSeq
+        ? this.domActiveKey()
+        : request.key;
+    // Only an option the popup still lists counts: a highlight left on a row
+    // that the state has since dropped (and the next render will remove)
+    // commits nothing.
+    return this.optionKeys().includes(key) ? key : undefined;
   }
 
   /** Commits when an option row is clicked; other panel clicks do nothing. */

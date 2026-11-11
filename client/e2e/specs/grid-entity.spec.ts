@@ -230,6 +230,110 @@ test.describe('input delivered faster than the page renders', () => {
   });
 });
 
+// The same bursts with arrow keys in them. While the dropdown is open the
+// arrows are the picker's: each one moves the highlight the moment it
+// arrives, so the commit key picks the row the same keys reach when paced,
+// and the grid's own arrow navigation never runs.
+test.describe('arrow keys delivered faster than the page renders', () => {
+  test('a keystroke, ArrowDown and Enter in one burst pick the SECOND result with NO move', async ({
+    page,
+  }) => {
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(4);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '2'); // the pick IS the edit
+    await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    await expectCellText(page, 2, 1, 'Alan Grey');
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('the whole entry in one burst, from the type-to-edit key through an arrow to Enter, picks the second result', async ({
+    page,
+  }) => {
+    await activateCell(page, 4, 1); // row 4's agent starts empty
+    await pressInOneTask(page, ['A', 'l', 'ArrowDown', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[4].agentId).toBe(4);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '4');
+    await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('a keystroke, ArrowDown and Tab in one burst commit the second result and move', async ({
+    page,
+  }) => {
+    await activateCell(page, 1, 1);
+    await page.keyboard.press('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Tab']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[1].agentId).toBe(4);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '1');
+    await expect(activeCell(page)).toHaveAttribute('data-col', '2'); // commit-and-move
+    await expect(cell(page, 1, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('the dropdown chord, two arrows and Enter in one burst pick the second browse row', async ({
+    page,
+  }) => {
+    await activateCell(page, 2, 1); // row 2's agent starts empty
+    const before = await searchCalls(page);
+    // Paced: the chord opens the editor on a browse list with no highlight,
+    // the arrows walk to its second row, Enter commits it with no move.
+    await pressInOneTask(page, ['Alt+ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(2);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '2');
+    await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+    expect((await searchCalls(page)) - before).toBe(1); // one browse search
+  });
+
+  test('an arrow and Enter right after an async answer lands, before it renders, pick its second result', async ({
+    page,
+  }) => {
+    await page.getByTestId('search-delay').fill('200'); // asynchronous search
+    await holdResponses(page, 'search');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await page.keyboard.type('l');
+    await expect(pickerInput(page)).toHaveValue('Al');
+    await expect(heldResponses(page, 'search')).toHaveText('2'); // 'A' and 'Al', unanswered
+    await expect(panel(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['ArrowDown', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(4);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '2');
+    await expect(cell(page, 2, 1)).not.toHaveClass(/tm-grid__cell--error/);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+
+  test('an arrow before the async search answers moves nothing: Enter is still the grid commit', async ({
+    page,
+  }) => {
+    // No answer, no option: the arrow has nowhere to go, and Enter commits
+    // the typed text and moves, decided by the search the keys started.
+    await page.getByTestId('search-delay').fill('200');
+    await holdResponses(page, 'search');
+    await activateCell(page, 2, 1);
+    await page.keyboard.press('A');
+    await expect(pickerInput(page)).toHaveValue('A');
+    await pressInOneTask(page, ['l', 'i', 'c', 'e', 'ArrowDown', 'Enter']);
+    await expect(editor(page)).toHaveCount(0);
+    await expect(activeCell(page)).toHaveAttribute('data-row', '3'); // commit-and-move
+    await expect(cell(page, 2, 1).locator('.tm-grid__cell-spin')).toBeVisible();
+    await releaseResponses(page, 'search');
+    await expect.poll(async () => (await lines(page))[2].agentId).toBe(3);
+    await expect(page.getByTestId('resolver-calls')).toHaveText('0');
+  });
+});
+
 test('the two-stage Esc: dropdown first, then the grid cancel', async ({ page }) => {
   await activateCell(page, 0, 1);
   await page.keyboard.press('F2');

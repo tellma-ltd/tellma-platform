@@ -577,6 +577,124 @@ test.describe('input delivered faster than the page renders', () => {
   });
 });
 
+// The same bursts with arrow keys in them. Every arrow moves the highlight
+// the moment it arrives, over the rows the picker's state has decided, so
+// the commit key picks the row the same keys reach when paced.
+test.describe('arrow keys delivered faster than the page renders', () => {
+  test('a keystroke, ArrowDown and Enter in one burst commit the SECOND result', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('the first keystrokes, ArrowDown and Enter in one burst commit the second result', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'ArrowDown', 'Enter']); // before the popup has mounted
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('a keystroke, ArrowDown and Tab in one burst commit the second result', async ({ page }) => {
+    await useSyncSearch(page);
+    const before = Number(await page.getByTestId('picked-count').textContent());
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Tab']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    expect(Number(await page.getByTestId('picked-count').textContent()) - before).toBe(1);
+  });
+
+  test('every arrow of a burst moves the highlight, and the paint follows', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(activeOption(page)).toHaveText('Alice Green');
+    await appStable(page);
+    // Alice Green, Alan Grey, Advanced search…, Create supplier…: three
+    // arrows down from the first row reach the last one.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowDown', 'ArrowDown']);
+    await expect(activeOption(page)).toHaveText('Create supplier…');
+    await expect(input(page)).toHaveAttribute(
+      'aria-activedescendant',
+      (await activeOption(page).getAttribute('id'))!,
+    );
+    // One more wraps to the top, and ArrowUp from there wraps back down.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowUp', 'ArrowUp']);
+    await expect(activeOption(page)).toHaveText('Advanced search…');
+    expect((await model(page)).supplierId).toBeNull(); // arrows alone commit nothing
+  });
+
+  test('ArrowDown that opens the popup, a second ArrowDown and Enter in one burst pick the first row', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    const before = await searchCalls(page);
+    // Paced: the first arrow opens the browse list with no highlight, the
+    // second highlights its first row, Enter commits it.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Adam Brown');
+    expect((await model(page)).supplierId).toBe(1);
+    expect((await searchCalls(page)) - before).toBe(1); // one browse search
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow onto a footer row and Enter in one burst open its page', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    // No results: Create supplier… is two arrows and Enter away (Advanced
+    // search… comes first).
+    await pressInOneTask(page, ['Z', 'e', 'b', 'r', 'a', 'ArrowDown', 'ArrowDown', 'Enter']);
+    await expect(page.getByTestId('create-name')).toHaveValue('Zebra');
+    await expect(fieldError(page)).toHaveText(''); // never the fail-fast of an unhighlighted Enter
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow and Enter right after an async answer lands, before it renders, commit its second result', async ({
+    page,
+  }) => {
+    await holdResponses(page, 'search'); // the story's search is asynchronous by default
+    await input(page).fill('Al');
+    await expect(heldResponses(page, 'search')).toHaveText('1'); // asked, unanswered
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow before the async search answers moves nothing: Enter still resolves the text', async ({
+    page,
+  }) => {
+    // While the spinner is up the popup has no option, so the arrow has
+    // nowhere to go and Enter resolves the typed text, as when paced.
+    await holdResponses(page, 'search');
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'i', 'c', 'e', ' ', 'G', 'r', 'ArrowDown', 'Enter']);
+    await expect(input(page)).toBeFocused();
+    await expect(input(page)).toHaveAttribute('aria-busy', 'true');
+    await releaseResponses(page, 'search');
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+});
+
 test.describe('blur resolution', () => {
   test('a unique match auto-picks even when the response lands after the departure', async ({
     page,

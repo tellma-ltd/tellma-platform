@@ -27,6 +27,7 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new ShapeRequirementContributionRealizer())
                 .Add(new ModelContributionRealizer())
                 .Add(new CalendarContributionRealizer())
+                .Add(new ValueSetContributionRealizer())
                 .Add(new StackContributionRealizer());
         }
 

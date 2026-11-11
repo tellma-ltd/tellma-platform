@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using OpenIddict.Abstractions;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
@@ -58,6 +59,21 @@ namespace Tellma.Identity.Services.Invitations
         /// <returns>True when the two share scheme, host and port.</returns>
         internal static bool IsSameOrigin(string returnUrl, string origin)
         {
+            return TryGetSameOriginUri(returnUrl, origin, out _);
+        }
+
+        /// <summary>
+        ///     Parses an absolute url that belongs to an origin, by the rule of
+        ///     <see cref="IsSameOrigin" />. A caller that goes on to write the url into a page uses
+        ///     the parsed form, so what the browser is handed is exactly what was compared.
+        /// </summary>
+        /// <param name="returnUrl">The candidate destination.</param>
+        /// <param name="origin">The client's registered origin.</param>
+        /// <param name="destination">The parsed destination, when it is on the origin.</param>
+        /// <returns>True when the two share scheme, host and port.</returns>
+        internal static bool TryGetSameOriginUri(string returnUrl, string origin, [NotNullWhen(true)] out Uri? destination)
+        {
+            destination = null;
             if (!Uri.TryCreate(returnUrl, UriKind.Absolute, out Uri? candidate)
                 || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? registered))
             {
@@ -66,7 +82,7 @@ namespace Tellma.Identity.Services.Invitations
 
             // Only the web schemes, so a registration can never be talked into authorizing a
             // destination the browser would hand to something other than a page.
-            return (candidate.Scheme == Uri.UriSchemeHttp || candidate.Scheme == Uri.UriSchemeHttps)
+            bool sameOrigin = (candidate.Scheme == Uri.UriSchemeHttp || candidate.Scheme == Uri.UriSchemeHttps)
                 && string.Equals(candidate.Scheme, registered.Scheme, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(candidate.Host, registered.Host, StringComparison.OrdinalIgnoreCase)
                 && candidate.Port == registered.Port
@@ -74,6 +90,9 @@ namespace Tellma.Identity.Services.Invitations
                 // A userinfo section is how "https://acme.example.com@evil.test" is made to read
                 // like the registered origin at a glance. Nothing legitimate needs one.
                 && string.IsNullOrEmpty(candidate.UserInfo);
+
+            destination = sameOrigin ? candidate : null;
+            return sameOrigin;
         }
 
         /// <summary>The origin a client is registered to receive users at, when it has one.</summary>

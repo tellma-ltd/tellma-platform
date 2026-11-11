@@ -86,6 +86,26 @@ test.describe('opening', () => {
     expect(distanceToBox(point, box!)).toBeLessThan(40);
   });
 
+  test('@cross-engine a right-click outside the selection leaves focus in the menu', async ({
+    page,
+  }) => {
+    await cell(page, 0, 0).click();
+    await cell(page, 8, 2).click({ button: 'right' });
+    await expect(menuPanel(page)).toBeVisible();
+
+    // The grid moved its active cell to the press target; it must not take
+    // focus back from the menu, whose arrow keys would then be dead.
+    const focused = menuPanel(page).locator('.tm-menu__item:focus .tm-menu__label');
+    await expect(focused).toHaveText('Cut');
+    await page.keyboard.press('ArrowDown');
+    await expect(focused).toHaveText('Copy');
+
+    // Closing hands focus to the cell the menu was opened on.
+    await page.keyboard.press('Escape');
+    await expect(menuPanel(page)).toHaveCount(0);
+    await expect(cell(page, 8, 2)).toBeFocused();
+  });
+
   test('Shift+F10 opens the menu at the active cell', async ({ page }) => {
     await activateCell(page, 5, 1);
     const cellBox = await cell(page, 5, 1).boundingBox();
@@ -130,6 +150,26 @@ test.describe('items', () => {
     // the async read path and is enabled on an editable grid (§8.5); the
     // denied-read degradation is covered in grid-clipboard.spec.ts.
     await expect(menuItem(page, 'Paste')).toHaveAttribute('aria-disabled', 'false');
+    await page.keyboard.press('Escape');
+  });
+
+  test('shortcut hints render as key caps, outside the item names', async ({ page }) => {
+    await activateCell(page, 2, 0);
+    await page.keyboard.press('Shift+F10');
+    await expect(menuPanel(page)).toBeVisible();
+
+    /** The key caps of the item named exactly `name`. */
+    const caps = (name: string) => menuItem(page, name).locator('tm-kbd.tm-menu__shortcut kbd');
+    // One cap per key, the modifier written for the platform.
+    await expect(caps('Cut')).toHaveText([/^(Ctrl|⌘)$/, 'X']);
+    await expect(caps('Copy')).toHaveText([/^(Ctrl|⌘)$/, 'C']);
+    await expect(caps('Paste')).toHaveText([/^(Ctrl|⌘)$/, 'V']);
+    await expect(caps('Insert 1 row above')).toHaveCount(3);
+    await expect(caps('Insert 1 row above').last()).toHaveText('+');
+    await expect(caps('Delete 1 row').last()).toHaveText('-');
+    // An item with no shortcut draws none; the caps are not read out.
+    await expect(caps('Copy with headers')).toHaveCount(0);
+    await expect(menuItem(page, 'Cut').locator('tm-kbd')).toHaveAttribute('aria-hidden', 'true');
     await page.keyboard.press('Escape');
   });
 

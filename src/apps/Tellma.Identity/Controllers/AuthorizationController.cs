@@ -37,6 +37,7 @@ namespace Tellma.Identity.Controllers
     /// <param name="engineOptions">The engine options (route prefix).</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="timeProvider">The clock.</param>
+    [RequestedLanguage]
     public sealed class AuthorizationController(
         IOpenIddictApplicationManager applicationManager,
         IAuthenticationPolicyService policyService,
@@ -176,7 +177,7 @@ namespace Tellma.Identity.Controllers
                     WriteReauthMarker(attemptId, nowUnixSeconds);
                 }
 
-                return RedirectToLogin(evaluation, stepUp: assurance is not null);
+                return RedirectToLogin(request, evaluation, stepUp: assurance is not null);
             }
 
             TellmaIdentityUser? user = await userManager.GetUserAsync(cookie.Principal!);
@@ -207,7 +208,7 @@ namespace Tellma.Identity.Controllers
                     WriteReauthMarker(attemptId, nowUnixSeconds);
                 }
 
-                return RedirectToLogin(fresh, stepUp: false);
+                return RedirectToLogin(request, fresh, stepUp: false);
             }
 
             if (user.LifecycleState != UserLifecycleState.Active)
@@ -397,7 +398,7 @@ namespace Tellma.Identity.Controllers
         ///     right methods. The query is advisory UI state — enforcement happens back here, on
         ///     the pushed request, when the browser returns.
         /// </summary>
-        private RedirectResult RedirectToLogin(PolicyEvaluation evaluation, bool stepUp)
+        private RedirectResult RedirectToLogin(OpenIddictRequest request, PolicyEvaluation evaluation, bool stepUp)
         {
             // Rebuild the exact authorize URL (query for GET, form for POST) as the return target.
             string returnUrl = Request.HasFormContentType
@@ -424,6 +425,14 @@ namespace Tellma.Identity.Controllers
             if (evaluation.RequiredTier == AcrTiers.Aal3)
             {
                 query.Add("tier", evaluation.RequiredTier);
+            }
+
+            // The language the client asked for (spec 0010 §A.10), read from the validated
+            // request so a pushed request's value is found as readily as a query's. The return
+            // address holds it too, but nested where the sign-in pages do not look.
+            if (CarriedQuery.NormalizeUiLocales(request.UiLocales) is { } uiLocales)
+            {
+                query.Add(CarriedQuery.UiLocalesName, uiLocales);
             }
 
             return Redirect(prefix + "/Identity/Account/Login" + query.ToQueryString());

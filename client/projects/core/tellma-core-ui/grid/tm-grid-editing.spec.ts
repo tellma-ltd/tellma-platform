@@ -1466,6 +1466,56 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.resolveCalls).toHaveLength(0);
   });
 
+  // The same burst with an arrow in it: the arrow moves the highlight the
+  // moment it arrives, so the commit key picks the row the same keys reach
+  // when paced, and the grid sees none of the arrows (the dropdown is open).
+  it('type-to-edit, the rest of the text, ArrowDown and Enter in ONE task commit the SECOND result with NO move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A'); // opens the seeded editor synchronously
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Al');
+    keydown(input, 'ArrowDown');
+    keydown(input, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4); // Alan Grey, the row below the first result
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // no move
+    expect(host.resolveCalls).toHaveLength(0);
+  });
+
+  it('type-to-edit, the rest of the text, ArrowDown and Tab in ONE task commit the second result AND move', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'A');
+    const input = pickerInput(scroller)!;
+    typeInto(input, 'Al');
+    keydown(input, 'ArrowDown');
+    keydown(input, 'Tab');
+    await stable(fixture);
+    expect(host.model()[0].agentId).toBe(4);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 2)); // commit-and-move
+    expect(host.resolveCalls).toHaveLength(0);
+  });
+
+  it('the dropdown chord from navigation, two arrows and Enter in ONE task commit the second browse row', async () => {
+    const { fixture, host, scroller } = await setupEntity();
+    await activateAgentCell(fixture, scroller);
+    keydown(scroller, 'ArrowDown', { altKey: true }); // opens editor and dropdown synchronously
+    const input = pickerInput(scroller)!;
+    keydown(input, 'ArrowDown'); // the browse list highlights nothing: its first row
+    keydown(input, 'ArrowDown'); // its second row
+    keydown(input, 'Enter');
+    await stable(fixture);
+    await stable(fixture);
+    expect(host.searchCalls).toEqual(['']); // one browse search
+    expect(host.model()[0].agentId).toBe(2);
+    expect(pickerInput(scroller)).toBeNull();
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 1)); // no move
+  });
+
   it('Alt+ArrowDown from navigation opens editor AND browse dropdown in one press', async () => {
     const { fixture, host, scroller } = await setupEntity();
     await activateAgentCell(fixture, scroller);

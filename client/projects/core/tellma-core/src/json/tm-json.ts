@@ -51,3 +51,9 @@ export type TmDecimal = string & { readonly [tmDecimalBrand]: true };
  * a {@link TmDecimal}, because its digits may exceed what a number holds.
  */
 export type TmId = number | TmDecimal;
+
+/**
+ * A JSON Schema (draft 2020-12) object schema, as plain JSON: the metadata
+ * describes an action's arguments with one.
+ */
+export type TmJsonSchema = TmJsonObject;
