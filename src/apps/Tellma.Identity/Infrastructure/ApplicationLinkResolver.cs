@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using System.Text.Json;
 using Tellma.Identity.Options;
+using Tellma.Identity.Services.Invitations;
 using Tellma.Identity.Services.Provisioning;
 
 namespace Tellma.Identity.Infrastructure
@@ -22,10 +23,11 @@ namespace Tellma.Identity.Infrastructure
     ///         The account pages are reached out of band, so nothing about the request says which
     ///         of a multi-distribution authority's applications the user belongs to. A caller may
     ///         say so with a <c>client_id</c>, which is resolved against the registered clients and
-    ///         answered with that client's own registered origin — never with a URL the caller
-    ///         supplied, so the link cannot be pointed anywhere the client is not already trusted
-    ///         to receive users. A single-application deployment can instead configure one URL.
-    ///         With neither, there is no link rather than a guess.
+    ///         answered with that client's own registered origin. A caller may also name the page
+    ///         it left, and that address is used only when it lies on that same registered origin —
+    ///         so the link cannot be pointed anywhere the client is not already trusted to receive
+    ///         users. A single-application deployment can instead configure one URL. With neither,
+    ///         there is no link rather than a guess.
     ///     </para>
     /// </summary>
     /// <param name="applicationManager">The registered-client store.</param>
@@ -36,9 +38,10 @@ namespace Tellma.Identity.Infrastructure
     {
         /// <summary>Resolves the back link for a request.</summary>
         /// <param name="clientId">The client the caller named, when it named one.</param>
+        /// <param name="returnUrl">The address in that client's application the caller asked to return to.</param>
         /// <param name="cancellationToken">Aborts the lookup.</param>
         /// <returns>The link, or null when neither a client nor configuration supplies one.</returns>
-        public async Task<ApplicationLink?> ResolveAsync(string? clientId, CancellationToken cancellationToken)
+        public async Task<ApplicationLink?> ResolveAsync(string? clientId, string? returnUrl, CancellationToken cancellationToken)
         {
             if (!string.IsNullOrWhiteSpace(clientId)
                 && await applicationManager.FindByClientIdAsync(clientId, cancellationToken) is { } application)
@@ -51,11 +54,22 @@ namespace Tellma.Identity.Infrastructure
                 if (TellmaClientProperties.IsSet(properties, TellmaClientProperties.FirstParty)
                     && TellmaClientProperties.Get(properties, TellmaClientProperties.Origin) is { } origin)
                 {
+                    // The page the caller left, when it is on the client's own origin; otherwise
+                    // the origin's root. The link is written from the parsed address rather than
+                    // from the caller's text, so a browser cannot read it differently from the
+                    // comparison that allowed it.
+                    string url = !string.IsNullOrWhiteSpace(returnUrl)
+                        && InvitationReturnUrlValidator.TryGetSameOriginUri(returnUrl, origin, out Uri? destination)
+                            ? destination.AbsoluteUri
+                            : origin;
+
                     return new ApplicationLink(
-                        origin, await applicationManager.GetLocalizedDisplayNameAsync(application, cancellationToken));
+                        url, await applicationManager.GetLocalizedDisplayNameAsync(application, cancellationToken));
                 }
             }
 
+            // A third-party or unknown client, or none: the configured application, never an
+            // address the caller supplied, because there is no registration to hold it against.
             return options.Value.Ui.ApplicationUrl is { } configured
                 ? new ApplicationLink(configured, Name: null)
                 : null;

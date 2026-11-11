@@ -65,7 +65,17 @@ namespace Tellma.Identity.Controllers
             }
 
             string fallback = Url.Page("/Account/Login", new { area = "Identity" })!;
-            return LocalRedirect(ReturnUrlValidator.Sanitize(returnUrl, fallback));
+            string destination = ReturnUrlValidator.Sanitize(returnUrl, fallback);
+
+            // A page that was opened with a requested language states it in its own address,
+            // where it outranks the cookie written above. The choice made here replaces it, or
+            // the user would be returned to the very language they just chose to leave.
+            if (languages.IsOffered(culture))
+            {
+                destination = CarriedQuery.WithUiLocales(destination, culture!);
+            }
+
+            return LocalRedirect(destination);
         }
     }
 }
