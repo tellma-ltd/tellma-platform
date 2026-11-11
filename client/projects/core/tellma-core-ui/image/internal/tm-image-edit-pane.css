@@ -140,11 +140,10 @@
   background: var(--color-primary);
   color: var(--color-on-primary);
   cursor: pointer;
-}
-
-.tm-image__done > svg {
-  inline-size: var(--image-crop-done-glyph-size);
-  block-size: var(--image-crop-done-glyph-size);
+  /* The check is a tm-icon: the done size, and a heavier stroke than the
+     icon default so it holds up against the filled primary pill. */
+  --icon-size: var(--image-crop-done-glyph-size);
+  --icon-stroke-width: 2.25;
 }
 
 .tm-image__done:focus-visible {

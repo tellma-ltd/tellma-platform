@@ -8,7 +8,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
-import { Check, ChevronRight, CircleAlert, Plus } from 'lucide';
+import { Check, ChevronRight, CircleAlert, Plus, Search } from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
@@ -233,6 +233,8 @@ class ExampleHost {
   protected readonly onImageChange = (): void => undefined;
   // The icon examples' direct-data binding: library code passes Lucide data.
   protected readonly checkIcon = Check;
+  // The button and input examples' projected glyph.
+  protected readonly searchIcon = Search;
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();

@@ -4,8 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { Upload } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 
 import { tmMaxMegabytes } from './internal/byte-size';
 import { tmAcquireDocumentDragGuard } from './internal/document-drag-guard';
@@ -38,6 +40,7 @@ import { TmFilePicker } from './tm-file-picker';
  */
 @Component({
   selector: 'tm-dropzone',
+  imports: [TmIcon],
   hostDirectives: [
     {
       directive: TmFilePicker,
@@ -46,20 +49,7 @@ import { TmFilePicker } from './tm-file-picker';
     },
   ],
   template: `
-    <svg
-      class="tm-dropzone__icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.75"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" x2="12" y1="3" y2="15" />
-    </svg>
+    <tm-icon class="tm-dropzone__icon" [svg]="uploadIcon" />
     <p class="tm-dropzone__hint">
       {{ hintLabel() }}
       <span class="tm-dropzone__browse">{{ browseLabel() }}</span>
@@ -91,6 +81,8 @@ export class TmDropzone {
   /** The host-directive picker — the shared engine + browse path. */
   protected readonly picker = inject(TmFilePicker);
 
+  /** The drop target's glyph data. */
+  protected readonly uploadIcon = Upload;
   /** Localized drop-or-paste hint line. */
   protected readonly hintLabel = this.translate('filePicker.hint');
   /** Localized "browse" text (presentational — the whole zone is the button). */

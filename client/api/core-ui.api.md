@@ -289,9 +289,17 @@ export class TmBreakpoints {
 
 // @public
 export class TmClientCache {
-    clearAll(): Promise<void>;
+    clearAll(options?: TmClientCacheClearOptions): Promise<void>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmClientCache, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmClientCache>;
+}
+
+// @public
+export type TmClientCacheArea = 'cache-storage' | 'indexeddb' | 'local-storage' | 'session-storage';
+
+// @public
+export interface TmClientCacheClearOptions {
+    readonly keep?: (name: string, area: TmClientCacheArea) => boolean;
 }
 
 // @public

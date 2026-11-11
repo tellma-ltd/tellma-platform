@@ -18,6 +18,7 @@ import { GridReadonlyStory } from './grid/grid-readonly-story';
 import { FilePreviewStory } from './file-preview/file-preview-story';
 import { FilesStory } from './files/files-story';
 import { FormFieldStory } from './form-field/form-field-story';
+import { BasicsGlyphsStory } from './glyphs/basics-glyphs-story';
 import { GlyphsStory } from './glyphs/glyphs-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridLargeStory } from './grid/tree-grid-large-story';
@@ -80,6 +81,7 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'file-preview', title: 'File preview (TmFilePreview)', component: FilePreviewStory },
   { id: 'select', title: 'Select (tm-select)', component: SelectStory },
   { id: 'glyphs', title: 'Foundation glyphs (tm-icon)', component: GlyphsStory },
+  { id: 'basics-glyphs', title: 'Basics glyphs (tm-icon)', component: BasicsGlyphsStory },
   {
     id: 'entity-picker',
     title: 'Entity picker (tm-entity-picker)',

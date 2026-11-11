@@ -77,6 +77,18 @@ describe('tmDeleteExpiredUser', () => {
     await expect(tmDeleteExpiredUser(indexedDB, null, '0b4f', NEVER)).resolves.toBeDefined();
   });
 
+  it('yields its connection to a delete of the database instead of blocking it', async () => {
+    await seed();
+    const run = tmDeleteExpiredUser(indexedDB, null, '0b4f', NEVER);
+    // Queued behind the expiry's open, the delete reaches its open connection.
+    const request = indexedDB.deleteDatabase(TM_STORE_DATABASE);
+    let blocked = false;
+    request.onblocked = () => (blocked = true);
+    await settle(request);
+    await run;
+    expect(blocked).toBe(false);
+  });
+
   it('ends when the time box ends, even while the delete hangs', async () => {
     const hanging = { open: () => ({}) } as unknown as IDBFactory;
     const caching = { delete: () => NEVER.then(() => true) };

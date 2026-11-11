@@ -71,13 +71,9 @@
 }
 
 .tm-date-popup__nav-glyph {
-  inline-size: var(--date-picker-nav-glyph-size);
-  block-size: var(--date-picker-nav-glyph-size);
-}
-
-/* The paging chevrons are direction-mapped like the grid's arrows. */
-:host-context([dir='rtl']) .tm-date-popup__nav-glyph {
-  transform: scaleX(-1);
+  /* A tm-icon whose data mirrors under a right-to-left direction, so the
+     chevrons follow the popup's direction, live flips included. */
+  --icon-size: var(--date-picker-nav-glyph-size);
 }
 
 .tm-date-popup__view-switch {

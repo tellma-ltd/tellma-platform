@@ -161,11 +161,8 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-}
-
-.tm-modal__close svg {
-  inline-size: var(--modal-icon-size);
-  block-size: var(--modal-icon-size);
+  /* The X inside is a tm-icon. */
+  --icon-size: var(--modal-icon-size);
 }
 
 .tm-modal__close:hover {

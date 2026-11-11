@@ -6,6 +6,7 @@
 
 import * as _angular_core from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import * as lucide from 'lucide';
 import { TemplateRef } from '@angular/core';
 
 // @public
@@ -17,6 +18,7 @@ export type TmBlobFetcher = (url: string, options?: TmBlobFetchOptions) => Promi
 // @public
 export interface TmBlobFetchOptions {
     readonly ifNoneMatch?: string;
+    readonly signal?: AbortSignal;
 }
 
 // @public
@@ -40,6 +42,13 @@ export class TmImage {
     protected readonly errorLabel: _angular_core.Signal<string>;
     readonly etag: _angular_core.InputSignal<string | null>;
     protected readonly fitting: _angular_core.WritableSignal<FittingSession | null>;
+    protected readonly glyphs: {
+        readonly error: lucide.IconNode;
+        readonly empty: lucide.IconNode;
+        readonly replace: lucide.IconNode;
+        readonly adjust: lucide.IconNode;
+        readonly remove: lucide.IconNode;
+    };
     protected readonly hasImage: _angular_core.Signal<boolean>;
     readonly height: _angular_core.InputSignal<number>;
     readonly imageChange: _angular_core.OutputEmitterRef<TmImageEdit | null>;

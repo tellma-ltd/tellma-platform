@@ -40,8 +40,8 @@
 }
 
 .tm-dropzone__icon {
-  inline-size: var(--files-dropzone-icon-size);
-  block-size: var(--files-dropzone-icon-size);
+  /* A tm-icon, at the dropzone's icon size. */
+  --icon-size: var(--files-dropzone-icon-size);
   color: var(--text-muted);
 }
 

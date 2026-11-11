@@ -32,22 +32,15 @@ export const PendingSave = {
   template: `<button tmButton variant="primary" [pending]="true">Save</button>`,
 };
 
-/** An icon-only button must carry an accessible name. */
+/**
+ * An icon-only button must carry an accessible name. The glyph is a
+ * `tm-icon`, sized by the button; `searchIcon` is the `Search` data from
+ * `lucide` (or use `name` with a registered icon).
+ */
 export const IconOnly = {
   template: `
     <button tmButton aria-label="Search">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
+      <tm-icon [svg]="searchIcon" />
     </button>
   `,
 };

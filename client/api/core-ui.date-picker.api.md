@@ -35,6 +35,10 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     focus(options?: FocusOptions): void;
     protected readonly formField: TmFormField | null;
+    protected readonly glyphs: {
+        readonly error: lucide.IconNode;
+        readonly calendar: lucide.IconNode;
+    };
     readonly invalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
     isPopupOpen(): boolean;
     protected readonly l10n: TmL10n;
