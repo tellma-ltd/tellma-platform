@@ -72,6 +72,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The statement being composed, if any; one at a time.</summary>
         private StatementDraft? _open;
 
+        /// <summary>Whether a contributor failed during a stage, which leaves the batch unusable.</summary>
+        private bool _broken;
+
         /// <summary>Creates a batch.</summary>
         /// <param name="executor">The executor that runs it.</param>
         /// <param name="connection">Where its round trip gets a connection.</param>
@@ -257,11 +260,19 @@ namespace Tellma.Core.Data.Batches
             options ??= SqlOptions.None;
             EnsureComposing();
 
-            // --- Refusals at append: a write outside the caller's authority, an undeclared id table ---
+            // The prologue stage first, so a prologue statement identical to this one is already
+            // among the shared statements when this one looks itself up.
+            EnsurePrologue();
+
+            // --- Refusals at append: a write outside the caller's authority, a user-id source that is no batch table ---
             CheckAuthority(options.Writes);
             if (options.UserIds is SqlIdentifier userIds)
             {
-                _ = RenderIdentifier(userIds);
+                _ = userIds.IsVariable
+                    ? RenderIdentifier(userIds)
+                    : throw new ArgumentException(
+                        $"The user ids '{userIds.Name}' name a permanent table; they name a table this batch declared, such as one a Tvp or DeclareIdTable call returned.",
+                        nameof(options));
             }
 
             // --- A read, or a statement declared idempotent, collapses into an identical one ---
@@ -303,7 +314,7 @@ namespace Tellma.Core.Data.Batches
 
             if (key is not null)
             {
-                _shared.Add(key, result);
+                _ = _shared.TryAdd(key, result);
             }
 
             return result;
@@ -378,6 +389,7 @@ namespace Tellma.Core.Data.Batches
         /// <inheritdoc />
         public Task<BatchOutcome> ExecuteAsync(CancellationToken cancellationToken = default)
         {
+            EnsureNotBroken();
             if (_stage == Stage.Sealed)
             {
                 throw new InvalidOperationException("The batch already executed. A batch executes once; create a new batch for more work.");
@@ -391,9 +403,18 @@ namespace Tellma.Core.Data.Batches
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
             EnsurePrologue();
             _stage = Stage.Epilogue;
-            for (int index = _contributors.Count - 1; index >= 0; index--)
+            try
             {
-                _contributors[index].Contribute(this, DataBatchStage.Epilogue);
+                for (int index = _contributors.Count - 1; index >= 0; index--)
+                {
+                    _contributors[index].Contribute(this, DataBatchStage.Epilogue);
+                }
+            }
+            catch
+            {
+                // A half-run epilogue stage cannot be resumed or repeated: the batch is unusable.
+                _broken = true;
+                throw;
             }
 
             _stage = Stage.Sealed;
@@ -573,9 +594,21 @@ namespace Tellma.Core.Data.Batches
             return new NotSupportedException($"{nameof(IDataBatch)}.{member} is not available: its statement compiler is not part of this build.");
         }
 
-        /// <summary>Refuses an append once the batch is sealed.</summary>
+        /// <summary>Refuses everything once a contributor failed during a stage.</summary>
+        /// <exception cref="InvalidOperationException">A contributor failed.</exception>
+        private void EnsureNotBroken()
+        {
+            if (_broken)
+            {
+                throw new InvalidOperationException(
+                    "A contributor failed while the batch ran its prologue or epilogue stage, so the batch is incomplete and can neither take more statements nor execute. Create a new batch.");
+            }
+        }
+
+        /// <summary>Refuses an append once the batch is sealed or broken.</summary>
         private void EnsureComposing()
         {
+            EnsureNotBroken();
             if (_stage == Stage.Sealed)
             {
                 throw new InvalidOperationException("The batch already executed. A batch executes once; create a new batch for more work.");
@@ -591,9 +624,18 @@ namespace Tellma.Core.Data.Batches
             }
 
             _stage = Stage.Prologue;
-            foreach (IDataBatchContributor contributor in _contributors)
+            try
             {
-                contributor.Contribute(this, DataBatchStage.Prologue);
+                foreach (IDataBatchContributor contributor in _contributors)
+                {
+                    contributor.Contribute(this, DataBatchStage.Prologue);
+                }
+            }
+            catch
+            {
+                // A batch missing part of its prologue must never run.
+                _broken = true;
+                throw;
             }
 
             _stage = Stage.Composing;

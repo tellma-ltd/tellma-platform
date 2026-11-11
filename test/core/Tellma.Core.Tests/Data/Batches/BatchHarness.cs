@@ -120,6 +120,21 @@ namespace Tellma.Core.Tests.Data.Batches
         }
     }
 
+    /// <summary>A contributor that runs the test's action at each stage.</summary>
+    /// <param name="order">The contributor's order.</param>
+    /// <param name="contribute">The action, given the batch and the stage.</param>
+    internal sealed class DelegateContributor(int order, Action<IDataBatch, DataBatchStage> contribute) : IDataBatchContributor
+    {
+        /// <inheritdoc />
+        public int Order => order;
+
+        /// <inheritdoc />
+        public void Contribute(IDataBatch batch, DataBatchStage stage)
+        {
+            contribute(batch, stage);
+        }
+    }
+
     /// <summary>Stack owners from a fixed map.</summary>
     /// <param name="owners">Each owned table and its stack.</param>
     internal sealed class MapOwners(Dictionary<TableName, string> owners) : IStackTableOwners

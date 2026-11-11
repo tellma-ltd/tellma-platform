@@ -7,6 +7,7 @@ using System.Data;
 using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Tests.Data.Batches
@@ -132,6 +133,24 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
+        public async Task A_marked_batch_with_no_body_text_carries_no_guard_wrapper()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Read, new TextContributor(1, "DECLARE @tm_Guard bit = 1;", null));
+            batch.MarkConnectPrologue();
+
+            // A table-valued parameter is a body statement without text: there is still nothing to wrap.
+            IdList[] rows = [new() { Id = 1 }];
+            _ = batch.Tvp(rows);
+
+            BatchAssembly assembly = await BatchHarness.SealAsync(batch);
+
+            Assert.True(assembly.Guarded);
+            Assert.DoesNotContain(BatchAssembly.GuardOpen, assembly.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain(BatchAssembly.GuardClose, assembly.Text, StringComparison.Ordinal);
+            Assert.EndsWith("\nDECLARE @tm_Guard bit = 1;\n", assembly.Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void The_connect_prologue_mark_is_refused_on_a_maintenance_batch_and_after_the_first_statement()
         {
             _ = Assert.Throws<InvalidOperationException>(() => _harness.Batch(BatchPurpose.Maintenance).MarkConnectPrologue());
@@ -194,16 +213,106 @@ namespace Tellma.Core.Tests.Data.Batches
             DataBatch batch = _harness.Batch(BatchPurpose.Read, new TextContributor(1, "PRINT 'p';", null));
             _ = batch.Sql($"SELECT 1 AS [One]\nFROM (VALUES (1)) AS v([X]);", new SqlOptions(resultSets: 1));
             _ = batch.Sql($"SELECT 2 AS [Two] -- no terminator", new SqlOptions(resultSets: 1));
+            _ = batch.Sql($"SELECT 3 AS [Three]; -- a comment that ends in one;", new SqlOptions(resultSets: 1));
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
             // Lines 1-4 are the frame: the session settings and the schema guard.
             string[] lines = assembly.Text.Split('\n');
             Assert.Equal("PRINT 'p';", lines[4]);
-            Assert.Equal([null, null, null, null, 0, 1, 1, 2, 2], Enumerable.Range(1, 9).Select(assembly.StatementOrdinalAt));
+            Assert.Equal([null, null, null, null, 0, 1, 1, 2, 2, 3, 3], Enumerable.Range(1, 11).Select(assembly.StatementOrdinalAt));
 
-            // A statement without a terminator gets one on a line of its own, past any trailing comment.
+            // A statement without a terminator gets one on a line of its own, past any trailing comment,
+            // and so does one whose apparent terminator sits inside a line comment.
             Assert.Equal(";", lines[8]);
-            Assert.Null(assembly.StatementOrdinalAt(10));
+            Assert.Equal(";", lines[10]);
+            Assert.Null(assembly.StatementOrdinalAt(12));
+        }
+
+        [Fact]
+        public void A_nameof_hole_binds_its_text_as_a_value_and_a_column_name_is_written_as_an_identifier()
+        {
+            DataBatch batch = _harness.Batch();
+            _ = batch.Sql(
+                $"SELECT {nameof(IdList.Id)} AS [Value], {new SqlIdentifier(nameof(IdList.Id))} AS [Column] FROM {new SqlIdentifier("fixture.Widgets")};",
+                new SqlOptions(resultSets: 1));
+
+            // At run time a nameof is a string like any other, so only the identifier names the column.
+            BatchStatement statement = Assert.Single(batch.Statements);
+            Assert.Equal("SELECT @tb0_p0 AS [Value], [Id] AS [Column] FROM [fixture].[Widgets];", statement.Text);
+            Assert.Equal("Id", Assert.IsType<ScalarParameter>(Assert.Single(statement.Parameters)).Value);
+        }
+
+        [Fact]
+        public void User_ids_name_a_table_the_batch_declared_and_never_a_permanent_table()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            HashSet<TableName> writes = [Widgets];
+
+            // --- A permanent table, and a variable the batch never declared, are refused ---
+            ArgumentException permanent = Assert.Throws<ArgumentException>(
+                () => batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: writes, userIds: new SqlIdentifier("core.Users"))));
+            Assert.Contains("core.Users", permanent.Message, StringComparison.Ordinal);
+            _ = Assert.Throws<ArgumentException>(
+                () => batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: writes, userIds: new SqlIdentifier("@undeclared"))));
+            Assert.Empty(batch.Statements);
+
+            // --- A declared id table is accepted ---
+            SqlIdentifier ids = batch.DeclareIdTable();
+            _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: writes, userIds: ids));
+            Assert.Equal(2, batch.Statements.Count);
+        }
+
+        [Fact]
+        public void A_prologue_statement_identical_to_the_callers_first_is_shared_with_the_caller()
+        {
+            BatchResult<RawResult>? contributed = null;
+            DelegateContributor contributor = new(1, (batch, stage) =>
+            {
+                if (stage == DataBatchStage.Prologue)
+                {
+                    contributed = batch.Sql($"SELECT {1} AS [One];", new SqlOptions(resultSets: 1));
+                }
+            });
+            DataBatch batch = _harness.Batch(BatchPurpose.Read, contributor);
+
+            // The caller's first statement runs the prologue stage before it looks itself up.
+            BatchResult<RawResult> caller = batch.Sql($"SELECT {1} AS [One];", new SqlOptions(resultSets: 1));
+
+            Assert.NotNull(contributed);
+            Assert.Same(contributed, caller);
+            _ = Assert.Single(batch.Statements);
+        }
+
+        [Fact]
+        public async Task A_contributor_that_throws_leaves_the_batch_unusable()
+        {
+            CancellationToken token = TestContext.Current.CancellationToken;
+
+            // --- A prologue failure: the statement that started the stage and everything after it are refused ---
+            DataBatch prologue = _harness.Batch(BatchPurpose.Read, Throwing(DataBatchStage.Prologue));
+            _ = Assert.Throws<InvalidDataException>(() => prologue.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1)));
+            _ = Assert.Throws<InvalidOperationException>(() => prologue.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1)));
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => prologue.ExecuteAsync(token));
+
+            // --- An epilogue failure: the batch neither executes again nor takes more statements ---
+            DataBatch epilogue = _harness.Batch(BatchPurpose.Read, Throwing(DataBatchStage.Epilogue));
+            _ = epilogue.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
+            _ = await Assert.ThrowsAsync<InvalidDataException>(() => epilogue.ExecuteAsync(token));
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => epilogue.ExecuteAsync(token));
+            _ = Assert.Throws<InvalidOperationException>(() => epilogue.Sql($"SELECT 2 AS [Two];", new SqlOptions(resultSets: 1)));
+        }
+
+        [Fact]
+        public void A_maintenance_batch_takes_the_maintenance_timeout_and_every_other_purpose_the_ordinary_one()
+        {
+            DataOptions options = new() { CommandTimeout = TimeSpan.FromSeconds(12.2), MaintenanceCommandTimeout = TimeSpan.FromMinutes(7) };
+
+            Assert.Equal(420, DataExecutor.CommandTimeoutSeconds(BatchPurpose.Maintenance, options));
+            foreach (BatchPurpose purpose in new[] { BatchPurpose.Read, BatchPurpose.Validate, BatchPurpose.Persist })
+            {
+                // Rounded up to whole seconds.
+                Assert.Equal(13, DataExecutor.CommandTimeoutSeconds(purpose, options));
+            }
         }
 
         [Fact]
@@ -383,6 +492,20 @@ namespace Tellma.Core.Tests.Data.Batches
         public void Dispose()
         {
             _harness.Dispose();
+        }
+
+        /// <summary>A contributor that throws at one stage.</summary>
+        /// <param name="failing">The stage it throws at.</param>
+        /// <returns>The contributor.</returns>
+        private static DelegateContributor Throwing(DataBatchStage failing)
+        {
+            return new DelegateContributor(1, (_, stage) =>
+            {
+                if (stage == failing)
+                {
+                    throw new InvalidDataException($"The {stage} contributor failed.");
+                }
+            });
         }
 
         /// <summary>A one-column, one-row table.</summary>

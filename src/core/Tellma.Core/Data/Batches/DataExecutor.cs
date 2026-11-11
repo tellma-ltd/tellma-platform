@@ -206,7 +206,7 @@ namespace Tellma.Core.Data.Batches
                 await using SqlCommand command = connection.CreateCommand();
                 command.CommandType = CommandType.Text;
                 command.CommandText = assembly.Text;
-                command.CommandTimeout = TimeoutSeconds(batch.Purpose == BatchPurpose.Maintenance ? options.MaintenanceCommandTimeout : options.CommandTimeout);
+                command.CommandTimeout = CommandTimeoutSeconds(batch.Purpose, options);
                 command.Transaction = transaction;
                 foreach (BatchParameter parameter in assembly.Parameters)
                 {
@@ -219,7 +219,19 @@ namespace Tellma.Core.Data.Batches
                 await using (reader.ConfigureAwait(false))
                 {
                     cursor = new ResultSetCursor(reader);
-                    bodyRan = await assembly.ReadAsync(cursor, () => batch.GuardPassed, afterSend).ConfigureAwait(false);
+                    try
+                    {
+                        bodyRan = await assembly.ReadAsync(cursor, () => batch.GuardPassed, afterSend).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is not SqlException)
+                    {
+                        // A failure on this side (a reader's defect, a count mismatch, cancellation)
+                        // would otherwise let disposing the reader drain the stream, and so run the
+                        // batch to its COMMIT behind a reported failure. The attention aborts the
+                        // batch, and XACT_ABORT rolls back what it has not committed.
+                        command.Cancel();
+                        throw;
+                    }
                 }
 
                 if (transaction is not null)
@@ -300,6 +312,15 @@ namespace Tellma.Core.Data.Batches
                 BatchPurpose.Maintenance => "maintenance",
                 _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "Not a batch purpose."),
             };
+        }
+
+        /// <summary>The command timeout of a purpose: the maintenance one for a maintenance batch, the ordinary one otherwise.</summary>
+        /// <param name="purpose">The batch's purpose.</param>
+        /// <param name="options">The execution settings.</param>
+        /// <returns>The timeout in whole seconds.</returns>
+        internal static int CommandTimeoutSeconds(BatchPurpose purpose, DataOptions options)
+        {
+            return TimeoutSeconds(purpose == BatchPurpose.Maintenance ? options.MaintenanceCommandTimeout : options.CommandTimeout);
         }
 
         /// <summary>A timeout in whole seconds, rounded up, at least one.</summary>

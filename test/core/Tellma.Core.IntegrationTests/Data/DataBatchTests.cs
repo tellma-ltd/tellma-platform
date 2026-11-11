@@ -5,10 +5,12 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using System.Data.Common;
+using Microsoft.Extensions.Logging.Testing;
+using System.Diagnostics;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Testing.Entities;
@@ -18,10 +20,12 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <summary>
     ///     Raw-statement batches against a fixture database: the fixture's own shape, the schema
     ///     guard, transactions, result sets, deduplication, the factory handle, the guard wrapper,
-    ///     table-valued parameters, statement ordinals and the change-tracking audit.
+    ///     table-valued parameters, statement ordinals, the change-tracking audit, cancellation, the
+    ///     round-trip span and the slow-round-trip log.
     /// </summary>
+    /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
-    public class DataBatchTests(SqlServerFixture sql)
+    public class DataBatchTests(DataBatchDatabase fixture) : IClassFixture<DataBatchDatabase>, IAsyncLifetime
     {
         /// <summary>The stand-in jobs table, written by the statements that need a write.</summary>
         private static readonly TableName Jobs = new("core", "Jobs");
@@ -37,10 +41,23 @@ namespace Tellma.Core.IntegrationTests.Data
 
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
+        /// <inheritdoc />
+        public async ValueTask InitializeAsync()
+        {
+            await fixture.ResetAsync();
+        }
+
+        /// <inheritdoc />
+        public ValueTask DisposeAsync()
+        {
+            GC.SuppressFinalize(this);
+            return ValueTask.CompletedTask;
+        }
+
         [Fact]
         public async Task The_fixture_database_is_created_in_the_platform_collation_with_change_tracking_and_the_running_fingerprint()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_shape");
+            FixtureTenant tenant = fixture.Tenant;
 
             Assert.Equal(DatabaseCollations.Platform, await SqlServerFixture.ScalarAsync<string>(tenant.ConnectionString, "SELECT CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128));"));
             Assert.True(await SqlServerFixture.ScalarAsync<bool>(tenant.ConnectionString, "SELECT [is_read_committed_snapshot_on] FROM sys.databases WHERE [name] = DB_NAME();"));
@@ -59,7 +76,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task A_database_that_does_not_list_the_running_fingerprint_refuses_a_read_a_validate_and_a_persist_batch_with_50501()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_guard");
+            FixtureTenant tenant = fixture.Tenant;
             await SqlServerFixture.ExecuteAsync(tenant.ConnectionString, "UPDATE [dbo].[__TellmaSchema] SET [Fingerprint] = REPLICATE('0', 64);");
 
             await using AsyncServiceScope scope = tenant.CreateScope();
@@ -87,7 +104,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task The_running_fingerprint_as_the_older_of_two_rows_is_served()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_older");
+            FixtureTenant tenant = fixture.Tenant;
             await SqlServerFixture.ExecuteAsync(
                 tenant.ConnectionString,
                 "UPDATE [dbo].[__TellmaSchema] SET [AppliedAt] = DATEADD(DAY, -1, [AppliedAt]);",
@@ -104,7 +121,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task Result_sets_before_a_throw_are_read_and_the_throw_surfaces()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_throw");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
 
@@ -124,7 +141,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task A_throw_and_a_foreign_key_violation_resolve_to_the_ordinals_of_the_statements_that_raised_them()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_ordinal");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
@@ -161,7 +178,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task Transaction_mode_none_leaves_autocommit_while_auto_and_explicit_roll_back()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_txmode");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
@@ -182,7 +199,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task Two_identical_statements_collapse_into_one_when_they_declare_no_writes_and_both_run_when_they_do()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_dedup");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
@@ -209,7 +226,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task A_handle_from_the_factory_runs_a_maintenance_statement_and_refuses_a_read_batch()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_handle");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.Services.CreateAsyncScope();
             ITenantDatabaseFactory factory = scope.ServiceProvider.GetRequiredService<ITenantDatabaseFactory>();
 
@@ -235,8 +252,8 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task A_guarded_batch_runs_its_body_only_when_the_connect_prologue_reports_the_guard_passed()
         {
-            ConnectPrologue prologue = new();
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_guarded", services => services.AddSingleton<IDataBatchContributor>(prologue));
+            DataBatchDatabase.ConnectPrologue prologue = fixture.Prologue;
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
@@ -264,7 +281,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task Rows_bind_as_a_table_valued_parameter_through_tvp_and_through_a_hole()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_tvp");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
 
@@ -281,7 +298,7 @@ namespace Tellma.Core.IntegrationTests.Data
         [Fact]
         public async Task The_change_tracking_audit_passes_a_declared_write_and_refuses_an_undeclared_one()
         {
-            await using FixtureTenant tenant = await CreateTenantAsync("fx_audit");
+            FixtureTenant tenant = fixture.Tenant;
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
@@ -300,13 +317,183 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = await read.ExecuteAsync(Token);
         }
 
-        /// <summary>Creates a fixture tenant over a new database the suite drops at the end.</summary>
-        /// <param name="prefix">The prefix identifying the test.</param>
-        /// <param name="configureServices">Adds services after the composition.</param>
-        /// <returns>The tenant.</returns>
-        private Task<FixtureTenant> CreateTenantAsync(string prefix, Action<IServiceCollection>? configureServices = null)
+        [Fact]
+        public async Task A_marked_batch_whose_body_has_no_text_runs_its_prologue_alone()
         {
-            return FixtureTenant.CreateAsync(sql.MasterConnectionString, sql.NewDatabaseName(prefix), configureServices, cancellationToken: Token);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
+
+            // --- Nothing after the prologue, then only a table-valued parameter after it ---
+            foreach (bool withTvp in new[] { false, true })
+            {
+                var batch = (DataBatch)database.CreateBatch(BatchPurpose.Read);
+                batch.MarkConnectPrologue();
+                if (withTvp)
+                {
+                    IdList[] rows = [new() { Id = 1 }];
+                    _ = batch.Tvp(rows);
+                }
+
+                _ = await batch.ExecuteAsync(Token);
+
+                Assert.True(batch.GuardPassed);
+                Assert.DoesNotContain(BatchAssembly.GuardOpen, batch.Assemble().Text, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public async Task A_failed_batch_leaves_no_transaction_open_on_the_handles_connection()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.Services.CreateAsyncScope();
+            ITenantDatabaseFactory factory = scope.ServiceProvider.GetRequiredService<ITenantDatabaseFactory>();
+            await using ITenantDatabaseHandle handle = await factory.OpenAsync(FixtureTenant.TenantId, scope.ServiceProvider, Token);
+
+            foreach (TransactionMode mode in new[] { TransactionMode.None, TransactionMode.Auto, TransactionMode.Explicit })
+            {
+                IDataBatch failing = handle.CreateBatch(BatchPurpose.Maintenance);
+                failing.TransactionMode = mode;
+                _ = failing.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
+                _ = failing.Sql($"THROW 50000, N'After the write.', 1;", null);
+                _ = await Assert.ThrowsAsync<SqlException>(() => failing.ExecuteAsync(Token));
+
+                // The next batch runs on the same physical connection, so an abandoned transaction
+                // would still be open there: XACT_ABORT rolled the in-text one back with the batch.
+                IDataBatch probe = handle.CreateBatch(BatchPurpose.Maintenance);
+                BatchResult<RawResult> open = probe.Sql($"SELECT @@TRANCOUNT AS [Open];", new SqlOptions(resultSets: 1));
+                _ = await probe.ExecuteAsync(Token);
+                Assert.True(Int(open.Value) == 0, mode.ToString());
+            }
+
+            // Only the autocommitted write survived its batch's failure.
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_reader_that_fails_after_the_send_stops_the_batch_before_it_commits()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            _ = batch.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
+
+            // The raw reader takes no time column. The server holds output until a packet fills or the
+            // batch ends, so the NOWAIT message sends the set at once, while the delay keeps the server
+            // inside the batch for the client to stop it.
+            _ = batch.Sql($"SELECT CAST('10:00' AS time) AS [At];", new SqlOptions(resultSets: 1));
+            _ = batch.Sql($"RAISERROR(N'', 0, 1) WITH NOWAIT;", null);
+            _ = batch.Sql($"WAITFOR DELAY '00:00:02';", null);
+            bool committed = false;
+            batch.OnCommitted(_ => committed = true);
+
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(Token));
+
+            Assert.False(committed);
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_read_is_cancelled_by_the_callers_token_or_the_scopes_while_it_runs()
+        {
+            foreach (bool byScope in new[] { false, true })
+            {
+                await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+                using CancellationTokenSource cancel = new();
+                if (byScope)
+                {
+                    scope.ServiceProvider.GetRequiredService<DataCancellation>().Token = cancel.Token;
+                }
+
+                IDataBatch read = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
+                _ = read.Sql($"WAITFOR DELAY '00:00:10';\nSELECT 1 AS [One];", new SqlOptions(resultSets: 1));
+
+                long started = Stopwatch.GetTimestamp();
+                cancel.CancelAfter(TimeSpan.FromSeconds(1));
+                Exception cancelled = await Assert.ThrowsAnyAsync<Exception>(() => read.ExecuteAsync(byScope ? Token : cancel.Token));
+
+                Assert.True(cancelled is OperationCanceledException or SqlException, cancelled.ToString());
+                Assert.True(Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(6), byScope ? "scope" : "caller");
+            }
+        }
+
+        [Fact]
+        public async Task A_persist_cancelled_after_the_send_runs_to_completion()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            using CancellationTokenSource cancel = new();
+            IDataBatch persist = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            _ = persist.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
+            _ = persist.Sql($"WAITFOR DELAY '00:00:03';", null);
+
+            cancel.CancelAfter(TimeSpan.FromSeconds(1));
+            _ = await persist.ExecuteAsync(cancel.Token);
+
+            Assert.True(cancel.IsCancellationRequested);
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task The_round_trip_span_is_named_for_the_operation_and_purpose_and_carries_no_text()
+        {
+            string operation = $"fx-span-{Guid.NewGuid():N}";
+            List<Activity> stopped = [];
+            using ActivityListener listener = new()
+            {
+                ShouldListenTo = static source => source.Name == DataTelemetryNames.ActivitySourceName,
+                Sample = static (ref _) => ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStopped = activity =>
+                {
+                    // Spans of other suites' scopes running alongside are not this test's.
+                    if (Equals(activity.GetTagItem(DataTelemetryNames.OperationAttribute), operation))
+                    {
+                        lock (stopped)
+                        {
+                            stopped.Add(activity);
+                        }
+                    }
+                },
+            };
+            ActivitySource.AddActivityListener(listener);
+
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            scope.ServiceProvider.GetRequiredService<DataAccessScope>().Operation = operation;
+            IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
+            _ = batch.Sql(CountJobs, new SqlOptions(resultSets: 1));
+            _ = await batch.ExecuteAsync(Token);
+
+            Activity span = Assert.Single(stopped);
+            Assert.Equal($"{operation} read", span.OperationName);
+            Assert.Equal(ActivityKind.Client, span.Kind);
+            Assert.Equal(
+                new Dictionary<string, object?>
+                {
+                    [DataTelemetryNames.RoleTag] = DataTelemetryNames.TenantRole,
+                    [DataTelemetryNames.PurposeAttribute] = "read",
+                    [DataTelemetryNames.OperationAttribute] = operation,
+                    [DataTelemetryNames.AttemptAttribute] = 1,
+                    [DataTelemetryNames.TenantIdAttribute] = FixtureTenant.TenantId,
+                },
+                span.TagObjects.ToDictionary(static tag => tag.Key, static tag => tag.Value));
+        }
+
+        [Fact]
+        public async Task A_slow_round_trip_logs_its_measures_and_text_but_never_a_value()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            scope.ServiceProvider.GetRequiredService<DataAccessScope>().Operation = "fx-slow";
+            IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
+            IdList[] rows = [new() { Id = 3 }, new() { Id = 5 }];
+            _ = batch.Sql($"SELECT [Id] FROM {rows} WHERE [Id] > {0} AND {"fx-secret"} <> N'';", new SqlOptions(resultSets: 1));
+            _ = await batch.ExecuteAsync(Token);
+
+            // Every round trip of the class's host is slow, and this test made one.
+            FakeLogRecord record = Assert.Single(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "DataBatch.SlowRoundTrip");
+            (string, string?)[] expected =
+            [
+                ("TenantId", "1"), ("Operation", "fx-slow"), ("Purpose", "read"), ("Attempt", "1"), ("Statements", "1"), ("TableRows", "2"), ("RowsRead", "2"),
+            ];
+            Assert.Equal(expected, expected.Select(field => (field.Item1, record.GetStructuredStateValue(field.Item1))));
+            Assert.NotNull(record.GetStructuredStateValue("DurationMs"));
+            Assert.Contains("WHERE [Id] > @tb0_p0 AND @tb0_p1 <> N''", record.GetStructuredStateValue("Text"), StringComparison.Ordinal);
+            Assert.DoesNotContain("fx-secret", record.Message, StringComparison.Ordinal);
         }
 
         /// <summary>The change-tracked tables, as <c>schema.table</c>, in order.</summary>
@@ -337,41 +524,6 @@ namespace Tellma.Core.IntegrationTests.Data
         private static HashSet<TableName> Set(params TableName[] tables)
         {
             return [.. tables];
-        }
-
-        /// <summary>
-        ///     A stand-in for the connect prologue: on a marked batch it declares the guard variable with
-        ///     the verdict the test chose, returns it, and reports it from its reader.
-        /// </summary>
-        private sealed class ConnectPrologue : IDataBatchContributor
-        {
-            /// <summary>The verdict the next batch's guard reports.</summary>
-            public bool Passes { get; set; }
-
-            /// <inheritdoc />
-            public int Order => 0;
-
-            /// <inheritdoc />
-            public void Contribute(IDataBatch batch, DataBatchStage stage)
-            {
-                if (stage != DataBatchStage.Prologue || batch is not DataBatch { CarriesConnectPrologue: true } marked)
-                {
-                    return;
-                }
-
-                StatementDraft draft = marked.Begin();
-                int ordinal = draft.Ordinal;
-                marked.Append(
-                    draft,
-                    $"DECLARE {ReservedSqlNames.Guard} bit = {(Passes ? 1 : 0)};\nSELECT {ReservedSqlNames.Guard} AS [Guard];",
-                    reader: async (cursor, cancellationToken) =>
-                    {
-                        DbDataReader reader = await cursor.NextAsync(ordinal, cancellationToken);
-                        _ = await reader.ReadAsync(cancellationToken);
-                        marked.ReportGuard(reader.GetBoolean(0));
-                        cursor.CountRows(1);
-                    });
-            }
         }
     }
 }

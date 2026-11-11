@@ -21,7 +21,10 @@ namespace Tellma.Core.Data.Batches
     ///     <list type="number">
     ///         <item><c>SET NOCOUNT ON; SET XACT_ABORT ON;</c> and the schema guard.</item>
     ///         <item>The prologue statements, autocommit.</item>
-    ///         <item><c>IF @tm_Guard = 1 BEGIN</c>, on a batch that carries the connect prologue.</item>
+    ///         <item>
+    ///             <c>IF @tm_Guard = 1 BEGIN</c>, on a batch that carries the connect prologue and has a
+    ///             body to wrap; T-SQL refuses an empty block, so a prologue-only batch has no wrapper.
+    ///         </item>
     ///         <item><c>BEGIN TRANSACTION;</c>, on an <see cref="TransactionMode.Auto" /> batch that declares a write.</item>
     ///         <item>The transaction-head statements, the body statements and the epilogue statements.</item>
     ///         <item><c>COMMIT TRANSACTION;</c>, then <c>END;</c>, closing what steps 3 and 4 opened.</item>
@@ -87,7 +90,10 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The statements in emission order.</summary>
         public IReadOnlyList<BatchStatement> Statements { get; }
 
-        /// <summary>Whether the body is wrapped in <c>IF @tm_Guard = 1</c>.</summary>
+        /// <summary>
+        ///     Whether the batch carries the connect prologue, so the body runs only when the guard
+        ///     passed. Its text wraps the body in <c>IF @tm_Guard = 1</c> when there is a body to wrap.
+        /// </summary>
         public bool Guarded { get; }
 
         /// <summary>Whether the text opens and commits its own transaction.</summary>
@@ -151,7 +157,9 @@ namespace Tellma.Core.Data.Batches
                 writer.Statement(statement, lines);
             }
 
-            if (guarded)
+            // The wrapper only around a body with text: an empty BEGIN … END block does not compile.
+            bool wrapped = guarded && (inTextTransaction || ordered.Any(static statement => statement.Section != BatchSection.Prologue && statement.Text.Length > 0));
+            if (wrapped)
             {
                 writer.Line(GuardOpen);
             }
@@ -171,7 +179,7 @@ namespace Tellma.Core.Data.Batches
                 writer.Line(TransactionCommit);
             }
 
-            if (guarded)
+            if (wrapped)
             {
                 writer.Line(GuardClose);
             }
@@ -298,8 +306,12 @@ namespace Tellma.Core.Data.Batches
                 int first = _line;
                 Append(statement.Text);
 
-                // On a line of its own, so a trailing line comment cannot swallow it.
-                if (!statement.Text.AsSpan().TrimEnd().EndsWith(";", StringComparison.Ordinal))
+                // On a line of its own, so a trailing line comment cannot swallow it. A text that ends
+                // in ';' needs none, unless that ';' may sit in a line comment on the last line; an
+                // extra empty statement is legal T-SQL, so the doubt is resolved by adding one.
+                ReadOnlySpan<char> trimmed = statement.Text.AsSpan().TrimEnd();
+                int lastLine = trimmed.LastIndexOf('\n') + 1;
+                if (!trimmed.EndsWith(";", StringComparison.Ordinal) || trimmed[lastLine..].Contains("--", StringComparison.Ordinal))
                 {
                     Append("\n;");
                 }
