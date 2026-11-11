@@ -105,25 +105,29 @@ namespace Tellma.Core.Queryex.Lowering
         /// <remarks>
         ///     The statement's root, the target of an enclosing rebase, or the root of an enclosing
         ///     semi-join's subquery. A path walks from here through the join tree the current root
-        ///     belongs to, so a rebased criterion shares the joins of every other clause.
+        ///     belongs to, so a rebased criterion shares the joins of every other clause. Null while
+        ///     lowering a statement that has no row source.
         /// </remarks>
-        private JoinNode _base;
+        private JoinNode? _base;
 
         /// <summary>Where a value given a name here is collected: the statement's or a subquery's.</summary>
         private List<ValueBinding> _scopeBindings;
 
         /// <summary>Initializes a lowering.</summary>
-        /// <param name="root">The entity the query reads.</param>
+        /// <param name="root">
+        ///     The entity the query reads, or null for a statement that has no row source and so
+        ///     lowers nothing that reads a row.
+        /// </param>
         /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
         /// <param name="budget">The ceilings, shared with binding.</param>
         /// <param name="sink">Where problems are recorded.</param>
         internal Lowerer(
-            EntityDescriptor root,
+            EntityDescriptor? root,
             int batchOrdinal,
             CompilationBudget budget,
             DiagnosticSink sink)
         {
-            Root = new JoinNode(root, null, null, default) { IsReferenced = true };
+            Root = root is null ? null : new JoinNode(root, null, null, default) { IsReferenced = true };
             _base = Root;
             _scopeBindings = _bindings;
             _batchOrdinal = batchOrdinal;
@@ -131,8 +135,12 @@ namespace Tellma.Core.Queryex.Lowering
             _sink = sink;
         }
 
-        /// <summary>The root of the join tree.</summary>
-        internal JoinNode Root { get; }
+        /// <summary>The root of the join tree, or null for a statement that has no row source.</summary>
+        internal JoinNode? Root { get; }
+
+        /// <summary>The current root, for something that reads a row.</summary>
+        /// <exception cref="InvalidOperationException">The statement has no row source.</exception>
+        private JoinNode Base => _base ?? throw Rootless();
 
         /// <summary>The values written to the backend, in the order they were assigned.</summary>
         internal IReadOnlyList<ParameterSlot> Slots => _slots;
@@ -264,6 +272,19 @@ namespace Tellma.Core.Queryex.Lowering
                 Invariant($"An expression that did not bind reached lowering at {node.Span.Start}."));
         }
 
+        /// <summary>The failure for something that reads a row reaching a statement without one.</summary>
+        /// <returns>The exception to throw.</returns>
+        /// <remarks>
+        ///     Not reachable: a statement with no row source refuses every path while binding, and
+        ///     nothing is lowered while the sink holds a diagnostic. Loud for the same reason an
+        ///     unbound node is — the alternative is a statement built around a guess.
+        /// </remarks>
+        private static InvalidOperationException Rootless()
+        {
+            return new InvalidOperationException(
+                "Something that reads a row reached the lowering of a statement that has no row source.");
+        }
+
         /// <summary>Allocates the slot a paging value binds through.</summary>
         /// <param name="value">The value.</param>
         /// <param name="suffix">What follows the batch prefix in the slot's name.</param>
@@ -317,7 +338,7 @@ namespace Tellma.Core.Queryex.Lowering
         /// <returns>The lowered value.</returns>
         internal PlanUndeclaredColumn UndeclaredColumn(string column)
         {
-            return new PlanUndeclaredColumn(Root, column);
+            return new PlanUndeclaredColumn(Root ?? throw Rootless(), column);
         }
 
         /// <summary>
@@ -345,7 +366,7 @@ namespace Tellma.Core.Queryex.Lowering
 
             ImmutableArray<JoinNode>.Builder joins = ImmutableArray.CreateBuilder<JoinNode>();
             int alias = 0;
-            foreach (JoinNode node in Root.Walk())
+            foreach (JoinNode node in Root?.Walk() ?? [])
             {
                 if (!node.IsReferenced)
                 {

@@ -52,6 +52,9 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The key-set restrictions, resolved against the schema.</summary>
         private readonly ImmutableArray<ResolvedRestriction> _restrictions;
 
+        /// <summary>The parameters the compilation leaves out.</summary>
+        private readonly OmittedParameters _omitted;
+
         /// <summary>The root of the join tree, once lowering has created it.</summary>
         private JoinNode? _root;
 
@@ -78,6 +81,7 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">Every clause's nullity answers, merged.</param>
         /// <param name="restrictions">The key-set restrictions, resolved against the schema.</param>
+        /// <param name="omitted">The parameters the compilation leaves out.</param>
         internal QueryClauses(
             ExpressionCompiler compiler,
             QuerySpec spec,
@@ -85,7 +89,8 @@ namespace Tellma.Core.Queryex.Pipeline
             DiagnosticSink sink,
             CompilationBudget budget,
             NullityMap nullity,
-            ImmutableArray<ResolvedRestriction> restrictions)
+            ImmutableArray<ResolvedRestriction> restrictions,
+            OmittedParameters omitted)
         {
             _compiler = compiler;
             _spec = spec;
@@ -95,6 +100,7 @@ namespace Tellma.Core.Queryex.Pipeline
             _nullity = nullity;
             _symbols = Symbols.From(options.Parameters);
             _restrictions = restrictions;
+            _omitted = omitted;
         }
 
         /// <summary>Binds every clause and checks the rules that span them.</summary>
@@ -114,10 +120,13 @@ namespace Tellma.Core.Queryex.Pipeline
                 return false;
             }
 
-            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(selectSyntax!);
+            // Folded before its shape is read: what an omitted parameter leaves behind is what the
+            // grouping is derived from, and what is bound.
+            ExpressionListSyntax select = _omitted.FoldValues(selectSyntax!, out AppliedFolding? folding);
+            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(select);
 
             BindFilter();
-            BindSelect(selectSyntax!, selectAt);
+            BindSelect(select, folding, selectAt);
             BindHaving();
             BindOrderBy();
 
@@ -262,13 +271,15 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Filter),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the select list.</summary>
-        /// <param name="syntax">The already-parsed list.</param>
+        /// <param name="syntax">The already-parsed list, folded.</param>
+        /// <param name="folding">What was folded out of the list, or null when nothing was.</param>
         /// <param name="location">Which input it is.</param>
-        private void BindSelect(ExpressionListSyntax syntax, DiagnosticLocation location)
+        private void BindSelect(ExpressionListSyntax syntax, AppliedFolding? folding, DiagnosticLocation location)
         {
             _select = _compiler.Bind(
                 _spec.Select,
@@ -277,7 +288,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 directions: false,
                 _options.Limits,
                 _sink,
-                location);
+                location,
+                folding);
             _nullity.Absorb(_select.Nullity);
             _budget.TryConsumeTypedNodes(_select.NodeCount, default, _sink.Scope(location));
         }
@@ -298,7 +310,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Having),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the ordering list.</summary>
@@ -310,20 +323,27 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             var location = DiagnosticLocation.Clause(QueryexClause.OrderBy);
-            _compiler.TryCompile(
+            if (!_compiler.TryParse(
                 _spec.OrderBy,
+                _options.Limits,
+                _sink,
+                location,
+                out ExpressionListSyntax? syntax))
+            {
+                return;
+            }
+
+            // An ordering term is a value: an omitted parameter in one is the typed absent value.
+            ExpressionListSyntax terms = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            BoundExpression bound = _compiler.Bind(
+                _spec.OrderBy,
+                terms,
                 ValueContext(),
                 directions: true,
                 _options.Limits,
                 _sink,
                 location,
-                out _,
-                out BoundExpression? bound);
-
-            if (bound is null)
-            {
-                return;
-            }
+                folding);
 
             _orderBy = bound;
             _nullity.Absorb(bound.Nullity);

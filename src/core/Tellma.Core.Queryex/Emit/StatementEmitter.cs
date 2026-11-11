@@ -95,10 +95,17 @@ namespace Tellma.Core.Queryex.Emit
         /// <param name="plan">The plan.</param>
         private static void WriteFrom(SqlWriter sql, PlanEmitter emitter, RelationalPlan plan)
         {
+            if (plan.Root is not JoinNode root)
+            {
+                // No row source, so no clause at all: the backend answers a select list on its own
+                // with one row. Nothing can join or bind here, since both read a row.
+                return;
+            }
+
             sql.Write("FROM ");
-            sql.Write(plan.Root.Entity.Source);
+            sql.Write(root.Entity.Source);
             sql.Write(" AS ");
-            sql.Quoted(plan.Root.Alias);
+            sql.Quoted(root.Alias);
             sql.Line();
 
             // One join or binding per line; a subquery writes the same parts on one line of its own.

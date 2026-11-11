@@ -11,7 +11,7 @@ nullity, the diagnostics with their codes and spans, the expression printed back
 shortest and its fully parenthesised form, and the emitted SQL with its parameter slots and result
 columns.
 
-Beside the clauses, two inputs mirror what a host composes a query from:
+Beside the clauses, more inputs mirror what a host composes a query from:
 
 - **restrictions** — key-set restrictions separated by semicolons, each a path and a table name and
   optionally the keys the table holds when the query is run: `Customer.Id @tb0_parties = 1, 2; Id
@@ -25,6 +25,19 @@ Beside the clauses, two inputs mirror what a host composes a query from:
 - **exists** — semi-joins conjoined with the filter, separated by semicolons, each an entity, its
   navigation to the root, and optionally a colon and a criterion over the entity's rows:
   `InvoiceLine Invoice: Amount > 10`.
+- **parameters** — the declared parameters, separated by commas, each a name and a type:
+  `Customer numeric, AsOf date`. Every one may be absent, and binds no value when the query is run.
+- **omitted parameters** — the declared parameters the compilation leaves out, separated by commas.
+  A predicate that mentions one stops deciding anything, and anywhere else it is the absent value
+  of its declared type; clear the box to see the same query with nothing left out. The token, tree
+  and printed-back panes keep showing the select list as typed: what was left out shows in the SQL.
+
+One input replaces the query altogether:
+
+- **constant items** — the items of a constant statement, separated by semicolons, each a type and
+  an expression that reads no row: `date startOfMonth(today()); numeric me()`. While there are any,
+  the page compiles the one-row statement that answers them, the clauses are left alone, and the
+  token, tree and printed-back panes follow the first item.
 
 A malformed entry in any of them is a caller error, shown the way the engine's own caller errors
 are.

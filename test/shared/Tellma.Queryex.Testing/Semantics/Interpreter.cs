@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Data.SqlTypes;
 using Tellma.Core.Queryex;
@@ -29,6 +30,20 @@ namespace Tellma.Queryex.Testing.Semantics
         /// </summary>
         public IReadOnlyDictionary<string, KeySet> KeySets { get; init; } =
             new Dictionary<string, KeySet>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        ///     The declared parameters the evaluation leaves out, by name, matched ignoring case.
+        /// </summary>
+        /// <remarks>
+        ///     A parameter left out imposes no restriction, whatever value is supplied for it: in a
+        ///     predicate the part that mentions it stops deciding anything, and everywhere else it
+        ///     is the absent value of its type.
+        /// </remarks>
+        public IReadOnlySet<string> Omitted
+        {
+            get;
+            init => field = value.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        } = FrozenSet<string>.Empty;
 
         /// <summary>A context with fixed values, so a run produces the same answers as the last.</summary>
         public static InterpreterContext Fixed { get; } = new(
@@ -59,8 +74,8 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <summary>What the evaluation depends on besides the row.</summary>
         private readonly InterpreterContext _context;
 
-        /// <summary>The row being read.</summary>
-        private readonly LedgerRow _row;
+        /// <summary>The row being read, or null when what is evaluated reads none.</summary>
+        private readonly LedgerRow? _row;
 
         /// <summary>What every node evaluated to, so a sweep can look at each of them.</summary>
         private readonly Dictionary<TypedExpr, QxValue> _readings = new(ReferenceEqualityComparer.Instance);
@@ -72,6 +87,26 @@ namespace Tellma.Queryex.Testing.Semantics
         {
             _row = row;
             _context = context;
+        }
+
+        /// <summary>Initializes an evaluation of expressions that read no row.</summary>
+        /// <param name="context">What the evaluation depends on.</param>
+        internal Interpreter(InterpreterContext context)
+        {
+            _row = null;
+            _context = context;
+        }
+
+        /// <summary>The row being read.</summary>
+        /// <exception cref="InvalidOperationException">
+        ///     Something that reads a row is being evaluated without one, which a constant statement
+        ///     refuses before anything is evaluated.
+        /// </exception>
+        /// <returns>The row.</returns>
+        private LedgerRow Row()
+        {
+            return _row
+                ?? throw new InvalidOperationException("Something that reads a row was evaluated without one.");
         }
 
         /// <summary>What every node evaluated to.</summary>
@@ -156,7 +191,7 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <returns>The value, or absence when a step along the way points at nothing.</returns>
         private QxValue Read(TypedPath path)
         {
-            LedgerRow? current = _row;
+            LedgerRow? current = Row();
             foreach (NavigationDescriptor navigation in path.Navigations)
             {
                 QxValue key = current[navigation.ForeignKey.Name];
@@ -220,9 +255,12 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <returns>Its value.</returns>
         private QxValue Supplied(TypedParameter parameter)
         {
-            return _context.Parameters.TryGetValue(parameter.Symbol.Name, out QxValue? value)
-                ? value
-                : QxValue.Absent(Named(parameter.Type));
+            // A parameter left out is the absent value of its type wherever it is read as a value,
+            // whatever was supplied for it.
+            return !_context.Omitted.Contains(parameter.Symbol.Name)
+                && _context.Parameters.TryGetValue(parameter.Symbol.Name, out QxValue? value)
+                    ? value
+                    : QxValue.Absent(Named(parameter.Type));
         }
 
         /// <summary>Negates a number.</summary>
@@ -372,9 +410,26 @@ namespace Tellma.Queryex.Testing.Semantics
         /// </remarks>
         private bool Contains(TypedIn membership)
         {
+            return Contains(membership, skipOmitted: false);
+        }
+
+        /// <summary>Whether a value is one of a list, or of what is left of one.</summary>
+        /// <param name="membership">The node.</param>
+        /// <param name="skipOmitted">
+        ///     Whether the elements that are parameters left out have left the list, which they have
+        ///     where the test is an atom of a predicate and not where it is read as a value.
+        /// </param>
+        /// <returns>Whether it is.</returns>
+        private bool Contains(TypedIn membership, bool skipOmitted)
+        {
             QxValue value = Evaluate(membership.Value);
             foreach (TypedExpr element in membership.Elements)
             {
+                if (skipOmitted && IsOmittedParameter(element))
+                {
+                    continue;
+                }
+
                 QxValue candidate = Evaluate(element);
                 bool equal = value.IsAbsent || candidate.IsAbsent
                     ? value.IsAbsent && candidate.IsAbsent
