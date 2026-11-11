@@ -44,7 +44,8 @@ Installs the pipeline in this order and nothing else:
 
 1. the header stamp (`Tellma-Trace-Id`, `Tellma-Build`) on every response;
 2. forwarded headers, when enabled;
-3. Serilog request logging;
+3. Serilog request logging, whose completion event of a tenant request carries `TenantId`,
+   `TenantCategory`, `Subject` and `UserId`;
 4. the exception handler, answering RFC 9457 problems;
 5. HSTS and HTTPS redirection, outside Development;
 6. routing;
@@ -79,7 +80,8 @@ Maps the tenantless platform routes and returns the tenant route groups:
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with
 `WithMutation(bool)`, which also clears any read-only allowance; nothing is inferred from its HTTP
-methods. A `Hub` endpoint is always a read.
+methods. The `Hub` group carries SignalR hubs alone (`MapHub`), whose connections are always
+reads.
 
 The endpoint audit fails startup, naming the route and method, for any endpoint a tenant could be
 reached through without the platform's controls:
@@ -88,6 +90,9 @@ reached through without the platform's controls:
   (only MCP's, stamped by MCP's own front door, may);
 - a `Web`, `Api` or `Blobs` endpoint whose request delegate is not the one the access guard wraps;
 - a `Web`, `Api` or `Blobs` endpoint that does not state `WithMutation`;
+- a `Hub` endpoint that is not a SignalR hub's, or that states a mutation;
+- an endpoint that short-circuits routing (`ShortCircuit()`) without `AllowAnonymous()`, since
+  authentication, authorization, CSRF and the tenant middleware would never run for it;
 - a missing or doubled grant, another policy than the group's, anonymous access, CORS on a cookie
   surface, or a cookie mutation answering `GET`.
 

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
@@ -227,6 +229,25 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.Equal(TenantProblemCodes.CatalogUnavailable, (await Problem.ReadAsync(response)).Code);
             Assert.NotNull(response.Headers.RetryAfter);
+        }
+
+        [Theory]
+        [InlineData("/+1/api/web/probe")]
+        [InlineData("/1%20/api/web/probe")]
+        [InlineData("/%201/api/web/probe")]
+        public async Task A_tenant_segment_that_is_not_digits_alone_names_no_tenant(string path)
+        {
+            // The route's int constraint admits a sign and white space; the tenant id does not.
+            CapturingLoggerProvider capture = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(capture));
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, path, host.Cookie());
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal(TenantProblemCodes.NotFound, (await Problem.ReadAsync(response)).Code);
+            Assert.DoesNotContain(capture.Events, static captured => captured.Level >= LogLevel.Error);
         }
 
         [Fact]

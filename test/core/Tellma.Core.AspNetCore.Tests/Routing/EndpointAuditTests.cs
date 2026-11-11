@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Access;
@@ -86,6 +87,11 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 { "hub-surface-on-web-group", "POST /{tenantId:int:min(1)}/api/web/stream", "is stamped the Hub surface on the Web group" },
                 { "mcp-without-front-door", "GET /{tenantId:int:min(1)}/assistant", "is an MCP endpoint that MCP's front door did not install" },
                 { "unstated-mutation", "POST /{tenantId:int:min(1)}/api/web/save", "does not state whether it changes data" },
+                { "hub-plain-endpoint", "POST /{tenantId:int:min(1)}/hub/write", "is on the Hub group but is not a SignalR hub's connection endpoint" },
+                { "hub-stated-mutation", "POST /{tenantId:int:min(1)}/hub/write", "states whether it changes data on the Hub group" },
+                { "hub-stamped-mutation", "POST /{tenantId:int:min(1)}/hub/write", "states whether it changes data on the Hub group" },
+                { "tenantless-short-circuit", "GET /api/short", "short-circuits routing without allowing anonymous callers" },
+                { "tenant-short-circuit", "GET /{tenantId:int:min(1)}/api/web/short", "short-circuits routing without allowing anonymous callers" },
             };
         }
 
@@ -158,16 +164,37 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
         }
 
         [Fact]
-        public async Task A_hub_endpoint_mapped_without_methods_passes_as_a_read()
+        public async Task A_hub_on_the_hub_group_passes_as_a_read()
         {
-            // SignalR maps its connection endpoints with no method metadata.
+            // SignalR maps a negotiate endpoint and a connection endpoint, the latter with no methods.
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
-                options.Map = static (_, endpoints) => endpoints.Hub.Map("/connect", Nothing).AllowMember());
+            {
+                options.ConfigureServices = static services => services.AddSignalR();
+                options.Map = static (_, endpoints) => endpoints.Hub.MapHub<ProbeHub>("/realtime").AllowMember();
+            });
 
-            TenantEndpointMetadata metadata = Assert.Single(
+            RouteEndpoint[] hub = [.. host.Services.GetRequiredService<MappedEndpoints>().Endpoints()
+                .OfType<RouteEndpoint>()
+                .Where(static endpoint => endpoint.RoutePattern.RawText!.StartsWith("/{tenantId:int:min(1)}/hub/realtime", StringComparison.Ordinal))];
+            Assert.Equal(2, hub.Length);
+            Assert.All(hub, static endpoint => Assert.Equal(
+                new TenantEndpointMetadata(TenantSurface.Hub, IsMutation: false, AllowWhenReadOnly: false),
+                endpoint.Metadata.GetRequiredMetadata<TenantEndpointMetadata>()));
+        }
+
+        [Fact]
+        public async Task An_anonymous_tenantless_endpoint_may_short_circuit()
+        {
+            // Startup runs the audit: the host starting is the assertion.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+                options.Map = static (_, endpoints) => endpoints.Tenantless.MapGet("/ping", Nothing)
+                    .AllowAnonymous()
+                    .AsTenantlessEndpoint("test")
+                    .ShortCircuit());
+
+            Assert.Contains(
                 host.Services.GetRequiredService<MappedEndpoints>().Endpoints().OfType<RouteEndpoint>(),
-                static endpoint => endpoint.RoutePattern.RawText == "/{tenantId:int:min(1)}/hub/connect").Metadata.GetRequiredMetadata<TenantEndpointMetadata>();
-            Assert.Equal(new TenantEndpointMetadata(TenantSurface.Hub, IsMutation: false, AllowWhenReadOnly: false), metadata);
+                static endpoint => endpoint.RoutePattern.RawText == "/api/ping");
         }
 
         [Fact]
@@ -262,6 +289,17 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                     .WithMetadata(new TenantEndpointMetadata(TenantSurface.Mcp, IsMutation: false, AllowWhenReadOnly: false))
                     .AllowMember(),
                 "unstated-mutation" => endpoints.Web.MapPost("/save", Nothing).AllowMember(),
+                "hub-plain-endpoint" => endpoints.Hub.MapPost("/write", Nothing).AllowMember(),
+                "hub-stated-mutation" => endpoints.Hub.MapPost("/write", Nothing)
+                    .WithMetadata(new HubMetadata(typeof(ProbeHub)))
+                    .WithMutation(true)
+                    .AllowMember(),
+                "hub-stamped-mutation" => endpoints.Hub.MapPost("/write", Nothing)
+                    .WithMetadata(new HubMetadata(typeof(ProbeHub)))
+                    .WithMetadata(new TenantEndpointMetadata(TenantSurface.Hub, IsMutation: true, AllowWhenReadOnly: false))
+                    .AllowMember(),
+                "tenantless-short-circuit" => endpoints.Tenantless.MapGet("/short", Nothing).AsTenantlessEndpoint("test").ShortCircuit(),
+                "tenant-short-circuit" => endpoints.Web.MapGet("/short", Nothing).WithMutation(false).AllowMember().ShortCircuit(),
                 _ => throw new ArgumentOutOfRangeException(nameof(violation), violation, "Not a violation of the suite."),
             };
         }

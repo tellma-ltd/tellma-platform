@@ -4,7 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -62,6 +65,48 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
             using HttpResponseMessage response = await fixture.Test.Client.SendAsync(request, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             AssertIndex(response, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Theory]
+        [InlineData("/index.html", "br", "br")]
+        [InlineData("/index.html", "gzip", "gzip")]
+        [InlineData("/index.html", "gzip, deflate, br, zstd", "br")]
+        [InlineData("/index.html.br", null, "br")]
+        [InlineData("/index.html.gz", null, "gzip")]
+        [InlineData("/index.ab12cd34ef.html", "br", "br")]
+        [InlineData("/index.ab12cd34ef.html", null, null)]
+        public async Task Every_route_and_encoding_of_the_shell_carries_the_security_headers(string path, string? accept, string? encoding)
+        {
+            // A publish maps the shell under several routes, each with its compressed variants as
+            // rows of their own; whichever row a browser negotiates is the shell.
+            using HttpRequestMessage request = new(HttpMethod.Get, path);
+            if (accept is not null)
+            {
+                request.Headers.Add("Accept-Encoding", accept);
+            }
+
+            using HttpResponseMessage response = await fixture.Test.Client.SendAsync(request, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(encoding, response.Content.Headers.ContentEncoding.SingleOrDefault());
+            AssertIndex(response, await DecodedBodyAsync(response));
+        }
+
+        [Fact]
+        public async Task A_deep_link_negotiating_brotli_gets_the_shell_and_is_logged_under_its_own_path()
+        {
+            using HttpRequestMessage request = Navigation("/1/documents/31");
+            request.Headers.Add("Accept-Encoding", "gzip, deflate, br, zstd");
+            using HttpResponseMessage response = await fixture.Test.Client.SendAsync(request, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            AssertIndex(response, await DecodedBodyAsync(response));
+
+            // The fallback serves the shell's file but leaves the request its own path.
+            CapturedEvent completed = Assert.Single(
+                fixture.Capture.Events,
+                static captured => captured.Message.Contains(" responded ", StringComparison.Ordinal)
+                    && captured.Members.TryGetValue("RequestPath", out string? logged)
+                    && logged == "/1/documents/31");
+            Assert.Contains("\"/1/documents/31\" responded 200", completed.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -189,6 +234,23 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
             return request;
         }
 
+        /// <summary>A response's body, decompressed as its <c>Content-Encoding</c> says.</summary>
+        /// <param name="response">The response.</param>
+        /// <returns>The body's text.</returns>
+        private static async Task<string> DecodedBodyAsync(HttpResponseMessage response)
+        {
+            Stream body = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using Stream decoded = response.Content.Headers.ContentEncoding.SingleOrDefault() switch
+            {
+                "br" => new BrotliStream(body, CompressionMode.Decompress),
+                "gzip" => new GZipStream(body, CompressionMode.Decompress),
+                null => body,
+                string other => throw new InvalidOperationException($"The test does not decode '{other}'."),
+            };
+            using StreamReader reader = new(decoded, Encoding.UTF8);
+            return await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        }
+
         /// <summary>Asserts a response is the index page with its headers.</summary>
         /// <param name="response">The response.</param>
         /// <param name="body">Its body.</param>
@@ -211,6 +273,9 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
             private readonly string _root = Path.Combine(Path.GetTempPath(), "tellma-spa-" + Guid.NewGuid().ToString("N"));
             private TellmaTestHost? _host;
 
+            /// <summary>The host's log events.</summary>
+            internal CapturingLoggerProvider Capture { get; } = new();
+
             /// <summary>The started host.</summary>
             internal TellmaTestHost Test => _host ?? throw new InvalidOperationException("The host has not started.");
 
@@ -222,17 +287,45 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
                 List<object> endpoints = [];
                 foreach ((string name, string text, string type) in new[]
                 {
-                    ("index.html", IndexText, "text/html"),
                     ("main-ABCD2345.js", "console.log(1);", "text/javascript"),
                     ("favicon.ico", "icon", "image/x-icon"),
                 })
                 {
                     byte[] bytes = Encoding.UTF8.GetBytes(text);
                     await File.WriteAllBytesAsync(Path.Combine(webRoot, name), bytes, TestContext.Current.CancellationToken);
-                    endpoints.Add(Endpoint(name, bytes.Length, type));
+                    endpoints.Add(Endpoint(name, name, bytes.Length, type));
                 }
 
-                // The manifest a publish writes: one endpoint per file, with its headers.
+                // --- The shell, as a .NET 10 publish maps it ---
+                // Its file and its Brotli and gzip files. Under its own route and under a fingerprinted
+                // one, a row per file, the compressed ones selected by Accept-Encoding; under each
+                // compressed file's own name, that file alone.
+                byte[] index = Encoding.UTF8.GetBytes(IndexText);
+                (string File, string? Encoding, byte[] Bytes)[] shell =
+                [
+                    (SpaHosting.IndexFile, null, index),
+                    (SpaHosting.IndexFile + ".br", "br", Compress(index, static stream => new BrotliStream(stream, CompressionLevel.Optimal))),
+                    (SpaHosting.IndexFile + ".gz", "gzip", Compress(index, static stream => new GZipStream(stream, CompressionLevel.Optimal))),
+                ];
+                foreach ((string file, _, byte[] bytes) in shell)
+                {
+                    await File.WriteAllBytesAsync(Path.Combine(webRoot, file), bytes, TestContext.Current.CancellationToken);
+                }
+
+                foreach (string route in new[] { SpaHosting.IndexFile, "index.ab12cd34ef.html" })
+                {
+                    foreach ((string file, string? encoding, byte[] bytes) in shell)
+                    {
+                        endpoints.Add(Endpoint(route, file, bytes.Length, "text/html", encoding, selected: encoding is not null));
+                    }
+                }
+
+                foreach ((string file, string? encoding, byte[] bytes) in shell.Where(static variant => variant.Encoding is not null))
+                {
+                    endpoints.Add(Endpoint(file, file, bytes.Length, "text/html", encoding));
+                }
+
+                // The manifest a publish writes: one endpoint per route and file, with its headers.
                 string manifest = Path.Combine(_root, "spa.staticwebassets.endpoints.json");
                 await File.WriteAllTextAsync(
                     manifest,
@@ -243,6 +336,7 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
                 {
                     options.WebRoot = webRoot;
                     options.ManifestPath = manifest;
+                    options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(Capture);
                 });
             }
 
@@ -257,27 +351,53 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
                 Directory.Delete(_root, recursive: true);
             }
 
-            /// <summary>A manifest endpoint for a file at the web root.</summary>
-            /// <param name="name">The file's name, which is also its route.</param>
-            /// <param name="length">Its length in bytes.</param>
-            /// <param name="type">Its media type.</param>
-            /// <returns>The endpoint.</returns>
-            private static object Endpoint(string name, int length, string type)
+            /// <summary>Compresses bytes.</summary>
+            /// <param name="bytes">The bytes.</param>
+            /// <param name="compressor">The compressing stream over a destination.</param>
+            /// <returns>The compressed bytes.</returns>
+            private static byte[] Compress(byte[] bytes, Func<Stream, Stream> compressor)
             {
+                using MemoryStream destination = new();
+                using (Stream stream = compressor(destination))
+                {
+                    stream.Write(bytes);
+                }
+
+                return destination.ToArray();
+            }
+
+            /// <summary>A manifest endpoint, shaped as a publish writes it.</summary>
+            /// <param name="route">Its route.</param>
+            /// <param name="file">The file it serves, at the web root.</param>
+            /// <param name="length">The file's length in bytes.</param>
+            /// <param name="type">Its media type.</param>
+            /// <param name="encoding">The file's content encoding, if it is compressed.</param>
+            /// <param name="selected">Whether the request's Accept-Encoding chooses the row.</param>
+            /// <returns>The endpoint.</returns>
+            private static object Endpoint(string route, string file, int length, string type, string? encoding = null, bool selected = false)
+            {
+                List<object> headers =
+                [
+                    new { Name = "Content-Length", Value = length.ToString(CultureInfo.InvariantCulture) },
+                    new { Name = "Content-Type", Value = type },
+                    new { Name = "ETag", Value = $"\"{file.GetHashCode(StringComparison.Ordinal):x8}\"" },
+                    new { Name = "Last-Modified", Value = "Thu, 01 Jan 2026 00:00:00 GMT" },
+                    new { Name = "Cache-Control", Value = "max-age=3600" },
+                    new { Name = "Vary", Value = "Accept-Encoding" },
+                ];
+                if (encoding is not null)
+                {
+                    headers.Add(new { Name = "Content-Encoding", Value = encoding });
+                }
+
                 return new
                 {
-                    Route = name,
-                    AssetFile = name,
-                    Selectors = Array.Empty<object>(),
+                    Route = route,
+                    AssetFile = file,
+                    // A publish ranks Brotli above gzip, so a browser that accepts both gets Brotli.
+                    Selectors = selected ? new object[] { new { Name = "Content-Encoding", Value = encoding, Quality = encoding == "br" ? "0.02" : "0.01" } } : [],
                     EndpointProperties = Array.Empty<object>(),
-                    ResponseHeaders = new object[]
-                    {
-                        new { Name = "Content-Length", Value = length.ToString(CultureInfo.InvariantCulture) },
-                        new { Name = "Content-Type", Value = type },
-                        new { Name = "ETag", Value = $"\"{name.GetHashCode(StringComparison.Ordinal):x8}\"" },
-                        new { Name = "Last-Modified", Value = "Thu, 01 Jan 2026 00:00:00 GMT" },
-                        new { Name = "Cache-Control", Value = "max-age=3600" },
-                    },
+                    ResponseHeaders = headers,
                 };
             }
         }

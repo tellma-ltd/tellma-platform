@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.AspNetCore.Observability;
@@ -90,7 +91,7 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
         [Fact]
         public async Task Each_event_reaches_every_logger_provider_once_and_the_host_defaults_none()
         {
-            CapturingProvider capture = new();
+            CapturingLoggerProvider capture = new();
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
                 options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(capture));
 
@@ -108,7 +109,29 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
             // The request log goes through the host's own logger too, once.
             using HttpResponseMessage response = await host.Client.GetAsync(new Uri("/health/live", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal(1, capture.Count(" responded 200"));
+            CapturedEvent completed = Assert.Single(capture.Events, static captured => captured.Message.Contains(" responded 200", StringComparison.Ordinal));
+
+            // A tenantless request's completion event names no tenant.
+            Assert.False(completed.Members.ContainsKey("TenantId"));
+        }
+
+        [Fact]
+        public async Task A_tenant_requests_completion_event_names_its_tenant_and_user()
+        {
+            // The event is written after the tenant middleware's logger scope has closed.
+            CapturingLoggerProvider capture = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(capture));
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", host.Cookie());
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            CapturedEvent completed = Assert.Single(capture.Events, static captured => captured.Message.Contains("/1/api/web/probe\" responded 200", StringComparison.Ordinal));
+            Assert.Equal("1", completed.Members["TenantId"]);
+            Assert.False(string.IsNullOrEmpty(completed.Members["TenantCategory"]));
+            Assert.Equal("sub-1", completed.Members["Subject"]);
+            Assert.Equal(TellmaTestHost.UserId.ToString(CultureInfo.InvariantCulture), completed.Members["UserId"]);
         }
 
         [Fact]
@@ -126,56 +149,6 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
             Assert.Null(activity.GetTagItem("db.query.summary"));
             Assert.Null(activity.GetTagItem("db.statement"));
             Assert.Equal("microsoft.sql_server", activity.GetTagItem("db.system.name"));
-        }
-
-        /// <summary>A logger provider that counts the messages it receives.</summary>
-        private sealed class CapturingProvider : ILoggerProvider
-        {
-            private readonly System.Collections.Concurrent.ConcurrentQueue<string> _messages = new();
-
-            /// <summary>How many messages contained a text.</summary>
-            /// <param name="text">The text.</param>
-            /// <returns>The count.</returns>
-            public int Count(string text)
-            {
-                return _messages.Count(message => message.Contains(text, StringComparison.Ordinal));
-            }
-
-            /// <inheritdoc />
-            public ILogger CreateLogger(string categoryName)
-            {
-                return new Logger(_messages);
-            }
-
-            /// <inheritdoc />
-            public void Dispose()
-            {
-            }
-
-            /// <summary>A logger that records each message.</summary>
-            /// <param name="messages">Where the messages go.</param>
-            private sealed class Logger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : ILogger
-            {
-                /// <inheritdoc />
-                public IDisposable? BeginScope<TState>(TState state)
-                    where TState : notnull
-                {
-                    return null;
-                }
-
-                /// <inheritdoc />
-                public bool IsEnabled(LogLevel logLevel)
-                {
-                    return true;
-                }
-
-                /// <inheritdoc />
-                public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-                {
-                    ArgumentNullException.ThrowIfNull(formatter);
-                    messages.Enqueue(formatter(state, exception));
-                }
-            }
         }
     }
 }

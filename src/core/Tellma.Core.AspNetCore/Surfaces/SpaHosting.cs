@@ -99,13 +99,34 @@ namespace Tellma.Core.AspNetCore.Surfaces
         public static bool IsHashed(string route)
         {
             ArgumentNullException.ThrowIfNull(route);
-            string name = route[(route.LastIndexOf('/') + 1)..];
-            if (name.EndsWith(".gz", StringComparison.Ordinal) || name.EndsWith(".br", StringComparison.Ordinal))
-            {
-                name = name[..^3];
-            }
+            return HashedName().IsMatch(WithoutCompression(route[(route.LastIndexOf('/') + 1)..]));
+        }
 
-            return HashedName().IsMatch(name);
+        /// <summary>A file name without its <c>.br</c> or <c>.gz</c> suffix.</summary>
+        /// <param name="name">The name.</param>
+        /// <returns>The name of the uncompressed file.</returns>
+        private static string WithoutCompression(string name)
+        {
+            return name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".br", StringComparison.OrdinalIgnoreCase)
+                ? name[..^3]
+                : name;
+        }
+
+        /// <summary>
+        ///     Whether a static asset endpoint serves the SPA's shell. A publish maps the shell under
+        ///     several routes (<c>index.html</c>, its compressed files' names and a fingerprinted name),
+        ///     and each route's compressed variants are rows of their own with the same route and a
+        ///     compressed file; every one of them is the shell.
+        /// </summary>
+        /// <param name="route">The endpoint's route.</param>
+        /// <param name="assetFile">The file it serves, compressed or not.</param>
+        /// <returns>True when the endpoint answers with <c>index.html</c>'s content.</returns>
+        public static bool IsIndexAsset(string route, string assetFile)
+        {
+            ArgumentNullException.ThrowIfNull(route);
+            ArgumentNullException.ThrowIfNull(assetFile);
+            return string.Equals(route, IndexFile, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(WithoutCompression(assetFile), IndexFile, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>Whether the fallback answers a request with <c>index.html</c>.</summary>
@@ -222,7 +243,7 @@ namespace Tellma.Core.AspNetCore.Surfaces
 
             // The asset's handler writes the manifest's headers; these replace its cache rule, and
             // index.html's add its security headers, just before the response starts.
-            bool isIndex = string.Equals(asset.AssetPath, IndexFile, StringComparison.OrdinalIgnoreCase);
+            bool isIndex = IsIndexAsset(asset.Route, asset.AssetPath);
             string cacheControl = IsHashed(asset.Route) ? ImmutableCacheControl : NoCache;
             endpoint.RequestDelegate = context =>
             {
@@ -283,12 +304,24 @@ namespace Tellma.Core.AspNetCore.Surfaces
         private static RequestDelegate IndexDelegate(WebApplication app, string policy)
         {
             IApplicationBuilder pipeline = ((IApplicationBuilder)app).New();
-            _ = pipeline.Use(next => context =>
+            _ = pipeline.Use(next => async context =>
             {
-                // The static file middleware serves only a request no endpoint claimed.
+                // The static file middleware serves only a request no endpoint claimed. The request's
+                // own path and endpoint come back afterwards, so the request log, the traces and the
+                // metrics name the deep link the browser opened, not the shell.
+                PathString path = context.Request.Path;
+                Endpoint? endpoint = context.GetEndpoint();
                 context.Request.Path = "/" + IndexFile;
                 context.SetEndpoint(null);
-                return next(context);
+                try
+                {
+                    await next(context).ConfigureAwait(false);
+                }
+                finally
+                {
+                    context.Request.Path = path;
+                    context.SetEndpoint(endpoint);
+                }
             });
             _ = pipeline.UseStaticFiles(new StaticFileOptions
             {

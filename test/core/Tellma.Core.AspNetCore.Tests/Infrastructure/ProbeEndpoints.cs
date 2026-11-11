@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.SignalR;
 using System.Globalization;
 using System.Net.Http.Json;
 using Tellma.Core.Abstractions.Tenancy;
@@ -44,7 +45,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             _ = endpoints.Web.MapPost("/upload", Probe).WithMutation(true).AcceptsBinary(1024).AllowMember();
 
             // --- The hub's negotiate (a read, as every hub endpoint is), the blobs, the public API ---
-            _ = endpoints.Hub.MapPost("/negotiate", Probe).AllowMember();
+            // The negotiate probe stands in for SignalR's own, so it carries the hub marker SignalR
+            // stamps; the Hub group admits a hub's connection endpoints alone.
+            _ = endpoints.Hub.MapPost("/negotiate", Probe).WithMetadata(new HubMetadata(typeof(ProbeHub))).AllowMember();
             _ = endpoints.Blobs.MapGet("/{kind}/{id:int}", Probe).WithMutation(false).AllowMember();
             _ = endpoints.Api.MapGet("/probe", Probe).WithMutation(false).AllowMember();
             _ = endpoints.Api.MapPost("/probe", Probe).WithMutation(true).AllowMember();
@@ -86,6 +89,11 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 context.Assurance?.Acr,
                 CultureInfo.CurrentCulture.Name));
         }
+    }
+
+    /// <summary>A hub with no methods, for the Hub group's endpoints.</summary>
+    internal sealed class ProbeHub : Hub
+    {
     }
 
     /// <summary>What a probe answers.</summary>

@@ -12,6 +12,7 @@ using System.Diagnostics;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
@@ -70,7 +71,14 @@ namespace Tellma.Core.AspNetCore
             }
 
             // --- 3. Request logging, through the host's own logger rather than the static one ---
-            _ = app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<ILogger>());
+            // Its completion event is written after the tenant middleware's logger scope has closed,
+            // so the tenant request's members are copied onto it from the request's context.
+            _ = app.UseSerilogRequestLogging(options =>
+            {
+                options.Logger = app.Services.GetRequiredService<ILogger>();
+                options.EnrichDiagnosticContext = static (diagnostics, context) =>
+                    TenantLogScope.Enrich(diagnostics, context.RequestServices.GetService<IRequestContextAccessor>());
+            });
 
             // --- 4. Exceptions as problem details ---
             _ = app.UseExceptionHandler(new ExceptionHandlerOptions

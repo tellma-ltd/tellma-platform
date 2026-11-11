@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.AspNetCore.SignalR;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
@@ -30,6 +31,9 @@ namespace Tellma.Core.AspNetCore.Routing
 
         /// <summary>The route parameter every tenant route begins with.</summary>
         internal const string TenantIdParameter = "tenantId";
+
+        /// <summary>The full name of the framework's short-circuit marker, an internal type.</summary>
+        private const string ShortCircuitMetadataType = "Microsoft.AspNetCore.Routing.ShortCircuit.ShortCircuitMetadata";
 
         /// <summary>The platform's routes under <c>/api</c>, where no endpoint of the tenantless group may sit.</summary>
         private static readonly string[] PlatformApiSegments = ["admin", "distribution-info", "client-telemetry", "webhooks"];
@@ -104,6 +108,14 @@ namespace Tellma.Core.AspNetCore.Routing
                 if (anonymous && !tenantless)
                 {
                     problems.Add(Problem(where, "allows anonymous callers without TenantlessEndpointMetadata.", "Call AsTenantlessEndpoint(reason) on it, or remove AllowAnonymous."));
+                }
+
+                // --- Short-circuiting is for endpoints that stated they are anonymous ---
+                // Routing then runs the endpoint at once, before authentication, authorization, the
+                // CSRF control and the tenant middleware, so a policy it names would never be applied.
+                if (!anonymous && ShortCircuits(metadata))
+                {
+                    problems.Add(Problem(where, "short-circuits routing without allowing anonymous callers, so authentication, authorization, the CSRF control and the tenant middleware never run for it.", "Remove ShortCircuit(), or state an anonymous tenantless endpoint with AllowAnonymous() and AsTenantlessEndpoint(reason)."));
                 }
 
                 // --- Tenant routes: the tenant controls, every one of them ---
@@ -235,6 +247,17 @@ namespace Tellma.Core.AspNetCore.Routing
         }
 
         /// <summary>
+        ///     Whether an endpoint short-circuits routing. The framework's marker is internal, so it is
+        ///     recognized by its name; the suite proves <c>ShortCircuit()</c> is still recognized.
+        /// </summary>
+        /// <param name="metadata">The endpoint's metadata.</param>
+        /// <returns>True when routing runs the endpoint at once.</returns>
+        private static bool ShortCircuits(EndpointMetadataCollection metadata)
+        {
+            return metadata.Any(static item => item.GetType().FullName == ShortCircuitMetadataType);
+        }
+
+        /// <summary>
         ///     Proves an access guard reaches a tenant endpoint: its surface is its group's, the group's
         ///     guard wraps the very delegate it runs, the hub's door keys on its surface, and an endpoint
         ///     outside the groups is MCP's, stamped by MCP's own front door.
@@ -285,7 +308,19 @@ namespace Tellma.Core.AspNetCore.Routing
                     break;
 
                 case TenantSurface.Hub:
-                    // The tenant middleware runs the hub's front door for every Hub endpoint.
+                    // The tenant middleware runs the hub's front door for every Hub endpoint, as a
+                    // read under the hub's provenance rules alone. That holds for a SignalR hub's own
+                    // connection endpoints and nothing else, so nothing else may sit on the group.
+                    if (metadata.GetMetadata<HubMetadata>() is null)
+                    {
+                        problems.Add(Problem(where, "is on the Hub group but is not a SignalR hub's connection endpoint, so it would be served as a read under the hub's CSRF rules alone.", "Map hubs alone on the Hub group (MapHub), and any other endpoint on the Web group."));
+                    }
+
+                    if (metadata.GetMetadata<MutationStamp>() is not null || tenant.IsMutation)
+                    {
+                        problems.Add(Problem(where, "states whether it changes data on the Hub group, whose connections are always reads.", "Remove WithMutation, or any TenantEndpointMetadata naming a mutation, from the hub endpoint."));
+                    }
+
                     break;
 
                 case TenantSurface.Mcp:

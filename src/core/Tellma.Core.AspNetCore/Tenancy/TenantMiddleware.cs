@@ -99,14 +99,25 @@ namespace Tellma.Core.AspNetCore.Tenancy
         /// <param name="context">The request.</param>
         /// <returns>The id.</returns>
         /// <exception cref="InvalidOperationException">The endpoint's route names none, which the endpoint audit refuses.</exception>
-        private static int TenantIdOf(HttpContext context)
+        /// <exception cref="TenantNotFoundException">The segment is not a tenant id written in digits alone.</exception>
+        private int TenantIdOf(HttpContext context)
         {
-            // The route constraint admits positive integers alone; anything else is a mapping the
-            // audit should have refused, so it fails closed.
-            object? value = context.GetRouteValue(TellmaEndpointAudit.TenantIdParameter);
-            return int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.None, CultureInfo.InvariantCulture, out int id) && id > 0
-                ? id
-                : throw new InvalidOperationException("A tenant endpoint was matched without a positive tenantId route value.");
+            // A route without the parameter is a mapping the audit should have refused: fail closed.
+            if (context.GetRouteValue(TellmaEndpointAudit.TenantIdParameter) is not { } value)
+            {
+                throw new InvalidOperationException("A tenant endpoint was matched without a tenantId route value.");
+            }
+
+            // The route's int constraint also admits a sign and surrounding white space ("+1", "1 ").
+            // A tenant id is digits alone, so such a segment names no tenant and answers as one that
+            // does not exist, never as a server error.
+            if (int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.None, CultureInfo.InvariantCulture, out int id) && id > 0)
+            {
+                return id;
+            }
+
+            metrics.RecordResolution(TenantResolutionOutcome.NotFound);
+            throw new TenantNotFoundException(0);
         }
 
         /// <summary>Resolves a tenant from the snapshot, refusing one no request may reach.</summary>

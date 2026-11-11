@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Serilog;
 using System.Collections;
 using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
@@ -22,6 +23,26 @@ namespace Tellma.Core.AspNetCore.Tenancy
 
         /// <inheritdoc />
         public int Count => Names.Length;
+
+        /// <summary>
+        ///     Puts a tenant request's members on the request-completion event, which is written after
+        ///     the scope has closed. A tenantless request carries none.
+        /// </summary>
+        /// <param name="diagnostics">The request's diagnostic context.</param>
+        /// <param name="accessor">The request's context accessor, if the request has one.</param>
+        public static void Enrich(IDiagnosticContext diagnostics, IRequestContextAccessor? accessor)
+        {
+            ArgumentNullException.ThrowIfNull(diagnostics);
+            if (accessor?.Current.Tenant is null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, object?> member in new TenantLogScope(accessor))
+            {
+                diagnostics.Set(member.Key, member.Value);
+            }
+        }
 
         /// <inheritdoc />
         public KeyValuePair<string, object?> this[int index]
