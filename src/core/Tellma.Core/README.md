@@ -8,10 +8,11 @@ context.
 Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions,
 the table-type binder and the entity metadata), the tenancy runtime (the catalog model, the tenant registry, connection
 resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
-file-system store), the three calendar systems and the first piece of localization (the language
-catalogue, the value sets and the negotiation of a request's language, region, calendar and time
-zone). The rest of data access, the CRUD pipeline, access control, settings, caching,
-the rest of localization and of blobs, Excel, jobs and notifications join it as namespaces.
+file-system store), the three calendar systems and the core of localization (the language
+catalogue, the value sets, the negotiation of a request's language, region, calendar and time
+zone, and the ICU string localizer with Core's shared resources). The rest of data access, the CRUD
+pipeline, access control, settings, caching, the rest of localization and of blobs, Excel, jobs and
+notifications join it as namespaces.
 
 ## The composition root
 
@@ -380,6 +381,81 @@ comparison, casing and the culture's display names. A pair outside the catalogue
 distribution added) has no pinned data and takes the host's Latin-digit Gregorian formats, cleaned
 the same way.
 
+### String localization
+
+`AddTellma` replaces the host's `IStringLocalizerFactory` with `IcuStringLocalizerFactory`, so every
+`IStringLocalizer` and `IStringLocalizer<T>` in the process renders a resource as an ICU message
+(MessageFormat.NET, one shared formatter):
+
+```csharp
+localizer["Problem_tree_cycle_Detail"];
+localizer["Validation_MaxLength", new { maxLength = 50 }];
+localizer["Notification_core_report_shared", new Dictionary<string, object?> { ["actorName"] = name, ["title"] = title }];
+```
+
+Arguments are named, in one object: a dictionary or an object whose properties name them (an
+anonymous type). A second object, or a lone value (a string, a number, a date), is a positional
+argument and throws `ArgumentException`. Plural and select follow the culture's CLDR rules (`ar`'s
+zero, one, two, few, many and other), and `#` and `{n, number}` format in that culture.
+`{d, date, short|medium|long|full}` and `{t, time, …}` render through the flow's calendar system in
+its display zone, with ASCII digits; a `DateOnly` and a `DateTime` of unspecified kind are dates
+on the wall clock and never shift.
+
+The culture, the calendar and the zone are the innermost `LocalizationScope`'s, so a job or a
+message renders for its recipient:
+
+```csharp
+using (LocalizationScope.Enter(recipientContext))
+{
+    subject = localizer["Notification_core_report_shared", new { actorName, title }];
+}
+```
+
+Outside every scope the culture is the thread's current UI culture, and the calendar and the zone
+are the request's (`LocalizationScope.ApplyRequest`), else Gregorian and UTC. A resource is looked
+up from the culture through its parents to the neutral English set (`ar-SA`, `ar`, English); no
+tenant or distribution override is consulted. A key absent everywhere comes back as the key itself,
+marked `ResourceNotFound`, logged once (`MissingResourceString`) and counted once per key and culture
+in `tellma.localization.missing`, tagged by the culture's language code (`other` for a language the
+distribution does not offer). A value that is not a well-formed ICU message, or does not format with
+its arguments, comes back raw and is logged once (`MessageFormatMalformed`). A value with
+placeholders read without arguments comes back raw, without a log: the caller reads the template.
+
+The host's `LocalizationOptions.ResourcesPath` does not apply: a type's resources are addressed by
+its full name (`Tellma.Core.Resources.Strings`), so every package addresses another's the same way.
+Core's shared resources are `CoreStrings.BaseName` in `CoreStrings.Assembly`:
+
+```csharp
+IStringLocalizer core = factory.Create(CoreStrings.BaseName, CoreStrings.Assembly);
+```
+
+### Core's resources
+
+`Resources/Strings.resx` (English, the neutral resources) and its `ar` and `am` satellites hold every
+string Core shows, keyed `PascalCase_Underscored`:
+
+| Family | Keys |
+|---|---|
+| Calendars | `Calendar_<code>`, `Calendar_<code>_Month<n>` |
+| Regions | `Region_<code>` for every region of the catalogue, generated (below) |
+| Problems | `Problem_<code>` and `Problem_<code>_Detail`, `-` written `_` |
+| Validation | each pipeline and settings code with `.` written `_` (`Validation_MaxLength`, `Settings_UnknownSetting`) |
+| Labels and actions | `Name`, `Code`, `CreatedAt`, …; `Action_<verb>`, `Entity_New`, `Entity_DisplayNameFallback` |
+| Startup | `Boot_*`, the page a host shows before it is ready |
+| Reports and dashboards | `ReportKind_*`, `ShareAccess_*`, `Core_Report_*`, `Core_Dashboard_*`, their notifications |
+| Query language | `Queryex_<code>` for every diagnostic code |
+
+`Strings.resx` reaches the browser through the string pack; `Resources/ServerStrings.resx` holds text
+only the server renders and is empty so far.
+
+The region names come from CLDR, never by hand: after the pinned culture data changes, regenerate
+them with a Node.js that bundles CLDR 48 (Node 24):
+
+```bash
+node eng/region-names/generate-region-names.mjs
+node eng/region-names/generate-region-names.mjs --check
+```
+
 ### Value sets
 
 A value set is a named enumeration over string columns (`ValueSetDescriptor`): its values, each
@@ -414,8 +490,8 @@ carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain stri
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures and the pinned culture data with its reader, writer and generator source. |
-| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests
 
