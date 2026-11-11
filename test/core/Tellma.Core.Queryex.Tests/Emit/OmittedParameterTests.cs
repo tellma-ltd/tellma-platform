@@ -614,6 +614,104 @@ namespace Tellma.Core.Queryex.Tests.Emit
             Assert.True(compiled > 20, "too few corpus queries declare parameters");
         }
 
+        /// <summary>
+        ///     The absent value an omitted parameter becomes counts against the ceiling on bound
+        ///     nodes exactly as the parameter did: no more, and no less.
+        /// </summary>
+        /// <param name="select">The select list.</param>
+        /// <param name="orderBy">The ordering list.</param>
+        [Theory]
+        [InlineData("Id, coalesce(@Customer, 0), coalesce(@Other, 0), coalesce(@Customer, 1), coalesce(@Other, 1)", "Id")]
+        [InlineData("Id", "coalesce(@Customer, Amount), coalesce(@Other, Id)")]
+        [InlineData("Id, @Customer, @Other, @Root, @AsOf, @Posted", "Id")]
+        public void AnAbsentValue_CountsAsTheParameterItReplaced(string select, string orderBy)
+        {
+            QueryexEngine engine = new();
+            QuerySpec spec = new() { Root = LedgerFixture.Invoice, Select = select, OrderBy = orderBy };
+
+            int whole = SmallestCeiling(engine, spec, Options([]));
+            int folded = SmallestCeiling(engine, spec, Options(["Customer", "Other", "Root", "AsOf", "Posted"]));
+
+            Assert.Equal(whole, folded);
+        }
+
+        /// <summary>
+        ///     Every query of the corpus that declares parameters fits, with any of them left out,
+        ///     under the tightest ceiling on bound nodes it fits under with none left out.
+        /// </summary>
+        /// <remarks>
+        ///     A stored definition is checked against its ceilings with nothing left out. If
+        ///     leaving a parameter out could make it bigger, a definition written close to a
+        ///     ceiling would be accepted and then refused when someone ran it.
+        /// </remarks>
+        [Fact]
+        public void EveryCorpusQuery_FitsItsTightestCeiling_WithItsParametersLeftOut()
+        {
+            QueryexEngine engine = new();
+            int checkedCompilations = 0;
+            foreach (QueryCase entry in QueryCorpus.All.Where(c => c.Parameters.Count > 0 && c.Diagnostics.Count == 0))
+            {
+                QueryCompilationOptions options = entry.Options(LedgerFixture.Schema);
+                int ceiling = SmallestCeiling(engine, entry.Spec, options with { OmittedParameters = [] });
+
+                string[] all = [.. entry.Parameters.Select(parameter => parameter.Name)];
+                foreach (string[] omitted in all.Select(name => new[] { name }).Append(all))
+                {
+                    QueryexResult<CompiledQuery> result = engine.CompileQuery(
+                        entry.Spec,
+                        options with
+                        {
+                            OmittedParameters = omitted,
+                            Limits = options.Limits with { MaxTypedNodes = ceiling },
+                        });
+
+                    checkedCompilations++;
+                    Assert.True(
+                        result.Succeeded,
+                        entry.Id + " without " + string.Join(", ", omitted) + " at " + ceiling + ": "
+                            + string.Join(", ", result.Diagnostics.Select(d => d.Code + "@" + d.Location)));
+                }
+            }
+
+            // The check is only worth something while the corpus keeps feeding it.
+            Assert.True(checkedCompilations > 20, "too few corpus queries declare parameters");
+        }
+
+        /// <summary>Finds the tightest ceiling on bound nodes a query compiles under.</summary>
+        /// <param name="engine">The engine.</param>
+        /// <param name="spec">The query.</param>
+        /// <param name="options">The options, whose other ceilings are left as they are.</param>
+        /// <returns>The smallest ceiling the query compiles under.</returns>
+        private static int SmallestCeiling(QueryexEngine engine, QuerySpec spec, QueryCompilationOptions options)
+        {
+            // The query has to compile as given, or there is nothing to search for.
+            int fits = options.Limits.MaxTypedNodes;
+            _ = Compile(engine, spec, options);
+
+            // Whether a query fits is monotonic in the ceiling, so the boundary is found by halving.
+            int tooSmall = 0;
+            while (fits - tooSmall > 1)
+            {
+                int middle = tooSmall + ((fits - tooSmall) / 2);
+                QueryexResult<CompiledQuery> result = engine.CompileQuery(
+                    spec,
+                    options with { Limits = options.Limits with { MaxTypedNodes = middle } });
+
+                if (result.Succeeded)
+                {
+                    fits = middle;
+                }
+                else
+                {
+                    // Nothing but the ceiling being searched may be what refused it.
+                    Assert.All(result.Diagnostics, diagnostic => Assert.Equal("QX5004", diagnostic.Code));
+                    tooSmall = middle;
+                }
+            }
+
+            return fits;
+        }
+
         /// <summary>Builds the options a test compiles under.</summary>
         /// <param name="omitted">The names left out.</param>
         /// <returns>The options.</returns>

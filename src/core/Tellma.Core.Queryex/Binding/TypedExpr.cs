@@ -803,7 +803,11 @@ namespace Tellma.Core.Queryex.Binding
     /// </summary>
     /// <param name="Items">The items, in source order.</param>
     /// <param name="Nullity">Each node's nullity, kept beside the tree rather than on it.</param>
-    /// <param name="NodeCount">The bound nodes across every item.</param>
+    /// <param name="NodeCount">
+    ///     What the list counts for against the ceiling on bound nodes: the bound nodes across every
+    ///     item, with each absent value that stands where an omitted parameter was written counted
+    ///     as the one node the parameter would have been.
+    /// </param>
     /// <param name="Diagnostics">Whatever problems binding reported, without a location.</param>
     internal sealed record BoundExpression(
         ImmutableArray<BoundItem> Items,

@@ -388,7 +388,8 @@ namespace Tellma.Core.Queryex.Syntax
                         parameter.Span,
                         Conversion,
                         parameter.Span,
-                        [new NullSyntax(parameter.Span), new StringSyntax(parameter.Span, target)]);
+                        [new NullSyntax(parameter.Span), new StringSyntax(parameter.Span, target)],
+                        standsForParameter: true);
 
                 case ParenthesizedSyntax parenthesized:
                     SyntaxNode inner = FoldValue(parenthesized.Inner);
@@ -497,6 +498,51 @@ namespace Tellma.Core.Queryex.Syntax
             }
 
             return new ExpressionListSyntax(original.Span, items, [.. parameters]);
+        }
+
+        /// <summary>
+        ///     How many more nodes a folded list has than it would have had if every absent value
+        ///     in it were still the one parameter it replaced.
+        /// </summary>
+        /// <param name="list">A list, folded or not.</param>
+        /// <returns>The surplus; zero for a list no absent value was written into.</returns>
+        /// <remarks>
+        ///     Writing the absent value out takes a conversion, an absent literal and a type name
+        ///     where the parameter was a single node. A ceiling on the size of a query is a ceiling
+        ///     on what its author wrote, and a query that fits it must go on fitting it whichever of
+        ///     its parameters a caller leaves out — so whoever counts a folded list against one
+        ///     takes this off first.
+        /// </remarks>
+        internal static int Surplus(ExpressionListSyntax list)
+        {
+            int surplus = 0;
+            for (int index = 0; index < list.Items.Count; index++)
+            {
+                surplus += Surplus(list.Items[index].Expression);
+            }
+
+            return surplus;
+        }
+
+        /// <summary>The surplus of one subtree.</summary>
+        /// <param name="node">The subtree.</param>
+        /// <returns>The nodes it has beyond one for each absent value written into it.</returns>
+        private static int Surplus(SyntaxNode node)
+        {
+            if (node is CallSyntax { StandsForParameter: true })
+            {
+                // Everything in the subtree but the one node the parameter was.
+                return node.NodeCount - 1;
+            }
+
+            int surplus = 0;
+            IReadOnlyList<SyntaxNode> children = node.Children;
+            for (int index = 0; index < children.Count; index++)
+            {
+                surplus += Surplus(children[index]);
+            }
+
+            return surplus;
         }
 
         /// <summary>Collects every parameter name a tree still mentions.</summary>

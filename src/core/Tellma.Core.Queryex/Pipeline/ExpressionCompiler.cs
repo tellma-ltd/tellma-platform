@@ -153,6 +153,16 @@ namespace Tellma.Core.Queryex.Pipeline
                 nodes += item.Expression.NodeCount;
             }
 
+            if (folding is not null && sink.Count == before)
+            {
+                // An absent value written where an omitted parameter stood binds to as many nodes
+                // as it has parts, and the parameter bound to one. Counted as that one, so that
+                // leaving a parameter out can never be what takes a query over a ceiling it fitted
+                // under when it was written. Only for a list that bound cleanly: a part that failed
+                // to bind is a single node whatever was written under it.
+                nodes -= OmittedParameterFolder.Surplus(syntax);
+            }
+
             BoundExpression bound = new(items, nullity, nodes, []);
             if (key is not null && sink.Count == before)
             {
