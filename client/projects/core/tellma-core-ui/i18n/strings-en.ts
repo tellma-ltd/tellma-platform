@@ -200,4 +200,18 @@ export const TM_UI_STRINGS_EN = {
     tooLarge: 'The file is larger than {maxMb, number} MB',
     unsupported: 'The file is not a supported image',
   },
+  copy: {
+    copy: 'Copy',
+    copied: 'Copied',
+    // {keys} is the platform's copy shortcut, written as text: "Ctrl+C" or "⌘C".
+    manual: 'Press {keys} to copy',
+  },
+  reference: {
+    label: 'Reference',
+    copy: 'Copy reference',
+  },
+  counter: {
+    // {max} arrives formatted in the active locale's digits.
+    overflow: '{max}+',
+  },
 } as const;

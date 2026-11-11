@@ -1,0 +1,84 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-counter — the host is the 16px pill itself. It sits in text, tabs and
+   buttons, so it is inline-flex rather than block. Digits are tabular, so
+   a changing count never changes its own width within a digit count. */
+
+:host {
+  --tm-counter-bg: var(--counter-neutral-bg);
+  --tm-counter-text: var(--counter-neutral-text);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  block-size: var(--counter-height);
+  /* An inline count reserves two digits, so 9 -> 10 moves nothing beside
+     it. The ch unit is the width of a digit in this font, and tabular
+     figures make every digit that wide. The box is border-box, so the
+     (transparent) border counts too. Rounding up to a whole pixel keeps
+     the layout engine's sub-pixel snapping of the text from overshooting
+     the reservation by a fraction. */
+  min-inline-size: max(
+    var(--counter-min-width),
+    round(up, calc(2ch + 2 * var(--counter-padding-x) + 2 * var(--border-width)), 1px)
+  );
+  padding-inline: var(--counter-padding-x);
+  /* Transparent until forced colours paint it: the pill's edge then
+     survives the loss of its fill. */
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
+  background: var(--tm-counter-bg);
+  color: var(--tm-counter-text);
+  font-family: var(--font-ui);
+  font-size: var(--counter-font-size);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Nothing to show: no box at all. */
+:host(.tm-counter--empty) {
+  display: none;
+}
+
+:host(.tm-counter--accent) {
+  --tm-counter-bg: var(--counter-accent-bg);
+  --tm-counter-text: var(--counter-accent-text);
+}
+
+:host(.tm-counter--attention) {
+  --tm-counter-bg: var(--counter-attention-bg);
+  --tm-counter-text: var(--counter-attention-text);
+}
+
+/* Overlay: on the parent's block-start, inline-end corner, over whatever is
+   there, inside a halo of the surface it sits on. A single digit keeps the
+   pill round. It never takes pointer input from the control beneath. */
+:host(.tm-counter--overlay) {
+  position: absolute;
+  inset-block-start: var(--counter-overlay-offset);
+  inset-inline-end: var(--counter-overlay-offset);
+  min-inline-size: var(--counter-min-width);
+  box-shadow: 0 0 0 var(--counter-halo-width) var(--counter-halo);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  /* The fills are forced away: the transparent border is painted in the
+     system text colour, and the attention tone keeps a system highlight
+     fill so it still reads apart from the others. */
+  :host(.tm-counter--attention) {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}

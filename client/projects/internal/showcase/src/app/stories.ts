@@ -6,9 +6,13 @@
 import { Component, Type } from '@angular/core';
 
 import { AlertStory } from './alert/alert-story';
+import { AvatarStory } from './avatar/avatar-story';
+import { BadgeStory } from './badge/badge-story';
 import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { CopyStory } from './copy/copy-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
+import { EmptyStateStory } from './empty-state/empty-state-story';
 import { EntityPickerStory } from './entity-picker/entity-picker-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
@@ -31,8 +35,11 @@ import { MenuStory } from './menu/menu-story';
 import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
 import { PopoverStory } from './popover/popover-story';
+import { ProgressStory } from './progress/progress-story';
+import { RelativeTimeStory } from './relative-time/relative-time-story';
 import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
+import { SkeletonStory } from './skeleton/skeleton-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 
@@ -68,6 +75,17 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'icon', title: 'Icon (tm-icon)', component: IconStory },
   { id: 'kbd', title: 'Keyboard keys (tm-kbd)', component: KbdStory },
   { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
+  { id: 'copy', title: 'Copy (tm-copy-button + tm-reference)', component: CopyStory },
+  { id: 'badge', title: 'Badges and counters (tm-badge + tm-counter)', component: BadgeStory },
+  { id: 'avatar', title: 'Avatar (tm-avatar)', component: AvatarStory },
+  {
+    id: 'progress',
+    title: 'Progress (tm-progress-bar + tm-progress-ring)',
+    component: ProgressStory,
+  },
+  { id: 'skeleton', title: 'Skeleton (tm-skeleton)', component: SkeletonStory },
+  { id: 'relative-time', title: 'Relative time (tm-relative-time)', component: RelativeTimeStory },
+  { id: 'empty-state', title: 'Empty state (tm-empty-state)', component: EmptyStateStory },
   { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },

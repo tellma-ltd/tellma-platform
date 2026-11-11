@@ -110,6 +110,37 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the status and identity indicators’ geometry at the sizes they are drawn at', () => {
+    // The names tm-badge, tm-counter, tm-avatar, tm-progress-bar,
+    // tm-progress-ring, tm-skeleton and tm-empty-state read. The avatar
+    // diameters are also the rendition sizes tm-avatar requests from
+    // tm-image, and the progress hold is read by script.
+    for (const declaration of [
+      '--badge-height: 20px;',
+      '--badge-dot-size: 6px;',
+      '--counter-height: 16px;',
+      '--counter-min-width: 16px;',
+      '--counter-halo: var(--surface-card);',
+      '--counter-halo-width: 2px;',
+      '--avatar-size-xs: 20px;',
+      '--avatar-size-sm: 24px;',
+      '--avatar-size-md: 28px;',
+      '--avatar-size-lg: 40px;',
+      '--avatar-size-xl: 72px;',
+      '--avatar-bg: var(--accent);',
+      '--progress-height: 4px;',
+      '--progress-min-visible: 250ms;',
+      '--progress-sweep-duration: 1.4s;',
+      '--progress-ring-stroke: 1.5px;',
+      '--skeleton-bar-height: 8px;',
+      '--skeleton-last-line-width: 60%;',
+      '--empty-state-icon-size: 22px;',
+      '--empty-state-detail-max-width: 42ch;',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role
@@ -291,6 +322,28 @@ describe('the categorical and sequential colour groups', () => {
         expect(tint, `${scheme} slot ${slot} tint`).toMatch(/^#[0-9A-Fa-f]{6}$/);
         expect(onTint, `${scheme} slot ${slot} onTint`).toMatch(/^#[0-9A-Fa-f]{6}$/);
         expect(contrast(tint!, onTint!), `${scheme} slot ${slot}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('reads an unkeyed avatar’s initials and every counter fill at 4.5:1 or more, in both schemes', () => {
+    // The initials are 9 to 11 px on the small avatars, and a counter's
+    // digits 11 px: both are normal-size text for WCAG.
+    const pairs = [
+      ['--avatar-bg', '--avatar-text'],
+      ['--counter-neutral-bg', '--counter-neutral-text'],
+      ['--counter-accent-bg', '--counter-accent-text'],
+      ['--counter-attention-bg', '--counter-attention-text'],
+      ['--badge-accent-bg', '--badge-accent-text'],
+    ] as const;
+    for (const scheme of ['light', 'dark'] as const) {
+      const vars = tmEmittedSchemeVars(tmTokensDefault, scheme);
+      for (const [bg, ink] of pairs) {
+        const background = tmResolveVar(vars, bg);
+        const text = tmResolveVar(vars, ink);
+        expect(background, `${scheme} ${bg}`).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        expect(text, `${scheme} ${ink}`).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        expect(contrast(background!, text!), `${scheme} ${bg}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

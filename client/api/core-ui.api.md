@@ -238,6 +238,18 @@ export const TM_UI_STRINGS_EN: {
         readonly tooLarge: "The file is larger than {maxMb, number} MB";
         readonly unsupported: "The file is not a supported image";
     };
+    readonly copy: {
+        readonly copy: "Copy";
+        readonly copied: "Copied";
+        readonly manual: "Press {keys} to copy";
+    };
+    readonly reference: {
+        readonly label: "Reference";
+        readonly copy: "Copy reference";
+    };
+    readonly counter: {
+        readonly overflow: "{max}+";
+    };
 };
 
 // @public

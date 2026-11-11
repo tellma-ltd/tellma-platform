@@ -3,7 +3,11 @@
 CDK `ComponentHarness` drivers for the `tm-*` controls, shipped for
 consumers: `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` and
 `TmMultiSelectHarness` (with `TmOptionHarness` and `TmOptionGroupHarness`),
-and `TmFormFieldHarness`.
+and `TmFormFieldHarness`, among others. The status and identity indicators
+have `TmCounterHarness`, `TmAvatarHarness`, `TmProgressBarHarness`,
+`TmRelativeTimeHarness`, `TmCopyButtonHarness`, `TmReferenceHarness` and
+`TmEmptyStateHarness`; `tm-badge`, `tm-progress-ring` and `tm-skeleton` carry
+no behaviour a harness would add to a locator.
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

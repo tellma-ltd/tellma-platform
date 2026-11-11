@@ -188,6 +188,18 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly tooLarge: "حجم الملف أكبر من {maxMb, number} ميغابايت";
         readonly unsupported: "الملف ليس صورة مدعومة";
     };
+    readonly copy: {
+        readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
+        readonly copied: "تم النسخ";
+        readonly manual: "{gender, select, female {اضغطي} other {اضغط}} على {keys} للنسخ";
+    };
+    readonly reference: {
+        readonly label: "المرجع";
+        readonly copy: "{gender, select, female {انسخي} other {انسخ}} المرجع";
+    };
+    readonly counter: {
+        readonly overflow: "{max}+";
+    };
 };
 
 ```

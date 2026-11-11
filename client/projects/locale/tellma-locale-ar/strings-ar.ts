@@ -226,4 +226,16 @@ export const TM_LOCALE_AR_STRINGS = {
     tooLarge: 'حجم الملف أكبر من {maxMb, number} ميغابايت',
     unsupported: 'الملف ليس صورة مدعومة',
   },
+  copy: {
+    copy: copyVerb,
+    copied: 'تم النسخ',
+    manual: '{gender, select, female {اضغطي} other {اضغط}} على {keys} للنسخ',
+  },
+  reference: {
+    label: 'المرجع',
+    copy: `${copyVerb} المرجع`,
+  },
+  counter: {
+    overflow: '{max}+',
+  },
 } as const;

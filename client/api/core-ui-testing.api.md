@@ -20,6 +20,18 @@ export class TmAlertHarness extends ComponentHarness {
 }
 
 // @public
+export class TmAvatarHarness extends ComponentHarness {
+    getAccessibleName(): Promise<string | null>;
+    getInitials(): Promise<string>;
+    getSize(): Promise<string>;
+    getTone(): Promise<number | null>;
+    hasPhoto(): Promise<boolean>;
+    static hostSelector: string;
+    isDecorative(): Promise<boolean>;
+    isShowingGlyph(): Promise<boolean>;
+}
+
+// @public
 export class TmButtonHarness extends ComponentHarness {
     click(): Promise<void>;
     focus(): Promise<void>;
@@ -48,6 +60,28 @@ export class TmCheckboxHarness extends ComponentHarness {
 }
 
 // @public
+export class TmCopyButtonHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getAnnouncement(): Promise<string>;
+    getLabel(): Promise<string>;
+    getManualPrompt(): Promise<string | null>;
+    getManualText(): Promise<string | null>;
+    static hostSelector: string;
+    isCopied(): Promise<boolean>;
+    isShowingManualCopy(): Promise<boolean>;
+}
+
+// @public
+export class TmCounterHarness extends ComponentHarness {
+    getPlacement(): Promise<'inline' | 'overlay'>;
+    getText(): Promise<string>;
+    getTone(): Promise<'neutral' | 'accent' | 'attention'>;
+    static hostSelector: string;
+    isHiddenFromAssistiveTechnology(): Promise<boolean>;
+    isShown(): Promise<boolean>;
+}
+
+// @public
 export class TmDatePickerHarness extends ComponentHarness {
     blur(): Promise<void>;
     clear(): Promise<void>;
@@ -71,6 +105,17 @@ export class TmDropzoneHarness extends ComponentHarness {
     getHintText(): Promise<string>;
     getMetaLines(): Promise<string[]>;
     static hostSelector: string;
+}
+
+// @public
+export class TmEmptyStateHarness extends ComponentHarness {
+    getDetail(): Promise<string>;
+    getHeading(): Promise<string>;
+    getSize(): Promise<'page' | 'panel'>;
+    getTone(): Promise<'neutral' | 'error'>;
+    hasIcon(): Promise<boolean>;
+    static hostSelector: string;
+    isAnnounced(): Promise<boolean>;
 }
 
 // @public
@@ -354,6 +399,33 @@ export class TmPopoverHarness extends ComponentHarness {
     getText(): Promise<string>;
     static hostSelector: string;
     isFocused(): Promise<boolean>;
+}
+
+// @public
+export class TmProgressBarHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    getTone(): Promise<'accent' | 'success' | 'warning' | 'error'>;
+    getValue(): Promise<number | null>;
+    static hostSelector: string;
+    isIndeterminate(): Promise<boolean>;
+    isShown(): Promise<boolean>;
+}
+
+// @public
+export class TmReferenceHarness extends ComponentHarness {
+    copy(): Promise<void>;
+    getCopyButton(): Promise<TmCopyButtonHarness>;
+    getLabel(): Promise<string>;
+    getValue(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmRelativeTimeHarness extends ComponentHarness {
+    getAbsoluteText(): Promise<string | null>;
+    getDateTime(): Promise<string | null>;
+    getText(): Promise<string>;
+    static hostSelector: string;
 }
 
 // @public
