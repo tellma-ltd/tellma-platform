@@ -237,13 +237,13 @@
     --image-chrome-radius: var(--radius-xs);
     --menu-min-width: 180px;
     --menu-item-height: 30px;
+    --menu-item-height-touch: 44px;
     --menu-icon-size: 15px;
     --menu-item-gap: 9px;
     --menu-item-padding-x: 8px;
     --menu-item-radius: var(--radius-xs);
     --menu-item-font-size: 12.5px;
     --menu-panel-padding: 4px;
-    --menu-shortcut-font-size: 10px;
     --modal-width-sm: 420px;
     --modal-width-md: 640px;
     --modal-margin: 16px;

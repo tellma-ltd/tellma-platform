@@ -36,10 +36,6 @@ export interface TmEntityPicked<T, Id extends TmEntityId> {
 // @public
 export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements TmFormFieldControl, TmCellEditor<Id | null> {
     constructor();
-    protected readonly actionAdvanced: symbol;
-    protected readonly actionCreate: symbol;
-    protected readonly actionEdit: symbol;
-    protected readonly advancedRowLabel: Signal<string>;
     readonly advancedSearch: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
@@ -50,7 +46,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly controlId: Signal<string>;
     readonly create: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly createLabel: _angular_core.InputSignal<string | undefined>;
-    protected readonly createRowLabel: Signal<string>;
     protected readonly describedByAttr: Signal<string | null>;
     readonly describedByIds: Signal<readonly string[]>;
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
@@ -58,13 +53,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly displayWith: _angular_core.InputSignal<((id: Id) => string | null) | undefined>;
     readonly edit: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly editLabel: _angular_core.InputSignal<string | undefined>;
-    protected readonly editRowLabel: Signal<string>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     readonly fieldInvalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly fieldPending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly fieldTouched: _angular_core.InputSignalWithTransform<boolean, unknown>;
     focus(options?: FocusOptions): void;
+    protected readonly footerRows: Signal<{
+        readonly key: symbol;
+        readonly label: string;
+    }[]>;
     protected readonly formField: TmFormField | null;
     protected idOf(item: T): Id;
     readonly invalid: Signal<boolean>;
@@ -81,6 +79,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly namesEntity: Signal<boolean>;
     protected readonly noResultsText: Signal<string>;
     onContainerClick(): void;
+    protected onExpandedChange(open: boolean): void;
     protected onFocusin(): void;
     protected onFocusout(event: FocusEvent): void;
     protected onInput(): void;
@@ -106,8 +105,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     seed(text: string): void;
     setDescribedByIds(ids: readonly string[]): void;
     setFieldError(showsError: boolean): void;
-    protected readonly showsEditRow: Signal<boolean>;
-    protected readonly showsFooterRows: Signal<boolean>;
     protected readonly showsHasMore: Signal<boolean>;
     protected readonly showsInvalid: Signal<boolean>;
     protected readonly statusKind: Signal<"loading" | "empty" | "error" | null>;

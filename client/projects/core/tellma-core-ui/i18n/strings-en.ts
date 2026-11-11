@@ -153,6 +153,9 @@ export const TM_UI_STRINGS_EN = {
       close: 'Close find',
     },
   },
+  menu: {
+    opensInNewTab: '(opens in a new tab)',
+  },
   alert: {
     info: 'Info:',
     success: 'Success:',

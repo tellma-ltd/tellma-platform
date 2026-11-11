@@ -313,6 +313,16 @@ function typeAndPressAtOnce(input: HTMLInputElement, text: string, key: string):
   return event;
 }
 
+/**
+ * Types `text` (replacing the content) at once, with no settle before or
+ * after: the keystroke of a burst that further keys follow in the same task.
+ */
+function typeNow(input: HTMLInputElement, text: string): void {
+  input.focus();
+  input.value = text;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 /** Dispatches `key` on the input at once, with no settle before or after. */
 function pressNow(input: HTMLInputElement, key: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -1183,6 +1193,357 @@ describe('tm-entity-picker', () => {
       expect(input.value).toBe('Alice Green');
       expect(panel()).toBeNull();
       expect(host.picks.map((p) => p.source)).toEqual(['auto']);
+    });
+  });
+
+  // Arrow keys in the same burst: every arrow moves the highlight the
+  // moment it arrives, over the rows the picker's state has already
+  // decided, so the commit key that follows picks what the same keys pick
+  // when paced (the keyboard-model tests above).
+  describe('arrow keys delivered faster than the page renders', () => {
+    it('a keystroke, ArrowDown and Enter in one task commit the SECOND result', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      expect(activeRow()?.textContent?.trim()).toBe('Adam Brown'); // the previous highlight
+      typeNow(input, 'Al');
+      const arrow = pressNow(input, 'ArrowDown');
+      expect(arrow.defaultPrevented).toBe(true); // the caret stays put
+      const enter = pressNow(input, 'Enter');
+      expect(enter.defaultPrevented).toBe(true);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(input.value).toBe('Alan Grey');
+      expect(panel()).toBeNull();
+      expect(host.picks.map((p) => p.source)).toEqual(['list']);
+    });
+
+    it('the first keystroke, ArrowDown and Enter in one task commit the second result', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      // The popup has not mounted: no listbox exists for the arrow to move in.
+      typeNow(input, 'Al');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('a keystroke, ArrowDown and Tab in one task commit the second result, unconsumed', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      typeNow(input, 'Al');
+      pressNow(input, 'ArrowDown');
+      const tab = pressNow(input, 'Tab');
+      expect(tab.defaultPrevented).toBe(false);
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(input.value).toBe('Alan Grey');
+      expect(panel()).toBeNull();
+    });
+
+    it('every arrow in one task moves the highlight, and Enter commits where they stopped', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A'); // five rows, the first highlighted
+      expect(optionRows()).toHaveLength(5);
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowUp');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3); // the third row: down, down, down, up
+    });
+
+    it('arrows in one task paint the highlight the same keys reach when paced', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowDown');
+      await settle(fixture);
+      await settle(fixture);
+      // Alice Green, Alan Grey, then the footer row.
+      expect(activeRow()?.textContent?.trim()).toBe('Create…');
+      expect(input.getAttribute('aria-activedescendant')).toBe(activeRow()?.id);
+      // A further, paced arrow continues from there: it wraps to the top.
+      await press(fixture, input, 'ArrowDown');
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+    });
+
+    it('a held arrow key moves the highlight on every repeat', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      for (let i = 0; i < 2; i++) {
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+            repeat: true,
+          }),
+        );
+      }
+      await settle(fixture);
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Alan Grey'); // the fourth row
+    });
+
+    it('arrows wrap in one task as they do paced: down past the last row, up past the first', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al'); // Alice Green (highlighted), Alan Grey
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowDown'); // past the last row: back to the first
+      await settle(fixture);
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      pressNow(input, 'ArrowUp'); // past the first row: on to the last
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+    });
+
+    it('ArrowUp from no highlight reaches the last option within the burst', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      expect(activeRow()).toBeNull(); // a pristine browse highlights nothing
+      pressNow(input, 'ArrowUp'); // Create…, the last option
+      pressNow(input, 'ArrowUp'); // Advanced search…
+      pressNow(input, 'ArrowUp'); // Carol White, the last entity row
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(6);
+    });
+
+    it('an arrow onto a footer row and Enter in one task open its page', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      // A fresh empty set: Create… is one arrow and Enter away.
+      typeNow(input, 'Zebra');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(document.querySelector('[data-testid="page-pick"]')).not.toBeNull();
+      expect(lastPageData?.query).toBe('Zebra');
+      expect(errorText(fixture)).toBe(''); // never the fail-fast of an unhighlighted Enter
+      (document.querySelector('[data-testid="page-close"]') as HTMLElement).click();
+      await settle(fixture);
+    });
+
+    it('a keystroke after an arrow in the same task resets the highlight to the fresh first result', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      pressNow(input, 'ArrowDown'); // the second 'A' row…
+      typeNow(input, 'Al'); // …which the next keystroke's result set replaces
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+    });
+
+    it('an arrow right after an async answer lands, before it renders, moves among its rows', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      search.answer();
+      await settle(fixture);
+      expect(activeRow()?.textContent?.trim()).toBe('Adam Brown');
+      await type(fixture, input, 'Al'); // the spinner replaces the rows
+      search.answer();
+      await flushMicrotasks(); // the answer is in, nothing has rendered it
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(4);
+      expect(host.picks.map((p) => p.source)).toEqual(['list']);
+    });
+
+    it('an arrow while an async search is unanswered moves nothing: Enter still resolves the text', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.createPage.set(pageOf(FakePage));
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'A');
+      search.answer();
+      await settle(fixture);
+      // The rows on screen answer 'A'. The keystroke below supersedes them,
+      // and while the spinner is up the popup has no option at all.
+      typeNow(input, 'Alice Gr');
+      const arrow = pressNow(input, 'ArrowDown');
+      expect(arrow.defaultPrevented).toBe(true);
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBeNull();
+      // No footer row was there to land on: no page opened.
+      expect(document.querySelector('[data-testid="page-pick"]')).toBeNull();
+      search.answer();
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(host.picks.map((p) => p.source)).toEqual(['auto']);
+    });
+
+    it('ArrowDown that opens the popup, a second ArrowDown and Enter in one task pick the first row', async () => {
+      const { fixture, host, input } = await setup();
+      const search = syncSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      input.focus();
+      // Paced: the first arrow opens the browse list with no highlight, the
+      // second highlights its first row, Enter commits it.
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(1);
+      expect(search.calls.map((c) => c.query)).toEqual(['']); // one browse search, not two
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('Enter in the same task as the key that reopens the popup commits its fresh highlight', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      await press(fixture, input, 'Escape'); // closed, the typed text kept
+      expect(panel()).toBeNull();
+      // Paced: reopening on typed text highlights its first result again.
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+    });
+
+    it('a pick, a reopening arrow, another arrow and Enter in one task pick from the NEW browse list', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      pressNow(input, 'Enter'); // picks Alice Green: the popup closes
+      pressNow(input, 'ArrowDown'); // reopens, a pristine browse now
+      pressNow(input, 'ArrowDown'); // its first row
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      // Never a row of the 'Al' list that the first Enter closed.
+      expect(host.model().agentId).toBe(1);
+      expect(host.picks.map((p) => p.id)).toEqual([3, 1]);
+    });
+
+    it('Escape, a reopening arrow and Enter in one task commit nothing from the closed list', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await press(fixture, input, 'ArrowDown');
+      await press(fixture, input, 'ArrowDown');
+      expect(activeRow()?.textContent?.trim()).toBe('Adam Brown');
+      // Paced: Escape closes, ArrowDown reopens the browse list with no
+      // highlight, and Enter on pristine text just closes it.
+      pressNow(input, 'Escape');
+      pressNow(input, 'ArrowDown');
+      pressNow(input, 'Enter');
+      await settle(fixture);
+      expect(host.model().agentId).toBeNull();
+      expect(host.picks).toHaveLength(0);
+      expect(panel()).toBeNull();
+    });
+
+    it('arrows visit every option in the order it is rendered, result rows then every footer row', async () => {
+      // The arrows step over the picker's own list of options, not over the
+      // rendered rows: this pins the two to the same order, for the fullest
+      // popup there is (results and all three footer rows).
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.displayWith.set((id) => DIRECTORY.find((a) => a.id === id)?.name ?? null);
+      host.advancedPage.set(pageOf(FakePage));
+      host.createPage.set(pageOf(FakePage));
+      host.editPage.set(pageOf(FakePage));
+      host.model.set({ agentId: 5 }); // the field names an entity: Edit… shows
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await settle(fixture);
+      const rendered = Array.from(document.querySelectorAll<HTMLElement>('[ngOption]'));
+      expect(rendered.map((row) => row.textContent?.trim())).toEqual([
+        ...DIRECTORY.map((a) => a.name),
+        'Advanced search…',
+        'Create…',
+        'Edit…',
+      ]);
+      for (const row of rendered) {
+        await press(fixture, input, 'ArrowDown');
+        expect(activeRow()).toBe(row);
+      }
+      await press(fixture, input, 'ArrowDown'); // past the last: back to the first
+      expect(activeRow()).toBe(rendered[0]);
+    });
+
+    it('a pick and a further keystroke in one task search the new text once, unaborted', async () => {
+      const { fixture, host, input } = await setup();
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      search.answer();
+      await settle(fixture);
+      pressNow(input, 'Enter'); // picks Alice Green: the popup closes
+      typeNow(input, 'Bob'); // reopens it in the same task, on a new query
+      // The reopen resets what the closed popup left behind, and that reset
+      // must come before this keystroke's search, never on top of it.
+      expect(search.calls.map((c) => c.query)).toEqual(['Al', 'Bob']);
+      expect(search.calls[1].signal.aborted).toBe(false);
+      search.answer();
+      await settle(fixture);
+      expect(optionRows().map((row) => row.textContent?.trim())).toEqual(['Bob Stone']);
+      expect(activeRow()?.textContent?.trim()).toBe('Bob Stone');
+    });
+
+    it('an arrow pressed during an IME composition is left to the IME', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
+      // The IME's own candidate navigation: not consumed, no highlight move.
+      const arrow = await press(fixture, input, 'ArrowDown', { isComposing: true });
+      expect(arrow.defaultPrevented).toBe(false);
+      expect(activeRow()?.textContent?.trim()).toBe('Alice Green');
     });
   });
 
@@ -2364,6 +2725,90 @@ describe('tm-entity-picker', () => {
         typeAndPressAtOnce(input, 'Al', 'Enter');
         expect(host.keys).toContain('Enter'); // handed to the grid
         expect(picker.isDropdownOpen()).toBe(false); // …past a closed dropdown gate
+        expect(editor.value()).toBeNull();
+        expect(editor.text()).toBe('Al');
+        expect(activations.count).toBe(0);
+        await settle(fixture);
+      });
+
+      it('a keystroke, ArrowDown and Enter in one task pick the SECOND result and keep the keys from the grid', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        typeNow(input, 'Al');
+        const arrow = pressNow(input, 'ArrowDown');
+        expect(arrow.defaultPrevented).toBe(true);
+        pressNow(input, 'Enter');
+        await settle(fixture);
+        expect(host.keys).toEqual([]); // neither key reached the grid
+        expect(editor.value()).toBe(4);
+        expect(editor.text()).toBeNull();
+        expect(activations.count).toBe(1); // the pick IS the edit
+        expect(panel()).toBeNull();
+      });
+
+      it('a seed, ArrowDown and Enter in ONE task pick the second result', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('Al'); // the type-to-edit open: nothing has rendered since
+        pressNow(input, 'ArrowDown');
+        pressNow(input, 'Enter');
+        await settle(fixture);
+        expect(host.keys).toEqual([]);
+        expect(editor.value()).toBe(4);
+        expect(activations.count).toBe(1);
+      });
+
+      it('a keystroke, ArrowDown and Tab in one task commit the second result and reach the grid', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        typeNow(input, 'Al');
+        pressNow(input, 'ArrowDown');
+        const tab = pressNow(input, 'Tab');
+        expect(tab.defaultPrevented).toBe(false);
+        expect(host.keys).toEqual(['Tab']); // the grid performs its commit-and-move
+        expect(editor.value()).toBe(4);
+        expect(activations.count).toBe(0); // Tab-commits stay silent
+        await settle(fixture);
+        expect(panel()).toBeNull();
+      });
+
+      it('the dropdown chord, ArrowDown and Enter in one task pick the first browse row', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const activations = countActivations(picker);
+        editor.focus();
+        picker.openDropdown(); // the grid's Alt+ArrowDown path: nothing has rendered since
+        pressNow(input, 'ArrowDown');
+        pressNow(input, 'Enter');
+        await settle(fixture);
+        expect(host.keys).toEqual([]);
+        expect(editor.value()).toBe(1);
+        expect(activations.count).toBe(1);
+      });
+
+      it('an arrow while an async search is unanswered moves nothing: Enter is still the grid commit', async () => {
+        const { fixture, host, input, editor, picker } = await setupCell();
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0);
+        await settle(fixture);
+        const activations = countActivations(picker);
+        editor.focus();
+        editor.seed?.('A');
+        await settle(fixture);
+        search.answer();
+        await settle(fixture);
+        typeNow(input, 'Al');
+        pressNow(input, 'ArrowDown');
+        pressNow(input, 'Enter');
+        expect(host.keys).toEqual(['Enter']); // only Enter was handed to the grid
+        expect(picker.isDropdownOpen()).toBe(false);
         expect(editor.value()).toBeNull();
         expect(editor.text()).toBe('Al');
         expect(activations.count).toBe(0);
