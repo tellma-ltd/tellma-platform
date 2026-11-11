@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { Page } from '@playwright/test';
 
+import { pageIsApple } from './layout-keys';
+
 /**
  * Clipboard-payload plumbing for the paste battery.
  *
@@ -132,9 +134,8 @@ export async function syntheticPaste(page: Page, flavors: ClipboardFlavors): Pro
 /**
  * Presses the platform undo chord (⌘Z where the page reports an Apple
  * platform — Playwright's WebKit does — Ctrl+Z everywhere else), matching
- * the grid's own `IS_MAC_PLATFORM` modifier resolution.
+ * the `Mod` resolution of `tmIsApplePlatform` that the grid's key map uses.
  */
 export async function pressUndo(page: Page): Promise<void> {
-  const isMac = await page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform));
-  await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
+  await page.keyboard.press((await pageIsApple(page)) ? 'Meta+z' : 'Control+z');
 }

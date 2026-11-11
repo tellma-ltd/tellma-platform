@@ -143,9 +143,11 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('Directory.Packages.props') }}
+      # Not `install --with-deps`: the script installs the OS packages with bounded retries and, when
+      # the apt mirrors are down, lets the job go on with a warning as long as Chromium launches.
       - name: Install Chromium
         timeout-minutes: 10
-        run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
       - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E&Category!=Nightly"
       - name: Upload Playwright traces on failure
         if: failure()
@@ -176,10 +178,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone.
+      # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone. The
+      # script survives an apt-mirror outage as long as Chromium still launches (see identity-e2e).
       - name: Install Chromium
         timeout-minutes: 15
-        run: pnpm --dir client exec playwright install chromium --with-deps
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir client exec playwright
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run lint:test

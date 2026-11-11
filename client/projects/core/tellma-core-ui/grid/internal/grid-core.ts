@@ -21,6 +21,7 @@ import {
 } from '@angular/core';
 import type { LiveAnnouncer } from '@angular/cdk/a11y';
 import type { FieldTree, ValidationError } from '@angular/forms/signals';
+import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2 } from 'lucide';
 
 import {
   TM_PARSE_ERROR,
@@ -42,7 +43,7 @@ import {
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
-import { tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform, tmKeysMatch, tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
 import type {
   ɵTmEntityAdoptedSearch,
   TmEntityId,
@@ -94,12 +95,12 @@ import { ɵTmGridColumnResize } from './column-resize';
 import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
 import {
+  TM_GRID_FIND_KEYS,
   tmResolveEditingKey,
   tmResolveGridKey,
   type TmGridEditingCommitTarget,
   type TmGridIntent,
 } from './grid-keymap';
-import type { ɵTmGridIconTemplates } from './icons';
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
 const DEFAULT_ROW_HEIGHT = 32;
@@ -119,10 +120,6 @@ const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'enum',
 ]);
 
-/** ⌘ is the platform modifier on Apple platforms; Ctrl everywhere else. */
-const IS_MAC_PLATFORM =
-  typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-
 /**
  * Context-menu shortcut hints (display only) as key combinations;
  * the menu labels them for the platform (Ctrl+X, or ⌘X on Apple). The keys
@@ -136,6 +133,20 @@ const GRID_MENU_SHORTCUTS = {
   insertAbove: 'Mod+Alt+Plus',
   deleteRows: 'Mod+Alt+Minus',
 } satisfies Record<string, TmKeys>;
+
+/**
+ * The context menu's built-in glyphs: Lucide data the menu draws through
+ * `tm-icon`. None is directional, so none mirrors in right-to-left text.
+ */
+const GRID_MENU_ICONS = {
+  cut: Scissors,
+  copy: Copy,
+  copyWithHeaders: CopyPlus,
+  paste: ClipboardPaste,
+  insertRows: Plus,
+  insertChild: CornerDownRight,
+  deleteRows: Trash2,
+} as const;
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
@@ -460,7 +471,7 @@ export interface ɵTmGridTreeConfig<T> {
 
 /**
  * Everything the core needs from its host component, gathered by
- * `ɵTmGridBase` (which owns the DI) and handed over as one object — the
+ * `TmGridBase` (which owns the DI) and handed over as one object — the
  * core itself is a plain class so the flat grid and the future tree grid
  * share it without inheritance gymnastics.
  */
@@ -627,8 +638,8 @@ export interface ɵTmGridViewCore {
   attachScroller(element: HTMLElement): void;
   /** Hands the core the editing cell's editor outlet (or `null` when closed). */
   attachEditorOutlet(outlet: ViewContainerRef | null): void;
-  /** Hands the core the context menu and the built-in icon templates. */
-  attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void;
+  /** Hands the core the context menu (or `null` when it is gone). */
+  attachMenu(menu: TmMenu | null): void;
   /** The scroller's scroll handler. */
   onScroll(event: Event): void;
   /** The scroller's keydown handler. */
@@ -655,7 +666,7 @@ export interface ɵTmGridViewCore {
  * The grid's composition root: owns the engine instance, the column model
  * (directive inputs + type defaults → engine closures), virtualization
  * state, the keyboard/pointer/clipboard pipelines, roving focus, and the
- * state-store lifecycle. Constructed by `ɵTmGridBase` with the host's
+ * state-store lifecycle. Constructed by `TmGridBase` with the host's
  * dependencies; the view component (`ɵTmGridView`) renders its signals and
  * routes DOM events back into it.
  */
@@ -709,7 +720,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private readonly focusRequest = signal(0);
   private readonly revealRequest = signal(0);
   private readonly scrollRestoreRequest = signal(0);
-  private readonly iconTemplates = signal<ɵTmGridIconTemplates | null>(null);
   /** Whether the deferred error-tally warm-up has completed (§16). */
   private readonly errorWarmupDone = signal(false);
   private readonly errorAnchorSignal = signal<Element | null>(null);
@@ -1325,12 +1335,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.editorSession.attachOutlet(outlet);
   }
 
-  /** Hands the core the context menu and the built-in icon templates. */
-  attachMenu(menu: TmMenu | null, icons: ɵTmGridIconTemplates | null): void {
+  /** Hands the core the context menu (or `null` when it is gone). */
+  attachMenu(menu: TmMenu | null): void {
     this.menuRef = menu;
-    if (untracked(this.iconTemplates) !== icons) {
-      this.iconTemplates.set(icons);
-    }
   }
 
   /**
@@ -1497,7 +1504,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const activeIsBoolean =
       active !== null && untracked(this.columnsInternal)[active.col]?.type === 'boolean';
     const intent = tmResolveGridKey(event, {
-      isMac: IS_MAC_PLATFORM,
+      apple: tmIsApplePlatform(),
       editable: untracked(this.editable),
       searchable: untracked(this.deps.searchable),
       selectable: untracked(this.checkboxColumn),
@@ -1531,8 +1538,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     // Mod+F opens the grid find even from inside an editor — the editor input
     // must not let the browser's find dialog shadow it: commit, then open.
-    const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
-    if (mod && !event.altKey && event.key.toLowerCase() === 'f' && untracked(this.deps.searchable)) {
+    if (untracked(this.deps.searchable) && tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
       event.preventDefault();
       this.commitEditor({ refocus: false });
       this.openFind();
@@ -1656,7 +1662,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.commitEditor({ refocus: false });
       }
     }
-    const mod = IS_MAC_PLATFORM ? event.metaKey : event.ctrlKey;
+    // The pointer's Mod (add a range, add rows or columns): ⌘ on Apple
+    // platforms, Ctrl elsewhere.
+    const mod = tmIsApplePlatform() ? event.metaKey : event.ctrlKey;
     const cellElement = target.closest('[data-tm-cell]');
     if (cellElement !== null) {
       const cell = this.cellFromElement(cellElement);
@@ -3860,7 +3868,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   private buildMenuItems(): readonly TmMenuEntry[] {
     const translate = this.deps.translate;
-    const icons = this.iconTemplates();
     const editable = this.editable();
     const canAddRows = this.deps.newRow() !== undefined;
     const engine = this.engine;
@@ -3879,7 +3886,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       {
         id: 'cut',
         label: translate('grid.menu.cut')(),
-        icon: icons?.cut,
+        icon: GRID_MENU_ICONS.cut,
         shortcut: GRID_MENU_SHORTCUTS.cut,
         disabled: !editable,
         action: () => this.clipboardDom.cutAsync(),
@@ -3887,21 +3894,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       {
         id: 'copy',
         label: translate('grid.menu.copy')(),
-        icon: icons?.copy,
+        icon: GRID_MENU_ICONS.copy,
         shortcut: GRID_MENU_SHORTCUTS.copy,
         action: () => this.clipboardDom.copyAsync(),
       },
       {
         id: 'copyWithHeaders',
         label: translate('grid.menu.copyWithHeaders')(),
-        icon: icons?.copyPlus,
+        icon: GRID_MENU_ICONS.copyWithHeaders,
         action: () => this.clipboardDom.copyAsync({ withHeaders: true }),
       },
       canReadClipboard
         ? {
             id: 'paste',
             label: translate('grid.menu.paste')(),
-            icon: icons?.clipboard,
+            icon: GRID_MENU_ICONS.paste,
             shortcut: GRID_MENU_SHORTCUTS.paste,
             disabled: !editable,
             action: () => void this.pasteFromAsyncClipboard(),
@@ -3913,7 +3920,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
             label: translate('grid.menu.pasteHint', {
               shortcut: tmKeysText(GRID_MENU_SHORTCUTS.paste),
             })(),
-            icon: icons?.clipboard,
+            icon: GRID_MENU_ICONS.paste,
             disabled: true,
             action: () => undefined,
           },
@@ -3924,7 +3931,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         {
           id: 'insertAbove',
           label: translate('grid.menu.insertAbove', { count })(),
-          icon: icons?.plus,
+          icon: GRID_MENU_ICONS.insertRows,
           shortcut: GRID_MENU_SHORTCUTS.insertAbove,
           disabled: !canAddRows,
           action: () => this.engine.insertRows('above'),
@@ -3932,7 +3939,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         {
           id: 'insertBelow',
           label: translate('grid.menu.insertBelow', { count })(),
-          icon: icons?.plus,
+          icon: GRID_MENU_ICONS.insertRows,
           disabled: !canAddRows,
           action: () => this.engine.insertRows('below'),
         },
@@ -3945,7 +3952,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         items.push({
           id: 'insertChild',
           label: translate('grid.menu.insertChild')(),
-          icon: icons?.childRow,
+          icon: GRID_MENU_ICONS.insertChild,
           disabled: !canAddRows || activeView === null,
           action: () => this.insertChildAtActive(),
         });
@@ -3953,7 +3960,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       items.push({
         id: 'deleteRows',
         label: translate('grid.menu.deleteRows', { count })(),
-        icon: icons?.trash,
+        icon: GRID_MENU_ICONS.deleteRows,
         shortcut: GRID_MENU_SHORTCUTS.deleteRows,
         // Refocus the surviving active cell: the menu's restoreFocus targets
         // the now-deleted cell, so focus would otherwise fall out of the grid.

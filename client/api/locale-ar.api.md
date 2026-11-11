@@ -141,6 +141,38 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly previous: "التطابق السابق";
             readonly close: "إغلاق البحث";
         };
+        readonly keys: {
+            readonly move: "الانتقال إلى الخلية المجاورة";
+            readonly jump: "الانتقال إلى طرف البيانات";
+            readonly page: "الانتقال صفحة لأعلى أو لأسفل";
+            readonly rowEdge: "الانتقال إلى بداية الصف أو نهايته";
+            readonly gridEdge: "الانتقال إلى الخلية الأولى أو الأخيرة";
+            readonly extend: "توسيع التحديد";
+            readonly selectRows: "تحديد الصفوف بأكملها";
+            readonly selectColumns: "تحديد الأعمدة بأكملها";
+            readonly selectAll: "تحديد كل الخلايا";
+            readonly checkRow: "تحديد خانة اختيار الصف أو إلغاء تحديدها";
+            readonly checkAll: "تحديد خانات اختيار كل الصفوف أو إلغاء تحديدها";
+            readonly tab: "الانتقال إلى الخلية التالية أو السابقة";
+            readonly enter: "تحرير الخلية أو الانتقال لأسفل";
+            readonly moveUp: "الانتقال لأعلى";
+            readonly edit: "تحرير الخلية";
+            readonly openDropdown: "فتح القائمة المنسدلة للخلية";
+            readonly clear: "مسح الخلايا المحددة";
+            readonly escape: "إلغاء القص أو النسخ، أو مغادرة الجدول";
+            readonly menu: "فتح قائمة السياق";
+            readonly find: "البحث في الجدول";
+            readonly copy: "النسخ";
+            readonly cut: "القص";
+            readonly paste: "اللصق";
+            readonly fillDown: "التعبئة لأسفل";
+            readonly undo: "التراجع";
+            readonly redo: "الإعادة";
+            readonly insertRows: "إدراج صفوف أعلاه";
+            readonly deleteRows: "حذف الصفوف المحددة";
+            readonly expand: "توسيع الصف";
+            readonly collapse: "طي الصف";
+        };
     };
     readonly menu: {
         readonly opensInNewTab: "(يفتح في تبويب جديد)";

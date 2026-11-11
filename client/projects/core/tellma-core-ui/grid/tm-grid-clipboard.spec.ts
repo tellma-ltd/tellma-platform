@@ -237,6 +237,19 @@ async function activateCell(
   await stable(fixture);
 }
 
+// The unit runner loads no token sheet, and a tm-icon box is sized only by
+// --icon-size: without the status icon token the status bar's error glyph
+// grows to fill the grid and pushes the errored cell out of the scroller's
+// view, which hides its message bubble. The runner shares one page between
+// files, so the token is lifted again after every test.
+beforeEach(() => {
+  document.documentElement.style.setProperty('--grid-status-icon-size', '14px');
+});
+
+afterEach(() => {
+  document.documentElement.style.removeProperty('--grid-status-icon-size');
+});
+
 describe('tm-grid (clipboard paste)', () => {
   it('pastes TSV through the field as ONE undo op', async () => {
     const { fixture, host, scroller } = await setup();

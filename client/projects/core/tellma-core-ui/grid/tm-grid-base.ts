@@ -33,21 +33,25 @@ import {
 } from '@tellma/core-ui';
 import type { TmMenuItem } from '@tellma/core-ui/menu';
 
-import { TmGridColumn } from '../tm-grid-column';
-import { TM_GRID_CONTEXT } from '../tm-grid-context';
-import { TmGridEmptyDef, TmGridLoadingDef } from '../tm-grid-templates';
-import { TmGridStateStore } from '../tm-grid-state-store';
-import { ɵTmGridCore, type ɵTmGridTreeConfig } from './grid-core';
+import { ɵTmGridCore, type ɵTmGridTreeConfig } from './internal/grid-core';
+import { TmGridColumn } from './tm-grid-column';
+import { TM_GRID_CONTEXT } from './tm-grid-context';
+import { TmGridEmptyDef, TmGridLoadingDef } from './tm-grid-templates';
+import { TmGridStateStore } from './tm-grid-state-store';
 
 /**
  * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
  * content queries, and public members both components carry, and
- * constructs the composition root (`ɵTmGridCore`) from the host's
- * injected dependencies. Selector-less by design — concrete grids extend
- * it and render `ɵTmGridView`.
+ * constructs the grid's internal composition root from the host's
+ * injected dependencies. Selector-less by design — each grid extends it
+ * and renders the shared view. It is exported because its members are the
+ * two grids' public API; it is not meant to be extended outside this
+ * library.
+ *
+ * @sealed
  */
 @Directive()
-export abstract class ɵTmGridBase<T> {
+export abstract class TmGridBase<T> {
   private readonly sizeDefaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   /**

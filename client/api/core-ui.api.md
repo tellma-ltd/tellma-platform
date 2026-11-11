@@ -191,6 +191,38 @@ export const TM_UI_STRINGS_EN: {
             readonly previous: "Previous match";
             readonly close: "Close find";
         };
+        readonly keys: {
+            readonly move: "Move to the adjacent cell";
+            readonly jump: "Jump to the edge of the data";
+            readonly page: "Move up or down one page";
+            readonly rowEdge: "Move to the start or end of the row";
+            readonly gridEdge: "Move to the first or last cell";
+            readonly extend: "Extend the selection";
+            readonly selectRows: "Select entire rows";
+            readonly selectColumns: "Select entire columns";
+            readonly selectAll: "Select all cells";
+            readonly checkRow: "Check or uncheck the row";
+            readonly checkAll: "Check or uncheck all rows";
+            readonly tab: "Move to the next or previous cell";
+            readonly enter: "Edit the cell or move down";
+            readonly moveUp: "Move up";
+            readonly edit: "Edit the cell";
+            readonly openDropdown: "Open the cell’s dropdown";
+            readonly clear: "Clear the selected cells";
+            readonly escape: "Cancel the cut or copy, or leave the grid";
+            readonly menu: "Open the context menu";
+            readonly find: "Find in the grid";
+            readonly copy: "Copy";
+            readonly cut: "Cut";
+            readonly paste: "Paste";
+            readonly fillDown: "Fill down";
+            readonly undo: "Undo";
+            readonly redo: "Redo";
+            readonly insertRows: "Insert rows above";
+            readonly deleteRows: "Delete the selected rows";
+            readonly expand: "Expand the row";
+            readonly collapse: "Collapse the row";
+        };
     };
     readonly menu: {
         readonly opensInNewTab: "(opens in a new tab)";

@@ -24,6 +24,7 @@ import { FilesStory } from './files/files-story';
 import { FormFieldStory } from './form-field/form-field-story';
 import { GlyphsStory } from './glyphs/glyphs-story';
 import { GridStatesStory } from './grid/grid-states-story';
+import { TreeGridLargeStory } from './grid/tree-grid-large-story';
 import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
 import { IconStory } from './icon/icon-story';
@@ -130,5 +131,11 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
     wide: true,
   },
   { id: 'tree-grid', title: 'Tree grid', component: TreeGridStory, wide: true },
+  {
+    id: 'tree-grid-large',
+    title: 'Tree grid (large, expanded)',
+    component: TreeGridLargeStory,
+    wide: true,
+  },
   { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
 ];
