@@ -10,15 +10,46 @@
  *
  * The `items` arrays are empty because entries carry an `action()`
  * FUNCTION, which a template literal cannot express — real usage builds
- * `TmMenuEntry[]` in the component class (`{ id, label | labelKey, icon?,
- * disabled?, action }` or `{ separator: true }`) and binds it.
+ * `TmMenuEntry[]` in the component class and binds it:
+ *
+ * - an item: `{ id, label | labelKey, action, icon?, shortcut?, detail?,
+ *   description?, role?, checked?, keepOpen?, lang?, disabled?,
+ *   disabledReason? }`;
+ * - a link: `{ id, label | labelKey, href, target?, action? }`;
+ * - a submenu: `{ id, label | labelKey, items }`;
+ * - a group: `{ group: true, label?, items }`;
+ * - a separator: `{ separator: true }`.
  */
 
 /**
- * A button that opens the menu anchored at itself; `restoreFocus` returns
- * focus to the button when the menu closes via keyboard.
+ * A menu button: the button opens the menu anchored at itself, with the
+ * menu-button keys and ARIA, and takes focus back when the menu closes.
  */
-export const ButtonTrigger = {
+export const MenuButton = {
+  template: `
+    <button type="button" [tmMenuTriggerFor]="menu">Options</button>
+    <tm-menu #menu [items]="[]" aria-label="Options" />
+  `,
+};
+
+/**
+ * A header block above the rows, read as the menu's description when it
+ * opens. Text and images only: focus never enters it.
+ */
+export const Header = {
+  template: `
+    <button type="button" [tmMenuTriggerFor]="menu">Account</button>
+    <tm-menu #menu [items]="[]" aria-label="Account">
+      <ng-template tmMenuHeader>Signed in as Rana Haddad</ng-template>
+    </tm-menu>
+  `,
+};
+
+/**
+ * Opening from code, at any element: `restoreFocus` returns focus to the
+ * element when the menu closes via keyboard.
+ */
+export const OpenFromCode = {
   template: `
     <button type="button" #btn (click)="menu.open(btn, { restoreFocus: btn })">Options</button>
     <tm-menu #menu [items]="[]" aria-label="Options" />

@@ -551,17 +551,18 @@ export const tmTokensDefault: TmTokens = {
     // tm-menu: panel + item-row geometry; colors ride the field/surface
     // semantic tokens in the component CSS. A menu is a pointer surface
     // read in one pass, so it holds one dense height rather than following
-    // the size ladder.
+    // the size ladder; below the sm breakpoint, where rows are pressed
+    // with a finger, they take the touch height instead.
     menu: {
       minWidth: '180px',
       itemHeight: '30px',
+      itemHeightTouch: '44px',
       iconSize: '15px',
       itemGap: '9px',
       itemPaddingX: '8px',
       itemRadius: '{radius.xs}',
       itemFontSize: '12.5px',
       panelPadding: '4px',
-      shortcutFontSize: '10px',
     },
     // tm-modal: panel buckets + shell geometry. The scrim is a static ink
     // veil that reads correctly over both schemes.

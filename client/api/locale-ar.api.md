@@ -142,6 +142,9 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly close: "إغلاق البحث";
         };
     };
+    readonly menu: {
+        readonly opensInNewTab: "(يفتح في تبويب جديد)";
+    };
     readonly alert: {
         readonly info: "معلومة:";
         readonly success: "نجاح:";
