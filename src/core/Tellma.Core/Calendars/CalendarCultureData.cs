@@ -59,6 +59,7 @@ namespace Tellma.Core.Calendars
             format.DateSeparator = CalendarText.Clean(format.DateSeparator).Trim();
             DateSeparator = format.DateSeparator;
             ShortTimePattern = CalendarText.Clean(format.ShortTimePattern).Trim();
+            LongTimePattern = CalendarText.Clean(format.LongTimePattern).Trim();
 
             // --- Names ---
             MonthNames = Names(format.MonthNames, 12);
@@ -96,6 +97,9 @@ namespace Tellma.Core.Calendars
 
         /// <summary>The culture's short time pattern, cleaned.</summary>
         public string ShortTimePattern { get; }
+
+        /// <summary>The culture's long time pattern (with seconds), cleaned.</summary>
+        public string LongTimePattern { get; }
 
         /// <summary>The numeric pattern of <see cref="DateStyle.Short" />.</summary>
         public DatePattern Short { get; }

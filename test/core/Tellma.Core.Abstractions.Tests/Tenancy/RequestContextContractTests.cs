@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Abstractions.Tests.Tenancy
@@ -113,11 +114,19 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
         }
 
         [Fact]
-        public void Applying_a_contexts_cultures_sets_the_current_culture_and_the_current_ui_culture()
+        public void Applying_a_contexts_cultures_sets_the_current_cultures_and_the_request_localization()
         {
             CultureInfo original = CultureInfo.CurrentCulture;
             CultureInfo originalUi = CultureInfo.CurrentUICulture;
-            RequestContext context = Tenantless with { Culture = "ar-SA", CultureInfo = new CultureInfo("ar-SA") };
+            StubCalendarSystem umAlQura = new("uq");
+            RequestContext context = Tenantless with
+            {
+                Culture = "ar-SA",
+                CultureInfo = new CultureInfo("ar-SA"),
+                CalendarSystem = umAlQura,
+                TimeZone = "Asia/Riyadh",
+                ContentLanguageIndex = 2,
+            };
 
             try
             {
@@ -126,12 +135,32 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
                 // The very object the context holds, so its number and date formats are the negotiated ones.
                 Assert.Same(context.CultureInfo, CultureInfo.CurrentCulture);
                 Assert.Same(context.CultureInfo, CultureInfo.CurrentUICulture);
+
+                // Dates render in the context's calendar and display zone outside every localization scope.
+                LocalizationContext? request = LocalizationScope.Request;
+                Assert.NotNull(request);
+                Assert.Same(context.CultureInfo, request.Culture);
+                Assert.Same(umAlQura, request.Calendar);
+                Assert.Equal(TimeSpan.FromHours(3), request.TimeZone.GetUtcOffset(Start));
+                Assert.Equal(2, request.ContentLanguageIndex);
             }
             finally
             {
                 CultureInfo.CurrentCulture = original;
                 CultureInfo.CurrentUICulture = originalUi;
+                _ = LocalizationScope.ApplyRequest(null);
             }
+        }
+
+        [Fact]
+        public void The_localization_resolves_the_display_zone_and_falls_back_to_utc_for_a_zone_the_host_lacks()
+        {
+            Assert.Equal(TimeZoneInfo.Utc, Tenantless.Localization.TimeZone);
+            Assert.Equal(TimeSpan.FromHours(3), (Tenantless with { TimeZone = "Asia/Riyadh" }).Localization.TimeZone.GetUtcOffset(Start));
+            Assert.Same(
+                (Tenantless with { TimeZone = "Asia/Riyadh" }).Localization.TimeZone,
+                (Tenantless with { TimeZone = "Asia/Riyadh" }).Localization.TimeZone);
+            Assert.Equal(TimeZoneInfo.Utc, (Tenantless with { TimeZone = "Not/A_Zone" }).Localization.TimeZone);
         }
 
         [Fact]

@@ -82,6 +82,10 @@
          runtime's, so this does not track the 10.0.x band above. -->
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <!-- The resource localizer factory Tellma.Core decorates with ICU rendering, and the
+         IStringLocalizer<T> registrations. Outside the ASP.NET Core shared framework, so the
+         migrator and worker hosts get it too; kept on the runtime's servicing line. -->
+    <PackageVersion Include="Microsoft.Extensions.Localization" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />

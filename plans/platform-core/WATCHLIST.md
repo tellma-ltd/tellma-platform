@@ -520,6 +520,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - dotnet-ef 10.0.9 to re-scaffold the migrations host
 
 ## 0011
+- (PC-025) Once a tenant is bound, the request-context holder refuses a different Kind or Subject and a replaced or dropped UserId (null to a value stays allowed): a front door binds tenant and principal in one Set. The two-writers reflection pin searches only Tellma.*.dll referenced by Tellma.Core.Tests; the Tellma.Core.AspNetCore checkpoint must add the reference or run the same search in its own suite. Scope factory: a tenant missing from the snapshot throws TenantUnavailableException (tenant-not-found); TenantNotFoundException from CreateScopeAsync means only an inactive run-as member.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -599,6 +600,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - CI: a Windows LocalDB integration job (spec requires LocalDB and Testcontainers per PR); the design-e2e package flow must pack Tellma.Core.Queryex and the analyzer
 
 ## 0013
+- (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
 
 **Possible contradictions and gaps (unverified leads):**
 

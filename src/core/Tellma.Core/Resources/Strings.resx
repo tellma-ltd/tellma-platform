@@ -12,6 +12,17 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <!-- Calendars: the names of the calendar value set (core.Calendar) -->
+  <data name="Calendar_gc" xml:space="preserve">
+    <value>Gregorian</value>
+  </data>
+  <data name="Calendar_uq" xml:space="preserve">
+    <value>Umm al-Qura</value>
+  </data>
+  <data name="Calendar_et" xml:space="preserve">
+    <value>Ethiopian</value>
+  </data>
+  <!-- Calendars: month names of the calendars the framework knows no names for -->
   <data name="Calendar_uq_Month1" xml:space="preserve">
     <value>Muharram</value>
   </data>
@@ -87,4 +98,1111 @@
   <data name="Calendar_et_Month13" xml:space="preserve">
     <value>Pagumen</value>
   </data>
+  <!-- Shared labels: the fallback of every entity property and navigation of these names -->
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="IsActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="CreatedAt" xml:space="preserve">
+    <value>Created at</value>
+  </data>
+  <data name="CreatedBy" xml:space="preserve">
+    <value>Created by</value>
+  </data>
+  <data name="ModifiedAt" xml:space="preserve">
+    <value>Modified at</value>
+  </data>
+  <data name="ModifiedBy" xml:space="preserve">
+    <value>Modified by</value>
+  </data>
+  <data name="Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <!-- Actions: the fallback label of every entity action of these names -->
+  <data name="Action_Activate" xml:space="preserve">
+    <value>Activate</value>
+  </data>
+  <data name="Action_Deactivate" xml:space="preserve">
+    <value>Deactivate</value>
+  </data>
+  <data name="Action_Share" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="Action_Publish" xml:space="preserve">
+    <value>Publish</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>Transfer ownership</value>
+  </data>
+  <!-- Entities: the create label and the display name of a record without one -->
+  <data name="Entity_New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="Entity_DisplayNameFallback" xml:space="preserve">
+    <value>#{id}</value>
+  </data>
+  <!-- Settings and access -->
+  <data name="SettingCategory_general" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Access_Reason_self" xml:space="preserve">
+    <value>Their own records</value>
+  </data>
+  <!-- The boot page of the browser application -->
+  <data name="Boot_Title" xml:space="preserve">
+    <value>{displayName} couldn’t start</value>
+  </data>
+  <data name="Boot_Unsupported" xml:space="preserve">
+    <value>Update your browser to a current version of Chrome, Edge, Firefox or Safari.</value>
+  </data>
+  <data name="Boot_Cookies" xml:space="preserve">
+    <value>Turn on cookies for this site, then try again.</value>
+  </data>
+  <data name="Boot_SignInFailed" xml:space="preserve">
+    <value>We couldn’t sign you in. Try again in a moment.</value>
+  </data>
+  <data name="Boot_LoadFailed" xml:space="preserve">
+    <value>Check your connection and try again.</value>
+  </data>
+  <data name="Boot_TryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <!-- Problems: the title and detail of each problem code the platform answers with -->
+  <data name="Problem_bad_request" xml:space="preserve">
+    <value>Couldn’t complete this</value>
+  </data>
+  <data name="Problem_bad_request_Detail" xml:space="preserve">
+    <value>The request isn’t valid.</value>
+  </data>
+  <data name="Problem_query_invalid" xml:space="preserve">
+    <value>The filter isn’t valid</value>
+  </data>
+  <data name="Problem_query_invalid_Detail" xml:space="preserve">
+    <value>Check the filter and try again.</value>
+  </data>
+  <data name="Problem_step_up_required" xml:space="preserve">
+    <value>Confirm it’s you</value>
+  </data>
+  <data name="Problem_step_up_required_Detail" xml:space="preserve">
+    <value>Sign in again to continue.</value>
+  </data>
+  <data name="Problem_forbidden" xml:space="preserve">
+    <value>You don’t have permission for this</value>
+  </data>
+  <data name="Problem_forbidden_Detail" xml:space="preserve">
+    <value>{reason, select, no-grant {It needs “{resource}: {action}”. Ask your administrator to grant it.} outside-filter {Your “{resource}: {action}” permission covers only some records. Ask your administrator if you need this one.} restricted-path {You can’t see {path} here. Ask your administrator if you need it.} other {Ask your administrator for access.}}</value>
+  </data>
+  <data name="Problem_individual_required" xml:space="preserve">
+    <value>Only a person can do this</value>
+  </data>
+  <data name="Problem_individual_required_Detail" xml:space="preserve">
+    <value>Service accounts can’t do this. Sign in as yourself.</value>
+  </data>
+  <data name="Problem_tenant_not_found" xml:space="preserve">
+    <value>This tenant doesn’t exist or you can’t open it</value>
+  </data>
+  <data name="Problem_tenant_not_found_Detail" xml:space="preserve">
+    <value>Choose another tenant, or ask your administrator for access.</value>
+  </data>
+  <data name="Problem_tenant_suspended" xml:space="preserve">
+    <value>This tenant is suspended</value>
+  </data>
+  <data name="Problem_tenant_suspended_Detail" xml:space="preserve">
+    <value>Contact your administrator.</value>
+  </data>
+  <data name="Problem_tenant_read_only" xml:space="preserve">
+    <value>This tenant is read-only</value>
+  </data>
+  <data name="Problem_tenant_read_only_Detail" xml:space="preserve">
+    <value>You can view data but not change it. Contact your administrator.</value>
+  </data>
+  <data name="Problem_tenant_frozen" xml:space="preserve">
+    <value>This tenant is under maintenance</value>
+  </data>
+  <data name="Problem_tenant_frozen_Detail" xml:space="preserve">
+    <value>You can view data but not change it until it ends.</value>
+  </data>
+  <data name="Problem_tenant_schema_behind" xml:space="preserve">
+    <value>This tenant is being updated</value>
+  </data>
+  <data name="Problem_tenant_schema_behind_Detail" xml:space="preserve">
+    <value>Try again in a minute.</value>
+  </data>
+  <data name="Problem_tenant_registration_refused" xml:space="preserve">
+    <value>The tenant couldn’t be registered</value>
+  </data>
+  <data name="Problem_tenant_illegal_transition" xml:space="preserve">
+    <value>The tenant can’t move to that state</value>
+  </data>
+  <data name="Problem_tenant_location_refused" xml:space="preserve">
+    <value>The tenant couldn’t be moved</value>
+  </data>
+  <data name="Problem_catalog_unavailable" xml:space="preserve">
+    <value>The service is busy</value>
+  </data>
+  <data name="Problem_catalog_unavailable_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_not_found" xml:space="preserve">
+    <value>This record doesn’t exist or you can’t see it</value>
+  </data>
+  <data name="Problem_not_found_Detail" xml:space="preserve">
+    <value>It may have been deleted, or your access doesn’t cover it.</value>
+  </data>
+  <data name="Problem_concurrency_conflict" xml:space="preserve">
+    <value>The record was changed by someone else</value>
+  </data>
+  <data name="Problem_concurrency_conflict_Detail" xml:space="preserve">
+    <value>Reload to see their changes, then try again.</value>
+  </data>
+  <data name="Problem_confirmation_required" xml:space="preserve">
+    <value>Confirm to continue</value>
+  </data>
+  <data name="Problem_confirmation_required_Detail" xml:space="preserve">
+    <value>Review the warnings and confirm to continue.</value>
+  </data>
+  <data name="Problem_count_mismatch" xml:space="preserve">
+    <value>The records changed before they could be deleted</value>
+  </data>
+  <data name="Problem_count_mismatch_Detail" xml:space="preserve">
+    <value>You expected {expected, plural, one {# record} other {# records}}, but {actual, plural, one {# record matches} other {# records match}} now. Nothing was deleted.</value>
+  </data>
+  <data name="Problem_limit_exceeded" xml:space="preserve">
+    <value>This request is too large</value>
+  </data>
+  <data name="Problem_limit_exceeded_Detail" xml:space="preserve">
+    <value>It has {actual, number}, and the most allowed is {maximum, number}.</value>
+  </data>
+  <data name="Problem_validation" xml:space="preserve">
+    <value>Validation failed</value>
+  </data>
+  <data name="Problem_validation_Detail" xml:space="preserve">
+    <value>Correct the highlighted values and try again.</value>
+  </data>
+  <data name="Problem_blob_rejected" xml:space="preserve">
+    <value>The file was rejected</value>
+  </data>
+  <data name="Problem_blob_rejected_Detail" xml:space="preserve">
+    <value>Check the file and try again.</value>
+  </data>
+  <data name="Problem_partial_failure" xml:space="preserve">
+    <value>Some of this didn’t finish</value>
+  </data>
+  <data name="Problem_partial_failure_Detail" xml:space="preserve">
+    <value>Some records were done and others weren’t. Try again for the rest.</value>
+  </data>
+  <data name="Problem_stale_context" xml:space="preserve">
+    <value>Settings changed while this was running</value>
+  </data>
+  <data name="Problem_stale_context_Detail" xml:space="preserve">
+    <value>Try again.</value>
+  </data>
+  <data name="Problem_dependency_unavailable" xml:space="preserve">
+    <value>The service is busy</value>
+  </data>
+  <data name="Problem_dependency_unavailable_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_csrf_rejected" xml:space="preserve">
+    <value>The request was blocked</value>
+  </data>
+  <data name="Problem_csrf_rejected_Detail" xml:space="preserve">
+    <value>Reload the page and try again.</value>
+  </data>
+  <data name="Problem_client_outdated" xml:space="preserve">
+    <value>The app was updated</value>
+  </data>
+  <data name="Problem_client_outdated_Detail" xml:space="preserve">
+    <value>Reload to continue.</value>
+  </data>
+  <data name="Problem_internal" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Problem_internal_Detail" xml:space="preserve">
+    <value>Try again. If it keeps happening, send this reference to support.</value>
+  </data>
+  <data name="Problem_unauthenticated" xml:space="preserve">
+    <value>Your session ended</value>
+  </data>
+  <data name="Problem_unauthenticated_Detail" xml:space="preserve">
+    <value>Sign in to continue.</value>
+  </data>
+  <data name="Problem_unsupported_credential" xml:space="preserve">
+    <value>This sign-in can’t be used here</value>
+  </data>
+  <data name="Problem_route_not_found" xml:space="preserve">
+    <value>This address doesn’t exist</value>
+  </data>
+  <data name="Problem_method_not_allowed" xml:space="preserve">
+    <value>This address doesn’t accept this request</value>
+  </data>
+  <data name="Problem_unsupported_media" xml:space="preserve">
+    <value>This content type isn’t accepted</value>
+  </data>
+  <data name="Problem_rate_limited" xml:space="preserve">
+    <value>Too many requests</value>
+  </data>
+  <data name="Problem_rate_limited_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_timeout" xml:space="preserve">
+    <value>This took too long</value>
+  </data>
+  <data name="Problem_timeout_Detail" xml:space="preserve">
+    <value>Try again.</value>
+  </data>
+  <!-- Validation codes of the settings service -->
+  <data name="Settings_FieldUnknown" xml:space="preserve">
+    <value>There is no such setting.</value>
+  </data>
+  <data name="Settings_LanguageNotOffered" xml:space="preserve">
+    <value>This language isn’t available.</value>
+  </data>
+  <data name="Settings_LanguagesNotDistinct" xml:space="preserve">
+    <value>Each language can be chosen only once.</value>
+  </data>
+  <data name="Settings_TertiaryRequiresSecondary" xml:space="preserve">
+    <value>Choose a secondary language before a third one.</value>
+  </data>
+  <data name="Settings_CalendarNotRegistered" xml:space="preserve">
+    <value>This calendar isn’t available.</value>
+  </data>
+  <data name="Settings_CalendarsNotDistinct" xml:space="preserve">
+    <value>The secondary calendar must differ from the primary one.</value>
+  </data>
+  <data name="Settings_TimeZoneUnknown" xml:space="preserve">
+    <value>This time zone isn’t recognized.</value>
+  </data>
+  <data name="Settings_RegionNotOffered" xml:space="preserve">
+    <value>This region isn’t available.</value>
+  </data>
+  <data name="Settings_KeyUndeclared" xml:space="preserve">
+    <value>There is no such setting.</value>
+  </data>
+  <data name="Settings_EntryTypeMismatch" xml:space="preserve">
+    <value>This value has the wrong type for the setting.</value>
+  </data>
+  <!-- Validation codes of the save and query pipeline -->
+  <data name="Required" xml:space="preserve">
+    <value>Enter a value.</value>
+  </data>
+  <data name="MaxLength" xml:space="preserve">
+    <value>Enter at most {maxLength, plural, one {# character} other {# characters}}.</value>
+  </data>
+  <data name="Range" xml:space="preserve">
+    <value>This value is out of range.</value>
+  </data>
+  <data name="Unique" xml:space="preserve">
+    <value>This value is already used by another record.</value>
+  </data>
+  <data name="WriteOnce" xml:space="preserve">
+    <value>This value can’t be changed once it is set.</value>
+  </data>
+  <data name="Precision" xml:space="preserve">
+    <value>Enter at most {precision, number} digits, {scale, number} of them after the decimal point.</value>
+  </data>
+  <data name="Validation_ValueNotInSet" xml:space="preserve">
+    <value>This value isn’t one of the allowed values.</value>
+  </data>
+  <data name="Entity_NotFound" xml:space="preserve">
+    <value>This record doesn’t exist or you can’t see it.</value>
+  </data>
+  <data name="Entity_DuplicateId" xml:space="preserve">
+    <value>The same record appears more than once.</value>
+  </data>
+  <data name="Fk_NotFound" xml:space="preserve">
+    <value>The selected record doesn’t exist or you can’t see it.</value>
+  </data>
+  <data name="Fk_InUse" xml:space="preserve">
+    <value>This record is in use, so it can’t be deleted.</value>
+  </data>
+  <data name="Tree_Cycle" xml:space="preserve">
+    <value>A record can’t be placed under itself or one of its descendants.</value>
+  </data>
+  <data name="Tree_TooDeep" xml:space="preserve">
+    <value>The hierarchy is too deep.</value>
+  </data>
+  <data name="Blob_NotAttachable" xml:space="preserve">
+    <value>This file can’t be attached. Upload it again.</value>
+  </data>
+  <data name="Blob_DuplicateReference" xml:space="preserve">
+    <value>The same file is attached more than once.</value>
+  </data>
+  <data name="Concurrency_StampRequired" xml:space="preserve">
+    <value>Reload the record, then try again.</value>
+  </data>
+  <data name="Import_LanguageNotConfigured" xml:space="preserve">
+    <value>This column’s language isn’t one of the tenant’s languages.</value>
+  </data>
+  <data name="Query_GeographyNotSelectable" xml:space="preserve">
+    <value>A geography value can’t be selected.</value>
+  </data>
+  <data name="Query_PathNotReachable" xml:space="preserve">
+    <value>You can’t see {path}.</value>
+  </data>
+  <data name="Query_UnknownNamedFilter" xml:space="preserve">
+    <value>There is no filter named {name}.</value>
+  </data>
+  <data name="Query_ArithmeticFailed" xml:space="preserve">
+    <value>{reason, select, divide-by-zero {The query divided by zero.} other {A number in the query is too large.}}</value>
+  </data>
+  <data name="DisplayName_PrefixSeparator" xml:space="preserve">
+    <value>This value can’t contain “{separator}”.</value>
+  </data>
+  <!-- Reports and dashboards -->
+  <data name="ReportKind_List" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="ReportKind_Summary" xml:space="preserve">
+    <value>Summary</value>
+  </data>
+  <data name="ReportKind_Pivot" xml:space="preserve">
+    <value>Pivot</value>
+  </data>
+  <data name="ReportKind_Chart" xml:space="preserve">
+    <value>Chart</value>
+  </data>
+  <data name="ShareAccess_View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="ShareAccess_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Notification_core_report_shared" xml:space="preserve">
+    <value>{actorName} shared {title} with you</value>
+  </data>
+  <data name="Notification_core_dashboard_shared" xml:space="preserve">
+    <value>{actorName} shared the dashboard {title} with you</value>
+  </data>
+  <data name="Core_Report_Synonyms" xml:space="preserve">
+    <value>report, analysis, list, summary, pivot, chart</value>
+  </data>
+  <data name="Core_Dashboard_Synonyms" xml:space="preserve">
+    <value>dashboard, overview, KPIs</value>
+  </data>
+  <data name="Core_Report_DefaultTitle" xml:space="preserve">
+    <value>{entity} – {kind, select, List {list} Summary {summary} Pivot {pivot} other {chart}}</value>
+  </data>
+  <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
+    <value>Untitled dashboard</value>
+  </data>
+  <data name="Core_Job_ExportReport" xml:space="preserve">
+    <value>Exporting {title}</value>
+  </data>
+  <!-- Queryex diagnostics, with the arguments the engine gives each -->
+  <data name="Queryex_QX1001" xml:space="preserve">
+    <value>Unterminated text literal.</value>
+  </data>
+  <data name="Queryex_QX1002" xml:space="preserve">
+    <value>Unterminated bracketed name.</value>
+  </data>
+  <data name="Queryex_QX1003" xml:space="preserve">
+    <value>Malformed number.</value>
+  </data>
+  <data name="Queryex_QX1004" xml:space="preserve">
+    <value>The number has more digits than are supported.</value>
+  </data>
+  <data name="Queryex_QX1005" xml:space="preserve">
+    <value>Unexpected character.</value>
+  </data>
+  <data name="Queryex_QX2001" xml:space="preserve">
+    <value>Unexpected {actual}; expected one of: {expected}.</value>
+  </data>
+  <data name="Queryex_QX2002" xml:space="preserve">
+    <value>Unbalanced parenthesis.</value>
+  </data>
+  <data name="Queryex_QX2003" xml:space="preserve">
+    <value>Empty list item.</value>
+  </data>
+  <data name="Queryex_QX2004" xml:space="preserve">
+    <value>Empty argument.</value>
+  </data>
+  <data name="Queryex_QX2005" xml:space="preserve">
+    <value>Empty parentheses.</value>
+  </data>
+  <data name="Queryex_QX2006" xml:space="preserve">
+    <value>Comparisons can’t be chained.</value>
+  </data>
+  <data name="Queryex_QX2007" xml:space="preserve">
+    <value>A direction (asc or desc) isn’t allowed here.</value>
+  </data>
+  <data name="Queryex_QX2008" xml:space="preserve">
+    <value>A direction (asc or desc) must end its item.</value>
+  </data>
+  <data name="Queryex_QX2009" xml:space="preserve">
+    <value>A condition is a single expression, not a list.</value>
+  </data>
+  <data name="Queryex_QX3001" xml:space="preserve">
+    <value>Unknown property {name} on {entity}.</value>
+  </data>
+  <data name="Queryex_QX3002" xml:space="preserve">
+    <value>{name} on {entity} is a navigation; the path must end at a property.</value>
+  </data>
+  <data name="Queryex_QX3003" xml:space="preserve">
+    <value>Unknown function {function}.</value>
+  </data>
+  <data name="Queryex_QX3004" xml:space="preserve">
+    <value>Function {function} doesn’t take {actual} arguments. It takes: {expected}.</value>
+  </data>
+  <data name="Queryex_QX3005" xml:space="preserve">
+    <value>No form of {function} accepts these argument types. Its forms: {signatures}.</value>
+  </data>
+  <data name="Queryex_QX3006" xml:space="preserve">
+    <value>The call to {function} is ambiguous.</value>
+  </data>
+  <data name="Queryex_QX3007" xml:space="preserve">
+    <value>Undeclared parameter @{name}.</value>
+  </data>
+  <data name="Queryex_QX3100" xml:space="preserve">
+    <value>This argument of {function} must be a literal value.</value>
+  </data>
+  <data name="Queryex_QX3101" xml:space="preserve">
+    <value>{function} doesn’t accept the value {name}.</value>
+  </data>
+  <data name="Queryex_QX3102" xml:space="preserve">
+    <value>Can’t convert {type} to {otherType}.</value>
+  </data>
+  <data name="Queryex_QX3103" xml:space="preserve">
+    <value>{function} needs a value in a time zone; wrap the argument in local.</value>
+  </data>
+  <data name="Queryex_QX3200" xml:space="preserve">
+    <value>An operand of type {type} isn’t compatible here.</value>
+  </data>
+  <data name="Queryex_QX3201" xml:space="preserve">
+    <value>The type {type} isn’t valid for this operator or position.</value>
+  </data>
+  <data name="Queryex_QX3202" xml:space="preserve">
+    <value>The expression has no type; cast the null.</value>
+  </data>
+  <data name="Queryex_QX3300" xml:space="preserve">
+    <value>The first argument of {function} must be a path.</value>
+  </data>
+  <data name="Queryex_QX3301" xml:space="preserve">
+    <value>{function}: the entity isn’t a hierarchy.</value>
+  </data>
+  <data name="Queryex_QX3302" xml:space="preserve">
+    <value>{function}: the property isn’t unique.</value>
+  </data>
+  <data name="Queryex_QX3303" xml:space="preserve">
+    <value>{function}: the key argument can’t contain a path.</value>
+  </data>
+  <data name="Queryex_QX3400" xml:space="preserve">
+    <value>Parameter @{name} is used with conflicting types (here as {type}).</value>
+  </data>
+  <data name="Queryex_QX4001" xml:space="preserve">
+    <value>The expression must be a condition here, but it is {type}.</value>
+  </data>
+  <data name="Queryex_QX4002" xml:space="preserve">
+    <value>Aggregations aren’t allowed here.</value>
+  </data>
+  <data name="Queryex_QX4003" xml:space="preserve">
+    <value>An aggregation can’t appear inside another aggregation.</value>
+  </data>
+  <data name="Queryex_QX4004" xml:space="preserve">
+    <value>A path outside an aggregation isn’t allowed in an aggregate filter.</value>
+  </data>
+  <data name="Queryex_QX4005" xml:space="preserve">
+    <value>This ordering term would change the grouping.</value>
+  </data>
+  <data name="Queryex_QX4006" xml:space="preserve">
+    <value>Paging needs an explicit ordering.</value>
+  </data>
+  <data name="Queryex_QX4007" xml:space="preserve">
+    <value>An item can’t mix paths inside and outside aggregations.</value>
+  </data>
+  <data name="Queryex_QX4008" xml:space="preserve">
+    <value>Duplicate ordering term.</value>
+  </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>The path {name} can’t be used here: there’s no row to read it from.</value>
+  </data>
+  <data name="Queryex_QX5001" xml:space="preserve">
+    <value>The expression is longer than {limit} characters.</value>
+  </data>
+  <data name="Queryex_QX5002" xml:space="preserve">
+    <value>The expression has more than {limit} tokens.</value>
+  </data>
+  <data name="Queryex_QX5003" xml:space="preserve">
+    <value>The expression nests more than {limit} levels deep.</value>
+  </data>
+  <data name="Queryex_QX5004" xml:space="preserve">
+    <value>The query has more than {limit} typed nodes.</value>
+  </data>
+  <data name="Queryex_QX5005" xml:space="preserve">
+    <value>The list has more than {limit} items.</value>
+  </data>
+  <data name="Queryex_QX5006" xml:space="preserve">
+    <value>The query needs more than {limit} joins.</value>
+  </data>
+  <data name="Queryex_QX5007" xml:space="preserve">
+    <value>The query needs more than {limit} parameters.</value>
+  </data>
+  <!-- Region_ names: generated by eng/region-names from CLDR 48.0; regenerate them, never edit by hand -->
+  <data name="Region_AE" xml:space="preserve">
+    <value>United Arab Emirates</value>
+  </data>
+  <data name="Region_AG" xml:space="preserve">
+    <value>Antigua &amp; Barbuda</value>
+  </data>
+  <data name="Region_AI" xml:space="preserve">
+    <value>Anguilla</value>
+  </data>
+  <data name="Region_AO" xml:space="preserve">
+    <value>Angola</value>
+  </data>
+  <data name="Region_AR" xml:space="preserve">
+    <value>Argentina</value>
+  </data>
+  <data name="Region_AS" xml:space="preserve">
+    <value>American Samoa</value>
+  </data>
+  <data name="Region_AT" xml:space="preserve">
+    <value>Austria</value>
+  </data>
+  <data name="Region_AU" xml:space="preserve">
+    <value>Australia</value>
+  </data>
+  <data name="Region_BB" xml:space="preserve">
+    <value>Barbados</value>
+  </data>
+  <data name="Region_BE" xml:space="preserve">
+    <value>Belgium</value>
+  </data>
+  <data name="Region_BF" xml:space="preserve">
+    <value>Burkina Faso</value>
+  </data>
+  <data name="Region_BH" xml:space="preserve">
+    <value>Bahrain</value>
+  </data>
+  <data name="Region_BI" xml:space="preserve">
+    <value>Burundi</value>
+  </data>
+  <data name="Region_BJ" xml:space="preserve">
+    <value>Benin</value>
+  </data>
+  <data name="Region_BL" xml:space="preserve">
+    <value>St. Barthélemy</value>
+  </data>
+  <data name="Region_BM" xml:space="preserve">
+    <value>Bermuda</value>
+  </data>
+  <data name="Region_BO" xml:space="preserve">
+    <value>Bolivia</value>
+  </data>
+  <data name="Region_BR" xml:space="preserve">
+    <value>Brazil</value>
+  </data>
+  <data name="Region_BS" xml:space="preserve">
+    <value>Bahamas</value>
+  </data>
+  <data name="Region_BW" xml:space="preserve">
+    <value>Botswana</value>
+  </data>
+  <data name="Region_BZ" xml:space="preserve">
+    <value>Belize</value>
+  </data>
+  <data name="Region_CA" xml:space="preserve">
+    <value>Canada</value>
+  </data>
+  <data name="Region_CC" xml:space="preserve">
+    <value>Cocos (Keeling) Islands</value>
+  </data>
+  <data name="Region_CD" xml:space="preserve">
+    <value>Congo - Kinshasa</value>
+  </data>
+  <data name="Region_CF" xml:space="preserve">
+    <value>Central African Republic</value>
+  </data>
+  <data name="Region_CG" xml:space="preserve">
+    <value>Congo - Brazzaville</value>
+  </data>
+  <data name="Region_CH" xml:space="preserve">
+    <value>Switzerland</value>
+  </data>
+  <data name="Region_CI" xml:space="preserve">
+    <value>Côte d’Ivoire</value>
+  </data>
+  <data name="Region_CK" xml:space="preserve">
+    <value>Cook Islands</value>
+  </data>
+  <data name="Region_CL" xml:space="preserve">
+    <value>Chile</value>
+  </data>
+  <data name="Region_CM" xml:space="preserve">
+    <value>Cameroon</value>
+  </data>
+  <data name="Region_CN" xml:space="preserve">
+    <value>China</value>
+  </data>
+  <data name="Region_CO" xml:space="preserve">
+    <value>Colombia</value>
+  </data>
+  <data name="Region_CR" xml:space="preserve">
+    <value>Costa Rica</value>
+  </data>
+  <data name="Region_CU" xml:space="preserve">
+    <value>Cuba</value>
+  </data>
+  <data name="Region_CV" xml:space="preserve">
+    <value>Cape Verde</value>
+  </data>
+  <data name="Region_CX" xml:space="preserve">
+    <value>Christmas Island</value>
+  </data>
+  <data name="Region_CY" xml:space="preserve">
+    <value>Cyprus</value>
+  </data>
+  <data name="Region_DE" xml:space="preserve">
+    <value>Germany</value>
+  </data>
+  <data name="Region_DJ" xml:space="preserve">
+    <value>Djibouti</value>
+  </data>
+  <data name="Region_DK" xml:space="preserve">
+    <value>Denmark</value>
+  </data>
+  <data name="Region_DM" xml:space="preserve">
+    <value>Dominica</value>
+  </data>
+  <data name="Region_DO" xml:space="preserve">
+    <value>Dominican Republic</value>
+  </data>
+  <data name="Region_DZ" xml:space="preserve">
+    <value>Algeria</value>
+  </data>
+  <data name="Region_EC" xml:space="preserve">
+    <value>Ecuador</value>
+  </data>
+  <data name="Region_EG" xml:space="preserve">
+    <value>Egypt</value>
+  </data>
+  <data name="Region_ER" xml:space="preserve">
+    <value>Eritrea</value>
+  </data>
+  <data name="Region_ES" xml:space="preserve">
+    <value>Spain</value>
+  </data>
+  <data name="Region_ET" xml:space="preserve">
+    <value>Ethiopia</value>
+  </data>
+  <data name="Region_FI" xml:space="preserve">
+    <value>Finland</value>
+  </data>
+  <data name="Region_FJ" xml:space="preserve">
+    <value>Fiji</value>
+  </data>
+  <data name="Region_FK" xml:space="preserve">
+    <value>Falkland Islands</value>
+  </data>
+  <data name="Region_FM" xml:space="preserve">
+    <value>Micronesia</value>
+  </data>
+  <data name="Region_FR" xml:space="preserve">
+    <value>France</value>
+  </data>
+  <data name="Region_GA" xml:space="preserve">
+    <value>Gabon</value>
+  </data>
+  <data name="Region_GB" xml:space="preserve">
+    <value>United Kingdom</value>
+  </data>
+  <data name="Region_GD" xml:space="preserve">
+    <value>Grenada</value>
+  </data>
+  <data name="Region_GF" xml:space="preserve">
+    <value>French Guiana</value>
+  </data>
+  <data name="Region_GG" xml:space="preserve">
+    <value>Guernsey</value>
+  </data>
+  <data name="Region_GH" xml:space="preserve">
+    <value>Ghana</value>
+  </data>
+  <data name="Region_GI" xml:space="preserve">
+    <value>Gibraltar</value>
+  </data>
+  <data name="Region_GM" xml:space="preserve">
+    <value>Gambia</value>
+  </data>
+  <data name="Region_GN" xml:space="preserve">
+    <value>Guinea</value>
+  </data>
+  <data name="Region_GP" xml:space="preserve">
+    <value>Guadeloupe</value>
+  </data>
+  <data name="Region_GQ" xml:space="preserve">
+    <value>Equatorial Guinea</value>
+  </data>
+  <data name="Region_GT" xml:space="preserve">
+    <value>Guatemala</value>
+  </data>
+  <data name="Region_GU" xml:space="preserve">
+    <value>Guam</value>
+  </data>
+  <data name="Region_GW" xml:space="preserve">
+    <value>Guinea-Bissau</value>
+  </data>
+  <data name="Region_GY" xml:space="preserve">
+    <value>Guyana</value>
+  </data>
+  <data name="Region_HK" xml:space="preserve">
+    <value>Hong Kong SAR China</value>
+  </data>
+  <data name="Region_HN" xml:space="preserve">
+    <value>Honduras</value>
+  </data>
+  <data name="Region_HT" xml:space="preserve">
+    <value>Haiti</value>
+  </data>
+  <data name="Region_ID" xml:space="preserve">
+    <value>Indonesia</value>
+  </data>
+  <data name="Region_IE" xml:space="preserve">
+    <value>Ireland</value>
+  </data>
+  <data name="Region_IL" xml:space="preserve">
+    <value>Israel</value>
+  </data>
+  <data name="Region_IM" xml:space="preserve">
+    <value>Isle of Man</value>
+  </data>
+  <data name="Region_IN" xml:space="preserve">
+    <value>India</value>
+  </data>
+  <data name="Region_IO" xml:space="preserve">
+    <value>British Indian Ocean Territory</value>
+  </data>
+  <data name="Region_IQ" xml:space="preserve">
+    <value>Iraq</value>
+  </data>
+  <data name="Region_IT" xml:space="preserve">
+    <value>Italy</value>
+  </data>
+  <data name="Region_JE" xml:space="preserve">
+    <value>Jersey</value>
+  </data>
+  <data name="Region_JM" xml:space="preserve">
+    <value>Jamaica</value>
+  </data>
+  <data name="Region_JO" xml:space="preserve">
+    <value>Jordan</value>
+  </data>
+  <data name="Region_KE" xml:space="preserve">
+    <value>Kenya</value>
+  </data>
+  <data name="Region_KI" xml:space="preserve">
+    <value>Kiribati</value>
+  </data>
+  <data name="Region_KM" xml:space="preserve">
+    <value>Comoros</value>
+  </data>
+  <data name="Region_KN" xml:space="preserve">
+    <value>St. Kitts &amp; Nevis</value>
+  </data>
+  <data name="Region_KW" xml:space="preserve">
+    <value>Kuwait</value>
+  </data>
+  <data name="Region_KY" xml:space="preserve">
+    <value>Cayman Islands</value>
+  </data>
+  <data name="Region_LB" xml:space="preserve">
+    <value>Lebanon</value>
+  </data>
+  <data name="Region_LC" xml:space="preserve">
+    <value>St. Lucia</value>
+  </data>
+  <data name="Region_LI" xml:space="preserve">
+    <value>Liechtenstein</value>
+  </data>
+  <data name="Region_LR" xml:space="preserve">
+    <value>Liberia</value>
+  </data>
+  <data name="Region_LS" xml:space="preserve">
+    <value>Lesotho</value>
+  </data>
+  <data name="Region_LU" xml:space="preserve">
+    <value>Luxembourg</value>
+  </data>
+  <data name="Region_LY" xml:space="preserve">
+    <value>Libya</value>
+  </data>
+  <data name="Region_MA" xml:space="preserve">
+    <value>Morocco</value>
+  </data>
+  <data name="Region_MC" xml:space="preserve">
+    <value>Monaco</value>
+  </data>
+  <data name="Region_MF" xml:space="preserve">
+    <value>St. Martin</value>
+  </data>
+  <data name="Region_MG" xml:space="preserve">
+    <value>Madagascar</value>
+  </data>
+  <data name="Region_MH" xml:space="preserve">
+    <value>Marshall Islands</value>
+  </data>
+  <data name="Region_ML" xml:space="preserve">
+    <value>Mali</value>
+  </data>
+  <data name="Region_MO" xml:space="preserve">
+    <value>Macao SAR China</value>
+  </data>
+  <data name="Region_MP" xml:space="preserve">
+    <value>Northern Mariana Islands</value>
+  </data>
+  <data name="Region_MQ" xml:space="preserve">
+    <value>Martinique</value>
+  </data>
+  <data name="Region_MR" xml:space="preserve">
+    <value>Mauritania</value>
+  </data>
+  <data name="Region_MS" xml:space="preserve">
+    <value>Montserrat</value>
+  </data>
+  <data name="Region_MT" xml:space="preserve">
+    <value>Malta</value>
+  </data>
+  <data name="Region_MU" xml:space="preserve">
+    <value>Mauritius</value>
+  </data>
+  <data name="Region_MV" xml:space="preserve">
+    <value>Maldives</value>
+  </data>
+  <data name="Region_MW" xml:space="preserve">
+    <value>Malawi</value>
+  </data>
+  <data name="Region_MX" xml:space="preserve">
+    <value>Mexico</value>
+  </data>
+  <data name="Region_MY" xml:space="preserve">
+    <value>Malaysia</value>
+  </data>
+  <data name="Region_MZ" xml:space="preserve">
+    <value>Mozambique</value>
+  </data>
+  <data name="Region_NA" xml:space="preserve">
+    <value>Namibia</value>
+  </data>
+  <data name="Region_NC" xml:space="preserve">
+    <value>New Caledonia</value>
+  </data>
+  <data name="Region_NE" xml:space="preserve">
+    <value>Niger</value>
+  </data>
+  <data name="Region_NF" xml:space="preserve">
+    <value>Norfolk Island</value>
+  </data>
+  <data name="Region_NG" xml:space="preserve">
+    <value>Nigeria</value>
+  </data>
+  <data name="Region_NI" xml:space="preserve">
+    <value>Nicaragua</value>
+  </data>
+  <data name="Region_NL" xml:space="preserve">
+    <value>Netherlands</value>
+  </data>
+  <data name="Region_NR" xml:space="preserve">
+    <value>Nauru</value>
+  </data>
+  <data name="Region_NU" xml:space="preserve">
+    <value>Niue</value>
+  </data>
+  <data name="Region_NZ" xml:space="preserve">
+    <value>New Zealand</value>
+  </data>
+  <data name="Region_OM" xml:space="preserve">
+    <value>Oman</value>
+  </data>
+  <data name="Region_PA" xml:space="preserve">
+    <value>Panama</value>
+  </data>
+  <data name="Region_PE" xml:space="preserve">
+    <value>Peru</value>
+  </data>
+  <data name="Region_PF" xml:space="preserve">
+    <value>French Polynesia</value>
+  </data>
+  <data name="Region_PG" xml:space="preserve">
+    <value>Papua New Guinea</value>
+  </data>
+  <data name="Region_PH" xml:space="preserve">
+    <value>Philippines</value>
+  </data>
+  <data name="Region_PK" xml:space="preserve">
+    <value>Pakistan</value>
+  </data>
+  <data name="Region_PM" xml:space="preserve">
+    <value>St. Pierre &amp; Miquelon</value>
+  </data>
+  <data name="Region_PN" xml:space="preserve">
+    <value>Pitcairn Islands</value>
+  </data>
+  <data name="Region_PR" xml:space="preserve">
+    <value>Puerto Rico</value>
+  </data>
+  <data name="Region_PS" xml:space="preserve">
+    <value>Palestinian Territories</value>
+  </data>
+  <data name="Region_PT" xml:space="preserve">
+    <value>Portugal</value>
+  </data>
+  <data name="Region_PW" xml:space="preserve">
+    <value>Palau</value>
+  </data>
+  <data name="Region_PY" xml:space="preserve">
+    <value>Paraguay</value>
+  </data>
+  <data name="Region_QA" xml:space="preserve">
+    <value>Qatar</value>
+  </data>
+  <data name="Region_RE" xml:space="preserve">
+    <value>Réunion</value>
+  </data>
+  <data name="Region_RW" xml:space="preserve">
+    <value>Rwanda</value>
+  </data>
+  <data name="Region_SA" xml:space="preserve">
+    <value>Saudi Arabia</value>
+  </data>
+  <data name="Region_SB" xml:space="preserve">
+    <value>Solomon Islands</value>
+  </data>
+  <data name="Region_SC" xml:space="preserve">
+    <value>Seychelles</value>
+  </data>
+  <data name="Region_SD" xml:space="preserve">
+    <value>Sudan</value>
+  </data>
+  <data name="Region_SE" xml:space="preserve">
+    <value>Sweden</value>
+  </data>
+  <data name="Region_SG" xml:space="preserve">
+    <value>Singapore</value>
+  </data>
+  <data name="Region_SH" xml:space="preserve">
+    <value>St. Helena</value>
+  </data>
+  <data name="Region_SI" xml:space="preserve">
+    <value>Slovenia</value>
+  </data>
+  <data name="Region_SL" xml:space="preserve">
+    <value>Sierra Leone</value>
+  </data>
+  <data name="Region_SN" xml:space="preserve">
+    <value>Senegal</value>
+  </data>
+  <data name="Region_SO" xml:space="preserve">
+    <value>Somalia</value>
+  </data>
+  <data name="Region_SS" xml:space="preserve">
+    <value>South Sudan</value>
+  </data>
+  <data name="Region_ST" xml:space="preserve">
+    <value>São Tomé &amp; Príncipe</value>
+  </data>
+  <data name="Region_SV" xml:space="preserve">
+    <value>El Salvador</value>
+  </data>
+  <data name="Region_SX" xml:space="preserve">
+    <value>Sint Maarten</value>
+  </data>
+  <data name="Region_SY" xml:space="preserve">
+    <value>Syria</value>
+  </data>
+  <data name="Region_SZ" xml:space="preserve">
+    <value>Eswatini</value>
+  </data>
+  <data name="Region_TC" xml:space="preserve">
+    <value>Turks &amp; Caicos Islands</value>
+  </data>
+  <data name="Region_TD" xml:space="preserve">
+    <value>Chad</value>
+  </data>
+  <data name="Region_TG" xml:space="preserve">
+    <value>Togo</value>
+  </data>
+  <data name="Region_TK" xml:space="preserve">
+    <value>Tokelau</value>
+  </data>
+  <data name="Region_TL" xml:space="preserve">
+    <value>Timor-Leste</value>
+  </data>
+  <data name="Region_TN" xml:space="preserve">
+    <value>Tunisia</value>
+  </data>
+  <data name="Region_TO" xml:space="preserve">
+    <value>Tonga</value>
+  </data>
+  <data name="Region_TR" xml:space="preserve">
+    <value>Türkiye</value>
+  </data>
+  <data name="Region_TT" xml:space="preserve">
+    <value>Trinidad &amp; Tobago</value>
+  </data>
+  <data name="Region_TV" xml:space="preserve">
+    <value>Tuvalu</value>
+  </data>
+  <data name="Region_TW" xml:space="preserve">
+    <value>Taiwan</value>
+  </data>
+  <data name="Region_TZ" xml:space="preserve">
+    <value>Tanzania</value>
+  </data>
+  <data name="Region_UG" xml:space="preserve">
+    <value>Uganda</value>
+  </data>
+  <data name="Region_UM" xml:space="preserve">
+    <value>U.S. Outlying Islands</value>
+  </data>
+  <data name="Region_US" xml:space="preserve">
+    <value>United States</value>
+  </data>
+  <data name="Region_UY" xml:space="preserve">
+    <value>Uruguay</value>
+  </data>
+  <data name="Region_VC" xml:space="preserve">
+    <value>St. Vincent &amp; Grenadines</value>
+  </data>
+  <data name="Region_VE" xml:space="preserve">
+    <value>Venezuela</value>
+  </data>
+  <data name="Region_VG" xml:space="preserve">
+    <value>British Virgin Islands</value>
+  </data>
+  <data name="Region_VI" xml:space="preserve">
+    <value>U.S. Virgin Islands</value>
+  </data>
+  <data name="Region_VU" xml:space="preserve">
+    <value>Vanuatu</value>
+  </data>
+  <data name="Region_WF" xml:space="preserve">
+    <value>Wallis &amp; Futuna</value>
+  </data>
+  <data name="Region_WS" xml:space="preserve">
+    <value>Samoa</value>
+  </data>
+  <data name="Region_YE" xml:space="preserve">
+    <value>Yemen</value>
+  </data>
+  <data name="Region_YT" xml:space="preserve">
+    <value>Mayotte</value>
+  </data>
+  <data name="Region_ZA" xml:space="preserve">
+    <value>South Africa</value>
+  </data>
+  <data name="Region_ZM" xml:space="preserve">
+    <value>Zambia</value>
+  </data>
+  <data name="Region_ZW" xml:space="preserve">
+    <value>Zimbabwe</value>
+  </data>
+  <!-- End of Region_ names -->
 </root>

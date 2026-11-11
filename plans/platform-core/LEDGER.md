@@ -81,16 +81,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-11 07:51 | 49 | 90 | 2026-11-17 20:00 | ΔFable/ΔU since 06:50 = 21/12 = 1.75, but Fable rose 21 against ~9 forecast for the running Fable agents (k_fable well above 1.8·p). Fable ≥90% → every Reviewer 2 inherit xhigh (§3). PC-014 fix1 eebab50 → R2 (Opus xhigh); PC-067 R1 0/0/4 → fix1 + integrate. Three resumed Fable agents still running (PC-010 fix1, PC-019, PC-025): if the Fable meter hits 100% and they die, continue each on Opus from its pushed branch |
 | 2026-11-11 09:05 | 50 | 91 | 2026-11-17 20:00 | Fable rise slowed (90 → 91 in 75 min). PC-014 R2 0/0/0 → integrate (D-047); PC-067 integrated f391cbd (fast-forward, CI 42988536575 pending); ready: PC-020, PC-045, PC-059 → PC-020 launched in pc-3 (Opus) |
 | 2026-11-11 10:44 | 9 | 3 | 2026-11-17 20:00 | **Fable reset** detected: before U ≈ 51 / Fable 91 (last read 50/91), after 9/3; U dropped ≈ 42, about the Fable spend (≈ 92 Fable pts at ΔFable/ΔU ≈ 2 → ≈ 46 U pts). ρ window restarted (U 9). Normal process from here, including Reviewer 2 on fable for security-bound checkpoints. PC-014, PC-019, PC-067 done since 07:51 (25 done) |
+| 2026-11-11 12:03 | 12 | 6 | 2026-11-17 20:00 | PC-010 done (CI 43015763392 green; 27 done). PC-025 done. PC-012 (last Phase 1 checkpoint; deps now met) is next at the first free heavy slot, in pc-f, ahead of PC-032/PC-059; PC-B01 starts when PC-012 is done. In flight: PC-027, PC-069 impl; PC-022, PC-020 R1; PC-045 fix1+integrate |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-010 | pc-1 | pc/PC-010 | fix2 + integrate (resumed; R2 0/0/1: an omitted value parameter folds to cast(null) = 3 typed nodes, so a definition valid at save can hit QX5004 at run) | impl-PC-010 / acee729c39cedd719 (fable, high) | R1 af8af971f526dfbde (Opus inherit, high); R2 a3a41682c700e1b49 (Opus inherit, xhigh) | 2026-11-11 05:50 |
-| PC-022 | pc-2 | pc/PC-022 | impl | impl-PC-022 / ac594c6902c2c6fbb (Opus inherit) | | 2026-11-11 10:35 |
-| PC-045 | pc-4 | pc/PC-045 | impl | impl-PC-045 / a3e522bc6fccada4c (Opus inherit) | | 2026-11-11 10:05 |
-| PC-025 | pc-f2 | pc/PC-025 | fix1 + integrate (resumed; R1 0/0/6, all deviations accepted) | impl-PC-025 / a1845b2f81d54f463 (fable, high) | R1 ac5bfc1b22bfc0147 (Opus inherit, high) | 2026-11-11 06:50 |
-| PC-020 | pc-3 | pc/PC-020 | impl | impl-PC-020 / a61a08d03618812fe (Opus inherit) | | 2026-11-11 09:05 |
+| PC-027 | pc-1 | pc/PC-027 | impl | impl-PC-027 / a7f93ca1f45aaceb9 (Opus inherit) | | 2026-11-11 11:55 |
+| PC-012 | pc-2 | pc/PC-012 | impl | impl-PC-012 / a4f0dedb36598b163 (Opus inherit) |  | 2026-11-11 13:15 |
+| PC-045 | pc-4 | pc/PC-045 | fix1 + integrate (resumed; R1 0/2/1: type-to-edit takes Alt/Ctrl+Alt shortcuts; @perf probe lands quarantined → PC-F17; ./grid at its 2nd raise) | impl-PC-045 / a3e522bc6fccada4c (Opus inherit) | R1 a0452f389a64d26da (Opus inherit, high) | 2026-11-11 10:05 |
+| PC-069 | pc-f2 | pc/PC-069 | impl | impl-PC-069 / a4f7a3b1bb1140176 (Opus inherit) | | 2026-11-11 11:05 |
+| PC-020 | pc-3 | pc/PC-020 | fix1 + integrate (resumed; R1 0/3/3: RTL counter corner, badge glyph clipping, 7 budget raises 8 → 15.5 KB lack savings (ruled: take savings, re-measure, report sizes for a DECISIONS entry)) | impl-PC-020 / a61a08d03618812fe (Opus inherit) | R1 acb51d47533b06a0e (Opus inherit, high) | 2026-11-11 09:05 |
 
 ## Fix items
 
@@ -111,6 +112,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F14 | CI red on 3d7aa7b (client, PR-tier e2e chromium): select.spec.ts:379 tm-multi-select Space/Enter toggle flaky (multi-value stayed "" after Home + Space; passed on retry) | done: integrated 8043295 (CI 42947124853 green); fix1 fc671dd (R1-1 setExpanded writes aria's model too; R1-2 keys before render queued and replayed; gates rerun; select.spec 320/320); R1 0/1/2 (tm-select expanded model stale after a relayed commit → double dispatch; keys before the panel renders still dropped; gates omitted), keyboard tests 80/80 under load; r1 a758ab4fefeabc8b0 (fable high); fix d24366d pushed (product bug: aria combobox keyboardEventRelay collapses two keys in one render window; tm-select-base relays open-panel keys synchronously; 2 new unit tests; e2e 20/20 under load), pc-2, fix-PC-F14 = impl-PC-060 a517313f6813eaf8a (resumed, Opus) | d24366d (pc/PC-F14) | | stop the line |
 | PC-F15 | CI red on 09ab023 (build-test ubuntu-latest, unit): FileSystemBlobStoreTests.Objects_land_under_the_tenant_kind_and_fan_out_directories — BlobStoreException wrapping FileNotFoundException on <root>/t7/.tmp/<guid>.part (the tenant's .tmp directory vanished between create and open?); not in PC-013's code; 88f13fa and 739d09c were green | todo (flaky, not stop-the-line: the failed job passed on rerun, CI 42957255864 attempt 2; branch pc/PC-F15 prepared in pc-f at 09ab023) | | | possible real race in FileSystemBlobStore temp handling; fix when a slot frees |
 | PC-F16 | identity path base: EmailCode.cshtml.cs falls back to literal /Identity/Account/Login and EndSessionController redirects to literal /Identity/Account/LoggedOut, both missing the in-proc /id path base (pre-existing, found by PC-014); plus the passkey E2E helper's unconditional click after a 5 s wait | todo (low; Opus) | | | from PC-014 impl |
+| PC-F17 | grid scroll budget: the nightly @perf scroll probe (no long task > 50 ms) fails on the flat grid (46-48 long tasks up to 94 ms) and on the 21,000-row tree (2-18 long tasks of 52-132 ms; tm-icon ≈ 10% of scroll CPU); lands @quarantine with PC-045 | todo (Opus; before GA) | | | from PC-045 R1 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -128,10 +130,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Spec 0017 to be brought in line with PC-F08: host non-dumpable and debugger pipes removed on Linux once a worker starts; worker setsid/non-dumpable and refused signal/terminal syscalls; BlobPdfWorkerPtraceUnrestricted's new meaning; hosting guidance (unprivileged account with nothing else under it, run as a service, CAP_SYS_PTRACE only where crash dumps are wanted; D-043); Tellma:Blobs:PdfWorkerConcurrency (§1.3/§3.5), the PDF-thumbnail host rule (Linux glibc only; Windows/macOS Development only; musl never), log events BlobPdfThumbnailsDisabled and BlobPdfWorkerPtraceUnrestricted (§10.2) | PC-F08 fix1, D-040 |
 | Staging: run dotnet-dump, dotnet-counters, dotnet-trace and a managed debugger against a Linux host after a PDF worker has started, to confirm PC-F08's measured diagnostics costs | PC-F08 fix2, D-043 |
 | Spec 0010 §C.11: ./menu ceiling 8.5 KB (was 7; D-042); §C.10: group dividers drawn above a group whenever a non-separator entry precedes it; one Escape entry per menu that collapses an expanded submenu or closes the menu, replacing "each level pushes its own entry" (D-044) | PC-041, D-042 |
+| Spec 0023: TmRelativeTime's wording input is `textStyle` (Angular never delivers a value to an input named `style`); counter.overflow receives {max} pre-formatted; §1 budgets for the seven indicator entry points are below the built sizes (budgetNotes) | PC-020 impl |
+| Spec 0008 Appendix A: name each Queryex diagnostic's message arguments (engine raises QX3101 with two argument shapes; QX3005 carries @index); count-type problem details need expected/actual/maximum carried by the exceptions | PC-022 impl |
 | Spec 0010 §A.10: the return to the authorization endpoint re-applies the request's language, but on consent the language cookie outranks a pushed (PAR) request's ui_locales (PC-014 deviation 5; D-047) | PC-014 R2 |
 | Spec 0024 §1: add the ./config-check lazy entry point to the entry-point table (PC-067 deviation; its .d.ts imports types from @tellma/core so TmFeature stays one branded type) | PC-067 R1 |
 | Spec 0011 §3.9 vs §5.7: in-process identity shares the container with AddTellma, whose scoped TenantSandboxContext throws outside a tenant, so the engine's tenantless invitation mail cannot get a sandbox answer as §3.9 requires; spec 0013 §9.3 step 5 (initializer sets the thread culture) cannot work and moves to the front doors | PC-025 R1 |
-| Spec 0010 §F.8/§F.9: the compiled-query L2 key is text + the omitted declarations it refers to (with types) + polarity, not "the omitted set"; Via/Exists folded as one atom lifts a supplied sibling restriction inside the node (ambiguity to confirm); §F.8 should state that a repeated ordering term is dropped only when folding rewrote it or the term it repeats, and otherwise stays QX4008 as in spec 0008 (deviation 13) | PC-010 R1, fix1 |
+| Spec 0010 §F.8/§F.9: the compiled-query L2 key is text + the omitted declarations it refers to (with types) + polarity, not "the omitted set"; Via/Exists folded as one atom lifts a supplied sibling restriction inside the node (ambiguity to confirm); §F.8 should state that a repeated ordering term is dropped only when folding rewrote it or the term it repeats, and otherwise stays QX4008 as in spec 0008 (deviation 13); 0008's limit wording and §F.8: an absent value where an omitted parameter stood costs one typed node, not the three of cast(null) (deviation 14) | PC-010 R1, fix1 |
 | Spec 0013 §1.3 vs AddLanguage: a language added with AddLanguage can never be offered without a Tellma.Core satellite (startup fails); §7.2's English fallback does not cover it. §9.2 names the negotiated culture <language>-<region> yet asks for a -u-nu-latn clone; the build pins formats field by field (D-046) | PC-019, D-046 |
 | Manual screen-reader pass (NVDA + VoiceOver): a rich menu's header block is read on open through aria-describedby of role="menu" | PC-041 R1-9, D-044 |
 
@@ -139,6 +143,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client grid @perf scroll probe (nightly; long tasks > 50 ms on flat grid and tree) | 2026-11-11 | @quarantine; PC-F17 |
+| dotnet Tellma.Core.Email.Tests host failed to launch in a solution-wide unit run under load (xUnit "Test process did not return valid JSON", 0 tests run; passed 64/5-skipped alone; PC-010 integrate) | 2026-11-11 | watch |
 | dotnet Tellma.Identity.E2E InProcPasskeyTests.Register_a_passkey_then_sign_in_with_it_under_the_path_base (PasskeyCeremonies.RegisterThenSignInAsync waits 5 s for the conditional ceremony, then clicks the passkey button unconditionally; Windows under load, PC-014 impl) | 2026-11-11 | watch; fix with PC-F16 |
 | dotnet Tellma.Core.Tests FileSystemBlobStoreTests.Objects_land_under_the_tenant_kind_and_fan_out_directories (.part not found under t7/.tmp; ubuntu CI 42957255864 attempt 1) | 2026-11-11 | PC-F15 |
 | dotnet Tellma.Connector.Smtp.Adapter.Tests (SmtpProtocolTests, SmtpConformanceTests, SmtpReconnectTests): SocketException WSALookupServiceEnd (cancelled DNS lookup under load), Windows local, failed once in the solution-wide filtered run (PC-013 integrate) | 2026-11-11 | watch |
@@ -189,9 +195,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-007 | 0010-f2 | 1 | done | 66fa627, 334d4c7, 7f25a25, a6c928d (pc) | 24.07M | red run was the flaky grid-menu test, fixed by PC-F07; green at 4220487; 3 deviations; Exists not in Paths (D-027) |
 | PC-008 | 0010-b1 | 1 | done | 2d7734a, 2161a0b, aa8686e, 0b64145 (pc) | 21.50M | CI 42509964842 red (CSP leak) → fixed by PC-F06; green at c71a009 | 8 deviations; primary ceiling 8 not 7; in-house eval-free ICU; client ICU has no date/time |
 | PC-009 | 0010-a3 | 1 | done | 42c5e6a, 372c259, 00e104c, 8fc45b6, 3ec00db, c9d40fc (pc) | 31.38M | CI 42601509854 red: identity-e2e consent screen → PC-F12; done with PC-F12 at f2b1591, CI 42608310703 green; 13 deviations; D-034 |
-| PC-010 | 0010-f3 | 1 | fix2 | 36c28a9, 09fffb8 | impl 18.37M (fable) | |
+| PC-010 | 0010-f3 | 1 | done | 36c28a9, 09fffb8, 713ef92, 63c64cc (pc) | 35.89M (impl+fix+int 30.29 fable, r1 2.01, r2 3.59 Opus xhigh) | CI 43015763392 green; Email.Tests host failed to launch once in the merged-tree unit run (xUnit "did not return valid JSON", load), passed alone |
 | PC-011 | 0010-d1 | 1 | done | d35f4fc, 672b257, 05cd337 (pc) | 20.20M | ./popover ceiling 4→4.5 KB under D-031 | | 9 deviations; budgets: popover 9 B, grid 3 B, image 53 B left (D-031) |
-| PC-012 | 0010-f5 | 1 | todo | | | |
+| PC-012 | 0010-f5 | 1 | impl |  |  |  |
 | PC-013 | 0010-d2 | 1 | done | 4925846, 2a90ae2, 09ab023 (pc) | 21.47M (impl 12.64, r1 4.92, fix+int ≈ 3.9+; fable) | CI 42957255864 red on attempt 1 (FileSystemBlobStoreTests, flaky, PC-F15), green on rerun; integrated 09ab023 (CI 42957255864 red: ubuntu unit FileSystemBlobStoreTests, PC-F15; failed job rerun requested; fix1 2a90ae2; R1 0/1/3; impl 4925846; 16 deviations, see reviews/PC-013.md; budgets ./l10n 8→10, ./grid 38→38.5 under D-031) |
 | PC-014 | 0010-a5 | 1 | done | 5d356b3, eebab50, 5bf6602, fc941ca (pc) | 20.99M (impl+fix+int 17.44 fable, r1 1.16, r2 2.39 Opus xhigh) | CI 42999471991 green; passkey E2E helper race and the two un-prefixed identity paths stay with PC-F16 |
 | PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
@@ -199,14 +205,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
 | PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
 | PC-019 | 0013-b | 1 | done | 6a36b74, 7f9bee7, b22322e, 97330a0 (pc) | 22.56M (impl+fix+int 20.97 fable, r1 1.59 Opus) | CI 42992138704 green (Linux pinned-ICU leg passed); Identity integration suite not re-run after the last two merges (no .NET input changed); Linux leg now requires pinned ICU 78.2 (TELLMA_REQUIRE_PINNED_ICU=1) |
-| PC-020 | 0023-b | 1 | impl | | | |
+| PC-020 | 0023-b | 1 | fix1 | 184c8c2 | impl 10.37M (Opus) |  |
 | PC-021 | 0012-b | 1 | done | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | green at 8043295, CI 42947124853; 11 deviations; D-037 |
-| PC-022 | 0013-c | 1 | impl | | | |
+| PC-022 | 0013-c | 1 | done | 897f7fc, 3f2b60c, ef67f47 (pc) | 9.10M (impl+fix+int 7.67, r1 1.43; Opus) | CI 43026874374 green; RequestContext.Localization (zone resolved once per process, UTC fallback); ApplyCultures applies LocalizationScope; added Queryex_QX4009 strings |
 | PC-023 | 0023-c | 1 | todo | | | |
 | PC-024 | 0011-b | 1 | done | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green; 16 deviations; D-036 |
-| PC-025 | 0011-c | 1 | fix1 | ef6a61c | impl 11.26M (fable) | |
+| PC-025 | 0011-c | 1 | done | ef6a61c, 3c46607, 3db32cd (pc) | 22.05M (impl+fix+int 20.60 fable, r1 1.45 Opus) | CI 43007537552 green |
 | PC-026 | 0023-d | 1 | todo | | | |
-| PC-027 | 0012-c1 | 1 | todo | | | |
+| PC-027 | 0012-c1 | 1 | impl | | | |
 | PC-028 | 0012-c2 | 1 | todo | | | |
 | PC-029 | 0014-a | 1 | todo | | | |
 | PC-030 | 0023-e | 1 | todo | | | |
@@ -224,7 +230,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | todo | | | |
 | PC-044 | 0013-e | 1 | todo | | | |
-| PC-045 | 0010-c2 | 1 | impl | | | |
+| PC-045 | 0010-c2 | 1 | fix1 | 761c33a | impl 15.28M (Opus) |  |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | todo | | | |
 | PC-048 | 0010-c3 | 1 | todo | | | |
@@ -248,7 +254,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-066 | 0015-c | 1 | todo | | | |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | todo | | | |
-| PC-069 | 0024-c | 1 | todo | | | |
+| PC-069 | 0024-c | 1 | impl | | | |
 | PC-070 | 0015-e | 1 | todo | | | |
 | PC-071 | 0024-d | 1 | todo | | | |
 | PC-072 | 0015-f | 1 | todo | | | |
