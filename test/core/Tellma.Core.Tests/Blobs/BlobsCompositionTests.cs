@@ -9,7 +9,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Hosting;
-using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Blobs;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -122,7 +121,6 @@ namespace Tellma.Core.Tests.Blobs
         {
             // AddTellma registers the deployment identity the Development default is named after.
             ServiceCollection services = new();
-            services.AddSingleton(SandboxContext.Never);
             IConfiguration configuration = TestComposition.Configuration();
             TestEnvironment environment = new("Development");
             services.AddSingleton(configuration);

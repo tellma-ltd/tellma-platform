@@ -36,6 +36,9 @@
   <label><span>undeclared columns</span><input type="text" id="undeclaredColumns" value=""></label>
   <label><span>filter via (navigation path)</span><input type="text" id="via" value=""></label>
   <label><span>exists (entity navigation: criterion; …)</span><input type="text" id="exists" value=""></label>
+  <label><span>parameters (name type, …)</span><input type="text" id="parameters" value=""></label>
+  <label><span>omitted parameters</span><input type="text" id="omitted" value=""></label>
+  <label><span>constant items, in place of the query (type expression; …)</span><input type="text" id="constants" value=""></label>
 </div>
 
 <div class="options">
@@ -49,7 +52,7 @@
   <section><h2>SQL</h2><pre id="sql"></pre></section>
   <section><h2>diagnostics</h2><pre id="diagnostics"></pre></section>
   <section><h2>bound tree</h2><div id="nodes"></div></section>
-  <section><h2>parameters</h2><div id="parameters"></div></section>
+  <section><h2>parameters</h2><div id="slots"></div></section>
   <section><h2>columns</h2><div id="columns"></div></section>
   <section><h2>tokens</h2><div id="tokens"></div></section>
   <section><h2>printed back</h2><pre id="printed"></pre></section>
@@ -59,7 +62,8 @@
 <script>
 // Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
 // that watching every stage react as the input changes is the whole point of the tool.
-const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists'];
+const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists',
+  'parameters', 'omitted', 'constants'];
 const el = id => document.getElementById(id);
 
 function table(headers, rows) {
@@ -85,7 +89,10 @@ async function inspect() {
     restrictions: el('restrictions').value,
     undeclaredColumns: el('undeclaredColumns').value,
     via: el('via').value,
-    exists: el('exists').value
+    exists: el('exists').value,
+    parameters: el('parameters').value,
+    omitted: el('omitted').value,
+    constants: el('constants').value
   };
 
   el('status').textContent = 'compiling…';
@@ -108,7 +115,7 @@ async function inspect() {
   el('nodes').innerHTML = table(['node', 'type', 'nullity', 'detail'],
     (result.nodes ?? []).map(n => ['·'.repeat(n.depth) + ' ' + n.kind, n.type, n.nullity, n.detail]));
 
-  el('parameters').innerHTML = table(['name', 'type', 'stored as', 'origin', 'value'],
+  el('slots').innerHTML = table(['name', 'type', 'stored as', 'origin', 'value'],
     (result.parameters ?? []).map(p => [p.name, p.type, p.storeType, p.origin, p.value]));
 
   el('columns').innerHTML = table(['#', 'text', 'type', 'nullity', 'key'],

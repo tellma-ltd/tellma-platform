@@ -142,8 +142,13 @@ namespace Tellma.Core.Composition
             // --- The tenant model, built from what the realizers recorded ---
             TellmaModelFactory.Register(services, _record);
 
-            // --- The tenancy runtime: the catalog, the registry, connections and the write side ---
+            // --- The tenancy runtime: the catalog, the registry, connections, the write side and the request context ---
             TenancyComposition.Register(services, _record, options);
+
+            // --- Server-built links (spec 0011 §5.10) ---
+            // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
+            services.TryAddSingleton<IStackRouteSource, NoStackRoutes>();
+            services.AddSingleton<ITellmaLinks, TellmaLinks>();
 
             // --- The realised gate, first among the hosted services ---
             // Hosted services start in registration order, and a host may have registered some

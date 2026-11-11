@@ -14,8 +14,8 @@ namespace Tellma.Core.Tenancy
     /// <summary>
     ///     Registers the tenancy runtime the composition root installs in every host: the catalog
     ///     model, the options of <c>Tellma:Catalog</c> and <c>Tellma:Sql</c>, the registry and its
-    ///     refresh service, the connection factory, the catalog's write side and the membership
-    ///     directory.
+    ///     refresh service, the connection factory, the catalog's write side, the membership
+    ///     directory, and the request context with its two writers and the services that read it.
     /// </summary>
     internal static class TenancyComposition
     {
@@ -56,6 +56,22 @@ namespace Tellma.Core.Tenancy
             _ = services.AddSingleton<ITenantCatalog, TenantCatalog>();
             _ = services.AddSingleton<TenantMembershipDirectory>();
             _ = services.AddSingleton<ITenantMembershipDirectory>(static provider => provider.GetRequiredService<TenantMembershipDirectory>());
+
+            // --- The request context: one holder per scope, read through the accessor (spec 0011 §4.2) ---
+            _ = services.AddSingleton<RequestContextDefaults>();
+            _ = services.AddScoped<RequestContextHolder>();
+            _ = services.AddScoped<IRequestContextHolder>(static provider => provider.GetRequiredService<RequestContextHolder>());
+            _ = services.AddScoped<IRequestContextAccessor>(static provider => provider.GetRequiredService<RequestContextHolder>());
+
+            // --- Its two writers: the access guard of a request and the scope factory of background work ---
+            _ = services.AddScoped<ITenantAccessGuard, TenantAccessGuard>();
+            _ = services.AddSingleton<ITenantScopeFactory, TenantScopeFactory>();
+
+            // --- What reads the bound tenant: the scope's connections and the sandbox flag ---
+            // Added, not TryAdded: in a tenant host the sandbox flag is the bound tenant's category, so
+            // a never-sandboxed context registered before the composition must not survive it.
+            _ = services.AddScoped<ITenantConnectionProvider, TenantConnectionProvider>();
+            _ = services.AddScoped<ISandboxContext, TenantSandboxContext>();
         }
     }
 }

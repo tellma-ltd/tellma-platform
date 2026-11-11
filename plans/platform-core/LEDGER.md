@@ -15,7 +15,7 @@ It is committed by the snapshot procedure. Status values: `todo`, `impl`, `r1`, 
 | Parked | no |
 | Parked at U | |
 | Fable phase | ended 2026-11-11 06:50 UTC (no new Fable checkpoint fits after PC-025; Ahmad emailed/pushed 06:50; remind once at U 85 if the reset is still pending) |
-| Fable reset | pending (Ahmad presses it when the Fable phase is done) |
+| Fable reset | applied (detected 2026-11-11 10:44 UTC: Fable 91 → 3, all-models ≈ 51 → 9; ρ window restarted at 10:44, U 9; Ahmad emailed (Gmail 1a1ca365086f89f3) and pushed) |
 | Fable alias resolves to | claude-fable-5-2 (Fable 5.2; transcripts of impl-PC-013, impl-PC-041, fix-PC-F08, 2026-11-10 20:16) |
 | Full reset | pending (deadline Sat Nov 14 20:00 UTC; reminder cron Sat Nov 14 12:00 UTC) |
 | Agent tool supports name / effort / fable | name: **no** (address agents by id via SendMessage) / effort: yes / fable: yes (model enum) |
@@ -32,6 +32,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-08 15:10 (first measured ρ: 15 pts / 157.06M units since 05:03) | 0.0955 | 0.36 (prior; refit after more done) | 0.80 (prior) | not yet republished (due at 15 integrated) |
 | 2026-11-09 07:40 (first measured k, from 12 integrated checkpoints: real units × ρ ÷ estimated kLOC; one-review cycles scaled to full) | 0.0955 | 0.45 (range 0.20-0.89; PC-053 0.89, PC-005 0.20) | 0.60 (PC-008 0.46, PC-011 0.35, PC-065 1.48 outlier: workspace move) | forecast due at 15 integrated |
 | 2026-11-10 20:25 (forecast at 18 done; k EMA (0.3) over PC-018 0.53, PC-009 0.86, PC-024 0.45; raw fit over 14 backend: mean 0.58, median 0.53; client: no new done since 07:40, mean without PC-065 0.49) | 0.0955 (old window; re-measure once the new window spans 10 points) | 0.55 | 0.60 | **3.6 / 0.75 / 1.5** (T1: 123 pending, cycles 294 + 7 batch reviews 48 + orchestrator 18 = 361 pts; T2 75 pts; T3 150 pts; stop-the-line fixes not modelled, about 1 pt each; the Fable phase adds up to ~50 pts this week) |
+| 2026-11-11 10:44 k_fable (Fable phase 2026-11-10 20:16 → 2026-11-11 06:50, agents finished by 10:40; kept out of the Opus k EMA) | Fable pts per M Fable units ≈ 0.27 (≈ 46 U pts over ≈ 170M units of Fable agents) | Fable cost factor ≈ 2.8 × Opus ρ (planned 1.8) | — | Fable checkpoints measured at Opus ρ understate their weekly cost by ≈ 2.8×; any future Fable phase should budget p × 2.8 |
+| 2026-11-11 10:44 (forecast after the Fable reset, 25 done; k_backend 0.50 (EMA over Opus cycles; raw Opus mean 0.58, median 0.53), k_client 0.55 (median 0.46; PC-065 outlier)) | 0.0955 (new window from 10:44; re-measure once it spans 10 points) | 0.50 | 0.55 | **3.2 / 0.7 / 1.4** (T1: 116 pending, cycles 255 + 7 batch reviews 48 + orchestrator 17 = 320 pts; T2 70 pts; T3 140 pts; full reset still pending, deadline Sat Nov 14 20:00 UTC) |
 
 ## Usage
 
@@ -78,14 +80,15 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-11 06:50 | 37 | 69 | 2026-11-17 20:00 | ΔFable/ΔU since 05:50 = 14/7 = 2.0 (the /2 holds). RF 15.5; F_fable ≈ 1.8 × (0.8 × (1.93+1.65+2.26) + 0.3) ≈ 9; PC-025 (p 1.35, 2.4 Fable) fits: 15.5 − 9 − 2.4 = 4.1 ≥ 3; after it PC-067 (3.5) and PC-F15 (≈1.8) do not → Fable phase ends; Ahmad notified (Gmail + push). PC-F04 integrated fe04dbf; core-ui unit count 1455 → 1400 after merging PC-013 (l10n specs reworked; check) |
 | 2026-11-11 07:51 | 49 | 90 | 2026-11-17 20:00 | ΔFable/ΔU since 06:50 = 21/12 = 1.75, but Fable rose 21 against ~9 forecast for the running Fable agents (k_fable well above 1.8·p). Fable ≥90% → every Reviewer 2 inherit xhigh (§3). PC-014 fix1 eebab50 → R2 (Opus xhigh); PC-067 R1 0/0/4 → fix1 + integrate. Three resumed Fable agents still running (PC-010 fix1, PC-019, PC-025): if the Fable meter hits 100% and they die, continue each on Opus from its pushed branch |
 | 2026-11-11 09:05 | 50 | 91 | 2026-11-17 20:00 | Fable rise slowed (90 → 91 in 75 min). PC-014 R2 0/0/0 → integrate (D-047); PC-067 integrated f391cbd (fast-forward, CI 42988536575 pending); ready: PC-020, PC-045, PC-059 → PC-020 launched in pc-3 (Opus) |
+| 2026-11-11 10:44 | 9 | 3 | 2026-11-17 20:00 | **Fable reset** detected: before U ≈ 51 / Fable 91 (last read 50/91), after 9/3; U dropped ≈ 42, about the Fable spend (≈ 92 Fable pts at ΔFable/ΔU ≈ 2 → ≈ 46 U pts). ρ window restarted (U 9). Normal process from here, including Reviewer 2 on fable for security-bound checkpoints. PC-014, PC-019, PC-067 done since 07:51 (25 done) |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-010 | pc-1 | pc/PC-010 | r2 (fix1 09fffb8: all 4 fixed; new deviation 13: a repeated ordering term is dropped, not QX4008, only when folding rewrote it or the term it repeats; spec 0008/0010 §F.8 silent) | impl-PC-010 / acee729c39cedd719 (fable, high) | R1 af8af971f526dfbde (Opus inherit, high); R2 a3a41682c700e1b49 (Opus inherit, xhigh) | 2026-11-11 05:50 |
-| PC-014 | pc-2 | pc/PC-014 | integrate (resumed; R2 0/0/0, ruling upheld, D-047) | impl-PC-014 / ad3864ef3780f4df4 (fable, high) | R1 a22f5cf4ee08a0ea6 (Opus inherit, high); R2 a6caae3dc4dba8e6e (Opus inherit, xhigh: Fable meter 90%) | 2026-11-11 05:50 |
-| PC-019 | pc-4 | pc/PC-019 | fix1 + integrate (resumed; R1 0/0/5 a548076231abf1234; D-046) | impl-PC-019 / ac8a0ba09c244ab93 (fable, high) | R1 a548076231abf1234 (Opus inherit, high) | 2026-11-11 05:50 |
+| PC-010 | pc-1 | pc/PC-010 | fix2 + integrate (resumed; R2 0/0/1: an omitted value parameter folds to cast(null) = 3 typed nodes, so a definition valid at save can hit QX5004 at run) | impl-PC-010 / acee729c39cedd719 (fable, high) | R1 af8af971f526dfbde (Opus inherit, high); R2 a3a41682c700e1b49 (Opus inherit, xhigh) | 2026-11-11 05:50 |
+| PC-022 | pc-2 | pc/PC-022 | impl | impl-PC-022 / ac594c6902c2c6fbb (Opus inherit) | | 2026-11-11 10:35 |
+| PC-045 | pc-4 | pc/PC-045 | impl | impl-PC-045 / a3e522bc6fccada4c (Opus inherit) | | 2026-11-11 10:05 |
 | PC-025 | pc-f2 | pc/PC-025 | fix1 + integrate (resumed; R1 0/0/6, all deviations accepted) | impl-PC-025 / a1845b2f81d54f463 (fable, high) | R1 ac5bfc1b22bfc0147 (Opus inherit, high) | 2026-11-11 06:50 |
 | PC-020 | pc-3 | pc/PC-020 | impl | impl-PC-020 / a61a08d03618812fe (Opus inherit) | | 2026-11-11 09:05 |
 
@@ -186,19 +189,19 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-007 | 0010-f2 | 1 | done | 66fa627, 334d4c7, 7f25a25, a6c928d (pc) | 24.07M | red run was the flaky grid-menu test, fixed by PC-F07; green at 4220487; 3 deviations; Exists not in Paths (D-027) |
 | PC-008 | 0010-b1 | 1 | done | 2d7734a, 2161a0b, aa8686e, 0b64145 (pc) | 21.50M | CI 42509964842 red (CSP leak) → fixed by PC-F06; green at c71a009 | 8 deviations; primary ceiling 8 not 7; in-house eval-free ICU; client ICU has no date/time |
 | PC-009 | 0010-a3 | 1 | done | 42c5e6a, 372c259, 00e104c, 8fc45b6, 3ec00db, c9d40fc (pc) | 31.38M | CI 42601509854 red: identity-e2e consent screen → PC-F12; done with PC-F12 at f2b1591, CI 42608310703 green; 13 deviations; D-034 |
-| PC-010 | 0010-f3 | 1 | r2 | 36c28a9, 09fffb8 | impl 18.37M (fable) | |
+| PC-010 | 0010-f3 | 1 | fix2 | 36c28a9, 09fffb8 | impl 18.37M (fable) | |
 | PC-011 | 0010-d1 | 1 | done | d35f4fc, 672b257, 05cd337 (pc) | 20.20M | ./popover ceiling 4→4.5 KB under D-031 | | 9 deviations; budgets: popover 9 B, grid 3 B, image 53 B left (D-031) |
 | PC-012 | 0010-f5 | 1 | todo | | | |
 | PC-013 | 0010-d2 | 1 | done | 4925846, 2a90ae2, 09ab023 (pc) | 21.47M (impl 12.64, r1 4.92, fix+int ≈ 3.9+; fable) | CI 42957255864 red on attempt 1 (FileSystemBlobStoreTests, flaky, PC-F15), green on rerun; integrated 09ab023 (CI 42957255864 red: ubuntu unit FileSystemBlobStoreTests, PC-F15; failed job rerun requested; fix1 2a90ae2; R1 0/1/3; impl 4925846; 16 deviations, see reviews/PC-013.md; budgets ./l10n 8→10, ./grid 38→38.5 under D-031) |
-| PC-014 | 0010-a5 | 1 | integrate | 5d356b3, eebab50 | impl 11.75M (fable) | |
+| PC-014 | 0010-a5 | 1 | done | 5d356b3, eebab50, 5bf6602, fc941ca (pc) | 20.99M (impl+fix+int 17.44 fable, r1 1.16, r2 2.39 Opus xhigh) | CI 42999471991 green; passkey E2E helper race and the two un-prefixed identity paths stay with PC-F16 |
 | PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
 | PC-016 | 0013-a | 1 | done | 2cf9477, 8210754, cb3438f, 0492c35 (pc) | 24.53M | red run was the host-ICU test, fixed by PC-F09; green at f8d5130; 13 deviations; D-029 (Umm al-Qura authority, host-independent server text) |
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
 | PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
-| PC-019 | 0013-b | 1 | fix1 | 6a36b74 | impl 16.21M (fable) | |
+| PC-019 | 0013-b | 1 | done | 6a36b74, 7f9bee7, b22322e, 97330a0 (pc) | 22.56M (impl+fix+int 20.97 fable, r1 1.59 Opus) | CI 42992138704 green (Linux pinned-ICU leg passed); Identity integration suite not re-run after the last two merges (no .NET input changed); Linux leg now requires pinned ICU 78.2 (TELLMA_REQUIRE_PINNED_ICU=1) |
 | PC-020 | 0023-b | 1 | impl | | | |
 | PC-021 | 0012-b | 1 | done | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | green at 8043295, CI 42947124853; 11 deviations; D-037 |
-| PC-022 | 0013-c | 1 | todo | | | |
+| PC-022 | 0013-c | 1 | impl | | | |
 | PC-023 | 0023-c | 1 | todo | | | |
 | PC-024 | 0011-b | 1 | done | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green; 16 deviations; D-036 |
 | PC-025 | 0011-c | 1 | fix1 | ef6a61c | impl 11.26M (fable) | |
@@ -221,7 +224,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | todo | | | |
 | PC-044 | 0013-e | 1 | todo | | | |
-| PC-045 | 0010-c2 | 1 | todo | | | |
+| PC-045 | 0010-c2 | 1 | impl | | | |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | todo | | | |
 | PC-048 | 0010-c3 | 1 | todo | | | |

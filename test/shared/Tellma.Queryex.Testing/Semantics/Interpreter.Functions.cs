@@ -68,8 +68,8 @@ namespace Tellma.Queryex.Testing.Semantics
                 "COALESCE" => FirstPresent(call, result),
                 "CAST" => Convert(Evaluate(call.Arguments[0]), result),
                 "SUM" or "AVG" or "MIN" or "MAX" or "COUNT" => Aggregate(call, name, result),
-                "DESCENDANTOF" => QxValue.Flag(Related(call, descending: true)),
-                "ANCESTOROF" => QxValue.Flag(Related(call, descending: false)),
+                "DESCENDANTOF" => QxValue.Flag(Related(call, descending: true, skipOmitted: false)),
+                "ANCESTOROF" => QxValue.Flag(Related(call, descending: false, skipOmitted: false)),
                 _ => Scalar(call, name, result),
             };
         }
@@ -444,15 +444,19 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <summary>Whether a row is at, above, or below one of a set of keyed rows.</summary>
         /// <param name="call">The call.</param>
         /// <param name="descending">Whether the test looks downward.</param>
+        /// <param name="skipOmitted">
+        ///     Whether the keys that are parameters left out have left the list, which they have
+        ///     where the predicate is an atom of a filter.
+        /// </param>
         /// <returns>True when it is.</returns>
-        private bool Related(TypedCall call, bool descending)
+        private bool Related(TypedCall call, bool descending, bool skipOmitted)
         {
             if (call.Arguments[0] is not TypedPath keyPath)
             {
                 return false;
             }
 
-            LedgerRow? current = _row;
+            LedgerRow? current = Row();
             foreach (NavigationDescriptor navigation in keyPath.Navigations)
             {
                 current = LedgerData.Find(navigation.Target, current[navigation.ForeignKey.Name]);
@@ -476,6 +480,11 @@ namespace Tellma.Queryex.Testing.Semantics
 
             for (int index = 1; index < call.Arguments.Length; index++)
             {
+                if (skipOmitted && IsOmittedParameter(call.Arguments[index]))
+                {
+                    continue;
+                }
+
                 QxValue key = Evaluate(call.Arguments[index]);
                 LedgerRow? keyed = Keyed(entity, keyPath.Property, key);
                 if (keyed is null)
@@ -535,14 +544,16 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <returns>Its value.</returns>
         private QxValue Aggregate(TypedCall call, string name, QueryexType result)
         {
-            IReadOnlyList<LedgerRow> rows = Group ?? [_row];
+            IReadOnlyList<LedgerRow> rows = Group ?? [Row()];
             List<QxValue> values = [];
             long counted = 0;
 
             foreach (LedgerRow row in rows)
             {
                 Interpreter reading = new(row, _context) { Group = null };
-                if (call.Arguments.Length > 1 && !reading.Truth(call.Arguments[1]))
+                // The condition is a predicate of its own, so a parameter left out of it lifts the
+                // restriction on which rows are read, wherever the aggregation itself sits.
+                if (call.Arguments.Length > 1 && !reading.Decides(call.Arguments[1]))
                 {
                     continue;
                 }

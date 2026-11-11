@@ -18,9 +18,16 @@ namespace Tellma.Queryex.Testing.Semantics
     ///     A whole query, answered from memory.
     /// </summary>
     /// <remarks>
-    ///     The other half of the differential check: the compiler turns a query into SQL a server
-    ///     answers, and this answers the same query from the same rows by following the rules
-    ///     directly. Where the two answers differ, one of them is wrong.
+    ///     <para>
+    ///         The other half of the differential check: the compiler turns a query into SQL a server
+    ///         answers, and this answers the same query from the same rows by following the rules
+    ///         directly. Where the two answers differ, one of them is wrong.
+    ///     </para>
+    ///     <para>
+    ///         Parameters the context leaves out are still bound here, every one of them: what
+    ///         leaving one out means is applied while the query is answered, never by rewriting it
+    ///         first, which is the compiler's way and so the one this must not share.
+    ///     </para>
     /// </remarks>
     public static class ReferenceQuery
     {
@@ -210,7 +217,7 @@ namespace Tellma.Queryex.Testing.Semantics
             List<LedgerRow> kept = [];
             foreach (LedgerRow row in rows)
             {
-                bool passes = plan.Filter is null || new Interpreter(row, context).Truth(plan.Filter);
+                bool passes = plan.Filter is null || new Interpreter(row, context).Decides(plan.Filter);
                 if (passes && spec.Restrictions.All(restriction => Holds(restriction, row, context)))
                 {
                     kept.Add(row);
@@ -334,7 +341,7 @@ namespace Tellma.Queryex.Testing.Semantics
 
             LedgerRow anchor = answer.Anchor ?? (rows.Count > 0 ? rows[0] : LedgerData.Rows(LedgerFixture.Invoice)[0]);
             Interpreter reading = new(anchor, context) { Group = rows };
-            return reading.Truth(plan.Having);
+            return reading.Decides(plan.Having);
         }
 
         /// <summary>Whether two grouping keys are the same key.</summary>

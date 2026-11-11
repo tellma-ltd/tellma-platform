@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using Tellma.Core.Queryex.Binding;
+using Tellma.Core.Queryex.Pipeline;
 using Tellma.Core.Queryex.Syntax;
 
 namespace Tellma.Core.Queryex.Caching
@@ -62,6 +63,17 @@ namespace Tellma.Core.Queryex.Caching
         ///     possibly absent bind to trees with different guards, so sharing one entry across the
         ///     two would emit the guards of the wrong declaration.
         /// </param>
+        /// <param name="omitted">
+        ///     The declarations of the omitted parameters this text refers to, sorted by name; empty
+        ///     when it refers to none, or when nothing is omitted. A text bound with one of its
+        ///     parameters folded away is a different tree from the same text bound with it present.
+        /// </param>
+        /// <param name="negated">
+        ///     Whether the text was folded under an odd number of negations in the tree it was
+        ///     composed into. What an omitted parameter folds to depends on that parity, so the same
+        ///     text under the same omissions folds to different trees on either side of a negation.
+        ///     Always false for a text that refers to no omitted parameter.
+        /// </param>
         internal BindKey(
             string text,
             QueryexSchema schema,
@@ -72,7 +84,9 @@ namespace Tellma.Core.Queryex.Caching
             bool hasGroupingKeys,
             bool directions,
             QueryexLimits limits,
-            ImmutableArray<ParameterSymbol> declarations)
+            ImmutableArray<ParameterSymbol> declarations,
+            ImmutableArray<ParameterSymbol> omitted,
+            bool negated)
         {
             Text = text;
             Schema = schema;
@@ -84,6 +98,8 @@ namespace Tellma.Core.Queryex.Caching
             Directions = directions;
             Limits = limits;
             Declarations = declarations;
+            Omitted = omitted;
+            Negated = negated;
 
             HashCode hash = default;
             hash.Add(text, StringComparer.Ordinal);
@@ -102,6 +118,17 @@ namespace Tellma.Core.Queryex.Caching
                 hash.Add(declaration.Nullity);
             }
 
+            // The count stands between the two lists, so a name moving from one to the other
+            // hashes apart.
+            hash.Add(omitted.Length);
+            foreach (ParameterSymbol declaration in omitted)
+            {
+                hash.Add(declaration.Name, StringComparer.OrdinalIgnoreCase);
+                hash.Add(declaration.Type);
+                hash.Add(declaration.Nullity);
+            }
+
+            hash.Add(negated);
             _hash = hash.ToHashCode();
         }
 
@@ -135,6 +162,12 @@ namespace Tellma.Core.Queryex.Caching
         /// <summary>The declarations of the parameters this text names.</summary>
         internal ImmutableArray<ParameterSymbol> Declarations { get; }
 
+        /// <summary>The declarations of the omitted parameters this text refers to.</summary>
+        internal ImmutableArray<ParameterSymbol> Omitted { get; }
+
+        /// <summary>Whether the text was folded under an odd number of negations.</summary>
+        internal bool Negated { get; }
+
         /// <inheritdoc />
         public bool Equals(BindKey? other)
         {
@@ -151,7 +184,9 @@ namespace Tellma.Core.Queryex.Caching
                 || HasGroupingKeys != other.HasGroupingKeys
                 || Directions != other.Directions
                 || !Limits.Equals(other.Limits)
-                || Declarations.Length != other.Declarations.Length)
+                || Negated != other.Negated
+                || Declarations.Length != other.Declarations.Length
+                || Omitted.Length != other.Omitted.Length)
             {
                 return false;
             }
@@ -159,6 +194,14 @@ namespace Tellma.Core.Queryex.Caching
             for (int index = 0; index < Declarations.Length; index++)
             {
                 if (!Declarations[index].Equals(other.Declarations[index]))
+                {
+                    return false;
+                }
+            }
+
+            for (int index = 0; index < Omitted.Length; index++)
+            {
+                if (!Omitted[index].Equals(other.Omitted[index]))
                 {
                     return false;
                 }
@@ -229,10 +272,15 @@ namespace Tellma.Core.Queryex.Caching
     ///         The schema is held by identity and everything else is rendered: the clause texts with
     ///         the shape of the filter trees they came from — their rebases and semi-joins with the
     ///         names each carries — and the version stamped on each leaf, the key-set restrictions and the undeclared columns in order, whether the query pages,
-    ///         the options, and the declarations. Not which page: the paging values travel in their
-    ///         own slots, so every page of a query is one compilation.
+    ///         the options, the omitted parameters, and the declarations. Not which page: the paging
+    ///         values travel in their own slots, so every page of a query is one compilation.
     ///         Rendered rather than digested, for the same reason a parse is keyed on its text — a
     ///         collision would run a different query than the one that was asked for.
+    ///     </para>
+    ///     <para>
+    ///         A constant statement is remembered beside the queries, under its items and their
+    ///         types in order and its options. Its rendering opens with a marker no query's can, so
+    ///         the two kinds never answer for each other.
     ///     </para>
     ///     <para>
     ///         The schema has to be in here even though every clause's own key already holds it,
@@ -250,6 +298,9 @@ namespace Tellma.Core.Queryex.Caching
     {
         /// <summary>The character that separates the key's fields.</summary>
         private const char Separator = '\u001f';
+
+        /// <summary>What the rendering of a constant statement's key opens with.</summary>
+        private const char ConstantMarker = 'C';
 
         /// <summary>The hash, computed once.</summary>
         private readonly int _hash;
@@ -273,8 +324,9 @@ namespace Tellma.Core.Queryex.Caching
         /// <summary>Builds the key for one compilation.</summary>
         /// <param name="spec">The query.</param>
         /// <param name="options">The compilation options.</param>
+        /// <param name="omitted">The parameters the compilation leaves out, resolved.</param>
         /// <returns>The key.</returns>
-        internal static QueryKey Of(QuerySpec spec, QueryCompilationOptions options)
+        internal static QueryKey Of(QuerySpec spec, QueryCompilationOptions options, OmittedParameters omitted)
         {
             StringBuilder key = new();
             Field(key, spec.Root.Name);
@@ -311,12 +363,47 @@ namespace Tellma.Core.Queryex.Caching
                 Field(key, column);
             }
 
+            // The resolved set rather than the names as passed: each once, under its declared
+            // spelling and in name order, so two calls leaving out the same parameters share one
+            // compilation however each wrote the list.
+            Field(key, Number(omitted.Declarations.Length));
+            foreach (ParameterSymbol declaration in omitted.Declarations)
+            {
+                Field(key, declaration.Name);
+            }
+
             foreach (QueryexParameterDeclaration declaration in options.Parameters)
             {
                 key.Append(Separator);
                 Field(key, declaration.Name);
                 Field(key, Number((int)declaration.Type));
                 key.Append(declaration.IsNotNull ? '!' : '?');
+            }
+
+            return new QueryKey(options.Schema, key.ToString());
+        }
+
+        /// <summary>Builds the key for one constant statement.</summary>
+        /// <param name="items">The items, in order.</param>
+        /// <param name="options">The compilation options.</param>
+        /// <returns>The key.</returns>
+        internal static QueryKey OfConstant(ImmutableArray<ConstantItem> items, ConstantCompilationOptions options)
+        {
+            // A query's rendering opens with the length of its root's name, which is a digit; this
+            // opens with a letter, so no constant statement can render like a query.
+            StringBuilder key = new();
+            key.Append(ConstantMarker).Append(Separator);
+            Field(key, Number(options.QueryexVersion));
+            Field(key, options.HasUser ? "1" : "0");
+            Field(key, Number(options.BatchOrdinal));
+            Field(key, Ceilings(options.Limits));
+
+            // In order, with the count first: the columns come out in the order the items went in.
+            Field(key, Number(items.Length));
+            foreach (ConstantItem item in items)
+            {
+                Field(key, item.Text);
+                Field(key, Number((int)item.Type));
             }
 
             return new QueryKey(options.Schema, key.ToString());

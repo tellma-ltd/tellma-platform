@@ -104,7 +104,7 @@ namespace Tellma.Core.Queryex.Lowering
         /// <returns>The node the last step leads to.</returns>
         private JoinNode Walk(ImmutableArray<NavigationDescriptor> navigations, QueryexSpan span)
         {
-            JoinNode table = _base;
+            JoinNode table = Base;
             PlanOrigin origin = new(span, _location);
             foreach (NavigationDescriptor navigation in navigations)
             {

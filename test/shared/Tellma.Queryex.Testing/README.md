@@ -8,10 +8,10 @@ framework, so `dotnet test` never tries to run it.
 
 | Folder | Contents |
 |---|---|
-| `Probe/` | A public mirror of the engine's internal intermediate representations: tokens, the parse tree, the bound tree with types and nullities, the function registry, the findings a lowered plan yields, and what a cache key tells apart. |
+| `Probe/` | A public mirror of the engine's internal intermediate representations: tokens, the parse tree, the bound tree with types and nullities, the function registry, the findings a lowered plan yields, what a cache key tells apart, and what folding omitted parameters leaves of a text. |
 | `Schema/` | The fixture schema (`LedgerFixture`) — a child table of invoice lines among its entities, for semi-joins — the columns its tables hold that the schema leaves out on purpose, and the DDL that deploys both (`LedgerDdl`), including its declared collation. |
-| `Corpus/` | The conformance corpus: every expression case and every whole-query case, with what each is expected to produce — down to the location, span and arguments of a diagnostic where that is what a case is about. |
-| `Semantics/` | The runtime value model, the collation table, the fixture rows, the tables of keys a query's restrictions read (`KeySet`), and the reference interpreter — a second implementation of the language, expression by expression and whole query by whole query, which follows a rebase's navigations and searches a semi-join's rows itself rather than reading the joins and subqueries the compiler builds. |
+| `Corpus/` | The conformance corpus: every expression case, every whole-query case — the ones that leave declared parameters out among them — and every constant statement, with what each is expected to produce — down to the location, span and arguments of a diagnostic where that is what a case is about. |
+| `Semantics/` | The runtime value model, the collation table, the fixture rows, the tables of keys a query's restrictions read (`KeySet`), and the reference interpreter — a second implementation of the language, expression by expression and whole query by whole query, which follows a rebase's navigations and searches a semi-join's rows itself rather than reading the joins and subqueries the compiler builds, applies the rule for omitted parameters itself while it evaluates rather than reading a folded tree, and answers a constant statement with no row at all (`ReferenceConstants`). |
 
 ## Why one shared library rather than two copies
 
