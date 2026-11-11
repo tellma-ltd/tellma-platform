@@ -96,6 +96,10 @@ namespace Tellma.Core.Queryex.IntegrationTests
             await Execute(database, LedgerDdl.Drop());
             await Execute(database, LedgerDdl.Create());
             await Execute(database, LedgerData.Insert());
+
+            // Two centuries of days for the calendar sweep, generated on the server in one
+            // statement rather than sent row by row.
+            await Execute(database, CalendarDays.Create());
         }
 
         /// <summary>Stops the container, when one was started.</summary>

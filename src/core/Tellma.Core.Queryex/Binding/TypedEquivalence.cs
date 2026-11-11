@@ -213,9 +213,12 @@ namespace Tellma.Core.Queryex.Binding
                 }
             }
 
+            // A selector was compared above by the value it resolved to, so 'UQ' and 'uq' are the
+            // same calendar; every other argument is compared as written.
             for (int index = 0; index < first.Arguments.Length; index++)
             {
-                if (!AreEquivalent(first.Arguments[index], second.Arguments[index]))
+                bool selector = index < first.Selectors.Length && first.Selectors[index] is not null;
+                if (!selector && !AreEquivalent(first.Arguments[index], second.Arguments[index]))
                 {
                     return false;
                 }

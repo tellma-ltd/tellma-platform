@@ -41,6 +41,10 @@ namespace Tellma.Core.Queryex.Lowering
                 // A subquery's own predicate is what it reads; its bindings are reached through the
                 // references to them, exactly as the statement's are.
                 PlanExists exists => exists.Subquery.Where is PlanPredicate where ? [where] : [],
+
+                // What each level is sought by, outermost first, then what the innermost selects. A
+                // lateral lookup, like a binding, is reached through the columns read off it.
+                PlanScalarLookup scalar => [.. scalar.Levels.SelectMany(static level => level.Reads), scalar.Result],
                 _ => [],
             };
         }
@@ -49,8 +53,9 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="node">The node.</param>
         /// <returns>True when something does.</returns>
         /// <remarks>
-        ///     Looks through a binding to what the binding computes, because a value that merely
-        ///     names a binding still reads whatever that binding reads.
+        ///     Looks through a binding to what the binding computes, and through a calendar lookup's
+        ///     column to what the lookup is sought by, because a value that merely names either still
+        ///     reads whatever that one reads.
         /// </remarks>
         internal static bool ReadsAColumn(PlanNode node)
         {
@@ -58,6 +63,7 @@ namespace Tellma.Core.Queryex.Lowering
             {
                 PlanColumn or PlanUndeclaredColumn => true,
                 PlanBindingRef binding => ReadsAColumn(binding.Binding.Value),
+                PlanLookupColumn column => column.Lookup.Reads.Any(ReadsAColumn),
                 _ => Children(node).Any(ReadsAColumn),
             };
         }
@@ -71,6 +77,7 @@ namespace Tellma.Core.Queryex.Lowering
             {
                 PlanAggregate => true,
                 PlanBindingRef binding => Aggregates(binding.Binding.Value),
+                PlanLookupColumn column => column.Lookup.Reads.Any(Aggregates),
                 _ => Children(node).Any(Aggregates),
             };
         }

@@ -45,10 +45,35 @@ namespace Tellma.Queryex.Testing.Semantics
             IReadOnlyList<QueryexParameterDeclaration>? declarations = null)
         {
             ArgumentNullException.ThrowIfNull(spec);
-            ArgumentNullException.ThrowIfNull(context);
 
-            Plan plan = Prepare(spec, context, declarations ?? []);
-            IReadOnlyList<LedgerRow> rows = Filtered(spec, plan, context);
+            return Run(spec, context, LedgerFixture.Schema, LedgerData.Rows(spec.Root), declarations);
+        }
+
+        /// <summary>Answers one query from rows the caller supplies, bound against a schema of its own.</summary>
+        /// <param name="spec">The query.</param>
+        /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="schema">The schema the query is bound against.</param>
+        /// <param name="rows">The root entity's rows.</param>
+        /// <param name="declarations">The declared parameters.</param>
+        /// <returns>The rows, each a value per select item.</returns>
+        /// <remarks>
+        ///     For a table too large to write out as statements, which a suite generates on the server
+        ///     and here alike. Only the root's rows are supplied, so the query follows no navigation.
+        /// </remarks>
+        public static IReadOnlyList<IReadOnlyList<QxValue>> Run(
+            QuerySpec spec,
+            InterpreterContext context,
+            QueryexSchema schema,
+            IReadOnlyList<LedgerRow> rows,
+            IReadOnlyList<QueryexParameterDeclaration>? declarations = null)
+        {
+            ArgumentNullException.ThrowIfNull(spec);
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(schema);
+            ArgumentNullException.ThrowIfNull(rows);
+
+            Plan plan = Prepare(spec, context, schema, declarations ?? []);
+            rows = Filtered(spec, plan, context, rows);
 
             List<Answer> answers = spec.Aggregate
                 ? Grouped(plan, context, rows)
@@ -82,11 +107,13 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <summary>Binds every clause of a query.</summary>
         /// <param name="spec">The query.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="schema">The schema the query is bound against.</param>
         /// <param name="declarations">The declared parameters.</param>
         /// <returns>The bound clauses.</returns>
         private static Plan Prepare(
             QuerySpec spec,
             InterpreterContext context,
+            QueryexSchema schema,
             IReadOnlyList<QueryexParameterDeclaration> declarations)
         {
             DiagnosticSink sink = new();
@@ -101,7 +128,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 out ExpressionListSyntax? syntax);
 
             bool grouped = spec.Aggregate && QueryCompiler.DerivesGroupingKeys(syntax!);
-            BindingContext value = Context(spec, context, declarations, grouped, spec.Aggregate
+            BindingContext value = Context(schema, spec, context, declarations, grouped, spec.Aggregate
                 ? QueryexMode.Aggregate
                 : QueryexMode.Value);
 
@@ -119,7 +146,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 : FilterBinder.Bind(
                     Compiler,
                     spec.Filter,
-                    Context(spec, context, declarations, grouped, QueryexMode.Filter),
+                    Context(schema, spec, context, declarations, grouped, QueryexMode.Filter),
                     QueryexLimits.Default,
                     sink,
                     DiagnosticLocation.Clause(QueryexClause.Filter),
@@ -131,7 +158,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 : FilterBinder.Bind(
                     Compiler,
                     spec.Having,
-                    Context(spec, context, declarations, grouped, QueryexMode.AggregateFilter),
+                    Context(schema, spec, context, declarations, grouped, QueryexMode.AggregateFilter),
                     QueryexLimits.Default,
                     sink,
                     DiagnosticLocation.Clause(QueryexClause.Having),
@@ -171,6 +198,7 @@ namespace Tellma.Queryex.Testing.Semantics
         }
 
         /// <summary>The binding context for one clause.</summary>
+        /// <param name="schema">The schema the query is bound against.</param>
         /// <param name="spec">The query.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
         /// <param name="declarations">The declared parameters.</param>
@@ -178,6 +206,7 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="mode">The position the clause is written for.</param>
         /// <returns>The context.</returns>
         private static BindingContext Context(
+            QueryexSchema schema,
             QuerySpec spec,
             InterpreterContext context,
             IReadOnlyList<QueryexParameterDeclaration> declarations,
@@ -186,7 +215,7 @@ namespace Tellma.Queryex.Testing.Semantics
         {
             return new BindingContext
             {
-                Schema = LedgerFixture.Schema,
+                Schema = schema,
                 Root = spec.Root,
                 Mode = mode,
                 HasUser = context.UserId is not null,
@@ -199,13 +228,14 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="spec">The query.</param>
         /// <param name="plan">The bound clauses.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="rows">The root entity's rows.</param>
         /// <returns>The rows.</returns>
         private static IReadOnlyList<LedgerRow> Filtered(
             QuerySpec spec,
             Plan plan,
-            InterpreterContext context)
+            InterpreterContext context,
+            IReadOnlyList<LedgerRow> rows)
         {
-            IReadOnlyList<LedgerRow> rows = LedgerData.Rows(spec.Root);
             if (plan.Filter is null && spec.Restrictions.Count == 0)
             {
                 return rows;

@@ -315,10 +315,15 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Good("calendar-explicit-zone", "local(PostedAt, 'Africa/Nairobi')", QueryexType.QxDateTime);
             yield return Bad("calendar-unknown-zone", "local(PostedAt, 'Mars/Olympus')", "QX3101");
             yield return Good("calendar-gregorian", "year(PostingDate, 'gc')", QueryexType.QxNumeric);
-            yield return Bad("calendar-unimplemented", "year(PostingDate, 'et')", "QX3101");
+            yield return Good("calendar-ethiopian", "year(PostingDate, 'et')", QueryexType.QxNumeric);
+            yield return Good("calendar-um-al-qura", "year(PostingDate, 'uq')", QueryexType.QxNumeric);
+            yield return Bad("calendar-unknown", "year(PostingDate, 'hc')", "QX3101");
             yield return Good("calendar-week", "week(PostingDate)", QueryexType.QxNumeric);
             yield return Good("calendar-weekday", "weekday(PostingDate)", QueryexType.QxNumeric);
             yield return Good("calendar-start-of-week", "startOfWeek(PostingDate)", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter", "startOfQuarter(PostingDate)", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter-et", "startOfQuarter(DueOn, 'et')", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter-uq", "startOfQuarter(DueOn, 'uq')", QueryexType.QxDate);
             yield return Good("calendar-difference", "diffDays(PostingDate, DueDate)", QueryexType.QxNumeric);
             yield return Bad("calendar-difference-mixed", "diffDays(PostingDate, PostedAt)", "QX3005");
         }

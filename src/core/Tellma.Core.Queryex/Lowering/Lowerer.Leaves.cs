@@ -169,13 +169,7 @@ namespace Tellma.Core.Queryex.Lowering
                 return existing;
             }
 
-            HoistedVariable variable = new(
-                _variables.Count,
-                BoundType.HierarchyId,
-                entity,
-                lookup,
-                node,
-                key);
+            NodeLookupVariable variable = new(entity, lookup, node, key);
 
             _variables.Add(variable);
             if (slot is not null)
@@ -205,10 +199,19 @@ namespace Tellma.Core.Queryex.Lowering
 
             // Collected where the value is computed: the statement's source, or the subquery whose
             // rows it reads.
-            ValueBinding binding = new(_scopeBindings.Count, value, value.Type);
-            _scopeBindings.Add(binding);
-            value = new PlanBindingRef(value.Span, binding);
+            value = Bind(value, _scope);
             return true;
+        }
+
+        /// <summary>Gives a value a name in one sequence of one-row sources.</summary>
+        /// <param name="value">The value.</param>
+        /// <param name="scope">The sequence the binding is written in.</param>
+        /// <returns>A reference to the binding.</returns>
+        private static PlanBindingRef Bind(PlanValue value, List<LateralSource> scope)
+        {
+            ValueBinding binding = new(value);
+            scope.Add(binding);
+            return new PlanBindingRef(value.Span, binding);
         }
 
         /// <summary>The column a value is being compared against, when it is a bare path.</summary>

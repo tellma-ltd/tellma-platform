@@ -36,8 +36,14 @@ namespace Tellma.Queryex.Testing.Schema
     /// </remarks>
     public static class LedgerFixture
     {
+        /// <summary>The table the host's Umm al-Qura months are kept in.</summary>
+        public const string CalendarMonthsSource = "[core].[CalendarMonths]";
+
         /// <summary>The schema, built once.</summary>
-        public static QueryexSchema Schema { get; } = Build();
+        public static QueryexSchema Schema { get; } = Build(mapsCalendars: true);
+
+        /// <summary>The same schema with no month table mapped, so no table calendar is accepted.</summary>
+        public static QueryexSchema WithoutCalendarMaps { get; } = Build(mapsCalendars: false);
 
         /// <summary>The entity most suites query from.</summary>
         public static EntityDescriptor Invoice { get; } = Schema.FindEntity("Invoice")!;
@@ -76,10 +82,15 @@ namespace Tellma.Queryex.Testing.Schema
         }
 
         /// <summary>Builds the schema.</summary>
+        /// <param name="mapsCalendars">Whether the Umm al-Qura calendar is mapped to its month table.</param>
         /// <returns>The schema.</returns>
-        private static QueryexSchema Build()
+        private static QueryexSchema Build(bool mapsCalendars)
         {
             QueryexSchemaBuilder builder = new();
+            if (mapsCalendars)
+            {
+                builder.CalendarMap("uq", CalendarMonthsSource);
+            }
 
             // The entity name, the key's name, and several columns all differ from what an
             // expression author writes.

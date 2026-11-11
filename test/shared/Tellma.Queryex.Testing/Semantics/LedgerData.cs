@@ -99,6 +99,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 }
             }
 
+            script.Append(CalendarMonths.Insert());
             return script.ToString();
         }
 

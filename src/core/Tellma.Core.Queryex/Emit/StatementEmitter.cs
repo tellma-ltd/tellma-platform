@@ -89,7 +89,7 @@ namespace Tellma.Core.Queryex.Emit
             }
         }
 
-        /// <summary>Writes the source, its joins, and its bindings.</summary>
+        /// <summary>Writes the source, its joins, and its one-row sources.</summary>
         /// <param name="sql">Where the SQL is collected.</param>
         /// <param name="emitter">The expression writer.</param>
         /// <param name="plan">The plan.</param>
@@ -98,7 +98,7 @@ namespace Tellma.Core.Queryex.Emit
             if (plan.Root is not JoinNode root)
             {
                 // No row source, so no clause at all: the backend answers a select list on its own
-                // with one row. Nothing can join or bind here, since both read a row.
+                // with one row. Nothing can join or apply here, since both read a row.
                 return;
             }
 
@@ -108,16 +108,17 @@ namespace Tellma.Core.Queryex.Emit
             sql.Quoted(root.Alias);
             sql.Line();
 
-            // One join or binding per line; a subquery writes the same parts on one line of its own.
+            // One join or one-row source per line; a subquery writes the same parts on one line of
+            // its own.
             foreach (JoinNode join in plan.Joins)
             {
                 emitter.Join(join);
                 sql.Line();
             }
 
-            foreach (ValueBinding binding in plan.Bindings)
+            foreach (LateralSource lateral in plan.Laterals)
             {
-                emitter.Binding(binding);
+                emitter.Lateral(lateral);
                 sql.Line();
             }
         }

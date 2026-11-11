@@ -157,7 +157,7 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="variable">The variable.</param>
         internal PlanVariableRef(QueryexSpan span, HoistedVariable variable)
-            : base(span, variable.Type, StoreTypes.Default(variable.Type, null, 0, 0))
+            : base(span, variable.Type, variable.StoreType)
         {
             Variable = variable;
         }
@@ -186,6 +186,89 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <inheritdoc />
         internal override bool IsAtomic => true;
+    }
+
+    /// <summary>A column of a calendar lookup: a month's year, number, first day or end.</summary>
+    /// <remarks>
+    ///     Written as the lookup's alias and the column, whether the lookup is a lateral source of
+    ///     the statement or a level of a scalar lookup — the alias says which.
+    /// </remarks>
+    internal sealed class PlanLookupColumn : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call it serves sits in the input.</param>
+        /// <param name="lookup">The lookup.</param>
+        /// <param name="column">The column read.</param>
+        internal PlanLookupColumn(QueryexSpan span, CalendarLookup lookup, CalendarColumn column)
+            : base(span, TypeOf(column), StoreTypeOf(column))
+        {
+            Lookup = lookup;
+            Column = column;
+        }
+
+        /// <summary>The lookup.</summary>
+        internal CalendarLookup Lookup { get; }
+
+        /// <summary>The column read.</summary>
+        internal CalendarColumn Column { get; }
+
+        /// <inheritdoc />
+        internal override bool IsAtomic => true;
+
+        /// <summary>A month table column's type in the language.</summary>
+        /// <param name="column">The column.</param>
+        /// <returns>The type.</returns>
+        private static BoundType TypeOf(CalendarColumn column)
+        {
+            return column is CalendarColumn.Year or CalendarColumn.Month ? BoundType.Numeric : BoundType.Date;
+        }
+
+        /// <summary>A month table column's store type.</summary>
+        /// <param name="column">The column.</param>
+        /// <returns>The type.</returns>
+        private static QueryexStoreType StoreTypeOf(CalendarColumn column)
+        {
+            return column is CalendarColumn.Year or CalendarColumn.Month
+                ? QueryexStoreType.QxInt
+                : QueryexStoreType.QxDate;
+        }
+    }
+
+    /// <summary>
+    ///     A table calendar's answer computed in place, as a scalar subquery that nests one level per
+    ///     month it looks up.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         The form for a call whose operand aggregates, which no lateral source could compute,
+    ///         and for a statement with no row source; also a hoisted variable's initializer. Each
+    ///         level is one row of the month table, sought from the values outside it, and the
+    ///         innermost level selects the result, which can read every level around it.
+    ///     </para>
+    ///     <para>
+    ///         Any level that finds no row leaves the subquery with no row at all, and a scalar
+    ///         subquery with no row is the absent value — which is exactly the answer for a date the
+    ///         month table does not cover.
+    ///     </para>
+    /// </remarks>
+    internal sealed class PlanScalarLookup : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call sits in the input.</param>
+        /// <param name="levels">The lookups, outermost first, each able to read the ones before it.</param>
+        /// <param name="result">What the innermost level selects.</param>
+        internal PlanScalarLookup(QueryexSpan span, ImmutableArray<CalendarLookup> levels, PlanValue result)
+            : base(span, result.Type, result.StoreType)
+        {
+            Levels = levels;
+            Result = result;
+        }
+
+        /// <summary>The lookups, outermost first.</summary>
+        internal ImmutableArray<CalendarLookup> Levels { get; }
+
+        /// <summary>What the innermost level selects.</summary>
+        internal PlanValue Result { get; }
     }
 
     /// <summary>The absent value, typed.</summary>

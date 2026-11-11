@@ -20,7 +20,7 @@ namespace Tellma.Queryex.Testing.Corpus
     public static class ConstantCorpus
     {
         /// <summary>Every case, in a stable order.</summary>
-        public static ImmutableArray<ConstantCase> All { get; } = [.. Statements().Concat(Refusals())];
+        public static ImmutableArray<ConstantCase> All { get; } = [.. Statements().Concat(Calendars()).Concat(Refusals())];
 
         /// <summary>The statements that compile.</summary>
         /// <returns>The cases.</returns>
@@ -116,6 +116,70 @@ namespace Tellma.Queryex.Testing.Corpus
                 ],
                 BatchOrdinal = 3,
             };
+        }
+
+        /// <summary>The statements that count in the other calendars, or across their boundaries.</summary>
+        /// <returns>The cases.</returns>
+        private static IEnumerable<ConstantCase> Calendars()
+        {
+            // The quarter's first day across the year's boundaries and the leap day, and a year
+            // added to the leap day, which has nowhere to land but the last day of February.
+            yield return new ConstantCase
+            {
+                Id = "constant-calendar-quarters",
+                Items =
+                [
+                    new ConstantItem("startOfQuarter(cast('2023-12-31', 'date'))", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2024-01-01', 'date'))", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2024-02-29', 'date'))", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2024-03-31', 'date'))", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2024-04-01', 'date'))", QueryexType.QxDate),
+                    new ConstantItem("addYears(cast('2024-02-29', 'date'), 1)", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2024-02-29', 'date'), 'uq')", QueryexType.QxDate),
+                    new ConstantItem("startOfQuarter(cast('2026-09-10', 'date'), 'et')", QueryexType.QxDate),
+                ],
+            };
+
+            // The Umm al-Qura calendar with no row source: every lookup is written in place, and a
+            // date the month table does not cover answers with the absent value.
+            yield return new ConstantCase
+            {
+                Id = "constant-calendar-uq",
+                Items =
+                [
+                    new ConstantItem("month(today(), 'uq')", QueryexType.QxNumeric),
+                    new ConstantItem("startOfQuarter(today(), 'uq')", QueryexType.QxDate),
+                    new ConstantItem("week(today(), 'uq')", QueryexType.QxNumeric),
+                    new ConstantItem("diffMonths('2024-01-01', today(), 'uq')", QueryexType.QxNumeric),
+                    new ConstantItem("addMonths(local(now()), 1, 'uq')", QueryexType.QxDateTime),
+                    new ConstantItem("year(cast('1900-04-29', 'date'), 'uq')", QueryexType.QxNumeric),
+                    new ConstantItem("addYears(cast('2077-11-01', 'date'), 1, 'uq')", QueryexType.QxDate),
+                ],
+                BatchOrdinal = 2,
+            };
+
+            // ICU's Ethiopian dates over two years, a leap year among them: each year's first day,
+            // the fourth quarter's first day, and Pagume's last days. Each item reads the year,
+            // month, day and quarter as one number.
+            yield return new ConstantCase
+            {
+                Id = "constant-calendar-et",
+                Items = [.. Semantics.EthiopicVectors.All
+                    .Where(vector => vector.Gregorian >= new DateOnly(2018, 9, 1) && vector.Gregorian < new DateOnly(2020, 9, 1))
+                    .Select(vector => EthiopianItem(vector.Gregorian))],
+            };
+        }
+
+        /// <summary>One date's Ethiopian year, month, day and quarter, read as one number.</summary>
+        /// <param name="date">The Gregorian date.</param>
+        /// <returns>The item.</returns>
+        private static ConstantItem EthiopianItem(DateOnly date)
+        {
+            string literal = "cast('" + date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + "', 'date')";
+            return new ConstantItem(
+                "year(" + literal + ", 'et') * 100000 + month(" + literal + ", 'et') * 1000 + day(" + literal
+                    + ", 'et') * 10 + quarter(" + literal + ", 'et')",
+                QueryexType.QxNumeric);
         }
 
         /// <summary>The statements that are refused, each for one reason.</summary>

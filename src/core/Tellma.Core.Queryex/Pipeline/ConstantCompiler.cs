@@ -69,7 +69,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 return new QueryexResult<CompiledQuery>(sink.Drain());
             }
 
-            RelationalPlan plan = Lower(items, bound.MoveToImmutable(), nullity, options.BatchOrdinal, budget, sink);
+            RelationalPlan plan = Lower(items, bound.MoveToImmutable(), nullity, options.Schema, options.BatchOrdinal, budget, sink);
             if (sink.Count > 0)
             {
                 return new QueryexResult<CompiledQuery>(sink.Drain());
@@ -162,6 +162,7 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="items">The items, in order.</param>
         /// <param name="bound">Each item's bound expression, in the same order.</param>
         /// <param name="nullity">Every item's nullity answers, merged.</param>
+        /// <param name="schema">The schema, which names the month tables of its table calendars.</param>
         /// <param name="batchOrdinal">The statement's position among the ones executed together.</param>
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="sink">Where to record problems.</param>
@@ -170,11 +171,12 @@ namespace Tellma.Core.Queryex.Pipeline
             ImmutableArray<ConstantItem> items,
             ImmutableArray<TypedExpr> bound,
             NullityMap nullity,
+            QueryexSchema? schema,
             int batchOrdinal,
             CompilationBudget budget,
             DiagnosticSink sink)
         {
-            Lowerer lowerer = new(null, batchOrdinal, budget, sink);
+            Lowerer lowerer = new(null, schema, batchOrdinal, budget, sink);
             ImmutableArray<PlanSelectItem>.Builder select = ImmutableArray.CreateBuilder<PlanSelectItem>(items.Length);
             List<PlanNode> fragments = new(items.Length);
 
@@ -201,7 +203,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Root = null,
                 Joins = [],
                 Variables = [.. lowerer.Variables],
-                Bindings = [.. lowerer.Bindings],
+                Laterals = [.. lowerer.Laterals],
                 Parameters = [.. lowerer.Slots],
                 Select = select.MoveToImmutable(),
                 Where = null,
