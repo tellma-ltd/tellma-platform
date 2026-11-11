@@ -11,8 +11,10 @@ Playwright (Chromium):
   (autofill attribute + options request), not the chooser UX — verify that path manually.
 - Scenarios: passkey register/sign-in, email code, invitation acceptance, consent and step-up
   (each including that the browser follows the redirect back to the client, which the integration
-  suite cannot see), the device-bound tier refusal, logout, and branding (the token stylesheet
-  loads and resolves).
+  suite cannot see), the device-bound tier refusal, logout, branding (the token stylesheet
+  loads and resolves), a pushed request for Arabic through the email-code step (right to left on
+  every page, found by its Arabic control names), and the account entry with its link back to the
+  page the user left.
 - The redirect assertions above are the point of several of these. A browser applies the
   content-security policy's `form-action` directive to every hop of the navigation a form
   submission produces, and refuses the last one silently: the server issues a perfectly good
