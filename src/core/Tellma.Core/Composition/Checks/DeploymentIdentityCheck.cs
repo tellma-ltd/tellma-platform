@@ -66,7 +66,7 @@ namespace Tellma.Core.Composition.Checks
                 problems.Add(new CompositionProblem(
                     Name,
                     "No ISandboxContext is registered, so no connector can tell a sandbox tenant's work from a live tenant's.",
-                    "Register the ISandboxContext of the host's tenancy; a host without tenants registers services.AddSingleton(SandboxContext.Never)."));
+                    "Leave the ISandboxContext registration to AddTellma, which registers the one that answers the bound tenant's category; do not remove it."));
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);

@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Metadata;
 using Tellma.Core.Tests.Data.Metadata;
@@ -44,7 +43,6 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             FakeLoggerProvider logs = new();
             IServiceCollection services = new ServiceCollection()
-                .AddSingleton(SandboxContext.Never)
                 .AddSingleton<ILoggerFactory>(new LoggerFactory([logs]));
 
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(SoundComposition, services: services);

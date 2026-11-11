@@ -9,16 +9,25 @@ using Tellma.Core.Abstractions.Errors;
 namespace Tellma.Core.Abstractions.Tenancy
 {
     /// <summary>
-    ///     The tenant exists but cannot serve this request now. The code says why:
-    ///     <c>catalog-unavailable</c> and <c>tenant-schema-behind</c> map to 503 with a
+    ///     The tenant exists but cannot serve this request or this background work now. The code says
+    ///     why: <c>catalog-unavailable</c> and <c>tenant-schema-behind</c> map to 503 with a
     ///     <c>Retry-After</c> header; <c>tenant-suspended</c>, <c>tenant-read-only</c> and
-    ///     <c>tenant-frozen</c> map to 403.
+    ///     <c>tenant-frozen</c> map to 403; <c>tenant-not-found</c> maps to 404.
     /// </summary>
     /// <remarks>
-    ///     <c>catalog-unavailable</c> means the process's tenant snapshot is older than its staleness
-    ///     bound, or was never loaded, so no tenant is served until the catalog answers again.
-    ///     <c>tenant-schema-behind</c> means the tenant database's recorded schema does not include
-    ///     the running model's.
+    ///     <para>
+    ///         <c>catalog-unavailable</c> means the process's tenant snapshot is older than its
+    ///         staleness bound, or was never loaded, so no tenant is served until the catalog answers
+    ///         again. <c>tenant-schema-behind</c> means the tenant database's recorded schema does not
+    ///         include the running model's.
+    ///     </para>
+    ///     <para>
+    ///         <c>tenant-not-found</c> is the code of a background scope refused for a provisioning or
+    ///         a retired tenant. A request sees such a tenant as absent
+    ///         (<see cref="TenantNotFoundException" />), and the code keeps it so should the refusal
+    ///         ever reach a response, while <see cref="State" /> tells the background caller the
+    ///         state that refused it.
+    ///     </para>
     /// </remarks>
     /// <param name="tenantId">The tenant the request named.</param>
     /// <param name="state">The tenant's state when a state refused the request; null for the catalog and schema codes.</param>
@@ -45,7 +54,8 @@ namespace Tellma.Core.Abstractions.Tenancy
         /// <returns>The code.</returns>
         private static string ValidateCode(string code)
         {
-            return code is TenantProblemCodes.CatalogUnavailable
+            return code is TenantProblemCodes.NotFound
+                or TenantProblemCodes.CatalogUnavailable
                 or TenantProblemCodes.SchemaBehind
                 or TenantProblemCodes.Suspended
                 or TenantProblemCodes.ReadOnly
