@@ -210,6 +210,32 @@ conversion (so an enum binds by name). Records are created lazily and again on e
 so a retry re-sends the rows; an empty list binds as no value. Nothing else in the platform builds
 a `SqlDataRecord`.
 
+### Batches
+
+`ITenantDatabase` (scoped) creates `IDataBatch`es; `ITenantDatabaseFactory` opens an
+`ITenantDatabaseHandle` outside any tenant scope, which runs `Maintenance` batches only, one at a
+time on its one connection. A batch is one round trip. Its statements take ordinals in append
+order, and a statement's local names carry its ordinal (`@tb3_p0`, `@tb1_ids`). The command is
+framed as follows: `SET NOCOUNT ON; SET XACT_ABORT ON;`, the schema guard (`THROW 50501` unless
+`dbo.__TellmaSchema` lists the running model's fingerprint, bound as `@tm_schema`), the prologue
+statements, `IF @tm_Guard = 1 BEGIN` on a batch marked as carrying the connect prologue,
+`BEGIN TRANSACTION;` on an `Auto` batch that declares a write, then the body and the epilogue
+statements, and the closing `COMMIT TRANSACTION;` and `END;`. An `Explicit` batch runs in a
+`SqlTransaction` instead, and a `None` batch autocommits.
+
+The scope's `IDataBatchContributor`s run their prologue stage, in ascending `Order`, before the
+first statement that is not a prologue (or at execution, for a batch with none). They run their
+epilogue stage at execution, in reverse order. A raw `Sql` statement binds each hole by its value:
+a scalar by its CLR type, a list of table-type rows as a table-valued parameter, and a
+`SqlIdentifier` as text. It may write a stack-owned table only under the caller's authority. It
+collapses into an identical earlier statement when it declares no write or is idempotent. The
+executor counts the result sets against what each statement declares, skips the body's sets when
+the guard failed, and maps a server error's line number to the ordinal of the statement that
+raised it. It traces each round trip as a span of `Tellma.Core`, logs a slow round trip with its
+text, and runs the commit callbacks once the body ran. The statement compilers (queries, saves,
+updates, deletes, the version-tag cache) join the batch in later releases; until then those
+members throw `NotSupportedException`.
+
 ## Tenancy
 
 One catalog database per distribution holds every tenant's registration, state and location
@@ -445,6 +471,7 @@ carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain stri
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
+| `Data/Batches/` | `ITenantDatabase`, `ITenantDatabaseFactory` and their implementations, `DataBatch` with its internal channel, the assembly and line map, the hole renderer, the result-set cursor, the executor and its log events. `DataOptions` and `DataCancellation` sit in `Data/`. |
 | `Data/Metadata/` | `EntityMetadataProvider` and the builder that validates the model into it, the compiled accessors, the fingerprints, and the source the startup check and the host share. |
 | `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`, `IRequestContextHolder`, `ITenantAccessGuard`, `TenantAccessRequirement`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the request-context holder, the access guard, the scope factory, the sandbox context, the scope's connection provider, the log events and instruments. |
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
@@ -457,4 +484,5 @@ carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain stri
 
 `test/core/Tellma.Core.Tests` (`dotnet test test/core/Tellma.Core.Tests`) runs without a database.
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
-write side, the registry, the membership hints and the tenant scope factory against SQL Server.
+write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
+runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`).

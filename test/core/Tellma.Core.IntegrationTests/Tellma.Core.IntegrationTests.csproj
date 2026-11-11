@@ -5,6 +5,9 @@
     <!-- The platform-owned catalog migrations, applied to every fresh catalog the suite creates,
          and their design-time factory. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- The data layer's shared SQL fixture: the fixture schema, its migrations, and the host that
+         opens a tenant database over a fixture database. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />
     <!-- In-memory configuration for the compositions the suite builds over its catalogs. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <!-- FakeLogger and MetricCollector, for the best-effort membership writes. -->

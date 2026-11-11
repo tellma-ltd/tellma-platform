@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
 
@@ -141,6 +142,9 @@ namespace Tellma.Core.Composition
 
             // --- The tenancy runtime: the catalog, the registry, connections, the write side and the request context ---
             TenancyComposition.Register(services, _record, options);
+
+            // --- The data layer: the batch executor, the scoped tenant database and the handle factory ---
+            DataComposition.Register(services, options);
 
             // --- Server-built links (spec 0011 §5.10) ---
             // TryAdd for the stack routes: the stack registry's composition replaces the empty source.

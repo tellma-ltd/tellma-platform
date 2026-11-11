@@ -59,6 +59,9 @@
     <!-- The tool that regenerates the pinned culture data calls the generator this assembly holds,
          so the data's text form has one writer and one reader. A developer tool, never shipped. -->
     <InternalsVisibleTo Include="Tellma.CultureData.Generator" />
+    <!-- The shared SQL fixture builds its context's model with the tenant context's own model
+         builder, and plugs its change-tracking audit into the batch executor's test seam. -->
+    <InternalsVisibleTo Include="Tellma.Testing.Entities" />
   </ItemGroup>
 
 </Project>

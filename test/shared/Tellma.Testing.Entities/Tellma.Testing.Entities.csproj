@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The data layer's shared SQL fixture: the fixture entities of schema "fixture", the stand-in core tables, TellmaFixtureDbContext and its migrations, and the helpers that create a fixture database and open a tenant over it. It is its own dotnet-ef startup project: dotnet ef migrations add &lt;Name&gt; --project test/shared/Tellma.Testing.Entities --startup-project test/shared/Tellma.Testing.Entities --namespace Tellma.Testing.Entities.Migrations --output-dir Migrations</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references no test framework at all, so the global using
+         would not compile. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The table-type operations' C# generator and design-time services, which dotnet-ef needs to
+         scaffold the fixture's table types. The repository's Directory.Build.targets injects the
+         DesignTimeServicesReference into this assembly, as the package's build targets do for a
+         package consumer. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- No test-framework reference of any kind: these are fixtures, not assertions. Omitting
+         Microsoft.NET.Test.Sdk keeps IsTestProject false, so `dotnet test Tellma.slnx` never tries
+         to run this project. -->
+    <!-- dotnet-ef's design-time services, for scaffolding the fixture migrations from this project. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- In-memory configuration for the composition the fixture builds its model and tenant from. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+  </ItemGroup>
+
+</Project>
