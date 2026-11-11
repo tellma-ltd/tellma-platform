@@ -373,6 +373,18 @@ namespace Tellma.Core.Tests.Data.Metadata
         }
 
         [Fact]
+        public void A_value_set_on_a_number_is_refused()
+        {
+            Assert.Contains("declares [ValueSet] on Grade, a int; it applies to a string property only", MetadataModels.SingleProblem(typeof(ValueSetNumber)), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_value_set_on_an_unmapped_property_is_refused()
+        {
+            Assert.Contains("declares [ValueSet] on Grade, which the model does not map", MetadataModels.SingleProblem(typeof(UnmappedValueSet)), StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void A_mapped_member_that_is_not_a_public_property_is_refused()
         {
             string problem = MetadataModels.SingleProblem(MetadataModels.Build([typeof(Secretive)], [typeof(SecretiveConfiguration)]));

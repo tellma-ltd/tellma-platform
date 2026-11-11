@@ -7,6 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
 {
@@ -50,6 +52,12 @@ namespace Tellma.Core.Composition
         /// <summary>The calendar system classes the features contributed, in realisation order: the platform's three first.</summary>
         public List<ContributedType> Calendars { get; } = [];
 
+        /// <summary>The value sets the features contributed, in realisation order; the platform's own four are not among them.</summary>
+        public List<ContributedValueSet> ValueSets { get; } = [];
+
+        /// <summary>What the distribution declared about languages: the offered codes and the added languages.</summary>
+        public LanguageDeclaration Languages { get; private set; } = LanguageDeclaration.None;
+
         /// <summary>The entity shapes features require of other features' entities, in realisation order.</summary>
         public List<ShapeRequirement> ShapeRequirements { get; } = [];
 
@@ -70,13 +78,15 @@ namespace Tellma.Core.Composition
             return _leaves.TryGetValue(entityType, out Type? leaf) ? leaf : entityType;
         }
 
-        /// <summary>Fixes the feature order and the leaf substitutions once the graph gate passes.</summary>
+        /// <summary>Fixes the feature order, the leaf substitutions and the language declaration once the graph gate passes.</summary>
         /// <param name="features">The features in realisation order.</param>
         /// <param name="leaves">The leaf substitutions.</param>
-        public void Settle(IReadOnlyList<ITellmaFeature> features, IReadOnlyDictionary<Type, Type> leaves)
+        /// <param name="languages">What the distribution declared about languages.</param>
+        public void Settle(IReadOnlyList<ITellmaFeature> features, IReadOnlyDictionary<Type, Type> leaves, LanguageDeclaration languages)
         {
             Features = [.. features];
             _leaves = new Dictionary<Type, Type>(leaves);
+            Languages = languages;
         }
     }
 
@@ -84,6 +94,11 @@ namespace Tellma.Core.Composition
     /// <param name="Type">The contributed type.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedType(Type Type, ITellmaFeature Owner);
+
+    /// <summary>A value set a feature contributed.</summary>
+    /// <param name="Descriptor">The set as contributed.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedValueSet(ValueSetDescriptor Descriptor, ITellmaFeature Owner);
 
     /// <summary>An entity a feature contributed, with its stack's service and operations.</summary>
     /// <param name="EntityType">The entity, before leaf substitution.</param>

@@ -37,5 +37,17 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>The tenant model builds, and every entity leaf in it satisfies the entity contract.</summary>
         public const string EntityMetadata = "core.entity-metadata";
+
+        /// <summary>The declared languages are described, their regions are theirs, their strings ship, and symbols are unique.</summary>
+        public const string Languages = "core.languages";
+
+        /// <summary>Calendar codes are well formed and unique, and the platform's three calendars are composed.</summary>
+        public const string Calendars = "core.calendars";
+
+        /// <summary>Value sets are well formed and uniquely named, and every property that draws from one names a composed set.</summary>
+        public const string ValueSets = "core.value-sets";
+
+        /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
+        public const string TimeZones = "core.time-zones";
     }
 }

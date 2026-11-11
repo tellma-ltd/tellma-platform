@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
+using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Composition
@@ -106,7 +107,11 @@ namespace Tellma.Core.Composition
             }
 
             IReadOnlyList<ComposedFeature> ordered = OrderFeatures();
-            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves);
+            LanguageDeclaration languages = _builder.LanguageDeclaration;
+            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves, languages);
+
+            // --- What the distribution declared about languages, which the language catalogue reads ---
+            services.AddSingleton(languages);
 
             // --- Built-in startup checks, ahead of every contributed one: core is realised first ---
             RegisterBuiltInChecks();
@@ -465,6 +470,10 @@ namespace Tellma.Core.Composition
                 new EntityShapesCheck(_record),
                 new ModelContributorsCheck(_record),
                 new EntityMetadataCheck(),
+                new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
+                new CalendarsCheck(),
+                new ValueSetsCheck(_record),
+                new TimeZonesCheck(TimeZonesCheck.HostResolves),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

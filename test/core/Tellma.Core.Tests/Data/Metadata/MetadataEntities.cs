@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Tests.Data.Metadata
 {
@@ -206,6 +207,7 @@ namespace Tellma.Core.Tests.Data.Metadata
     {
         [Column("ZoneCode")]
         [MaxLength(30)]
+        [ValueSet(CoreValueSets.TimeZone)]
         public string? Zone { get; set; }
     }
 
