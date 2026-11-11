@@ -289,7 +289,7 @@ export class TmSelect<T>
     }
     // Activation fires whether or not the value changed: same-value
     // reselection closes with no special case.
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   // ---- TmCellEditor<T | undefined> ----
@@ -307,7 +307,7 @@ export class TmSelect<T>
   /** Accepts the current value as the revert baseline and closes the panel. */
   commit(): void {
     this.lastCommitted = this.value();
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -318,7 +318,7 @@ export class TmSelect<T>
   cancel(): void {
     this.selfWrite = { value: this.lastCommitted };
     this.value.set(this.lastCommitted);
-    this.expanded.set(false);
+    this.setExpanded(false);
   }
 
   /**
@@ -333,9 +333,9 @@ export class TmSelect<T>
     }
     const first = text[0];
     if (first !== undefined && first !== ' ') {
-      this.pendingTypeaheadKey = first;
+      this.holdTypeaheadKey(first);
     }
     this.focus();
-    this.expanded.set(true);
+    this.setExpanded(true);
   }
 }

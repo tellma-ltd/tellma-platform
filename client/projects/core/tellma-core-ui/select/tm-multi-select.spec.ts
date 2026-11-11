@@ -157,6 +157,25 @@ describe('tm-multi-select', () => {
       expect(activeText()).toBe('Service');
     });
 
+    it('keys right after the opening key wait for the rows instead of being dropped', async () => {
+      const { fixture } = await setup(Host);
+      const host = fixture.componentInstance;
+      host.value.set([3]); // Sale: the panel opens with Sale active
+      await settle(fixture);
+
+      // ArrowDown opens the closed panel; Home and Space arrive before its
+      // rows have rendered, and must still act once they have.
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      trigger.focus();
+      for (const key of ['ArrowDown', 'Home', ' ']) {
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        await Promise.resolve();
+      }
+      await settle(fixture);
+      expect(host.value()).toEqual([1, 3]);
+      expect(activeText()).toBe('Service');
+    });
+
     it('Escape closes the panel and keeps the value', async () => {
       const { fixture, select } = await setup(Host);
       const host = fixture.componentInstance;

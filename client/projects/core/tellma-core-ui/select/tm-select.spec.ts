@@ -707,4 +707,128 @@ describe('tm-select (§3.4)', () => {
       expect(fixture.componentInstance.value()).toBe(1);
     });
   });
+
+  // Keys a fast typist or a loaded machine delivers with no render between
+  // them must act exactly as the same keys pressed one at a time.
+  describe('keys pressed within one render', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <tm-select
+          [(value)]="value"
+          placeholder="Pick a country"
+          (selectionChange)="emissions.push($event)"
+        >
+          @for (country of countries; track country.id) {
+            <tm-option [value]="country.id" [label]="country.name">{{ country.name }}</tm-option>
+          }
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<number | undefined>(undefined);
+      readonly countries = COUNTRIES;
+      readonly emissions: (number | undefined)[] = [];
+    }
+
+    /** What a key sequence leaves behind: value, emissions, panel and highlight. */
+    interface Outcome {
+      /** The bound value. */
+      readonly value: number | undefined;
+      /** Every `selectionChange` emission, in order. */
+      readonly emissions: readonly (number | undefined)[];
+      /** Whether the panel is open. */
+      readonly open: boolean;
+      /** The active option's text while the panel is open. */
+      readonly active: string | undefined;
+    }
+
+    /** Lets every render, the overlay's re-measure and a frame land. */
+    async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await fixture.whenStable();
+    }
+
+    /**
+     * Presses `keys` on the trigger, from a closed or an open panel, either
+     * in one render window (only microtask yields between keys, as separate
+     * input events get) or one at a time with every render settled between.
+     */
+    async function run(
+      keys: readonly string[],
+      options: { readonly startOpen: boolean; readonly burst: boolean },
+    ): Promise<Outcome> {
+      TestBed.resetTestingModule();
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      trigger.focus();
+      if (options.startOpen) {
+        await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+        await settle(fixture);
+      }
+      for (const key of keys) {
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        if (options.burst) {
+          await Promise.resolve();
+        } else {
+          await settle(fixture);
+        }
+      }
+      await settle(fixture);
+      const open = await select.isOpen();
+      return {
+        value: host.value(),
+        emissions: [...host.emissions],
+        open,
+        active: open ? activeText() : undefined,
+      };
+    }
+
+    /** Runs `keys` both ways and expects the burst to match the stepwise run. */
+    async function expectBurstMatchesStepwise(
+      keys: readonly string[],
+      startOpen: boolean,
+    ): Promise<Outcome> {
+      const stepwise = await run(keys, { startOpen, burst: false });
+      const burst = await run(keys, { startOpen, burst: true });
+      expect(burst).toEqual(stepwise);
+      return burst;
+    }
+
+    it('a commit then a character: the character reopens and searches once', async () => {
+      const outcome = await expectBurstMatchesStepwise(['ArrowDown', 'Enter', 'e'], true);
+      expect(outcome).toEqual({
+        value: 2,
+        emissions: [2],
+        open: true,
+        active: 'Ethiopia',
+      });
+    });
+
+    it('a commit then an arrow and Enter: the arrow reopens, Enter commits once more', async () => {
+      const outcome = await expectBurstMatchesStepwise(
+        ['ArrowDown', 'Enter', 'ArrowDown', 'Enter'],
+        true,
+      );
+      expect(outcome.value).toBe(2);
+      expect(outcome.open).toBe(false);
+    });
+
+    it('a commit then an arrow: the arrow reopens the panel', async () => {
+      const outcome = await expectBurstMatchesStepwise(['ArrowDown', 'Enter', 'ArrowDown'], true);
+      expect(outcome.open).toBe(true);
+      expect(outcome.emissions).toEqual([2]);
+    });
+
+    it('keys right after the opening key wait for the rows instead of being dropped', async () => {
+      const arrows = await expectBurstMatchesStepwise(['ArrowDown', 'ArrowDown'], false);
+      expect(arrows.active).toBe('United Arab Emirates');
+
+      const typed = await expectBurstMatchesStepwise(['u', 'ArrowDown'], false);
+      expect(typed.active).toBe('Ethiopia');
+    });
+  });
 });

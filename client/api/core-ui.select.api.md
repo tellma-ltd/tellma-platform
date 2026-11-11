@@ -105,6 +105,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     focus(options?: FocusOptions): void;
+    protected holdTypeaheadKey(key: string): void;
     readonly invalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected isTyping(): boolean;
     keyOf(value: T): unknown;
@@ -127,6 +128,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected abstract selectedKeys(): readonly unknown[];
     setDescribedByIds(ids: readonly string[]): void;
+    protected setExpanded(open: boolean): void;
     setFieldError(showsError: boolean): void;
     setLabelId(id: string | null): void;
     protected readonly showsInvalid: Signal<boolean>;

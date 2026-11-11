@@ -251,6 +251,26 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
    */
   protected pendingTypeaheadKey: string | null = null;
 
+  /**
+   * Keys pressed on the open trigger before the listbox could take them
+   * (between the opening key and the rows' first render), in order — replayed
+   * after the typeahead seed once the rows land, and dropped on close.
+   */
+  private pendingRelays: KeyboardEvent[] = [];
+
+  /**
+   * Bumped whenever a seed or a held key starts waiting, so the after-render
+   * effect that consumes them re-runs even when nothing it renders changed
+   * (a close and a reopen within one render leave the rows in place).
+   */
+  private readonly pendingInput = signal(0);
+
+  /** Holds a closed-trigger character until the rows render, to seed the typeahead with it. */
+  protected holdTypeaheadKey(key: string): void {
+    this.pendingTypeaheadKey = key;
+    this.pendingInput.update((n) => n + 1);
+  }
+
   // ---- TmFormFieldControl ----
   /** Renders its own trigger chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;
@@ -326,12 +346,12 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     // A readonly select shows its value and never opens: aria's own opens
     // (a trigger click, ArrowDown, Enter, Space) are folded back here,
     // before the panel renders, as `open()` and closed typing refuse to.
-    // aria's own model is set too: it holds the open it applied, and an
-    // echo of `false` back through the binding would change nothing it sees.
+    // aria's own model is set too (see setExpanded): it holds the open it
+    // applied, and an echo of `false` back through the binding would change
+    // nothing it sees.
     effect(() => {
       if (this.readonly() && this.expanded()) {
-        this.expanded.set(false);
-        untracked(() => this.combobox())?.expanded.set(false);
+        this.setExpanded(false);
       }
     });
 
@@ -345,8 +365,10 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
           this.opened.emit();
         } else {
           // A seed the panel never got to consume must not leak into the
-          // NEXT open (e.g. Escape racing the panel render).
+          // NEXT open (e.g. Escape racing the panel render), and neither
+          // must the keys held behind it.
           this.pendingTypeaheadKey = null;
+          this.pendingRelays = [];
           this.closed.emit();
         }
       }
@@ -356,6 +378,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     // label-less option its rendered text. The rows render in option order
     // (groups only wrap runs of them), so row i is option i.
     afterRenderEffect(() => {
+      this.pendingInput(); // re-run when a seed or a held key starts waiting
       const rows = this.optionRows();
       const options = this.options();
       for (let i = 0; i < rows.length && i < options.length; i++) {
@@ -392,6 +415,23 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
         this.pendingTypeaheadKey = null;
         listbox._pattern.setDefaultState();
         listbox.element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      }
+      // Keys pressed before the rows existed (see relayPromptly), replayed
+      // in order behind the seed, from the same anchored default state —
+      // the first replayed keydown, like the seed, turns the listbox's own
+      // later initialization into a no-op. Untracked: the handlers the
+      // replay runs read signals this effect must not re-run on.
+      if (listbox && this.pendingRelays.length > 0 && rows.length > 0) {
+        const keys = this.pendingRelays;
+        this.pendingRelays = [];
+        untracked(() => {
+          if (!listbox._pattern.hasBeenInteracted()) {
+            listbox._pattern.setDefaultState();
+          }
+          for (const key of keys) {
+            listbox.element.dispatchEvent(new KeyboardEvent(key.type, key));
+          }
+        });
       }
       listbox?.scrollActiveItemIntoView();
     });
@@ -430,16 +470,21 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
   }
 
   /**
-   * Closed-trigger typeahead (the APG select-only combobox behavior): a
-   * printable character on the CLOSED trigger opens the panel and seeds the
-   * typeahead with that character — the active option moves to the first
-   * match, and committing stays an explicit activation. (Deliberately NOT
-   * the native <select> behavior of changing the value silently while
-   * closed: a keystroke must never mutate the model.) aria's own collapsed
-   * handling covers only ArrowDown/Enter/Space, all plain opens.
+   * The trigger's keydown, after aria's own handling. First, a key aria
+   * forwards to the open panel is handed to the listbox at once (see
+   * `relayPromptly`). Then closed-trigger typeahead (the APG select-only
+   * combobox behavior): a printable character on the CLOSED trigger opens
+   * the panel and seeds the typeahead with that character — the active
+   * option moves to the first match, and committing stays an explicit
+   * activation. (Deliberately NOT the native <select> behavior of changing
+   * the value silently while closed: a keystroke must never mutate the
+   * model.) aria's own collapsed handling covers only ArrowDown/Enter/Space,
+   * all plain opens.
    */
   protected onTriggerKeydown(event: KeyboardEvent): void {
-    this.relayPromptly(event);
+    if (this.relayPromptly(event)) {
+      return;
+    }
     if (
       this.expanded() ||
       this.disabled() ||
@@ -452,37 +497,61 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     ) {
       return;
     }
-    this.pendingTypeaheadKey = event.key;
-    this.expanded.set(true);
+    this.holdTypeaheadKey(event.key);
+    this.setExpanded(true);
   }
 
   /**
-   * Hands an open panel's key to the listbox before the next key can arrive.
-   * aria's combobox relays the keys it forwards (arrows, Home, End, Enter,
-   * Space, printables) by storing the event in a signal that one of its
-   * after-render effects dispatches on the listbox, so every key pressed
-   * within one render window but the last is silently dropped — Home then
-   * Space toggled the default active option instead of the first one. aria's
-   * host listener runs before the template's, so the event is already
-   * stored here: it is dispatched now, as the same clone aria would send,
-   * and the signal is cleared so aria's effect has nothing left to relay
-   * (version-locked internal seam, guarded by the tests). Anything else —
-   * a key aria handles itself, or a panel whose listbox has not rendered —
-   * is left to aria unchanged.
+   * Opens or closes the panel, writing aria's combobox model as well as this
+   * control's. The two are joined by a two-way binding, but a binding
+   * pushes only changes, once per render: a key handled before that render
+   * would meet aria still open under a closed panel (and relay into it, or
+   * be taken twice) or still closed under an open one (and be dropped).
+   * Writing both keeps them in step whatever the timing.
    */
-  private relayPromptly(event: KeyboardEvent): void {
+  protected setExpanded(open: boolean): void {
+    this.expanded.set(open);
+    untracked(() => this.combobox())?.expanded.set(open);
+  }
+
+  /**
+   * Hands an open panel's key to the listbox before the next key can arrive,
+   * and reports whether it took the key. aria's combobox relays the keys it
+   * forwards (arrows, Home, End, Enter, Space, printables) by storing the
+   * event in a signal that one of its after-render effects dispatches on the
+   * listbox, so every key pressed within one render window but the last is
+   * silently dropped — Home then Space toggled the default active option
+   * instead of the first one. aria's host listener runs before the
+   * template's, so the event is already stored here: the signal is cleared
+   * so aria's effect has nothing left to relay (version-locked internal
+   * seam, guarded by the tests), and the same clone aria would send is
+   * dispatched now — or, while the rows have not rendered yet (the keys
+   * right after the opening one) or earlier keys still wait, held for the
+   * after-render effect to replay in order. Keys aria handles itself are
+   * left to aria.
+   */
+  private relayPromptly(event: KeyboardEvent): boolean {
     const pattern = untracked(() => this.combobox())?._pattern;
-    const listbox = untracked(() => this.listbox());
     if (
       pattern === undefined ||
-      listbox === undefined ||
       untracked(() => pattern.keyboardEventRelay()) !== event ||
       !untracked(() => pattern.isExpanded())
     ) {
-      return;
+      return false;
     }
     pattern.keyboardEventRelay.set(undefined);
-    listbox.element.dispatchEvent(new KeyboardEvent(event.type, event));
+    const listbox = untracked(() => this.listbox());
+    const ready =
+      listbox !== undefined &&
+      untracked(() => this.optionRows()).length > 0 &&
+      this.pendingRelays.length === 0;
+    if (ready) {
+      listbox.element.dispatchEvent(new KeyboardEvent(event.type, event));
+    } else {
+      this.pendingRelays.push(event);
+      this.pendingInput.update((n) => n + 1);
+    }
+    return true;
   }
 
   /**
@@ -534,7 +603,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
   open(): void {
     if (!this.disabled() && !this.readonly()) {
       this.focus();
-      this.expanded.set(true);
+      this.setExpanded(true);
     }
   }
 }
