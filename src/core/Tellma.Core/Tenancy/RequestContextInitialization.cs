@@ -24,8 +24,8 @@ namespace Tellma.Core.Tenancy
         /// <param name="cancellationToken">Cancels the run between and inside initializers.</param>
         /// <returns>The completed context, which the scope's context now is.</returns>
         /// <exception cref="InvalidOperationException">
-        ///     An initializer returned no context, or one bound to another tenant or another
-        ///     principal than the one it was given.
+        ///     An initializer returned no context, or one bound to another tenant, another
+        ///     principal or another user than the one it was given.
         /// </exception>
         public static async Task<RequestContext> RunAsync(
             IRequestContextHolder holder,
@@ -44,13 +44,16 @@ namespace Tellma.Core.Tenancy
                         $"The request-context initializer {initializer.GetType().Name} returned no context.");
 
                 // An initializer completes the context; it never rebinds it. A result naming another
-                // tenant or another principal would run the rest of the work as someone it is not.
+                // tenant, another principal or another user than the one already connected would run
+                // the rest of the work as someone it is not. The holder refuses the same below; this
+                // check names the step at fault.
                 if (next.Tenant?.Id != context.Tenant?.Id
                     || next.Kind != context.Kind
-                    || !string.Equals(next.Subject, context.Subject, StringComparison.Ordinal))
+                    || !string.Equals(next.Subject, context.Subject, StringComparison.Ordinal)
+                    || (context.UserId is { } user && next.UserId != user))
                 {
                     throw new InvalidOperationException(
-                        $"The request-context initializer {initializer.GetType().Name} changed the tenant or the principal the context is bound to.");
+                        $"The request-context initializer {initializer.GetType().Name} changed the tenant, the principal or the user the context is bound to.");
                 }
 
                 // Set after every step, so the services the next initializer uses already read what

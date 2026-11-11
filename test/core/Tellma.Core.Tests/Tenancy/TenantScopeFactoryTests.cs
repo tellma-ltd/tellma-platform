@@ -211,14 +211,34 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         [Fact]
-        public async Task A_tenant_the_snapshot_does_not_hold_is_not_found()
+        public async Task A_tenant_the_catalog_does_not_hold_is_refused_as_a_retired_one_is()
         {
-            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync([FakeCatalogReader.Row(17)]);
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(
+                [FakeCatalogReader.Row(17)],
+                static services => services.AddConnectingInitializer());
+            using MetricCollector<long> scopes = ScopesCounter(harness);
 
-            TenantNotFoundException missing = await Assert.ThrowsAsync<TenantNotFoundException>(
+            // --- An id no tenant ever had ---
+            TenantUnavailableException missing = await Assert.ThrowsAsync<TenantUnavailableException>(
                 () => harness.Scopes.CreateScopeAsync(UserWork with { TenantId = 99 }, cancellationToken: Token));
 
-            Assert.Equal(99, missing.TenantId);
+            Assert.Equal((99, "tenant-not-found"), (missing.TenantId, missing.Code));
+            Assert.Null(missing.State);
+            Assert.Null(missing.RetryAfter);
+
+            // --- A tenant that left the catalog after its work was enqueued ---
+            harness.Catalog.Remove(17);
+            await harness.Registry.RefreshAsync(force: false, Token);
+
+            TenantUnavailableException removed = await Assert.ThrowsAsync<TenantUnavailableException>(
+                () => harness.Scopes.CreateScopeAsync(UserWork, cancellationToken: Token));
+
+            // Never the membership refusal's type: a caller reads that one as "the run-as user is
+            // inactive" and fails the work instead of leaving it to lapse.
+            Assert.Equal((17, "tenant-not-found"), (removed.TenantId, removed.Code));
+            Assert.Null(removed.State);
+            Assert.Empty(harness.Services.GetRequiredService<InitializerLog>().Calls);
+            Assert.Empty(Kinds(scopes));
         }
 
         [Fact]
@@ -276,13 +296,56 @@ namespace Tellma.Core.Tests.Tenancy
             // A system snapshot names no user, and nothing here binds one.
             await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(
                 [FakeCatalogReader.Row(17)],
-                static services => services.AddInitializer("negotiate", 200, static context => context with { Language = "ar" }));
+                static services => services
+                    .AddScoped<DisposalProbe>()
+                    .AddSingleton<DisposalLog>()
+                    .AddScoped<IRequestContextInitializer>(static provider => new ProbingStep(
+                        provider.GetRequiredService<DisposalProbe>(), static (context, _) => context with { Language = "ar" })));
             using MetricCollector<long> scopes = ScopesCounter(harness);
 
             InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => harness.Scopes.CreateScopeAsync(SystemWork, cancellationToken: Token));
 
             Assert.Contains("names no user and no request-context initializer bound one", failure.Message, StringComparison.Ordinal);
+            DisposalLog log = harness.Services.GetRequiredService<DisposalLog>();
+            Assert.Equal((1, 1), (log.Created, log.Disposed));
+            Assert.Empty(Kinds(scopes));
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_scope_cancelled_while_it_is_completed_is_disposed_and_never_handed_out(bool betweenSteps)
+        {
+            // The caller gives up while the first step runs: either the step itself observes the
+            // token and throws, or it returns and the factory stops before the next step.
+            using var caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(
+                [FakeCatalogReader.Row(17)],
+                services => services
+                    .AddScoped<DisposalProbe>()
+                    .AddSingleton<DisposalLog>()
+                    .AddScoped<IRequestContextInitializer>(provider => new ProbingStep(
+                        provider.GetRequiredService<DisposalProbe>(),
+                        (context, token) =>
+                        {
+                            caller.Cancel();
+                            if (!betweenSteps)
+                            {
+                                token.ThrowIfCancellationRequested();
+                            }
+
+                            return context with { UserId = InitializerRegistrations.UserId };
+                        }))
+                    .AddInitializer("negotiate", 200, static context => context with { Language = "ar" }));
+            using MetricCollector<long> scopes = ScopesCounter(harness);
+
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => harness.Scopes.CreateScopeAsync(UserWork, cancellationToken: caller.Token));
+
+            DisposalLog log = harness.Services.GetRequiredService<DisposalLog>();
+            Assert.Equal((1, 1), (log.Created, log.Disposed));
+            Assert.Empty(harness.Services.GetRequiredService<InitializerLog>().Calls);
             Assert.Empty(Kinds(scopes));
         }
 
@@ -296,7 +359,7 @@ namespace Tellma.Core.Tests.Tenancy
             InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => harness.Scopes.CreateScopeAsync(UserWork, cancellationToken: Token));
 
-            Assert.Contains("changed the tenant or the principal", failure.Message, StringComparison.Ordinal);
+            Assert.Contains("changed the tenant, the principal or the user", failure.Message, StringComparison.Ordinal);
         }
 
         // --- What a scope starts, and counts ---
@@ -452,6 +515,23 @@ namespace Tellma.Core.Tests.Tenancy
             {
                 _log.OnDisposed();
                 return ValueTask.CompletedTask;
+            }
+        }
+
+        /// <summary>An initializer at the connection's order that resolves a scoped probe, then runs a script.</summary>
+        /// <param name="probe">The scope's probe, created by resolving this initializer.</param>
+        /// <param name="script">Turns the context and the token given into the context returned, or throws.</param>
+        private sealed class ProbingStep(DisposalProbe probe, Func<RequestContext, CancellationToken, RequestContext> script)
+            : IRequestContextInitializer
+        {
+            /// <inheritdoc />
+            public int Order => 100;
+
+            /// <inheritdoc />
+            public Task<RequestContext> InitializeAsync(RequestContext context, RequestContextInputs inputs, CancellationToken cancellationToken)
+            {
+                ArgumentNullException.ThrowIfNull(probe);
+                return Task.FromResult(script(context, cancellationToken));
             }
         }
 

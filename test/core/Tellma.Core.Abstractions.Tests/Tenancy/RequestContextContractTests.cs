@@ -113,6 +113,28 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
         }
 
         [Fact]
+        public void Applying_a_contexts_cultures_sets_the_current_culture_and_the_current_ui_culture()
+        {
+            CultureInfo original = CultureInfo.CurrentCulture;
+            CultureInfo originalUi = CultureInfo.CurrentUICulture;
+            RequestContext context = Tenantless with { Culture = "ar-SA", CultureInfo = new CultureInfo("ar-SA") };
+
+            try
+            {
+                context.ApplyCultures();
+
+                // The very object the context holds, so its number and date formats are the negotiated ones.
+                Assert.Same(context.CultureInfo, CultureInfo.CurrentCulture);
+                Assert.Same(context.CultureInfo, CultureInfo.CurrentUICulture);
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = original;
+                CultureInfo.CurrentUICulture = originalUi;
+            }
+        }
+
+        [Fact]
         public void The_calendar_code_is_the_calendar_systems()
         {
             RequestContext context = Tenantless with { CalendarSystem = new StubCalendarSystem("uq") };

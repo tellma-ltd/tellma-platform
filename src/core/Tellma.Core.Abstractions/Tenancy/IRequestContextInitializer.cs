@@ -23,9 +23,17 @@ namespace Tellma.Core.Abstractions.Tenancy
     ///     </para>
     ///     <para>
     ///         A step never changes whom the context is bound to: the tenant, the principal's kind and
-    ///         its subject come back as they went in, or the platform refuses the result. A step that
-    ///         finds the principal is not an active member of the tenant throws
-    ///         <see cref="TenantNotFoundException" />.
+    ///         its subject come back as they went in, and so does the user once a step bound one, or
+    ///         the platform refuses the result. A step that finds the principal is not an active
+    ///         member of the tenant throws <see cref="TenantNotFoundException" />.
+    ///     </para>
+    ///     <para>
+    ///         A step returns what it resolved in the context and sets nothing ambient. In particular
+    ///         it never sets <see cref="System.Globalization.CultureInfo.CurrentCulture" /> or
+    ///         <see cref="System.Globalization.CultureInfo.CurrentUICulture" />: they flow into what a
+    ///         method awaits and never back to its caller, so a culture set here is gone before the
+    ///         handler or the background work runs. The caller that receives the completed context
+    ///         applies it with <see cref="RequestContext.ApplyCultures" />.
     ///     </para>
     ///     <para>A collection service: every registration runs.</para>
     /// </remarks>

@@ -41,22 +41,60 @@ namespace Tellma.Core.Tenancy
         {
             ArgumentNullException.ThrowIfNull(context);
 
-            // A compare-and-swap loop rather than a lock: the tenant rule is checked against exactly
+            // A compare-and-swap loop rather than a lock: the binding rule is checked against exactly
             // the context the swap replaces.
             while (true)
             {
                 RequestContext? current = Volatile.Read(ref _current);
-                if (current?.Tenant is { } bound && context.Tenant?.Id != bound.Id)
+                if (current?.Tenant is { } bound)
                 {
-                    throw new InvalidOperationException(string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"The scope is bound to tenant {bound.Id} and cannot be rebound to {Describe(context)}: a scope serves one tenant for its whole lifetime."));
+                    EnsureSameBinding(current, bound, context);
                 }
 
                 if (ReferenceEquals(Interlocked.CompareExchange(ref _current, context, current), current))
                 {
                     return;
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Refuses a context that would rebind a scope already bound to a tenant: to another
+        ///     tenant or none, to another principal, or to another user than the one connected.
+        /// </summary>
+        /// <param name="current">The scope's context.</param>
+        /// <param name="bound">The tenant the scope is bound to.</param>
+        /// <param name="context">The context offered.</param>
+        /// <exception cref="InvalidOperationException">The context rebinds the scope.</exception>
+        private static void EnsureSameBinding(RequestContext current, TenantDescriptor bound, RequestContext context)
+        {
+            if (context.Tenant?.Id != bound.Id)
+            {
+                throw new InvalidOperationException(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The scope is bound to tenant {bound.Id} and cannot be rebound to {Describe(context)}: a scope serves one tenant for its whole lifetime."));
+            }
+
+            // The writers bind the tenant and the principal in one write, so whoever the scope was
+            // bound for is whoever the access guard admitted. A later write naming someone else would
+            // run the rest of the work as a principal nobody checked. Subjects are left out of the
+            // text: they identify a person.
+            if (context.Kind != current.Kind || !string.Equals(context.Subject, current.Subject, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The scope is bound to a principal of kind {current.Kind} in tenant {bound.Id} and cannot be rebound to another principal: a scope serves one principal for its whole lifetime."));
+            }
+
+            // The user is bound once, by the connection step; before that it is unknown, not someone else.
+            if (current.UserId is { } user && context.UserId != user)
+            {
+                string offered = context.UserId is { } other
+                    ? string.Create(CultureInfo.InvariantCulture, $"user {other}")
+                    : "no user";
+                throw new InvalidOperationException(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The scope is bound to user {user} of tenant {bound.Id} and cannot be rebound to {offered}: a scope serves one user for its whole lifetime."));
             }
         }
 

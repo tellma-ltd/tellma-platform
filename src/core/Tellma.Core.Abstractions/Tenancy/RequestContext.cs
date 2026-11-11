@@ -219,6 +219,26 @@ namespace Tellma.Core.Abstractions.Tenancy
                 "The unit of work is not bound to a tenant. Tenant-scoped code runs inside a tenant request or a scope the tenant scope factory created.");
         }
 
+        /// <summary>
+        ///     Makes <see cref="CultureInfo" /> the current culture and the current UI culture of the
+        ///     calling flow, so text formatted and localized from here on reads as the context says.
+        ///     The context stays the source of truth: the current cultures are set from it, never
+        ///     read back into it.
+        /// </summary>
+        /// <remarks>
+        ///     The current cultures flow into what a method calls and awaits, never back to its caller:
+        ///     whatever an asynchronous method sets is undone when it returns. So the method that runs
+        ///     the work calls this itself, after the access guard or the tenant scope factory returned
+        ///     the completed context: a tenant front door before it invokes the handler, a background
+        ///     caller before it runs its work in the scope. A call made inside an
+        ///     <see cref="IRequestContextInitializer" /> reaches neither.
+        /// </remarks>
+        public void ApplyCultures()
+        {
+            CultureInfo.CurrentCulture = CultureInfo;
+            CultureInfo.CurrentUICulture = CultureInfo;
+        }
+
         /// <summary>Refuses a blank text member.</summary>
         /// <param name="value">The value.</param>
         /// <param name="member">The member the value is for.</param>

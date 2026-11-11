@@ -42,6 +42,13 @@ namespace Tellma.Core.Tenancy
     ///         <see cref="RequestContext.UserId" /> is set, or the request was refused. The guard
     ///         opens no tenant database itself.
     ///     </para>
+    ///     <para>
+    ///         The guard sets no current culture, and could not: a culture set inside this call does
+    ///         not flow back to the caller. The front door calls
+    ///         <see cref="RequestContext.ApplyCultures" /> on the scope's completed context after the
+    ///         guard returns and before it invokes the handler, in its own method, so server text is
+    ///         formatted and localized as the context negotiated.
+    ///     </para>
     /// </remarks>
     public interface ITenantAccessGuard
     {

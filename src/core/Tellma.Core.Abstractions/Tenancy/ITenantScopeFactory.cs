@@ -23,6 +23,12 @@ namespace Tellma.Core.Abstractions.Tenancy
     ///         It starts no activity: the caller owns the activity the scope runs under, so the
     ///         scope's spans nest under the caller's.
     ///     </para>
+    ///     <para>
+    ///         It sets no current culture either, and could not: a culture set inside this call does
+    ///         not flow back to the caller. The caller that runs work in the scope first calls
+    ///         <see cref="RequestContext.ApplyCultures" /> on the scope's context, in the method that
+    ///         runs the work, so server text is formatted and localized for the run-as user.
+    ///     </para>
     ///     <para>A singleton, safe to call from any thread.</para>
     /// </remarks>
     public interface ITenantScopeFactory
@@ -40,13 +46,14 @@ namespace Tellma.Core.Abstractions.Tenancy
         /// <exception cref="ArgumentNullException"><paramref name="snapshot" /> is null.</exception>
         /// <exception cref="ArgumentException">The snapshot's kind is <see cref="PrincipalKind.Anonymous" />: background work always runs for a principal.</exception>
         /// <exception cref="InvalidOperationException"><paramref name="allowNonActive" /> is set and the snapshot's kind is not <see cref="PrincipalKind.System" />.</exception>
-        /// <exception cref="TenantNotFoundException">No tenant has the snapshot's id, or the run-as user is not an active member of it.</exception>
+        /// <exception cref="TenantNotFoundException">The run-as user is not an active member of the tenant. Thrown for nothing else.</exception>
         /// <exception cref="TenantUnavailableException">
-        ///     The tenant's state does not serve the work, with the state in
+        ///     The tenant does not serve the work. A state that refuses it comes with the state in
         ///     <see cref="TenantUnavailableException.State" /> and the code of the state:
         ///     <c>tenant-suspended</c>, <c>tenant-frozen</c>, or <c>tenant-not-found</c> for a
-        ///     provisioning or retired tenant. Also thrown with <c>catalog-unavailable</c> when the
-        ///     tenant snapshot cannot be served.
+        ///     provisioning or retired tenant. A tenant the catalog no longer holds comes with
+        ///     <c>tenant-not-found</c> and no state. Also thrown with <c>catalog-unavailable</c> when
+        ///     the tenant snapshot cannot be served.
         /// </exception>
         Task<TenantScope> CreateScopeAsync(
             RequestContextSnapshot snapshot, bool allowNonActive = false, CancellationToken cancellationToken = default);

@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using System.Globalization;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Tenancy;
@@ -232,8 +233,78 @@ namespace Tellma.Core.Tests.Tenancy
             InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => Guard(scope).EnsureAccessAsync(new TenantAccessRequirement(false, null), Inputs, Token));
 
-            Assert.Contains("changed the tenant or the principal", failure.Message, StringComparison.Ordinal);
+            Assert.Contains("changed the tenant, the principal or the user", failure.Message, StringComparison.Ordinal);
             Assert.Same(bound, Current(scope));
+        }
+
+        [Fact]
+        public async Task An_initializer_that_replaces_the_connected_user_is_refused()
+        {
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(configure: static services => services
+                .AddConnectingInitializer()
+                .AddInitializer("impersonate", 200, static context => context with { UserId = InitializerRegistrations.UserId + 1 }));
+            await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
+
+            InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Guard(scope).EnsureAccessAsync(new TenantAccessRequirement(false, null), Inputs, Token));
+
+            Assert.Contains("ScriptedInitializer changed the tenant, the principal or the user", failure.Message, StringComparison.Ordinal);
+            Assert.Equal(InitializerRegistrations.UserId, Current(scope).UserId);
+            Assert.Equal(["connect", "impersonate"], harness.Services.GetRequiredService<InitializerLog>().Names);
+        }
+
+        [Fact]
+        public async Task An_initializer_that_drops_the_connected_user_is_refused()
+        {
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(configure: static services => services
+                .AddConnectingInitializer()
+                .AddInitializer("disconnect", 200, static context => context with { UserId = null }));
+            await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
+
+            InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Guard(scope).EnsureAccessAsync(new TenantAccessRequirement(false, null), Inputs, Token));
+
+            Assert.Contains("changed the tenant, the principal or the user", failure.Message, StringComparison.Ordinal);
+            Assert.Equal(InitializerRegistrations.UserId, Current(scope).UserId);
+        }
+
+        [Fact]
+        public async Task A_culture_an_initializer_sets_never_reaches_the_caller_which_applies_the_completed_context()
+        {
+            CultureInfo original = CultureInfo.CurrentCulture;
+            CultureInfo originalUi = CultureInfo.CurrentUICulture;
+
+            // A culture the test's own flow is surely not running under.
+            var negotiated = CultureInfo.GetCultureInfo(original.Name == "ar-SA" || originalUi.Name == "ar-SA" ? "fr-FR" : "ar-SA");
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync(configure: services => services
+                .AddConnectingInitializer()
+                .AddInitializer("negotiate", 200, context =>
+                {
+                    // What a step must not rely on: the current cultures flow down, never back up.
+                    CultureInfo.CurrentCulture = negotiated;
+                    CultureInfo.CurrentUICulture = negotiated;
+                    return context with { Culture = negotiated.Name, CultureInfo = negotiated };
+                }));
+            await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
+
+            try
+            {
+                await Guard(scope).EnsureAccessAsync(new TenantAccessRequirement(false, null), Inputs, Token);
+
+                // --- The step's ambient change ended with the guard's call ---
+                Assert.Equal((original.Name, originalUi.Name), (CultureInfo.CurrentCulture.Name, CultureInfo.CurrentUICulture.Name));
+
+                // --- The front door applies the completed context, and what it then awaits runs under it ---
+                Current(scope).ApplyCultures();
+                (string culture, string uiCulture) = await CurrentCulturesAsync();
+
+                Assert.Equal((negotiated.Name, negotiated.Name), (culture, uiCulture));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = original;
+                CultureInfo.CurrentUICulture = originalUi;
+            }
         }
 
         [Fact]
@@ -424,6 +495,14 @@ namespace Tellma.Core.Tests.Tenancy
         private static ITenantAccessGuard Guard(AsyncServiceScope scope)
         {
             return scope.ServiceProvider.GetRequiredService<ITenantAccessGuard>();
+        }
+
+        /// <summary>The current cultures as an awaited callee sees them, after it yielded.</summary>
+        /// <returns>The names of the current culture and the current UI culture.</returns>
+        private static async Task<(string Culture, string UiCulture)> CurrentCulturesAsync()
+        {
+            await Task.Yield();
+            return (CultureInfo.CurrentCulture.Name, CultureInfo.CurrentUICulture.Name);
         }
 
         /// <summary>The context of a scope, as its services read it.</summary>

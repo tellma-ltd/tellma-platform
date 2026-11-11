@@ -17,7 +17,9 @@ namespace Tellma.Core.Tenancy
     /// <remarks>
     ///     The context lives in the scope alone: it is never copied into an ambient, a static or a
     ///     singleton. Until a writer sets one, the scope's context is the tenantless context, stamped
-    ///     with the host's clock the first time it is read.
+    ///     with the host's clock the first time it is read. A writer binds the tenant and the
+    ///     principal in one write; from then on the scope keeps both, and later writes only complete
+    ///     the context.
     /// </remarks>
     public interface IRequestContextHolder : IRequestContextAccessor
     {
@@ -26,7 +28,9 @@ namespace Tellma.Core.Tenancy
         /// <exception cref="ArgumentNullException"><paramref name="context" /> is null.</exception>
         /// <exception cref="InvalidOperationException">
         ///     The scope is already bound to a tenant and <paramref name="context" /> names another
-        ///     tenant, or none: a scope serves one tenant for its whole lifetime.
+        ///     tenant or none, another principal (its kind or its subject), or another user than the
+        ///     one already bound, or none: a scope serves one tenant, one principal and one user for
+        ///     its whole lifetime. Binding the user of a context that names none is allowed.
         /// </exception>
         [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "Set is the holder's one write, named for what it does; the holder is written in C#, where Set is not a keyword.")]
         void Set(RequestContext context);

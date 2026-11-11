@@ -43,7 +43,11 @@ namespace Tellma.Core.Tenancy
             cancellationToken.ThrowIfCancellationRequested();
 
             // --- The tenant as it is now: its state may have changed since the work was enqueued ---
-            TenantDescriptor tenant = registry.Get(snapshot.TenantId).Descriptor;
+            // A tenant that left the catalog is refused the way a retired one is, with the same
+            // exception type. TenantNotFoundException is kept for the one refusal a caller treats
+            // differently: a run-as user who is not an active member (spec 0020 §8).
+            TenantDescriptor tenant = registry.Find(snapshot.TenantId)?.Descriptor
+                ?? throw new TenantUnavailableException(snapshot.TenantId, state: null, TenantProblemCodes.NotFound, retryAfter: null);
             EnsureStateServes(tenant, allowNonActive);
 
             // --- The scope, bound before any initializer runs and disposed if one refuses ---
