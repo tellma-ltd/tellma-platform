@@ -251,6 +251,30 @@ namespace Tellma.Core.Tests.Tenancy
         }
     }
 
+    /// <summary>A listener whose every call runs a script and hands back whatever task the script returns.</summary>
+    /// <param name="script">The call's body.</param>
+    internal sealed class ScriptedListener(Func<Task> script) : ITenantStateListener
+    {
+        /// <summary>The number of calls the listener took.</summary>
+        private int _calls;
+
+        /// <summary>The number of calls the listener took.</summary>
+        public int Calls => Volatile.Read(ref _calls);
+
+        /// <inheritdoc />
+        public Task OnStateChangedAsync(TenantDescriptor tenant, TenantState? previous)
+        {
+            _ = Interlocked.Increment(ref _calls);
+            return script();
+        }
+
+        /// <inheritdoc />
+        public Task OnRemovedAsync(TenantDescriptor tenant)
+        {
+            return OnStateChangedAsync(tenant, null);
+        }
+    }
+
     /// <summary>A listener that calls back into the registry, forcing a refresh, and waits for it.</summary>
     /// <param name="registry">Resolves the registry once the harness has built it.</param>
     internal sealed class ReentrantListener(Func<ITenantRegistry> registry) : ITenantStateListener

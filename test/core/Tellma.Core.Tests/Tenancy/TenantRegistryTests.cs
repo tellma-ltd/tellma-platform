@@ -192,6 +192,69 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         [Fact]
+        public async Task A_listener_that_returns_no_task_is_logged_and_the_others_still_hear()
+        {
+            ScriptedListener empty = new(static () => null!);
+            RecordingListener healthy = new();
+            using RegistryHarness harness = new(listeners: [empty, healthy]);
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row);
+
+            harness.Catalog.Update(row with { State = "ReadOnly" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
+
+            Assert.Equal(1, empty.Calls);
+            Assert.Single(healthy.Calls);
+            Assert.Equal(LogLevel.Error, Assert.Single(harness.Events("TenantStateListenerFailed")).Level);
+        }
+
+        [Fact]
+        public async Task A_listener_failing_with_its_own_timeout_is_logged_as_failed_not_timed_out()
+        {
+            ScriptedListener timing = new(static () => Task.FromException(new TimeoutException("The listener's own call timed out.")));
+            RecordingListener healthy = new();
+            using RegistryHarness harness = new(listeners: [timing, healthy]);
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row);
+
+            harness.Catalog.Update(row with { State = "ReadOnly" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
+
+            Assert.Single(healthy.Calls);
+            Assert.IsType<TimeoutException>(Assert.Single(harness.Events("TenantStateListenerFailed")).Exception);
+            Assert.Empty(harness.Events("TenantStateListenerTimedOut"));
+        }
+
+        [Fact]
+        public async Task The_listener_bound_starts_before_the_listener_runs()
+        {
+            // The listener spends its whole bound before it hands back a task that never ends. The
+            // bound expires only if its timer already existed when the clock moved.
+            RegistryHarness? built = null;
+            TaskCompletionSource never = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ScriptedListener slow = new(() =>
+            {
+                built!.Time.Advance(TimeSpan.FromSeconds(5));
+                return never.Task;
+            });
+            RecordingListener after = new();
+            using RegistryHarness harness = new(listenerTimeout: TimeSpan.FromSeconds(5), listeners: [slow, after]);
+            built = harness;
+            TenantRow row = FakeCatalogReader.Row(1);
+            await harness.LoadAsync(row);
+
+            harness.Catalog.Update(row with { State = "Suspended" });
+            await harness.Registry.RefreshAsync(force: false, Token);
+            await harness.DeliveredAsync();
+
+            Assert.Single(after.Calls);
+            Assert.Equal(LogLevel.Error, Assert.Single(harness.Events("TenantStateListenerTimedOut")).Level);
+            never.SetResult();
+        }
+
+        [Fact]
         public async Task A_tenant_that_leaves_the_snapshot_by_breaking_a_rule_is_announced_as_removed()
         {
             RecordingListener listener = new();

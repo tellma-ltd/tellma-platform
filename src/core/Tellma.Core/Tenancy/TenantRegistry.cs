@@ -584,9 +584,11 @@ namespace Tellma.Core.Tenancy
             {
                 ITenantStateListener listener = scope.ServiceProvider.GetServices<ITenantStateListener>().ElementAt(index);
                 name = listener.GetType().FullName ?? listener.GetType().Name;
-                call = change.Removed
+                // A listener that hands back no task fails like one that throws.
+                call = (change.Removed
                     ? listener.OnRemovedAsync(change.Tenant)
-                    : listener.OnStateChangedAsync(change.Tenant, change.Previous);
+                    : listener.OnStateChangedAsync(change.Tenant, change.Previous))
+                    ?? throw new InvalidOperationException("The tenant-state listener returned no task.");
             }
             catch (Exception exception)
             {
