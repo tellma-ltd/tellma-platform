@@ -52,6 +52,20 @@ describe('the declaration functions', () => {
     expect(tmDeclarationKindOf({ ...widget })).toBeUndefined();
     expect(tmDeclarationKindOf(null)).toBeUndefined();
   });
+
+  it('share one record with every other copy of the package in the realm', () => {
+    // A second evaluation of this package reaches the same record through the
+    // registered symbol; it is simulated here by reading and writing it directly.
+    const shared = (globalThis as unknown as Record<symbol, WeakMap<object, string> | undefined>)[
+      Symbol.for('tellma.core.declarationKinds')
+    ];
+    const entity = tmEntity('acme.Customer');
+    expect(shared?.get(entity)).toBe('entity');
+
+    const fromAnotherCopy = Object.freeze({ path: 'credit-review' });
+    shared?.set(fromAnotherCopy, 'page');
+    expect(tmDeclarationKindOf(fromAnotherCopy)).toBe('page');
+  });
 });
 
 describe('tmFeature', () => {

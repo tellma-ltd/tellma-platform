@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
+  ɵtmMergeAppDeclarations,
   type TmAppConfig,
   type TmClientMetadata,
   type TmEntitiesChunk,
@@ -105,42 +106,112 @@ describe('tmCheckAppConfig', () => {
     expect(check(config())).toEqual([]);
   });
 
-  it('never calls a lazy member of the configuration', () => {
-    const spies = Array.from({ length: 12 }, () => vi.fn(() => Promise.resolve(class {})));
-    const [component, details, page, report, widget, panel, home, settings, strings, calendar] = spies;
-    const visibleWhen = vi.fn(() => true);
-    const url = vi.fn(() => '/');
-    const appConfig: TmAppConfig = {
-      metadata: {
-        core: vi.fn(() => Promise.reject(new Error('unused'))),
-        entities: vi.fn(() => Promise.reject(new Error('unused'))),
-        contracts: vi.fn(() => Promise.reject(new Error('unused'))),
-        strings: { en: vi.fn(() => Promise.resolve({})) },
-      },
-      languages: [{ code: 'en', dir: 'ltr', strings: strings as never }, language('ar')],
-      calendars: [{ code: 'hj', load: calendar as never }],
-      features: [
-        tmFeature(gl),
-        tmFeature({
-          ...acme,
-          entities: [tmEntity('acme.Customer', { details: details as TmLazyComponent, visibleWhen, section: 'sales' })],
-          pages: [tmPage('credit-review', { component: page as TmLazyComponent, titleKey: 'T', visibleWhen })],
-          reports: [tmCodedReport('acme-credit-exposure', { component: report as TmLazyComponent, visibleWhen })],
-          widgets: [tmWidget('acme.cash-position', { labelKey: 'W', icon: 'w', component: widget as TmLazyComponent, defaultSize: { w: 1, h: 1 }, minSize: { w: 1, h: 1 } })],
-          entries: [{ id: 'acme.overdue', labelKey: 'L', url, visibleWhen, section: 'sales' }],
-          appBar: [{ ...slot('chat'), panel: panel as TmLazyComponent, badge: vi.fn() as never }],
-          settingsTabs: [{ category: 'general', component: settings as TmLazyComponent }],
-          home: home as TmLazyComponent,
-          overrides: [],
+  it('never calls a lazy member of the configuration, in declarations or in overrides', () => {
+    // Every function the config holds is a spy; the check must call none.
+    const spies: { readonly mock: { readonly calls: readonly unknown[] } }[] = [];
+    const lazySpy = (): TmLazyComponent => {
+      const spy = vi.fn(() => Promise.resolve(class {}));
+      spies.push(spy);
+      return spy;
+    };
+    const callSpy = <R>(implementation: () => R): (() => R) => {
+      const spy = vi.fn(implementation);
+      spies.push(spy);
+      return spy;
+    };
+    const fnSpy = <R>(result: R): (() => R) => callSpy(() => result);
+    const rejectSpy = (): (() => Promise<never>) => callSpy(() => Promise.reject(new Error('unused')));
+    const widgetDefinition = {
+      labelKey: 'W',
+      icon: 'w',
+      component: lazySpy(),
+      settingsEditor: lazySpy(),
+      defaultSize: { w: 1, h: 1 },
+      minSize: { w: 1, h: 1 },
+    };
+    const entityHatches = {
+      search: lazySpy(),
+      details: lazySpy(),
+      defaults: fnSpy({}),
+      clone: fnSpy({}),
+      validate: fnSpy(undefined),
+      beforeSave: fnSpy({}),
+      rowLink: fnSpy(null),
+      visibleWhen: fnSpy(true),
+    };
+
+    // --- Declarations: the gl and acme features with a spy in every function member ---
+    const glFeature: TmFeatureDefinition = {
+      ...gl,
+      entities: [
+        tmEntity('gl.Center', {
+          ...entityHatches,
+          section: 'financials',
+          columns: ['Name', { path: 'Manager', display: lazySpy(), select: ['Manager.Name'] }],
+          tile: { component: lazySpy() },
         }),
       ],
+      entries: [{ id: 'gl.overdue', labelKey: 'L', url: fnSpy('/'), visibleWhen: fnSpy(true), section: 'financials' }],
+      pages: [tmPage('cash', { component: lazySpy(), titleKey: 'T', visibleWhen: fnSpy(true) })],
+      settingsTabs: [{ category: 'general', component: lazySpy() }],
+      appBar: [{ ...slot('chat'), panel: lazySpy(), badge: fnSpy(null) as never }],
+      icons: { coins: [['circle', { r: 8 }]] },
+      providers: [{ provide: 'gl.token', useFactory: fnSpy(1) }],
+      home: lazySpy(),
     };
-    // Plain data in, problems out: the check reads members and calls none.
-    tmCheckAppConfig(appConfig, tmTestMetadata({ calendars: ['gc', 'hj'] }), tmTestEntitiesChunk());
-    for (const spy of [...spies, visibleWhen, url, component]) {
-      expect(spy).not.toHaveBeenCalled();
-    }
-    expect(appConfig.metadata.core).not.toHaveBeenCalled();
+    const acmeFeature: TmFeatureDefinition = {
+      ...acme,
+      entities: [
+        tmEntity('acme.Customer', {
+          ...entityHatches,
+          section: 'sales',
+          actions: [{ name: 'set-credit-limit', dialog: lazySpy(), visible: fnSpy(true) }],
+        }),
+      ],
+      pages: [tmPage('credit-review', { component: lazySpy(), titleKey: 'T', visibleWhen: fnSpy(true) })],
+      reports: [tmCodedReport('acme-credit-exposure', { component: lazySpy(), visibleWhen: fnSpy(true) })],
+      widgets: [tmWidget('acme.cash-position', widgetDefinition)],
+    };
+
+    // --- Overrides: every kind of patch, each carrying function members ---
+    const zeta: TmFeatureDefinition = {
+      key: 'zeta',
+      overrides: [
+        tmEntity('gl.Center', { search: lazySpy(), details: lazySpy(), visibleWhen: fnSpy(false) }),
+        tmPage('cash', { component: lazySpy(), titleKey: 'T2', visibleWhen: fnSpy(false) }),
+        tmCodedReport('acme-credit-exposure', { component: lazySpy(), visibleWhen: fnSpy(false) }),
+        tmWidget('acme.cash-position', { ...widgetDefinition, component: lazySpy() }),
+        tmOverride('entry:gl.overdue', { url: fnSpy('/x'), visibleWhen: fnSpy(false) }),
+        tmOverride('appBar:chat', { panel: lazySpy(), badge: fnSpy(null) }),
+        tmOverride('settingsTab:general', { component: lazySpy() }),
+      ],
+      providers: [{ provide: 'zeta.token', useFactory: fnSpy(2) }],
+      home: lazySpy(),
+    };
+
+    const appConfig: TmAppConfig = {
+      metadata: {
+        core: rejectSpy(),
+        entities: rejectSpy(),
+        contracts: rejectSpy(),
+        strings: { en: rejectSpy() },
+      },
+      languages: [
+        { code: 'en', dir: 'ltr', strings: rejectSpy() },
+        { code: 'ar', dir: 'rtl', strings: rejectSpy() },
+      ],
+      calendars: [{ code: 'hj', load: rejectSpy() }],
+      features: [glFeature, acmeFeature, zeta].map(tmFeature),
+    };
+    const problems = tmCheckAppConfig(
+      appConfig,
+      tmTestMetadata({ calendars: ['gc', 'hj'], features: [...tmTestMetadata().features, { key: 'zeta', version: '1' }] }),
+      tmTestEntitiesChunk(),
+    );
+    // Every declaration and every patch was accepted, so each path ran over its spies.
+    expect(problems).toEqual([]);
+    expect(spies.length).toBeGreaterThan(40);
+    expect(spies.filter((spy) => spy.mock.calls.length > 0)).toEqual([]);
   });
 
   describe('the merge rule', () => {
@@ -249,10 +320,12 @@ describe('tmCheckAppConfig', () => {
       }
       // `centers` is the segment of gl.Center, which gl declares, not acme.
       expect(pathProblems('centers/map')).toEqual([
-        "reserved-path:'page:centers/map' starts with 'centers', the route segment of the entity 'gl.Center', which another feature declares.",
+        "reserved-path:'page:centers/map' starts with 'centers', the route segment of the entity 'gl.Center', which the feature 'gl' declares.",
       ]);
       // `roles` is core.Role's segment; no feature declares it, and the entity's routes exist regardless.
-      expect(pathProblems('roles/matrix')[0]).toMatch(/^reserved-path:/);
+      expect(pathProblems('roles/matrix')).toEqual([
+        "reserved-path:'page:roles/matrix' starts with 'roles', the route segment of the entity 'core.Role', whose routes exist whether or not a feature declares it.",
+      ]);
       // `customers` is acme.Customer's, which acme itself declares.
       expect(pathProblems('customers/map')).toEqual([]);
     });
@@ -294,9 +367,11 @@ describe('tmCheckAppConfig', () => {
         entities: [...tmTestMetadata().entities, { ...(tmTestMetadata().entities[0] as TmClientMetadata['entities'][number]), name: 'gl.CreditNote', segment: 'credit-notes' }],
       };
       const glWithNotes = { ...gl, entities: [...(gl.entities ?? []), tmEntity('gl.CreditNote')] };
-      expect(lines(check(config([glWithNotes, { ...acme, reports: [tmCodedReport('credit-notes', {})] }]), metadata))).toEqual([
-        'reserved-path report:credit-notes acme',
-      ]);
+      const notes = check(config([glWithNotes, { ...acme, reports: [tmCodedReport('credit-notes', {})] }]), metadata);
+      expect(lines(notes)).toEqual(['reserved-path report:credit-notes acme']);
+      expect(notes[0]?.message).toBe(
+        "'report:credit-notes' starts with 'credit-notes', the route segment of the entity 'gl.CreditNote', which the feature 'gl' declares.",
+      );
     });
 
     it('reports coded-report-not-registered', () => {
@@ -314,6 +389,30 @@ describe('tmCheckAppConfig', () => {
         'coded-report-redeclared report:acme-credit-exposure acme',
       ]);
       expect(result[0]?.message).toBe("A patch of 'report:acme-credit-exposure' sets 'titleKey', which the server declares; the patch's other members apply.");
+    });
+
+    it('refuses every member the server owns, one at a time, and applies the rest of the patch', () => {
+      const owned: Readonly<Record<string, unknown>> = {
+        feature: 'gl',
+        route: 'GET /mine',
+        securable: ['acme.Customer', 'Delete'],
+        kind: 'List',
+        titleKey: 'Mine',
+        descriptionKey: 'Mine_Description',
+        export: 'None',
+        parameters: [],
+      };
+      const server = new Map(Object.entries(tmTestMetadata().codedReports[0] ?? {}));
+      for (const [member, value] of Object.entries(owned)) {
+        const patch = tmCodedReport('acme-credit-exposure', { [member]: value, order: 7 } as never);
+        const merged = ɵtmMergeAppDeclarations([tmFeature({ ...acme, reports: [patch] })], tmTestMetadata());
+        expect(merged.problems.map((problem) => [problem.code, problem.facts['member']])).toEqual([
+          ['coded-report-redeclared', member],
+        ]);
+        const report = new Map(Object.entries(merged.declarations.reports[0] ?? {}));
+        expect(report.get(member)).toEqual(server.get(member));
+        expect(report.get('order')).toBe(7);
+      }
     });
 
     it('reports coded-report-source for a route with run, and a hatch with neither or both', () => {
@@ -338,6 +437,12 @@ describe('tmCheckAppConfig', () => {
       const result = check(config([gl, acme, { key: 'zeta' }]));
       expect(lines(result)).toEqual(['feature-not-composed feature:zeta zeta']);
       expect(result[0]?.message).toBe("The server composes no feature 'zeta'.");
+
+      // The metadata below lists no `core`. A feature an app lists under that key
+      // is a repeat of the implicit feature, never an uncomposed one.
+      const withoutCore = { features: tmTestMetadata().features.filter((feature) => feature.key !== 'core') };
+      expect(check(config(), withoutCore)).toEqual([]);
+      expect(lines(check(config([{ key: 'core' }, gl, acme]), withoutCore))).toEqual(['duplicate-key feature:core core']);
     });
 
     it('reports language-missing, language-not-offered and default-language-mismatch', () => {
@@ -450,6 +555,70 @@ describe('tmCheckAppConfig', () => {
       expect(lines(result)).toEqual(['label-missing label:acme_Customer acme', 'label-missing label:acme_Customer_Code acme']);
       expect(result.map((problem) => problem.severity)).toEqual(['warning', 'warning']);
       expect(result[0]?.message).toBe("No string resource declares 'acme_Customer', so the emit wrote the fallback 'Customer'.");
+    });
+
+    it('warns label-missing for every kind of label the emit writes a fallback for', () => {
+      const metadata = tmTestMetadata();
+      const customer = tmTestEntitiesChunk().entities.find((entity) => entity.name === 'acme.Customer');
+      const [action] = customer?.actions ?? [];
+      const [securable] = metadata.securables;
+      const [handler] = metadata.jobHandlers;
+      if (customer === undefined || action === undefined || securable === undefined || handler === undefined) {
+        throw new Error('The test metadata lacks acme.Customer, its action, a securable or a job handler.');
+      }
+      const withFallbacks = {
+        ...customer,
+        navigations: customer.navigations.map((navigation) => ({ ...navigation, labelFallback: 'Center' })),
+        children: [
+          {
+            name: 'Notes',
+            json: 'notes',
+            entity: 'acme.CustomerNote',
+            parentKey: 'CustomerId',
+            maxCount: 100,
+            labelKey: 'acme_Customer_Notes',
+            labelFallback: 'Notes',
+          },
+        ],
+        actions: [
+          {
+            ...action,
+            labelFallback: 'Set credit limit',
+            fields: [
+              {
+                name: 'CreditLimit',
+                labelKey: 'acme_Customer_CreditLimit',
+                labelFallback: 'Credit limit',
+                required: true,
+                value: { type: 'decimal' as const, nullable: false },
+              },
+            ],
+          },
+        ],
+      };
+      const result = check(
+        config(),
+        {
+          securables: [{ ...securable, resourceLabelFallback: 'Customers', actionLabelFallback: 'Read', featureLabelFallback: 'Acme' }],
+          jobHandlers: [{ ...handler, labelFallback: 'Notification delivery' }],
+        },
+        {
+          entities: tmTestEntitiesChunk().entities.map((entity) => (entity.name === customer.name ? withFallbacks : entity)),
+          enums: [{ name: 'gl.Tier', values: [{ value: 'A', labelKey: 'gl_Tier_A', labelFallback: 'A' }, { value: 'B', label: 'B' }] }],
+        },
+      );
+      expect(lines(result)).toEqual([
+        'label-missing label:acme_Customer_Center acme',
+        'label-missing label:acme_Customer_Notes acme',
+        'label-missing label:acme_Customer_Action_set-credit-limit acme',
+        'label-missing label:acme_Customer_CreditLimit acme',
+        'label-missing label:gl_Tier_A gl',
+        'label-missing label:acme_Customer_Plural acme',
+        'label-missing label:Action_Read acme',
+        'label-missing label:Feature_acme acme',
+        'label-missing label:Job_NotificationDelivery core',
+      ]);
+      expect(result.every((problem) => problem.severity === 'warning')).toBe(true);
     });
   });
 });

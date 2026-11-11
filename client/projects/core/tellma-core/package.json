@@ -19,8 +19,8 @@
       "./private": 0.5
     },
     "budgetNotes": {
-      ".": "Raised from 1.5 to 4.5 for the distribution API: measured 1.26 before and 4.26 after (+3.00 KB). The weight is the merge rule behind TM_APP_DECLARATIONS (about 2.4 KB: keys, overrides, coded-report patches, hide and the app-bar rules, each problem recorded with its facts), then tmFeature and the declaration functions, provideTellma, the metadata loaders and TM_CLIENT_METADATA. Savings taken: the merge keeps its state in private fields, which the minifier shortens (0.11 KB), and the config check, which the spec places in the primary, lives in the lazy ./config-check instead. The primary's ceiling keeps growing towards the sum of its shares as each owner lands.",
-      "./config-check": "Born at 4.20 KB measured: tmCheckAppConfig, its problem messages and the entity-declaration checks. Lazy: the build runs it in Node, and only a development app loads it at startup.",
+      ".": "Raised from 1.5 to 4.5 for the distribution API: measured 1.26 before and 4.32 after (+3.06 KB). The weight is the merge rule behind TM_APP_DECLARATIONS (about 2.4 KB: keys, overrides, coded-report patches, hide and the app-bar rules, each problem recorded with its facts), then tmFeature and the declaration functions, provideTellma, the metadata loaders and TM_CLIENT_METADATA. Savings taken: the merge keeps its state in private fields, which the minifier shortens (0.11 KB), and the config check, which the spec places in the primary, lives in the lazy ./config-check instead. The primary's ceiling keeps growing towards the sum of its shares as each owner lands.",
+      "./config-check": "Born at 4.28 KB measured: tmCheckAppConfig, its problem messages and the entity-declaration checks. Lazy: the build runs it in Node, and only a development app loads it at startup.",
       "./private": "Empty at birth: the slot for shared wiring between this package's own entry points.",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
     },

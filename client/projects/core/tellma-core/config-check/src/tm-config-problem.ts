@@ -137,10 +137,16 @@ const MESSAGES: { readonly [C in TmConfigProblemCode]: (key: string, facts: TmPr
         return `The segment '${segment}' of '${key}' is neither a kebab-case literal nor a camelCase ':name' parameter.`;
     }
   },
-  'reserved-path': (key, facts) =>
-    facts['reason'] === 'entity'
-      ? `'${key}' starts with '${fact(facts, 'segment')}', the route segment of the entity '${fact(facts, 'entity')}', which another feature declares.`
-      : `'${key}' starts with '${fact(facts, 'segment')}', a word the platform's routes reserve.`,
+  'reserved-path': (key, facts) => {
+    const start = `'${key}' starts with '${fact(facts, 'segment')}'`;
+    if (facts['reason'] !== 'entity') {
+      return `${start}, a word the platform's routes reserve.`;
+    }
+    const entity = `the route segment of the entity '${fact(facts, 'entity')}'`;
+    return fact(facts, 'declaredBy') === ''
+      ? `${start}, ${entity}, whose routes exist whether or not a feature declares it.`
+      : `${start}, ${entity}, which the feature '${fact(facts, 'declaredBy')}' declares.`;
+  },
   'invalid-report-key': (key) => `The coded report key '${idOf(key)}' is not kebab-case with at least one hyphen.`,
   'coded-report-not-registered': (key) => `No coded report the server declares has the key '${idOf(key)}'.`,
   'coded-report-redeclared': (key, facts) =>

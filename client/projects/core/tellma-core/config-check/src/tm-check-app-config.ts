@@ -219,8 +219,10 @@ function checkRoutes(context: CheckContext): void {
     if (reserved.has(segment)) {
       report('reserved-path', key, feature, { reason: 'routing', segment });
     } else if (entity !== undefined && merge.origin(`entity:${entity}`) !== feature) {
-      // An entity's segment is the page's only when the page's own feature declares the entity.
-      report('reserved-path', key, feature, { reason: 'entity', segment, entity });
+      // An entity's segment is the page's only when the page's own feature
+      // declares the entity; the entity's routes exist even when no feature does.
+      const declaredBy = merge.origin(`entity:${entity}`) ?? '';
+      report('reserved-path', key, feature, { reason: 'entity', segment, entity, declaredBy });
     }
   }
 
@@ -238,7 +240,7 @@ function checkRoutes(context: CheckContext): void {
     if (reserved.has(reportKey)) {
       report('reserved-path', key, feature, { reason: 'routing', segment: reportKey });
     } else if (entity !== undefined && entityFeature !== undefined && entityFeature !== reportFeatures.get(reportKey)) {
-      report('reserved-path', key, feature, { reason: 'entity', segment: reportKey, entity });
+      report('reserved-path', key, feature, { reason: 'entity', segment: reportKey, entity, declaredBy: entityFeature });
     }
   }
 }

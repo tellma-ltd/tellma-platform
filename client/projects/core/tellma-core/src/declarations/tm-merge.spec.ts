@@ -338,6 +338,17 @@ describe('ɵtmMergeAppDeclarations', () => {
       expect(result.declaredSections).toEqual(new Set(['financials', 'sales']));
     });
 
+    it('reports hiding a derived entry that is hidden already', () => {
+      const result = merge(
+        { key: 'gl', entities: [tmEntity('gl.Center')] },
+        { key: 'acme', hide: ['entry:gl.Center', 'entry:acme-credit-exposure'] },
+        { key: 'zeta', hide: ['entry:gl.Center', 'entry:acme-credit-exposure'] },
+      );
+      expect(problems(result)).toEqual(['dangling-hide entry:gl.Center zeta', 'dangling-hide entry:acme-credit-exposure zeta']);
+      expect(result.problems.map((problem) => problem.facts['reason'])).toEqual(['hidden', 'hidden']);
+      expect([...result.declarations.hiddenEntries].sort()).toEqual(['acme-credit-exposure', 'gl.Center']);
+    });
+
     it('reports a hide that names no earlier declaration, and keeps a hidden key taken', () => {
       const result = merge(
         { key: 'gl', sections: [section('financials')] },
