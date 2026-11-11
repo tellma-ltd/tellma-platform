@@ -128,7 +128,7 @@ namespace Tellma.Queryex.Testing.Probe
             EmitTemplate? template = strategy switch
             {
                 TemplateStrategy fixedTemplate => fixedTemplate.Template,
-                SelectedStrategy selected => selected.Cases.Values[0],
+                CalendarStrategy calendar => calendar.Cases[CalendarCodes.Gregorian],
                 _ => null,
             };
 

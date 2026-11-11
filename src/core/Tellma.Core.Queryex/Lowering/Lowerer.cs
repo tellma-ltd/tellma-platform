@@ -38,8 +38,11 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The slots by what they carry, so equal values share one.</summary>
         private readonly Dictionary<SlotKey, ParameterSlot> _slotIndex = [];
 
-        /// <summary>The statement's values computed once per row and given a name.</summary>
-        private readonly List<ValueBinding> _bindings = [];
+        /// <summary>
+        ///     The statement's one-row sources — values given a name and calendar lookups — in the
+        ///     order they were made.
+        /// </summary>
+        private readonly List<LateralSource> _laterals = [];
 
         /// <summary>The semi-joins' subqueries, in the order they were begun.</summary>
         /// <remarks>
@@ -54,8 +57,17 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The variables by what they look up, so equal lookups share one.</summary>
         private readonly Dictionary<VariableKey, HoistedVariable> _variableIndex = [];
 
-        /// <summary>The bindings something that survived still reads.</summary>
-        private readonly HashSet<ValueBinding> _liveBindings = new(ReferenceEqualityComparer.Instance);
+        /// <summary>The table-calendar calls hoisted so far, so equal calls share one variable.</summary>
+        private readonly List<(TypedCall Call, ComputedVariable Variable)> _calendarVariables = [];
+
+        /// <summary>The lateral sources something that survived still reads.</summary>
+        private readonly HashSet<LateralSource> _liveLaterals = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The scalar lookups that survived, in the order they were reached.</summary>
+        private readonly List<PlanScalarLookup> _liveScalars = [];
+
+        /// <summary>The values computed over operands named once that survived, in the order they were reached.</summary>
+        private readonly List<PlanNamedScalar> _liveNamed = [];
 
         /// <summary>The variables something that survived still reads.</summary>
         private readonly HashSet<HoistedVariable> _liveVariables = new(ReferenceEqualityComparer.Instance);
@@ -75,6 +87,9 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The position of this query among the ones a host executes together.</summary>
         private readonly int _batchOrdinal;
+
+        /// <summary>The schema, which names the month table of each table calendar it maps.</summary>
+        private readonly QueryexSchema? _schema;
 
         /// <summary>The nullity answers for the clause being lowered.</summary>
         private NullityMap _nullity = NullityMap.Empty;
@@ -110,26 +125,32 @@ namespace Tellma.Core.Queryex.Lowering
         /// </remarks>
         private JoinNode? _base;
 
-        /// <summary>Where a value given a name here is collected: the statement's or a subquery's.</summary>
-        private List<ValueBinding> _scopeBindings;
+        /// <summary>
+        ///     Where a one-row source made here is collected: the statement's sequence, a subquery's,
+        ///     or one level of a scalar lookup's.
+        /// </summary>
+        private List<LateralSource> _scope;
 
         /// <summary>Initializes a lowering.</summary>
         /// <param name="root">
         ///     The entity the query reads, or null for a statement that has no row source and so
         ///     lowers nothing that reads a row.
         /// </param>
+        /// <param name="schema">The schema, which names the month tables of its table calendars.</param>
         /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
         /// <param name="budget">The ceilings, shared with binding.</param>
         /// <param name="sink">Where problems are recorded.</param>
         internal Lowerer(
             EntityDescriptor? root,
+            QueryexSchema? schema,
             int batchOrdinal,
             CompilationBudget budget,
             DiagnosticSink sink)
         {
             Root = root is null ? null : new JoinNode(root, null, null, default) { IsReferenced = true };
             _base = Root;
-            _scopeBindings = _bindings;
+            _scope = _laterals;
+            _schema = schema;
             _batchOrdinal = batchOrdinal;
             _budget = budget;
             _sink = sink;
@@ -145,8 +166,8 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The values written to the backend, in the order they were assigned.</summary>
         internal IReadOnlyList<ParameterSlot> Slots => _slots;
 
-        /// <summary>The values computed once per row and given a name.</summary>
-        internal IReadOnlyList<ValueBinding> Bindings => _bindings;
+        /// <summary>The one-row sources applied to each row, in the order they were made.</summary>
+        internal IReadOnlyList<LateralSource> Laterals => _laterals;
 
         /// <summary>The values computed once before the statement runs.</summary>
         internal IReadOnlyList<HoistedVariable> Variables => _variables;
@@ -177,7 +198,7 @@ namespace Tellma.Core.Queryex.Lowering
 
             // Every clause starts at the statement's own root, whatever the last one ended in.
             _base = Root;
-            _scopeBindings = _bindings;
+            _scope = _laterals;
         }
 
         /// <summary>Lowers one expression consumed as a scalar.</summary>
@@ -397,7 +418,7 @@ namespace Tellma.Core.Queryex.Lowering
                 subquery.Joins = Aliased(subquery.Root, ref alias);
             }
 
-            _bindings.RemoveAll(binding => !_liveBindings.Contains(binding));
+            _laterals.RemoveAll(lateral => !_liveLaterals.Contains(lateral));
             _variables.RemoveAll(variable => !_liveVariables.Contains(variable));
             _slots.RemoveAll(slot => !_liveSlots.Contains(slot));
 
@@ -433,24 +454,56 @@ namespace Tellma.Core.Queryex.Lowering
                 _budget.TryConsumeParameter(origin.Span, _sink.Scope(origin.Location));
             }
 
-            for (int index = 0; index < _bindings.Count; index++)
-            {
-                _bindings[index].Alias =
-                    "B" + (index + 1).ToString(CultureInfo.InvariantCulture);
-            }
-
-            // Continuing the statement's numbering, subquery by subquery in pre-order.
-            int binding = _bindings.Count;
+            // Bindings and lookups each have a sequence of their own, numbered in the order they
+            // were made: the statement's first, then subquery by subquery in pre-order.
+            int binding = 0;
+            int lookup = 0;
+            NameLaterals(_laterals, ref binding, ref lookup);
             foreach (PlanSubquery subquery in subqueries)
             {
-                ImmutableArray<ValueBinding> live = [.. subquery.Pending.Where(_liveBindings.Contains)];
-                foreach (ValueBinding named in live)
+                ImmutableArray<LateralSource> live = [.. subquery.Pending.Where(_liveLaterals.Contains)];
+                NameLaterals(live, ref binding, ref lookup);
+                subquery.Laterals = live;
+            }
+
+            // A scalar lookup is a subquery of its own, so its names restart with each one: its
+            // levels are M, M2, and so on, outermost first, and the values named inside it are V1,
+            // V2, and so on, in the order they are written — the innermost level's first, since each
+            // level's source follows the levels nested in its select list. A family of their own
+            // keeps them from shadowing a binding of the statement that an operand reads.
+            foreach (PlanScalarLookup scalar in _liveScalars)
+            {
+                for (int level = 0; level < scalar.Levels.Length; level++)
                 {
-                    binding++;
-                    named.Alias = "B" + binding.ToString(CultureInfo.InvariantCulture);
+                    scalar.Levels[level].Alias = level == 0
+                        ? ScalarLevelAlias
+                        : ScalarLevelAlias + (level + 1).ToString(CultureInfo.InvariantCulture);
                 }
 
-                subquery.Bindings = live;
+                int value = 0;
+                for (int level = scalar.Levels.Length - 1; level >= 0; level--)
+                {
+                    CalendarLookup current = scalar.Levels[level];
+                    current.Bindings.RemoveAll(named => !_liveLaterals.Contains(named));
+                    foreach (ValueBinding named in current.Bindings)
+                    {
+                        named.Alias = ScalarValueAlias + (++value).ToString(CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+
+            // A value computed over named operands is a subquery of its own too, and its operands are
+            // N1, N2, and so on, restarting with each one. Nothing inside one reads another's names —
+            // a nested one sits inside an operand or a single-use position and reads only its own —
+            // so a nested one shadowing its container's names is harmless; their own family keeps
+            // them clear of the scalar lookups' values and of the statement's bindings.
+            foreach (PlanNamedScalar named in _liveNamed)
+            {
+                for (int index = 0; index < named.Bindings.Length; index++)
+                {
+                    named.Bindings[index].Alias =
+                        NamedOperandAlias + (index + 1).ToString(CultureInfo.InvariantCulture);
+                }
             }
 
             for (int index = 0; index < _variables.Count; index++)
@@ -466,6 +519,29 @@ namespace Tellma.Core.Queryex.Lowering
             }
 
             return joins.ToImmutable();
+        }
+
+        /// <summary>The alias of a scalar lookup's outermost level; the deeper ones are numbered from 2.</summary>
+        private const string ScalarLevelAlias = "M";
+
+        /// <summary>The alias family of the values named inside a scalar lookup.</summary>
+        private const string ScalarValueAlias = "V";
+
+        /// <summary>The alias family of the operands named inside a value computed over them.</summary>
+        private const string NamedOperandAlias = "N";
+
+        /// <summary>Names one sequence of surviving lateral sources.</summary>
+        /// <param name="laterals">The sources, in the order they were made.</param>
+        /// <param name="binding">The last binding number used, advanced past the ones assigned here.</param>
+        /// <param name="lookup">The last lookup number used, advanced past the ones assigned here.</param>
+        private static void NameLaterals(IEnumerable<LateralSource> laterals, ref int binding, ref int lookup)
+        {
+            foreach (LateralSource lateral in laterals)
+            {
+                lateral.Alias = lateral is CalendarLookup
+                    ? "C" + (++lookup).ToString(CultureInfo.InvariantCulture)
+                    : "B" + (++binding).ToString(CultureInfo.InvariantCulture);
+            }
         }
 
         /// <summary>Counts one surviving join toward the ceiling.</summary>
@@ -559,11 +635,38 @@ namespace Tellma.Core.Queryex.Lowering
 
                         // What a binding computes is read too, transitively: a binding referenced
                         // from a surviving fragment keeps alive whatever it names.
-                        if (_liveBindings.Add(binding.Binding))
+                        if (_liveLaterals.Add(binding.Binding))
                         {
                             pending.Push(binding.Binding.Value);
                         }
 
+                        break;
+
+                    case PlanLookupColumn column:
+
+                        // The same for a lookup: whatever it is sought by — a date, or another
+                        // lookup's year and month — is read whenever a column of it is.
+                        if (_liveLaterals.Add(column.Lookup))
+                        {
+                            foreach (PlanNode read in column.Lookup.Reads)
+                            {
+                                pending.Push(read);
+                            }
+                        }
+
+                        break;
+
+                    case PlanScalarLookup scalar:
+
+                        // A level's bindings are named with the statement's, once it is known which
+                        // levels survived; the level reads them through its own references.
+                        _liveScalars.Add(scalar);
+                        break;
+
+                    case PlanNamedScalar named:
+
+                        // Its operands are reached as children, and named with the statement's.
+                        _liveNamed.Add(named);
                         break;
 
                     case PlanExists exists:
@@ -575,9 +678,10 @@ namespace Tellma.Core.Queryex.Lowering
                     case PlanVariableRef variable:
                         if (_liveVariables.Add(variable.Variable))
                         {
-                            // A variable is computed against its own table rather than a join, so
-                            // only the key it looks up can reach back into the join tree.
-                            pending.Push(variable.Variable.Key);
+                            // A variable is computed before the statement rather than against a
+                            // join, so only what its initializer reads — a key, or a value that
+                            // reads no row — can reach anything else the statement holds.
+                            pending.Push(variable.Variable.Reads);
                         }
 
                         break;

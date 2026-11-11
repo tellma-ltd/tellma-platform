@@ -82,16 +82,21 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-11 09:05 | 50 | 91 | 2026-11-17 20:00 | Fable rise slowed (90 → 91 in 75 min). PC-014 R2 0/0/0 → integrate (D-047); PC-067 integrated f391cbd (fast-forward, CI 42988536575 pending); ready: PC-020, PC-045, PC-059 → PC-020 launched in pc-3 (Opus) |
 | 2026-11-11 10:44 | 9 | 3 | 2026-11-17 20:00 | **Fable reset** detected: before U ≈ 51 / Fable 91 (last read 50/91), after 9/3; U dropped ≈ 42, about the Fable spend (≈ 92 Fable pts at ΔFable/ΔU ≈ 2 → ≈ 46 U pts). ρ window restarted (U 9). Normal process from here, including Reviewer 2 on fable for security-bound checkpoints. PC-014, PC-019, PC-067 done since 07:51 (25 done) |
 | 2026-11-11 12:03 | 12 | 6 | 2026-11-17 20:00 | PC-010 done (CI 43015763392 green; 27 done). PC-025 done. PC-012 (last Phase 1 checkpoint; deps now met) is next at the first free heavy slot, in pc-f, ahead of PC-032/PC-059; PC-B01 starts when PC-012 is done. In flight: PC-027, PC-069 impl; PC-022, PC-020 R1; PC-045 fix1+integrate |
+| 2026-11-11 14:50 | | | 2026-11-17 20:00 | CI red on 9299989 (PC-045): Windows lint-rule scope test → stop the line, PC-F19 in pc-f (over the D-028 cap); PC-020 holding. PC-022 done after a flaky rerun (PC-F18 opened) |
+| 2026-11-11 16:00 | | | 2026-11-17 20:00 | Line still stopped: d704d03 code-green, Chromium apt install red ×3 on a runner mirror outage → PC-F20 (5 heavy: PC-012, PC-032, PC-027, PC-069, PC-F20); 3rd re-run in parallel |
+| 2026-11-11 16:24 | | | 2026-11-17 20:00 | Line green: CI 43056016205 on 67fa80d (PC-F20). PC-045, PC-F19 done; PC-069 cleared to push; PC-020 integrate queued behind the D-028 cap |
+| 2026-11-11 17:40 | 22 | 8 | 2026-11-17 20:00 | ΔU 10 since 12:03 over ~6 h (≈1.7/h) with 5 heavy agents; Opus-heavy (Fable +2). 29 done; in flight PC-012 fix1, PC-027 fix2+int, PC-069 fix2+int, PC-020 int, PC-032 r1 |
+| 2026-11-11 21:31 | | | 2026-11-17 20:00 | PC-012 (last Phase 1 checkpoint) integrated 7db93ca, CI 43103329956 pending → PC-B01 batch review on green, in the next free checkpoint slot (pc-3 after PC-020 lands). PC-028 launched in pc-2; ready T1: PC-029, PC-048, PC-071 |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-027 | pc-1 | pc/PC-027 | impl | impl-PC-027 / a7f93ca1f45aaceb9 (Opus inherit) | | 2026-11-11 11:55 |
-| PC-012 | pc-2 | pc/PC-012 | impl | impl-PC-012 / a4f0dedb36598b163 (Opus inherit) |  | 2026-11-11 13:15 |
-| PC-045 | pc-4 | pc/PC-045 | fix1 + integrate (resumed; R1 0/2/1: type-to-edit takes Alt/Ctrl+Alt shortcuts; @perf probe lands quarantined → PC-F17; ./grid at its 2nd raise) | impl-PC-045 / a3e522bc6fccada4c (Opus inherit) | R1 a0452f389a64d26da (Opus inherit, high) | 2026-11-11 10:05 |
-| PC-069 | pc-f2 | pc/PC-069 | impl | impl-PC-069 / a4f7a3b1bb1140176 (Opus inherit) | | 2026-11-11 11:05 |
-| PC-020 | pc-3 | pc/PC-020 | fix1 + integrate (resumed; R1 0/3/3: RTL counter corner, badge glyph clipping, 7 budget raises 8 → 15.5 KB lack savings (ruled: take savings, re-measure, report sizes for a DECISIONS entry)) | impl-PC-020 / a61a08d03618812fe (Opus inherit) | R1 acb51d47533b06a0e (Opus inherit, high) | 2026-11-11 09:05 |
+| PC-059 | pc-1 | pc/PC-059 | impl | impl-PC-059 / abdf31b812d513607 (Opus inherit) |  | 2026-11-11 19:3x |
+| PC-028 | pc-2 | pc/PC-028 | impl | impl-PC-028 / aef9c5db3086a49c4 (Opus inherit, xhigh) |  | 2026-11-11 21:31 |
+| PC-B01 | pc-f | pc/PC-B01 | batch (Phase 1: PC-000…PC-014 at 7db93ca; Fable finders ×3, Opus fixer; D-051) | workflow |  | 2026-11-11 21:37 |
+| PC-032 | pc-4 | pc/PC-032 | fix2 + integrate (resumed; R2 0/1/5: compressed index.html served without CSP and security headers; malformed tenant segment → 500; Hub group can host writes; ShortCircuit escapes auth; SPA fallback logs /index.html; completion log lacks tenant fields) | impl-PC-032 / abc6b91c8d7cce2da (Opus inherit) | r2-PC-032 / a8b66f3d9e1d39062 (fable, high) | 2026-11-11 14:36 |
+| PC-020 | pc-3 | pc/PC-020 | integrate (resumed 16:3x: re-merge, gates, push) | impl-PC-020 / a61a08d03618812fe (Opus inherit) | R1 acb51d47533b06a0e (Opus inherit, high) | 2026-11-11 09:05 |
 
 ## Fix items
 
@@ -113,6 +118,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F15 | CI red on 09ab023 (build-test ubuntu-latest, unit): FileSystemBlobStoreTests.Objects_land_under_the_tenant_kind_and_fan_out_directories — BlobStoreException wrapping FileNotFoundException on <root>/t7/.tmp/<guid>.part (the tenant's .tmp directory vanished between create and open?); not in PC-013's code; 88f13fa and 739d09c were green | todo (flaky, not stop-the-line: the failed job passed on rerun, CI 42957255864 attempt 2; branch pc/PC-F15 prepared in pc-f at 09ab023) | | | possible real race in FileSystemBlobStore temp handling; fix when a slot frees |
 | PC-F16 | identity path base: EmailCode.cshtml.cs falls back to literal /Identity/Account/Login and EndSessionController redirects to literal /Identity/Account/LoggedOut, both missing the in-proc /id path base (pre-existing, found by PC-014); plus the passkey E2E helper's unconditional click after a 5 s wait | todo (low; Opus) | | | from PC-014 impl |
 | PC-F17 | grid scroll budget: the nightly @perf scroll probe (no long task > 50 ms) fails on the flat grid (46-48 long tasks up to 94 ms) and on the 21,000-row tree (2-18 long tasks of 52-132 ms; tm-icon ≈ 10% of scroll CPU); lands @quarantine with PC-045 | todo (Opus; before GA) | | | from PC-045 R1 |
+| PC-F18 | client test infra under parallel slot load: (a) tm-grid-clipboard.spec.ts "menu Paste…" waits with a turn-capped `eventually` (20 turns ≈ 100 ms) that races a real Blob.text() on loaded CI (red on ef67f47) → make `eventually` deadline-based (≈ 2 s) or resolve the mock's text() at once; (b) the real-clipboard e2e lock lives in the OS temp dir shared by every slot and its wait counts against the 60 s test timeout → per-slot lock path or exclude the wait | impl (2026-11-11 18:1x), pc-f2, fix-PC-F18 / a91a89a49cb025f3e (Opus) |  |  | from PC-045 integrate |
+| PC-F19 | CI red on 9299989 (client-windows lint:test): tools/tests/no-platform-sniffing.spec.mts scope test "applies to the library and module packages, specs included" expected +0 to be 1 on Windows (rule added by PC-045); Linux jobs failed on an Ubuntu mirror DNS outage | done (d704d03; green at 67fa80d, CI 43056016205): code jobs green; Install Chromium (identity-e2e, client) red three times on a runner Ubuntu-mirror DNS outage (15:59); 3rd re-run red too; PC-F20 opened): the scope test, not the rule, was wrong; typescript-eslint under CI=true lints typed paths from disk, ignoring lintText → test opts out with disallowAutomaticSingleRunInference; helper fails on fatal parse messages | d704d03 |  | stop the line; PC-020 holds its push |
+| PC-F20 | CI red three times on d704d03 with every code job green: Install Chromium (identity-e2e, client; playwright --with-deps) fails when runners cannot resolve the Ubuntu apt mirrors | done (2b3377b, CI 43077273546 green; the sudo path ran on a hosted runner, mirror up): R1 0/1/1 fixed in e9f7c7a (per-attempt limit runs as root via sudo -n timeout; sudo -n preflight, no password hang). First version 67fa80d green on CI 43056016205 | 67fa80d, e9f7c7a, 2b3377b (pc) | 1.74M (impl+fix 1.11, r1 0.63) | stop the line (infra); may push to platform-core |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -130,6 +138,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Spec 0017 to be brought in line with PC-F08: host non-dumpable and debugger pipes removed on Linux once a worker starts; worker setsid/non-dumpable and refused signal/terminal syscalls; BlobPdfWorkerPtraceUnrestricted's new meaning; hosting guidance (unprivileged account with nothing else under it, run as a service, CAP_SYS_PTRACE only where crash dumps are wanted; D-043); Tellma:Blobs:PdfWorkerConcurrency (§1.3/§3.5), the PDF-thumbnail host rule (Linux glibc only; Windows/macOS Development only; musl never), log events BlobPdfThumbnailsDisabled and BlobPdfWorkerPtraceUnrestricted (§10.2) | PC-F08 fix1, D-040 |
 | Staging: run dotnet-dump, dotnet-counters, dotnet-trace and a managed debugger against a Linux host after a PDF worker has started, to confirm PC-F08's measured diagnostics costs | PC-F08 fix2, D-043 |
 | Spec 0010 §C.11: ./menu ceiling 8.5 KB (was 7; D-042); §C.10: group dividers drawn above a group whenever a non-separator entry precedes it; one Escape entry per menu that collapses an expanded submenu or closes the menu, replacing "each level pushes its own entry" (D-044) | PC-041, D-042 |
+| Spec 0012 §5.4 (batch read dedup): a read repeated after a declared write must not reuse the earlier handle; built as a write epoch that clears the dedup cache (PC-027 review 2). Also §TransactionMode.Explicit: no hook for the pre-commit C# decision the spec cites | PC-027 |
+| Spec 0010 §F examples 1–2 ('uq' lookup by date): EndDate checked outside the TOP (1) seek; hoisted 'uq' variables get OPTION (RECOMPILE) as a CompiledQuery.Recompile flag, host-bound parameter is the faster alternative; spec 0012's composers must merge the hint into their one OPTION clause, and its three IF guards that embed Body must assign under the hint first (D-050) | PC-012 |
+| Spec 0012 §5.2 vs analyzer TELLMA0003: the analyzer accepts nameof holes, but §5.2 binds every non-SqlIdentifier scalar as a parameter, so a nameof hole renders as @tb{b}_p{n}, never an identifier; ruled at R1: column names via SqlIdentifier(nameof(...)), the analyzer refuses a bare nameof hole; §12.3 should say so | PC-027 impl, R1 |
+| Spec 0024 §4.2 (D-048): say the boot script's 3 KB gzip covers code + English, +0.4 KB per further language; budget covers (≈3.05 KB with English strings, ≈3.37 KB with Arabic, ≈3.70 KB with Amharic) | PC-069 impl |
 | Spec 0023: TmRelativeTime's wording input is `textStyle` (Angular never delivers a value to an input named `style`); counter.overflow receives {max} pre-formatted; §1 budgets for the seven indicator entry points are below the built sizes (budgetNotes) | PC-020 impl |
 | Spec 0008 Appendix A: name each Queryex diagnostic's message arguments (engine raises QX3101 with two argument shapes; QX3005 carries @index); count-type problem details need expected/actual/maximum carried by the exceptions | PC-022 impl |
 | Spec 0010 §A.10: the return to the authorization endpoint re-applies the request's language, but on consent the language cookie outranks a pushed (PAR) request's ui_locales (PC-014 deviation 5; D-047) | PC-014 R2 |
@@ -143,6 +155,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| (lesson) client tooling tests that lint sample text through a typed-linted path must set disallowAutomaticSingleRunInference, or they pass locally and fail under CI=true | 2026-11-11 | consider a shared ESLint helper for tooling tests (PC-F19) |
+| client core-ui tm-grid-clipboard.spec.ts "menu Paste reads the async clipboard and drives the same ladder" (CI ef67f47: expected 'Alpha' to be 'MenuPasted'; no client change since the previous green sha) | 2026-11-11 | timing-dependent (turn-capped wait vs real Blob read); PC-F18 |
 | client grid @perf scroll probe (nightly; long tasks > 50 ms on flat grid and tree) | 2026-11-11 | @quarantine; PC-F17 |
 | dotnet Tellma.Core.Email.Tests host failed to launch in a solution-wide unit run under load (xUnit "Test process did not return valid JSON", 0 tests run; passed 64/5-skipped alone; PC-010 integrate) | 2026-11-11 | watch |
 | dotnet Tellma.Identity.E2E InProcPasskeyTests.Register_a_passkey_then_sign_in_with_it_under_the_path_base (PasskeyCeremonies.RegisterThenSignInAsync waits 5 s for the conditional ceremony, then clicks the passkey button unconditionally; Windows under load, PC-014 impl) | 2026-11-11 | watch; fix with PC-F16 |
@@ -197,7 +211,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-009 | 0010-a3 | 1 | done | 42c5e6a, 372c259, 00e104c, 8fc45b6, 3ec00db, c9d40fc (pc) | 31.38M | CI 42601509854 red: identity-e2e consent screen → PC-F12; done with PC-F12 at f2b1591, CI 42608310703 green; 13 deviations; D-034 |
 | PC-010 | 0010-f3 | 1 | done | 36c28a9, 09fffb8, 713ef92, 63c64cc (pc) | 35.89M (impl+fix+int 30.29 fable, r1 2.01, r2 3.59 Opus xhigh) | CI 43015763392 green; Email.Tests host failed to launch once in the merged-tree unit run (xUnit "did not return valid JSON", load), passed alone |
 | PC-011 | 0010-d1 | 1 | done | d35f4fc, 672b257, 05cd337 (pc) | 20.20M | ./popover ceiling 4→4.5 KB under D-031 | | 9 deviations; budgets: popover 9 B, grid 3 B, image 53 B left (D-031) |
-| PC-012 | 0010-f5 | 1 | impl |  |  |  |
+| PC-012 | 0010-f5 | 1 | done | 3737de4, f756a00, ba2fefa, 7db93ca (pc) | 27.29M (impl+fix+int 21.32 Opus, r1 2.75, r2 3.22) | D-050: end check outside the seek; OPTION (RECOMPILE) on hoisted uq variables (fix1); CI 43103329956 green; 1 permission block (force-with-lease push refused; retried plain) notified |
 | PC-013 | 0010-d2 | 1 | done | 4925846, 2a90ae2, 09ab023 (pc) | 21.47M (impl 12.64, r1 4.92, fix+int ≈ 3.9+; fable) | CI 42957255864 red on attempt 1 (FileSystemBlobStoreTests, flaky, PC-F15), green on rerun; integrated 09ab023 (CI 42957255864 red: ubuntu unit FileSystemBlobStoreTests, PC-F15; failed job rerun requested; fix1 2a90ae2; R1 0/1/3; impl 4925846; 16 deviations, see reviews/PC-013.md; budgets ./l10n 8→10, ./grid 38→38.5 under D-031) |
 | PC-014 | 0010-a5 | 1 | done | 5d356b3, eebab50, 5bf6602, fc941ca (pc) | 20.99M (impl+fix+int 17.44 fable, r1 1.16, r2 2.39 Opus xhigh) | CI 42999471991 green; passkey E2E helper race and the two un-prefixed identity paths stay with PC-F16 |
 | PC-015 | SEED | 1 | done | ca3759b, 0ebb7fc, 8d53a8c, 0a35bb9 (pc) | 35.86M | red only from the PC-008 CSP leak; green at c71a009 | 11 deviations; D-020 rulings + planner notes PC-018/032/035/039/090 |
@@ -205,19 +219,19 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
 | PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
 | PC-019 | 0013-b | 1 | done | 6a36b74, 7f9bee7, b22322e, 97330a0 (pc) | 22.56M (impl+fix+int 20.97 fable, r1 1.59 Opus) | CI 42992138704 green (Linux pinned-ICU leg passed); Identity integration suite not re-run after the last two merges (no .NET input changed); Linux leg now requires pinned ICU 78.2 (TELLMA_REQUIRE_PINNED_ICU=1) |
-| PC-020 | 0023-b | 1 | fix1 | 184c8c2 | impl 10.37M (Opus) |  |
+| PC-020 | 0023-b | 1 | fix1 | 184c8c2, 061247d, 0bdf24b (branch) | impl 10.37M (Opus) |  |
 | PC-021 | 0012-b | 1 | done | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | green at 8043295, CI 42947124853; 11 deviations; D-037 |
-| PC-022 | 0013-c | 1 | done | 897f7fc, 3f2b60c, ef67f47 (pc) | 9.10M (impl+fix+int 7.67, r1 1.43; Opus) | CI 43026874374 green; RequestContext.Localization (zone resolved once per process, UTC fallback); ApplyCultures applies LocalizationScope; added Queryex_QX4009 strings |
+| PC-022 | 0013-c | 1 | done | 897f7fc, 3f2b60c, ef67f47 (pc) | 9.10M (impl+fix+int 7.67, r1 1.43; Opus) | CI 43026874374 red (client unit: tm-grid-clipboard.spec.ts menu Paste, expected 'Alpha' to be 'MenuPasted'; no client change since green 63c64cc) → re-run green (attempt 2); 364bcc2 green; RequestContext.Localization (zone resolved once per process, UTC fallback); ApplyCultures applies LocalizationScope; added Queryex_QX4009 strings |
 | PC-023 | 0023-c | 1 | todo | | | |
 | PC-024 | 0011-b | 1 | done | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green; 16 deviations; D-036 |
 | PC-025 | 0011-c | 1 | done | ef6a61c, 3c46607, 3db32cd (pc) | 22.05M (impl+fix+int 20.60 fable, r1 1.45 Opus) | CI 43007537552 green |
 | PC-026 | 0023-d | 1 | todo | | | |
-| PC-027 | 0012-c1 | 1 | impl | | | |
-| PC-028 | 0012-c2 | 1 | todo | | | |
+| PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
+| PC-028 | 0012-c2 | 1 | impl |  |  |  |
 | PC-029 | 0014-a | 1 | todo | | | |
 | PC-030 | 0023-e | 1 | todo | | | |
 | PC-031 | 0023-f | 1 | todo | | | |
-| PC-032 | 0011-e | 1 | todo | | | |
+| PC-032 | 0011-e | 1 | fix2 | 521655a, 427c7c1 | impl+fix1 15.67M (Opus), r1 3.42, r2 3.57 (Fable) |  |
 | PC-033 | 0012-d | 1 | todo | | | |
 | PC-034 | 0011-d | 1 | todo | | | |
 | PC-035 | 0021-a | 1 | todo | | | |
@@ -230,7 +244,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | todo | | | |
 | PC-044 | 0013-e | 1 | todo | | | |
-| PC-045 | 0010-c2 | 1 | fix1 | 761c33a | impl 15.28M (Opus) |  |
+| PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | todo | | | |
 | PC-048 | 0010-c3 | 1 | todo | | | |
@@ -244,7 +258,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | todo | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
-| PC-059 | 0010-d3 | 1 | todo | | | |
+| PC-059 | 0010-d3 | 1 | impl |  |  |  |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | todo | | | |
@@ -254,7 +268,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-066 | 0015-c | 1 | todo | | | |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | todo | | | |
-| PC-069 | 0024-c | 1 | impl | | | |
+| PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | todo | | | |
 | PC-071 | 0024-d | 1 | todo | | | |
 | PC-072 | 0015-f | 1 | todo | | | |

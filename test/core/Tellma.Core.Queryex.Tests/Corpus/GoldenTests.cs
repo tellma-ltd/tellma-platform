@@ -56,9 +56,13 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                 string.Join(", ", result.Diagnostics.Select(d => d.Code + "@" + d.Location)));
 
             // The parts a host embeds are exactly the batch, cut where a host needs it cut: the
-            // declarations and their empty line, then the statement with no terminator.
+            // declarations and their empty line, then the statement with no terminator, then the
+            // statement's one hint when it is planned afresh. The hint is never in the body.
             CompiledQuery query = result.Value;
-            Assert.Equal(query.Sql, query.Prologue + query.Body + ";\n");
+            Assert.Equal(
+                query.Sql,
+                query.Prologue + query.Body + (query.Recompile ? "OPTION (RECOMPILE)\n" : string.Empty) + ";\n");
+            Assert.DoesNotContain("OPTION", query.Body, StringComparison.Ordinal);
             Assert.True(query.Prologue.Length == 0 || query.Prologue.EndsWith(";\n\n", StringComparison.Ordinal));
             Assert.StartsWith("SELECT\n", query.Body, StringComparison.Ordinal);
             Assert.EndsWith("\n", query.Body, StringComparison.Ordinal);

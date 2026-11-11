@@ -84,16 +84,16 @@ namespace Tellma.Core.Queryex.Lowering
 
             // The criterion reads the searched rows, where a binding is always at row grain.
             JoinNode outer = Base;
-            List<ValueBinding> savedBindings = _scopeBindings;
+            List<LateralSource> savedScope = _scope;
             bool savedAllowed = _bindingsAllowed;
             _base = subquery.Root;
-            _scopeBindings = subquery.Pending;
+            _scope = subquery.Pending;
             _bindingsAllowed = true;
 
             PlanPredicate inner = LowerPredicate(exists.Inner);
 
             _base = outer;
-            _scopeBindings = savedBindings;
+            _scope = savedScope;
             _bindingsAllowed = savedAllowed;
 
             if (inner is PlanConstantPredicate { Value: false } && _folding)

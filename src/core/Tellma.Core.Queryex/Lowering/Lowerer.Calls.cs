@@ -47,6 +47,15 @@ namespace Tellma.Core.Queryex.Lowering
                 return new PlanValueOfPredicate(call.Span, LowerCallPredicate(call));
             }
 
+            if (strategy is CalendarStrategy calendar
+                && calendar.CalendarOf(call.Selectors) is string code
+                && CalendarCodes.IsTabular(code))
+            {
+                // A calendar counted from the host's month table rather than by arithmetic, which
+                // no pattern can express: it is lowered into lookups on that table instead.
+                return TableCalendarValue(call, calendar, code);
+            }
+
             EmitTemplate? template = strategy.TemplateFor(call.Selectors);
             if (template is null)
             {
@@ -67,13 +76,18 @@ namespace Tellma.Core.Queryex.Lowering
                 return LowerValueAgainst(call.Arguments[taken ? 1 : 2], _hint);
             }
 
-            ImmutableArray<PlanNode> operands = Operands(call, strategy);
-            return new PlanTemplateValue(
+            List<ValueBinding> named = [];
+            ImmutableArray<PlanNode> operands = Operands(call, template, named);
+            var value = new PlanTemplateValue(
                 call.Span,
                 call.Type,
                 ResultOf(template, call.Type, operands),
                 template,
                 operands);
+
+            // An operand the pattern writes more than once, where no lateral binding may name it, is
+            // named inside a scalar subquery of the call's own instead, so it is still written once.
+            return named.Count == 0 ? value : new PlanNamedScalar(call.Span, [.. named], value);
         }
 
         /// <summary>Lowers a call consumed as a truth value.</summary>
@@ -95,7 +109,7 @@ namespace Tellma.Core.Queryex.Lowering
             EmitTemplate? template = strategy.TemplateFor(call.Selectors);
             return template is null
                 ? new PlanConstantPredicate(call.Span, false)
-                : new PlanTemplatePredicate(call.Span, template, Operands(call, strategy));
+                : new PlanTemplatePredicate(call.Span, template, Operands(call, template, named: null));
         }
 
         /// <summary>Lowers a call whose value the host supplies at execution.</summary>
@@ -163,7 +177,19 @@ namespace Tellma.Core.Queryex.Lowering
             _hint = savedHint;
 
             BoundType argumentType = strategy.HasArgument ? call.Arguments[0].Type : BoundType.Numeric;
-            return new PlanAggregate(call.Span, strategy.Kind, argument, condition, argumentType);
+
+            // An aggregation that reads no column carries the root's key, which the writer adds to
+            // it wherever it lands inside a subquery, so the backend still aggregates it over the
+            // statement's rows rather than the subquery's one row.
+            bool readsAColumn = (argument is not null && PlanWalk.ReadsAColumn(argument))
+                || (condition is not null && PlanWalk.ReadsAColumn(condition));
+
+            return new PlanAggregate(call.Span, strategy.Kind, argument, condition, argumentType)
+            {
+                Anchor = readsAColumn || Root is null
+                    ? null
+                    : new PlanColumn(call.Span, Root, Root.Entity.Key, Here(call.Span)),
+            };
         }
 
         /// <summary>Lowers a hierarchy predicate.</summary>
@@ -237,9 +263,20 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>Lowers a call's arguments into the positions its pattern reads them from.</summary>
         /// <param name="call">The bound call.</param>
-        /// <param name="strategy">The strategy.</param>
+        /// <param name="template">The pattern the call is written with.</param>
+        /// <param name="named">
+        ///     Collects the operands that are written more than once where no lateral binding may
+        ///     name them, for the caller to name inside a scalar subquery; null where the caller cannot.
+        /// </param>
         /// <returns>The operands, positional to the pattern's placeholders.</returns>
-        private ImmutableArray<PlanNode> Operands(TypedCall call, EmitStrategy strategy)
+        /// <remarks>
+        ///     How often each argument appears, and how it is consumed, is read off the pattern the
+        ///     call is actually written with rather than off its strategy. The two differ for a
+        ///     function whose calendar argument chooses between patterns, and an operand the chosen
+        ///     pattern writes once must not be given a name only because another calendar's pattern
+        ///     would have written it twice.
+        /// </remarks>
+        private ImmutableArray<PlanNode> Operands(TypedCall call, EmitTemplate template, List<ValueBinding>? named)
         {
             var operands = new PlanNode[call.Arguments.Length + call.Synthetic.Length];
             TypedPath? sibling = ColumnAmong(call.Arguments);
@@ -247,7 +284,7 @@ namespace Tellma.Core.Queryex.Lowering
             for (int index = 0; index < call.Arguments.Length; index++)
             {
                 TypedExpr argument = call.Arguments[index];
-                int uses = UseCountOf(call, strategy, index);
+                int uses = UseCountOf(call, template, index);
                 if (uses == 0)
                 {
                     // A selector chooses the pattern and is used up doing so. Nothing reads this
@@ -257,20 +294,24 @@ namespace Tellma.Core.Queryex.Lowering
                     continue;
                 }
 
-                if (ShapeOf(call, strategy, index) == EmitShape.Predicate)
+                if (ShapeOf(call, template, index) == EmitShape.Predicate)
                 {
                     operands[index] = LowerPredicate(argument);
                     continue;
                 }
 
                 PlanValue value = LowerValueAgainst(argument, HintFor(call, index, sibling));
-                if (uses > 1)
+                if (uses > 1 && !TryShare(ref value) && named is not null)
                 {
-                    // Where a name cannot be given, the argument is written more than once. That is
-                    // reachable only at group grain, where an argument is either an aggregation —
-                    // which the backend computes once however many times it is written — or reads no
-                    // column at all, and costs nothing to repeat.
-                    TryShare(ref value);
+                    // No lateral binding may go here: at group grain, in a constant statement, or in
+                    // a hoisted declaration. Writing the operand once per use instead would multiply
+                    // with every call nested inside it, so it is named for the caller's own scalar
+                    // subquery and the pattern reads it by that name (0008 §12.3, 0010 §F.19). The
+                    // patterns consumed as truth values write each operand once, so their caller
+                    // passes no collection.
+                    var binding = new ValueBinding(value);
+                    named.Add(binding);
+                    value = new PlanBindingRef(value.Span, binding);
                 }
 
                 operands[index] = value;
@@ -296,22 +337,24 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>How often one argument appears in the SQL, variadic tails included.</summary>
         /// <param name="call">The bound call.</param>
-        /// <param name="strategy">The strategy.</param>
+        /// <param name="template">The pattern the call is written with.</param>
         /// <param name="index">The argument position.</param>
-        /// <returns>The count.</returns>
-        private static int UseCountOf(TypedCall call, EmitStrategy strategy, int index)
+        /// <returns>The count; zero for a position the pattern does not mention.</returns>
+        private static int UseCountOf(TypedCall call, EmitTemplate template, int index)
         {
-            return strategy.UseCountOf(Declared(call, index));
+            int declared = Declared(call, index);
+            return declared < template.UseCounts.Length ? template.UseCounts[declared] : 0;
         }
 
         /// <summary>How one argument is consumed, variadic tails included.</summary>
         /// <param name="call">The bound call.</param>
-        /// <param name="strategy">The strategy.</param>
+        /// <param name="template">The pattern the call is written with.</param>
         /// <param name="index">The argument position.</param>
-        /// <returns>The shape.</returns>
-        private static EmitShape ShapeOf(TypedCall call, EmitStrategy strategy, int index)
+        /// <returns>The shape; a scalar for a position the pattern does not mention.</returns>
+        private static EmitShape ShapeOf(TypedCall call, EmitTemplate template, int index)
         {
-            return strategy.ShapeOf(Declared(call, index));
+            int declared = Declared(call, index);
+            return declared < template.ArgumentShapes.Length ? template.ArgumentShapes[declared] : EmitShape.Value;
         }
 
         /// <summary>The column an argument's value will be matched against, when there is one.</summary>

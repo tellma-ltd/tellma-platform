@@ -44,8 +44,9 @@ namespace Tellma.Core.Queryex
         ///     <see cref="Parameters" /> bound. Never string-interpolated further.
         /// </summary>
         /// <remarks>
-        ///     Always <see cref="Prologue" />, then <see cref="Body" />, then a semicolon and a line
-        ///     feed.
+        ///     Always <see cref="Prologue" />, then <see cref="Body" />, then the clause
+        ///     <c>OPTION (RECOMPILE)</c> and a line feed when <see cref="Recompile" /> is true, then a
+        ///     semicolon and a line feed.
         /// </remarks>
         public required string Sql { get; init; }
 
@@ -79,6 +80,26 @@ namespace Tellma.Core.Queryex
         ///     </para>
         /// </remarks>
         public string Body { get; init; } = string.Empty;
+
+        /// <summary>
+        ///     Whether the statement should be planned afresh at each execution.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         True when a filter reads a value that <see cref="Prologue" /> computes, such as a
+        ///         date in a calendar the host's month table defines. Planned once and reused, the
+        ///         statement would be estimated without knowing the value, and a range over a large
+        ///         table may then be read in full.
+        ///     </para>
+        ///     <para>
+        ///         <see cref="Sql" /> already carries the hint. A host that embeds
+        ///         <see cref="Body" /> in its own statement adds <c>RECOMPILE</c> to the one
+        ///         <c>OPTION</c> clause that statement may carry, beside any hint of its own: the
+        ///         backend takes no hint inside a derived table or after a condition, and refuses a
+        ///         second <c>OPTION</c> clause.
+        ///     </para>
+        /// </remarks>
+        public bool Recompile { get; init; }
 
         /// <summary>
         ///     The parameter slots, in the order they were assigned, with the paging slots last.

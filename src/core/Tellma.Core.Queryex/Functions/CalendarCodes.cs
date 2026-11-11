@@ -9,22 +9,52 @@ namespace Tellma.Core.Queryex.Functions
     ///     The calendar a calendar operation counts in.
     /// </summary>
     /// <remarks>
-    ///     A compile-time selector, not a value: it chooses which arithmetic is emitted, and the
-    ///     author's text never reaches the backend. This version implements the Gregorian calendar
-    ///     only; the other two names are reserved so that the language surface is already known and
-    ///     will not have to change when they arrive.
+    ///     <para>
+    ///         A compile-time selector, not a value: it chooses which arithmetic is emitted, and the
+    ///         author's text never reaches the backend as SQL.
+    ///     </para>
+    ///     <para>
+    ///         Two kinds. An algorithmic calendar is inline date arithmetic and needs nothing from
+    ///         the host. A table calendar reads its months from a table the host names through the
+    ///         schema, and is accepted only by a schema that names one.
+    ///     </para>
     /// </remarks>
     internal static class CalendarCodes
     {
         /// <summary>The Gregorian calendar, and the default.</summary>
         internal const string Gregorian = "gc";
 
-        /// <summary>
-        ///     Every code this version accepts. The reserved names — <c>uq</c> for Umm al-Qura and
-        ///     <c>et</c> for the Ethiopian calendar — are deliberately absent, so writing one today
-        ///     is rejected the same way any unknown code is, rather than compiling to the wrong
-        ///     arithmetic.
-        /// </summary>
-        internal static string[] Accepted => [Gregorian];
+        /// <summary>The Ethiopian calendar, Amete Mihret, computed inline.</summary>
+        internal const string Ethiopian = "et";
+
+        /// <summary>The Umm al-Qura calendar, read from the host's month table.</summary>
+        internal const string UmAlQura = "uq";
+
+        /// <summary>Every code a calendar argument can name, whatever the schema.</summary>
+        /// <remarks>
+        ///     A table calendar is in this list too, so that the argument's restriction stays one
+        ///     fixed set; whether the schema maps it is checked beside it, and a code the schema
+        ///     does not map is refused exactly as an unknown one is.
+        /// </remarks>
+        internal static string[] Known => [Gregorian, Ethiopian, UmAlQura];
+
+        /// <summary>The calendars whose months come from a host table.</summary>
+        internal static string[] Tabular => [UmAlQura];
+
+        /// <summary>Whether a code names a calendar whose months come from a host table.</summary>
+        /// <param name="code">The code, as written.</param>
+        /// <returns>True for a table calendar.</returns>
+        internal static bool IsTabular(string? code)
+        {
+            return code is not null && string.Equals(code, UmAlQura, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The codes a calendar argument accepts against one schema.</summary>
+        /// <param name="schema">The schema, or null where there is none.</param>
+        /// <returns>The algorithmic codes, and every table calendar the schema maps.</returns>
+        internal static IEnumerable<string> AcceptedBy(QueryexSchema? schema)
+        {
+            return Known.Where(code => !IsTabular(code) || schema?.CalendarSource(code) is not null);
+        }
     }
 }
