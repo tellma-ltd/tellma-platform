@@ -41,6 +41,7 @@ namespace Tellma.Core.Localization
         /// <summary>The keys and cultures already reported as malformed.</summary>
         private readonly ConcurrentDictionary<(string BaseName, string Key, string Culture), byte> _reported = new();
 
+        /// <summary>Where a malformed message is reported.</summary>
         private readonly ILogger _logger;
 
         /// <summary>Creates the renderer.</summary>

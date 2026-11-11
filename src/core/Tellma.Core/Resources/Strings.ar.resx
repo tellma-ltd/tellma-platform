@@ -621,6 +621,9 @@
   <data name="Queryex_QX4008" xml:space="preserve">
     <value>مصطلح ترتيب مكرر.</value>
   </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>لا يمكن استخدام المسار {name} هنا: لا يوجد صف لقراءته منه.</value>
+  </data>
   <data name="Queryex_QX5001" xml:space="preserve">
     <value>التعبير أطول من {limit} حرفًا.</value>
   </data>

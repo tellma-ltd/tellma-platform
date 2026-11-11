@@ -621,6 +621,9 @@
   <data name="Queryex_QX4008" xml:space="preserve">
     <value>Duplicate ordering term.</value>
   </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>The path {name} can’t be used here: there’s no row to read it from.</value>
+  </data>
   <data name="Queryex_QX5001" xml:space="preserve">
     <value>The expression is longer than {limit} characters.</value>
   </data>

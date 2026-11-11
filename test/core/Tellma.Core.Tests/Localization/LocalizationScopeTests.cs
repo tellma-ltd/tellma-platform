@@ -116,7 +116,7 @@ namespace Tellma.Core.Tests.Localization
                 () =>
                 {
                     Assert.Null(LocalizationScope.Request);
-                    LocalizationScope.ApplyRequest(Arabic);
+                    _ = LocalizationScope.ApplyRequest(Arabic);
 
                     // Applying the request opens no scope.
                     Assert.Same(Arabic, LocalizationScope.Request);
@@ -134,10 +134,50 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Fact]
-        public void Null_contexts_are_refused()
+        public async Task Undoing_a_request_localization_restores_the_one_it_replaced_once()
+        {
+            await Task.Run(
+                () =>
+                {
+                    // A worker running two units on one flow: the second applies nothing of its own.
+                    IDisposable first = LocalizationScope.ApplyRequest(English);
+                    IDisposable second = LocalizationScope.ApplyRequest(Arabic);
+                    Assert.Same(Arabic, LocalizationScope.Request);
+
+                    second.Dispose();
+                    Assert.Same(English, LocalizationScope.Request);
+
+                    // A second disposal does not undo the first application as well.
+                    second.Dispose();
+                    Assert.Same(English, LocalizationScope.Request);
+
+                    first.Dispose();
+                    Assert.Null(LocalizationScope.Request);
+                },
+                TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public async Task Applying_no_request_localization_clears_it_until_undone()
+        {
+            await Task.Run(
+                () =>
+                {
+                    _ = LocalizationScope.ApplyRequest(Arabic);
+                    using (LocalizationScope.ApplyRequest(null))
+                    {
+                        Assert.Null(LocalizationScope.Request);
+                    }
+
+                    Assert.Same(Arabic, LocalizationScope.Request);
+                },
+                TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public void A_null_scope_is_refused()
         {
             _ = Assert.Throws<ArgumentNullException>(() => LocalizationScope.Enter(null!));
-            _ = Assert.Throws<ArgumentNullException>(() => LocalizationScope.ApplyRequest(null!));
         }
     }
 }

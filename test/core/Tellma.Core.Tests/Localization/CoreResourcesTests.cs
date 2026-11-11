@@ -40,15 +40,31 @@ namespace Tellma.Core.Tests.Localization
         public void Every_value_is_a_well_formed_icu_message(string culture)
         {
             CultureInfo info = NegotiatedCultures.Get(culture.Length == 0 ? "en" : culture, culture switch { "ar" => "SA", "am" => "ET", _ => "GB" });
-            MessageFormatter formatter = new(useCache: false, culture: info);
+            MessageFormatter formatter = ProductionFormatter(info);
 
             Assert.All(Entries(culture), entry =>
             {
                 // An ASCII apostrophe starts an ICU quote; the resources write the typographic one.
                 Assert.DoesNotContain('\'', entry.Value);
-                Exception? failure = Record.Exception(() => formatter.FormatMessage(entry.Value, new AnyArgument()));
+                Exception? failure = Record.Exception(() => formatter.FormatMessage(entry.Value, new AnyArgument(entry.Value)));
                 Assert.True(failure is null, $"{entry.Key}: {failure?.Message}");
             });
+        }
+
+        [Theory]
+        [InlineData("{d, date}")]
+        [InlineData("{d, date, short}")]
+        [InlineData("{d, date, medium}")]
+        [InlineData("{d, date, long}")]
+        [InlineData("{d, date, full}")]
+        [InlineData("{t, time, short}")]
+        [InlineData("{count, plural, one {# day} other {# days}} from {d, date, long}")]
+        public void The_audit_accepts_every_date_and_time_style_the_localizer_renders(string pattern)
+        {
+            // The audit formats as the localizer does, so a message with a date is not refused.
+            MessageFormatter formatter = ProductionFormatter(NegotiatedCultures.Get("en", "GB"));
+
+            Assert.NotEmpty(formatter.FormatMessage(pattern, new AnyArgument(pattern)));
         }
 
         [Fact]
@@ -136,10 +152,23 @@ namespace Tellma.Core.Tests.Localization
             return set.Cast<DictionaryEntry>().ToDictionary(static entry => (string)entry.Key, static entry => (string)entry.Value!, StringComparer.Ordinal);
         }
 
+        /// <summary>The formatter the localizer renders with: the calendar-aware date and time hook included.</summary>
+        /// <param name="culture">The culture the formatter formats in.</param>
+        /// <returns>The formatter.</returns>
+        private static MessageFormatter ProductionFormatter(CultureInfo culture)
+        {
+            return new MessageFormatter(useCache: false, culture: culture, customValueFormatter: new CalendarValueFormatter());
+        }
+
         /// <summary>A key: words of letters and digits, joined by underscores.</summary>
         /// <returns>The pattern.</returns>
         [GeneratedRegex(@"^[A-Za-z0-9]+(_[A-Za-z0-9]+)*$", RegexOptions.CultureInvariant)]
         private static partial Regex KeyGrammar();
+
+        /// <summary>A placeholder formatted as a date or a time, capturing its argument's name.</summary>
+        /// <returns>The pattern.</returns>
+        [GeneratedRegex(@"\{\s*(\w+)\s*,\s*(?:date|time)\b", RegexOptions.CultureInvariant)]
+        private static partial Regex DateOrTimePlaceholder();
 
         /// <summary>A diagnostic code constant of the query engine's catalogue.</summary>
         /// <returns>The pattern, capturing the code.</returns>
@@ -147,13 +176,18 @@ namespace Tellma.Core.Tests.Localization
         private static partial Regex DiagnosticCode();
 
         /// <summary>
-        ///     Arguments that name everything: every name a message asks for is the number 3, which
-        ///     every placeholder, plural, number and select of Core's resources formats.
+        ///     Arguments that name everything a message asks for: an instant for a placeholder the
+        ///     message formats as a date or a time, and the number 3 for any other, which every
+        ///     placeholder, plural, number and select of Core's resources formats.
         /// </summary>
-        private sealed class AnyArgument : IReadOnlyDictionary<string, object?>
+        /// <param name="pattern">The message the arguments are for.</param>
+        private sealed class AnyArgument(string pattern) : IReadOnlyDictionary<string, object?>
         {
+            /// <summary>The names the message formats as a date or a time.</summary>
+            private readonly HashSet<string> _instants = [.. DateOrTimePlaceholder().Matches(pattern).Select(static match => match.Groups[1].Value)];
+
             /// <inheritdoc />
-            public object? this[string key] => 3;
+            public object? this[string key] => Sample(key);
 
             /// <inheritdoc />
             public IEnumerable<string> Keys => [];
@@ -173,8 +207,16 @@ namespace Tellma.Core.Tests.Localization
             /// <inheritdoc />
             public bool TryGetValue(string key, [MaybeNullWhen(false)] out object? value)
             {
-                value = 3;
+                value = Sample(key);
                 return true;
+            }
+
+            /// <summary>The sample value of one argument.</summary>
+            /// <param name="key">The argument's name.</param>
+            /// <returns>An instant for a date or time placeholder, else 3.</returns>
+            private object Sample(string key)
+            {
+                return _instants.Contains(key) ? new DateTimeOffset(2026, 3, 2, 22, 30, 0, TimeSpan.Zero) : 3;
             }
 
             /// <inheritdoc />

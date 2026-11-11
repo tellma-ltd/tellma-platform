@@ -27,8 +27,13 @@ namespace Tellma.Core.Localization
         /// <summary>The keys and cultures already reported.</summary>
         private readonly ConcurrentDictionary<(string BaseName, string Key, string Culture), byte> _reported = new();
 
+        /// <summary>The <c>tellma.localization.missing</c> counter.</summary>
         private readonly Counter<long> _missing;
+
+        /// <summary>The language catalogue, which decides whether a culture's language is tagged by its code.</summary>
         private readonly ILanguageCatalog _languages;
+
+        /// <summary>Where a missing key is reported.</summary>
         private readonly ILogger _logger;
 
         /// <summary>Creates the tracker.</summary>

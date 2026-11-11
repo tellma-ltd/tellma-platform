@@ -60,20 +60,51 @@ namespace Tellma.Core.Abstractions.Localization
 
         /// <summary>
         ///     Applies the request's own localization to this flow: the calendar and display zone its
-        ///     text renders in outside every scope. Like the current cultures it is applied with, it
-        ///     flows into what the calling method calls and awaits, never back to that method's caller.
+        ///     text renders in outside every scope, or none with null. Like the current cultures it is
+        ///     applied with, it flows into what the calling method calls and awaits, never back to that
+        ///     method's caller.
         /// </summary>
         /// <remarks>
-        ///     The method that runs the request's work calls this after the request's context is
-        ///     complete, in the same place it sets the current cultures from that context: a tenant
-        ///     front door before it invokes the handler, a background caller before it runs its work.
+        ///     <para>
+        ///         <c>RequestContext.ApplyCultures</c> calls this with the request context's localization,
+        ///         so the method that runs the request's work applies both at once: a tenant front door
+        ///         before it invokes the handler, a background caller before it runs its work.
+        ///     </para>
+        ///     <para>
+        ///         Apply it inside the asynchronous method that runs one unit of work, so it ends with
+        ///         that method. A caller that runs several units on one flow, such as a worker loop,
+        ///         disposes the returned value after each unit, so a unit that applies nothing never
+        ///         renders in the previous unit's calendar and zone.
+        ///     </para>
         /// </remarks>
-        /// <param name="context">The request's negotiated localization.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="context" /> is null.</exception>
-        public static void ApplyRequest(LocalizationContext context)
+        /// <param name="context">The request's negotiated localization; null for none.</param>
+        /// <returns>
+        ///     A value whose disposal restores the request localization this call replaced. Disposing
+        ///     it twice does nothing more.
+        /// </returns>
+        public static IDisposable ApplyRequest(LocalizationContext? context)
         {
-            ArgumentNullException.ThrowIfNull(context);
+            RequestApplication application = new(RequestLocalization.Value);
             RequestLocalization.Value = context;
+            return application;
+        }
+
+        /// <summary>One application of a request's localization, holding the one it replaced.</summary>
+        /// <param name="previous">The request localization that was applied before, or null.</param>
+        private sealed class RequestApplication(LocalizationContext? previous) : IDisposable
+        {
+            /// <summary>Set once the application is undone, so a second disposal changes nothing.</summary>
+            private int _disposed;
+
+            /// <inheritdoc />
+            public void Dispose()
+            {
+                // Like a scope, restored on the flow that applied it.
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    RequestLocalization.Value = previous;
+                }
+            }
         }
 
         /// <summary>One entered scope, linked to the scope it replaced.</summary>

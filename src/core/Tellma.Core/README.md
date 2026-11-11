@@ -256,7 +256,11 @@ on setting them: the current cultures flow into what a method awaits and never b
 so a culture set inside `EnsureAccessAsync`, `CreateScopeAsync` or an initializer is gone before the
 handler or the job runs. The caller applies the completed context in its own method, with
 `RequestContext.ApplyCultures()`: a tenant front door after the guard returns and before it invokes
-the handler, a background caller after the factory returns and before it runs its work.
+the handler, a background caller after the factory returns and before it runs its work. It also
+applies the context's calendar and display zone as the flow's request localization (see
+[String localization](#string-localization)), resolving the zone's IANA name once per process; a
+caller that runs several units on one flow applies each unit's context inside the method that runs
+it.
 
 ### Server-built links
 
@@ -448,7 +452,9 @@ using (LocalizationScope.Enter(recipientContext))
 ```
 
 Outside every scope the culture is the thread's current UI culture, and the calendar and the zone
-are the request's (`LocalizationScope.ApplyRequest`), else Gregorian and UTC. A resource is looked
+are the request's, which `RequestContext.ApplyCultures()` applies (`LocalizationScope.Request`),
+else Gregorian and UTC. `LocalizationScope.ApplyRequest` applies one by hand and returns the value
+that undoes it, or clears it with null. A resource is looked
 up from the culture through its parents to the neutral English set (`ar-SA`, `ar`, English); no
 tenant or distribution override is consulted. A key absent everywhere comes back as the key itself,
 marked `ResourceNotFound`, logged once (`MissingResourceString`) and counted once per key and culture

@@ -340,7 +340,7 @@ namespace Tellma.Core.Tests.Localization
                 Assert.Equal("2 Mar 2026", _messages["Date", new { d = instant }].Value);
 
                 // The request's calendar and zone, in the thread's culture.
-                LocalizationScope.ApplyRequest(new LocalizationContext(NegotiatedCultures.Get("ar", "SA"), Calendar("uq"), PlusThree, 1));
+                _ = LocalizationScope.ApplyRequest(new LocalizationContext(NegotiatedCultures.Get("ar", "SA"), Calendar("uq"), PlusThree, 1));
                 Assert.Equal(Calendar("uq").Format(date.AddDays(1), culture, DateStyle.Medium), _messages["Date", new { d = instant }].Value);
                 Assert.Equal("1 item", _messages["Items", new { count = 1 }].Value);
 
@@ -351,6 +351,37 @@ namespace Tellma.Core.Tests.Localization
                     Assert.Equal(Gregorian.Format(date, NegotiatedCultures.Get("ar", "SA"), DateStyle.Medium), _messages["Date", new { d = instant }].Value);
                 }
             }, TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public async Task A_request_renders_dates_in_its_tenants_calendar_and_its_display_zone_once_its_cultures_are_applied()
+        {
+            // What a front door holds once the access guard returns: an Umm al-Qura tenant, a reader
+            // three hours ahead of UTC.
+            CultureInfo culture = NegotiatedCultures.Get("en", "GB");
+            RequestContext context = RequestContext.Tenantless(Gregorian, DateTimeOffset.UnixEpoch) with
+            {
+                Language = "en",
+                Culture = culture.Name,
+                CultureInfo = culture,
+                CalendarSystem = Calendar("uq"),
+                TimeZone = "Asia/Riyadh",
+            };
+            DateTimeOffset instant = new(2026, 3, 2, 22, 30, 0, TimeSpan.Zero);
+
+            // A flow of its own, as a front door's method is, so what it applies ends with it.
+            string rendered = await Task.Run(
+                () =>
+                {
+                    context.ApplyCultures();
+                    return _messages["Date", new { d = instant }].Value;
+                },
+                TestContext.Current.CancellationToken);
+
+            // Not Gregorian, and not the UTC date: the Umm al-Qura date of 3 March in Riyadh.
+            Assert.Equal(Calendar("uq").Format(new DateOnly(2026, 3, 3), culture, DateStyle.Medium), rendered);
+            Assert.NotEqual(Calendar("uq").Format(new DateOnly(2026, 3, 2), culture, DateStyle.Medium), rendered);
+            Assert.Null(LocalizationScope.Request);
         }
 
         [Fact]
