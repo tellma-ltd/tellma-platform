@@ -63,11 +63,42 @@ namespace Tellma.Core.Composition.Checks
                     problems.Add(new CompositionProblem(
                         Name,
                         $"The distribution offers the language '{language.Code}', but the Tellma.Core satellite assembly for it ({language.Code}/Tellma.Core.resources.dll) is not deployed.",
-                        $"If the distribution's project sets SatelliteResourceLanguages, include '{language.Code}' in it. If the platform ships no '{language.Code}' strings, stop offering the language: remove '{language.Code}' from tellma.Languages(...)."));
+                        IsCatalogued(language.Code) ? CataloguedFix(language.Code) : AddedFix(language.Code)));
                 }
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
+        }
+
+        /// <summary>Whether a language is one the platform's catalogue describes, as opposed to one a distribution added.</summary>
+        /// <param name="code">The language code.</param>
+        /// <returns>True for a catalogue language.</returns>
+        private static bool IsCatalogued(string code)
+        {
+            return LanguageCatalogData.Languages.Any(language => string.Equals(language.Info.Code, code, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>The remedy for a catalogue language: its satellite was trimmed, or the platform has not translated it yet.</summary>
+        /// <param name="code">The language code.</param>
+        /// <returns>The remedy.</returns>
+        private static string CataloguedFix(string code)
+        {
+            return $"If the distribution's project sets SatelliteResourceLanguages, include '{code}' in it. "
+                + $"If the platform ships no '{code}' strings, stop offering the language: remove '{code}' from tellma.Languages(...).";
+        }
+
+        /// <summary>
+        ///     The remedy for a language added with <c>AddLanguage</c>: the platform never ships its
+        ///     strings, so the distribution supplies the satellite itself.
+        /// </summary>
+        /// <param name="code">The language code.</param>
+        /// <returns>The remedy.</returns>
+        private static string AddedFix(string code)
+        {
+            return $"The platform ships no strings for a language added with tellma.AddLanguage(...), so the distribution supplies them: "
+                + $"deploy a satellite assembly of Tellma.Core at {code}/Tellma.Core.resources.dll, beside Tellma.Core.dll, "
+                + $"holding the resource 'Tellma.Core.Resources.Strings.{code}.resources' (a translation of Tellma.Core's Strings.resx). "
+                + $"Until that satellite is deployed, do not offer the language: remove '{code}' from tellma.Languages(...).";
         }
     }
 }

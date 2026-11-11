@@ -39,7 +39,10 @@ namespace Tellma.Core.Tests.Localization
         public void Every_catalogue_pair_carries_exactly_its_pinned_data(string pair)
         {
             // What the culture answers is what the data pins, field by field, whatever this host's
-            // ICU would have said.
+            // ICU would have said. Reading a field cleans it again, so this also holds every
+            // pinned value to being unchanged by its own cleaner: a cleaner that starts removing
+            // or rewriting something the checked-in data carries fails here on every host, not
+            // only where the data can be regenerated.
             var actual = CultureSnapshot.Read(Get(pair));
             CultureSnapshot pinned = CultureDataFile.Pinned.Cultures[pair];
 

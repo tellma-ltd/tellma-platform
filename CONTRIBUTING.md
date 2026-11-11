@@ -89,6 +89,11 @@ dotnet format Tellma.slnx --verify-no-changes
 dotnet test Tellma.slnx --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
 ```
 
+On Linux, CI runs this command with `TELLMA_REQUIRE_PINNED_ICU=1`. The test that regenerates the
+pinned culture data (`eng/culture-data`) needs the ICU release the data came from and skips on any
+other; with the variable set it fails instead, so a CI runner that moves to another ICU release is
+noticed. Leave the variable unset on a development machine.
+
 The integration suites need Docker (they bring up SQL Server with Testcontainers). Run them one
 test project at a time:
 

@@ -62,6 +62,24 @@ namespace Tellma.Core.Tests.Composition.Checks
             Assert.Contains("offers the language 'ar'", problem.Problem, StringComparison.Ordinal);
             Assert.Contains("ar/Tellma.Core.resources.dll", problem.Problem, StringComparison.Ordinal);
             Assert.Contains("SatelliteResourceLanguages", problem.Fix, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddLanguage", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task An_offered_added_language_without_strings_is_told_to_supply_the_satellite()
+        {
+            // The platform never ships an added language's strings, so the remedy is the
+            // satellite the distribution builds, and only then not offering the language.
+            IReadOnlyList<CompositionProblem> problems = await RunAsync(
+                new LanguageDeclaration(["en", "ha"], [new AddedLanguage(HausaInfo, HausaFormats)]), static _ => false);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Equal(Check, problem.Source);
+            Assert.Contains("ha/Tellma.Core.resources.dll", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("tellma.AddLanguage(...)", problem.Fix, StringComparison.Ordinal);
+            Assert.Contains("Tellma.Core.Resources.Strings.ha.resources", problem.Fix, StringComparison.Ordinal);
+            Assert.Contains("remove 'ha' from tellma.Languages(...)", problem.Fix, StringComparison.Ordinal);
+            Assert.DoesNotContain("SatelliteResourceLanguages", problem.Fix, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -16,6 +16,12 @@ namespace Tellma.Core.Tests.Localization
     /// </summary>
     public class CultureDataFileTests
     {
+        /// <summary>
+        ///     The environment variable that, set to <c>1</c>, makes the regeneration test fail
+        ///     instead of skip on a host whose ICU data is not the pinned release.
+        /// </summary>
+        private const string RequirePinnedIcuVariable = "TELLMA_REQUIRE_PINNED_ICU";
+
         [Fact]
         public void The_embedded_data_covers_exactly_the_catalogue_pairs_in_order()
         {
@@ -92,9 +98,19 @@ namespace Tellma.Core.Tests.Localization
             // Only a host with the ICU data the file was generated from can regenerate it; the
             // other hosts hold the cultures to the file instead.
             CultureDataFile pinned = CultureDataFile.Pinned;
-            Assert.SkipUnless(
-                CultureDataFile.HostFingerprint() == pinned.Host,
-                $"This host's ICU data ({CultureDataFile.HostFingerprint()}) is not the release the culture data pins ({pinned.Host}).");
+            string host = CultureDataFile.HostFingerprint();
+            if (host != pinned.Host)
+            {
+                // A run that declares its host to be the pinned release (the Linux leg of the
+                // pull-request build) fails here, so that a runner image moving to another ICU
+                // release is noticed instead of turning this guard into a skip nobody reads.
+                Assert.False(
+                    Environment.GetEnvironmentVariable(RequirePinnedIcuVariable) == "1",
+                    $"{RequirePinnedIcuVariable}=1 says this host carries the ICU release the culture data pins ({pinned.Host}), but its ICU data is {host}. "
+                    + "Regenerate the culture data on this host's release, or run this leg on an image with the pinned one.");
+
+                Assert.Skip($"This host's ICU data ({host}) is not the release the culture data pins ({pinned.Host}).");
+            }
 
             string text = Encoding.UTF8.GetString(EmbeddedBytes()).Replace("\r\n", "\n", StringComparison.Ordinal);
 

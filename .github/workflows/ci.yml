@@ -35,7 +35,13 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
+      # The Linux runner carries the ICU release the pinned culture data was generated from
+      # (eng/culture-data), so the test that regenerates the data must run there. The variable
+      # turns its skip on any other ICU release into a failure: a runner image that moves on is
+      # noticed here rather than silently dropping the guard.
       - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
+        env:
+          TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and

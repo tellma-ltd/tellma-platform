@@ -329,6 +329,14 @@ longer offered still resolves its labels. The declaration is resolved leniently 
 whatever is wrong is skipped and reported by `core.languages`, and the catalogue itself never
 throws at construction, so a build step can compose it to report the problems.
 
+Offering a language other than English takes the platform's strings in it: `core.languages` fails
+startup when the `Tellma.Core` satellite assembly of an offered language is not deployed
+(`<code>/Tellma.Core.resources.dll`). The platform ships the Arabic and Amharic satellites. For a
+language added with `AddLanguage` the platform never ships one, so a distribution that offers the
+language supplies the satellite itself: a translation of `Resources/Strings.resx` built into the
+resource `Tellma.Core.Resources.Strings.<code>.resources`. A language that is described but not
+offered needs no strings.
+
 ### Negotiation
 
 `LocalizationNegotiator` (`ILocalizationNegotiator`) turns a request's headers, the user's

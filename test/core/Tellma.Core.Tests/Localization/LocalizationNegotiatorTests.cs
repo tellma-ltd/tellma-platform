@@ -342,6 +342,31 @@ namespace Tellma.Core.Tests.Localization
             Assert.Empty(_rejected.GetMeasurementSnapshot());
         }
 
+        [Fact]
+        public void A_requested_zone_of_the_set_that_this_host_cannot_resolve_is_passed_over_and_not_counted()
+        {
+            // The set lists a zone that no host's time-zone data holds. The request named a valid
+            // value, so the fault is the host's: the stored zone decides and nothing is counted.
+            LocalizationNegotiator negotiator = Negotiator(["en-GB"], new ZonesOnly("Mars/Phobos", "Europe/London"));
+
+            LocalizationContext context = negotiator.Negotiate(Input(timeZoneHeader: "Mars/Phobos", preferredTimeZone: "Europe/London"));
+
+            Assert.Equal("Europe/London", context.TimeZone.Id);
+            Assert.Empty(_rejected.GetMeasurementSnapshot());
+        }
+
+        [Fact]
+        public void A_stored_zone_of_the_set_that_this_host_cannot_resolve_falls_to_the_tenants()
+        {
+            LocalizationNegotiator negotiator = Negotiator(["en-GB"], new ZonesOnly("Mars/Phobos", "Europe/London"));
+
+            Assert.Equal("Asia/Riyadh", negotiator.Negotiate(Input(preferredTimeZone: "Mars/Phobos")).TimeZone.Id);
+
+            // Requested and stored alike: both are passed over, and the tenant's zone stands.
+            Assert.Equal("Asia/Riyadh", negotiator.Negotiate(Input(timeZoneHeader: "mars/phobos", preferredTimeZone: "Mars/Phobos")).TimeZone.Id);
+            Assert.Empty(_rejected.GetMeasurementSnapshot());
+        }
+
         // --- Across the values ---
 
         [Fact]
@@ -449,13 +474,14 @@ namespace Tellma.Core.Tests.Localization
 
         /// <summary>A negotiator over a distribution's declared languages.</summary>
         /// <param name="codes">The declared codes.</param>
+        /// <param name="valueSets">The value sets; the platform's own when null.</param>
         /// <returns>The negotiator, counting on this test's meter.</returns>
-        private LocalizationNegotiator Negotiator(string[] codes)
+        private LocalizationNegotiator Negotiator(string[] codes, IValueSetRegistry? valueSets = null)
         {
             LanguageCatalog languages = new(new LanguageDeclaration(codes, []));
             CalendarRegistry calendars = Calendars();
             return new LocalizationNegotiator(
-                languages, calendars, new ValueSetRegistry(languages, calendars, []), _metrics.GetRequiredService<IMeterFactory>());
+                languages, calendars, valueSets ?? new ValueSetRegistry(languages, calendars, []), _metrics.GetRequiredService<IMeterFactory>());
         }
 
         /// <summary>A negotiation input; everything absent unless given.</summary>
@@ -520,6 +546,21 @@ namespace Tellma.Core.Tests.Localization
                 ModifiedAt = DateTimeOffset.UnixEpoch,
                 Entries = new Dictionary<string, JsonElement>(),
             };
+        }
+
+        /// <summary>Value sets holding only a time-zone set of chosen ids, so a test can list a zone no host resolves.</summary>
+        /// <param name="zones">The time-zone set's values.</param>
+        private sealed class ZonesOnly(params string[] zones) : IValueSetRegistry
+        {
+            /// <inheritdoc />
+            public IReadOnlyList<ValueSetDescriptor> All { get; } =
+                [new ValueSetDescriptor(CoreValueSets.TimeZone, [.. zones.Select(static zone => new ValueSetEntry(zone, null, zone))])];
+
+            /// <inheritdoc />
+            public ValueSetDescriptor? Find(string name)
+            {
+                return All.FirstOrDefault(set => string.Equals(set.Name, name, StringComparison.Ordinal));
+            }
         }
     }
 }
