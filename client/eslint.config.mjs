@@ -96,6 +96,7 @@ export default defineConfig(
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
       'projects/core/tellma-core-tools/dist/',
+      'projects/core/tellma-core/boot/',
       '**/*.d.ts',
     ],
   },

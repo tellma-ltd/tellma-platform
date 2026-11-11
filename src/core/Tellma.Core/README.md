@@ -451,7 +451,7 @@ carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain stri
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures and the pinned culture data with its reader, writer and generator source. |
-| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`, and the strings of the browser application's boot page (`Boot_*`), which its build copies into the boot script. |
 
 ## Tests
 

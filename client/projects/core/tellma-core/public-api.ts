@@ -102,6 +102,37 @@ export {
   type ɵTmMergeResult,
 } from './src/declarations/tm-merge';
 
+// The app's clock.
+export { TM_NOW } from './src/app/tm-now';
+
+// The boot script's result, and the boot record it keeps.
+export type {
+  TmBootConfig,
+  TmBootLanguage,
+  TmBootPageReason,
+  TmBootResult,
+  TmBootState,
+  TmBootStrings,
+} from './src/boot/tm-boot-types';
+export type { TmBootRecord, TmBootTheme } from './src/state/tm-boot-record';
+
+// The session: the profile cookie, sign-in and step-up, and the guard.
+export { tmParseProfileCookie, type TmProfile } from './src/session/tm-profile';
+export type { TmLoginMark } from './src/session/tm-login-mark';
+export {
+  TmSession,
+  type TmSessionCheck,
+  type TmSignInOptions,
+  type TmStepUpChallenge,
+} from './src/session/tm-session';
+export type { TmSessionState } from './src/session/tm-session-status';
+export { tmSessionGuard } from './src/session/tm-session-guard';
+
+// The launch: the single-membership rule and the automatic-entry mark.
+export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';
+export type { TmMembership, TmTenantCategory, TmTenantState } from './src/launch/tm-membership';
+export { TmLaunch } from './src/launch/tm-launch';
+
 // The client metadata: its chunks, their loaders and the loaded Core chunk.
 export {
   TM_CLIENT_METADATA,
