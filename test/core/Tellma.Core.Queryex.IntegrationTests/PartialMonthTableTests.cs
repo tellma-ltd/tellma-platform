@@ -22,7 +22,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// <param name="server">The server the fixture put the months on.</param>
     [Collection(SqlServerGroup.Name)]
     [Trait("Category", "Integration")]
-    public sealed class PartialMonthTableTests(SqlServerFixture server)
+    public sealed class PartialMonthTableTests(LedgerDatabase server)
     {
         /// <summary>The partial table, filled from the fixture's own.</summary>
         private const string Source = "[core].[CalendarMonthsFromMidYear]";
@@ -37,7 +37,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         private static readonly UmAlQuraCalendar Hijri = new();
 
         /// <summary>The server the fixture put the months on.</summary>
-        private readonly SqlServerFixture _server = server;
+        private readonly LedgerDatabase _server = server;
 
         /// <summary>
         ///     Whole years between two dates, where moving the first into the second's year lands in a

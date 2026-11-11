@@ -1,20 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Using Include="Tellma.Testing.Support.Sql" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
     <!-- The platform-owned catalog migrations, applied to every fresh catalog the suite creates,
          and their design-time factory. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- The data layer's shared SQL fixture: the fixture schema, its migrations, and the host that
+         opens a tenant database over a fixture database. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />
+    <!-- The SQL Server every integration suite shares: a container, or the server TELLMA_TEST_SQL names. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
     <!-- In-memory configuration for the compositions the suite builds over its catalogs. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <!-- FakeLogger and MetricCollector, for the best-effort membership writes. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Testcontainers.MsSql" />
-    <!-- Not used directly. Testcontainers brings SSH.NET in for its remote-Docker support, still at
-         a version NuGet audit flags (GHSA-q939-rpr3-3284, high); this direct reference lifts it to
-         the patched version. Drop it once Testcontainers ships the bump. -->
-    <PackageReference Include="SSH.NET" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>

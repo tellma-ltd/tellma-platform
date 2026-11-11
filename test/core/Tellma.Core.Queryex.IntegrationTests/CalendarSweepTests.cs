@@ -30,7 +30,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// <param name="server">The server the fixture put the days on.</param>
     [Collection(SqlServerGroup.Name)]
     [Trait("Category", "Integration")]
-    public sealed class CalendarSweepTests(SqlServerFixture server)
+    public sealed class CalendarSweepTests(LedgerDatabase server)
     {
         /// <summary>The functions, each with the calendar written where the placeholder is.</summary>
         private static readonly string[] Functions =
@@ -52,7 +52,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         ];
 
         /// <summary>The server the fixture put the days on.</summary>
-        private readonly SqlServerFixture _server = server;
+        private readonly LedgerDatabase _server = server;
 
         /// <summary>The engine under test.</summary>
         private readonly QueryexEngine _engine = new();

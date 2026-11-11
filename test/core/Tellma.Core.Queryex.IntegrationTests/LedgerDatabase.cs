@@ -9,91 +9,39 @@ using System.Text;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Queryex.Testing.Schema;
 using Tellma.Queryex.Testing.Semantics;
-using Testcontainers.MsSql;
 
 namespace Tellma.Core.Queryex.IntegrationTests
 {
     /// <summary>
-    ///     A real server with the fixture's tables and rows on it.
+    ///     The ledger's tables and rows on a real server: a database of its own on the shared SQL
+    ///     Server fixture, created and seeded once for the collection.
     /// </summary>
     /// <remarks>
-    ///     Uses whatever server the environment names, and starts one in a container when it names
-    ///     none. Both paths matter: a developer wants the local instance they already have, and
-    ///     continuous integration wants something it can create and throw away.
+    ///     The server is whatever the environment names, or a container started for the run, so a
+    ///     developer can use the local instance they already have and continuous integration gets
+    ///     something it can create and throw away.
     /// </remarks>
-    public sealed class SqlServerFixture : IAsyncLifetime
+    public sealed class LedgerDatabase : IAsyncLifetime
     {
-        /// <summary>The variable naming a server to use instead of starting one.</summary>
-        private const string ConnectionVariable = "TELLMA_TEST_SQL";
-
-        /// <summary>The database the fixture creates.</summary>
-        private const string DatabaseName = "TellmaQueryexTests";
-
-        /// <summary>
-        ///     The image a container run uses.
-        /// </summary>
-        /// <remarks>
-        ///     Pinned rather than left floating, so that what a differential run compares against is
-        ///     the same backend on every machine and in every build.
-        /// </remarks>
-        private const string Image = "mcr.microsoft.com/mssql/server:2022-latest";
-
-        /// <summary>The container, when one was started.</summary>
-        private MsSqlContainer? _container;
+        /// <summary>The server the database lives on, owned by this fixture.</summary>
+        private readonly SqlServerFixture _server = new();
 
         /// <summary>How to reach the database the fixture created.</summary>
         public string ConnectionString { get; private set; } = string.Empty;
 
-        /// <summary>Starts the server if needed, then creates the tables and puts the rows on them.</summary>
+        /// <summary>Starts the server if needed, then creates the database, its tables and its rows.</summary>
         /// <returns>A task that completes when the fixture is ready.</returns>
         public async ValueTask InitializeAsync()
         {
-            string? named = Environment.GetEnvironmentVariable(ConnectionVariable);
-            string master;
+            await _server.InitializeAsync();
 
-            if (string.IsNullOrWhiteSpace(named))
-            {
-                _container = new MsSqlBuilder(Image).Build();
-                await _container.StartAsync();
-                master = _container.GetConnectionString();
-            }
-            else
-            {
-                master = named;
-            }
-
-            // The database is created in the platform collation, stated rather than left to the
-            // server, whose default on a test server is not the platform's. The text columns carry
-            // their own collation either way; the database's is what literals and variables get.
-            SqlConnectionStringBuilder builder = new(master) { InitialCatalog = "master" };
-            await using (SqlConnection connection = new(builder.ConnectionString))
-            {
-                await connection.OpenAsync();
-                await Execute(connection, "IF DB_ID('" + DatabaseName + "') IS NULL CREATE DATABASE ["
-                    + DatabaseName + "] COLLATE " + DatabaseCollations.Platform + ";");
-            }
-
-            builder.InitialCatalog = DatabaseName;
-            ConnectionString = builder.ConnectionString;
+            // A database of the run's own, created in the platform collation, which the server's
+            // default is not. The text columns carry their own collation either way; the database's
+            // is what literals and variables get.
+            ConnectionString = await _server.CreateDatabaseAsync("queryex", DatabaseCollations.Platform);
 
             await using SqlConnection database = new(ConnectionString);
             await database.OpenAsync();
-
-            // A database left on a named server by an older run keeps the collation it was created
-            // with, and a differential run against it would compare under the wrong one.
-            await using (SqlCommand command = database.CreateCommand())
-            {
-                command.CommandText = "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'));";
-                string? collation = (string?)await command.ExecuteScalarAsync();
-                if (!string.Equals(collation, DatabaseCollations.Platform, StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        $"The test database '{DatabaseName}' uses the collation '{collation}', not the platform's "
-                            + $"'{DatabaseCollations.Platform}'. Drop it; the next run re-creates it.");
-                }
-            }
-
-            await Execute(database, LedgerDdl.Drop());
             await Execute(database, LedgerDdl.Create());
             await Execute(database, LedgerData.Insert());
 
@@ -102,14 +50,11 @@ namespace Tellma.Core.Queryex.IntegrationTests
             await Execute(database, CalendarDays.Create());
         }
 
-        /// <summary>Stops the container, when one was started.</summary>
-        /// <returns>A task that completes when it has stopped.</returns>
+        /// <summary>Drops the database on an existing server, or stops the container.</summary>
+        /// <returns>A task that completes when the server is released.</returns>
         public async ValueTask DisposeAsync()
         {
-            if (_container is not null)
-            {
-                await _container.DisposeAsync();
-            }
+            await _server.DisposeAsync();
         }
 
         /// <summary>Opens a connection to the fixture's database.</summary>
@@ -193,7 +138,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
     /// <summary>The group of tests that share one server.</summary>
     [CollectionDefinition(Name)]
-    public sealed class SqlServerGroup : ICollectionFixture<SqlServerFixture>
+    public sealed class SqlServerGroup : ICollectionFixture<LedgerDatabase>
     {
         /// <summary>The group's name.</summary>
         public const string Name = "SqlServer";
