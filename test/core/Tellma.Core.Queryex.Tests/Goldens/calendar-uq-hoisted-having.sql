@@ -8,6 +8,7 @@ FROM [gl].[Documents] AS [T]
 INNER JOIN [gl].[Segments] AS [P1] ON [P1].[SegmentId] = [T].[SegmentId]
 GROUP BY [P1].[SegmentName]
 HAVING ((@qx0_v1 IS NOT NULL) AND (MAX([T].[PostingDate]) >= @qx0_v1))
+OPTION (RECOMPILE)
 ;
 
 -- parameters

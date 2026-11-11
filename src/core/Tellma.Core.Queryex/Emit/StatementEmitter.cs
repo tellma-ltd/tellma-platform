@@ -26,11 +26,35 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>The text that ends a statement written on its own.</summary>
         internal const string Terminator = ";\n";
 
+        /// <summary>
+        ///     The clause that has the backend plan the statement afresh at each execution, against
+        ///     the values its declarations hold then.
+        /// </summary>
+        internal const string RecompileHint = "OPTION (RECOMPILE)\n";
+
+        /// <summary>Assembles the batch a statement is executed as on its own.</summary>
+        /// <param name="prologue">The declarations the statement depends on.</param>
+        /// <param name="body">The statement, without its terminator.</param>
+        /// <param name="recompile">Whether the statement is planned afresh at each execution.</param>
+        /// <returns>
+        ///     The declarations, the statement, the hint when there is one, and the terminator.
+        /// </returns>
+        /// <remarks>
+        ///     The hint is the statement's own clause and so follows the body rather than sitting in
+        ///     it: a body is embedded as a derived table or behind a condition, where the backend
+        ///     takes no hint, and a host that embeds it writes the one clause its own statement may
+        ///     carry.
+        /// </remarks>
+        internal static string Batch(string prologue, string body, bool recompile)
+        {
+            return prologue + body + (recompile ? RecompileHint : string.Empty) + Terminator;
+        }
+
         /// <summary>Writes one lowered query as SQL.</summary>
         /// <param name="plan">The plan.</param>
         /// <returns>
         ///     The declarations the statement depends on, and the statement without its terminator.
-        ///     The whole batch is the two followed by <see cref="Terminator" />.
+        ///     <see cref="Batch" /> assembles the whole batch from the two.
         /// </returns>
         /// <remarks>
         ///     Written as two parts rather than cut out of one, so a host embedding the statement in

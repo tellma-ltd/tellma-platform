@@ -166,6 +166,26 @@ namespace Tellma.Queryex.Testing.Corpus
                 Select = "Centre.Name, count()",
                 Having = FilterTree.Leaf("year(max(PostingDate), 'uq') = 1446"),
             });
+
+            // In a grouped statement's ordering, which no position refuses.
+            yield return Query("calendar-uq-scalar-order", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, count()",
+                OrderBy = "month(max(PostingDate), 'uq')",
+            });
+
+            // The Ethiopian calendar over aggregations, nested, in a grouped item and in the group
+            // filter: no binding can name an operand at group grain, so each call names the operand
+            // its pattern writes many times in a subquery of its own and writes it once.
+            yield return Query("calendar-et-aggregated", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, startOfMonth(addMonths(max(PostingDate), 1, 'et'), 'et'), count()",
+                Having = FilterTree.Leaf("addMonths(max(PostingDate), 1, 'et') > min(PostingDate)"),
+            });
         }
     }
 }

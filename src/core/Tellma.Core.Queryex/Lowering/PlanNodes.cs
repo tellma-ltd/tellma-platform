@@ -271,6 +271,36 @@ namespace Tellma.Core.Queryex.Lowering
         internal PlanValue Result { get; }
     }
 
+    /// <summary>
+    ///     A value computed over operands named once inside it, as a scalar subquery.
+    /// </summary>
+    /// <remarks>
+    ///     The single-emission form for a pattern that writes an operand more than once where no
+    ///     lateral binding can name it: at group grain, in a constant statement, and in a hoisted
+    ///     declaration. Each operand is a one-row source of the subquery and the pattern reads it by
+    ///     name, so a call nested in another's operand is written once however many times the outer
+    ///     pattern mentions it, and what is emitted grows with the nesting rather than multiplying.
+    /// </remarks>
+    internal sealed class PlanNamedScalar : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call sits in the input.</param>
+        /// <param name="bindings">The operands, each named once, in the order they are written.</param>
+        /// <param name="result">The value computed over the names.</param>
+        internal PlanNamedScalar(QueryexSpan span, ImmutableArray<ValueBinding> bindings, PlanValue result)
+            : base(span, result.Type, result.StoreType)
+        {
+            Bindings = bindings;
+            Result = result;
+        }
+
+        /// <summary>The operands, each named once, in the order they are written.</summary>
+        internal ImmutableArray<ValueBinding> Bindings { get; }
+
+        /// <summary>The value computed over the names.</summary>
+        internal PlanValue Result { get; }
+    }
+
     /// <summary>The absent value, typed.</summary>
     internal sealed class PlanNullValue : PlanValue
     {

@@ -77,11 +77,11 @@ namespace Tellma.Core.Queryex.Pipeline
 
             // Assembled from the two parts, as a query is, so the same identity holds: the batch is
             // the declarations, the statement, and the terminator. Nothing here hoists, so the first
-            // part is empty.
+            // part is empty and the statement is never planned afresh.
             (string prologue, string body) = StatementEmitter.Write(plan);
             return new QueryexResult<CompiledQuery>(new CompiledQuery
             {
-                Sql = prologue + body + StatementEmitter.Terminator,
+                Sql = StatementEmitter.Batch(prologue, body, recompile: false),
                 Prologue = prologue,
                 Body = body,
                 Parameters = StatementEmitter.Parameters(plan.Parameters),

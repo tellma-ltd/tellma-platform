@@ -66,6 +66,9 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The scalar lookups that survived, in the order they were reached.</summary>
         private readonly List<PlanScalarLookup> _liveScalars = [];
 
+        /// <summary>The values computed over operands named once that survived, in the order they were reached.</summary>
+        private readonly List<PlanNamedScalar> _liveNamed = [];
+
         /// <summary>The variables something that survived still reads.</summary>
         private readonly HashSet<HoistedVariable> _liveVariables = new(ReferenceEqualityComparer.Instance);
 
@@ -489,6 +492,20 @@ namespace Tellma.Core.Queryex.Lowering
                 }
             }
 
+            // A value computed over named operands is a subquery of its own too, and its operands are
+            // N1, N2, and so on, restarting with each one. Nothing inside one reads another's names —
+            // a nested one sits inside an operand or a single-use position and reads only its own —
+            // so a nested one shadowing its container's names is harmless; their own family keeps
+            // them clear of the scalar lookups' values and of the statement's bindings.
+            foreach (PlanNamedScalar named in _liveNamed)
+            {
+                for (int index = 0; index < named.Bindings.Length; index++)
+                {
+                    named.Bindings[index].Alias =
+                        NamedOperandAlias + (index + 1).ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
             for (int index = 0; index < _variables.Count; index++)
             {
                 _variables[index].Name =
@@ -509,6 +526,9 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The alias family of the values named inside a scalar lookup.</summary>
         private const string ScalarValueAlias = "V";
+
+        /// <summary>The alias family of the operands named inside a value computed over them.</summary>
+        private const string NamedOperandAlias = "N";
 
         /// <summary>Names one sequence of surviving lateral sources.</summary>
         /// <param name="laterals">The sources, in the order they were made.</param>
@@ -641,6 +661,12 @@ namespace Tellma.Core.Queryex.Lowering
                         // A level's bindings are named with the statement's, once it is known which
                         // levels survived; the level reads them through its own references.
                         _liveScalars.Add(scalar);
+                        break;
+
+                    case PlanNamedScalar named:
+
+                        // Its operands are reached as children, and named with the statement's.
+                        _liveNamed.Add(named);
                         break;
 
                     case PlanExists exists:

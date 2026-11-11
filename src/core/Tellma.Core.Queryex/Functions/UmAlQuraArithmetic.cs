@@ -131,13 +131,21 @@ namespace Tellma.Core.Queryex.Functions
         /// <param name="second">The second date.</param>
         /// <returns>The pattern text.</returns>
         /// <remarks>
-        ///     Written out in full rather than over named parts, as the Gregorian calendar's pattern
-        ///     is: every operand is atomic, so repeating the text repeats no work the backend cannot
-        ///     see is the same.
+        ///     <para>
+        ///         Written out in full rather than over named parts, as the Gregorian calendar's
+        ///         pattern is: every operand is atomic, so repeating the text repeats no work the
+        ///         backend cannot see is the same.
+        ///     </para>
+        ///     <para>
+        ///         A target month the table does not hold leaves the moved date absent, and with it
+        ///         the answer, as for any date beyond the table: neither correction could be decided,
+        ///         and the uncorrected crossing would be off by one whenever one applied.
+        ///     </para>
         /// </remarks>
         private static string CompletedText(string crossed, string moved, string second)
         {
-            return $"({crossed} + CASE WHEN {crossed} > 0 AND {moved} > {second} THEN -1"
+            return $"({crossed} + CASE WHEN {moved} IS NULL THEN NULL"
+                + $" WHEN {crossed} > 0 AND {moved} > {second} THEN -1"
                 + $" WHEN {crossed} < 0 AND {moved} < {second} THEN 1 ELSE 0 END)";
         }
     }

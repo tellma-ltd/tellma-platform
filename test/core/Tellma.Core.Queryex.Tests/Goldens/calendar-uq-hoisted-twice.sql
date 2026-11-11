@@ -5,6 +5,7 @@ SELECT
     (DATEDIFF_BIG(HOUR, @qx0_v0, [T].[PostingDate]) / 24.0) AS [c1]
 FROM [gl].[Documents] AS [T]
 WHERE ((@qx0_v0 IS NOT NULL) AND ([T].[PostingDate] >= @qx0_v0))
+OPTION (RECOMPILE)
 ;
 
 -- parameters

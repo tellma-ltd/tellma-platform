@@ -250,7 +250,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         {
             await using SqlConnection connection = await _server.OpenAsync();
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = prefix + query.Sql.TrimEnd('\n', ';') + ") AS q;";
+            command.CommandText = query.Prologue + prefix + query.Body + ") AS q;";
             SqlBinding.Bind(command, query, InterpreterContext.Fixed);
 
             List<string> values = [];

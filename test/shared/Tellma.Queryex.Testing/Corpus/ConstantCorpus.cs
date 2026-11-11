@@ -168,6 +168,20 @@ namespace Tellma.Queryex.Testing.Corpus
                     .Where(vector => vector.Gregorian >= new DateOnly(2018, 9, 1) && vector.Gregorian < new DateOnly(2020, 9, 1))
                     .Select(vector => EthiopianItem(vector.Gregorian))],
             };
+
+            // Ethiopian calls nested in each other's date operand. With no source there is nowhere
+            // to name an operand ahead of the select list, so each call names its own in a subquery
+            // and writes it once, however often its pattern reads it.
+            yield return new ConstantCase
+            {
+                Id = "constant-calendar-et-nested",
+                Items =
+                [
+                    new ConstantItem("addMonths(addMonths(cast('2020-01-30', 'date'), 1, 'et'), 1, 'et')", QueryexType.QxDate),
+                    new ConstantItem("month(startOfQuarter(addYears(cast('2019-09-11', 'date'), 1, 'et'), 'et'), 'et')", QueryexType.QxNumeric),
+                    new ConstantItem("diffMonths(cast('2020-01-01', 'date'), addMonths(cast('2020-01-01', 'date'), 13, 'et'), 'et')", QueryexType.QxNumeric),
+                ],
+            };
         }
 
         /// <summary>One date's Ethiopian year, month, day and quarter, read as one number.</summary>

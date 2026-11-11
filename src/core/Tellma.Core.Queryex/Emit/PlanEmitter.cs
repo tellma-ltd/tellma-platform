@@ -98,6 +98,10 @@ namespace Tellma.Core.Queryex.Emit
                     _sql.Write(')');
                     return;
 
+                case PlanNamedScalar named:
+                    WriteNamedScalar(named);
+                    return;
+
                 case PlanNullValue absent:
                     WriteAbsent(absent);
                     return;
@@ -444,6 +448,27 @@ namespace Tellma.Core.Queryex.Emit
             _sql.Quoted(binding.Alias);
             _sql.Write(" (");
             _sql.Quoted(BindingColumn);
+            _sql.Write(')');
+        }
+
+        /// <summary>Writes a value computed over operands named once, as a scalar subquery.</summary>
+        /// <param name="named">The value, its operands already named.</param>
+        /// <remarks>
+        ///     The first operand is the subquery's source and each further one is applied to it, so
+        ///     every operand is written exactly once and the pattern reads each by name.
+        /// </remarks>
+        private void WriteNamedScalar(PlanNamedScalar named)
+        {
+            _sql.Write("(SELECT ");
+            Value(named.Result);
+            _sql.Write(" FROM ");
+            BindingSource(named.Bindings[0]);
+            for (int index = 1; index < named.Bindings.Length; index++)
+            {
+                _sql.Write(' ');
+                Binding(named.Bindings[index]);
+            }
+
             _sql.Write(')');
         }
 

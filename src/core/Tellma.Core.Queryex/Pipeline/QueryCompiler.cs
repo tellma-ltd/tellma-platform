@@ -54,13 +54,19 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             // The batch is assembled from the two parts rather than the parts cut out of the batch,
-            // so the identity a host composing the statement relies on holds by construction.
+            // so the identity a host composing the statement relies on holds by construction. A
+            // table-calendar value computed ahead of the statement is opaque to the optimizer unless
+            // the statement is planned against it, which matters only where a predicate reads it
+            // (0010 §F.11). The hint follows the body rather than sitting in it, since a body is
+            // embedded where the backend takes no hint (0010 §F.3).
             (string prologue, string body) = StatementEmitter.Write(plan);
+            bool recompile = PlanWalk.PredicatesReadAComputedVariable(plan);
             return new QueryexResult<CompiledQuery>(new CompiledQuery
             {
-                Sql = prologue + body + StatementEmitter.Terminator,
+                Sql = StatementEmitter.Batch(prologue, body, recompile),
                 Prologue = prologue,
                 Body = body,
+                Recompile = recompile,
                 Parameters = StatementEmitter.Parameters(plan.Parameters),
                 Columns = [.. plan.Select.Select(static item => item.Column)],
             });

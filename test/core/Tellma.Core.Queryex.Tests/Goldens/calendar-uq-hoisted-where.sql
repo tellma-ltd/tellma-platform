@@ -4,6 +4,7 @@ SELECT
     [T].[DocumentId] AS [c0]
 FROM [gl].[Documents] AS [T]
 WHERE ((@qx0_v0 IS NOT NULL) AND ([T].[PostingDate] >= @qx0_v0))
+OPTION (RECOMPILE)
 ;
 
 -- parameters

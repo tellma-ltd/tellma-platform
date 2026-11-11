@@ -76,13 +76,18 @@ namespace Tellma.Core.Queryex.Lowering
                 return LowerValueAgainst(call.Arguments[taken ? 1 : 2], _hint);
             }
 
-            ImmutableArray<PlanNode> operands = Operands(call, template);
-            return new PlanTemplateValue(
+            List<ValueBinding> named = [];
+            ImmutableArray<PlanNode> operands = Operands(call, template, named);
+            var value = new PlanTemplateValue(
                 call.Span,
                 call.Type,
                 ResultOf(template, call.Type, operands),
                 template,
                 operands);
+
+            // An operand the pattern writes more than once, where no lateral binding may name it, is
+            // named inside a scalar subquery of the call's own instead, so it is still written once.
+            return named.Count == 0 ? value : new PlanNamedScalar(call.Span, [.. named], value);
         }
 
         /// <summary>Lowers a call consumed as a truth value.</summary>
@@ -104,7 +109,7 @@ namespace Tellma.Core.Queryex.Lowering
             EmitTemplate? template = strategy.TemplateFor(call.Selectors);
             return template is null
                 ? new PlanConstantPredicate(call.Span, false)
-                : new PlanTemplatePredicate(call.Span, template, Operands(call, template));
+                : new PlanTemplatePredicate(call.Span, template, Operands(call, template, named: null));
         }
 
         /// <summary>Lowers a call whose value the host supplies at execution.</summary>
@@ -247,6 +252,10 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Lowers a call's arguments into the positions its pattern reads them from.</summary>
         /// <param name="call">The bound call.</param>
         /// <param name="template">The pattern the call is written with.</param>
+        /// <param name="named">
+        ///     Collects the operands that are written more than once where no lateral binding may
+        ///     name them, for the caller to name inside a scalar subquery; null where the caller cannot.
+        /// </param>
         /// <returns>The operands, positional to the pattern's placeholders.</returns>
         /// <remarks>
         ///     How often each argument appears, and how it is consumed, is read off the pattern the
@@ -255,7 +264,7 @@ namespace Tellma.Core.Queryex.Lowering
         ///     pattern writes once must not be given a name only because another calendar's pattern
         ///     would have written it twice.
         /// </remarks>
-        private ImmutableArray<PlanNode> Operands(TypedCall call, EmitTemplate template)
+        private ImmutableArray<PlanNode> Operands(TypedCall call, EmitTemplate template, List<ValueBinding>? named)
         {
             var operands = new PlanNode[call.Arguments.Length + call.Synthetic.Length];
             TypedPath? sibling = ColumnAmong(call.Arguments);
@@ -280,13 +289,17 @@ namespace Tellma.Core.Queryex.Lowering
                 }
 
                 PlanValue value = LowerValueAgainst(argument, HintFor(call, index, sibling));
-                if (uses > 1)
+                if (uses > 1 && !TryShare(ref value) && named is not null)
                 {
-                    // Where a name cannot be given, the argument is written more than once. That is
-                    // reachable only at group grain, where an argument is either an aggregation —
-                    // which the backend computes once however many times it is written — or reads no
-                    // column at all, and costs nothing to repeat.
-                    TryShare(ref value);
+                    // No lateral binding may go here: at group grain, in a constant statement, or in
+                    // a hoisted declaration. Writing the operand once per use instead would multiply
+                    // with every call nested inside it, so it is named for the caller's own scalar
+                    // subquery and the pattern reads it by that name (0008 §12.3, 0010 §F.19). The
+                    // patterns consumed as truth values write each operand once, so their caller
+                    // passes no collection.
+                    var binding = new ValueBinding(value);
+                    named.Add(binding);
+                    value = new PlanBindingRef(value.Span, binding);
                 }
 
                 operands[index] = value;

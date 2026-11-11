@@ -41,6 +41,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
 
                 """.ReplaceLineEndings("\n"),
                 query.Body);
+            Assert.False(query.Recompile);
             Assert.Equal(query.Body + ";\n", query.Sql);
         }
 
@@ -66,6 +67,81 @@ namespace Tellma.Core.Queryex.Tests.Emit
             Assert.StartsWith("SELECT\n", query.Body, StringComparison.Ordinal);
             Assert.Contains("@qx0_v0", query.Body, StringComparison.Ordinal);
             Assert.EndsWith("FETCH NEXT @qx0_take ROWS ONLY\n", query.Body, StringComparison.Ordinal);
+
+            // A node's key bounds a range the backend estimates well enough without knowing it, so
+            // a statement whose only declarations are keys is planned once like any other.
+            Assert.False(query.Recompile);
+            Assert.Equal(query.Prologue + query.Body + ";\n", query.Sql);
+        }
+
+        /// <summary>
+        ///     A filter that reads a date computed in the prologue has the statement planned afresh:
+        ///     the hint follows the body, never inside it, so the body stays embeddable.
+        /// </summary>
+        /// <param name="filter">The row filter, or null.</param>
+        /// <param name="having">The group filter, or null.</param>
+        [Theory]
+        [InlineData("PostingDate >= startOfMonth(today(), 'uq')", null)]
+        [InlineData("PostingDate >= startOfMonth(today(), 'uq') or Amount > 0", null)]
+        [InlineData(null, "max(PostingDate) >= startOfYear(today(), 'uq')")]
+        public void AComputedValueInAFilter_IsPlannedAfresh(string? filter, string? having)
+        {
+            CompiledQuery query = Compile(new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = having is not null,
+                Select = having is null ? "Id" : "Centre.Name, count()",
+                Filter = filter is null ? null : FilterTree.Leaf(filter),
+                Having = having is null ? null : FilterTree.Leaf(having),
+            });
+
+            Assert.True(query.Recompile);
+            Assert.StartsWith("DECLARE @qx0_v0 date = ", query.Prologue, StringComparison.Ordinal);
+            Assert.DoesNotContain("OPTION", query.Body, StringComparison.Ordinal);
+            Assert.Equal(query.Prologue + query.Body + "OPTION (RECOMPILE)\n;\n", query.Sql);
+        }
+
+        /// <summary>A filter inside a semi-join is a filter too.</summary>
+        [Fact]
+        public void AComputedValueInASemiJoin_IsPlannedAfresh()
+        {
+            CompiledQuery query = Compile(new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.Exists(
+                    "InvoiceLine",
+                    "Invoice",
+                    FilterTree.Leaf("Invoice.PostingDate >= startOfMonth(today(), 'uq')")),
+            });
+
+            Assert.True(query.Recompile);
+            Assert.EndsWith("OPTION (RECOMPILE)\n;\n", query.Sql, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///     A date computed in the prologue but read only where no estimate depends on it, or not
+        ///     read at all once the filter folds, leaves the statement planned once.
+        /// </summary>
+        /// <param name="select">The select list.</param>
+        /// <param name="filter">The row filter, or null.</param>
+        /// <param name="aggregate">Whether the query groups.</param>
+        [Theory]
+        [InlineData("Id, diffDays(startOfYear(today(), 'uq'), PostingDate)", null, false)]
+        [InlineData("sum(Amount, PostingDate >= startOfMonth(today(), 'uq'))", null, true)]
+        [InlineData("if(PostingDate >= startOfQuarter(today(), 'uq'), 'this quarter', 'earlier'), count()", null, true)]
+        [InlineData("Id", "true or PostingDate >= startOfMonth(today(), 'uq')", false)]
+        public void AComputedValueOutsideAFilter_IsPlannedOnce(string select, string? filter, bool aggregate)
+        {
+            CompiledQuery query = Compile(new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = aggregate,
+                Select = select,
+                Filter = filter is null ? null : FilterTree.Leaf(filter),
+            });
+
+            Assert.False(query.Recompile);
             Assert.Equal(query.Prologue + query.Body + ";\n", query.Sql);
         }
 

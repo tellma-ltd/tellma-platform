@@ -60,6 +60,7 @@ namespace Tellma.Core.Queryex.Tests.Corpus
             // A select list and nothing else: no declarations ahead of it, no source, one statement.
             CompiledQuery statement = result.Value;
             Assert.Equal(string.Empty, statement.Prologue);
+            Assert.False(statement.Recompile);
             Assert.Equal(statement.Sql, statement.Body + ";\n");
             Assert.StartsWith("SELECT\n", statement.Body, StringComparison.Ordinal);
             Assert.EndsWith("\n", statement.Body, StringComparison.Ordinal);

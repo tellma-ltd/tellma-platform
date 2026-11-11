@@ -39,9 +39,10 @@ namespace Tellma.Queryex.Testing.Probe
         ///     <para>
         ///         Counted per fragment. A grouping key appears in both the select list and the
         ///         grouping clause, and that is what the backend requires rather than a duplication
-        ///         anyone chose. Aggregations are excused too: at group grain there is no lateral
-        ///         binding to refer to, and the backend computes identical aggregations once however
-        ///         many times they are written.
+        ///         anyone chose. A bare aggregation is excused too: the backend computes identical
+        ///         aggregations once however many times they are written, and writing one again costs
+        ///         only its own text. Anything built over one is not, since copies of it multiply with
+        ///         every call nested around it.
         ///     </para>
         /// </remarks>
         public static IReadOnlyList<string> Duplicated(
@@ -162,7 +163,7 @@ namespace Tellma.Queryex.Testing.Probe
 
             foreach ((PlanValue value, int occurrences) in counts)
             {
-                if (occurrences > 1 && !value.IsAtomic && !Aggregates(value))
+                if (occurrences > 1 && !value.IsAtomic && value is not PlanAggregate)
                 {
                     findings.Add(where + ": a " + value.GetType().Name
                         + " is written " + occurrences.ToString(Culture) + " times");
@@ -203,14 +204,6 @@ namespace Tellma.Queryex.Testing.Probe
                     yield return nested;
                 }
             }
-        }
-
-        /// <summary>Whether a value contains an aggregation anywhere.</summary>
-        /// <param name="node">The value.</param>
-        /// <returns>True when it does.</returns>
-        private static bool Aggregates(PlanNode node)
-        {
-            return node is PlanAggregate || Children(node).Any(Aggregates);
         }
 
         /// <summary>What sits directly under one plan node.</summary>
