@@ -36,10 +36,19 @@ export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
 export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
 
 // @public
+export const TM_DEVICE_TIME_ZONE: InjectionToken<Signal<string>>;
+
+// @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 
 // @public
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
+
+// @public
+export const TM_NOW: InjectionToken<() => number>;
+
+// @public
+export const TM_TIME_ZONE: InjectionToken<Signal<string>>;
 
 // @public
 export const TM_UI_ARGUMENT_FORMATTER: InjectionToken<TmUiArgumentFormatter>;
@@ -80,6 +89,9 @@ export const TM_UI_STRINGS_EN: {
     };
     readonly multiSelect: {
         readonly placeholder: "Select options";
+    };
+    readonly l10n: {
+        readonly quarter: "Q{quarter} {year}";
     };
     readonly entityPicker: {
         readonly advancedSearch: "Advanced search…";
@@ -293,10 +305,32 @@ export interface TmFormsOptions {
 
 // @public
 export class TmL10n {
+    constructor();
     readonly calendar: Signal<TmCalendar>;
+    readonly deviceTimeZone: Signal<string>;
     formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string;
+    formatDateTime(instant: string | null | undefined, options?: {
+        readonly dateStyle?: TmDateStyle;
+        readonly timeStyle?: TmTimeStyle | 'none';
+        readonly zoneLabel?: TmZoneLabelMode;
+    }): string;
+    formatMonthName(month: number, options?: {
+        readonly calendar?: TmCalendar;
+    }): string;
     formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
+    formatRelativeTime(instant: string | null | undefined, options: {
+        readonly now: number;
+        readonly style?: 'long' | 'short' | 'narrow';
+    }): string;
+    formatTime(instant: string | null | undefined, options?: {
+        readonly timeStyle?: TmTimeStyle;
+        readonly zoneLabel?: TmZoneLabelMode;
+    }): string;
+    formatWeekdayName(weekday: number): string;
     readonly locale: Signal<string>;
+    readonly timeZone: Signal<string>;
+    zoneLabel(instant?: string | null): string;
+    readonly zoneMismatch: Signal<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmL10n, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmL10n>;
 }
@@ -358,5 +392,8 @@ export type TmUiTranslationsLoader = (request: {
 export type TmUiTranslationTable = {
     readonly [key: string]: string | TmUiTranslationTable;
 };
+
+// @public
+export type TmZoneLabelMode = 'auto' | 'column' | 'none';
 
 ```

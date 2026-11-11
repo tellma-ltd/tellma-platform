@@ -3,17 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using SkiaSharp;
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Imaging.PdfWorker;
+using Tellma.Core.Imaging.Workers;
 
 namespace Tellma.Core.Imaging
 {
     /// <summary>
     ///     The platform's image processor, on SkiaSharp, with PDF first-page thumbnails rendered by
-    ///     PDFium through PDFtoImage.
+    ///     PDFium in a disposable worker process.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -27,28 +29,33 @@ namespace Tellma.Core.Imaging
     ///     </para>
     ///     <para>
     ///         <see cref="ThumbnailAsync" /> renders a stored file: an image under the default pixel
-    ///         cap, or a PDF's first page once a walk of its objects has found nothing over the caps.
+    ///         cap, or a PDF's first page. PDFium never runs in this process: each PDF thumbnail is
+    ///         rendered by a new worker process, which walks page 1 against the caps, renders it and
+    ///         answers with a PNG, under operating-system memory, CPU and access limits, killed when
+    ///         the budget runs out. A hostile document is contained in its worker as far as those
+    ///         limits reach (the package README lists what they do not cover); a worker that fails in
+    ///         any way means no thumbnail, never a failed upload. PDF thumbnails render where those
+    ///         limits hold: on Linux with glibc, and, for developers only, on Windows and macOS in
+    ///         the Development environment. Any other host renders none, and starts no worker: a
+    ///         PDF there has no thumbnail, as a file of any other type has none.
     ///     </para>
     ///     <para>
-    ///         Native work cannot be stopped mid-call, so it runs behind gates that are released only
-    ///         when the native work ends: image work behind
-    ///         <see cref="SkiaImageProcessorOptions.ImageConcurrency" /> slots, and PDF work behind one
-    ///         process-wide gate, because PDFium is not thread-safe. A call's budget bounds its wait and
-    ///         its work; when it runs out the call returns at once, and the input is closed to the
-    ///         native reader, so a decode still in flight stops at its next read. A PDF render inside
-    ///         PDFium keeps its gate until it returns, and while it does, new PDF thumbnails fail fast.
+    ///         Native work cannot be stopped mid-call, so it runs behind slots released only when the
+    ///         native work ends: <see cref="SkiaImageProcessorOptions.ImageConcurrency" /> slots for
+    ///         images, and <see cref="SkiaImageProcessorOptions.PdfWorkerConcurrency" /> slots for PDF
+    ///         workers, whose work ends with their process. A call's
+    ///         budget bounds its wait and its work; when it runs out the call returns at once, the
+    ///         input is closed to the native reader, so a decode still in flight stops at its next
+    ///         read, and a PDF worker is killed.
     ///     </para>
     ///     <para>
     ///         The processor records <c>tellma.blobs.image.duration</c> and
     ///         <c>tellma.blobs.image.failures</c>, and writes the <c>BlobImageRender</c> debug event
-    ///         immediately before native code first touches an input.
+    ///         immediately before native code first touches an input. Disposing it kills the PDF
+    ///         workers still running.
     ///     </para>
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Design",
-        "CA1001:Types that own disposable fields should be disposable",
-        Justification = "The slot semaphore must outlive the processor: work abandoned at shutdown still releases its slot when its native part ends, and a semaphore that never hands out its wait handle holds no unmanaged resource.")]
-    public sealed class SkiaImageProcessor : IImageProcessor
+    public sealed class SkiaImageProcessor : IImageProcessor, IDisposable
     {
         /// <summary>The code of every <see cref="ImageRejectedException" /> this processor throws.</summary>
         public const string RejectedCode = "Image.Rejected";
@@ -62,27 +69,50 @@ namespace Tellma.Core.Imaging
         /// <summary>The argument of a pixel-cap refusal that carries the cap.</summary>
         public const string MaxPixelsArgument = "maxPixels";
 
+        // A worker's CPU limit beyond the call's budget: the wall clock kills it at the budget, and
+        // the CPU limit bounds it on its own should the host be gone.
+        private static readonly TimeSpan CpuAllowance = TimeSpan.FromSeconds(1);
+
+        // The most CPU time any PDF worker may use, a long or infinite budget included.
+        private static readonly TimeSpan CpuCeiling = TimeSpan.FromSeconds(60);
+
         private readonly ILogger _logger;
         private readonly ImagingMetrics _metrics;
         private readonly TimeProvider _timeProvider;
-        private readonly IPdfRasterizer _pdf;
         private readonly Func<byte[], Stream> _openInput;
         private readonly int _concurrency;
 
-        // The image-work slots. Never disposed: a decode abandoned at shutdown still releases its
-        // slot when it ends, and the semaphore holds no handle unless one is asked for.
+        // The image-work slots. Never disposed: work abandoned at shutdown still releases its slot
+        // when it ends, and the semaphore holds no handle unless one is asked for.
         private readonly SemaphoreSlim _imageSlots;
+
+        // The PDF worker slots, apart so that PDFs never hold the slots uploads need; never disposed,
+        // for the same reason as the image slots.
+        private readonly SemaphoreSlim _pdfSlots;
 
         /// <summary>Creates the processor.</summary>
         /// <param name="logger">The processor's logger.</param>
         /// <param name="meterFactory">The host's meter factory.</param>
         /// <param name="timeProvider">The clock the time budgets run on.</param>
         /// <param name="options">The processor's options.</param>
-        /// <exception cref="ArgumentNullException">An argument is null.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">The concurrency is not positive.</exception>
+        /// <param name="environment">
+        ///     The host's environment, which decides whether a host on Windows or macOS renders PDF
+        ///     thumbnails: only in Development. A host that passes none is not in Development.
+        /// </param>
+        /// <exception cref="ArgumentNullException">An argument other than <paramref name="environment" /> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A concurrency is not positive, or the worker memory limit is below its minimum.</exception>
         public SkiaImageProcessor(
-            ILogger<SkiaImageProcessor> logger, IMeterFactory meterFactory, TimeProvider timeProvider, IOptions<SkiaImageProcessorOptions> options)
-            : this(logger, meterFactory, timeProvider, (options ?? throw new ArgumentNullException(nameof(options))).Value, PdfiumRasterizer.Instance)
+            ILogger<SkiaImageProcessor> logger,
+            IMeterFactory meterFactory,
+            TimeProvider timeProvider,
+            IOptions<SkiaImageProcessorOptions> options,
+            IHostEnvironment? environment = null)
+            : this(
+                logger,
+                meterFactory,
+                timeProvider,
+                (options ?? throw new ArgumentNullException(nameof(options))).Value,
+                pdfThumbnails: PdfThumbnailPolicy.For(environment))
         {
         }
 
@@ -91,34 +121,48 @@ namespace Tellma.Core.Imaging
         /// <param name="meterFactory">The host's meter factory.</param>
         /// <param name="timeProvider">The clock the time budgets run on.</param>
         /// <param name="options">The processor's options.</param>
-        /// <param name="pdf">Renders PDF pages.</param>
+        /// <param name="pdf">Renders PDF pages in workers; the PDF worker under the options' memory limit when null.</param>
         /// <param name="openInput">Opens an upload's bytes for the decoder; an in-memory stream when null.</param>
+        /// <param name="pdfThumbnails">Whether PDF thumbnails render at all.</param>
         internal SkiaImageProcessor(
             ILogger logger,
             IMeterFactory meterFactory,
             TimeProvider timeProvider,
             SkiaImageProcessorOptions options,
-            IPdfRasterizer pdf,
-            Func<byte[], Stream>? openInput = null)
+            PdfWorkerClient? pdf = null,
+            Func<byte[], Stream>? openInput = null,
+            PdfThumbnailSupport pdfThumbnails = PdfThumbnailSupport.Enabled)
         {
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(meterFactory);
             ArgumentNullException.ThrowIfNull(timeProvider);
             ArgumentNullException.ThrowIfNull(options);
-            ArgumentNullException.ThrowIfNull(pdf);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ImageConcurrency, nameof(options));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.PdfWorkerConcurrency, nameof(options));
+            ArgumentOutOfRangeException.ThrowIfLessThan(options.PdfWorkerMemoryLimit, SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit, nameof(options));
 
             _logger = logger;
             _metrics = new ImagingMetrics(meterFactory);
             _timeProvider = timeProvider;
-            _pdf = pdf;
+            PdfWorkers = pdf ?? new PdfWorkerClient(new PdfWorkerLauncher(), options.PdfWorkerMemoryLimit);
+            PdfThumbnails = pdfThumbnails;
             _openInput = openInput ?? (static bytes => new MemoryStream(bytes, writable: false));
             _concurrency = options.ImageConcurrency;
             _imageSlots = new SemaphoreSlim(_concurrency, _concurrency);
+            _pdfSlots = new SemaphoreSlim(options.PdfWorkerConcurrency, options.PdfWorkerConcurrency);
         }
 
         /// <summary>How many image slots are free now; for the suite.</summary>
         internal int FreeImageSlots => _imageSlots.CurrentCount;
+
+        /// <summary>How many PDF worker slots are free now; for the suite.</summary>
+        internal int FreePdfSlots => _pdfSlots.CurrentCount;
+
+        /// <summary>The PDF workers.</summary>
+        internal PdfWorkerClient PdfWorkers { get; }
+
+        /// <summary>Whether this host renders PDF thumbnails at all.</summary>
+        internal PdfThumbnailSupport PdfThumbnails { get; }
 
         /// <inheritdoc />
         /// <exception cref="ArgumentException"><paramref name="kind" /> is blank, or a policy value or the timeout is out of range.</exception>
@@ -261,18 +305,24 @@ namespace Tellma.Core.Imaging
                 return null;
             }
 
+            // Section: a host that renders no PDF thumbnails starts no worker for one. That is the
+            // host's shape, not the document's fault, so it counts as no failure either.
+            if (isPdf && PdfThumbnails != PdfThumbnailSupport.Enabled)
+            {
+                return null;
+            }
+
             const string operation = BlobTelemetryTagValues.ImageThumbnail;
 
-            // Section: the time budget, covering the wait for a gate and the render. It closes the
-            // input to the native reader as the caller's token does; the caller's token alone
-            // surfaces as a cancellation.
+            // Section: the time budget, covering the wait for a slot and the render. It closes the
+            // input to the native reader as the caller's token does, and kills a PDF worker; the
+            // caller's token alone surfaces as a cancellation.
             using CancellationTokenSource budget = Budget(timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
             CancellationToken token = linked.Token;
 
             var gated = new GatedReadStream(input, token);
             Task<byte[]>? work = null;
-            PdfRenderGate.Render? render = null;
             long? started = null;
             try
             {
@@ -283,55 +333,37 @@ namespace Tellma.Core.Imaging
                     return null;
                 }
 
-                if (isPdf)
+                // Section: a PDF over the worker's input cap is not read at all, and a thumbnail
+                // larger than the worker renders is not asked of it.
+                if (isPdf && gated.Length > WorkerProtocol.MaxInputBytes)
                 {
-                    // Section: the PDF path. A file over the input cap is not read at all, and a gate
-                    // held by a render nobody waits for any more is not waited on.
-                    if (gated.Length > PdfPreflight.MaxInputBytes)
-                    {
-                        RecordFailure(kind, operation, ImageFailure.DecodeFailed($"The PDF is larger than {PdfPreflight.MaxInputBytes} bytes."));
-                        return null;
-                    }
-
-                    if (PdfRenderGate.IsHeldByAbandonedRender)
-                    {
-                        RecordFailure(kind, operation, new ImageFailure(BlobTelemetryTagValues.ImageTimeoutReason, "A render whose caller gave up still holds the PDF gate."));
-                        return null;
-                    }
-
-                    // The render ends the gate when PDFium returns, which may be after this call has
-                    // given up on it.
-                    await PdfRenderGate.Semaphore.WaitAsync(token).ConfigureAwait(false);
-                    render = PdfRenderGate.Begin();
-                    try
-                    {
-                        ImagingLog.Render(_logger, kind, operation, type, gated.Length);
-                        started = _timeProvider.GetTimestamp();
-                        PdfRenderGate.Render owned = render;
-                        work = Task.Run(() => RenderPdf(gated, policy, owned, token), CancellationToken.None);
-                    }
-                    catch
-                    {
-                        PdfRenderGate.End(render);
-                        throw;
-                    }
+                    RecordFailure(kind, operation, ImageFailure.DecodeFailed($"The PDF is larger than {WorkerProtocol.MaxInputBytes} bytes."));
+                    return null;
                 }
-                else
+
+                if (isPdf && policy.Size > WorkerProtocol.MaxThumbnailSize)
                 {
-                    // Section: the image path, in an image slot, on the pool so the budget can end the
-                    // wait. Until the work has taken the slot over, a failure gives it back here.
-                    await _imageSlots.WaitAsync(token).ConfigureAwait(false);
-                    try
-                    {
-                        ImagingLog.Render(_logger, kind, operation, type, gated.Length);
-                        started = _timeProvider.GetTimestamp();
-                        work = RunInSlot(() => SkiaPipeline.Thumbnail(gated, type, policy, ImagePolicy.DefaultMaxInputPixels, token));
-                    }
-                    catch
-                    {
-                        _imageSlots.Release();
-                        throw;
-                    }
+                    RecordFailure(kind, operation, ImageFailure.DecodeFailed($"PDF thumbnails are at most {WorkerProtocol.MaxThumbnailSize} pixels on a side."));
+                    return null;
+                }
+
+                // Section: a slot, on the pool so the budget can end the wait: a PDF worker slot for a
+                // PDF, so PDFs never hold the slots image uploads need, and an image slot otherwise.
+                // Until the work has taken the slot over, a failure gives it back here.
+                SemaphoreSlim slots = isPdf ? _pdfSlots : _imageSlots;
+                await slots.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    ImagingLog.Render(_logger, kind, operation, type, gated.Length);
+                    started = _timeProvider.GetTimestamp();
+                    work = isPdf
+                        ? RunPdfInSlot(gated, policy, CpuLimit(timeout), token)
+                        : RunInSlot(() => SkiaPipeline.Thumbnail(gated, type, policy, ImagePolicy.DefaultMaxInputPixels, token));
+                }
+                catch
+                {
+                    _ = slots.Release();
+                    throw;
                 }
 
                 byte[] thumbnail = await work.WaitAsync(token).ConfigureAwait(false);
@@ -340,13 +372,8 @@ namespace Tellma.Core.Imaging
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && budget.IsCancellationRequested)
             {
-                // Section: the budget ran out, waiting for a gate or rendering. A PDF render still
-                // inside PDFium is marked abandoned, so later thumbnails do not queue behind it.
-                if (render is not null && work is { IsCompleted: false })
-                {
-                    PdfRenderGate.Abandon(render);
-                }
-
+                // Section: the budget ran out, waiting for a slot or rendering. A PDF worker is killed
+                // by the same token; its slot comes back once its process is gone.
                 RecordDuration(kind, operation, started);
                 RecordFailure(kind, operation, new ImageFailure(BlobTelemetryTagValues.ImageTimeoutReason, "The render did not finish within its time budget."));
                 return null;
@@ -360,6 +387,15 @@ namespace Tellma.Core.Imaging
             {
                 RecordDuration(kind, operation, started);
                 RecordFailure(kind, operation, failure);
+                return null;
+            }
+            catch (PdfWorkerException exception)
+            {
+                // Section: the worker failed rather than refusing the document: worth a warning, for
+                // it may be a hostile upload stopped by a limit, or a PDFium bug.
+                RecordDuration(kind, operation, started);
+                _metrics.RecordFailure(kind, operation, BlobTelemetryTagValues.ImageDecodeFailedReason);
+                ImagingLog.PdfWorkerFailed(_logger, exception, kind, exception.Failure.ToString(), exception.ExitCode, exception.Message);
                 return null;
             }
 #pragma warning disable CA1031 // A thumbnail is optional: whatever a hostile file makes a library throw, the upload proceeds without one.
@@ -406,40 +442,68 @@ namespace Tellma.Core.Imaging
         }
 
         /// <summary>
-        ///     Reads a PDF, walks page 1 against the caps, renders it and encodes the thumbnail; the
-        ///     PDF gate ends as soon as PDFium is done.
+        ///     Renders a PDF thumbnail in a slot the caller already holds, on a thread of its own,
+        ///     since the worker conversation blocks: reads the document, has a worker render page 1,
+        ///     and encodes the checked page. The slot comes back once the worker's process is gone,
+        ///     however the work ends.
         /// </summary>
-        /// <param name="input">The gated PDF, at most the input cap.</param>
+        /// <param name="input">The gated PDF, at most the worker's input cap.</param>
         /// <param name="policy">The thumbnail policy.</param>
-        /// <param name="render">The render holding the gate.</param>
-        /// <param name="token">The call's budget and cancellation.</param>
-        /// <returns>The encoded thumbnail.</returns>
-        private byte[] RenderPdf(GatedReadStream input, ThumbnailPolicy policy, PdfRenderGate.Render render, CancellationToken token)
+        /// <param name="cpuTime">The worker's CPU limit.</param>
+        /// <param name="token">The call's budget and cancellation, which kill the worker.</param>
+        /// <returns>The running work.</returns>
+        private Task<byte[]> RunPdfInSlot(GatedReadStream input, ThumbnailPolicy policy, TimeSpan cpuTime, CancellationToken token)
         {
-            SKBitmap bitmap;
-            try
-            {
-                // A budget that ran out while this task was being scheduled ends it before PDFium.
-                token.ThrowIfCancellationRequested();
-                byte[] pdf = ReadAll(input, token);
-                PdfPreflight.Run(pdf, token);
+            // The thread is the worker's: it starts the worker, which on Linux the kernel kills when
+            // that thread ends, and it ends with this work. The caller's continuations run on the
+            // pool instead, so nothing the caller does next is tied to this thread's end.
+            return Task.Factory.StartNew(
+                () =>
+                {
+                    try
+                    {
+                        // A budget that ran out while this task was being scheduled ends it before a
+                        // worker starts.
+                        token.ThrowIfCancellationRequested();
+                        byte[] pdf = ReadAll(input, token);
+                        RenderedPage page = PdfWorkers.Render(pdf, policy.Size, cpuTime, token);
+                        token.ThrowIfCancellationRequested();
+                        try
+                        {
+                            return SkiaPipeline.EncodeRenderedPage(page.Png, page.Width, page.Height, policy.Format);
+                        }
+                        catch (ImageFailure failure)
+                        {
+                            // The PNG passed its check yet did not decode: the worker is at fault.
+                            throw new PdfWorkerException(PdfWorkerFailure.Protocol, $"The worker's page did not decode: {failure.Message}", failure);
+                        }
+                    }
+                    finally
+                    {
+                        _pdfSlots.Release();
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.RunContinuationsAsynchronously,
+                TaskScheduler.Default);
+        }
 
-                // The render reads its own copy through a view the budget still closes, so PDFium's
-                // lazy reads stop when the budget runs out.
-                using var memory = new MemoryStream(pdf, writable: false);
-                using var view = new GatedReadStream(memory, token);
-                bitmap = _pdf.RenderFirstPage(view, policy.Size);
-            }
-            finally
-            {
-                PdfRenderGate.End(render);
-            }
+        /// <summary>
+        ///     A PDF worker's CPU limit for a call's budget: the budget and an allowance, never more
+        ///     than the ceiling, and the ceiling for no budget, so that a worker always ends on its
+        ///     own.
+        /// </summary>
+        /// <param name="timeout">The call's budget.</param>
+        /// <returns>The limit.</returns>
+        internal static TimeSpan CpuLimit(TimeSpan timeout)
+        {
+            return timeout == Timeout.InfiniteTimeSpan || timeout + CpuAllowance > CpuCeiling ? CpuCeiling : timeout + CpuAllowance;
+        }
 
-            using (bitmap)
-            {
-                token.ThrowIfCancellationRequested();
-                return SkiaPipeline.EncodeBitmap(bitmap, policy.Format);
-            }
+        /// <summary>Kills the PDF workers still running; their slots come back as they exit.</summary>
+        public void Dispose()
+        {
+            PdfWorkers.Dispose();
         }
 
         /// <summary>Reads the whole gated input into memory.</summary>

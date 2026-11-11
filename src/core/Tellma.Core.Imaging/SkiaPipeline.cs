@@ -134,6 +134,43 @@ namespace Tellma.Core.Imaging
         }
 
         /// <summary>
+        ///     Encodes a page a PDF worker rendered as a thumbnail in the policy's format: the
+        ///     worker's PNG, already checked, is decoded to the bitmap the page was rendered into and
+        ///     encoded exactly as a page rendered in this process would be.
+        /// </summary>
+        /// <param name="png">The worker's PNG, checked to measure <paramref name="width" /> x <paramref name="height" />.</param>
+        /// <param name="width">Its width.</param>
+        /// <param name="height">Its height.</param>
+        /// <param name="format">The thumbnail's format.</param>
+        /// <returns>The encoded thumbnail.</returns>
+        /// <exception cref="ImageFailure">The PNG does not decode to an image of those dimensions.</exception>
+        public static byte[] EncodeRenderedPage(byte[] png, int width, int height, ImageFormat format)
+        {
+            // Section: the PNG decoder every upload goes through, on dimensions the check fixed, so
+            // the decode allocates no more than the thumbnail.
+            using var data = SKData.CreateCopy(png);
+            using SKCodec codec = SKCodec.Create(data) ?? throw ImageFailure.DecodeFailed("The rendered page's PNG could not be read.");
+            if (codec.EncodedFormat != SKEncodedImageFormat.Png || codec.Info.Width != width || codec.Info.Height != height)
+            {
+                throw ImageFailure.DecodeFailed($"The rendered page decodes as a {codec.Info.Width} x {codec.Info.Height} {codec.EncodedFormat}.");
+            }
+
+            // Section: premultiplied BGRA without a colour space, as PDFium renders into, so the
+            // encode below sees the very pixels it drew.
+            var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var bitmap = new SKBitmap();
+            if (!bitmap.TryAllocPixels(info))
+            {
+                throw ImageFailure.DecodeFailed($"No memory for a {width} x {height} page.");
+            }
+
+            SKCodecResult result = codec.GetPixels(info, bitmap.GetPixels(), bitmap.RowBytes, new SKCodecOptions(0));
+            return result == SKCodecResult.Success
+                ? EncodeBitmap(bitmap, format)
+                : throw ImageFailure.DecodeFailed($"The rendered page's PNG could not be decoded ({result}).");
+        }
+
+        /// <summary>
         ///     Creates the codec over the input, checks that it decodes the format the signature
         ///     declared, and refuses an image whose header declares more pixels than the cap, before
         ///     any pixel is decoded.

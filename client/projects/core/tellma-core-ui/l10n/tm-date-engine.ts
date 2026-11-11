@@ -10,15 +10,33 @@
 
 import { TM_PARSE_ERROR, type TmParseError } from '@tellma/core-ui/contracts';
 
-import { tmGregorianCalendar, ɵtmParseIsoDate, type TmCalendar } from './tm-calendar';
+import { tmStripBidiControls } from './tm-bidi';
+import {
+  tmGregorianCalendar,
+  ɵtmParseIsoDate,
+  ɵtmToIsoDate,
+  type TmCalendar,
+} from './tm-calendar';
+import { tmFormatNumber } from './tm-number-codec';
 
 /**
- * The display style of a formatted date, mapped to a fixed CLDR skeleton —
- * `numeric`: yMd, `medium`: yMMMd, `long`: yMMMMd. The skeletons are fixed
- * in code (not configurable) so a server-side implementation reproduces
- * the same output from the same parameters.
+ * The display style of a formatted date. Each maps to a fixed CLDR
+ * skeleton, fixed in code (not configurable) so a server-side
+ * implementation reproduces the same output from the same parameters:
+ *
+ * - `numeric`: yMd — "20/10/2026";
+ * - `medium`: yMMMd — "20 Oct 2026";
+ * - `long`: yMMMMd — "20 October 2026";
+ * - `weekday`: yMMMEEEEd — "Tuesday, 20 Oct 2026";
+ * - `month`: yMMM — "Oct 2026", the date's month;
+ * - `year`: y — "2026", the date's year;
+ * - `quarter`: the date's quarter, written through
+ *   {@link TmDateFormatOptions.quarterPattern} — "Q4 2026".
+ *
+ * `month`, `quarter` and `year` name a period: every day of the period
+ * formats to the same text.
  */
-export type TmDateStyle = 'numeric' | 'medium' | 'long';
+export type TmDateStyle = 'numeric' | 'medium' | 'long' | 'month' | 'quarter' | 'year' | 'weekday';
 
 /** Options of {@link tmFormatDate}. */
 export interface TmDateFormatOptions {
@@ -26,7 +44,20 @@ export interface TmDateFormatOptions {
   readonly calendar?: TmCalendar;
   /** The display style. Default `numeric`. */
   readonly dateStyle?: TmDateStyle;
+  /**
+   * The text of the `quarter` style: `{quarter}` stands for the quarter
+   * number and `{year}` for the calendar year, both written in the
+   * locale's digits. Default `Q{quarter} {year}`. Intl has no quarter
+   * field, so the wording is the caller's to translate.
+   */
+  readonly quarterPattern?: string;
 }
+
+/** The styles Intl formats from a skeleton — every style but `quarter`. */
+type SkeletonStyle = Exclude<TmDateStyle, 'quarter'>;
+
+/** The styles free-typed text is read in: the three that carry a day. */
+type InputStyle = 'numeric' | 'medium' | 'long';
 
 /** Options of {@link tmParseDate}. */
 export interface TmDateParseOptions {
@@ -44,15 +75,38 @@ const MIN_ISO = '0001-01-01';
 const MAX_ISO = '9999-12-31';
 
 /** The fixed skeleton per style, as Intl option bags. */
-const STYLE_OPTIONS: Record<TmDateStyle, Intl.DateTimeFormatOptions> = {
+const STYLE_OPTIONS: Record<SkeletonStyle, Intl.DateTimeFormatOptions> = {
   numeric: { year: 'numeric', month: 'numeric', day: 'numeric' },
   medium: { year: 'numeric', month: 'short', day: 'numeric' },
   long: { year: 'numeric', month: 'long', day: 'numeric' },
+  weekday: { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' },
+  month: { year: 'numeric', month: 'short' },
+  year: { year: 'numeric' },
 };
+
+/** The quarter text when the caller passes no pattern. */
+const DEFAULT_QUARTER_PATTERN = 'Q{quarter} {year}';
+
+/**
+ * The fixed Intl skeleton of a date style, for the formatters that add a
+ * time of day to it. The `quarter` style has none (Intl has no quarter
+ * field).
+ *
+ * @internal
+ */
+export function ɵtmDateSkeleton(
+  style: Exclude<TmDateStyle, 'quarter'>,
+): Intl.DateTimeFormatOptions {
+  return STYLE_OPTIONS[style];
+}
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
-function formatterFor(locale: string, calendarId: string, style: TmDateStyle): Intl.DateTimeFormat {
+function formatterFor(
+  locale: string,
+  calendarId: string,
+  style: SkeletonStyle,
+): Intl.DateTimeFormat {
   const key = `${locale}|${calendarId}|${style}`;
   let formatter = formatterCache.get(key);
   if (formatter === undefined) {
@@ -77,6 +131,14 @@ function utcDateOf(year: number, month: number, day: number): Date {
  * Formats an ISO `YYYY-MM-DD` date for display in the given locale and
  * display calendar ('' for null/undefined/''; a malformed input is
  * returned as-is, mirroring the number codec's posture for non-values).
+ *
+ * The calendar's era is never written, and the text carries no
+ * bidirectional control character: where CLDR's patterns put a direction
+ * mark between the parts of a date, it is removed, so a numeric date is
+ * one run of digits and separators that markup orders. Its spaces are
+ * plain spaces: where CLDR's patterns put a narrow no-break space (before
+ * the Bulgarian year marker, say), a plain one is written, as browsers do,
+ * so the text is the same in every engine.
  */
 export function tmFormatDate(
   iso: string | null | undefined,
@@ -91,10 +153,44 @@ export function tmFormatDate(
     return iso;
   }
   const calendar = options?.calendar ?? tmGregorianCalendar();
-  return ɵtmFormatWithoutEra(
-    formatterFor(locale, calendar.id, options?.dateStyle ?? 'numeric'),
-    utcDateOf(parts.year, parts.month, parts.day),
-  );
+  const style = options?.dateStyle ?? 'numeric';
+  const date = utcDateOf(parts.year, parts.month, parts.day);
+  if (style === 'quarter') {
+    // The quarter and its year are the display calendar's, read through
+    // the calendar seam. The ISO text is rebuilt from the Date first, so
+    // a day past its month's end rolls over here exactly as it does in
+    // the other styles.
+    const inCalendar = calendar.toParts(
+      ɵtmToIsoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()),
+    );
+    // Three months to a quarter, capped at four: Ethiopic's thirteenth
+    // month falls in the fourth quarter (spec 0010 §D.7).
+    const quarter = tmFormatNumber(Math.min(4, Math.ceil(inCalendar.month / 3)), locale);
+    const year = tmFormatNumber(inCalendar.year, locale, { grouping: false });
+    return tmStripBidiControls(
+      (options?.quarterPattern ?? DEFAULT_QUARTER_PATTERN).replace(
+        /\{(quarter|year)\}/g,
+        (_placeholder, name: string) => (name === 'quarter' ? quarter : year),
+      ),
+    );
+  }
+  return ɵtmFormatWithoutEra(formatterFor(locale, calendar.id, style), date);
+}
+
+/**
+ * The text contract of everything `Intl.DateTimeFormat` writes for the
+ * page: no bidirectional control character, and a plain space for every
+ * U+202F NARROW NO-BREAK SPACE. CLDR puts the narrow space before a day
+ * period ("10:42 AM") and inside some date patterns; browsers replace it
+ * with a plain space, because text copied with it is not read back as a
+ * date or a time by spreadsheets and parsers, while other engines pass it
+ * through. Writing the plain space everywhere keeps one value's text
+ * equal across engines.
+ *
+ * @internal Shared with the instant formatters.
+ */
+export function ɵtmPlainText(text: string): string {
+  return tmStripBidiControls(text).replace(/\u202F/g, ' ');
 }
 
 /**
@@ -106,38 +202,53 @@ export function tmFormatDate(
  * only ever one era in play, so the suffix is noise that costs width in
  * every cell and input. The literal that joined it goes with it.
  *
- * @internal Shared with the calendar popup, which builds its own headers.
+ * The result also carries no bidirectional control character and only
+ * plain spaces (see `ɵtmPlainText`).
+ *
+ * @internal Shared with the calendar popup, which builds its own headers,
+ * and with the instant formatters.
  */
 export function ɵtmFormatWithoutEra(formatter: Intl.DateTimeFormat, date: Date): string {
   const parts = formatter.formatToParts(date);
   if (!parts.some((part) => part.type === 'era')) {
-    return parts.map((part) => part.value).join('');
+    return ɵtmPlainText(parts.map((part) => part.value).join(''));
   }
   const isField = (part: Intl.DateTimeFormatPart | undefined): boolean =>
     part !== undefined && part.type !== 'literal' && part.type !== 'era';
+  /** Whether a separator is more than spacing (a comma, a particle). */
+  const isWord = (part: Intl.DateTimeFormatPart): boolean =>
+    tmStripBidiControls(part.value).trim() !== '';
   const kept: Intl.DateTimeFormatPart[] = [];
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index];
     if (part.type === 'era') {
       continue;
     }
-    if (part.type === 'literal' && (parts[index - 1]?.type === 'era' || parts[index + 1]?.type === 'era')) {
+    const leadsEra = parts[index + 1]?.type === 'era';
+    const trailsEra = parts[index - 1]?.type === 'era';
+    if (part.type === 'literal' && (leadsEra || trailsEra)) {
       // Some locales put the era BETWEEN two fields (Thai writes the
-      // month, the era, then the year). Dropping both of its separators
-      // would weld those fields together — keep exactly one.
+      // month, the era, then the year; a date-time writes the year, the
+      // era, then the time). Dropping both of its separators would weld
+      // those fields together — keep exactly one: the one before the
+      // era, unless that one is plain spacing and the one after says
+      // more ("1447 AH, 10:42" keeps the comma).
+      const eraIndex = leadsEra ? index + 1 : index - 1;
       const joinsFields =
-        parts.slice(0, index).some(isField) && parts.slice(index + 1).some(isField);
-      if (joinsFields && parts[index + 1]?.type === 'era') {
+        parts.slice(0, eraIndex).some(isField) && parts.slice(eraIndex + 1).some(isField);
+      const before = parts[eraIndex - 1];
+      const after = parts[eraIndex + 1];
+      const keepsAfter =
+        before?.type !== 'literal' ||
+        (after?.type === 'literal' && !isWord(before) && isWord(after));
+      if (joinsFields && leadsEra !== keepsAfter) {
         kept.push(part);
       }
       continue;
     }
     kept.push(part);
   }
-  return kept
-    .map((part) => part.value)
-    .join('')
-    .trim();
+  return ɵtmPlainText(kept.map((part) => part.value).join('')).trim();
 }
 
 // ---- Parsing ----
@@ -205,7 +316,7 @@ const fieldOrderCache = new Map<string, readonly ('year' | 'month' | 'day')[]>()
 function fieldOrderFor(
   locale: string,
   calendarId: string,
-  style: TmDateStyle,
+  style: InputStyle,
 ): readonly ('year' | 'month' | 'day')[] {
   const key = `${locale}|${calendarId}|${style}`;
   let order = fieldOrderCache.get(key);
@@ -396,7 +507,7 @@ interface MonthTable {
    * day-first), so the order must come from the style that actually
    * matched rather than from a fixed guess.
    */
-  styleOf(segment: string): TmDateStyle | undefined;
+  styleOf(segment: string): InputStyle | undefined;
   /** Whether a diacritic-folded word is a month name in either tier. */
   hasFolded(folded: string): boolean;
 }
@@ -421,8 +532,8 @@ function monthNamesFor(
      * then pins no order down). Standalone forms never claim a key —
      * they belong to no pattern, so they must not blank an attribution.
      */
-    const styleOfKey = new Map<string, TmDateStyle | null>();
-    const noteStyle = (key: string, style: TmDateStyle): void => {
+    const styleOfKey = new Map<string, InputStyle | null>();
+    const noteStyle = (key: string, style: InputStyle): void => {
       const claimed = styleOfKey.get(key);
       styleOfKey.set(key, claimed === undefined || claimed === style ? style : null);
     };
@@ -438,7 +549,7 @@ function monthNamesFor(
       }
       const parts = ɵtmParseIsoDate(iso)!;
       const date = utcDateOf(parts.year, parts.month, parts.day);
-      const candidates: { readonly name: string; readonly style: TmDateStyle | null }[] = [];
+      const candidates: { readonly name: string; readonly style: InputStyle | null }[] = [];
       for (const formatter of standalone) {
         candidates.push({ name: formatter.format(date), style: null });
       }
@@ -642,7 +753,7 @@ export function tmParseDate(
   const numericRaw: string[] = [];
   let namedMonth: number | null = null;
   /** The style the matched spelling belongs to, when it pins one down. */
-  let namedMonthStyle: TmDateStyle | undefined;
+  let namedMonthStyle: InputStyle | undefined;
   for (const segment of segments) {
     if (/^\d{1,4}$/.test(segment)) {
       numeric.push(Number(segment));
@@ -776,7 +887,9 @@ export function tmParseDate(
 
 /**
  * The locale's numeric date pattern as a typing hint (e.g. `dd/mm/yyyy`) —
- * the field order and separators of the display calendar's numeric format.
+ * the field order and separators of the display calendar's numeric format,
+ * free of bidirectional control characters and with plain spaces, like the
+ * formatted value.
  */
 export function tmDatePlaceholder(
   locale: string,
@@ -793,13 +906,13 @@ export function tmDatePlaceholder(
     } else if (part.type === 'day') {
       out += 'dd';
     } else if (part.type !== 'era') {
-      // The separators keep ICU's directional marks: without them an
-      // ASCII hint lays out left-to-right inside an RTL field, so the
-      // fields would read in the opposite order to the value that
-      // replaces them. The era is dropped for the same reason it is
-      // dropped from values.
+      // The era is dropped for the same reason it is dropped from values.
       out += part.value;
     }
   }
-  return out.trim();
+  // The hint loses ICU's directional marks exactly as the value does
+  // (spec 0010 §D.14): both then lay out as one left-to-right run inside
+  // an RTL field, so the hint's fields read in the order of the value
+  // that replaces them.
+  return ɵtmPlainText(out).trim();
 }

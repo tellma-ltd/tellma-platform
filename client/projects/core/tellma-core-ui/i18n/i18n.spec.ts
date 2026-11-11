@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, LOCALE_ID, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import type { ValidationError } from '@angular/forms/signals';
@@ -109,6 +109,36 @@ describe('TM_UI_TRANSLATE (Transloco-backed default)', () => {
     host.transloco.setActiveLang('xx');
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(text()).toBe('XX required'); // the SAME signal, recomputed
+  });
+
+  it('removes bidirectional controls from a resolved message', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideTellmaUi({ availableLangs: ['en', 'ar'] })],
+    });
+    const fixture = TestBed.createComponent(Host);
+    await fixture.whenStable();
+    const host = fixture.componentInstance;
+    const rlm = String.fromCodePoint(0x200f);
+    const lrm = String.fromCodePoint(0x200e);
+    // A translator pasted marks around the text, and the message formats a
+    // number: Intl writes a mark of its own beside an Arabic minus.
+    host.transloco.setTranslation(
+      { [TM_UI_I18N_SCOPE]: { errors: { min: `${rlm}الحد الأدنى${rlm} {min, number}` } } },
+      'ar',
+      { merge: true },
+    );
+    host.transloco.setActiveLang('ar');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(new Intl.NumberFormat('ar').format(-5)).toContain(lrm);
+    expect(host.translate('errors.min', { min: -5 })()).toBe('الحد الأدنى -5');
+    // The English fallback of a key the pack lacks is stripped the same.
+    expect(host.translate('errors.max', { max: -7 })()).toBe('Enter a value of at most -7');
+  });
+
+  it('removes bidirectional controls on the Transloco-less path too', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: LOCALE_ID, useValue: 'ar' }] });
+    const translate = TestBed.inject(TM_UI_TRANSLATE);
+    expect(translate('errors.min', { min: -3 })()).toBe('Enter a value of at least -3');
   });
 
   it('guards an unknown custom kind with the raw kind + dev warning', async () => {

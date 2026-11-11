@@ -40,6 +40,9 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly multiSelect: {
         readonly placeholder: "{gender, select, female {حددي خيارات} other {حدد خيارات}}";
     };
+    readonly l10n: {
+        readonly quarter: "الربع {quarter} {year}";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "بحث متقدم…";
         readonly create: "إنشاء…";

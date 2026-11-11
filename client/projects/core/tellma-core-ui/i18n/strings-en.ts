@@ -44,6 +44,9 @@ export const TM_UI_STRINGS_EN = {
   multiSelect: {
     placeholder: 'Select options',
   },
+  l10n: {
+    quarter: 'Q{quarter} {year}',
+  },
   entityPicker: {
     advancedSearch: 'Advanced search…',
     create: 'Create…',

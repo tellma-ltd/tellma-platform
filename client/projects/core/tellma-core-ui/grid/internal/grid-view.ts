@@ -253,7 +253,9 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                     <span [class]="glyphClass" aria-hidden="true"></span>
                     <span class="tm-visually-hidden">{{ cell.text }}</span>
                   } @else {
-                    <span class="tm-grid__text">{{ cell.text }}</span>
+                    <!-- A number's text is its own left-to-right run, so its
+                         minus sits at the left in an RTL grid too. -->
+                    <span class="tm-grid__text" [attr.dir]="cell.dir">{{ cell.text }}</span>
                   }
                   @if (cell.pending) {
                     <tm-spinner class="tm-grid__cell-spin" />
