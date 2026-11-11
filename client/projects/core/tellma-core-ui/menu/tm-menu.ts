@@ -230,7 +230,7 @@ export class TmMenu {
     remeasure: 'afterNextRender',
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
-    onOutsideClick: () => this.close({ restoreFocus: false }),
+    onOutsideClick: (event) => this.onOutsideClick(event),
   });
   /**
    * The shared Escape-dismissal registration while open (document capture
@@ -241,6 +241,12 @@ export class TmMenu {
    * one Escape, one layer.
    */
   private releaseEscape: (() => void) | null = null;
+  /**
+   * Whether a pointer press has begun since the menu last opened. Until
+   * one has, a click reported outside the panel can only be the tail of
+   * the gesture that opened the menu.
+   */
+  private pressedSinceOpen = false;
 
   /**
    * Dismiss on an outside POINTERDOWN, not the trailing click: Excel/Sheets
@@ -251,6 +257,7 @@ export class TmMenu {
    * reaches its target (e.g. the grid's drag start). Front-most menu only.
    */
   private readonly onDocumentPointerDownCapture = (event: PointerEvent): void => {
+    this.pressedSinceOpen = true;
     if (openMenuStack[openMenuStack.length - 1] !== this) {
       return;
     }
@@ -364,6 +371,7 @@ export class TmMenu {
     this.overlayOrigin.set(anchor);
     this.pendingFocus.set(options?.initialFocus ?? 'first');
     this.armDismissal();
+    this.pressedSinceOpen = false;
 
     // Re-anchor rather than (re)open whenever the overlay is still live: a
     // genuine open-while-open, or a same-tick close+reopen where an outside-
@@ -473,6 +481,44 @@ export class TmMenu {
     }
   }
 
+  /**
+   * A click outside the panel, reported by the overlay. It closes the menu
+   * without returning focus, unless it is the release of the gesture that
+   * opened the menu.
+   */
+  private onOutsideClick(event: MouseEvent): void {
+    // Where the engine raises `contextmenu` on the press (Firefox, WebKit,
+    // and Blink outside Windows), the menu opens with the button still
+    // down, and the release then produces an `auxclick` on the invoking
+    // element, outside the panel. Safari likewise follows the `contextmenu`
+    // of a Ctrl+click with a `click`. Neither is a click away from the
+    // menu. The CDK's own context-menu trigger skips the same two events;
+    // it knows the event that opened it, where `open()` is called with
+    // none, so the test here is that no press has begun since the open. A
+    // real click away starts with a press, which has already closed the
+    // menu by the time its click arrives.
+    if (!this.pressedSinceOpen && (event.type === 'auxclick' || event.ctrlKey)) {
+      return;
+    }
+    this.close({ restoreFocus: false });
+  }
+
+  /**
+   * Escape closes one level per press: an open submenu first, returning
+   * focus to its parent row, then the menu. Which of the two is decided
+   * from what is expanded as the key arrives, so a key pressed in the same
+   * moment a submenu opens or closes still reaches the right level.
+   */
+  private onEscape(): void {
+    const rows = untracked(() => this.menu()?._items()) ?? [];
+    const parent = rows.find((row) => untracked(row.expanded) === true);
+    if (parent !== undefined) {
+      parent._pattern.close({ refocus: true });
+    } else {
+      this.close();
+    }
+  }
+
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   private onOverlayDetach(): void {
     if (untracked(this.expanded)) {
@@ -497,7 +543,7 @@ export class TmMenu {
    * double-registers (the listeners de-dupe by reference).
    */
   private armDismissal(): void {
-    this.releaseEscape ??= tmPushEscapeDismissal(() => this.close());
+    this.releaseEscape ??= tmPushEscapeDismissal(() => this.onEscape());
     document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (!openMenuStack.includes(this)) {
       openMenuStack.push(this);

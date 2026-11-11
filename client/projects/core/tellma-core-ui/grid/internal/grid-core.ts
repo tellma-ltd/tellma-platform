@@ -124,7 +124,7 @@ const IS_MAC_PLATFORM =
   typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
 /**
- * Context-menu shortcut hints (display only — §8.5) as key combinations;
+ * Context-menu shortcut hints (display only) as key combinations;
  * the menu labels them for the platform (Ctrl+X, or ⌘X on Apple). The keys
  * mirror the keymap: cut/copy/paste are the native Mod+X/C/V; row ops are
  * the Alt-modified Mod+Alt+±.
@@ -1949,7 +1949,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * Right-click/long-press target outside the selection becomes it (Excel).
    * A row/column header selects its whole row/column first, so the menu acts
    * on that header; a header already inside the selection keeps it (the menu
-   * then acts on every selected row/column).
+   * then acts on every selected row/column). Focus is not asked for: the
+   * menu that opens next takes it, and returns it to the active cell as it
+   * closes.
    */
   private selectMenuTarget(target: Element | null): void {
     if (target === null) {
@@ -1963,7 +1965,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.escapedSignal.set(false);
         engine.nav.setActive({ row, col: 0 });
         engine.selection.selectRows(row, row, false);
-        this.requestFocusActive();
       }
       return;
     }
@@ -1976,7 +1977,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           engine.nav.setActive({ row: 0, col });
         }
         engine.selection.selectCols(col, col, false);
-        this.requestFocusActive();
       }
       return;
     }
@@ -1988,7 +1988,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (cell !== null && !untracked(() => engine.selection.isCellSelected(cell))) {
       this.escapedSignal.set(false);
       engine.clickCell(cell);
-      this.requestFocusActive();
     }
   }
 

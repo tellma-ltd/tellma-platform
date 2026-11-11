@@ -19,6 +19,9 @@ import type { TmMenu } from './tm-menu';
  * on the first row; ArrowUp opens it on the last. Focus returns to the
  * button when the menu closes on Escape or after an activation.
  *
+ * The button gets `type="button"` unless it states a type of its own, so a
+ * menu button inside a form never submits it.
+ *
  * @tmGroup overlay
  * @tmA11yNotes Applies aria-haspopup="menu", a live aria-expanded, and
  *   aria-controls naming the menu while it is open. A button that is
@@ -42,6 +45,13 @@ export class TmMenuTrigger {
   readonly tmMenuTriggerFor = input.required<TmMenu>();
 
   constructor() {
+    // A button with no type is a submit button inside a form: each click
+    // would open the menu and submit. The default is set once and only
+    // when the author wrote none; a binding would race an authored type.
+    if (!this.element.hasAttribute('type')) {
+      this.element.setAttribute('type', 'button');
+    }
+
     // Announcing this button to the menu keeps a press on it from counting
     // as an outside press: the menu dismisses on pointerdown, ahead of this
     // directive's click handler, so an unregistered button would close the
@@ -84,7 +94,12 @@ export class TmMenuTrigger {
     }
     // The arrow would otherwise scroll the page behind the menu.
     event.preventDefault();
-    this.open(event.key === 'ArrowDown' ? 'first' : 'last');
+    // The button keeps focus until the open menu has rendered. An arrow
+    // that arrives in that moment is dropped: the menu is already opening
+    // on the row the first key asked for.
+    if (!this.expanded()) {
+      this.open(event.key === 'ArrowDown' ? 'first' : 'last');
+    }
   }
 
   /** Opens the menu at this button, unless the button is disabled. */

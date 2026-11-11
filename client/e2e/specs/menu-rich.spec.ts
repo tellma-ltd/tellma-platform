@@ -16,6 +16,13 @@ import { storyUrl } from '../support/story-map';
  * keep-open items, entries disabled with a reason, links whose modifier
  * clicks stay the browser's, the three menu-row glyphs, and the axe floor
  * in both themes and both directions.
+ *
+ * The tests tagged `@cross-engine` also run on Firefox and WebKit: the
+ * keyboard paths, the right-to-left layout and a right-click open, where
+ * the engines differ in key repeat, focus timing and the order of the
+ * events a right-click raises. The Control+click and middle-click link
+ * tests stay on Chromium: the other engines open no new page for those
+ * gestures under automation, on a plain link outside any menu either.
  */
 
 /** Layout tolerance: sub-pixel rounding of anchored overlays. */
@@ -99,7 +106,10 @@ test.describe('layout in both directions', () => {
   for (const mode of ['ltr', 'rtl', 'rtl-live'] as const) {
     const rtl = mode !== 'ltr';
 
-    test(`the menu opens under its button and the submenu at the inline end (${mode})`, async ({
+    // The cold right-to-left run is the cross-engine one.
+    const tag = mode === 'rtl' ? '@cross-engine ' : '';
+
+    test(`${tag}the menu opens under its button and the submenu at the inline end (${mode})`, async ({
       page,
     }) => {
       await page.goto(storyUrl('menu-rich', mode === 'rtl' ? { dir: 'rtl' } : {}));
@@ -136,7 +146,7 @@ test.describe('layout in both directions', () => {
       await expect(focusedLabel(page)).toHaveText('Language');
     });
 
-    test(`the menu-row glyphs keep their box and stroke; only the chevron mirrors (${mode})`, async ({
+    test(`${tag}the menu-row glyphs keep their box and stroke; only the chevron mirrors (${mode})`, async ({
       page,
     }) => {
       await page.goto(storyUrl('menu-rich', mode === 'rtl' ? { dir: 'rtl' } : {}));
@@ -152,8 +162,9 @@ test.describe('layout in both directions', () => {
       };
       for (const [name, glyph] of Object.entries(glyphs)) {
         const box = await boxOf(glyph);
-        expect(box.width, `${name} box width`).toBe(15);
-        expect(box.height, `${name} box height`).toBe(15);
+        // Close to, not equal: Firefox reports the box a few millionths over.
+        expect(box.width, `${name} box width`).toBeCloseTo(15, 1);
+        expect(box.height, `${name} box height`).toBeCloseTo(15, 1);
         const svg = glyph.locator(':scope > svg');
         expect(
           await svg.evaluate((element) => getComputedStyle(element).strokeWidth),
@@ -164,6 +175,36 @@ test.describe('layout in both directions', () => {
           `${name} transform`,
         ).toBe(name === 'chevron' && rtl ? MIRRORED : 'none');
       }
+    });
+  }
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`a submenu with no room at the inline end opens at the inline start (${dir})`, async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('menu-rich', dir === 'rtl' ? { dir: 'rtl' } : {}));
+      // Pin the menu button to the inline-end edge of the viewport: the
+      // menu then hangs from the button's end edge, with nothing beside it.
+      await page.addStyleTag({
+        content:
+          '[data-testid="menu-rich-trigger"] { position: fixed; inset-block-start: 96px; inset-inline-end: 12px; }',
+      });
+      await openMenu(page);
+      await page.keyboard.press(dir === 'rtl' ? 'ArrowLeft' : 'ArrowRight');
+      await expect(submenuPanel(page)).toBeVisible();
+
+      const viewport = page.viewportSize()!;
+      const parent = await boxOf(row(page, 'Language'));
+      const sub = await boxOf(submenuPanel(page));
+      // No room on the inline-end side of the parent row ...
+      const roomAtEnd = dir === 'rtl' ? parent.x : viewport.width - (parent.x + parent.width);
+      expect(roomAtEnd).toBeLessThan(sub.width);
+      // ... so the submenu's end edge meets the row's start edge instead.
+      const sideGap =
+        dir === 'rtl' ? sub.x - (parent.x + parent.width) : sub.x + sub.width - parent.x;
+      expect(Math.abs(sideGap)).toBeLessThanOrEqual(TOLERANCE);
+      const first = await boxOf(row(page, 'English'));
+      expect(Math.abs(first.y - parent.y)).toBeLessThanOrEqual(TOLERANCE);
     });
   }
 });
@@ -214,7 +255,7 @@ test.describe('touch rows below the sm breakpoint', () => {
     await expect(row(page, 'Language')).toHaveCSS('font-size', '12.5px');
   });
 
-  test("the grid's context menu follows: 44 px rows at 390 px", async ({ page }) => {
+  test("@cross-engine the grid's context menu follows: 44 px rows at 390 px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await gotoGrid(page, 'grid-editable');
     await cell(page, 0, 1).click({ button: 'right' });
@@ -248,7 +289,7 @@ test.describe('the menu button', () => {
     await expect(button).toBeFocused();
   });
 
-  test('Enter and Space open on the first row; ArrowDown too; ArrowUp on the last', async ({
+  test('@cross-engine Enter and Space open on the first row; ArrowDown too; ArrowUp on the last', async ({
     page,
   }) => {
     await page.goto(storyUrl('menu-rich'));
@@ -285,7 +326,9 @@ test.describe('the menu button', () => {
 });
 
 test.describe('submenus by keyboard', () => {
-  test('opens with ArrowRight, Enter and Space; closes one level per Escape', async ({ page }) => {
+  test('@cross-engine opens with ArrowRight, Enter and Space; closes one level per Escape', async ({
+    page,
+  }) => {
     await page.goto(storyUrl('menu-rich'));
     await openMenu(page);
 
@@ -306,7 +349,9 @@ test.describe('submenus by keyboard', () => {
     await expect(trigger(page)).toBeFocused();
   });
 
-  test('choosing inside a submenu closes the whole menu and returns focus', async ({ page }) => {
+  test('@cross-engine choosing inside a submenu closes the whole menu and returns focus', async ({
+    page,
+  }) => {
     await page.goto(storyUrl('menu-rich'));
     await openMenu(page);
     await page.keyboard.press('ArrowRight');
@@ -331,7 +376,7 @@ test.describe('submenus by keyboard', () => {
     await expect(row(page, 'English')).toHaveAttribute('aria-checked', 'false');
   });
 
-  test('typeahead matches labels, across rows of every kind', async ({ page }) => {
+  test('@cross-engine typeahead matches labels, across rows of every kind', async ({ page }) => {
     await page.goto(storyUrl('menu-rich'));
     await openMenu(page);
 
@@ -388,7 +433,9 @@ test.describe('submenus by hover', () => {
 });
 
 test.describe('checkable items and reasons', () => {
-  test('a keep-open checkbox toggles in place, by pointer and by keyboard', async ({ page }) => {
+  test('@cross-engine a keep-open checkbox toggles in place, by pointer and by keyboard', async ({
+    page,
+  }) => {
     await page.goto(storyUrl('menu-rich'));
     await openMenu(page);
     const item = page.getByRole('menuitemcheckbox', { name: 'Line numbers', exact: true });
@@ -407,6 +454,25 @@ test.describe('checkable items and reasons', () => {
     await expect(page.getByTestId('menu-rich-line-numbers')).toHaveText('true');
     await expect(menuPanel(page)).toBeVisible();
     await expect(page.getByTestId('menu-rich-selected')).toHaveText('3');
+  });
+
+  test('@cross-engine a held Space toggles a keep-open checkbox once', async ({ page }) => {
+    await page.goto(storyUrl('menu-rich'));
+    await openMenu(page);
+    await page.keyboard.type('li'); // Line numbers
+    await expect(focusedLabel(page)).toHaveText('Line numbers');
+    await page.waitForTimeout(600); // the typeahead buffer clears: Space is a key again
+
+    // A key that is already down goes down again as an auto-repeat.
+    await page.keyboard.down('Space');
+    for (let repeat = 0; repeat < 4; repeat++) {
+      await page.keyboard.down('Space');
+    }
+    await page.keyboard.up('Space');
+
+    await expect(page.getByTestId('menu-rich-line-numbers')).toHaveText('true');
+    await expect(page.getByTestId('menu-rich-selected')).toHaveText('1');
+    await expect(menuPanel(page)).toBeVisible();
   });
 
   test('radio items in a labelled group move the check', async ({ page }) => {
@@ -470,7 +536,7 @@ test.describe('links', () => {
     await expect(page.getByTestId('menu-rich-last')).toHaveText('settings'); // unchanged
   });
 
-  test('Enter activates a link the same way', async ({ page }) => {
+  test('@cross-engine Enter activates a link the same way', async ({ page }) => {
     await page.goto(storyUrl('menu-rich'));
     await openMenu(page);
 

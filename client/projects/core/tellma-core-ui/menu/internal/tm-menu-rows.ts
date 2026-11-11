@@ -9,7 +9,6 @@ import {
   Component,
   computed,
   Directive,
-  effect,
   forwardRef,
   inject,
   input,
@@ -27,11 +26,7 @@ import { Check, ChevronRight, ExternalLink } from 'lucide';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmKbd } from '@tellma/core-ui/kbd';
-import {
-  tmCreateAnchoredOverlay,
-  tmLogicalPositions,
-  tmPushEscapeDismissal,
-} from '@tellma/core-ui/overlay';
+import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
 
 import type {
   TmMenuEntry,
@@ -209,6 +204,7 @@ export class ɵTmMenuList {
           [submenu]="sub.menu()"
           [attr.aria-label]="nameOf(vm)"
           [attr.aria-describedby]="vm.descriptionId"
+          (keydown)="onParentKeydown(parent, sub, $event)"
         >
           <ng-container
             [ngTemplateOutlet]="content"
@@ -390,8 +386,35 @@ export class ɵTmMenuRows {
     }
     event.preventDefault();
     event.stopPropagation();
+    // A held key repeats. Like every other row, this one answers the press
+    // once: the repeats are consumed and nothing more.
+    if (event.repeat) {
+      return;
+    }
     this.menu._pattern.listBehavior.goto(item._pattern);
     this.host.activate(vm.item);
+  }
+
+  /**
+   * ArrowDown and ArrowUp on a parent row whose submenu has opened but is
+   * not on screen yet. Focus cannot enter a panel before the render that
+   * displays it, so a key pressed in that moment still reaches the parent
+   * row, where it would move the focus along this level and collapse the
+   * submenu that was just opened. The key is dropped instead.
+   */
+  protected onParentKeydown(
+    parent: MenuItem<ɵTmMenuRow>,
+    sub: ɵTmMenuSubmenu,
+    event: KeyboardEvent,
+  ): void {
+    if (
+      parent.expanded() === true &&
+      !sub.shown &&
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp')
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 
   /**
@@ -424,7 +447,11 @@ export class ɵTmMenuRows {
     // followed. Enter is left to the browser, which turns it into a click
     // on the link; Space, which a link does not answer natively, clicks it.
     event.stopPropagation();
-    if (event.key === ' ') {
+    if (event.repeat) {
+      // A held key follows the link once, on the press: cancelling the
+      // repeat keeps the browser from clicking the link again.
+      event.preventDefault();
+    } else if (event.key === ' ') {
       event.preventDefault();
       (event.currentTarget as HTMLElement).click();
     }
@@ -551,6 +578,13 @@ export class ɵTmMenuSubmenu {
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
 
+  /**
+   * Whether the panel is on screen: whether the parent row was expanded as
+   * of the last render. For one render after the row expands the panel is
+   * open but not shown, and cannot take focus yet.
+   */
+  shown = false;
+
   /** Whether the parent row is expanded, which is when the panel shows. */
   protected readonly open = computed(() => this.parent().expanded() === true);
 
@@ -568,21 +602,12 @@ export class ɵTmMenuSubmenu {
   });
 
   constructor() {
-    // Each open level is its own entry on the shared Escape stack, pushed
-    // above the root's: one Escape closes this submenu and returns focus to
-    // its parent row; the next closes the menu.
-    effect((onCleanup) => {
-      if (this.open()) {
-        const parent = untracked(this.parent);
-        onCleanup(tmPushEscapeDismissal(() => parent._pattern.close({ refocus: true })));
-      }
-    });
-
     // The overlay was placed while the panel was not displayed, so it is
     // measured again each time the panel shows: after the render that
     // displays it, before the frame paints.
     afterRenderEffect(() => {
-      if (this.open()) {
+      this.shown = this.open();
+      if (this.shown) {
         this.anchored.reanchor();
       }
     });

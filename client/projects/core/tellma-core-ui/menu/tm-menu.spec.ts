@@ -198,7 +198,7 @@ describe('tm-menu', () => {
 
   describe('keyboard & focus', () => {
     // Version-locked guard for the parentless-@angular/aria seam tm-menu is
-    // built on (aria 22.0.4): a Menu with no MenuTrigger/MenuItem parent
+    // built on (aria 22.0.3): a Menu with no MenuTrigger/MenuItem parent
     // reports visible()=true unconditionally, so tm-menu can move focus onto
     // its first row as soon as the rows render, and keyboard interaction
     // takes over from there. If an @angular/aria upgrade changes the
@@ -469,6 +469,117 @@ class TriggerHost {
     { id: 'b', label: 'Beta', action: () => undefined },
   ]);
 }
+
+describe('tmContextMenuTrigger right-click', () => {
+  async function setupTrigger() {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TriggerHost);
+    await settle(fixture);
+    return { fixture, host: fixture.componentInstance };
+  }
+
+  /** The press half of a right-click on engines that raise `contextmenu` on the press. */
+  function rightPress(el: HTMLElement, init: MouseEventInit = {}): void {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, ...init }));
+    el.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: 30,
+        clientY: 30,
+        ...init,
+      }),
+    );
+  }
+
+  it('the release of the right-click that opened the menu does not close it', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+
+    // Firefox and WebKit: the press raises `contextmenu`, the menu opens
+    // with the button still down, and the release lands on the area as an
+    // `auxclick`, outside the panel.
+    rightPress(area);
+    await settle(fixture);
+    expect(host.menu().isOpen()).toBe(true);
+
+    area.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 2 }));
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+    expect(panel()).not.toBeNull();
+  });
+
+  it('a second right-click elsewhere moves the menu and its release leaves it open', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    // The second press dismisses, its `contextmenu` reopens, and its
+    // release is again the tail of the opening gesture.
+    rightPress(area, { clientX: 60, clientY: 40 });
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+    expect(document.querySelectorAll('.tm-menu__panel').length).toBe(1);
+  });
+
+  it('the click Safari sends after a Ctrl+click opened the menu does not close it', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+
+    area.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, ctrlKey: true }));
+    area.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        clientX: 30,
+        clientY: 30,
+      }),
+    );
+    await settle(fixture);
+    area.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+  });
+
+  it('an outside auxclick closes the menu once a press has begun since it opened', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+
+    // A press inside the panel leaves the menu open, and ends the grace
+    // the opening gesture had.
+    panel()!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 1 }));
+    expect(host.menu().isOpen()).toBe(true);
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(false);
+  });
+
+  it('a plain outside click with no press of its own still closes the menu', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+
+    // A click made from the keyboard or from code has no press before it.
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(false);
+  });
+});
 
 describe('tmContextMenuTrigger long-press', () => {
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

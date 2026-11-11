@@ -71,6 +71,22 @@ class RichHost {
   }
 }
 
+/** Two menu buttons inside a form: one with no type, one that states its own. */
+@Component({
+  imports: [TmMenu, TmMenuTrigger],
+  template: `
+    <form>
+      <button [tmMenuTriggerFor]="menu">Options</button>
+      <button type="submit" [tmMenuTriggerFor]="menu">Save and more</button>
+    </form>
+    <tm-menu #menu [items]="items" aria-label="Options" />
+  `,
+})
+class FormHost {
+  readonly menu = viewChild.required(TmMenu);
+  readonly items: readonly TmMenuEntry[] = [{ id: 'a', label: 'Alpha', action: () => undefined }];
+}
+
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -305,6 +321,49 @@ describe('tm-menu entry kinds', () => {
       await fixture.whenStable();
       expect(focusedLabel()).toBe('Language');
     });
+
+    it('a Space inside a query is a character, also on a keepOpen row and on a link', async () => {
+      const { fixture, host } = await setup((host) => [
+        { id: 'a', label: 'Alpha', action: host.act('a') },
+        { id: 's', label: 'Save', action: host.act('s') },
+        {
+          id: 'sd',
+          label: 'Save as draft',
+          role: 'checkbox',
+          keepOpen: true,
+          action: host.act('sd'),
+        },
+        { id: 'g', label: 'Go', href: '#go', action: host.act('g') },
+        { id: 'gs', label: 'Go to settings', href: '#settings', action: host.act('gs') },
+      ]);
+      await open(fixture);
+
+      // "save a": the Space arrives with focus on a plain row, and the
+      // query then lands on the keepOpen row, where a second Space arrives.
+      for (const key of ['s', 'a', 'v', 'e', ' ', 'a']) {
+        press(key);
+      }
+      await fixture.whenStable();
+      expect(focusedLabel()).toBe('Save as draft');
+      const onKeepOpen = press(' ');
+      await fixture.whenStable();
+      expect(focusedLabel()).toBe('Save as draft');
+      expect(onKeepOpen.defaultPrevented).toBe(true); // consumed as a character
+      await sleep(520); // let the typeahead buffer clear
+
+      // "go t": the same on link rows, where a Space would follow the link.
+      for (const key of ['g', 'o', ' ', 't']) {
+        press(key);
+      }
+      await fixture.whenStable();
+      expect(focusedLabel()).toBe('Go to settings');
+      press(' ');
+      await settle(fixture);
+
+      expect(host.log).toEqual([]); // nothing was activated along the way
+      expect(host.selections).toEqual([]);
+      expect(host.menu().isOpen()).toBe(true);
+    });
   });
 
   describe('disabledReason', () => {
@@ -479,6 +538,31 @@ describe('tm-menu entry kinds', () => {
       expect(focusedLabel()).toBe('Wrap'); // the toggled row keeps focus
       expect(host.selections.map((item) => item.id)).toEqual(['w', 'w', 'w']);
     });
+
+    it.each([['Enter'], [' ']])(
+      'a held %j activates a keepOpen item once: its repeats are consumed',
+      async (key) => {
+        const { fixture, host } = await setup((host) => [
+          { id: 'w', label: 'Wrap', role: 'checkbox', keepOpen: true, action: host.act('w') },
+          { id: 'c', label: 'Close', action: host.act('c') },
+        ]);
+        await open(fixture);
+        const reachedMenu: string[] = [];
+        panel()!.addEventListener('keydown', (event) => reachedMenu.push(event.key));
+
+        press(key);
+        const repeats = [1, 2, 3, 4].map(() => press(key, { repeat: true }));
+        await settle(fixture);
+
+        expect(host.log).toEqual(['w']);
+        expect(host.selections.map((item) => item.id)).toEqual(['w']);
+        // Each repeat is swallowed whole: no page scroll, nothing for the
+        // menu's own key handling to act on.
+        expect(repeats.every((event) => event.defaultPrevented)).toBe(true);
+        expect(reachedMenu).toEqual([]);
+        expect(host.menu().isOpen()).toBe(true);
+      },
+    );
 
     it('warns in development about a radio item outside a group', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -680,6 +764,22 @@ describe('tm-menu entry kinds', () => {
       expect(host.menu().isOpen()).toBe(false);
     });
 
+    it.each([['Enter'], [' ']])('the repeats of a held %j never follow a link', async (key) => {
+      const { fixture, host } = await setup(entries);
+      await open(fixture);
+      press('ArrowDown');
+      await fixture.whenStable();
+
+      const repeat = press(key, { repeat: true });
+      await settle(fixture);
+
+      // Cancelled, so the browser does not turn a repeated Enter into a
+      // click on the anchor either.
+      expect(repeat.defaultPrevented).toBe(true);
+      expect(host.log).toEqual([]);
+      expect(host.menu().isOpen()).toBe(true);
+    });
+
     it('keeps the native context menu on links and suppresses it elsewhere', async () => {
       const { fixture } = await setup(entries);
       await open(fixture);
@@ -806,6 +906,73 @@ describe('tm-menu entry kinds', () => {
       await settle(fixture);
       expect(host.menu().isOpen()).toBe(false);
       expect(document.activeElement).toBe(host.trigger().nativeElement);
+    });
+
+    it('Escape pressed in the same moment a submenu opens closes that submenu only', async () => {
+      const { fixture, host } = await setup(entries);
+      await open(fixture);
+      press('ArrowDown');
+      await fixture.whenStable();
+
+      // No render between the two keys: the submenu is open, not yet shown.
+      press('ArrowRight');
+      press('Escape');
+      await settle(fixture);
+
+      expect(host.menu().isOpen()).toBe(true);
+      expect(shownSubPanels()).toEqual([]);
+      expect(focusedLabel()).toBe('Language');
+    });
+
+    it('Escape pressed in the same moment a submenu closes closes the menu', async () => {
+      const { fixture, host } = await setup(entries);
+      await open(fixture);
+      press('ArrowDown');
+      await fixture.whenStable();
+      press('ArrowRight');
+      await settle(fixture);
+
+      press('ArrowLeft');
+      press('Escape');
+      await settle(fixture);
+
+      expect(host.menu().isOpen()).toBe(false);
+      expect(document.activeElement).toBe(host.trigger().nativeElement);
+    });
+
+    it.each([['ArrowDown'], ['ArrowUp']])(
+      '%j pressed before an opening submenu is shown is dropped, not sent along the parent level',
+      async (key) => {
+        const { fixture } = await setup(entries);
+        await open(fixture);
+        press('ArrowDown');
+        await fixture.whenStable();
+
+        press('ArrowRight');
+        const arrow = press(key);
+        await settle(fixture);
+
+        expect(arrow.defaultPrevented).toBe(true);
+        expect(row('Language').getAttribute('aria-expanded')).toBe('true');
+        expect(shownSubPanels().length).toBe(1);
+        expect(focusedLabel()).toBe('English');
+      },
+    );
+
+    it('ArrowDown on a parent row whose submenu is shown by hover still moves on', async () => {
+      const { fixture } = await setup(entries);
+      await open(fixture);
+      row('Language').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      await sleep(160);
+      await settle(fixture);
+      expect(shownSubPanels().length).toBe(1);
+      expect(focusedLabel()).toBe('Language');
+
+      press('ArrowDown');
+      await settle(fixture);
+
+      expect(focusedLabel()).toBe('Export');
+      expect(shownSubPanels()).toEqual([]);
     });
 
     it('mirrors its keys under a right-to-left direction, live', async () => {
@@ -1082,6 +1249,42 @@ describe('tmMenuTriggerFor', () => {
     press('ArrowUp');
     await settle(fixture);
     expect(focusedLabel()).toBe('Gamma');
+  });
+
+  it('an arrow pressed before the open menu has rendered is dropped', async () => {
+    const { fixture, host } = await setup(entries);
+    const button = host.trigger().nativeElement;
+    button.focus();
+
+    // No render between the two keys: focus is still on the button.
+    press('ArrowDown');
+    const second = press('ArrowUp');
+    await settle(fixture);
+
+    expect(second.defaultPrevented).toBe(true); // still no page scroll
+    expect(host.menu().isOpen()).toBe(true);
+    expect(focusedLabel()).toBe('Alpha'); // where the first arrow sent it
+  });
+
+  it('defaults the button to type=button, so it never submits a form, and keeps an authored type', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(FormHost);
+    await settle(fixture);
+    const form = (fixture.nativeElement as HTMLElement).querySelector('form')!;
+    const [bare, authored] = Array.from(form.querySelectorAll('button'));
+    let submits = 0;
+    form.addEventListener('submit', (event) => {
+      submits++;
+      event.preventDefault();
+    });
+
+    expect(bare.getAttribute('type')).toBe('button');
+    expect(authored.getAttribute('type')).toBe('submit');
+
+    bare.click();
+    await settle(fixture);
+    expect(fixture.componentInstance.menu().isOpen()).toBe(true);
+    expect(submits).toBe(0);
   });
 
   it('returns focus to the button after an activation', async () => {
