@@ -6,8 +6,9 @@
 namespace Tellma.Core.Imaging.Tests.Infrastructure
 {
     /// <summary>
-    ///     A seekable stream whose first read past a threshold blocks until released, and which
-    ///     counts every read or reposition made after the suite marks the call returned.
+    ///     A seekable stream whose first read that would reach past a threshold blocks until
+    ///     released, and which counts every read or reposition made after the suite marks the call
+    ///     returned.
     /// </summary>
     internal sealed class BlockingStream(byte[] bytes, int blockAfter) : MemoryStream(bytes, writable: false)
     {
@@ -48,7 +49,7 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         public override int Read(byte[] buffer, int offset, int count)
         {
             Touch();
-            if (base.Position >= blockAfter && Interlocked.Exchange(ref _blockedOnce, 1) == 0)
+            if (base.Position + count > blockAfter && Interlocked.Exchange(ref _blockedOnce, 1) == 0)
             {
                 Blocked.Set();
                 Release.Wait(TimeSpan.FromSeconds(30));

@@ -7,12 +7,14 @@ using SkiaSharp;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Imaging.Tests.Fixtures;
 using Tellma.Core.Imaging.Tests.Infrastructure;
+using Tellma.Core.Imaging.Workers;
 
 namespace Tellma.Core.Imaging.Tests.Thumbnails
 {
     /// <summary>
     ///     Thumbnails of stored files that were not normalised: images under the default pixel cap,
-    ///     a PDF's first page, and the files that yield no thumbnail and no rejection.
+    ///     a PDF's first page, and the files that yield no thumbnail and no rejection, a PDF on a
+    ///     host that renders no PDF thumbnails among them.
     /// </summary>
     public sealed class ThumbnailTests : IDisposable
     {
@@ -156,6 +158,42 @@ namespace Tellma.Core.Imaging.Tests.Thumbnails
         {
             Assert.Null(await _harness.ThumbnailAsync("a,b\n1,2\n"u8.ToArray(), contentType));
             Assert.Empty(_harness.FailureReasons);
+        }
+
+        [Theory]
+        [InlineData("DisabledOutsideDevelopment")]
+        [InlineData("DisabledOnMusl")]
+        public async Task A_pdf_on_a_host_that_renders_no_pdf_thumbnails_yields_none_starts_no_worker_and_counts_no_failure(string support)
+        {
+            // The workers' assembly is missing: starting one would be counted and logged as a failure.
+            using var workers = new PdfWorkerClient(
+                new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing", "Tellma.Core.Imaging.PdfWorker.dll")),
+                SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit);
+            using var harness = new ProcessorHarness(pdf: workers, pdfThumbnails: Enum.Parse<PdfThumbnailSupport>(support));
+
+            Assert.Null(await harness.ThumbnailAsync(DocumentFixtures.HalfBlackPage(200, 100), BlobContentTypes.Pdf));
+
+            Assert.Empty(harness.FailureReasons);
+            Assert.Empty(harness.EventNames);
+            Assert.Empty(harness.Duration.GetMeasurementSnapshot());
+
+            // Images are untouched by it.
+            Assert.NotNull(await harness.ThumbnailAsync(ImageFixtures.QuadrantImage(SKEncodedImageFormat.Png, 16, 16), BlobContentTypes.Png));
+        }
+
+        [Fact]
+        public async Task A_missing_worker_on_a_host_that_renders_pdf_thumbnails_is_a_counted_failure()
+        {
+            // The same missing assembly, where workers do start: the control for the test above.
+            using var workers = new PdfWorkerClient(
+                new PdfWorkerLauncher(Path.Combine(AppContext.BaseDirectory, "missing", "Tellma.Core.Imaging.PdfWorker.dll")),
+                SkiaImageProcessorOptions.DefaultPdfWorkerMemoryLimit);
+            using var harness = new ProcessorHarness(pdf: workers);
+
+            Assert.Null(await harness.ThumbnailAsync(DocumentFixtures.HalfBlackPage(200, 100), BlobContentTypes.Pdf));
+
+            Assert.Equal([BlobTelemetryTagValues.ImageDecodeFailedReason], harness.FailureReasons);
+            Assert.Contains("BlobPdfWorkerFailed", harness.EventNames);
         }
 
         [Fact]

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Not an xunit project: a host-shaped console application that composes the image processor
+         as a distribution does, for the suite to run as a separate process and for publish checks
+         to run from a `dotnet publish` output. -->
+    <OutputType>Exe</OutputType>
+    <TellmaTestAsset>true</TellmaTestAsset>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Imaging\Tellma.Core.Imaging.csproj" />
+    <!-- The generic host: configuration from the environment, console logging, and disposal of
+         the processor (which kills its PDF workers) at shutdown, as in a distribution. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

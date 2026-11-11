@@ -96,7 +96,7 @@ namespace Tellma.Core.Imaging.Tests.Internals
         public void A_pdf_page_is_fitted_to_the_thumbnail_square_scaling_up_or_down(
             float width, float height, int size, int expectedWidth, int expectedHeight)
         {
-            Assert.Equal((expectedWidth, expectedHeight), PdfiumRasterizer.Fit(width, height, size));
+            Assert.Equal((expectedWidth, expectedHeight), PdfWorker.PdfiumRasterizer.Fit(width, height, size));
         }
     }
 }

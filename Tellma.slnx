@@ -27,6 +27,7 @@
     <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
     <Project Path="src/core/Tellma.Core.Email/Tellma.Core.Email.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
+    <Project Path="src/core/Tellma.Core.Imaging.PdfWorker/Tellma.Core.Imaging.PdfWorker.csproj" />
     <Project Path="src/core/Tellma.Core.Imaging/Tellma.Core.Imaging.csproj" />
     <Project Path="src/core/Tellma.Core.Migrator/Tellma.Core.Migrator.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
@@ -77,5 +78,7 @@
   <Folder Name="/test/assets/">
     <Project Path="test/apps/assets/Tellma.Identity.TestInProcHost/Tellma.Identity.TestInProcHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Imaging.SmokeHost/Tellma.Core.Imaging.SmokeHost.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Imaging.TestWorker/Tellma.Core.Imaging.TestWorker.csproj" />
   </Folder>
 </Solution>
