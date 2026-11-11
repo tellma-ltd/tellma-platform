@@ -242,7 +242,7 @@ namespace Tellma.Core.Imaging.Tests.Composition
         [InlineData(null, true)]
         [InlineData("1\n", false)]
         [InlineData("3", false)]
-        public async Task On_linux_the_startup_check_warns_when_the_kernel_lets_a_worker_open_the_hosts_memory(string? scope, bool warns)
+        public async Task On_linux_the_startup_check_warns_when_the_kernel_lets_a_worker_open_the_memory_of_the_accounts_other_processes(string? scope, bool warns)
         {
             Assert.SkipUnless(OperatingSystem.IsLinux(), "Yama's ptrace scope is a Linux kernel setting.");
             var check = new ImagingStartupCheck(readPtraceScope: () => scope);
@@ -260,6 +260,10 @@ namespace Tellma.Core.Imaging.Tests.Composition
                 Assert.Equal("BlobPdfWorkerPtraceUnrestricted", record.Id.Name);
                 Assert.Equal(LogLevel.Warning, record.Level);
                 Assert.Contains("kernel.yama.ptrace_scope", record.Message, StringComparison.Ordinal);
+
+                // It is about the account's other processes: the host closes itself, and says so.
+                Assert.Contains("This host closes itself to its PDF workers", record.Message, StringComparison.Ordinal);
+                Assert.Contains("any other process that runs under the host's account", record.Message, StringComparison.Ordinal);
             }
             else
             {
@@ -277,7 +281,7 @@ namespace Tellma.Core.Imaging.Tests.Composition
         [InlineData("", "kernel.yama.ptrace_scope is not a number")]
         [InlineData("-1", "kernel.yama.ptrace_scope is not a number")]
         [InlineData("on", "kernel.yama.ptrace_scope is not a number")]
-        public void A_ptrace_scope_of_one_or_more_keeps_a_worker_out_of_the_hosts_memory(string? scope, string? reported)
+        public void Only_a_ptrace_scope_of_one_or_more_goes_unreported(string? scope, string? reported)
         {
             Assert.Equal(reported, ImagingStartupCheck.UnrestrictedPtrace(scope));
         }

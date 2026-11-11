@@ -20,11 +20,14 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     operating system stops it at its memory limit (native and managed memory alike, and on
     ///     Linux shared memory too, with room to spare for what an honest render maps) and at its
     ///     CPU limit; it cannot start a process, write a file, or open the host's process to read
-    ///     or change it, and on Linux cannot open a socket, signal the host, change the host's
-    ///     limits or scheduling, create SysV objects or hold a capability, from any of its threads;
-    ///     its environment is exactly the launcher's; it holds no handle the host left inheritable;
-    ///     it dies with its host without its own cooperation; and on Windows a killed worker ends
-    ///     its call even while another process holds its output open.
+    ///     or change it, and on Linux cannot open a socket, signal the host (by a signal of its own
+    ///     or by having the kernel signal a descriptor's owner), push input into a terminal, change
+    ///     the host's limits or scheduling, create SysV objects or hold a capability, from any of
+    ///     its threads, nor open the descriptors, environment, memory or debugger pipes of its
+    ///     host, or another worker's, and it leads a session of its own, without its host's
+    ///     terminal; its environment is exactly the launcher's; it holds no handle the host left
+    ///     inheritable; it dies with its host without its own cooperation; and on Windows a killed
+    ///     worker ends its call even while another process holds its output open.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class WorkerSandboxTests
@@ -110,12 +113,82 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 .Select(static pair => pair.Split('='))
                 .ToDictionary(static pair => pair[0], static pair => pair[1], StringComparer.Ordinal);
 
-            // Section: nothing reaches the host, its process group or the SysV namespace.
-            string[] refused = ["kill", "kill-group", "tgkill", "tkill", "pidfd_open", "prlimit", "setpriority", "sched_setaffinity", "prctl-pdeathsig", "shmget", "msgget", "semget"];
+            // Section: nothing reaches the host, its process group or the SysV namespace; no
+            // descriptor can be given an owner or signal-driven I/O, by which the kernel would
+            // signal someone on the worker's word; and no input can be pushed into a terminal.
+            string[] refused =
+            [
+                "kill", "kill-group", "tgkill", "tkill", "pidfd_open", "prlimit", "setpriority", "sched_setaffinity", "prctl-pdeathsig",
+                "fcntl-setown", "fcntl-setown-ex", "fcntl-setsig", "fcntl-setfl-async", "ioctl-fioasync",
+                "ioctl-tiocsti", "ioctl-tioclinux", "ioctl-fiosetown", "ioctl-siocspgrp",
+                "shmget", "msgget", "semget",
+            ];
             Assert.All(refused, name => Assert.Equal((name, "EPERM"), (name, outcomes[name])));
 
-            // Section: the same calls on the worker itself still work, as the runtime needs them.
-            Assert.All(["kill-self", "prlimit-self", "prlimit-own"], name => Assert.Equal((name, "allowed"), (name, outcomes[name])));
+            // Section: the same calls on the worker itself still work, as the runtime needs them,
+            // and so do an fcntl and an ioctl that signal nobody.
+            string[] allowed = ["kill-self", "prlimit-self", "prlimit-own", "fcntl-getfl", "fcntl-setfl", "ioctl-fionread"];
+            Assert.All(allowed, name => Assert.Equal((name, "allowed"), (name, outcomes[name])));
+        }
+
+        [Fact]
+        public void A_worker_leads_a_session_of_its_own_without_a_controlling_terminal_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Sessions and controlling terminals are probed on Linux.");
+            using PdfWorkerClient client = TestWorkers.StandIn("session");
+
+            // A host started from a terminal shares that terminal with its session. The worker left
+            // the session, so the terminal is not its own to control or to push input into: its
+            // session has none, and the kernel has no controlling terminal to open for it.
+            string probe = Probe(client);
+            TestContext.Current.TestOutputHelper?.WriteLine(probe);
+            Assert.StartsWith("session: own,terminal=0,dev-tty=", probe, StringComparison.Ordinal);
+            Assert.DoesNotContain("opened", probe, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_worker_cannot_open_its_hosts_descriptors_environment_memory_or_map_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "A process's files under /proc are Linux's.");
+
+            // Section: what a worker would want of this process's descriptors: a file it holds open
+            // for writing, and the memory the runtime writes this process's compiled code through,
+            // where the runtime keeps one.
+            using var held = new FileStream(
+                Path.Combine(Path.GetTempPath(), $"tellma-held-{Guid.NewGuid():N}.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite, 1, FileOptions.DeleteOnClose);
+            int[] code = CodeDescriptors();
+            TestContext.Current.TestOutputHelper?.WriteLine($"This process writes its compiled code through {code.Length} descriptor(s).");
+
+            // Section: each is refused, as are the environment, the memory and its map, whatever
+            // Yama's ptrace scope: the host closed itself when it started this worker.
+            AssertClosed(ProbeProcess(Environment.ProcessId, [(int)held.SafeFileHandle.DangerousGetHandle(), .. code]));
+        }
+
+        [Fact]
+        public void A_worker_cannot_open_another_worker_of_its_host_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "A process's files under /proc are Linux's.");
+
+            // Section: another worker of this host, in its sandbox and waiting for its document, as
+            // one rendering another upload at the same moment would be. A worker dies with the
+            // thread that started it, so this test keeps its thread.
+            var launcher = new PdfWorkerLauncher(TestWorkers.StandInPath, ["hang-after-request"]);
+            using WorkerProcess other = launcher.Start(Limit);
+            Assert.True(WorkerProtocol.ReadReady(other.Output).HasFlag(WorkerCapabilities.SystemCallFilter));
+
+            // Section: its input, where its upload arrives, its output and its error stream; its
+            // environment, its memory and its map.
+            AssertClosed(ProbeProcess(other.Id, [0, 1, 2]));
+        }
+
+        [Fact]
+        public void A_worker_finds_no_debugger_pipe_of_its_host_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "The runtime's debugger pipes are files on Linux.");
+            using var client = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["host-debugger-pipes", Path.GetTempPath()]), Limit);
+
+            // Whoever opens a runtime's debugger pipes is its debugger; the host removed its own.
+            Assert.Equal("host-debugger-pipes: none", Probe(client));
         }
 
         [Fact]
@@ -146,20 +219,14 @@ namespace Tellma.Core.Imaging.Tests.Workers
         [Fact]
         public void A_worker_cannot_open_its_hosts_process_to_read_or_change_it()
         {
-            if (OperatingSystem.IsLinux())
-            {
-                // On Linux the host's memory file is closed to the worker by Yama's ptrace scope,
-                // which lets a process reach only its own descendants.
-                string scope = File.Exists(ImagingStartupCheck.PtraceScopePath) ? File.ReadAllText(ImagingStartupCheck.PtraceScopePath).Trim() : "absent";
-                Assert.SkipWhen(scope is "absent" or "0", $"Yama's ptrace scope is {scope}: the kernel lets the worker open its host's memory; the host warns of it at startup.");
-            }
-
             using PdfWorkerClient client = TestWorkers.StandIn("open-host");
 
-            // On Windows the worker's low integrity level denies it every right that reads the
-            // host's memory, writes it, starts a thread in it, takes its handles or changes it. The
-            // right to end the host is one the integrity policy does not withhold, which is why a
-            // Windows host renders PDF thumbnails only in Development.
+            // On Linux the host's memory file is closed to the worker because the host is not
+            // dumpable, whatever Yama's ptrace scope. On Windows the worker's low integrity level
+            // denies it every right that reads the host's memory, writes it, starts a thread in it,
+            // takes its handles or changes it. The right to end the host is one the integrity
+            // policy does not withhold, which is why a Windows host renders PDF thumbnails only in
+            // Development.
             string probe = Probe(client);
             Assert.True(
                 probe == "open-host: refused" || (OperatingSystem.IsWindows() && probe == "open-host: opened (terminate)"),
@@ -246,16 +313,21 @@ namespace Tellma.Core.Imaging.Tests.Workers
         [Fact]
         public void A_worker_holds_no_handle_the_host_left_inheritable()
         {
+            Assert.SkipWhen(OperatingSystem.IsMacOS(), "Neither a worker's descriptors nor its handles can be listed on macOS.");
             using var marker = new InheritableMarker();
             if (OperatingSystem.IsLinux())
             {
-                // The host sees the stray descriptor, and the worker is told to close it.
+                // The host sees the stray descriptor, and the worker is told to close it. A worker
+                // is closed to its host's account, so it looks through its own descriptors itself.
                 Assert.Contains(UnixWorkerProcess.InheritableDescriptors(), d => d.Descriptor == marker.Value);
+                using var probe = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["descriptors", marker.Path]), Limit);
+                Assert.StartsWith("descriptors: not held (", Probe(probe), StringComparison.Ordinal);
+                return;
             }
 
             using PdfWorkerClient client = TestWorkers.StandIn("hang-after-request");
             bool? held = null;
-            client.Ready += worker => held = marker.IsHeldBy(worker.Id);
+            client.Ready += worker => held = OperatingSystem.IsWindows() ? marker.IsHeldBy(worker.Id) : null;
             using var budget = new CancellationTokenSource();
             client.Ready += _ => budget.CancelAfter(TimeSpan.FromMilliseconds(200));
 
@@ -360,6 +432,44 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 .Where(static pair => pair.Length == 2 && pair[0] is "VmSize" or "VmData")
                 .ToDictionary(static pair => pair[0], static pair => long.Parse(pair[1].Split(' ')[0], CultureInfo.InvariantCulture), StringComparer.Ordinal);
             return (status["VmSize"], status["VmData"]);
+        }
+
+        /// <summary>The descriptors through which this process's runtime writes its compiled code: memory files it names <c>doublemapper</c>.</summary>
+        /// <returns>The descriptors; none where the runtime maps its code otherwise.</returns>
+        private static int[] CodeDescriptors()
+        {
+            return
+            [
+                .. Directory.EnumerateFileSystemEntries("/proc/self/fd")
+                    .Where(static entry => new FileInfo(entry).LinkTarget?.Contains("doublemapper", StringComparison.Ordinal) == true)
+                    .Select(static entry => int.Parse(Path.GetFileName(entry), CultureInfo.InvariantCulture)),
+            ];
+        }
+
+        /// <summary>
+        ///     Has the stand-in try to open a process through <c>/proc</c>: the given descriptors of
+        ///     its table, its environment, its memory and its memory map.
+        /// </summary>
+        /// <param name="process">The process.</param>
+        /// <param name="descriptors">The descriptors to try.</param>
+        /// <returns>The probe's report, and the names it must hold.</returns>
+        private static (string Report, string[] Names) ProbeProcess(int process, int[] descriptors)
+        {
+            string argument = string.Create(CultureInfo.InvariantCulture, $"{process}:{string.Join(',', descriptors)}");
+            using var client = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["proc-files", argument]), Limit);
+            string[] names = [.. descriptors.Select(static descriptor => string.Create(CultureInfo.InvariantCulture, $"fd{descriptor}")), "environ", "mem", "maps"];
+            return (Probe(client), names);
+        }
+
+        /// <summary>Asserts that the stand-in tried every file and that the kernel refused each.</summary>
+        /// <param name="probe">The probe's report, and the names it must hold.</param>
+        private static void AssertClosed((string Report, string[] Names) probe)
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine(probe.Report);
+            Assert.StartsWith("proc-files: ", probe.Report, StringComparison.Ordinal);
+            string[][] outcomes = [.. probe.Report["proc-files: ".Length..].Split(',').Select(static pair => pair.Split('='))];
+            Assert.Equal(probe.Names, outcomes.Select(static pair => pair[0]));
+            Assert.All(outcomes, pair => Assert.True(pair[1] is "EACCES" or "EPERM", $"{pair[0]} was not refused: {probe.Report}"));
         }
 
         /// <summary>Runs a probe in the stand-in and returns its report, which arrives as a refusal's detail.</summary>

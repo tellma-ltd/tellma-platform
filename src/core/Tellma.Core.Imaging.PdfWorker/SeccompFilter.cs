@@ -21,9 +21,14 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///         escape its memory limits; reading, writing or signalling another process, or changing
     ///         its resource limits, scheduling, priority or memory placement (signals,
     ///         <c>prlimit64</c> and the scheduling calls are allowed on the worker's own process only,
-    ///         and pidfds, <c>tkill</c>, I/O priorities and page migration not at all); clearing the
-    ///         parent-death signal that ends the worker with its host; and the kernel interfaces
-    ///         exploits favour (io_uring, userfaultfd, perf events, BPF, namespaces, the key store).
+    ///         and pidfds, <c>tkill</c>, I/O priorities and page migration not at all); having the
+    ///         kernel signal someone on the worker's word, by naming a descriptor's owner or signal
+    ///         or by asking for signal-driven I/O with <c>fcntl</c> or <c>ioctl</c>, since the
+    ///         kernel asks only that the owner be of the caller's account, and a terminal's owner
+    ///         is whoever runs in its foreground; pushing input into a terminal with <c>ioctl</c>;
+    ///         clearing the parent-death signal that ends the worker with its host; and the kernel
+    ///         interfaces exploits favour (io_uring, userfaultfd, perf events, BPF, namespaces, the
+    ///         key store).
     ///         <c>clone3</c> answers <c>ENOSYS</c>, because its flags sit behind a pointer the filter
     ///         cannot read; the C library then creates threads with <c>clone</c>, whose flags it can.
     ///         Any other system call is allowed, so the runtime and PDFium work as they would
@@ -60,13 +65,19 @@ namespace Tellma.Core.Imaging.PdfWorker
         private const uint CloneThread = 0x0001_0000;
         private const uint ProcessPriority = 0; // PRIO_PROCESS
         private const uint SetParentDeathSignal = 1; // PR_SET_PDEATHSIG
+        private const uint SetFlags = 4; // F_SETFL
+        private const uint SetOwner = 8; // F_SETOWN
+        private const uint SetSignal = 10; // F_SETSIG
+        private const uint SetOwnerExtended = 15; // F_SETOWN_EX
+        private const uint SignalDrivenIo = 0x2000; // O_ASYNC
 
         // Offsets into struct seccomp_data: the call number, the architecture, and the low words of
-        // the first two arguments (little-endian).
+        // the first three arguments (little-endian).
         private const uint NumberOffset = 0;
         private const uint ArchitectureOffset = 4;
         private const uint FirstArgumentOffset = 16;
         private const uint SecondArgumentOffset = 24;
+        private const uint ThirdArgumentOffset = 32;
 
         // prctl and seccomp operations.
         private const int SetNoNewPrivileges = 38;
@@ -165,8 +176,16 @@ namespace Tellma.Core.Imaging.PdfWorker
                 ];
             uint setPriority = x64 ? 141u : 140u;
             uint prctl = x64 ? 157u : 167u;
+            uint fcntl = x64 ? 72u : 25u;
+            uint ioctl = x64 ? 16u : 29u;
             uint clone = x64 ? 56u : 220u;
             const uint clone3 = 435;
+
+            // Section: the ioctl requests refused, the same on both architectures
+            // (include/uapi/asm-generic/ioctls.h and sockios.h): TIOCSTI and TIOCLINUX, which push
+            // input into a terminal for whoever reads it next; FIOASYNC, which asks for
+            // signal-driven I/O; FIOSETOWN and SIOCSPGRP, which name a socket's owner.
+            uint[] refusedRequests = [0x5412, 0x541C, 0x5452, 0x8901, 0x8902];
 
             // Section: another architecture's calls kill the process; so do x32 calls on x64.
             var program = new List<Instruction>
@@ -227,6 +246,35 @@ namespace Tellma.Core.Imaging.PdfWorker
             program.Add(Jump(JumpIfEqual, prctl, 0, 4));
             program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
             program.Add(Jump(JumpIfEqual, SetParentDeathSignal, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: fcntl(fd, cmd, arg) may not name a descriptor's owner, nor the signal an owner
+            // gets, nor ask for signal-driven I/O (F_SETFL with O_ASYNC in its argument): the kernel
+            // signals the owner when the descriptor is ready for I/O, and an owner of the worker's
+            // account, as its host is, would be signalled on the worker's word. A terminal needs no
+            // naming: asking for signal-driven I/O on one makes its foreground job the owner.
+            program.Add(Jump(JumpIfEqual, fcntl, 0, 9));
+            program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+            program.Add(Jump(JumpIfEqual, SetOwner, 5, 0));
+            program.Add(Jump(JumpIfEqual, SetSignal, 4, 0));
+            program.Add(Jump(JumpIfEqual, SetOwnerExtended, 3, 0));
+            program.Add(Jump(JumpIfEqual, SetFlags, 0, 3));
+            program.Add(Statement(LoadWordAbsolute, ThirdArgumentOffset));
+            program.Add(Jump(JumpIfAnyBitSet, SignalDrivenIo, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: ioctl(fd, request, ...) by request. Each refused request jumps to the refusal
+            // that follows the list; the last one falls into it, or steps over it to the allowance.
+            program.Add(Jump(JumpIfEqual, ioctl, 0, (byte)(refusedRequests.Length + 3)));
+            program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+            for (int index = 0; index < refusedRequests.Length; index++)
+            {
+                bool last = index == refusedRequests.Length - 1;
+                program.Add(Jump(JumpIfEqual, refusedRequests[index], (byte)(refusedRequests.Length - 1 - index), (byte)(last ? 1 : 0)));
+            }
+
             program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
             program.Add(Statement(ReturnConstant, Allow));
 

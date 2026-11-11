@@ -12,8 +12,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
     /// <summary>
     ///     The processor in a host of its own, composed on the generic host as a distribution
     ///     composes it: its startup check passes, an honest PDF renders, a hostile one is stopped
-    ///     with the host's memory unmoved, and PDFium is never loaded into the host; and a Production
-    ///     host renders PDF thumbnails on Linux only, saying so in its log elsewhere.
+    ///     with the host's memory unmoved, and PDFium is never loaded into the host; on Linux the
+    ///     host ends up closed to its own account, its runtime's debugger pipes found and removed;
+    ///     and a Production host renders PDF thumbnails on Linux only, saying so in its log
+    ///     elsewhere.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class SmokeHostTests
@@ -32,6 +34,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Assert.Equal("no", report["host.pdftoimage-loaded"]);
             Assert.Equal("held", report["result"]);
             Assert.Equal(0, exitCode);
+            if (OperatingSystem.IsLinux())
+            {
+                AssertClosedToItsAccount(report);
+            }
         }
 
         [Fact]
@@ -52,6 +58,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 Assert.Equal("Enabled", report["pdf.thumbnails"]);
                 Assert.NotEqual("none", report["honest.bytes"]);
                 Assert.Equal("none", report["hostile.thumbnail"]);
+                AssertClosedToItsAccount(report);
             }
             else
             {
@@ -62,6 +69,23 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 Assert.Equal(output.IndexOf("PDF thumbnails are disabled on this host", StringComparison.Ordinal), output.LastIndexOf("PDF thumbnails are disabled on this host", StringComparison.Ordinal));
                 Assert.Contains("PDF thumbnails are disabled on this host", output, StringComparison.Ordinal);
             }
+        }
+
+        /// <summary>
+        ///     Asserts what a Linux host reports of itself once it has started workers: it is not
+        ///     dumpable, and the two pipes its runtime listened on for a debugger, which it found
+        ///     under the names the host expects before any worker started, are gone.
+        /// </summary>
+        /// <param name="report">The host's report.</param>
+        private static void AssertClosedToItsAccount(Dictionary<string, string> report)
+        {
+            // A runtime told to start without its debugger makes no pipes; the host inherits this
+            // suite's environment.
+            string[] switches = ["DOTNET_EnableDiagnostics", "DOTNET_EnableDiagnostics_Debugger", "COMPlus_EnableDiagnostics", "COMPlus_EnableDiagnostics_Debugger"];
+            bool debugger = switches.All(static name => Environment.GetEnvironmentVariable(name) != "0");
+            Assert.Equal(debugger ? "2" : "0", report["host.debugger-pipes-at-start"]);
+            Assert.Equal("0", report["host.debugger-pipes"]);
+            Assert.Equal("no", report["host.dumpable"]);
         }
 
         /// <summary>Runs the host to its end and reads its report.</summary>

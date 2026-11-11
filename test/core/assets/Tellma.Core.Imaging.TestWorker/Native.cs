@@ -14,6 +14,9 @@ namespace Tellma.Core.Imaging.TestWorker
         /// <summary><c>EPERM</c>.</summary>
         public const int PermissionDenied = 1;
 
+        /// <summary><c>EACCES</c>.</summary>
+        public const int AccessDenied = 13;
+
         /// <summary><c>PROCESS_VM_OPERATION</c>.</summary>
         public const uint ProcessVmOperation = 0x0008;
 
@@ -34,6 +37,32 @@ namespace Tellma.Core.Imaging.TestWorker
 
         /// <summary><c>PROCESS_TERMINATE</c>.</summary>
         public const uint ProcessTerminate = 0x0001;
+
+        /// <summary><c>int open(const char*, int)</c>, for an existing file.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="flags">The access wanted, and <c>O_CLOEXEC</c>.</param>
+        /// <returns>The descriptor, or -1.</returns>
+        [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Open(string path, int flags);
+
+        /// <summary><c>int close(int)</c>.</summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Close(int descriptor);
+
+        /// <summary><c>int access(const char*, int)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="mode">The access asked about: 4 to read, 2 to write.</param>
+        /// <returns>0 when this process's account has that access.</returns>
+        [LibraryImport("libc", EntryPoint = "access", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Access(string path, int mode);
 
         /// <summary><c>int kill(pid_t, int)</c>.</summary>
         /// <param name="process">The process.</param>

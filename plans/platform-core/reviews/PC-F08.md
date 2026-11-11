@@ -779,3 +779,409 @@ All of it on the final tree. The machine was shared with other slots throughout,
 - **Not verified:** a real musl host; the restricted token under IIS or App Service; arm64 (the
   filter's arm64 program is checked by the interpreter tests only, as before).
 - No command was blocked by the permission system.
+
+## Review 2
+
+Reviewed commits da3714f..bfa9e4a together (`git diff da3714f^ bfa9e4a`, `git show --stat` per
+commit, every changed file read in full) against D-030 with addenda 1-5, D-040, spec 0017 §1.1,
+§3.5, §3.6, §10, the PC-053 CHECKPOINTS entry and WATCHLIST, PLAN.md §6-§7, and AGENTS.md. Review 1
+and its responses were read first; I did not see the implementation discussion.
+
+What I ran:
+- `Tellma.Core.Imaging.Tests` on Windows, Debug, PR-tier filter: 439 passed, 11 skipped
+  (the Linux-only probes), 0 failed, 450 total. Build succeeded, 0 warnings.
+- The same suite in `mcr.microsoft.com/dotnet/sdk:10.0` (Ubuntu 24.04, glibc 2.39, 10.0.11 runtime,
+  `ptrace_scope` 1, uid 0), from a `git archive` of bfa9e4a, Release: 448 passed, 2 skipped (the two
+  Windows-only tests), 0 failed. Both OS runs match the implementer's record.
+- A safe, own-process observation in sdk:10.0 of what a .NET 10 host keeps open (see R2-1): a plain
+  managed process holds `fd -> /memfd:doublemapper (deleted)`, mapped `rw-s` in `/proc/self/maps`,
+  with `DOTNET_EnableWriteXorExecute` at its default (on). I ran no cross-process memory-access code.
+
+Residual judgment (D-040):
+- **(1) RLIMIT_AS (about 3.55 GiB shared memory per worker until it is killed): holds** as accepted,
+  with the memory-cgroup deployment guidance. It is a bounded DoS reachable only after a worker is
+  already compromised, and R2-1 below is a strictly worse consequence of the same precondition, so
+  the address-space residual does not move the needle on its own.
+- **(2) filesystem (writes as well as reads, PC-F11): holds**, but see R2-1: PC-F11 as scoped
+  (Landlock over the app's own files) does not by itself close the `/proc` path R2-1 uses.
+- **(3) macOS as Windows, (4) musl detected-not-exercised, (5) `DOTNET_GCRegionRange` unset: hold.**
+- **Must escalate:** the host-memory vector. D-030 addendum 5 added the Yama warning to close it;
+  R2-1 shows the warning's own premise is wrong, so the residual is mis-stated, not merely accepted.
+
+What holds, checked against the change as it now stands:
+- Limits are applied after the ready frame and before the request on both OSes
+  (`PdfWorkerClient.Render`), so untrusted bytes are parsed only under the caps; the seccomp filter
+  and the dropped capabilities are installed before the ready frame (`WorkerSandbox.Enter`).
+- The IPC caps every length before allocating (`WorkerProtocol.ReadRequest`/`ReadResult`), bounds a
+  PNG by `MaxImageBytes(size)` for the size the host itself chose, and `WorkerPng.Check` fixes the
+  signature, a first `IHDR`, the dimensions, 8-bit RGB/RGBA, no interlace and the chunk set before
+  Skia re-decodes at exactly those dimensions.
+- Slots: PDF work takes its own `PdfWorkerConcurrency` slot, released only once the worker process
+  is gone (`RunPdfInSlot`/`Render` finally), and image work never waits behind it (R1-3);
+  `PdfWorkerBudgetTests` covers death-before-slot-return, cancellation, dispose, the CPU-limit math,
+  the WER-held crash and zombies. The Linux `RLIMIT_DATA`/`RLIMIT_AS`/`RLIMIT_CPU` and the Windows
+  job limits read back correctly; `PR_SET_PDEATHSIG` plus the `--host-pid` re-check and the stdin
+  watchdog cover the orphan cases (R1-4).
+- The host rule is right where it is enforced: Linux+glibc enabled, Windows/macOS Development-only,
+  musl never (`PdfThumbnailPolicy`), and the launcher refuses single-file/self-contained hosts.
+- AGENTS.md: XML docs and section comments are present; three new `src` projects and both test
+  assets carry READMEs; no code, message, log or test name cites `docs/` or a spec. PLAN.md §7.1:
+  build clean, format clean (per the record), the only test closure touched is the Imaging suite,
+  which CI runs on both OSes (`ci.yml` build-test matrix). ARCHITECTURE.md is updated.
+
+### Findings
+
+**R2-1 (major): On Linux a compromised worker can write the host's executable memory by reopening the runtime's W^X "doublemapper" memfd through `/proc/<host-pid>/fd`. Neither the seccomp filter, the dropped capabilities, nor `kernel.yama.ptrace_scope` closes this path, and the startup check and ARCHITECTURE.md tell operators it does.**
+- Premise: a PDFium memory-corruption exploit gives an attacker code execution inside the worker.
+  That is the exact threat this item moved rendering out of process to contain, and the one the
+  recorded residuals (D-030 addendum 3/5, the README, the implementer notes) assume.
+- The host keeps the door open. A .NET host on Linux runs with Write-xor-Execute on by default and
+  keeps a writable, shared `memfd` named `doublemapper` open for its whole life, as a file
+  descriptor and as an `rw-s` mapping that aliases its executable code pages. I confirmed this on
+  `sdk:10.0`: a plain managed process shows `fd -> /memfd:doublemapper (deleted)` and
+  `... rw-s ... /memfd:doublemapper (deleted)` in its own `/proc/self/maps`.
+- The worker can reach it. The worker shares the host's PID namespace (nothing creates a new one)
+  and is told the host's pid (`--host-pid`, `WorkerSandbox.cs:44-45`; `getppid` also works). It can
+  therefore `open("/proc/<host-pid>/fd/<n>", O_RDWR)` on that memfd and
+  `mmap(MAP_SHARED, PROT_READ|PROT_WRITE)` it, then overwrite the host's JIT/precompiled code — full
+  code execution in the host process: every tenant's data, the database connection strings, the
+  app's secrets.
+- Nothing in the sandbox stops it:
+  - `SeccompFilter.cs:125-151` is a deny list; `open`, `openat`, `mmap`, `readlink` and `pread` are
+    all allowed (the runtime needs them). The filter cannot inspect the path string.
+  - `RLIMIT_FSIZE` 0 (`UnixWorkerProcess.cs:207`) limits only file-size growth, not writes through a
+    shared mapping.
+  - The dropped capabilities (`WorkerSandbox.DropCapabilities`) and `no_new_privs` are irrelevant:
+    following `/proc/<pid>/fd` for a same-uid, dumpable target needs no capability.
+  - `kernel.yama.ptrace_scope` gates only `PTRACE_MODE_ATTACH` (and `/proc/<pid>/mem`), not the
+    `PTRACE_MODE_READ` check that guards `/proc/<pid>/fd` reopening. So `ptrace_scope` 1 — the value
+    in both test containers, and the value `ImagingStartupCheck.UnrestrictedPtrace` treats as safe —
+    does not block it.
+- It is untested and the suite would stay green: the stand-in's only host-memory probe opens
+  `/proc/<host>/mem` (`test/core/assets/Tellma.Core.Imaging.TestWorker/Program.cs:438-446`), which is
+  `ATTACH`-gated and refused; nothing exercises a `/proc/<host>/fd` reopen.
+- The guidance is actively wrong, not merely incomplete:
+  - `src/core/Tellma.Core.Imaging/ImagingLog.cs:110-114` tells the operator a worker "could read and
+    write this host's memory" only when `ptrace_scope` is 0, and to "Set the kernel.yama.ptrace_scope
+    sysctl to 1 or higher" as the fix.
+  - `ARCHITECTURE.md:1212`: "the host's memory is closed to it only where `kernel.yama.ptrace_scope`
+    is 1 or more".
+  - D-030 addendum 5 added this warning specifically to close the host-memory vector; it does not.
+  - PC-F11 as scoped (Landlock over the app's own files, D-040 item 2) would not close it either
+    unless it explicitly denies opening under `/proc`.
+- Why major, and why it must be escalated: it defeats the item's central goal ("never the host") on
+  the one supported production OS, under the configuration the system blesses, and the planned
+  follow-up does not address it. I did not rate it blocking because the orchestrator has already
+  accepted that a PDFium RCE is "not fully contained" on Linux until later confinement work
+  (D-030 addendum 3), and host code execution is the extreme of that accepted residual; but the
+  residual as written claims the opposite of what holds, so this needs an orchestrator ruling.
+- Fix (any one closes it; the first is cheapest):
+  1. Make the host non-dumpable before it starts any worker: `prctl(PR_SET_DUMPABLE, 0)` on the host
+     process at startup. With the worker's already-empty capabilities, a non-dumpable host's `/proc`
+     entries become inaccessible to the worker even when both run as root, closing the memfd reopen
+     **and** the `/proc/<host>/environ` secret read (R2-2) in one step. It does not affect the host's
+     own reads of the worker's `/proc` or its `prlimit` calls on the worker.
+  2. Or run the worker under a distinct uid, or in its own PID namespace.
+  3. Correct `ImagingLog.PtraceUnrestricted`, `ImagingStartupCheck` and `ARCHITECTURE.md:1212` to
+     state that `ptrace_scope` raises the bar for `PTRACE_ATTACH`/`/proc/<pid>/mem` only, not for
+     same-uid `/proc` reads or the memfd reopen; and make PC-F11's scope explicitly cover `/proc`.
+  4. Add a stand-in probe that reopens a descriptor from `/proc/<host>/fd` and asserts it is refused.
+
+**R2-2 (minor): The ptrace-scope guidance overstates what it buys even for reads; the host's environment (its secrets) is readable at `ptrace_scope` 1.**
+- Where: `src/core/Tellma.Core.Imaging/ImagingLog.cs:110-114`,
+  `src/core/Tellma.Core.Imaging/ImagingStartupCheck.cs:118-139`, `ARCHITECTURE.md:1212`.
+- The implementer's own R1-1 record measured `/proc/<host>/environ` (the host's environment, its
+  connection strings among them) readable by a same-uid worker at `ptrace_scope` 1, because Yama
+  gates only `ATTACH`-mode access. Yet the shipped warning and ARCHITECTURE.md present
+  `ptrace_scope >= 1` as closing host-memory read and write. An operator who sets it to 1 and reads
+  "the host's memory is closed" is misled: the worker can still read host secrets (environ) and,
+  per R2-1, write host code.
+- This is the same root cause as R2-1 and is fixed by R2-1's step 3 (and closed outright by step 1);
+  it is filed separately so the documentation correction is not lost if R2-1's vulnerability is
+  accepted as a residual rather than fixed now.
+
+### Responses
+
+The orchestrator ruled on R2-1 before this round (D-041): close the vector now, by the host
+making itself non-dumpable unless verification shows that does not close both paths; verify
+first, on fixtures only; measure and document the cost. This round does that, and closes four
+further ways in that the verification turned up.
+
+- R2-1: fixed in the review 2 fixes commit. The finding is right for a host that runs as an
+  unprivileged user or as root without capabilities. A root host that keeps its capabilities was
+  closed to this one path already, though not to the others below.
+  - **Verified first, before and after.** Every target was a fixture of mine: a lab program that
+    plays both roles, and then the suite's own test host with the stand-in worker under a worker's
+    real limits (no capability, the seccomp filter, the `RLIMIT_*` limits). No code read or wrote
+    another process's memory: a probe opens a file and closes it again, untouched.
+    - In `mcr.microsoft.com/dotnet/sdk:10.0` (kernel 6.18.54 under WSL2, `ptrace_scope` 1) the
+      stand-in opened, for reading and writing, `/proc/<host>/fd/<n>` for a file the host holds
+      open and for the descriptor its runtime writes compiled code through
+      (`/memfd:doublemapper`, descriptor 8 in every run), then the host's `environ`, `mem` and
+      `maps`. "Before" is the final tree with this round's fixes taken out:
+
+      | Host | Before | After |
+      |---|---|---|
+      | uid 1654, no capability | `fd120=opened,fd8=opened,environ=opened,mem=EACCES,maps=opened` | `fd151=EACCES,fd8=EACCES,environ=EACCES,mem=EACCES,maps=EACCES` |
+      | uid 0, `--cap-drop ALL` | `fd117=opened,fd8=opened,environ=opened,mem=EACCES,maps=opened` | `fd137=EACCES,fd8=EACCES,environ=EACCES,mem=EACCES,maps=EACCES` |
+      | uid 0, Docker's default capabilities | refused already: the test passes | `fd137=EACCES,fd8=EACCES,environ=EACCES,mem=EACCES,maps=EACCES` |
+
+    - The lab program agrees (a bare process with empty capability sets and `no_new_privs`
+      against a host of its account). Before, `open(/proc/<host>/fd/8, O_RDWR)` succeeded and the
+      environment read back a planted variable, as uid 1654 and as uid 0 with an empty bounding
+      set. After `prctl(PR_SET_DUMPABLE, 0)` in the host each answered `EACCES`, and `maps` and
+      `cwd` with them. `mem` was `EACCES` throughout, which is all that `ptrace_scope` 1 buys.
+    - A root host that keeps its capabilities is closed because the kernel also asks that the
+      caller hold every capability its target holds, and a worker holds none.
+  - **The fix (step 1).** `HostIsolation.CloseToWorkers()` is the first thing
+    `UnixWorkerProcess.Start` does on Linux: before every worker start, the startup check's own
+    included, in every environment.
+    - It makes the host non-dumpable, reads the flag back, and throws a `Start` failure when the
+      kernel did not comply: no worker starts beside an open host.
+    - It needs no privilege, and it holds for a host of uid 0: a process that is not dumpable is
+      closed to every process without `CAP_SYS_PTRACE`, and a worker has dropped every capability.
+    - It runs on every start, not once. It costs a few system calls and a listing of the
+      temporary directory, and the debugger pipes below can come back.
+  - **The probes (step 4).**
+    - The stand-in's `proc-files` mode, and
+      `A_worker_cannot_open_its_hosts_descriptors_environment_memory_or_map_on_linux`, which
+      asserts a refusal for each file in the table above.
+    - `A_worker_cannot_open_its_hosts_process_to_read_or_change_it` no longer skips where
+      `ptrace_scope` is 0 or absent: the host's memory is closed by the host now.
+    - `HostIsolationTests.Every_worker_start_closes_the_host_to_its_own_account_again_on_linux`
+      makes the test host dumpable again and plants a pipe-shaped file, starts a worker, and
+      asserts the host is closed again and the file gone.
+    - The smoke host, a published host as a deployment runs one, reports `host.dumpable=no` and
+      `host.debugger-pipes=0`, or its test fails.
+  - **The guidance (step 3)** is R2-2. Fix 2 (another uid, or a PID namespace) was not needed.
+  - **Four more ways in, found while verifying, each closed in this round.** The first three
+    are the finding's own threat (code running in a worker reaches its host),
+    `PR_SET_DUMPABLE` closes none of them, and a root host with capabilities is open to them
+    too.
+    1. *The runtime's debugger pipes.* A .NET process listens for a managed debugger on two
+       FIFOs, `/tmp/clr-debug-pipe-<pid>-<start time>-in` and `-out`, mode 0600 under its own
+       account.
+       - A process of that account opens them like any file. In the lab,
+         `open(<pipe>-in, O_WRONLY)` succeeded for a process without capabilities against hosts
+         of uid 1654 and of uid 0 with capabilities. The protocol behind them reads and writes
+         the debuggee's memory by design; I opened a pipe, wrote nothing, and did not exercise
+         the protocol.
+       - The host now removes its own pipes before every worker start. Beside a pipe it cannot
+         remove but can still open it starts no worker, and the failure names the pipe and
+         `DOTNET_EnableDiagnostics_Debugger=0`.
+       - Before, the probe lists both pipes (`host-debugger-pipes:
+         clr-debug-pipe-504-107440445-…`); after, `host-debugger-pipes: none`
+         (`A_worker_finds_no_debugger_pipe_of_its_host_on_linux`). The smoke host reports
+         `host.debugger-pipes-at-start=2`, which shows that the runtime names its pipes as the
+         host expects, and then `host.debugger-pipes=0`.
+    2. *Signals the kernel sends on a worker's word.* Review 1's filter confines `kill` and its
+       relatives to the worker's own pid. But `fcntl(F_SETOWN)` names any process as a
+       descriptor's owner, and with `O_ASYNC` the kernel signals that owner whenever the
+       descriptor is ready, asking only that it be of the caller's account.
+       - In the lab a process without capabilities named the host as the owner of a pipe of its
+         own, asked for signal-driven I/O and wrote a byte: the host received `SIGIO`, whose
+         default action ends a process.
+       - A terminal needs no naming, because its owner is its foreground job. A child that only
+         set `O_ASYNC` on the terminal its host was started from had the host killed at the next
+         keystroke (exit 157), from a session of its own too.
+       - The filter now refuses `fcntl` with `F_SETOWN`, `F_SETOWN_EX`, `F_SETSIG`, and `F_SETFL`
+         with `O_ASYNC`; and `ioctl` with `FIOASYNC`, `FIOSETOWN` and `SIOCSPGRP`.
+    3. *The host's controlling terminal.* A worker of a host started from a terminal shared its
+       session: it opened `/dev/tty` and changed the terminal's foreground job (`TIOCSPGRP`
+       succeeded in the lab).
+       - On kernels that still allow it, `TIOCSTI` pushes input into the terminal for the
+         host's shell to run. This kernel answers `EIO`, so that one was not reproduced.
+       - The worker now calls `setsid` before anything else of its sandbox, and the filter
+         refuses `TIOCSTI` and `TIOCLINUX` outright.
+       - Under a pseudo-terminal, before: `session: inherited,terminal=34816,dev-tty=opened`;
+         after: `session: own,terminal=0,dev-tty=errno6`
+         (`A_worker_leads_a_session_of_its_own_without_a_controlling_terminal_on_linux`).
+    4. *Another worker of the same host.* Workers were dumpable, so a compromised worker could
+       open a concurrent worker's `/proc/<pid>/fd/0`, the pipe its upload arrives on (another
+       tenant's document, perhaps), and its output, where its thumbnail leaves.
+       - Before, for all three kinds of host:
+         `fd0=opened,fd1=opened,fd2=opened,environ=opened,mem=EACCES,maps=opened`. After: each
+         `EACCES` (`A_worker_cannot_open_another_worker_of_its_host_on_linux`).
+       - A worker now makes itself non-dumpable in its sandbox, before it drops its
+         capabilities: until then those keep a worker without any out of it.
+  - **What non-dumpable costs (measured, as ruled).** In the lab: a host that fails fast, and a
+    host asked for a dump and a trace over its diagnostics port; as uid 1654, as uid 0, and as
+    uid 0 in a container started with `--cap-add SYS_PTRACE`.
+    - The kernel's core dump: none. The ruling accepts that.
+    - The runtime's crash dump (`DOTNET_DbgEnableMiniDump=1`): 6.7 MB before. After,
+      `createdump` reports `open(/proc/<pid>/mem) FAILED Permission denied (13)` and writes
+      nothing, unless the container holds `CAP_SYS_PTRACE`, where the dump is written as before.
+    - `dotnet-dump collect` (the port's dump command): `hresult 0` and a 6.9 MB file before;
+      `0x80004005` and no file after; with `CAP_SYS_PTRACE`, as before.
+    - `dotnet-counters` and `dotnet-trace` (the port's process-information and tracing
+      commands): unchanged. A 19 kB nettrace stream came back in every case. The port is a
+      socket, which a worker cannot create, so the host leaves it alone.
+    - A managed debugger cannot attach once a worker has started, because the pipes are gone.
+      That is the price of item 1 above, not of the ruling, and the first point for the
+      orchestrator.
+    - A host that removed its pipes still exits normally, and ends on `SIGTERM` as before.
+    - I ran none of the three tools, nor a managed debugger: my session may not download
+      anything without the user's permission, so the lab program spoke the port's protocol.
+    - The README carries all of this as a table for operators, and ARCHITECTURE.md as a sentence.
+  - **What it leaves.** Each is in the README's residual risks, and the first four are points
+    for the orchestrator.
+    - *The account's other processes.* The host closes itself and each worker closes itself; any
+      other process of the same account does neither, and a worker can read its environment and
+      reopen its files at any `ptrace_scope`.
+    - *A worker while it starts.* The kernel makes every newly started program dumpable. From
+      its start until it enters its sandbox, a worker of an unprivileged host can be opened by a
+      compromised worker that runs at that moment, its pipes included. A root host with
+      capabilities has no such moment. No cheap fix closes this one (below).
+    - *A root host.* A worker of uid 0 without capabilities can still raise its host's
+      `/proc/<pid>/oom_score_adj` (measured, before and after), and reach root's files. For an
+      unprivileged host the fix closes that file as well.
+    - *Files.* A terminal the host was started from can still be opened by its path, read and
+      written, though not controlled or made to signal; the host's command line is
+      world-readable, as every process's is.
+    - The filesystem residual and the address-space residual of D-040 stand as they were.
+
+- R2-2: fixed in the review 2 fixes commit. Nothing claims any longer that `ptrace_scope`
+  closes the host's memory, or anything else of the host: the host does that itself now.
+  - `ImagingLog.PtraceUnrestricted` (`BlobPdfWorkerPtraceUnrestricted`) says that the host closes
+    itself to its workers, that at scope 0 a worker could read and write the memory of any
+    *other* process of the host's account, and that even at scope 1 or more it can read those
+    processes' environment and open files, "so run nothing else under the host's account".
+  - `ImagingStartupCheck`, its remarks and its section comment say the same: the scope closes
+    memory alone, and the host needs no such setting.
+  - ARCHITECTURE.md's bullet drops "the host's memory is closed to it only where
+    `kernel.yama.ptrace_scope` is 1 or more". It states what the host closes of itself and what
+    that costs, and records the account's other processes as the residual.
+  - The README's "What a Linux host closes of itself" says of the two paths: "`ptrace_scope`
+    guards neither: it covers `ptrace` and `/proc/<pid>/mem` only".
+  - `ImagingCompositionTests` asserts the new wording.
+
+#### Also changed, beyond the findings
+
+- **`UnixWorkerProcess.InheritableDescriptors`** lists `/proc/self/fd` and asks `fcntl(F_GETFD)`
+  where it read `/proc/self/fdinfo`. Kernels before about 5.14 give a non-dumpable process's
+  `fdinfo` to root and refuse an unprivileged process its own, which would have failed every
+  worker start there. This is from the kernel's history and was not reproduced: kernel 6.18
+  allows both.
+- **The inheritance test** no longer looks into a Linux worker's descriptors from the test host,
+  which a non-dumpable worker refuses: the stand-in's `descriptors` mode looks through its own.
+  `InheritableMarker.IsHeldBy` is Windows-only, and the test skips on macOS, where it could never
+  have run.
+- **`HostIsolation.RemoveDebuggerPipes`** takes the paths, so that its refusal is tested on a
+  folder of the test's own and no other suite's worker meets a pipe that cannot be removed.
+
+#### Deviations (also in the commit message)
+
+15. A Linux host makes itself non-dumpable (D-041) and removes its runtime's debugger pipes (mine)
+    before every worker start, in every environment. It leaves no core dump, a crash dump or
+    `dotnet-dump collect` of it needs `CAP_SYS_PTRACE`, and no managed debugger can attach once
+    a worker has started. Spec 0017 says nothing of this.
+16. A Linux worker leaves its host's session and makes itself non-dumpable, and its filter
+    refuses kernel-sent signals (`fcntl` owner, signal and `O_ASYNC`; `ioctl` `FIOASYNC`,
+    `FIOSETOWN`, `SIOCSPGRP`) and terminal input (`TIOCSTI`, `TIOCLINUX`): more than D-030
+    addendum 4 and D-041 list.
+17. `BlobPdfWorkerPtraceUnrestricted` now warns about the other processes of the host's account,
+    not about the host (R2-2).
+
+#### For the orchestrator
+
+- **The debugger pipes (deviation 15).** Removing them is my addition to the ruling, and it is
+  what makes a managed debugger unable to attach to a Linux host once a worker has started,
+  Development included; a debugger that started the host, or attached earlier, stays attached
+  (the runtime's design; not exercised). The alternatives: exempt Development, which leaves a
+  Development host open to its workers through the pipes; or require
+  `DOTNET_EnableDiagnostics_Debugger=0` of every Linux host and fail the startup check without
+  it, which costs the same attach and a deployment setting besides. I recommend keeping the
+  removal: a pipe that reads and writes host memory is the finding's own harm by another door.
+- **A worker while it starts.** Closing it needs either a filesystem sandbox that denies `/proc`
+  (PC-F11) or sockets in place of the worker's pipes, which `/proc` cannot reopen; the second is
+  a protocol-transport change of a day or so. Accept until PC-F11, or rule the sockets.
+- **PC-F11's scope** should deny a worker `/proc` beyond its own entries and the temporary
+  directory, as the review asks. That closes the account's other processes, the starting worker,
+  the terminal by its path, and any debugger pipe of another .NET process of the account.
+- **Deployment guidance for the hosting spec:** run the host as an unprivileged user (a root
+  host lends its worker `oom_score_adj` and root's files), with nothing else under its account,
+  as a service and not from a terminal; grant `CAP_SYS_PTRACE` only where crash dumps are wanted.
+- **Spec 0017** records none of deviations 15-17; `docs/` is not mine to edit.
+- **The diagnostics tools were not run** (no downloads in my session). If operators rely on
+  `dotnet-dump`, `dotnet-counters` or `dotnet-trace`, a run of the real tools against a staging
+  host would confirm what the protocol showed.
+
+#### Verification of the fixes
+
+All of it on the final tree. The container runs built from an archive of the working tree, which
+differs from the commit in one phrase of ARCHITECTURE.md and in this file, neither of which a
+build reads. The machine was shared with other slots throughout.
+
+- **Gate on Windows** (PLAN.md §7.1 items 2-4): `dotnet build Tellma.slnx` printed "Build
+  succeeded" with 0 warnings; `dotnet format Tellma.slnx --verify-no-changes` is clean (its output
+  read, not its exit code: it printed nothing, and it changed no file); the PR-tier unit filter
+  over `Tellma.slnx` is green in every assembly (16 assemblies, 4,115 passed, 24 skipped, 0 failed;
+  the 6 integration-only assemblies match no test; Imaging 443 passed and 17 skipped of 460). The
+  only test project whose reference closure includes a changed project is
+  `Tellma.Core.Imaging.Tests`, so no integration suite is touched; no shared build file,
+  `Tellma.Core.Abstractions` or `test/shared` file changed.
+- **Imaging suite on Windows** (Debug): 460 tests, 443 passed, 17 skipped (the Linux-only probes,
+  this round's six among them), 0 failed, 1.2 min. The CPU-limit probe ended after 3.1 s with
+  `0xC0000044`; the input-closed worker exited after 0.04 s; native and managed allocation each
+  stopped at 112 of 128 MiB.
+- **`mcr.microsoft.com/dotnet/sdk:10.0`** (Ubuntu 24.04, glibc 2.39, SDK 10.0.400, kernel 6.18.54,
+  Yama 1), from the slot's tree, Release, the whole suite under the PR-tier filter, for three
+  kinds of host: uid 0 with Docker's default capabilities, uid 1654 without any (`--user
+  1654:1654`), and uid 0 with `--cap-drop ALL`. Each: 460 tests, 458 passed, 2 skipped (the two
+  Windows-only tests), 0 failed.
+  - Probes, the same in each: the host's and another worker's files under `/proc` all `EACCES`;
+    `session: own,terminal=0,dev-tty=errno6`; native and managed allocation at 112 of 128 MiB;
+    shared mappings at 240 MiB under 128 MiB; the CPU-limit probe ended after 2.0 s with 137; the
+    input-closed worker exited after 0.02 s.
+  - Footprint, unchanged: ready 3,328,940 kB of address space and 32,172 kB of data; 17,376 kB
+    outside the data limit after a render.
+  - Smoke host, published `-r linux-x64` and run from the output, in Production and in
+    Development, in each of the three: `host.debugger-pipes-at-start=2`, `pdf.thumbnails=Enabled`,
+    honest page 130 bytes, hostile page none, PDFium never loaded, `host.dumpable=no`,
+    `host.debugger-pipes=0`, `result=held`.
+  - Start cost, `--measure 10`, two containers side by side each time: root min 127 / median 149
+    / max 205 ms; uid 1654 min 193 / median 249 / max 279 ms; root without capabilities min 207 /
+    median 293 / max 333 ms. Review 1's quiet run measured a median of 214 ms: closing the host
+    adds nothing that shows.
+  - Packages (the root run): the four packages packed to a local feed and consumed by a scratch
+    application through `PackageReference Tellma.Core.Imaging`, published `-r linux-x64` and run
+    from the output: check passed, thumbnail rendered (74 bytes), PDFium not in the host.
+- **`mcr.microsoft.com/dotnet/sdk:10.0-resolute`** (Ubuntu 26.04, glibc 2.43, SDK 10.0.403, Yama 1,
+  uid 0): 460 tests, 458 passed, 2 skipped, 0 failed. Footprint: ready 3,329,408 kB and 32,164 kB;
+  17,372 kB outside the data limit. Smoke host from the `-r linux-x64` publish, in Production and
+  in Development: `result=held`, not dumpable, no pipe (`--measure 10` min 263 / median 339 / max
+  441 ms, beside the other run).
+- **Before the fixes** (the mutation check), in sdk:10.0: the final tree with
+  `HostIsolation.CloseToWorkers()`, `LeaveSession()` and `CloseToAccount()` taken out and the
+  filter's `fcntl` and `ioctl` blocks matching no call; `WorkerSandboxTests`,
+  `HostIsolationTests`, `SmokeHostTests` and `SeccompFilterTests`, 128 tests.
+  - uid 1654: 12 failed. uid 0 with `--cap-drop ALL`: 12 failed. uid 0 with default capabilities:
+    11 failed (the host's `/proc` test passes there, as the table under R2-1 says).
+  - What failed: both new filter theories on both architectures; both smoke-host tests
+    (`host.dumpable=yes`, `host.debugger-pipes=2`, `result=failed`);
+    `A_worker_cannot_act_on_its_host_or_create_sysv_objects_on_linux` (the four `fcntl` calls and
+    `FIOASYNC` "allowed"; the other four `ioctl` requests reached the kernel, which answered
+    `ENOTTY` for a pipe); the tests of another worker, the debugger pipes and the session;
+    `Every_worker_start_closes_the_host_to_its_own_account_again_on_linux`; and, except for root
+    with capabilities, the host's descriptors.
+  - Under a pseudo-terminal (`script`), the session and host-access tests: both failed before
+    (`session: inherited,terminal=34816,dev-tty=opened`) and both pass after.
+- **Failures on the way, each understood and fixed:**
+  - The first mutation run did not fail the host-isolation test: another test of the run had
+    closed the test host already. The test now opens the host again first, so it stands alone.
+  - A session of its own did not stop the terminal's `O_ASYNC` in the lab (item 2 under R2-1);
+    the filter does.
+  - One build broke on an unused `using` in `InheritableMarker.cs` (IDE0005).
+- **Not verified:**
+  - `dotnet-dump`, `dotnet-counters`, `dotnet-trace` and a managed debugger themselves (the
+    diagnostics port's protocol was spoken instead; the debugger pipes were opened, not spoken to).
+  - `ptrace_scope` 0, a machine setting that is not mine to change. The host's closing rests on
+    the kernel's dumpable check, which does not ask Yama.
+  - Kernels before 5.14 (the `fdinfo` change) and kernels that still allow `TIOCSTI`.
+  - A real musl host and arm64 (the filter's arm64 program is checked by the interpreter tests
+    only), as before.
+- **One command was blocked by the permission system** and not retried: a lab script run through
+  `docker exec <lab container> bash -c '…'` whose loop began with `rm -f /tmp/crash-*.dmp`. The
+  built-in safety check could not resolve the removal's target. The measurement was run again
+  with a file name of its own per run and no removal.
+- The lab's containers are removed; nothing of this round is left running.

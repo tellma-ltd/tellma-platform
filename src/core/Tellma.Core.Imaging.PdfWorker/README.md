@@ -24,9 +24,12 @@ standard input; on Linux it refuses to run unless the process that started it is
    when it still refers to that target), and keeps its protocol output on a private duplicate of
    standard output while pointing standard output at standard error, so a printing native library
    cannot corrupt a frame. On Linux it then asks the kernel to kill it when the host thread that
-   started it ends, stops if its parent is not the host named by `--host-pid`, drops every
-   capability, and installs its [SeccompFilter](SeccompFilter.cs) on every thread. Without the
-   filter it does not run on Linux.
+   started it ends, stops if its parent is not the host named by `--host-pid`, starts a session of
+   its own, which leaves behind the terminal its host may have been started from, makes itself
+   non-dumpable, so that no process of its account without `CAP_SYS_PTRACE`, another worker
+   included, can open its descriptors or memory through `/proc`, drops every capability, and
+   installs its [SeccompFilter](SeccompFilter.cs) on every thread. Without the filter it does not
+   run on Linux.
 2. **Ready**: it writes the ready frame, with what it enforces on itself. The host now applies its
    memory and CPU limits from outside.
 3. **Request**: it reads one request ([WorkerProtocol](WorkerProtocol.cs)): the thumbnail size and
@@ -61,6 +64,14 @@ code that took over the renderer would want:
   escape its memory limits.
 - **The parent-death signal**: `prctl(PR_SET_PDEATHSIG)`, which would withdraw the worker's request
   to die with its host. Every other `prctl` is allowed.
+- **Signals sent by the kernel on the worker's word**: `fcntl`'s `F_SETOWN`, `F_SETOWN_EX` and
+  `F_SETSIG`, `F_SETFL` with `O_ASYNC` among its flags, and `ioctl`'s `FIOASYNC`, `FIOSETOWN` and
+  `SIOCSPGRP`. The kernel signals a descriptor's owner when the descriptor is ready for I/O, and
+  asks only that the owner be of the caller's account, as the host is; a terminal needs no naming,
+  its owner being whoever runs in its foreground.
+- **Input pushed into a terminal**: `ioctl`'s `TIOCSTI` and `TIOCLINUX`, whose input the next
+  reader of the terminal, a shell say, would take for typed. Every other `fcntl` and `ioctl` is
+  allowed.
 - **Kernel interfaces exploits favour**: `io_uring`, `userfaultfd`, `perf_event_open`, `bpf`,
   `unshare`, `setns` and the key store.
 

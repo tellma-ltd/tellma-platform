@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Win32.SafeHandles;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -12,8 +11,8 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
 {
     /// <summary>
     ///     A file this process holds open through a handle (Windows) or descriptor (Linux) that a
-    ///     child would inherit, as one a native library opened carelessly would be; and a look into
-    ///     another process's handle table for it.
+    ///     child would inherit, as one a native library opened carelessly would be; and, on
+    ///     Windows, a look into another process's handle table for it.
     /// </summary>
     internal sealed partial class InheritableMarker : IDisposable
     {
@@ -51,34 +50,6 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
         /// <summary>The handle's or descriptor's value in this process, which an inheriting child would hold too.</summary>
         public nint Value { get; }
 
-        /// <summary>Whether another process holds the marker file open under the inherited value, or (on Linux) under any descriptor.</summary>
-        /// <param name="processId">The process.</param>
-        /// <returns>True when it does.</returns>
-        public bool IsHeldBy(int processId)
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                return IsHeldOnWindows(processId);
-            }
-
-            foreach (string entry in Directory.EnumerateFileSystemEntries(string.Create(CultureInfo.InvariantCulture, $"/proc/{processId}/fd")))
-            {
-                try
-                {
-                    if (new FileInfo(entry).LinkTarget == Path)
-                    {
-                        return true;
-                    }
-                }
-                catch (IOException)
-                {
-                    // The descriptor closed meanwhile.
-                }
-            }
-
-            return false;
-        }
-
         /// <inheritdoc />
         public void Dispose()
         {
@@ -91,11 +62,14 @@ namespace Tellma.Core.Imaging.Tests.Infrastructure
             File.Delete(Path);
         }
 
-        /// <summary>Duplicates the inherited value out of another process, if it has it, and compares its file.</summary>
+        /// <summary>
+        ///     Whether another process holds the marker file open under the inherited value:
+        ///     duplicates that value out of the process, if it has it, and compares its file.
+        /// </summary>
         /// <param name="processId">The process.</param>
         /// <returns>True when that process's handle of the same value is the marker file.</returns>
         [SupportedOSPlatform("windows")]
-        private unsafe bool IsHeldOnWindows(int processId)
+        public unsafe bool IsHeldBy(int processId)
         {
             nint process = OpenProcess(ProcessDuplicateHandle, 0, (uint)processId);
             Assert.True(process != 0, $"The worker could not be opened (error {Marshal.GetLastPInvokeError()}).");

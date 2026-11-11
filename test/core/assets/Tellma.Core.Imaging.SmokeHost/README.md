@@ -8,7 +8,11 @@ PDFium), and reports one `key=value` line each, ending with `result=held` (exit 
 check passed, the honest page rendered, the hostile one was stopped with the host's memory unmoved,
 and neither PDFium nor PDFtoImage was ever loaded into the host. The hostile page gets the
 platform's 5-second budget; the honest ones get 30 s, so that a worker's slow start on a loaded
-machine is not taken for a failure.
+machine is not taken for a failure. On Linux it also reports how many debugger pipes its runtime
+had made when it started, found under the names the processor expects of them
+(`host.debugger-pipes-at-start`), and, once it has rendered, that none is left
+(`host.debugger-pipes=0`) and that it is no longer dumpable (`host.dumpable=no`); it holds only if
+both are so.
 
 Its environment is the generic host's: `DOTNET_ENVIRONMENT`, Production when unset. It reports
 whether it renders PDF thumbnails at all (`pdf.thumbnails=Enabled`, `DisabledOutsideDevelopment` or

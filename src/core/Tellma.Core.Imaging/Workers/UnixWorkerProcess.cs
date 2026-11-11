@@ -18,6 +18,10 @@ namespace Tellma.Core.Imaging.Workers
     /// </summary>
     /// <remarks>
     ///     <para>
+    ///         Before it starts a worker on Linux the host closes itself to the processes of its
+    ///         own account (<see cref="HostIsolation" />), since a worker is one of them.
+    ///     </para>
+    ///     <para>
     ///         .NET opens every descriptor close-on-exec, so the worker inherits only its three
     ///         pipes. A descriptor some native library opened without that flag would still reach
     ///         it; the host lists those it holds when it starts a worker, and the worker closes each
@@ -56,8 +60,9 @@ namespace Tellma.Core.Imaging.Workers
         // /proc reports CPU time in clock ticks of USER_HZ, which is 100 on every Linux.
         private const long TicksPerSecond = 100;
 
-        // O_CLOEXEC as /proc/<pid>/fdinfo shows it, in octal: 02000000.
-        private const int CloseOnExec = 0x80000;
+        // fcntl's F_GETFD, and the FD_CLOEXEC bit of the descriptor flags it returns.
+        private const int GetDescriptorFlags = 1;
+        private const int CloseOnExec = 1;
 
         /// <summary>
         ///     The address space a worker may map beyond its memory limit, for what the data limit
@@ -104,6 +109,13 @@ namespace Tellma.Core.Imaging.Workers
         public static UnixWorkerProcess Start(
             string application, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment, string workingDirectory)
         {
+            // Section: a worker runs under the host's own account, so on Linux the host first closes
+            // itself to that account's processes; a host that cannot starts no worker.
+            if (OperatingSystem.IsLinux())
+            {
+                HostIsolation.CloseToWorkers();
+            }
+
             var start = new ProcessStartInfo(application)
             {
                 UseShellExecute = false,
@@ -158,7 +170,10 @@ namespace Tellma.Core.Imaging.Workers
                 return inheritable;
             }
 
-            foreach (string entry in Directory.EnumerateFileSystemEntries("/proc/self/fdinfo"))
+            // /proc/self/fd is the one view of its descriptors a process may always read of itself;
+            // older kernels close fdinfo to the account of a process that is not dumpable, as the
+            // host is from its first worker on.
+            foreach (string entry in Directory.EnumerateFileSystemEntries("/proc/self/fd"))
             {
                 if (!int.TryParse(Path.GetFileName(entry), NumberStyles.None, CultureInfo.InvariantCulture, out int descriptor) || descriptor < 3)
                 {
@@ -167,17 +182,18 @@ namespace Tellma.Core.Imaging.Workers
 
                 try
                 {
-                    // fdinfo's "flags:" line is octal and carries O_CLOEXEC when close-on-exec is set.
-                    string? flags = File.ReadLines(entry).FirstOrDefault(static line => line.StartsWith("flags:", StringComparison.Ordinal));
-                    string? target = new FileInfo(string.Create(CultureInfo.InvariantCulture, $"/proc/self/fd/{descriptor}")).LinkTarget;
-                    if (flags is not null && target is not null && (Convert.ToInt32(flags["flags:".Length..].Trim(), 8) & CloseOnExec) == 0)
+                    // A descriptor that closed meanwhile (the enumeration's own among them) has no
+                    // flags and no target.
+                    int flags = DescriptorControl(descriptor, GetDescriptorFlags);
+                    string? target = new FileInfo(entry).LinkTarget;
+                    if (flags >= 0 && (flags & CloseOnExec) == 0 && target is not null)
                     {
                         inheritable.Add((descriptor, target));
                     }
                 }
                 catch (IOException)
                 {
-                    // The descriptor closed meanwhile (the enumeration's own among them).
+                    // The descriptor closed meanwhile.
                 }
             }
 
@@ -317,6 +333,14 @@ namespace Tellma.Core.Imaging.Workers
                     PdfWorkerFailure.Start, $"The worker's {name} limit could not be applied (errno {Marshal.GetLastPInvokeError()}).");
             }
         }
+
+        /// <summary><c>int fcntl(int fd, int cmd)</c>, for the commands that take no argument.</summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <param name="command">The command.</param>
+        /// <returns>The command's result; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        private static partial int DescriptorControl(int descriptor, int command);
 
         /// <summary><c>int prlimit(pid_t, int, const struct rlimit *, struct rlimit *)</c>.</summary>
         /// <param name="id">The process.</param>

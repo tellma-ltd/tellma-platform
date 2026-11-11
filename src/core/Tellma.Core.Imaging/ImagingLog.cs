@@ -101,16 +101,18 @@ namespace Tellma.Core.Imaging
 
         /// <summary>
         ///     Written once, at startup, by a Linux host whose kernel lets a process open the memory
-        ///     of any other process of its account: a PDF worker taken over by a hostile document
-        ///     could then read and write the host's memory through <c>/proc</c>. PDF thumbnails still
-        ///     render; the fix is the machine's.
+        ///     of any other process of its account. The host closes itself to its workers whatever
+        ///     that setting is; the warning is for the account's other processes, whose memory a PDF
+        ///     worker taken over by a hostile document could then read and write. A stricter setting
+        ///     closes their memory only: their environment and open files stay within such a
+        ///     worker's reach. PDF thumbnails still render; the fix is the machine's.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="detail">What the kernel reports: the scope is 0, or Yama is not enabled.</param>
         [LoggerMessage(
             EventName = "BlobPdfWorkerPtraceUnrestricted",
             Level = LogLevel.Warning,
-            Message = "The kernel lets a process open the memory of any other process of its account ({Detail}), so a PDF worker taken over by a hostile document could read and write this host's memory. Set the kernel.yama.ptrace_scope sysctl to 1 or higher on the machine that runs this host.")]
+            Message = "The kernel lets a process open the memory of any other process of its account ({Detail}). This host closes itself to its PDF workers, but a worker taken over by a hostile document could read and write the memory of any other process that runs under the host's account. Set the kernel.yama.ptrace_scope sysctl to 1 or higher on the machine that runs this host; even then such a worker can read those processes' environment and open files, so run nothing else under the host's account.")]
         public static partial void PtraceUnrestricted(ILogger logger, string detail);
     }
 }

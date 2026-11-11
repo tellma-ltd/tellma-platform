@@ -19,9 +19,10 @@ namespace Tellma.Core.Imaging.TestWorker
     ///     A PDF worker that misbehaves on purpose, one way per mode, inside the real worker's
     ///     sandbox: it ends as a crash ends a process, hangs (heeding its input or not), spins,
     ///     allocates without end, breaks the protocol or answers with a malformed image, or probes
-    ///     what its sandbox and limits allow, the host's process and a thread older than the sandbox
-    ///     among them, and reports it. One mode renders as the real worker does and reports what the
-    ///     render mapped.
+    ///     what its sandbox and limits allow, the host's process, another process's files under
+    ///     <c>/proc</c>, the host's debugger pipes, its own session and terminal and a thread older
+    ///     than the sandbox among them, and reports it. One mode renders as the real worker does
+    ///     and reports what the render mapped.
     /// </summary>
     /// <remarks>
     ///     A probe reports through a refusal's detail, which the host reads as an ordinary answer;
@@ -209,6 +210,10 @@ namespace Tellma.Core.Imaging.TestWorker
                     "host-access" => $"host-access: {HostAccess(host)}",
                     "capabilities" => $"capabilities: {Capabilities()}",
                     "open-host" => $"open-host: {OpenHost(host)}",
+                    "proc-files" => $"proc-files: {ProcessFiles(argument)}",
+                    "descriptors" => $"descriptors: {Descriptors(argument)}",
+                    "host-debugger-pipes" => $"host-debugger-pipes: {HostDebuggerPipes(host, argument)}",
+                    "session" => $"session: {Session()}",
                     "early-thread" => $"early-thread: {early!.Run(static () => $"socket {OpenSocket()}, process {StartProcess()}")}",
                     _ => $"unknown mode: {mode}",
                 };
@@ -315,12 +320,33 @@ namespace Tellma.Core.Imaging.TestWorker
 
             // Section: x64 and arm64 numbers of the calls the C library may not wrap.
             bool x64 = RuntimeInformation.ProcessArchitecture == Architecture.X64;
-            long tgkill = x64 ? 234 : 131, tkill = x64 ? 200 : 130;
+            long tgkill = x64 ? 234 : 131, tkill = x64 ? 200 : 130, pipe2 = x64 ? 293 : 59;
             const long pidfdOpen = 434;
             const int processPriority = 0, openFiles = 7;
             ulong* limit = stackalloc ulong[2];
             byte* mask = stackalloc byte[128];
             int self = Environment.ProcessId;
+
+            // Section: a pipe of the worker's own, whose owner the worker tries to name: the kernel
+            // signals a descriptor's owner on I/O. The owner as fcntl's F_SETOWN_EX takes it is a
+            // struct f_owner_ex: F_OWNER_PID (1), then the process.
+            const int closeOnExec = 0x80000, setOwner = 8, setSignal = 10, setOwnerExtended = 15, getFlags = 3, setFlags = 4, ioSignal = 29;
+            int* pipe = stackalloc int[2];
+            pipe[0] = pipe[1] = -1;
+            _ = Native.SystemCall(pipe2, (long)pipe, closeOnExec, 0);
+            int* owner = stackalloc int[2];
+            owner[0] = 1;
+            owner[1] = host;
+
+            // Section: the ioctl requests that push input into a terminal (TIOCSTI, TIOCLINUX) or
+            // name a socket's owner (FIOSETOWN, SIOCSPGRP), tried on the same pipe. A pipe knows
+            // none of them, so a kernel that is asked answers ENOTTY and nothing happens; the filter
+            // refuses each before the kernel looks at the descriptor. FIONREAD is one a pipe knows.
+            const long pushInput = 0x5412, consoleInput = 0x541C, socketOwner = 0x8901, socketGroup = 0x8902, bytesReadable = 0x541B;
+            const int nonBlocking = 0x800;
+            int* word = stackalloc int[1];
+            word[0] = 0;
+            int flags = (int)DescriptorControl(pipe[0], getFlags, 0);
 
             // Section: the host's process, through every call that could signal it, change its
             // limits or scheduling, or open a handle to it; and SysV objects, which outlive the
@@ -336,6 +362,15 @@ namespace Tellma.Core.Imaging.TestWorker
                 Outcome("setpriority", Native.SetPriority(processPriority, (uint)host, Native.GetPriority(processPriority, (uint)host))),
                 Outcome("sched_setaffinity", Native.GetAffinity(host, 128, mask) == 0 ? Native.SetAffinity(host, 128, mask) : -1),
                 Outcome("prctl-pdeathsig", Native.Prctl(1, 0, 0, 0, 0)),
+                Outcome("fcntl-setown", DescriptorOwner(pipe[0], setOwner, host)),
+                Outcome("fcntl-setown-ex", DescriptorOwner(pipe[0], setOwnerExtended, (long)owner)),
+                Outcome("fcntl-setsig", DescriptorOwner(pipe[0], setSignal, ioSignal)),
+                Outcome("fcntl-setfl-async", SignalDriven(pipe[0], byRequest: false)),
+                Outcome("ioctl-fioasync", SignalDriven(pipe[0], byRequest: true)),
+                Outcome("ioctl-tiocsti", DeviceControl(pipe[0], pushInput, (long)word)),
+                Outcome("ioctl-tioclinux", DeviceControl(pipe[0], consoleInput, (long)word)),
+                Outcome("ioctl-fiosetown", DeviceControl(pipe[0], socketOwner, (long)word)),
+                Outcome("ioctl-siocspgrp", DeviceControl(pipe[0], socketGroup, (long)word)),
                 Outcome("shmget", SystemV('m')),
                 Outcome("msgget", SystemV('q')),
                 Outcome("semget", SystemV('s')),
@@ -344,8 +379,91 @@ namespace Tellma.Core.Imaging.TestWorker
                 Outcome("kill-self", Native.Kill(self, 0)),
                 Outcome("prlimit-self", Native.Prlimit(0, openFiles, null, limit)),
                 Outcome("prlimit-own", Native.Prlimit(self, openFiles, null, limit)),
+                Outcome("fcntl-getfl", DescriptorControl(pipe[0], getFlags, 0)),
+                Outcome("fcntl-setfl", DescriptorControl(pipe[0], setFlags, flags | nonBlocking)),
+                Outcome("ioctl-fionread", DeviceControl(pipe[0], bytesReadable, (long)word)),
             ];
+            _ = Native.Close(pipe[0]);
+            _ = Native.Close(pipe[1]);
             return string.Join(',', outcomes);
+        }
+
+        /// <summary><c>fcntl(fd, cmd, arg)</c>, as a system call.</summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <param name="command">The command.</param>
+        /// <param name="argument">Its argument.</param>
+        /// <returns>The call's result; -1 with <c>errno</c> set on failure.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static long DescriptorControl(int descriptor, int command, long argument)
+        {
+            return Native.SystemCall(RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 72 : 25, descriptor, command, argument);
+        }
+
+        /// <summary><c>ioctl(fd, request, arg)</c>, as a system call.</summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <param name="request">The request.</param>
+        /// <param name="argument">Its argument.</param>
+        /// <returns>The call's result; -1 with <c>errno</c> set on failure.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static long DeviceControl(int descriptor, long request, long argument)
+        {
+            return Native.SystemCall(RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 16 : 29, descriptor, request, argument);
+        }
+
+        /// <summary>
+        ///     Tries to turn signal-driven I/O on for a descriptor, with <c>fcntl</c>'s
+        ///     <c>F_SETFL</c> and <c>O_ASYNC</c> or with <c>ioctl</c>'s <c>FIOASYNC</c>, and turns it
+        ///     off again should that work, keeping the attempt's result and <c>errno</c>. The
+        ///     descriptor has no owner and sees no I/O meanwhile, so no signal is sent either way.
+        /// </summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <param name="byRequest">True for <c>ioctl</c>, false for <c>fcntl</c>.</param>
+        /// <returns>The attempt's result.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static unsafe long SignalDriven(int descriptor, bool byRequest)
+        {
+            const int getFlags = 3, setFlags = 4, signalDriven = 0x2000;
+            const long signalDrivenRequest = 0x5452;
+            int on = 1, off = 0;
+            int flags = (int)DescriptorControl(descriptor, getFlags, 0);
+            long result = byRequest
+                ? DeviceControl(descriptor, signalDrivenRequest, (long)&on)
+                : DescriptorControl(descriptor, setFlags, flags | signalDriven);
+            int error = Marshal.GetLastPInvokeError();
+            if (result >= 0)
+            {
+                _ = byRequest
+                    ? DeviceControl(descriptor, signalDrivenRequest, (long)&off)
+                    : DescriptorControl(descriptor, setFlags, flags);
+            }
+
+            Marshal.SetLastPInvokeError(error);
+            return result;
+        }
+
+        /// <summary>
+        ///     Tries one <c>fcntl</c> command that names a descriptor's owner or the owner's signal,
+        ///     and withdraws both should it work, keeping the command's result and <c>errno</c>. The
+        ///     descriptor never asks for signals, so none is sent either way.
+        /// </summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <param name="command">The command.</param>
+        /// <param name="argument">Its argument.</param>
+        /// <returns>The command's result.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static long DescriptorOwner(int descriptor, int command, long argument)
+        {
+            const int setOwner = 8, setSignal = 10;
+            long result = DescriptorControl(descriptor, command, argument);
+            int error = Marshal.GetLastPInvokeError();
+            if (result >= 0)
+            {
+                _ = DescriptorControl(descriptor, setOwner, 0);
+                _ = DescriptorControl(descriptor, setSignal, 0);
+            }
+
+            Marshal.SetLastPInvokeError(error);
+            return result;
         }
 
         /// <summary>A system call's outcome, from its result and <c>errno</c>.</summary>
@@ -444,6 +562,151 @@ namespace Tellma.Core.Imaging.TestWorker
             {
                 return "refused";
             }
+        }
+
+        /// <summary>
+        ///     Tries, on Linux, to open another process through <c>/proc</c>: each named descriptor
+        ///     of its table for reading and writing, its environment, its memory and its memory map.
+        ///     Whatever opens is closed again, untouched.
+        /// </summary>
+        /// <param name="argument">The process and the descriptors, as <c>pid:n,n</c>.</param>
+        /// <returns>Each as <c>name=opened</c>, <c>name=EACCES</c>, <c>name=EPERM</c> or <c>name=errnoN</c>.</returns>
+        private static string ProcessFiles(string? argument)
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "not linux";
+            }
+
+            const int readOnly = 0, readWrite = 2;
+            string[] parts = (argument ?? string.Empty).Split(':');
+            string process = parts[0];
+            string[] descriptors = parts.Length > 1 ? parts[1].Split(',', StringSplitOptions.RemoveEmptyEntries) : [];
+            List<string> outcomes = [];
+            foreach (string descriptor in descriptors)
+            {
+                outcomes.Add(Opened($"fd{descriptor}", $"/proc/{process}/fd/{descriptor}", readWrite));
+            }
+
+            outcomes.Add(Opened("environ", $"/proc/{process}/environ", readOnly));
+            outcomes.Add(Opened("mem", $"/proc/{process}/mem", readWrite));
+            outcomes.Add(Opened("maps", $"/proc/{process}/maps", readOnly));
+            return string.Join(',', outcomes);
+        }
+
+        /// <summary>Tries to open a file, and closes it should that work.</summary>
+        /// <param name="name">What the file is, for the report.</param>
+        /// <param name="path">The file.</param>
+        /// <param name="access">The access wanted.</param>
+        /// <returns><c>name=opened</c>, <c>name=EACCES</c>, <c>name=EPERM</c> or <c>name=errnoN</c>.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static string Opened(string name, string path, int access)
+        {
+            const int closeOnExec = 0x80000;
+            int descriptor = Native.Open(path, access | closeOnExec);
+            int error = Marshal.GetLastPInvokeError();
+            if (descriptor >= 0)
+            {
+                _ = Native.Close(descriptor);
+                return $"{name}=opened";
+            }
+
+            return error switch
+            {
+                Native.AccessDenied => $"{name}=EACCES",
+                Native.PermissionDenied => $"{name}=EPERM",
+                _ => $"{name}=errno{error.ToString(CultureInfo.InvariantCulture)}",
+            };
+        }
+
+        /// <summary>Whether, on Linux, any descriptor this process holds refers to a file.</summary>
+        /// <param name="path">The file's path.</param>
+        /// <returns><c>held</c>, or <c>not held</c> with the number of descriptors looked at.</returns>
+        private static string Descriptors(string? path)
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "not linux";
+            }
+
+            int open = 0;
+            foreach (string entry in Directory.EnumerateFileSystemEntries("/proc/self/fd"))
+            {
+                open++;
+                if (int.TryParse(Path.GetFileName(entry), NumberStyles.None, CultureInfo.InvariantCulture, out int descriptor)
+                    && string.Equals(UnixDescriptors.LinkTarget(descriptor), path, StringComparison.Ordinal))
+                {
+                    return "held";
+                }
+            }
+
+            return $"not held ({open.ToString(CultureInfo.InvariantCulture)} open)";
+        }
+
+        /// <summary>
+        ///     Looks, on Linux, in the host's temporary directory and in <c>/tmp</c>, for the pipes
+        ///     the host's runtime listens on for a debugger, and asks of each whether this process
+        ///     could open it.
+        /// </summary>
+        /// <param name="host">The host's process id.</param>
+        /// <param name="directory">The host's temporary directory.</param>
+        /// <returns><c>none</c>, or each pipe found as <c>name=reachable</c> or <c>name=closed</c>.</returns>
+        private static string HostDebuggerPipes(int host, string? directory)
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "not linux";
+            }
+
+            const int mayWrite = 2, mayRead = 4;
+            string pattern = $"clr-debug-pipe-{host.ToString(CultureInfo.InvariantCulture)}-*";
+            List<string> found = [];
+            string[] folders = [directory ?? "/tmp", "/tmp"];
+            foreach (string folder in folders.Select(static folder => folder.Length > 1 ? folder.TrimEnd('/') : folder).Distinct(StringComparer.Ordinal))
+            {
+                try
+                {
+                    foreach (string path in Directory.EnumerateFileSystemEntries(folder, pattern))
+                    {
+                        bool reachable = Native.Access(path, mayRead) == 0 || Native.Access(path, mayWrite) == 0;
+                        found.Add($"{Path.GetFileName(path)}={(reachable ? "reachable" : "closed")}");
+                    }
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // Nothing can be there.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    found.Add($"{folder}=unlisted");
+                }
+            }
+
+            return found.Count == 0 ? "none" : string.Join(',', found);
+        }
+
+        /// <summary>
+        ///     Reports, on Linux, whether this process leads a session of its own, which terminal
+        ///     controls that session, and whether the process can open a controlling terminal.
+        /// </summary>
+        /// <returns>
+        ///     <c>own</c> or <c>inherited</c>, then <c>terminal=N</c> with the terminal's device
+        ///     number (0 for none), then <c>dev-tty=</c> with <c>opened</c> or the refusal.
+        /// </returns>
+        private static string Session()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "not linux";
+            }
+
+            // After the command's closing parenthesis come the state, the parent, the process group,
+            // the session and the controlling terminal's device number.
+            const int readWrite = 2, noControllingTerminal = 0x100;
+            string stat = File.ReadAllText("/proc/self/stat");
+            string[] fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+            bool own = fields[3] == Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
+            return $"{(own ? "own" : "inherited")},terminal={fields[4]},{Opened("dev-tty", "/dev/tty", readWrite | noControllingTerminal)}";
         }
 
         /// <summary>Tries to create a TCP socket.</summary>

@@ -66,7 +66,9 @@ bounds what it can take.
    host was built or published in. Its environment is only the worker's runtime settings
    (workstation GC, no diagnostics, debugger or dumps, invariant globalization), on Linux a managed
    heap capped at `PdfWorkerMemoryLimit` and a single malloc arena, and on Windows `SystemRoot`:
-   nothing of the host's, its secrets included. Its working directory is a system one.
+   nothing of the host's, its secrets included. Its working directory is a system one. Before
+   every start, a Linux host first closes itself to its own account
+   ([below](#what-a-linux-host-closes-of-itself)).
 2. **Handles and identity.** On Windows the worker is created suspended on a restricted copy of the
    host's token (no privilege, low integrity), put in its own Job Object, then resumed, and a
    handle list lets it inherit its three pipes and nothing else. On Linux .NET opens every
@@ -74,10 +76,14 @@ bounds what it can take.
    and the worker closes each before it reads anything. A Linux worker runs as the host's user.
 3. **Sandbox and limits.** The worker reports ready once its runtime is up. On Linux it has by then
    asked the kernel to kill it when its host dies (and has stopped if the host was already gone),
-   dropped every capability, and installed a seccomp filter on all its threads that refuses
-   sockets, new programs and processes, SysV objects, every call that would signal, trace, read or
-   re-limit another process, and the kernel interfaces exploits favour (the host refuses a Linux
-   worker without the filter). Only then does the host cap it from outside: on Windows, the job's
+   left its host's session, so that a terminal the host was started from is not the worker's to
+   control, made itself non-dumpable, which closes its entries under `/proc` (the upload on its
+   input among them) to the host's other workers, dropped every capability, and installed a
+   seccomp filter on all its threads that refuses sockets, new programs and processes, SysV
+   objects, every call that would signal, trace, read or re-limit another process or have the
+   kernel signal one on the worker's word, input pushed into a terminal, and the kernel interfaces
+   exploits favour (the host refuses a Linux worker without the filter). Only then does the host
+   cap it from outside: on Windows, the job's
    committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time, one
    process, no crash dialog, no desktop or clipboard, and death with the host's handle; on Linux,
    `prlimit` sets `RLIMIT_DATA` (the private memory the worker holds once started plus
@@ -118,6 +124,45 @@ at Warning; its document gets no thumbnail and its upload proceeds. On Windows a
 stays alive, its pipes open, until Windows Error Reporting has written its report (seconds on a
 quiet machine, half a minute on a loaded one); a call whose budget runs out first ends there, with
 the worker killed, and is counted as `timeout`.
+
+## What a Linux host closes of itself
+
+A worker runs under its host's account, and Linux and the .NET runtime both let a process into
+another process of its account through ordinary files, which no filter on the worker can tell from
+the files a render must open. So before it starts a worker, every time, a Linux host closes those
+ways from its own side ([HostIsolation](Workers/HostIsolation.cs)), and starts no worker when it
+cannot:
+
+- **It stops being dumpable** (`prctl(PR_SET_DUMPABLE, 0)`). The kernel then refuses a process
+  without `CAP_SYS_PTRACE`, which a worker never holds, every entry under `/proc/<host>` that shows
+  or changes the host: its descriptors (`fd/<n>`), its environment, its memory and its memory map.
+  Without this a worker can reopen any file the host holds open, and one descriptor of a .NET
+  process is the memory its compiled code is written through, so reopening that one is rewriting
+  the host's code; it can also read the host's environment, secrets included.
+  `kernel.yama.ptrace_scope` guards neither: it covers `ptrace` and `/proc/<pid>/mem` only.
+- **It removes its runtime's debugger pipes.** Unless it was started with
+  `DOTNET_EnableDiagnostics_Debugger=0`, the runtime listens for a managed debugger on two named
+  pipes in the temporary directory, `clr-debug-pipe-<pid>-<start time>-in` and `-out`, open to the
+  account: whoever opens them is the host's debugger, and reads and writes its memory. A host that
+  cannot remove one it can still open starts no worker, and its failure says so.
+
+Measured in `mcr.microsoft.com/dotnet/sdk:10.0` (kernel 6.18, `ptrace_scope` 1) with a process under
+a worker's limits against a host of its account. Before: it opened the host's code descriptor for
+writing and read the host's environment, as an unprivileged user and as root without capabilities,
+and reached the debugger pipes. After: each is refused, with the memory and its map, and no pipe is
+left. A root host that keeps its capabilities was closed to a worker's `/proc` access already (the
+kernel asks that the caller hold the target's capabilities), not to the pipes.
+
+The price is the operators':
+
+| Diagnostic | On a Linux host that has started a worker |
+|---|---|
+| The kernel's core dump of a crashed host | None. |
+| The runtime's crash dump (`DOTNET_DbgEnableMiniDump=1`) | None, unless the host's container or service holds `CAP_SYS_PTRACE`: the dump writer is refused `/proc/<pid>/mem`. With the capability the dump is written. Measured. |
+| `dotnet-dump collect` | The same: the runtime reports a failure and writes no file, unless the host holds `CAP_SYS_PTRACE`. Measured through the diagnostics port's dump command; the tool itself was not run. |
+| `dotnet-counters`, `dotnet-trace` | Work. The diagnostics port is a socket, which a worker cannot create, so the host leaves it alone. Its process-information command and an event stream were measured through the port; the tools themselves were not run. |
+| Attaching a managed debugger | Not possible once a worker has started, and the startup check starts one. A debugger that started the host, or attached before that, holds the pipes open and stays attached (by the runtime's design; not exercised). |
+| `strace`, `gdb`, `lldb`, `lsof`, reading `/proc/<pid>` | Only for a process with `CAP_SYS_PTRACE`, as root on the machine has. |
 
 ## Where PDF thumbnails render
 
@@ -176,18 +221,37 @@ worker. On Linux, the production host:
 - **A compromised worker runs as the host's user and reaches its files.** It holds no capability
   and can gain no privilege, and it cannot reach the network, start a program, or signal, trace or
   re-limit another process. But it can read what the host's account can read, the host's
-  configuration files and environment (`/proc/<pid>/environ`) included, and encode what it reads
-  into the pixels of the thumbnail it returns, the one output the host accepts. The zero file-size
-  limit stops it creating file content or growing a file, not changing files the account may
-  already write: it can overwrite them in place through a mapping, and truncate, rename or delete
-  them, the application's own files included where the account owns them. A filesystem sandbox
-  (Landlock) would close both; none is in place. Until then, run the host as a user that cannot
-  write its own application files.
-- **The host's memory is kept from a worker by a kernel setting.** With `kernel.yama.ptrace_scope`
-  at 1 or more (Ubuntu's default, not every distribution's) a worker cannot open its host's
-  `/proc/<pid>/mem`. At 0, or on a kernel without Yama, it can read and write the host's memory.
-  The `core.imaging` check logs `BlobPdfWorkerPtraceUnrestricted` at Warning when it starts on such
-  a machine.
+  configuration files included, and encode what it reads into the pixels of the thumbnail it
+  returns, the one output the host accepts. The host's environment and memory it cannot read, for
+  the host closes them; the host's command line it can, as every process on the machine can, so
+  pass the host no secret there. The zero file-size limit stops it creating file content or
+  growing a file, not changing files the account may already write: it can overwrite them in place
+  through a mapping, and truncate, rename or delete them, the application's own files included
+  where the account owns them. A terminal the host was started from is such a file: a worker
+  cannot control it, push input into it or have the host signalled through it, but it can open the
+  device and read what is typed there, or write to it. A filesystem sandbox (Landlock) over the
+  worker would close all of this, `/proc` and the temporary directory with it; none is in place.
+  Until then, run the host as a service, not from a terminal, and as a user that cannot write its
+  own application files.
+- **The account's other processes are open to a worker.** The host closes itself, and each worker
+  closes itself; any other process of the same account does neither. A worker can read such a
+  process's environment and reopen its open files and, if it is a .NET process, its code memory
+  and debugger pipes, whatever `kernel.yama.ptrace_scope` is. Where that is 0, or the kernel has no
+  Yama, it can open such a process's memory too, and the `core.imaging` check logs
+  `BlobPdfWorkerPtraceUnrestricted` at Warning. Run nothing else under the host's account: give
+  the host a container, or a service account, of its own.
+- **A worker is open to its host's other workers while it starts.** The kernel makes every newly
+  started program dumpable, so from its start until it enters its sandbox (the runtime's own
+  startup, some tens of milliseconds, before the host sends it anything) a worker of an
+  unprivileged host can be opened through `/proc` by a compromised worker that runs at that
+  moment: its pipes among them, through which the upload and the thumbnail later pass. The same
+  filesystem sandbox would close this, as would sockets in place of the pipes, which `/proc` does
+  not reopen. A worker of a root host that keeps its capabilities has no such moment.
+- **A host that runs as root lends its worker root's files.** The worker holds no capability, but
+  what root owns is its own. Beside the files, it can raise the host's `/proc/<pid>/oom_score_adj`
+  (measured), which makes the host the kernel's first choice when memory runs out; an unprivileged
+  host's is closed to it. Run the host as an unprivileged user, as the `app` user of the .NET
+  container images is.
 - **The memory limit binds a document, not exploit code.** `RLIMIT_DATA` counts private memory,
   which is what PDFium, Skia and the runtime allocate. Shared mappings are held only by the
   address-space limit, and a started worker holds about 3.2 GiB of address space at the default
@@ -225,8 +289,8 @@ an input (or a PDF worker is started); `BlobImageFailed` (debug) records each fa
 `BlobPdfWorkerFailed` (warning) a PDF worker that failed rather than refusing its document, and
 `BlobImageBusy` (warning) an upload that found every slot busy. The startup check writes
 `BlobPdfThumbnailsDisabled` (warning) on a host that renders no PDF thumbnails, with the reason, and
-`BlobPdfWorkerPtraceUnrestricted` (warning) on a Linux machine whose kernel lets a worker open its
-host's memory.
+`BlobPdfWorkerPtraceUnrestricted` (warning) on a Linux machine whose kernel lets a worker open the
+memory of the other processes of the host's account.
 
 ## Native assets
 

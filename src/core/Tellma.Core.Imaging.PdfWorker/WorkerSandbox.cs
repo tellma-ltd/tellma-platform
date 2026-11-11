@@ -33,8 +33,10 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///     What the worker does to itself before it reads anything of the upload, while its own code
     ///     is still trustworthy: it closes descriptors it inherited by accident, keeps its protocol
     ///     output away from native code, and on Linux asks the kernel to kill it when its host dies,
-    ///     drops every capability, and installs its system-call filter, which keeps all of that from
-    ///     being undone. Limits on memory and CPU are not here: the host applies those from outside.
+    ///     leaves its host's session and with it the host's terminal, closes itself to the other
+    ///     processes of its account, drops every capability, and installs its system-call filter,
+    ///     which keeps the worker from undoing what protects its host. Limits on memory and CPU are
+    ///     not here: the host applies those from outside.
     /// </summary>
     internal static partial class WorkerSandbox
     {
@@ -46,6 +48,7 @@ namespace Tellma.Core.Imaging.PdfWorker
 
         // prctl options (linux/prctl.h) and the capability ABI (linux/capability.h).
         private const int SetParentDeathSignal = 1;
+        private const int SetDumpable = 4;
         private const int AmbientCapabilities = 47;
         private const ulong ClearAllAmbient = 4;
         private const uint CapabilityVersion3 = 0x2008_0522;
@@ -90,10 +93,15 @@ namespace Tellma.Core.Imaging.PdfWorker
 
             // Section: on Linux, the kernel's own guarantees. The parent-death signal kills the
             // worker the moment its host dies, with no cooperation of the worker's code; the filter
-            // below forbids clearing it. With no capability left, a worker of a host that runs as
-            // root cannot raise its own limits or override file permissions. The filter itself is
-            // what keeps a compromised renderer off the network and away from the host; without it
-            // the worker does not run there.
+            // below forbids clearing it. In a session of its own the worker has no controlling
+            // terminal, so a host started from a terminal does not lend it that terminal's job
+            // control or input. The worker stops being dumpable, as its host has, so the host's
+            // other workers cannot open the upload on its input; it does so before it gives up its
+            // capabilities, which until then keep a worker without any out of it. With no
+            // capability left, a worker of a host that runs as root cannot raise its own limits or
+            // override file permissions, nor open a process that is not dumpable. The filter itself
+            // is what keeps a compromised renderer off the network and away from the host; without
+            // it the worker does not run there.
             if (OperatingSystem.IsLinux())
             {
                 if (host is not int parent)
@@ -102,6 +110,8 @@ namespace Tellma.Core.Imaging.PdfWorker
                 }
 
                 DieWithHost(parent);
+                LeaveSession();
+                CloseToAccount();
                 DropCapabilities();
                 SeccompFilter.Install();
                 return WorkerCapabilities.SystemCallFilter;
@@ -154,6 +164,28 @@ namespace Tellma.Core.Imaging.PdfWorker
             }
         }
 
+        /// <summary>
+        ///     Starts a session of this process's own. A session starts without a controlling
+        ///     terminal, and this process cannot take its host's: the kernel then refuses it the
+        ///     calls that act on a controlling terminal, which change the terminal's foreground job
+        ///     or, on kernels that still allow it, push input into the terminal for the host's shell
+        ///     to run.
+        /// </summary>
+        [SupportedOSPlatform("linux")]
+        private static void LeaveSession()
+        {
+            // The call is refused only to the leader of a process group, which a process its host
+            // has just started is not, unless it already leads a session of its own.
+            if (StartSession() < 0)
+            {
+                int error = Marshal.GetLastPInvokeError();
+                if (SessionOf(0) != Environment.ProcessId)
+                {
+                    throw new InvalidOperationException($"The process could not leave its host's session (errno {error}).");
+                }
+            }
+        }
+
         /// <summary>Empties this process's effective, permitted, inheritable and ambient capabilities.</summary>
         [SupportedOSPlatform("linux")]
         private static unsafe void DropCapabilities()
@@ -170,6 +202,22 @@ namespace Tellma.Core.Imaging.PdfWorker
             // Ambient capabilities need a permitted one to survive, which is gone; clearing them
             // anyway costs nothing, and an old kernel without them refuses harmlessly.
             _ = SeccompFilter.Prctl(AmbientCapabilities, ClearAllAmbient, 0, 0, 0);
+        }
+
+        /// <summary>
+        ///     Makes this process non-dumpable: its entries under <c>/proc</c> (its descriptors, the
+        ///     upload on its input among them, its environment and its memory) are then closed to
+        ///     every process of its account that lacks <c>CAP_SYS_PTRACE</c>, as another worker of
+        ///     the same host does. From its start until this call a worker is dumpable, as every
+        ///     newly started program is: the kernel keeps no such setting across the start.
+        /// </summary>
+        [SupportedOSPlatform("linux")]
+        private static void CloseToAccount()
+        {
+            if (SeccompFilter.Prctl(SetDumpable, 0, 0, 0, 0) != 0)
+            {
+                throw new InvalidOperationException($"The process could not be made non-dumpable (errno {Marshal.GetLastPInvokeError()}).");
+            }
         }
 
         /// <summary>
@@ -258,6 +306,21 @@ namespace Tellma.Core.Imaging.PdfWorker
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
         [UnsupportedOSPlatform("windows")]
         internal static partial int ParentProcessId();
+
+        /// <summary><c>pid_t setsid(void)</c>.</summary>
+        /// <returns>The new session's id; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "setsid", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [SupportedOSPlatform("linux")]
+        private static partial int StartSession();
+
+        /// <summary><c>pid_t getsid(pid_t pid)</c>.</summary>
+        /// <param name="process">The process; 0 for this one.</param>
+        /// <returns>The id of the process's session; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "getsid", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [SupportedOSPlatform("linux")]
+        private static partial int SessionOf(int process);
 
         /// <summary><c>int capset(cap_user_header_t, const cap_user_data_t)</c>.</summary>
         /// <param name="header">The ABI version and process.</param>

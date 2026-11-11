@@ -17,8 +17,10 @@ namespace Tellma.Core.Imaging.SmokeHost
     ///     Composes the image processor on the generic host, as a distribution does, runs its
     ///     startup check, renders an honest PDF and a hostile one (nested forms that expand
     ///     exponentially inside PDFium, under the platform's 5-second budget), and reports, one
-    ///     <c>key=value</c> line each, what happened and whether PDFium was ever loaded into this
-    ///     process. Exits 0 when everything held.
+    ///     <c>key=value</c> line each, what happened, whether PDFium was ever loaded into this
+    ///     process and, on Linux, whether the process is closed to its own account, as a host that
+    ///     has started a worker is, beside how many debugger pipes its runtime had made before.
+    ///     Exits 0 when everything held.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -56,6 +58,14 @@ namespace Tellma.Core.Imaging.SmokeHost
             {
                 await OrphanAsync(args[1]);
                 return 1;
+            }
+
+            // Section: on Linux, what the runtime made of this process before any worker starts:
+            // the pipes it listens on for a debugger, looked for under the names the host expects.
+            if (OperatingSystem.IsLinux())
+            {
+                int named = Workers.HostIsolation.DebuggerPipeNames(Environment.ProcessId).Count(File.Exists);
+                Report("host.debugger-pipes-at-start", named.ToString(CultureInfo.InvariantCulture));
             }
 
             int measure = args.Length >= 2 && args[0] == "--measure" ? int.Parse(args[1], CultureInfo.InvariantCulture) : 0;
@@ -124,6 +134,17 @@ namespace Tellma.Core.Imaging.SmokeHost
 
             // Section: PDFium and PDFtoImage must never have been loaded into the host.
             held &= PdfiumStayedOut();
+
+            // Section: on Linux, a host that has started a worker is closed to its own account: it
+            // is not dumpable, and its runtime's debugger pipes are gone.
+            if (OperatingSystem.IsLinux())
+            {
+                bool dumpable = Workers.HostIsolation.IsDumpable;
+                int pipes = Workers.HostIsolation.DebuggerPipes(Environment.ProcessId).Count(File.Exists);
+                Report("host.dumpable", dumpable ? "yes" : "no");
+                Report("host.debugger-pipes", pipes.ToString(CultureInfo.InvariantCulture));
+                held &= !dumpable && pipes == 0;
+            }
 
             Report("result", held ? "held" : "failed");
             return held ? 0 : 1;

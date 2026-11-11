@@ -11,9 +11,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     The worker's Linux system-call filter, run as the kernel runs it, on both architectures:
     ///     another architecture's calls and x32 calls kill, each refused call is refused with EPERM,
     ///     signals, resource limits and scheduling reach the worker's own process only, the
-    ///     parent-death signal cannot be changed, clone3 answers ENOSYS, clone creates threads only,
-    ///     and every other call is allowed, number by number. The sandbox suite proves the
-    ///     installed filter's effect in a real worker.
+    ///     parent-death signal cannot be changed, fcntl and ioctl cannot name a descriptor's owner
+    ///     or its signal, ask for signal-driven I/O or push input into a terminal, clone3 answers
+    ///     ENOSYS, clone creates threads only, and every other call is allowed, number by number.
+    ///     The sandbox suite proves the installed filter's effect in a real worker.
     /// </summary>
     public sealed class SeccompFilterTests
     {
@@ -301,6 +302,63 @@ namespace Tellma.Core.Imaging.Tests.Workers
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
+        public void Fcntl_cannot_name_a_descriptors_owner_or_signal_nor_ask_for_signal_driven_io(bool x64)
+        {
+            SeccompFilter.Instruction[] program = SeccompFilter.Build(x64, Self);
+            uint fcntl = x64 ? 72u : 25u;
+            uint architecture = x64 ? X64 : Arm64;
+            const ulong descriptor = 3, signalDriven = 0x2000, nonBlocking = 0x800, highHalf = 0xFFFF_FFFF_0000_0000UL;
+
+            // Section: F_SETOWN (8), F_SETSIG (10) and F_SETOWN_EX (15) are refused whatever they
+            // name. The kernel reads the command as a C int, from the register's low half.
+            Assert.All((ulong[])[8, 10, 15], command =>
+            {
+                Assert.Equal((command, PermissionDenied), (command, Run(program, fcntl, architecture, descriptor, command, Host)));
+                Assert.Equal((command, PermissionDenied), (command, Run(program, fcntl, architecture, descriptor, command, 0)));
+                Assert.Equal((command, PermissionDenied), (command, Run(program, fcntl, architecture, descriptor, highHalf | command, 0)));
+            });
+
+            // Section: F_SETFL (4) is refused with O_ASYNC among its flags, alone or not, and
+            // allowed without it.
+            Assert.Equal(PermissionDenied, Run(program, fcntl, architecture, descriptor, 4, signalDriven));
+            Assert.Equal(PermissionDenied, Run(program, fcntl, architecture, descriptor, 4, signalDriven | nonBlocking));
+            Assert.Equal(PermissionDenied, Run(program, fcntl, architecture, descriptor, 4, highHalf | signalDriven));
+            Assert.Equal(Allow, Run(program, fcntl, architecture, descriptor, 4, nonBlocking));
+            Assert.Equal(Allow, Run(program, fcntl, architecture, descriptor, 4, 0));
+
+            // Section: every other command is allowed, even one whose argument, no set of flags,
+            // has that bit: F_DUPFD (0), F_GETFD (1), F_SETFD (2), F_GETFL (3), F_GETOWN (9),
+            // F_GETSIG (11), F_GETOWN_EX (16) and F_DUPFD_CLOEXEC (1030).
+            Assert.All((ulong[])[0, 1, 2, 3, 9, 11, 16, 1030], command =>
+                Assert.Equal((command, Allow), (command, Run(program, fcntl, architecture, descriptor, command, signalDriven))));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Ioctl_cannot_push_input_into_a_terminal_ask_for_signal_driven_io_or_name_a_sockets_owner(bool x64)
+        {
+            SeccompFilter.Instruction[] program = SeccompFilter.Build(x64, Self);
+            uint ioctl = x64 ? 16u : 29u;
+            uint architecture = x64 ? X64 : Arm64;
+
+            // Section: TIOCSTI, TIOCLINUX, FIOASYNC, FIOSETOWN and SIOCSPGRP are refused. The
+            // kernel reads the request as a C unsigned int, from the register's low half.
+            Assert.All((ulong[])[0x5412, 0x541C, 0x5452, 0x8901, 0x8902], request =>
+            {
+                Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, request)));
+                Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, 0xFFFF_FFFF_0000_0000UL | request)));
+            });
+
+            // Section: their neighbours are allowed: TCGETS, TIOCGPGRP, TIOCGWINSZ, FIONREAD,
+            // FIONBIO, FIONCLEX, FIOCLEX, FIOGETOWN and SIOCGPGRP.
+            Assert.All((ulong[])[0x5401, 0x540F, 0x5413, 0x541B, 0x5421, 0x5450, 0x5451, 0x8903, 0x8904], request =>
+                Assert.Equal((request, Allow), (request, Run(program, ioctl, architecture, 0, request))));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
         public void Clone_creates_threads_but_no_process(bool x64)
         {
             uint clone = x64 ? 56u : 220u;
@@ -339,8 +397,9 @@ namespace Tellma.Core.Imaging.Tests.Workers
         /// <param name="architecture">The audit architecture.</param>
         /// <param name="firstArgument">The call's first argument.</param>
         /// <param name="secondArgument">The call's second argument.</param>
+        /// <param name="thirdArgument">The call's third argument.</param>
         /// <returns>The verdict.</returns>
-        private static uint Run(SeccompFilter.Instruction[] program, uint number, uint architecture, ulong firstArgument, ulong secondArgument = 0)
+        private static uint Run(SeccompFilter.Instruction[] program, uint number, uint architecture, ulong firstArgument, ulong secondArgument = 0, ulong thirdArgument = 0)
         {
             uint accumulator = 0;
             for (int pc = 0; pc < program.Length; pc++)
@@ -355,6 +414,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
                             4 => architecture,
                             16 => (uint)firstArgument,
                             24 => (uint)secondArgument,
+                            32 => (uint)thirdArgument,
                             _ => throw new InvalidOperationException($"Unexpected load offset {instruction.Value}."),
                         };
                         break;

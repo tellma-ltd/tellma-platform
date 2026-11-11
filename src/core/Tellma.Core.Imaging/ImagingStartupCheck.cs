@@ -35,8 +35,9 @@ namespace Tellma.Core.Imaging
     ///         <c>BlobPdfThumbnailsDisabled</c> and starts no worker, here or later. A Linux host
     ///         whose kernel lets a process open the memory of any other process of its account
     ///         (Yama's <c>ptrace_scope</c> is 0, or Yama is not enabled) writes
-    ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: a worker taken over by a hostile document could
-    ///         reach the host's memory there, and only the machine's setting closes that.
+    ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: the host closes itself to its workers, but a
+    ///         worker taken over by a hostile document could reach the memory of the account's
+    ///         other processes there, and only the machine's setting closes that.
     ///     </para>
     /// </remarks>
     /// <param name="launcher">Starts the probe's worker; the PDF worker when null.</param>
@@ -112,9 +113,11 @@ namespace Tellma.Core.Imaging
                 problems.Add(worker);
             }
 
-            // Section: on Linux, whether the kernel keeps a worker out of the host's memory. The
-            // worker's filter refuses ptrace and its relatives, but /proc/<pid>/mem is a file, and
-            // only Yama's ptrace scope closes it to a process of the same account.
+            // Section: on Linux, whether the kernel keeps a worker out of the memory of the other
+            // processes of the host's account. The worker's filter refuses ptrace and its relatives,
+            // but /proc/<pid>/mem is a file, which Yama's ptrace scope closes to a process of the
+            // same account. The host itself needs no such setting: starting the probe's worker
+            // above closed it to its workers, and to more than its memory.
             if (OperatingSystem.IsLinux() && UnrestrictedPtrace((readPtraceScope ?? ReadPtraceScope)()) is string detail)
             {
                 ImagingLog.PtraceUnrestricted(logger, detail);
@@ -125,7 +128,8 @@ namespace Tellma.Core.Imaging
 
         /// <summary>
         ///     Whether a ptrace scope leaves a process free to open the memory of another process of
-        ///     its account, and how to say so.
+        ///     its account, and how to say so. A scope that restricts it closes the memory alone:
+        ///     a process's environment and descriptors stay open to its account under any scope.
         /// </summary>
         /// <param name="scope">The content of the kernel's ptrace scope file, or null when the kernel has none.</param>
         /// <returns>Null when the scope restricts ptrace (1 or above); otherwise what the kernel reports.</returns>
