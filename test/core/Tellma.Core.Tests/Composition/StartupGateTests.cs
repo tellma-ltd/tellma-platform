@@ -185,6 +185,10 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-shapes"] = false,
                 ["core.model-contributors"] = false,
                 ["core.entity-metadata"] = false,
+                ["core.languages"] = false,
+                ["core.calendars"] = false,
+                ["core.value-sets"] = false,
+                ["core.time-zones"] = true,
             };
 
             Assert.Equal(expected, checks);

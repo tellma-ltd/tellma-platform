@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Conventions;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
@@ -45,14 +46,14 @@ namespace Tellma.Core.Data.Metadata
             typeof(BlobReferenceAttribute), typeof(MultilingualAttribute), typeof(ServerOwnedAttribute), typeof(WriteOnceAttribute),
             typeof(DerivedAttribute), typeof(DefaultedAttribute), typeof(SearchableAttribute), typeof(JsonColumnAttribute),
             typeof(CollationAttribute), typeof(ExcludeFromTableTypeAttribute), typeof(PreserveWhitespaceAttribute),
-            typeof(ExcludeFromExcelAttribute),
+            typeof(ExcludeFromExcelAttribute), typeof(ValueSetAttribute),
         ];
 
         /// <summary>The column annotations that only a string property may carry.</summary>
         private static readonly Type[] StringAnnotations =
         [
             typeof(SearchableAttribute), typeof(PreserveWhitespaceAttribute), typeof(JsonColumnAttribute), typeof(CollationAttribute),
-            typeof(MultilingualAttribute),
+            typeof(MultilingualAttribute), typeof(ValueSetAttribute),
         ];
 
         /// <summary>A sized <c>varchar</c> store type, the one an enum is stored in.</summary>
@@ -510,7 +511,7 @@ namespace Tellma.Core.Data.Metadata
                 Precision: mapping.Precision ?? property.GetPrecision(),
                 Scale: mapping.Scale ?? property.GetScale(),
                 EnumValues: underlying.IsEnum ? Array.AsReadOnly(Enum.GetNames(underlying)) : null,
-                ValueSet: null,
+                ValueSet: clrType == typeof(string) ? EntityShapes.GetAttribute<ValueSetAttribute>(member)?.Name : null,
                 MultilingualGroup: groupOf.GetValueOrDefault(member.Name),
                 IsSearchable: searchable is not null,
                 SearchKind: searchable?.Kind,

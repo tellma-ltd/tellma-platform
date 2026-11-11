@@ -8,16 +8,24 @@ context.
 Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions,
 the table-type binder and the entity metadata), the tenancy runtime (the catalog model, the tenant registry, connection
 resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
-file-system store) and the three calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
-localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
+file-system store), the three calendar systems and the first piece of localization (the language
+catalogue, the value sets and the negotiation of a request's language, region, calendar and time
+zone). The rest of data access, the CRUD pipeline, access control, settings, caching,
+the rest of localization and of blobs, Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
 
 ```csharp
 services.AddTellma("acme", configuration, environment, tellma => tellma
     .AddFeature<GlFeature>()
-    .UseEntity<Center, MyCenter>());
+    .UseEntity<Center, MyCenter>()
+    .Languages(["en-GB", "ar-SA"]));
 ```
+
+`Languages` declares, once, the languages the distribution offers, the default first, each
+optionally with the region its users get by default; `AddLanguage` describes a language the
+catalogue lacks (see [Localization](#localization)). A distribution that declares none offers
+English.
 
 `AddTellma` runs four steps, then installs the second of two gates:
 
@@ -66,6 +74,10 @@ every problem `AddTellma` would throw.
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 | `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
+| `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
+| `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
+| `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
+| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
@@ -291,18 +303,100 @@ Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 `Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the
 server and the browser agree; `gc` takes the culture's own.
 
-Culture data comes from the host's ICU, so two releases can differ in a pattern's punctuation or a
-name's spelling (Windows' and Ubuntu's do, for `en-GB`'s full date and `am-ET`'s month names, and ICU 78 gives
-`ar-SA` a Gregorian default calendar). The golden tests and every test of a concrete value therefore pin the
-culture data they assert; the tests over the host's own cultures assert properties, and the test of
+A culture's data comes from the host's ICU unless it is one a request was negotiated to, which
+carries the platform's pinned formats (see [Localization](#localization)). Two ICU releases can
+differ in a pattern's punctuation or a name's spelling (Windows' and Ubuntu's do, for `en-GB`'s
+full date and `am-ET`'s month names, and ICU 78 gives `ar-SA` a Gregorian default calendar). The
+golden tests therefore run over the negotiated cultures, the tests of the cleaning pin the raw
+culture data they assert, the tests over the host's own cultures assert properties, and the test of
 a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
+
+## Localization
+
+### The language catalogue
+
+`LanguageCatalog` (`ILanguageCatalog`) is data in code: fifteen languages (`en`, `ar`, `am`, `om`,
+`ti`, `so`, `sw`, `fr`, `es`, `pt`, `de`, `tr`, `ur`, `hi`, `zh`), each with its own name, the
+short symbol that labels its column of a multilingual field, its direction and its formats
+(`LanguageFormats`): the regions it is offered with (243 language and region pairs in all), its
+default region (the United Kingdom for English, otherwise CLDR's likely region) and its native
+digits (`arab` for Arabic, `arabext` for Urdu, `deva` for Hindi). The data is frozen so that a
+host's ICU release never changes what a user may store.
+
+A distribution's declaration (`tellma.Languages`, `tellma.AddLanguage`) selects what is *offered*;
+`All`, `Find` and `Formats` cover everything *described*, so a tenant whose stored language is no
+longer offered still resolves its labels. The declaration is resolved leniently (`LanguageSet`):
+whatever is wrong is skipped and reported by `core.languages`, and the catalogue itself never
+throws at construction, so a build step can compose it to report the problems.
+
+### Negotiation
+
+`LocalizationNegotiator` (`ILocalizationNegotiator`) turns a request's headers, the user's
+preferences and the tenant's settings into a `LocalizationContext`. Each choice falls through its
+sources in order and ignores a source whose value is not acceptable:
+
+| Choice | Sources, first acceptable wins | Acceptable when |
+|---|---|---|
+| Language | the first three `Accept-Language` ranges by quality, the user's preferred language, the tenant's primary language, the distribution's default | offered by the distribution |
+| Region | the region of the range that chose the language, the user's preferred region, the tenant's region, the language's default region | offered with the negotiated language |
+| Calendar | the calendar header, the user's preferred calendar, the tenant's primary calendar | one of the tenant's calendars |
+| Time zone | the time-zone header, the user's preferred zone, the tenant's zone | a value of `core.TimeZone` (ignoring case; an alias is not accepted) that the host resolves |
+
+A message's own language (an email or a notification rendered for a recipient) overrides the
+language when it is offered, and its region then heads the region row; a message's own calendar
+overrides the calendar when the registry has it. The index of the content language (which of the
+tenant's languages multilingual values display in) follows the reader's language, never the
+message's. A header that is present and refused is counted in
+`tellma.localization.headers.rejected` by a `header` tag (`accept-language`, `calendar`,
+`time-zone`): an `Accept-Language` with a malformed element (its sound ranges are still used), a
+calendar the tenant does not use, a zone outside the set. A well-formed language the distribution
+does not offer is ordinary and is not counted.
+
+### Negotiated cultures
+
+The culture of the outcome (`NegotiatedCultures.Get(language, region)`) is named by the pair
+(`ar-SA`), so resources fall back from the pair to the language to English, and it always formats
+with the Gregorian calendar, Latin digits and no bidirectional control characters: numbers and
+dates pasted from an email or an export stay numbers and dates. One read-only instance exists per
+pair.
+
+Its formats are not the host's. Every catalogue pair carries the formats pinned in
+`Localization/CultureData.txt`, an embedded resource generated once from CLDR 48 (ICU 78.2) by
+`eng/culture-data/Tellma.CultureData.Generator`: every date and time pattern and name
+`DateTimeFormatInfo` holds and every symbol, pattern and group size `NumberFormatInfo` holds, read
+from the pair's Latin-digit Gregorian culture and cleaned of bidirectional marks and eras. The
+generator lays a small table of corrections over CLDR where it regressed or contradicts the
+Latin-digit rule (`CultureDataSource.Corrections`). Server text is therefore identical on Windows
+and on every Linux image. What stays the host's is everything outside those two format objects:
+comparison, casing and the culture's display names. A pair outside the catalogue (a language a
+distribution added) has no pinned data and takes the host's Latin-digit Gregorian formats, cleaned
+the same way.
+
+### Value sets
+
+A value set is a named enumeration over string columns (`ValueSetDescriptor`): its values, each
+with a resource key or a literal label, and optional aliases. `ValueSetRegistry`
+(`IValueSetRegistry`) holds the platform's four, then every set a feature contributed with
+`contribution.ValueSet(descriptor)`:
+
+| Set | Values | Labels |
+|---|---|---|
+| `core.Language` | every described language, offered or not | each language's own name, a literal |
+| `core.Calendar` | the composed calendar systems' codes | the key `Calendar_<code>` |
+| `core.TimeZone` | `QueryexTimeZones.Ids`, with its aliases | the id itself, a literal |
+| `core.Region` | every described language's regions, in ordinal order | the key `Region_<code>` |
+
+The time-zone set is the query language's own table, so every zone a user can pick compiles in a
+query. A string property draws from a set with `[ValueSet("core.TimeZone")]`; the entity metadata
+carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain string.
+`core.value-sets` validates every set and every such property.
 
 ## Layout
 
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, and Core's model contributions. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
@@ -312,6 +406,7 @@ a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures and the pinned culture data with its reader, writer and generator source. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; so far the month names of `uq` and `et`. |
 
 ## Tests

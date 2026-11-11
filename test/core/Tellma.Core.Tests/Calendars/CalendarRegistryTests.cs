@@ -87,56 +87,6 @@ namespace Tellma.Core.Tests.Calendars
             Assert.NotNull(problem.Fix);
         }
 
-        /// <summary>A calendar system whose code a test chooses; it has no parameterless constructor.</summary>
-        /// <param name="code">The code.</param>
-        private sealed class TestCalendar(string code) : ICalendarSystem
-        {
-            /// <inheritdoc />
-            public string Code { get; } = code;
-
-            /// <inheritdoc />
-            public Calendar Calendar { get; } = new GregorianCalendar();
-
-            /// <inheritdoc />
-            public int MonthCount => 12;
-
-            /// <inheritdoc />
-            public DateOnly MinSupported => DateOnly.MinValue;
-
-            /// <inheritdoc />
-            public DateOnly MaxSupported => DateOnly.MaxValue;
-
-            /// <inheritdoc />
-            public (int Year, int Month, int Day) Decompose(DateOnly date)
-            {
-                return (date.Year, date.Month, date.Day);
-            }
-
-            /// <inheritdoc />
-            public string Format(DateOnly date, CultureInfo culture, DateStyle style)
-            {
-                return date.ToString(culture);
-            }
-
-            /// <inheritdoc />
-            public string Format(DateTimeOffset instant, TimeZoneInfo zone, CultureInfo culture, DateStyle style, bool includeTime = true)
-            {
-                return instant.ToString(culture);
-            }
-
-            /// <inheritdoc />
-            public string MonthName(int month, CultureInfo culture, bool abbreviated)
-            {
-                return month.ToString(culture);
-            }
-
-            /// <inheritdoc />
-            public DateOnly? TryParse(string text, CultureInfo culture)
-            {
-                return null;
-            }
-        }
-
         /// <summary>A distribution's own calendar system: the Persian calendar, over the framework's.</summary>
         private sealed class PersianCalendarSystem : ICalendarSystem
         {
