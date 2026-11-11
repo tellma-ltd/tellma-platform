@@ -25,4 +25,10 @@ export class TmFakeTelemetry extends TmTelemetry {
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }
 
+// @public
+export function tmTestEntitiesChunk(patch?: Partial<TmEntitiesChunk>): TmEntitiesChunk;
+
+// @public
+export function tmTestMetadata(patch?: Partial<TmClientMetadata>): TmClientMetadata;
+
 ```

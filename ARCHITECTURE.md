@@ -865,7 +865,7 @@ A headless, separately-tested *engine* (the D4 pattern idea) is **reserved for t
 
 | Package | Role |
 |---|---|
-| `@tellma/core` | The runtime a distribution SPA imports. Its primary entry point is the warm-launch bundle: the distribution API, HTTP, session, localization, client store, telemetry, page context, navigation and entity summaries. `/shell` and `/attention` are preloaded with it. `/entity`, `/realtime`, `/support`, `/sharing` and every page family (`/search`, `/details`, `/admin`, `/attention-pages`, `/reports`, `/report-studio`, `/dashboards`) are lazy entry points. |
+| `@tellma/core` | The runtime a distribution SPA imports. Its primary entry point is the warm-launch bundle: the distribution API, HTTP, session, localization, client store, telemetry, page context, navigation and entity summaries. `/shell` and `/attention` are preloaded with it. `/entity`, `/realtime`, `/support`, `/sharing` and every page family (`/search`, `/details`, `/admin`, `/attention-pages`, `/reports`, `/report-studio`, `/dashboards`) are lazy entry points, as is `/config-check`, the configuration check the build and a development startup run. |
 | `@tellma/core-testing` | Page harnesses, a fake `TmApi`, hub and clock, metadata fixtures, and Playwright helpers (warm-up, multi-tab, offline, network hang). |
 | `@tellma/core-tools` | Node only: the `tellma-client` commands `emit`, `serve` and `build`, and the ESLint, stylelint and `tsconfig` presets. The first step of `build` checks the sources and its last step checks the output. |
 
