@@ -38,11 +38,11 @@ export TELLMA_TEST_SQL='Server=localhost;Integrated Security=true;TrustServerCer
 dotnet test test/core/Tellma.Core.Queryex.IntegrationTests
 ```
 
-The connection string may name any database; the fixture creates and uses `TellmaQueryexTests`, in
-the platform collation (`Latin1_General_100_CI_AS`), and rebuilds its tables on every run. The
-fixture's text columns keep the collation they declare; the database's is what literals and table
-variables get. A `TellmaQueryexTests` left by an older run in another collation fails the fixture
-with a message asking for it to be dropped.
+The connection string may name any database. `LedgerDatabase`, the collection fixture, starts
+the shared `SqlServerFixture` of `Tellma.Testing.Support` and creates a uniquely named database on it, in the platform collation
+(`Latin1_General_100_CI_AS`), with the ledger's tables and rows; on an existing server the database
+is dropped when the run ends. The fixture's text columns keep the collation they declare; the
+database's is what literals and table variables get.
 
 Every class here is tagged `Category=Integration`, which is how CI both excludes it from the pull-request
 run and includes it in the integration job. A class without the trait runs in neither.

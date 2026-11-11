@@ -77,6 +77,7 @@
   <Folder Name="/test/shared/">
     <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />
     <Project Path="test/shared/Tellma.Testing.Support/Tellma.Testing.Support.csproj" />
+    <Project Path="test/shared/Tellma.Testing.Entities/Tellma.Testing.Entities.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
     <Project Path="test/apps/assets/Tellma.Identity.TestInProcHost/Tellma.Identity.TestInProcHost.csproj" />

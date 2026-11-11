@@ -13,7 +13,6 @@ using System.Diagnostics;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.AspNetCore.Observability;
-using Tellma.Core.IntegrationTests.Infrastructure;
 
 namespace Tellma.Core.IntegrationTests.Observability
 {

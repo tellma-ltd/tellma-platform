@@ -24,7 +24,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// <param name="server">The server the fixture put the rows on.</param>
     [Collection(SqlServerGroup.Name)]
     [Trait("Category", "Integration")]
-    public sealed class BackendFactsTests(SqlServerFixture server)
+    public sealed class BackendFactsTests(LedgerDatabase server)
     {
         /// <summary>
         ///     An expression per function whose result is declared always present, written so that
@@ -40,7 +40,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         };
 
         /// <summary>The server the fixture put the rows on.</summary>
-        private readonly SqlServerFixture _server = server;
+        private readonly LedgerDatabase _server = server;
 
         /// <summary>The engine under test.</summary>
         private readonly QueryexEngine _engine = new();

@@ -5,6 +5,7 @@
 ```ts
 
 import { ApplicationConfig } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
@@ -23,6 +24,9 @@ export const TM_APP_DECLARATIONS: InjectionToken<TmAppDeclarations>;
 
 // @public
 export const TM_CLIENT_METADATA: InjectionToken<TmClientMetadata>;
+
+// @public
+export const TM_NOW: InjectionToken<() => number>;
 
 // @public
 export interface TmActionField {
@@ -91,6 +95,61 @@ export interface TmBlobKindPolicy {
     readonly readAccess: 'owner-read' | 'any-member';
     readonly thumbnail: boolean;
 }
+
+// @public
+export interface TmBootConfig {
+    readonly defaultLanguage: string;
+    readonly languages: readonly TmBootLanguage[];
+    readonly strings: Readonly<Record<string, TmBootStrings>>;
+    readonly v: 1;
+}
+
+// @public
+export interface TmBootLanguage {
+    readonly code: string;
+    readonly dir: 'ltr' | 'rtl';
+}
+
+// @public
+export type TmBootPageReason = 'unsupported' | 'cookies' | 'sign-in-failed' | 'load-failed';
+
+// @public
+export interface TmBootRecord {
+    readonly dir: 'ltr' | 'rtl';
+    readonly lang: string;
+    readonly lastTenantId: number | null;
+    readonly sub: string | null;
+    readonly theme: TmBootTheme;
+    readonly v: 1;
+}
+
+// @public
+export interface TmBootResult {
+    readonly auto: number | null;
+    readonly cold: boolean;
+    readonly mark: TmLoginMark | null;
+    readonly profile: TmProfile | null;
+    readonly record: TmBootRecord | null;
+    readonly showPage: (reason: TmBootPageReason, retry?: () => void) => void;
+    readonly state: TmBootState;
+}
+
+// @public
+export type TmBootState = 'run' | 'redirect' | 'page';
+
+// @public
+export interface TmBootStrings {
+    readonly Boot_Cookies?: string;
+    readonly Boot_LoadFailed?: string;
+    readonly Boot_SignInFailed?: string;
+    readonly Boot_Title?: string;
+    readonly Boot_TryAgain?: string;
+    readonly Boot_Unsupported?: string;
+    readonly Distribution_DisplayName?: string;
+}
+
+// @public
+export type TmBootTheme = 'system' | 'light' | 'dark';
 
 // @public
 export interface TmCalendarDefinition {
@@ -430,9 +489,43 @@ export interface TmLanguageMetadata {
 }
 
 // @public
+export class TmLaunch {
+    constructor();
+    readonly automatic: Signal<number | null>;
+    markAutomatic(tenantId: number): void;
+    settle(tenantId: number): void;
+    takeAutomatic(tenantId: number): boolean;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmLaunch, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmLaunch>;
+}
+
+// @public
 export type TmLazyComponent = () => Promise<Type<unknown> | {
     default: Type<unknown>;
 }>;
+
+// @public
+export interface TmLoginMark {
+    readonly at: number;
+    readonly auto: boolean;
+    readonly expired: boolean;
+    readonly hash: string;
+    readonly returnUrl: string;
+    readonly sub: string | null;
+}
+
+// @public
+export interface TmMembership {
+    readonly category: TmTenantCategory;
+    readonly id: number;
+    readonly isActive: boolean;
+    readonly languages: readonly string[];
+    readonly liveTenantId: number | null;
+    readonly name: string;
+    readonly name2: string | null;
+    readonly name3: string | null;
+    readonly state: TmTenantState;
+}
 
 // @public
 export interface TmMetadataLoaders {
@@ -545,6 +638,19 @@ export interface TmPageDefinition {
 
 // @public
 export type TmPageKind = 'home' | 'search' | 'details' | 'report' | 'studio' | 'dashboard' | 'settings' | 'access' | 'custom';
+
+// @public
+export function tmParseProfileCookie(cookies: string): TmProfile | null;
+
+// @public
+export interface TmProfile {
+    readonly email: string;
+    readonly locale: string | null;
+    readonly name: string;
+    readonly sh: string;
+    readonly sub: string;
+    readonly v: 2;
+}
 
 // @public
 export interface TmPropertyMetadata {
@@ -701,6 +807,26 @@ export interface TmSecurableOwnerMetadata {
 export type TmSecurableRef = readonly [resource: string, action: string];
 
 // @public
+export class TmSession {
+    constructor();
+    check(): TmSessionCheck;
+    readonly profile: Signal<TmProfile | null>;
+    signIn(options?: TmSignInOptions): Promise<never>;
+    readonly state: Signal<TmSessionState>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmSession, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmSession>;
+}
+
+// @public
+export type TmSessionCheck = 'same' | 'missing' | 'changed';
+
+// @public
+export const tmSessionGuard: CanActivateFn;
+
+// @public
+export type TmSessionState = 'active' | 'expired' | 'signing-out';
+
+// @public
 export interface TmSettingCategoryMetadata {
     readonly labelKey: string;
     readonly name: string;
@@ -747,6 +873,21 @@ export interface TmShellSlot {
 }
 
 // @public
+export interface TmSignInOptions {
+    readonly returnUrl?: string;
+    readonly stepUp?: TmStepUpChallenge;
+}
+
+// @public
+export function tmSingleLiveTenant(tenants: readonly TmMembership[]): number | null;
+
+// @public
+export interface TmStepUpChallenge {
+    readonly acr: string;
+    readonly maxAge: number | null;
+}
+
+// @public
 export type TmStringPack = Readonly<Record<string, string>>;
 
 // @public
@@ -788,6 +929,12 @@ export interface TmTelemetryOptions {
 
 // @public
 export type TmTelemetryProps = Readonly<Record<string, string | number | boolean>>;
+
+// @public
+export type TmTenantCategory = 'Live' | 'Sandbox';
+
+// @public
+export type TmTenantState = 'Provisioning' | 'Active' | 'ReadOnly' | 'Frozen' | 'Suspended' | 'Retired';
 
 // @public
 export interface TmValueDescriptor {

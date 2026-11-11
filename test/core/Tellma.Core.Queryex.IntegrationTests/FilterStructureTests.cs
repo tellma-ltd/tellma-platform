@@ -23,7 +23,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// <param name="server">The server the fixture put the rows on.</param>
     [Collection(SqlServerGroup.Name)]
     [Trait("Category", "Integration")]
-    public sealed class FilterStructureTests(SqlServerFixture server)
+    public sealed class FilterStructureTests(LedgerDatabase server)
     {
         /// <summary>The invoices with no customer, which every rebase onto the customer reaches nothing from.</summary>
         private static readonly int[] WithoutCustomer = [2, 4, 6];
@@ -38,7 +38,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
         private static readonly int[] WithoutCustomerThroughInvoice = [5];
 
         /// <summary>The server the fixture put the rows on.</summary>
-        private readonly SqlServerFixture _server = server;
+        private readonly LedgerDatabase _server = server;
 
         /// <summary>The engine under test.</summary>
         private readonly QueryexEngine _engine = new();
