@@ -314,36 +314,16 @@ function isThenable<T>(
                 }
               </li>
             }
-            @if (showsFooterRows()) {
+            @if (footerRows().length > 0) {
               <li class="tm-entity-picker__separator" aria-hidden="true"></li>
-              @if (advancedSearch() !== undefined) {
+              @for (row of footerRows(); track row.key) {
                 <li
                   ngOption
                   class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionAdvanced"
-                  [label]="advancedRowLabel()"
+                  [value]="row.key"
+                  [label]="row.label"
                 >
-                  <span class="tm-entity-picker__option-label">{{ advancedRowLabel() }}</span>
-                </li>
-              }
-              @if (create() !== undefined) {
-                <li
-                  ngOption
-                  class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionCreate"
-                  [label]="createRowLabel()"
-                >
-                  <span class="tm-entity-picker__option-label">{{ createRowLabel() }}</span>
-                </li>
-              }
-              @if (showsEditRow()) {
-                <li
-                  ngOption
-                  class="tm-entity-picker__option tm-entity-picker__action"
-                  [value]="actionEdit"
-                  [label]="editRowLabel()"
-                >
-                  <span class="tm-entity-picker__option-label">{{ editRowLabel() }}</span>
+                  <span class="tm-entity-picker__option-label">{{ row.label }}</span>
                 </li>
               }
             }
@@ -709,13 +689,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   // ---- Template helpers ----
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionAdvanced = ACTION_ADVANCED;
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionCreate = ACTION_CREATE;
-  /** Footer-row sentinel exposed to the template. */
-  protected readonly actionEdit = ACTION_EDIT;
-
   /** The entity rows currently rendered (empty outside the results state). */
   protected readonly resultItems: Signal<readonly T[]> = computed(() => {
     const state = this.searchState();
@@ -732,24 +705,6 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     return kind === 'loading' || kind === 'empty' || kind === 'error' ? kind : null;
   });
   /**
-   * Whether the command footer rows render. They are configured-and-shown in
-   * every popup state EXCEPT loading: while the spinner is up the panel says
-   * one thing only ("results are coming"), and the commands — which would
-   * arrive, shift, and re-order under the user's cursor a moment later —
-   * stay out of it. They return the instant the state settles (results,
-   * empty, or failure), so "no results → Create…" is still one arrow away.
-   */
-  // §4.1 states the loading exclusion as the design; the reasoning above is
-  // why. Note the cost it accepts: while a search is loading there is no
-  // keyboard path to Advanced search…, the magnifier not being a tab stop.
-  // The window closes as soon as the state settles.
-  protected readonly showsFooterRows = computed(
-    () =>
-      this.statusKind() !== 'loading' &&
-      (this.advancedSearch() !== undefined || this.create() !== undefined || this.showsEditRow()),
-  );
-
-  /**
    * Whether the field currently NAMES an entity — as opposed to merely
    * holding one in the value channel.
    *
@@ -762,10 +717,41 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   protected readonly namesEntity = computed(() => this.value() !== null && this.rawText() !== '');
 
-  /** Whether the Edit… footer row renders. */
-  protected readonly showsEditRow = computed(
-    () => this.edit() !== undefined && this.namesEntity(),
-  );
+  /**
+   * The command footer rows, in the order they render: each row's option
+   * value (a footer-row sentinel) and its caption. The ONE list of them: the
+   * template draws its rows from it and the keyboard steps over it (see
+   * `optionKeys`), so the two cannot disagree.
+   *
+   * The rows are configured-and-shown in every popup state EXCEPT loading:
+   * while the spinner is up the panel says one thing only ("results are
+   * coming"), and the commands — which would arrive, shift, and re-order
+   * under the user's cursor a moment later — stay out of it. They return
+   * the instant the state settles (results, empty, or failure), so "no
+   * results → Create…" is still one arrow away. Edit… shows only while the
+   * field names an entity.
+   */
+  // §4.1 states the loading exclusion as the design; the reasoning above is
+  // why. Note the cost it accepts: while a search is loading there is no
+  // keyboard path to Advanced search…, the magnifier not being a tab stop.
+  // The window closes as soon as the state settles.
+  protected readonly footerRows = computed(() => {
+    const rows: { readonly key: symbol; readonly label: string }[] = [];
+    if (this.statusKind() === 'loading') {
+      return rows;
+    }
+    if (this.advancedSearch() !== undefined) {
+      rows.push({ key: ACTION_ADVANCED, label: this.defaultAdvancedLabel() });
+    }
+    if (this.create() !== undefined) {
+      // The consumer's caption wins over the localized default.
+      rows.push({ key: ACTION_CREATE, label: this.createLabel() ?? this.defaultCreateLabel() });
+    }
+    if (this.edit() !== undefined && this.namesEntity()) {
+      rows.push({ key: ACTION_EDIT, label: this.editLabel() ?? this.defaultEditLabel() });
+    }
+    return rows;
+  });
 
   /** The localized magnifier aria-label. */
   protected readonly magnifierLabel = this.translate('entityPicker.magnifier');
@@ -777,15 +763,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   protected readonly moreResultsText = computed(() =>
     this.translate('entityPicker.moreResults', { count: this.resultItems().length })(),
   );
+  /** The localized Advanced search… footer-row caption. */
   private readonly defaultAdvancedLabel = this.translate('entityPicker.advancedSearch');
+  /** The localized Create… footer-row caption, when the consumer gives none. */
   private readonly defaultCreateLabel = this.translate('entityPicker.create');
+  /** The localized Edit… footer-row caption, when the consumer gives none. */
   private readonly defaultEditLabel = this.translate('entityPicker.edit');
-  /** The Advanced search… footer-row caption. */
-  protected readonly advancedRowLabel = computed(() => this.defaultAdvancedLabel());
-  /** The Create… footer-row caption (consumer override wins). */
-  protected readonly createRowLabel = computed(() => this.createLabel() ?? this.defaultCreateLabel());
-  /** The Edit… footer-row caption (consumer override wins). */
-  protected readonly editRowLabel = computed(() => this.editLabel() ?? this.defaultEditLabel());
 
   /** The live-region text — announcements on fetch completion only. */
   protected readonly liveText = signal('');
@@ -998,7 +981,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       // until the commit gesture, but the box no longer names it.
       const names = this.namesEntity();
       this.resultItems(); // re-apply on option turnover
-      this.showsFooterRows(); // …including footer-row turnover
+      this.footerRows(); // …including footer-row turnover
       const current = this.listboxValue();
       const desired: unknown[] = id === null || !names ? [] : [id];
       if (current.length !== desired.length || current[0] !== desired[0]) {
@@ -1557,25 +1540,14 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * The keys of the options the popup holds right now, in listbox order:
    * the result rows, then the footer rows. Derived from this control's own
    * state, which every keystroke and every answer updates at once — the
-   * rendered rows only catch up with it on the next render. It mirrors the
-   * template's option order exactly.
+   * rendered rows only catch up with it on the next render. It reads the
+   * same two lists the template draws its options from, in the same order.
    */
   private optionKeys(): unknown[] {
-    return untracked(() => {
-      const keys: unknown[] = this.resultItems().map((item) => this.idOf(item));
-      if (this.showsFooterRows()) {
-        if (this.advancedSearch() !== undefined) {
-          keys.push(ACTION_ADVANCED);
-        }
-        if (this.create() !== undefined) {
-          keys.push(ACTION_CREATE);
-        }
-        if (this.showsEditRow()) {
-          keys.push(ACTION_EDIT);
-        }
-      }
-      return keys;
-    });
+    return untracked(() => [
+      ...this.resultItems().map((item) => this.idOf(item)),
+      ...this.footerRows().map((row) => row.key),
+    ]);
   }
 
   /**

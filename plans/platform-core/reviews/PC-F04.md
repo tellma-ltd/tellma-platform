@@ -210,3 +210,128 @@ synchronous `dispatchEvent`s in unit tests), with no waits or thresholds between
   arrows still take their previous paths.
 - **That the burst tests are not vacuous**: each fails on d554208 except the pins listed under
   Verification, and the helper really runs every key in one task.
+
+## Review 1
+
+### Findings
+
+**R1-1 (minor): `optionKeys()` is a second, hand-kept copy of the template's option list, and
+every keyboard decision now rests on it.**
+`client/projects/core/tellma-core-ui/entity-picker/tm-entity-picker.ts:1563-1579` against the
+template at `:277-349`. Before this change the list only had to be right in the template: aria
+stepped over the rendered options. Now the arrows step over `optionKeys()` (`:1953-1958`) and
+`keyboardActiveKey()` refuses any option it does not list (`:2206`), for Enter and Tab too. The two
+copies agree today; I checked every search state (idle, loading, results, empty, error) and the
+three footer conditions. Failure scenario: a later change adds, reorders or re-conditions an option
+row in the template and misses `optionKeys()`. The row is then unreachable by arrow keys (for a
+footer command the arrows are the only keyboard path, the one §8 relies on to justify the
+magnifier's `tabindex="-1"`), or the highlight visits rows in an order other than the drawn one.
+Nothing fails at build time, and the one guard,
+`tm-entity-picker.spec.ts:1485` ("arrows visit every option in the order it is rendered"), covers
+a single configuration (a browse list with all three pages set): a row that depends on another
+input or state never appears in it. Suggested fix: give the footer rows one source. A
+`footerKeys` computed (the sentinels under today's conditions, in order) that the template renders
+with `@for (key of footerKeys(); track key)` and that `optionKeys()` appends to the result ids. If
+restructuring the template is not wanted, the cheaper guard is a dev-mode check in the highlight
+after-render effect (`:1046`), where state and DOM agree: compare
+`ariaOptions().map((o) => o.value())` with `optionKeys()` and `console.error` on a difference, so
+every popup test in the suite becomes a guard.
+
+Checked and found sound:
+
+- **aria internals, against the installed 22.0.3 source** (`client/node_modules/@angular/aria/fesm2022`).
+  `ComboboxPattern` parks ArrowUp/ArrowDown in the single-slot `keyboardEventRelay` and re-dispatches
+  from an `afterRenderEffect` (`private.mjs`), as the notes say. `List.goto(item)` reaches
+  `ListFocus.focus`, which sets `activeItem` with no selection change when called without options
+  (`_list-chunk.mjs`, `_list-navigation-chunk.mjs`): the same effect as `gotoFirst()` for the first
+  row. `Option._pattern` is the very object in `inputs.items()` (`listbox.mjs`). Applying by key is
+  in fact sturdier than `gotoFirst()`: aria's item order is refreshed by a `MutationObserver`, so it
+  lags a re-ordered `@for`, and the picker no longer depends on it. `_pattern`, `listBehavior` and
+  `goto` are typed in aria's `.d.ts`, so a rename fails `typecheck`; a change of meaning fails the
+  paint and wrap tests. The catalog pins `@angular/aria` to exactly 22.0.3.
+- **Deviations 1 to 4.** Each keeps §4.3's observable model. Plain arrows were already consumed by
+  aria while open (`preventDefault` and `stopPropagation` at the input), so nothing new is hidden
+  from the grid or from host listeners. Wrap, first-on-ArrowDown and last-on-ArrowUp from no
+  highlight, key repeat, the untouched caret, scroll-into-view and `aria-activedescendant` (same
+  number of render passes as the relay took) are unchanged. Home/End, PageUp/PageDown, Shift- and
+  Alt-modified arrows, the read-only and collapsed-in-a-cell arrows and Escape take the paths they
+  took before; no option is ever disabled, so skipping disabled rows is moot. Vertical arrows are
+  direction-neutral (the RTL e2e passes). The IME rule matches the one Review 1 of PC-F03 asked for
+  on Enter, and the grid ignores a composing key on its own.
+- **No double step, skip or desync.** The capture listener stops the key before aria's input
+  listener, so the relay never holds an arrow. A pending request answers until the effect applies
+  it, then aria's active option does; both are validated against the state's options, so a row the
+  state dropped commits nothing. Every result set either clears the highlight first (`queueSearch`)
+  or issues a fresh request (`applyResults`), so an arrow's target never outlives its rows.
+- **Popup lifecycle.** I walked open→close→open, close→open→close, an open whose search was never
+  issued, both writers (`setExpanded`, aria's `expanded.set` from a key, from Escape and from its
+  blur effect), and the one-way binding (every write reaches both models at once, so the binding
+  can only push a value aria already holds). Keys call `syncPopup()` only while expanded, so a
+  close is still never reset synchronously and the grid's adoption after the picker's
+  close-then-clone Enter still finds the in-flight search. The initial search inside a keydown
+  re-enters nothing: no path from `onPopupOpened()` writes `expanded`.
+- **The pointer window listed under Open risks is not reachable.** aria activates the pressed
+  option on `click`, in its host listener, which runs before `onListboxClick` in the same event; a
+  pending request cannot come between them. Arrows and a click dispatched in one task picked the
+  clicked row.
+- **Tests.** The helper runs every key in one synchronous loop inside one `evaluate`. I did not
+  rerun the suites on d554208: that needs the picker source reverted and this review may modify no
+  file. Traced against the pre-fix code instead, these fail as claimed: keystroke/ArrowDown/Enter,
+  the held arrow, ArrowUp from no highlight, the IME arrow, Escape then reopen, and the grid chord
+  with two arrows. The five unit pins and two e2e pins pass before by construction. The
+  grid-hosted picker is covered at all three levels (5 cell-editor tests, 3 through the real grid,
+  6 e2e).
+- **Rules.** No spec, PC-id or `docs/` reference in TSDoc, test names or messages; the one spec
+  citation added is an inline comment. Every new member and helper is documented. The API golden
+  gains only the protected `onExpandedChange`. The commit message lists the suites run and all
+  four deviations; no .NET file changed.
+
+Runs (local Windows, 20 cores):
+
+- Unit, `tm-entity-picker.spec.ts` + `tm-grid-editing.spec.ts`: six runs, each 200/200. Two of
+  them ran their tests beside 20 CPU-burning threads, the other four without that load.
+- e2e Chromium, CI=1 production build, `--retries=0`: `entity-picker.spec.ts` + `grid-entity.spec.ts`
+  in full, 90/90 (2 workers). Both burst describes of both files (26 tests) with
+  `--repeat-each=20 --workers=4` and 20 CPU-burning threads for the first 9 of 13 minutes: 520/520.
+- `typecheck` and `lint` pass.
+- By hand on the production showcase, keys dispatched in one task: Escape + ArrowDown (reopens on
+  the stored answer, first result highlighted, no request); Escape + ArrowDown + Escape, then a
+  paced reopen; Escape + a keystroke; a pick + three ArrowDowns (second browse row highlighted, one
+  search); in a grid cell, Escape + Alt+ArrowDown + ArrowDown + Enter (second result committed, no
+  move, no second search). Each ended where the paced keys end.
+
+### Responses
+
+R1-1: fixed in @@SHA@@, with the preferred fix (one source). The footer rows are now one computed,
+`footerRows`: the rows that render, in order, each with its option key (the sentinel) and its
+caption, under the conditions the three `@if` blocks used to spell out (not while loading; a page
+configured; Edit… only while the field names an entity). The template draws the footer from it
+(`@for (row of footerRows(); track row.key)`, with the separator shown when it is non-empty) and
+`optionKeys()` is now `resultItems()` mapped through `idOf`, followed by `footerRows()` mapped to
+their keys. Both halves of the list are thus read from the same two signals the template iterates,
+in the same order, so a row that is added, reordered or re-conditioned changes the drawn list and
+the keyboard's list together. What a later change could still get wrong is the order of the two
+`@for` blocks themselves (results, then footer), which the existing "arrows visit every option in
+the order it is rendered" test pins. Removed as dead: `showsFooterRows`, `showsEditRow`, the three
+`action*` sentinel fields and the three `*RowLabel` computeds (all protected, template-only). The
+effect that re-applies the listbox value on footer-row turnover now reads `footerRows()`. Rendering
+is unchanged: same elements, classes, values and labels, and the rows still leave and return as a
+group around the loading state.
+
+The reviewer's check that the pointer window listed under Open risks is not reachable (aria
+activates the pressed option in its own `click` listener, before `onListboxClick` in the same
+event) is accepted: that risk is withdrawn. The "`optionKeys()` duplicates the template's option
+order" risk is closed by this fix.
+
+Round-1 verification (local Windows, CI=1 prod builds, 2 workers):
+
+- Gates: lint, typecheck, lint:test, tokens:check, build, test (core 32, core-testing 3, core-ui
+  1414, core-ui CSP 1, core-ui-tokens 20, locale-ar 8, showcase 1), api:check (after
+  `api:approve`: the eight removed protected members, and `footerRows` added), docs:build and
+  size:check all pass. Size: entity-picker **11.28 of 12 KB** (11.41 before this round, 11.28
+  before PC-F04); grid 38.00 of 38 KB, unchanged.
+- PR-tier e2e (chromium + touch, `--grep-invert "@nightly|@perf|@quarantine"`): 549/549 passed,
+  none on retry.
+- entity-picker.spec + grid-entity.spec in full, Chromium, `--repeat-each 3 --retries 0`: 270/270
+  passed. The two touched unit spec files: 200/200.
+- No .NET file changed; the dotnet gates were not run.
