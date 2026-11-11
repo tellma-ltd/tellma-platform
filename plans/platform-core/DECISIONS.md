@@ -359,6 +359,23 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-045 (orchestrator, 2026-11-11): LEDGER status cells stay bare
+- Ruling: the Status column of LEDGER.md's status table holds the bare state word (`todo`, `impl`, …, `done`); CI runs, red-run histories and fix-item links go in Notes. check_deps.py compares the cell exactly, so `done (green at …)` read as not done.
+- Why: seven done checkpoints (PC-007, PC-009, PC-016, PC-021, PC-024, PC-060, PC-065) carried annotations, which hid PC-010, PC-014, PC-019, PC-025 and PC-067 from the ready list, possibly since 2026-11-09. Normalized 2026-11-11 05:50.
+- Revisit if: the tool is changed to parse the leading word instead.
+
+### D-044 (orchestrator, 2026-11-11): PC-041 review-1 follow-ups
+- Ruling: a menu keeps one Escape entry that collapses an expanded submenu (and refocuses its parent) or else closes the menu, in place of spec 0010 §C.10's per-level entries (deviation 17; one Escape still closes one level, and the stack order against tooltips and modals is unchanged). After a grid right-click outside the selection, the grid no longer takes focus back from the menu's first row; an outside press on nothing focusable then leaves focus on the page, as for every other restoreFocus:false invoker. Whether screen readers read a rich menu's header on open is left to a manual NVDA and VoiceOver pass.
+- Why: the single entry fixes the ArrowRight-then-Escape race without changing what users see; the focus change is what Reviewer 1 asked for; an agent cannot verify screen-reader speech.
+- Misalignment: spec 0010 §C.10's Escape sentence needs rewording; recorded under LEDGER.md merge-time tasks with the manual pass.
+- Revisit if: the manual pass shows the header is not announced.
+
+### D-043 (orchestrator, 2026-11-11): PC-F08 review-2 follow-ups
+- Ruling: (1) a Linux host removes its runtime's debugger pipes before every worker start, in every environment, Development included (a managed debugger cannot attach to a Linux host after the first PDF thumbnail; debug on Windows or with PDF thumbnails off). (2) The window in which a starting worker is still dumpable on an unprivileged host is accepted until PC-F11. (3) PC-F11 also denies a worker /proc beyond its own entries and its temporary directory. (4) Other processes under the host's account remain reachable from a worker, and a worker of a root host can raise the host's oom_score_adj and reach root's files; the hosting guidance is: an unprivileged account with nothing else under it, run as a service and not from a terminal, CAP_SYS_PTRACE only where crash dumps are wanted. (5) The real diagnostics tools were not run; a staging run is a merge-time task.
+- Why: each residual needs either extra privileges or PC-F11's confinement to close, and none is reachable without first compromising PDFium; the cheap closures (non-dumpable host and worker, signal and terminal syscalls refused, setsid) are in.
+- Misalignment: spec 0017 records none of this; LEDGER.md merge-time tasks list it for Ahmad.
+- Revisit if: developers need a debugger on a Linux host with PDF thumbnails on, or a deployment runs other services under the host's account.
+
 ### D-042 (orchestrator, 2026-11-11): PC-041 menu budget and review-1 routing
 - Ruling: the ./menu size ceiling is 8.5 KB, not spec 0010 §C.11's 7 (measured 8.21; Reviewer 1 confirmed nothing short of dropping a spec'd entry kind reaches 7: external glyphs 7.96, no dev diagnostics 8.10); the budget note must list the savings taken (D-031). The group-divider rule (above a group whenever a non-separator entry precedes it) replaces §C.10's "every group but the first". The pre-existing right-click close-on-release bug (R1-2, Firefox/WebKit) is fixed in PC-041's fix round rather than a new fix item, because it lives in the same files. A @cross-engine subset of the menu e2e is added.
 - Why: the raise fits D-031's arithmetic and the reviewer found nothing droppable; routing R1-2 to the owner of the files avoids a parallel edit.
