@@ -35,7 +35,7 @@ namespace Tellma.Core.Queryex.Lowering
         {
             JoinNode target = Walk(via.Navigations, via.Span);
 
-            JoinNode saved = _base;
+            JoinNode? saved = _base;
             _base = target;
             PlanPredicate inner = LowerPredicate(via.Inner);
             _base = saved;
@@ -83,7 +83,7 @@ namespace Tellma.Core.Queryex.Lowering
             _subqueries.Add(subquery);
 
             // The criterion reads the searched rows, where a binding is always at row grain.
-            JoinNode outer = _base;
+            JoinNode outer = Base;
             List<ValueBinding> savedBindings = _scopeBindings;
             bool savedAllowed = _bindingsAllowed;
             _base = subquery.Root;

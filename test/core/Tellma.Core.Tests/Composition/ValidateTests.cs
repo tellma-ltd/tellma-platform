@@ -22,7 +22,7 @@ namespace Tellma.Core.Tests.Composition
                 Empty(),
                 static tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: c => c.Singleton<IStartupCheck, FailingCheck>())));
 
-            // No public origin and no sandbox context are configured: the startup checks would fail.
+            // No public origin is configured: the startup checks would fail.
             Assert.Empty(problems);
         }
 

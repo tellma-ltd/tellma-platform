@@ -262,6 +262,43 @@ navigation rail that collapses to a strip). Both are styled by the single hand-w
 gate names that exact path. `wwwroot/img/` holds the brand wordmarks, hand-committed like the
 fonts below.
 
+## The account entry and the requested language
+
+An application links its users to **`GET {issuer}/account`** (`AccountController`), not to a page
+of this UI. The entry redirects (302, `no-store`) to the page of the `section` it is given —
+`profile` (also the default, and any unknown name), `passkeys`, `authenticator`, `external-logins`
+or `sessions`; the mapping is `AccountSections` — so the pages can move without any application's
+link changing. An anonymous caller is sent to sign in first and comes back to the entry.
+
+Three query values travel with the user: `client_id`, `return_url` and `ui_locales`. They are read
+in one place, `CarriedQuery` (a value given twice, blank or over its length limit counts as absent;
+`ui_locales` is reduced to its well-formed language tags), and kept on **every link, form and
+redirect between the engine's own pages** by two pieces that apply one rule, `IdentityPageLinks`:
+`CarriedQueryTagHelper` for what a view renders and `CarriedQueryRedirectFilter` for what a page
+handler redirects to. A new page keeps them without doing anything. Only the pages under
+`/Identity/Account` and `/Identity/Manage` receive them: a protocol endpoint never does (a
+parameter added to an authorization request changes that request), and neither does a URL on
+another origin.
+
+- **The way back.** `_ManageLayout` shows a link back to the application, resolved by
+  `ApplicationLinkResolver`. For a first-party client with a registered `Origin` it is the
+  `return_url` when that address is on the same origin (scheme, host and port equal, `http`/`https`
+  only, no userinfo), written from the parsed address; otherwise the origin's root. A third-party
+  or unknown client gets the configured `Ui:ApplicationUrl`, or no link.
+- **The language.** `ui_locales` on the URL outranks the language cookie and `Accept-Language`
+  (`UiLocalesRequestCultureProvider`); the first tag that names an offered language, or a regional
+  form of one, wins. The authorization endpoint adds the validated request's `ui_locales` to its
+  redirect to sign-in, so a pushed request's language is honoured although the browser's URL only
+  holds a reference; the cookie challenge that guards the account pages does the same. On the
+  authorization endpoint's own pages (consent), `RequestedLanguageAttribute` applies a pushed
+  request's language in place of the browser's preference, never over the cookie.
+- **The user's own choice.** The language switch and the profile's language field replace the
+  `ui_locales` on the address they return to, so a language the user picks is not overridden by the
+  one the application asked for. On a sign-in page the switch also replaces it inside the address
+  the page returns to after sign-in (`IdentityPageLinks.WithLanguage`), when that address is a
+  sign-in page, an account page or the account entry: a user who switches before signing in keeps
+  the choice afterwards. A pending authorization request held there is left as it is.
+
 The `wwwroot/css/tokens.css` stylesheet is the **emitted build of `@tellma/core-ui-tokens`** (the
 client workspace's design-token package), and `wwwroot/fonts/` vendors the brand faces from
 `@tellma/core-ui`. Both are committed copies because this project's build has no Node toolchain; the

@@ -371,11 +371,15 @@ namespace Tellma.Core.Queryex.Syntax
         /// <param name="name">The function name as written.</param>
         /// <param name="nameSpan">The function name's own range.</param>
         /// <param name="arguments">The arguments, in source order.</param>
+        /// <param name="standsForParameter">
+        ///     Whether the call was put where a parameter the caller left out was written.
+        /// </param>
         internal CallSyntax(
             QueryexSpan span,
             string name,
             QueryexSpan nameSpan,
-            IReadOnlyList<SyntaxNode> arguments)
+            IReadOnlyList<SyntaxNode> arguments,
+            bool standsForParameter = false)
             : base(
                 SyntaxKind.Call,
                 span,
@@ -386,7 +390,19 @@ namespace Tellma.Core.Queryex.Syntax
             Name = name;
             NameSpan = nameSpan;
             Arguments = arguments;
+            StandsForParameter = standsForParameter;
         }
+
+        /// <summary>
+        ///     Whether the call was put where a parameter the caller left out was written, rather
+        ///     than written by an author.
+        /// </summary>
+        /// <remarks>
+        ///     Not part of the call's structure: it reads, binds, hashes and compares exactly as
+        ///     the same call written out would. It is kept so that the call can be counted against
+        ///     a ceiling as the one node the parameter was.
+        /// </remarks>
+        internal bool StandsForParameter { get; }
 
         /// <summary>The function name as written. Matched case-insensitively.</summary>
         internal string Name { get; }

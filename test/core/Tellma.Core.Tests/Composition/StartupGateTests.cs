@@ -5,10 +5,9 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
-using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -100,7 +99,7 @@ namespace Tellma.Core.Tests.Composition
         public async Task Built_in_check_problems_aggregate_with_contributed_ones()
         {
             using IHost host = BuildHost(
-                static services => services.RemoveAll<ISandboxContext>(),
+                static services => services.AddSingleton(new DeploymentIdentity("identity", "Production")),
                 tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: c => c.Singleton<IStartupCheck, FailingCheck>())),
                 new Dictionary<string, string?>());
 
@@ -128,7 +127,6 @@ namespace Tellma.Core.Tests.Composition
         {
             List<Guid> seen = [];
             ServiceCollection services = [];
-            services.AddSingleton(SandboxContext.Never);
             services.AddScoped<ScopedProbe>();
             services.AddSingleton(seen);
 
@@ -206,7 +204,6 @@ namespace Tellma.Core.Tests.Composition
             });
 
             builder.Configuration.AddInMemoryCollection(configuration ?? TestComposition.SoundConfiguration);
-            builder.Services.AddSingleton(SandboxContext.Never);
             configureServices(builder.Services);
             builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, compose).UseFakeCatalog();
             return builder.Build();

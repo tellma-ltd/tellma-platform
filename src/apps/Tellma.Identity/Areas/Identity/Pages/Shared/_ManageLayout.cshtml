@@ -21,10 +21,12 @@
     string email = User.FindFirstValue(ClaimTypes.Email) ?? user?.Email ?? string.Empty;
     string displayName = user?.DisplayName is { Length: > 0 } name ? name : email;
 
-    // A caller may say which application the user came from; the link resolves to that client's
-    // own registered origin, never to anything the caller supplied.
-    string? clientId = Context.Request.Query["client_id"];
-    ApplicationLink? backLink = await ApplicationLinks.ResolveAsync(clientId, Context.RequestAborted);
+    // A caller may say which application the user came from and the page there they left. The
+    // link resolves to that client's own registered origin, and to the page only when it lies
+    // on that origin — never to an address the registration does not cover (spec 0010 §A.9).
+    CarriedQuery carried = CarriedQuery.Read(Context.Request);
+    ApplicationLink? backLink = await ApplicationLinks.ResolveAsync(
+        carried.ClientId, carried.ReturnUrl, Context.RequestAborted);
 
     string currentPage = ViewContext.RouteData.Values["page"] as string ?? string.Empty;
 
@@ -64,7 +66,9 @@
 
     <div class="tmi-manage-body">
         @* Links to separate documents, so a nav of anchors — not a tablist, which would promise
-           roving arrow keys and a panel relationship that do not exist here. *@
+           roving arrow keys and a panel relationship that do not exist here. Each link keeps the
+           client, return address and language this page was opened with; the carried-query tag
+           helper adds them to every link and form here, so none is spelled out. *@
         <nav class="tmi-nav" aria-label="@L["YourAccount"]">
             <div class="tmi-nav-user">
                 <div class="tmi-nav-user-name">@displayName</div>
@@ -75,14 +79,14 @@
                 <li class="tmi-nav-group">@L["Profile"]</li>
                 <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Index"
-                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Index")">
+                       aria-current="@Current("/Manage/Index")">
                         <tmi-icon name="user-round" />@L["Profile"]
                     </a>
                 </li>
                 <li class="tmi-nav-group">@L["Security"]</li>
                 <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Passkeys"
-                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Passkeys")">
+                       aria-current="@Current("/Manage/Passkeys")">
                         <tmi-icon name="key-round" />@L["Passkeys"]
                     </a>
                 </li>
@@ -99,14 +103,14 @@
                 {
                     <li>
                         <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/ExternalLogins"
-                           asp-route-client_id="@clientId" aria-current="@Current("/Manage/ExternalLogins")">
+                           aria-current="@Current("/Manage/ExternalLogins")">
                             <tmi-icon name="link-2" />@L["ExternalLogins"]
                         </a>
                     </li>
                 }
                 <li>
                     <a class="tmi-nav-item" asp-area="Identity" asp-page="/Manage/Sessions"
-                       asp-route-client_id="@clientId" aria-current="@Current("/Manage/Sessions")">
+                       aria-current="@Current("/Manage/Sessions")">
                         <tmi-icon name="monitor" />@L["Sessions"]
                     </a>
                 </li>

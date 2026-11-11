@@ -297,8 +297,11 @@ namespace Tellma.Core.Queryex.Lowering
     /// </summary>
     internal sealed record RelationalPlan
     {
-        /// <summary>The root of the join tree.</summary>
-        internal required JoinNode Root { get; init; }
+        /// <summary>
+        ///     The root of the join tree, or null for a statement with no row source — one that is
+        ///     its select list and nothing else, and always answers with exactly one row.
+        /// </summary>
+        internal required JoinNode? Root { get; init; }
 
         /// <summary>Every join that survived, in the order their aliases were assigned.</summary>
         internal required ImmutableArray<JoinNode> Joins { get; init; }
