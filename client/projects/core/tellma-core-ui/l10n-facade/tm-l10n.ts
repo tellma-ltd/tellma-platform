@@ -78,6 +78,16 @@ export class TmL10n {
    * is when everything that compares offsets "now" is computed afresh.
    */
   private readonly revisit = signal(0);
+  /**
+   * The clock's reading as of the last visit: one memoized reading, so a
+   * column's header and every one of its cells compare offsets at the
+   * same "now", whenever each is rendered, and all move together on the
+   * next visit.
+   */
+  private readonly revisitedNow = computed(() => {
+    this.revisit();
+    return this.now();
+  });
   /** The translated `quarter` pattern, resolved on first use (see {@link quarterPattern}). */
   private translatedQuarter: Signal<string> | undefined;
 
@@ -95,7 +105,9 @@ export class TmL10n {
    * now — whether a column of instants labels its header. Compared by
    * offset, never by zone id: `Asia/Kuwait` and `Asia/Riyadh` never
    * mismatch. Recomputed when either zone changes and when the page is
-   * hidden or shown again.
+   * hidden or shown again; {@link zoneLabel} with no instant and the
+   * `column` label mode read the same clock reading, so a header and its
+   * cells never disagree.
    */
   readonly zoneMismatch: Signal<boolean> = computed(() =>
     ɵtmShowsZoneLabel(this.revisitedNow(), this.timeZone(), this.deviceTimeZone()),
@@ -237,15 +249,6 @@ export class TmL10n {
    */
   formatWeekdayName(weekday: number): string {
     return tmFormatWeekdayName(weekday, this.locale());
-  }
-
-  /**
-   * The clock's reading, as a reactive read: the caller is computed
-   * afresh whenever the page is hidden or shown again.
-   */
-  private revisitedNow(): number {
-    this.revisit();
-    return this.now();
   }
 
   /** Whether `instant`, shown in `timeZone`, carries the zone label under `mode`. */

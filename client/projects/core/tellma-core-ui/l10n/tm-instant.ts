@@ -16,6 +16,7 @@ import {
   tmFormatDate,
   ɵtmDateSkeleton,
   ɵtmFormatWithoutEra,
+  ɵtmPlainText,
   type TmDateStyle,
 } from './tm-date-engine';
 
@@ -48,9 +49,10 @@ export interface TmDateTimeFormatOptions {
    */
   readonly timeStyle?: TmTimeStyle | 'none';
   /**
-   * `true` appends the zone's GMT offset at the instant ("GMT+3"), where
-   * the locale's pattern puts a zone name. A text without a time (see
-   * {@link tmFormatDateTime}) never carries it.
+   * `true` appends the zone's GMT offset at the instant, a space after the
+   * text ("20/10/2026, 10:42 GMT+3"): the labelled text is the bare text
+   * plus the label. A text without a time (see {@link tmFormatDateTime})
+   * never carries it.
    */
   readonly zoneLabel?: boolean;
   /**
@@ -66,7 +68,10 @@ export interface TmTimeFormatOptions {
   readonly timeZone: string;
   /** The style of the time. Default `short`. */
   readonly timeStyle?: TmTimeStyle;
-  /** `true` appends the zone's GMT offset at the instant ("GMT+3"). */
+  /**
+   * `true` appends the zone's GMT offset at the instant, a space after the
+   * text ("10:42 GMT+3").
+   */
   readonly zoneLabel?: boolean;
 }
 
@@ -144,6 +149,15 @@ export function ɵtmParseInstant(text: string): number | null {
     offsetMinutes = (match[8].startsWith('-') ? -1 : 1) * (hours * 60 + minutes);
   }
   return wallClock - offsetMinutes * 60_000;
+}
+
+/**
+ * Whether epoch milliseconds name an instant a `Date` can hold: within
+ * 100 million days of the epoch. `NaN`, the infinities and a number past
+ * that range do not, and formatting one would throw.
+ */
+function isInstant(at: number): boolean {
+  return Math.abs(at) <= 8.64e15;
 }
 
 /** What already warned in development, so each problem warns once. */
@@ -265,10 +279,14 @@ export function ɵtmZoneOffset(at: number, timeZone: string): number {
   return (asUtc - Math.floor(at / 1000) * 1000) / 60_000;
 }
 
-/** The instant's calendar date in the zone, as an ISO `YYYY-MM-DD` string. */
+/**
+ * The instant's calendar date in the zone, as an ISO `YYYY-MM-DD` string.
+ * East of UTC the last hours of the year 9999 fall in the year 10000,
+ * which no date holds: such an instant gives the last date there is.
+ */
 function zoneDateOf(at: number, timeZone: string): string {
   const clock = wallClockOf(at, timeZone);
-  return ɵtmToIsoDate(clock.year, clock.month, clock.day);
+  return clock.year > 9999 ? '9999-12-31' : ɵtmToIsoDate(clock.year, clock.month, clock.day);
 }
 
 /** The whole days between two ISO dates (`to` − `from`). */
@@ -276,20 +294,20 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-/** One named part of a formatted instant (the zone's name), bidi-free. */
+/** One named part of a formatted instant (the zone's name), as plain text. */
 function zonePartOf(
   at: number,
   locale: string,
   timeZone: string,
   timeZoneName: 'shortOffset' | 'longGeneric',
 ): string {
-  if (!Number.isFinite(at)) {
+  if (!isInstant(at)) {
     return '';
   }
   const part = formatterFor(timeZoneName, locale, timeZone, { timeZoneName })
     .formatToParts(at)
     .find((candidate) => candidate.type === 'timeZoneName');
-  return tmStripBidiControls(part?.value ?? '');
+  return ɵtmPlainText(part?.value ?? '');
 }
 
 /**
@@ -297,7 +315,7 @@ function zonePartOf(
  * digits: "GMT+3", "GMT+5:30", "غرينتش+٣". An offset, never an
  * abbreviation: "IST" and "CST" each name several zones, "GMT+5:30" names
  * one offset. `instant` is an ISO 8601 instant or epoch milliseconds; text
- * that is not an instant gives `''`.
+ * that is not an instant, or a number no `Date` can hold, gives `''`.
  */
 export function tmFormatZoneOffset(
   instant: string | number,
@@ -311,7 +329,8 @@ export function tmFormatZoneOffset(
 /**
  * The time zone's own name in the locale, independent of daylight saving:
  * "United Kingdom Time" for `Europe/London`. `at` (epoch milliseconds)
- * picks the name in force then, for a zone whose name changed.
+ * picks the name in force then, for a zone whose name changed; a number
+ * no `Date` can hold gives `''`.
  */
 export function tmFormatZoneName(timeZone: string, locale: string, at: number): string {
   return zonePartOf(at, locale, timeZone, 'longGeneric');
@@ -332,9 +351,10 @@ export function tmFormatZoneName(timeZone: string, locale: string, at: number): 
  * Offsets are compared at the instants shown, never zone ids: two zones
  * that share an offset show the same clock.
  *
- * `instant` is an ISO 8601 instant or epoch milliseconds; an empty value
- * or text that is not an instant is never labelled. `headerAt` is epoch
- * milliseconds, read under `column` alone.
+ * `instant` is an ISO 8601 instant or epoch milliseconds; an empty value,
+ * text that is not an instant or a number no `Date` can hold is never
+ * labelled. `headerAt` is epoch milliseconds, read under `column` alone;
+ * one no `Date` can hold counts as a bare header.
  *
  * @internal Shared with the reactive formatting facade.
  */
@@ -350,11 +370,11 @@ export function ɵtmShowsZoneLabel(
     return false;
   }
   const at = typeof instant === 'number' ? instant : ɵtmParseInstant(instant ?? '');
-  if (at === null || !Number.isFinite(at)) {
+  if (at === null || !isInstant(at)) {
     return false;
   }
   const offset = ɵtmZoneOffset(at, timeZone);
-  if (mode === 'column' && headerAt !== undefined && Number.isFinite(headerAt)) {
+  if (mode === 'column' && headerAt !== undefined && isInstant(headerAt)) {
     const headerOffset = ɵtmZoneOffset(headerAt, timeZone);
     if (headerOffset !== ɵtmZoneOffset(headerAt, deviceTimeZone)) {
       return offset !== headerOffset; // a labelled header already names its own offset
@@ -366,15 +386,19 @@ export function ɵtmShowsZoneLabel(
 // ---- The formats ----
 
 /**
- * A formatted time with plain spaces. CLDR separates a time from its day
- * period with U+202F NARROW NO-BREAK SPACE ("10:42 AM"), and engines
- * disagree on whether it reaches the page: some replace it with a plain
- * space, because text copied with it is not read back as a time by
- * spreadsheets and parsers. Writing the plain space everywhere keeps one
- * instant's text equal across browsers.
+ * `text` with the zone's GMT offset at the instant appended when `label`
+ * asks for it. Appended, never formatted in: a zone field in the skeleton
+ * makes the engine pick another pattern, which rewrites the hour it
+ * labels ("1:30" becomes "01:30 GMT+3").
  */
-function withPlainSpaces(text: string): string {
-  return text.replace(/\u202F/g, ' ');
+function withZoneLabel(
+  text: string,
+  label: boolean | undefined,
+  at: number,
+  locale: string,
+  timeZone: string,
+): string {
+  return label === true ? `${text} ${zonePartOf(at, locale, timeZone, 'shortOffset')}` : text;
 }
 
 /** The Intl time fields of a time style. */
@@ -402,7 +426,8 @@ function timeFields(timeStyle: TmTimeStyle): Intl.DateTimeFormatOptions {
  * formatted as `tmFormatDate` does, and never carries the zone label. That
  * is `timeStyle: 'none'`, and also the period styles `month`, `quarter`
  * and `year` under any time style: a period names no day for a time to
- * belong to.
+ * belong to. An instant whose date in the zone lies past 31 December 9999
+ * (the last hours of that year, shown east of UTC) gives that last date.
  */
 export function tmFormatDateTime(
   instant: string | null | undefined,
@@ -423,22 +448,19 @@ export function tmFormatDateTime(
     });
   }
   const calendarId = options.calendar?.id ?? 'gregory';
-  const label = options.zoneLabel === true;
-  return withPlainSpaces(
+  return withZoneLabel(
     ɵtmFormatWithoutEra(
-      formatterFor(
-        `${calendarId}|${dateStyle}|${timeStyle}|${label ? 'z' : ''}`,
-        locale,
-        options.timeZone,
-        {
-          ...ɵtmDateSkeleton(dateStyle),
-          ...timeFields(timeStyle),
-          ...(label ? { timeZoneName: 'shortOffset' as const } : {}),
-          calendar: calendarId,
-        },
-      ),
+      formatterFor(`${calendarId}|${dateStyle}|${timeStyle}`, locale, options.timeZone, {
+        ...ɵtmDateSkeleton(dateStyle),
+        ...timeFields(timeStyle),
+        calendar: calendarId,
+      }),
       new Date(at),
     ),
+    options.zoneLabel,
+    at,
+    locale,
+    options.timeZone,
   );
 }
 
@@ -447,7 +469,8 @@ export function tmFormatDateTime(
  * hour cycle and digits: "10:42", "10:42 AM", "١٠:٤٢ ص" ('' for
  * null/undefined/''; text that is not an ISO 8601 instant with `Z` or a
  * `±hh:mm` offset is returned as-is, with a development warning). The
- * text carries no bidirectional control character.
+ * text carries no bidirectional control character, and a plain space
+ * separates the time from its day period.
  */
 export function tmFormatTime(
   instant: string | null | undefined,
@@ -459,14 +482,14 @@ export function tmFormatTime(
     return at === '' ? '' : (instant as string);
   }
   const timeStyle = options.timeStyle ?? 'short';
-  const label = options.zoneLabel === true;
-  return withPlainSpaces(
-    tmStripBidiControls(
-      formatterFor(`time|${timeStyle}|${label ? 'z' : ''}`, locale, options.timeZone, {
-        ...timeFields(timeStyle),
-        ...(label ? { timeZoneName: 'shortOffset' as const } : {}),
-      }).format(at),
+  return withZoneLabel(
+    ɵtmPlainText(
+      formatterFor(`time|${timeStyle}`, locale, options.timeZone, timeFields(timeStyle)).format(at),
     ),
+    options.zoneLabel,
+    at,
+    locale,
+    options.timeZone,
   );
 }
 
@@ -521,7 +544,7 @@ export function tmFormatRelativeTime(
     text = formatter.format(direction * Math.floor(distance / 60_000), 'minute');
   } else if (distance < 86_400_000) {
     text = formatter.format(direction * Math.floor(distance / 3_600_000), 'hour');
-  } else if (Number.isFinite(distance)) {
+  } else if (isInstant(options.now)) {
     // Calendar days in the zone, not 24-hour blocks: 23:00 two dates back
     // is "2 days ago" at 00:30, 25.5 hours later. On the one day a year
     // that lasts 25 hours, an instant 24 hours back can share today's

@@ -5720,6 +5720,27 @@
       "dateStyle": "year",
       "iso": "2026-09-08",
       "expected": "٢٠١٨"
+    },
+    {
+      "locale": "bg",
+      "calendar": "gregory",
+      "dateStyle": "numeric",
+      "iso": "2026-03-05",
+      "expected": "5.03.2026 г."
+    },
+    {
+      "locale": "bg",
+      "calendar": "gregory",
+      "dateStyle": "medium",
+      "iso": "2026-03-05",
+      "expected": "5.03.2026 г."
+    },
+    {
+      "locale": "bg",
+      "calendar": "gregory",
+      "dateStyle": "long",
+      "iso": "2026-03-05",
+      "expected": "5 март 2026 г."
     }
   ],
   "monthName": [
@@ -12189,7 +12210,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-03-28T22:30:15.1234567+00:00",
-      "expected": "29/03/2026, 01:30 GMT+3"
+      "expected": "29/03/2026, 1:30 GMT+3"
     },
     {
       "locale": "en-GB",
@@ -12199,7 +12220,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-12-31T21:30:00-01:00",
-      "expected": "01/01/2027, 01:30 GMT+3"
+      "expected": "01/01/2027, 1:30 GMT+3"
     },
     {
       "locale": "en-GB",
@@ -12219,7 +12240,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-03-28T22:30:15.1234567+00:00",
-      "expected": "29/03/2026, 04:00 GMT+5:30"
+      "expected": "29/03/2026, 4:00 GMT+5:30"
     },
     {
       "locale": "en-GB",
@@ -12229,7 +12250,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-12-31T21:30:00-01:00",
-      "expected": "01/01/2027, 04:00 GMT+5:30"
+      "expected": "01/01/2027, 4:00 GMT+5:30"
     },
     {
       "locale": "ar-SA",
@@ -14595,7 +14616,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-03-28T22:30:15.1234567+00:00",
-      "expected": "01:30 GMT+3"
+      "expected": "1:30 GMT+3"
     },
     {
       "locale": "en-GB",
@@ -14603,7 +14624,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-12-31T21:30:00-01:00",
-      "expected": "01:30 GMT+3"
+      "expected": "1:30 GMT+3"
     },
     {
       "locale": "en-GB",
@@ -14619,7 +14640,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-03-28T22:30:15.1234567+00:00",
-      "expected": "04:00 GMT+5:30"
+      "expected": "4:00 GMT+5:30"
     },
     {
       "locale": "en-GB",
@@ -14627,7 +14648,7 @@
       "timeStyle": "short",
       "zoneLabel": true,
       "instant": "2026-12-31T21:30:00-01:00",
-      "expected": "04:00 GMT+5:30"
+      "expected": "4:00 GMT+5:30"
     },
     {
       "locale": "ar-SA",

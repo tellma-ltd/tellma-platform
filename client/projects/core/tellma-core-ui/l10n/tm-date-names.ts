@@ -8,8 +8,8 @@
 // at runtime, read off fixed reference dates, so no name table ships and
 // every calendar's months are named in every UI language.
 
-import { tmStripBidiControls } from './tm-bidi';
 import { tmGregorianCalendar, ɵtmParseIsoDate, type TmCalendar } from './tm-calendar';
+import { ɵtmPlainText } from './tm-date-engine';
 import { tmFormatNumber } from './tm-number-codec';
 
 /**
@@ -68,7 +68,7 @@ export function tmFormatMonthName(
   if (parts === null) {
     return tmFormatNumber(month, locale);
   }
-  return tmStripBidiControls(
+  return ɵtmPlainText(
     nameFormatter(locale, calendar.id, 'month').format(
       Date.UTC(parts.year, parts.month - 1, parts.day, 12),
     ),
@@ -84,7 +84,7 @@ export function tmFormatWeekdayName(weekday: number, locale: string): string {
   if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
     return tmFormatNumber(weekday, locale);
   }
-  return tmStripBidiControls(
+  return ɵtmPlainText(
     // The week is a Gregorian one in every calendar, so the name is read
     // in the Gregorian calendar whatever the locale's default is.
     nameFormatter(locale, 'gregory', 'weekday').format(

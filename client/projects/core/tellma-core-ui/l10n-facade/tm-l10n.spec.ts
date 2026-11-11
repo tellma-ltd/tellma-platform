@@ -226,12 +226,20 @@ describe('TmL10n', () => {
       // event reports it, so nothing changes yet...
       clock.now = SUMMER_MILLIS;
       expect(l10n.zoneMismatch()).toBe(true);
+      // ...not even for what is first rendered now: a new cell and a new
+      // header read the clock the standing header was labelled at, so the
+      // header that still says GMT+2 never sits over a bare GMT+3 cell.
+      expect(l10n.formatTime(SUMMER, { zoneLabel: 'column' })).toBe('12:00 PM GMT+3');
+      expect(l10n.formatTime(WINTER, { zoneLabel: 'column' })).toBe('11:00 AM');
+      expect(l10n.zoneLabel()).toBe('GMT+2');
 
-      // ...until the page is visited again.
+      // ...until the page is visited again: then all move together.
       document.dispatchEvent(new Event('visibilitychange'));
       expect(l10n.zoneMismatch()).toBe(false);
       expect(header()).toBe('');
       expect(cell()).toBe('12:00 PM');
+      expect(l10n.formatTime(SUMMER, { zoneLabel: 'column' })).toBe('12:00 PM');
+      expect(l10n.formatTime(WINTER, { zoneLabel: 'column' })).toBe('11:00 AM GMT+2');
     });
 
     it('stops listening for visits when it is destroyed', () => {

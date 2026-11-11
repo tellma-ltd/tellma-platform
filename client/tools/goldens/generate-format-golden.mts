@@ -176,27 +176,44 @@ const DATE_ISOS = ['2026-03-05', '2024-02-29', '1999-12-31', '2026-09-08'];
 const quarterPatternOf = (locale: string): string =>
   locale.startsWith('ar') ? 'الربع {quarter} {year}' : 'Q{quarter} {year}';
 
-const date = calendarIds.flatMap((calendarId) =>
-  DATE_LOCALES.flatMap((locale) =>
-    DATE_STYLES.flatMap((dateStyle) =>
-      DATE_ISOS.map((iso) => {
-        const quarterPattern = dateStyle === 'quarter' ? quarterPatternOf(locale) : undefined;
-        return {
-          locale,
-          calendar: calendarId,
-          dateStyle,
-          ...(quarterPattern === undefined ? {} : { quarterPattern }),
-          iso,
-          expected: l10n.tmFormatDate(iso, locale, {
-            calendar: calendars.get(calendarId),
+// Bulgarian writes a space before its year marker, and CLDR makes it a
+// narrow no-break space that Node passes through and browsers replace.
+// These rows pin the plain space the formatter writes instead.
+const PLAIN_SPACE_LOCALES = ['bg'];
+const PLAIN_SPACE_STYLES = ['numeric', 'medium', 'long'] as const;
+
+const date = [
+  ...calendarIds.flatMap((calendarId) =>
+    DATE_LOCALES.flatMap((locale) =>
+      DATE_STYLES.flatMap((dateStyle) =>
+        DATE_ISOS.map((iso) => {
+          const quarterPattern = dateStyle === 'quarter' ? quarterPatternOf(locale) : undefined;
+          return {
+            locale,
+            calendar: calendarId,
             dateStyle,
-            quarterPattern,
-          }),
-        };
-      }),
+            ...(quarterPattern === undefined ? {} : { quarterPattern }),
+            iso,
+            expected: l10n.tmFormatDate(iso, locale, {
+              calendar: calendars.get(calendarId),
+              dateStyle,
+              quarterPattern,
+            }),
+          };
+        }),
+      ),
     ),
   ),
-);
+  ...PLAIN_SPACE_LOCALES.flatMap((locale) =>
+    PLAIN_SPACE_STYLES.map((dateStyle) => ({
+      locale,
+      calendar: 'gregory',
+      dateStyle,
+      iso: DATE_ISOS[0],
+      expected: l10n.tmFormatDate(DATE_ISOS[0], locale, { dateStyle }),
+    })),
+  ),
+];
 
 // ---- Month and weekday names ----
 
@@ -533,6 +550,21 @@ const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 for (const [name, rows] of Object.entries(golden)) {
   if (Array.isArray(rows) && rows.some((row) => BIDI_CONTROLS.test(row.expected))) {
     throw new Error(`generate-format-golden: a '${name}' row holds a bidi control character`);
+  }
+}
+
+// Nor may a date or a time hold a narrow no-break space: the formatters
+// write a plain one, as browsers do. This run is the one place the check
+// bites, because Node passes CLDR's narrow space through where browsers
+// replace it themselves. Numbers are exempt: French groups digits with it.
+const NARROW_SPACE = /\u202F/;
+for (const [name, rows] of Object.entries(golden)) {
+  if (
+    name !== 'number' &&
+    Array.isArray(rows) &&
+    rows.some((row) => NARROW_SPACE.test(row.expected))
+  ) {
+    throw new Error(`generate-format-golden: a '${name}' row holds a narrow no-break space`);
   }
 }
 

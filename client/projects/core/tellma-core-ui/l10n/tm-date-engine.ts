@@ -135,7 +135,10 @@ function utcDateOf(year: number, month: number, day: number): Date {
  * The calendar's era is never written, and the text carries no
  * bidirectional control character: where CLDR's patterns put a direction
  * mark between the parts of a date, it is removed, so a numeric date is
- * one run of digits and separators that markup orders.
+ * one run of digits and separators that markup orders. Its spaces are
+ * plain spaces: where CLDR's patterns put a narrow no-break space (before
+ * the Bulgarian year marker, say), a plain one is written, as browsers do,
+ * so the text is the same in every engine.
  */
 export function tmFormatDate(
   iso: string | null | undefined,
@@ -175,6 +178,22 @@ export function tmFormatDate(
 }
 
 /**
+ * The text contract of everything `Intl.DateTimeFormat` writes for the
+ * page: no bidirectional control character, and a plain space for every
+ * U+202F NARROW NO-BREAK SPACE. CLDR puts the narrow space before a day
+ * period ("10:42 AM") and inside some date patterns; browsers replace it
+ * with a plain space, because text copied with it is not read back as a
+ * date or a time by spreadsheets and parsers, while other engines pass it
+ * through. Writing the plain space everywhere keeps one value's text
+ * equal across engines.
+ *
+ * @internal Shared with the instant formatters.
+ */
+export function ɵtmPlainText(text: string): string {
+  return tmStripBidiControls(text).replace(/\u202F/g, ' ');
+}
+
+/**
  * Formats a date with the calendar's ERA SUFFIX removed (`9/16/1447 AH`
  * becomes `9/16/1447`).
  *
@@ -183,8 +202,8 @@ export function tmFormatDate(
  * only ever one era in play, so the suffix is noise that costs width in
  * every cell and input. The literal that joined it goes with it.
  *
- * The result also carries no bidirectional control character (see
- * `tmStripBidiControls`).
+ * The result also carries no bidirectional control character and only
+ * plain spaces (see `ɵtmPlainText`).
  *
  * @internal Shared with the calendar popup, which builds its own headers,
  * and with the instant formatters.
@@ -192,7 +211,7 @@ export function tmFormatDate(
 export function ɵtmFormatWithoutEra(formatter: Intl.DateTimeFormat, date: Date): string {
   const parts = formatter.formatToParts(date);
   if (!parts.some((part) => part.type === 'era')) {
-    return tmStripBidiControls(parts.map((part) => part.value).join(''));
+    return ɵtmPlainText(parts.map((part) => part.value).join(''));
   }
   const isField = (part: Intl.DateTimeFormatPart | undefined): boolean =>
     part !== undefined && part.type !== 'literal' && part.type !== 'era';
@@ -229,7 +248,7 @@ export function ɵtmFormatWithoutEra(formatter: Intl.DateTimeFormat, date: Date)
     }
     kept.push(part);
   }
-  return tmStripBidiControls(kept.map((part) => part.value).join('')).trim();
+  return ɵtmPlainText(kept.map((part) => part.value).join('')).trim();
 }
 
 // ---- Parsing ----
@@ -869,7 +888,8 @@ export function tmParseDate(
 /**
  * The locale's numeric date pattern as a typing hint (e.g. `dd/mm/yyyy`) —
  * the field order and separators of the display calendar's numeric format,
- * free of bidirectional control characters like the formatted value.
+ * free of bidirectional control characters and with plain spaces, like the
+ * formatted value.
  */
 export function tmDatePlaceholder(
   locale: string,
@@ -894,5 +914,5 @@ export function tmDatePlaceholder(
   // (spec 0010 §D.14): both then lay out as one left-to-right run inside
   // an RTL field, so the hint's fields read in the order of the value
   // that replaces them.
-  return tmStripBidiControls(out).trim();
+  return ɵtmPlainText(out).trim();
 }

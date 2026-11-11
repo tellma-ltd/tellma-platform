@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TM_BIDI_CONTROLS } from './tm-bidi';
+import { tmFormatDate } from './tm-date-engine';
 import {
   tmFormatDateTime,
   tmFormatRelativeTime,
@@ -29,6 +30,62 @@ const WINTER = '2026-01-15T09:00:00Z';
 const SUMMER = '2026-07-15T09:00:00Z';
 const WINTER_MILLIS = Date.UTC(2026, 0, 15, 9);
 const SUMMER_MILLIS = Date.UTC(2026, 6, 15, 9);
+
+/** The last instant a server-side date-time holds: a common "never". */
+const LAST_INSTANT = '9999-12-31T23:59:59.9999999+00:00';
+
+/** Numbers no `Date` can hold: past the range, and not finite. */
+const NOT_INSTANTS = [1e20, -1e20, 8.64e15 + 1, Number.POSITIVE_INFINITY, Number.NaN];
+
+/**
+ * 24-hour locales, whose engines widen the hour once a zone field joins
+ * the skeleton, with 12-hour, right-to-left and zone-first ones beside
+ * them.
+ */
+const LABELLED_LOCALES = [
+  'en-GB', 'en-IE', 'en-ZA', 'de-DE', 'fr-FR', 'fr-CA', 'it', 'nl', 'pt-BR', 'pt-PT', 'tr-TR',
+  'ru', 'he', 'sv', 'da', 'nb', 'pl', 'zh-CN', 'id', 'vi', 'hu', 'ro', 'uk', 'bg', 'sw',
+  'en-US', 'ar-SA', 'ar-EG', 'ar-SA-u-nu-latn', 'hi-IN', 'am-ET', 'fa', 'ja', 'ko', 'th', 'ur',
+];
+
+/**
+ * Runs `body` on an engine that writes U+202F NARROW NO-BREAK SPACE for
+ * every space between the fields of a date or a time, as an engine that
+ * passes CLDR's own separators through does. The browsers the suite runs
+ * in replace it themselves, so the rule is only testable against a stand-in.
+ */
+function onNarrowSpaceEngine(body: () => void): void {
+  const narrow = String.fromCodePoint(0x202f);
+  const prototype = Intl.DateTimeFormat.prototype;
+  const realFormatToParts = prototype.formatToParts;
+  // `format` is an accessor that hands out a bound function.
+  const formatAccessor = Object.getOwnPropertyDescriptor(prototype, 'format')!;
+  const realFormat = formatAccessor.get as (
+    this: Intl.DateTimeFormat,
+  ) => Intl.DateTimeFormat['format'];
+  const formatToParts = vi
+    .spyOn(prototype, 'formatToParts')
+    .mockImplementation(function (this: Intl.DateTimeFormat, date) {
+      return realFormatToParts
+        .call(this, date)
+        .map((part) =>
+          part.type === 'literal' ? { ...part, value: part.value.replaceAll(' ', narrow) } : part,
+        );
+    });
+  Object.defineProperty(prototype, 'format', {
+    ...formatAccessor,
+    get(this: Intl.DateTimeFormat) {
+      const real = realFormat.call(this);
+      return (date?: Date | number): string => real(date).replaceAll(' ', narrow);
+    },
+  });
+  try {
+    body();
+  } finally {
+    formatToParts.mockRestore();
+    Object.defineProperty(prototype, 'format', formatAccessor);
+  }
+}
 
 describe('ɵtmParseInstant', () => {
   it('reads Z and ±hh:mm offsets onto the same point of the time line', () => {
@@ -182,6 +239,25 @@ describe('tmFormatDateTime', () => {
     );
   });
 
+  it('adds the label to the bare text and changes nothing else', () => {
+    // 01:30 in Riyadh: with the zone inside the skeleton, engines write
+    // the hour of a 24-hour locale differently than without it.
+    const instant = '2026-03-28T22:30:15Z';
+    for (const locale of LABELLED_LOCALES) {
+      const label = tmFormatZoneOffset(instant, locale, 'Asia/Riyadh');
+      expect(label, locale).not.toBe('');
+      for (const dateStyle of ['numeric', 'medium', 'long', 'weekday'] as const) {
+        for (const timeStyle of ['short', 'medium'] as const) {
+          const options = { timeZone: 'Asia/Riyadh', dateStyle, timeStyle } as const;
+          expect(
+            tmFormatDateTime(instant, locale, { ...options, zoneLabel: true }),
+            `${locale} ${dateStyle} ${timeStyle}`,
+          ).toBe(`${tmFormatDateTime(instant, locale, options)} ${label}`);
+        }
+      }
+    }
+  });
+
   it('never labels a text without a time', () => {
     const options = { timeZone: 'Asia/Riyadh', zoneLabel: true } as const;
     expect(tmFormatDateTime(AT, 'en-GB', { ...options, timeStyle: 'none' })).toBe('20/10/2026');
@@ -233,6 +309,42 @@ describe('tmFormatDateTime', () => {
     }
   });
 
+  it('gives the last date there is when the instant falls past it in the zone', () => {
+    // East of UTC the last hours of the year 9999 are in the year 10000.
+    const options = { timeZone: 'Asia/Riyadh' } as const;
+    expect(tmFormatDateTime(LAST_INSTANT, 'en-GB', { ...options, timeStyle: 'none' })).toBe(
+      '31/12/9999',
+    );
+    expect(tmFormatDateTime(LAST_INSTANT, 'en-GB', { ...options, dateStyle: 'quarter' })).toBe(
+      'Q4 9999',
+    );
+    // In the locale's digits, never the raw ISO text.
+    expect(tmFormatDateTime(LAST_INSTANT, 'ar-SA', { ...options, timeStyle: 'none' })).toBe(
+      tmFormatDate('9999-12-31', 'ar-SA'),
+    );
+    // West of UTC the instant is still inside the range.
+    expect(
+      tmFormatDateTime(LAST_INSTANT, 'en-GB', { timeZone: 'America/New_York', timeStyle: 'none' }),
+    ).toBe('31/12/9999');
+  });
+
+  it('writes plain spaces where the engine writes narrow no-break spaces', () => {
+    const cases = (): string[] =>
+      ['en-US', 'en-AU', 'es-US', 'hi-IN', 'ar-SA', 'bg', 'fr-FR'].flatMap((locale) => [
+        tmFormatDateTime(AT, locale, { timeZone: 'Asia/Riyadh', dateStyle: 'weekday' }),
+        tmFormatDateTime(AT, locale, { timeZone: 'Asia/Riyadh', zoneLabel: true }),
+        tmFormatDateTime(AT, locale, { timeZone: 'Asia/Riyadh', timeStyle: 'none' }),
+        tmFormatDateTime(AT, locale, {
+          timeZone: 'Asia/Riyadh',
+          dateStyle: 'long',
+          timeStyle: 'medium',
+        }),
+      ]);
+    const expected = cases();
+    expect(expected[0]).toBe('Tuesday, Oct 20, 2026, 10:42 AM');
+    onNarrowSpaceEngine(() => expect(cases()).toEqual(expected));
+  });
+
   it('carries no bidirectional control character', () => {
     for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
       for (const dateStyle of ['numeric', 'medium', 'long', 'weekday'] as const) {
@@ -274,19 +386,31 @@ describe('tmFormatTime', () => {
     );
   });
 
-  it('separates the time from its day period with a plain space', () => {
-    // CLDR's own separator is U+202F, which engines disagree on passing through.
-    const narrow = String.fromCodePoint(0x202f);
-    for (const locale of ['en-US', 'en-AU', 'es-US', 'en-IN', 'ar-SA', 'hi-IN']) {
-      for (const text of [
-        tmFormatTime(AT, locale, { timeZone: 'Asia/Riyadh', timeStyle: 'medium', zoneLabel: true }),
-        tmFormatDateTime(AT, locale, { timeZone: 'Asia/Riyadh', dateStyle: 'weekday' }),
-        tmFormatDateTime(AT, locale, { timeZone: 'Asia/Riyadh', zoneLabel: true }),
-      ]) {
-        expect(text.includes(narrow), `${locale}: ${text}`).toBe(false);
+  it('adds the label to the bare text and changes nothing else', () => {
+    const instant = '2026-03-28T22:30:15Z';
+    for (const locale of LABELLED_LOCALES) {
+      const label = tmFormatZoneOffset(instant, locale, 'Asia/Riyadh');
+      for (const timeStyle of ['short', 'medium'] as const) {
+        const options = { timeZone: 'Asia/Riyadh', timeStyle } as const;
+        expect(
+          tmFormatTime(instant, locale, { ...options, zoneLabel: true }),
+          `${locale} ${timeStyle}`,
+        ).toBe(`${tmFormatTime(instant, locale, options)} ${label}`);
       }
     }
-    expect(tmFormatTime(AT, 'en-US', { timeZone: 'Asia/Riyadh' })).toBe('10:42 AM');
+  });
+
+  it('separates the time from its day period with a plain space, whatever the engine writes', () => {
+    // CLDR's own separator is U+202F, which engines disagree on passing through.
+    const cases = (): string[] =>
+      ['en-US', 'en-AU', 'es-US', 'en-IN', 'ar-SA', 'hi-IN'].flatMap((locale) => [
+        tmFormatTime(AT, locale, { timeZone: 'Asia/Riyadh' }),
+        tmFormatTime(AT, locale, { timeZone: 'Asia/Riyadh', timeStyle: 'medium', zoneLabel: true }),
+      ]);
+    const expected = cases();
+    expect(expected[0]).toBe('10:42 AM');
+    expect(expected[1]).toBe('10:42:00 AM GMT+3');
+    onNarrowSpaceEngine(() => expect(cases()).toEqual(expected));
   });
 
   it("formats ''/null/undefined as ''", () => {
@@ -408,9 +532,19 @@ describe('tmFormatRelativeTime', () => {
     expect([...text.matchAll(TM_BIDI_CONTROLS)]).toEqual([]);
   });
 
-  it('falls back to the date when the clock is not a number', () => {
-    expect(tmFormatRelativeTime(AT, 'en-GB', { now: Number.NaN, timeZone: 'Asia/Riyadh' })).toBe(
-      '20 Oct 2026',
+  it('falls back to the date when the clock is no instant', () => {
+    for (const now of NOT_INSTANTS) {
+      expect(tmFormatRelativeTime(AT, 'en-GB', { now, timeZone: 'Asia/Riyadh' }), String(now)).toBe(
+        '20 Oct 2026',
+      );
+    }
+  });
+
+  it('falls back to the last date there is for an instant past it in the zone', () => {
+    const options = { now: AT_MILLIS, timeZone: 'Asia/Riyadh' } as const;
+    expect(tmFormatRelativeTime(LAST_INSTANT, 'en-GB', options)).toBe('31 Dec 9999');
+    expect(tmFormatRelativeTime(LAST_INSTANT, 'ar-SA', options)).toBe(
+      tmFormatDate('9999-12-31', 'ar-SA', { dateStyle: 'medium' }),
     );
   });
 
@@ -465,6 +599,16 @@ describe('zone offsets and names', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it("gives '' for a number no Date can hold, and never throws", () => {
+    for (const at of NOT_INSTANTS) {
+      expect(tmFormatZoneOffset(at, 'en-GB', 'Asia/Riyadh'), String(at)).toBe('');
+      expect(tmFormatZoneName('Asia/Riyadh', 'en-GB', at), String(at)).toBe('');
+    }
+    // The ends of the range are instants.
+    expect(tmFormatZoneOffset(8.64e15, 'en-GB', 'Asia/Riyadh')).toBe('GMT+3');
+    expect(tmFormatZoneOffset(-8.64e15, 'en-GB', 'UTC')).toBe('GMT+0');
   });
 
   it("names a zone in the locale, independent of daylight saving", () => {
@@ -533,11 +677,25 @@ describe('ɵtmShowsZoneLabel', () => {
     expect(ɵtmShowsZoneLabel(SUMMER, 'Asia/Riyadh', 'Europe/London', 'none')).toBe(false);
   });
 
-  it('never labels an empty value or text that is not an instant', () => {
-    for (const instant of ['', null, undefined, '2026-07-15', Number.NaN]) {
+  it('never labels an empty value, text that is not an instant or a number no Date can hold', () => {
+    for (const instant of ['', null, undefined, '2026-07-15', ...NOT_INSTANTS]) {
       expect(ɵtmShowsZoneLabel(instant, 'Asia/Riyadh', 'Europe/London'), String(instant)).toBe(
         false,
       );
+    }
+  });
+
+  it('column: a header instant no Date can hold counts as a bare header', () => {
+    for (const headerAt of NOT_INSTANTS) {
+      // As auto: Beirut is level with Riyadh in summer and an hour off in winter.
+      expect(
+        ɵtmShowsZoneLabel(SUMMER, 'Asia/Beirut', 'Asia/Riyadh', 'column', headerAt),
+        String(headerAt),
+      ).toBe(false);
+      expect(
+        ɵtmShowsZoneLabel(WINTER, 'Asia/Beirut', 'Asia/Riyadh', 'column', headerAt),
+        String(headerAt),
+      ).toBe(true);
     }
   });
 });
