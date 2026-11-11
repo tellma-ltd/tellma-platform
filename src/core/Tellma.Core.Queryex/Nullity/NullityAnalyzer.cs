@@ -134,6 +134,15 @@ namespace Tellma.Core.Queryex.Nullity
         private QueryexNullity CallNullity(TypedCall call)
         {
             NullityRule rule = call.Signature.Nullity;
+            if (rule.TableCalendarSelector is int selector
+                && selector < call.Selectors.Length
+                && CalendarCodes.IsTabular(call.Selectors[selector]))
+            {
+                // A table calendar answers only for the dates its months cover, and a result past
+                // them is absent too — so every call in one may be absent, whatever its operands.
+                return QueryexNullity.Nullable;
+            }
+
             return rule.Kind switch
             {
                 NullityRuleKind.AlwaysNotNull or NullityRuleKind.CountAggregate => QueryexNullity.NotNull,

@@ -761,9 +761,14 @@ namespace Tellma.Core.Queryex.Binding
                 hash.Add(selector, StringComparer.OrdinalIgnoreCase);
             }
 
-            foreach (TypedExpr argument in arguments)
+            // A selector argument was hashed above by the value it resolved to, which ignores case
+            // as equivalence does; the literal it was written as would not.
+            for (int index = 0; index < arguments.Length; index++)
             {
-                hash.Add(argument.StructuralHash);
+                if (index >= selectors.Length || selectors[index] is null)
+                {
+                    hash.Add(arguments[index].StructuralHash);
+                }
             }
 
             return hash.ToHashCode();

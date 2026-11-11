@@ -60,12 +60,17 @@ namespace Tellma.Core.Queryex.Tests.Corpus
             // A select list and nothing else: no declarations ahead of it, no source, one statement.
             CompiledQuery statement = result.Value;
             Assert.Equal(string.Empty, statement.Prologue);
+            Assert.False(statement.Recompile);
             Assert.Equal(statement.Sql, statement.Body + ";\n");
             Assert.StartsWith("SELECT\n", statement.Body, StringComparison.Ordinal);
             Assert.EndsWith("\n", statement.Body, StringComparison.Ordinal);
             Assert.DoesNotContain(";", statement.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("FROM", statement.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("APPLY", statement.Body, StringComparison.Ordinal);
+
+            // A clause of the statement's own starts a line; a lookup in a table calendar is a
+            // scalar subquery inside an item, with a source of its own, and is no source of the
+            // statement's.
+            Assert.DoesNotMatch("(?m)^(FROM|OUTER APPLY|CROSS APPLY|WHERE|GROUP BY|HAVING)\\b", statement.Body);
+            Assert.DoesNotContain("OUTER APPLY", statement.Body, StringComparison.Ordinal);
 
             // One column per item, in order, carrying the item's own text and the type asked of it.
             Assert.Equal(entry.Items.Count, statement.Columns.Count);

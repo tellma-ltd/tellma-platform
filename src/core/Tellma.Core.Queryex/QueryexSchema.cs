@@ -43,14 +43,21 @@ namespace Tellma.Core.Queryex
         /// <summary>Lookup by logical entity name, case-insensitively.</summary>
         private readonly FrozenDictionary<string, EntityDescriptor> _entitiesByName;
 
+        /// <summary>The month table of each table calendar the host maps, by canonical code.</summary>
+        private readonly FrozenDictionary<string, string> _calendarSources;
+
         /// <summary>Initializes the schema. Built through <see cref="QueryexSchemaBuilder" />.</summary>
         /// <param name="entities">The entities, in registration order.</param>
-        internal QueryexSchema(IReadOnlyList<EntityDescriptor> entities)
+        /// <param name="calendarSources">The month table of each mapped calendar, by canonical code.</param>
+        internal QueryexSchema(
+            IReadOnlyList<EntityDescriptor> entities,
+            IReadOnlyDictionary<string, string> calendarSources)
         {
             Entities = entities;
             _entitiesByName = entities.ToFrozenDictionary(
                 static entity => entity.Name,
                 StringComparer.OrdinalIgnoreCase);
+            _calendarSources = calendarSources.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>The entities, in registration order.</summary>
@@ -64,6 +71,14 @@ namespace Tellma.Core.Queryex
             ArgumentNullException.ThrowIfNull(name);
 
             return _entitiesByName.GetValueOrDefault(name);
+        }
+
+        /// <summary>The month table a table calendar reads, when the host maps one.</summary>
+        /// <param name="calendar">The calendar code, matched ignoring case.</param>
+        /// <returns>The table's source as the host wrote it, or null when the calendar is unmapped.</returns>
+        internal string? CalendarSource(string calendar)
+        {
+            return _calendarSources.GetValueOrDefault(calendar);
         }
 
         /// <summary>Whether the given entity belongs to this schema.</summary>

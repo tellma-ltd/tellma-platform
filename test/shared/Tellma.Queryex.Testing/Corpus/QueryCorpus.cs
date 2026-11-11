@@ -33,6 +33,7 @@ namespace Tellma.Queryex.Testing.Corpus
                 .Concat(Composition())
                 .Concat(Structure())
                 .Concat(Omitted())
+                .Concat(Calendars())
                 .Concat(Refusals())
                 .Concat(StructureRefusals())
                 .Concat(OmittedRefusals());
