@@ -296,3 +296,154 @@ test.describe('reduced motion (§6/DoD 15)', () => {
     expect(transition).toBe('none');
   });
 });
+
+test.describe('option groups and tm-multi-select: axe in both themes and directions', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    for (const dir of ['ltr', 'rtl'] as const) {
+      test(`the grouped select's open panel is axe-clean (${theme}, ${dir})`, async ({ page }) => {
+        await page.goto(storyUrl('select', { theme, dir }));
+        const { panel } = await openSelect(page, 'select-grouped');
+        await expect(panel.getByRole('group')).toHaveCount(2);
+        await expectNoAxeViolations(page);
+      });
+
+      test(`the grouped multi-select's open panel is axe-clean (${theme}, ${dir})`, async ({
+        page,
+      }) => {
+        await page.goto(storyUrl('select', { theme, dir }));
+        const { panel } = await openSelect(page, 'multi-grouped');
+        await expect(panel.getByRole('option', { name: 'Sale' })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+        await expectNoAxeViolations(page);
+      });
+    }
+  }
+});
+
+test.describe('option groups', () => {
+  test('each group is named by its heading; the heading row has the option height', async ({
+    page,
+  }) => {
+    const { panel } = await openSelect(page, 'select-grouped');
+    await expect(panel.getByRole('group', { name: 'Operating' })).toBeVisible();
+    await expect(
+      panel.getByRole('group', { name: 'Operating' }).getByRole('option'),
+    ).toHaveText(['Service', 'Operation']);
+    const heading = (await panel.locator('.tm-option-group__heading').first().boundingBox())!;
+    const option = (await panel.getByRole('option').first().boundingBox())!;
+    expect(Math.abs(heading.height - option.height)).toBeLessThanOrEqual(0.5);
+  });
+
+  test('arrow keys step from the last option of one group to the first of the next', async ({
+    page,
+  }) => {
+    const { trigger, panel } = await openSelect(page, 'select-grouped');
+    await appStable(page); // the open's highlight has rendered before keys move it
+    const active = () => panel.locator('.tm-option__row[data-active="true"]');
+    await expect(active()).toHaveText('Service');
+    await trigger.press('ArrowDown');
+    await expect(active()).toHaveText('Operation');
+    await trigger.press('ArrowDown'); // across the "Commercial" heading
+    await expect(active()).toHaveText('Sale');
+    await trigger.press('End');
+    await expect(active()).toHaveText('Other');
+    await trigger.press('Enter');
+    await expect(panel).toBeHidden();
+    await expect(trigger).toContainText('Other');
+  });
+});
+
+test.describe('tm-multi-select', () => {
+  test('clicks toggle options and keep the panel open, with focus on the trigger', async ({
+    page,
+  }) => {
+    const { trigger, panel } = await openSelect(page, 'multi-grouped');
+    await panel.getByRole('option', { name: 'Marketing' }).click();
+    await panel.getByRole('option', { name: 'Service' }).click();
+    await expect(panel).toBeVisible();
+    await expect(trigger).toBeFocused();
+    // Option order, not click order.
+    await expect(page.getByTestId('multi-value')).toHaveText('Service | Sale | Marketing');
+    await expect(trigger).toContainText('Service, Sale, Marketing');
+
+    await panel.getByRole('option', { name: 'Sale' }).click();
+    await expect(page.getByTestId('multi-value')).toHaveText('Service | Marketing');
+    await expect(panel.getByRole('option', { name: 'Sale' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+
+  test('Space and Enter toggle the active option; Escape closes and keeps the value', async ({
+    page,
+  }) => {
+    const { trigger, panel } = await openSelect(page, 'multi-grouped');
+    await appStable(page);
+    await trigger.press('Home'); // Service
+    await trigger.press('Space');
+    await expect(page.getByTestId('multi-value')).toHaveText('Service | Sale');
+    await trigger.press('ArrowDown');
+    await trigger.press('Enter');
+    await expect(page.getByTestId('multi-value')).toHaveText('Service | Operation | Sale');
+    await expect(panel).toBeVisible();
+
+    await trigger.press('Escape');
+    await expect(panel).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toContainText('Service, Operation, Sale');
+  });
+
+  test('Tab and a press outside close the panel', async ({ page }) => {
+    const { trigger, panel } = await openSelect(page, 'multi-grouped');
+    await trigger.press('Tab');
+    await expect(panel).toBeHidden();
+
+    await openSelect(page, 'multi-grouped');
+    const box = (await panel.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    await page.mouse.click(
+      Math.min(box.x + box.width + 40, viewport.width - 5),
+      Math.max(box.y - 40, 5),
+    );
+    await expect(panel).toBeHidden();
+  });
+
+  test('the trigger keeps one line at the field height however much is selected', async ({
+    page,
+  }) => {
+    const trigger = page.getByTestId('multi-grouped').locator('.tm-select__trigger');
+    const before = (await trigger.boundingBox())!.height;
+    const { panel } = await openSelect(page, 'multi-grouped');
+    for (const name of ['Service', 'Operation', 'Marketing', 'Other']) {
+      await panel.getByRole('option', { name }).click();
+    }
+    await expect(page.getByTestId('multi-value')).toHaveText(
+      'Service | Operation | Sale | Marketing | Other',
+    );
+    expect((await trigger.boundingBox())!.height).toBe(before);
+    // The rendering ellipsizes; the text, and so the accessible value, is whole.
+    await expect(trigger.locator('.tm-select__value')).toHaveText(
+      'Service, Operation, Sale, Marketing, Other',
+    );
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    const endSide = dir === 'rtl' ? 'left' : 'right';
+    test(`the row checkbox sits at the inline end (${dir}: the ${endSide})`, async ({ page }) => {
+      await page.goto(storyUrl('select', { dir }));
+      const { panel } = await openSelect(page, 'multi-grouped');
+      const row = panel.getByRole('option', { name: 'Sale' });
+      const rowBox = (await row.boundingBox())!;
+      const checkbox = (await row.locator('.tm-option__box').boundingBox())!;
+      const checkboxMid = checkbox.x + checkbox.width / 2;
+      const rowMid = rowBox.x + rowBox.width / 2;
+      if (dir === 'rtl') {
+        expect(checkboxMid).toBeLessThan(rowMid);
+      } else {
+        expect(checkboxMid).toBeGreaterThan(rowMid);
+      }
+    });
+  }
+});

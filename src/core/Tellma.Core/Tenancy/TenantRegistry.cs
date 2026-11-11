@@ -574,27 +574,32 @@ namespace Tellma.Core.Tenancy
         {
             AsyncServiceScope scope = _scopes.CreateAsyncScope();
             string name = nameof(ITenantStateListener);
+
+            // The bound starts before the listener is invoked, so it covers the call from its
+            // first instruction, and the timer exists before the listener runs any code of its own.
+            using CancellationTokenSource bound = new();
+            var expiry = Task.Delay(_startup.ListenerTimeout, _time, bound.Token);
             Task call;
             try
             {
                 ITenantStateListener listener = scope.ServiceProvider.GetServices<ITenantStateListener>().ElementAt(index);
                 name = listener.GetType().FullName ?? listener.GetType().Name;
-                call = change.Removed
+                // A listener that hands back no task fails like one that throws.
+                call = (change.Removed
                     ? listener.OnRemovedAsync(change.Tenant)
-                    : listener.OnStateChangedAsync(change.Tenant, change.Previous);
+                    : listener.OnStateChangedAsync(change.Tenant, change.Previous))
+                    ?? throw new InvalidOperationException("The tenant-state listener returned no task.");
             }
             catch (Exception exception)
             {
+                await bound.CancelAsync().ConfigureAwait(false);
                 TenancyLog.ListenerFailed(_logger, name, change.Tenant.Id, exception);
                 await scope.DisposeAsync().ConfigureAwait(false);
                 return;
             }
 
-            try
-            {
-                await call.WaitAsync(_startup.ListenerTimeout, _time).ConfigureAwait(false);
-            }
-            catch (TimeoutException)
+            // --- Whichever ends first: the call, or the bound ---
+            if (await Task.WhenAny(call, expiry).ConfigureAwait(false) == expiry)
             {
                 // The call runs on; its scope goes when it ends, never under it.
                 TenancyLog.ListenerTimedOut(_logger, name, change.Tenant.Id, _startup.ListenerTimeout);
@@ -604,6 +609,12 @@ namespace Tellma.Core.Tenancy
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
                 return;
+            }
+
+            await bound.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await call.ConfigureAwait(false);
             }
             catch (Exception exception)
             {

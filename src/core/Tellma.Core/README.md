@@ -5,8 +5,8 @@ worker compose it through the same composition method. It takes no ASP.NET Core 
 host without the web stack composes it unchanged, and its services are testable without an HTTP
 context.
 
-Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions and
-the table-type binder), the tenancy runtime (the catalog model, the tenant registry, connection
+Today it holds the composition root, the tenant data model (`TellmaDbContext`, its conventions,
+the table-type binder and the entity metadata), the tenancy runtime (the catalog model, the tenant registry, connection
 resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
 file-system store) and the three calendar systems. The rest of data access, the CRUD pipeline, access control, settings, caching,
 localization, the rest of blobs, Excel, jobs and notifications join it as namespaces.
@@ -66,6 +66,7 @@ every problem `AddTellma` would throw.
 | `core.taxonomy` | in Development, the repository's `taxonomy.json` does not list the slug | no |
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 | `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
+| `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
 `ValidateOnStart`, which would stop startup at the first failing options type before the gate could
@@ -75,7 +76,8 @@ report the other problems.
 
 `TellmaDbContext` (`Tellma.Core.Data`) is the platform's tenant EF context, and its model is built
 from the composition alone. `AddTellma` registers it as a singleton `IModel`, built on first use
-from a context with no connection, beside the `TableTypeBinder` over it.
+from a context with no connection, beside the `TableTypeBinder` over it and the entity metadata
+the startup gate validates.
 
 - **Entities.** Every contributed entity (`contribution.Entity<T>()`), with each default a
   `UseEntity<TDefault, TLeaf>()` replaced swapped for its leaf, so the model maps one type per
@@ -137,6 +139,53 @@ only where a convention or Core's configuration declares it, under the platform'
 A declaration the model cannot be built with (a reference to an entity absent from the model or
 mapped twice, an index over a property the class lacks, a key neither `int` nor `long`, a
 capability column ignored or hidden, a missing `core.Users`, `core.Jobs` or `core.Blobs`) fails the model with the class and the declaration named.
+
+### Entity metadata
+
+`IEntityMetadataProvider` (a singleton) holds one validated `EntityMetadata` per mapped entity leaf,
+children included, built once from the runtime model and the entity classes. The startup gate's
+`core.entity-metadata` check is the model's first use, so a model that cannot be built or breaks
+the entity contract fails startup, every problem at once, before the host serves traffic; the
+provider the host resolves is the same instance the check built, and it never resolves for an
+unsound model.
+
+- **Lookup.** `Get` takes the leaf or any class in its chain below the platform's bases, so
+  `Get(typeof(Center))` returns `MyCenter`'s metadata when the distribution registered it. The
+  entity's `Name` is `<schema>.<default's class name>`.
+- **Properties** are the mapped scalars in declaration order, base classes first, with their
+  column, store facets, compiled getter and setter, and ownership: database-owned when computed;
+  server-owned for the key, the audit columns, the subtree counts and the capability interfaces'
+  members (read through the class's interface map, since attributes on interface members never
+  reach the class); else as `[ServerOwned]`, `[WriteOnce]` or `[Derived]` says; else editable.
+  `ResetServerOwned` and `ResetDerived` copy those members from a fresh instance.
+- **Natural keys**: the declared ones by `Order`, then the ones inferred over strings backed by a
+  single-column unique index (on a child, one scoped to the parent): the multilingual `Name`, then
+  `Code`, then the required ones and the nullable ones in declaration order.
+- **Display name**: `[DisplayNameSource]`, else the multilingual `Name` group, else the first
+  natural key, else the key.
+- **References** are every many-to-one foreign key, named by the model's navigation or the
+  property's name without `Id`; **children** pair each `[NotMapped]` list with the child's
+  `[ParentKey]` and its `[MaxChildren]` cap.
+- **Fingerprints.** `SchemaFingerprint` hashes the name, column, store type, nullability and
+  ownership of every editable and write-once property, and each child collection's fingerprint.
+  `StorageFingerprint` hashes every table, its columns (name, store type, nullability, default,
+  computed definition) and indexes, every sequence and every table type's physical name, each
+  sorted ordinally, so the web host, the workers and the migrator, composing one model, compute
+  one value.
+
+The rules the check enforces beyond what the conventions refuse while building: every class
+declares `[Table]` in a schema other than `dbo`, and a leaf re-declaring it names its default's
+table; the capability columns are mapped and keep their names, as does every column a default
+leaf declares; one class per table, no replaced default or derived type in the model, no class
+two leaves share, unique entity names; children pair with exactly one parent key, belong to a
+top-level root and are temporal only under a temporal one; top-level and child entities have a
+table type that holds every capability column and no shadow column; trees are 2 to 32 deep and
+keep `UX_<Table>_Node`; multilingual twins exist and match their anchor; display-name sources,
+prefixes and `[RelatedSelect]` projections render; unique and natural keys sit on a backed scalar
+that is not JSON or binary, natural keys on a key-list type; navigation names collide with nothing;
+blob references are `int?` with a valid kind declared once; enums are stored by name in a sized
+`varchar`; one ownership per property, never on a parent key or a computed column; column
+annotations decorate mapped properties of the right type.
 
 ### The table-type binder
 
@@ -258,6 +307,7 @@ a culture on Umm al-Qura compares it with the same culture's own Gregorian data.
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
+| `Data/Metadata/` | `EntityMetadataProvider` and the builder that validates the model into it, the compiled accessors, the fingerprints, and the source the startup check and the host share. |
 | `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the log events and instruments. |
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |

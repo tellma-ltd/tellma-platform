@@ -14,6 +14,7 @@ import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmSelectHarness } from '@tellma/core-ui-testing';
 
 import { TmOption } from './tm-option';
+import { TmOptionGroup } from './tm-option-group';
 import { TmSelect } from './tm-select';
 
 interface Country {
@@ -27,6 +28,13 @@ const COUNTRIES: readonly Country[] = [
   { id: 3, name: 'Ethiopia' },
   { id: 4, name: 'Jordan' },
 ];
+
+/** The open panel's active option text, read from the DOM. */
+function activeText(): string | undefined {
+  return document
+    .querySelector('.tm-option__row[data-active="true"] .tm-option__content')
+    ?.textContent?.trim();
+}
 
 async function setup<T>(component: new () => T) {
   TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
@@ -167,6 +175,26 @@ describe('tm-select (§3.4)', () => {
       expect(host.value()).not.toBeUndefined();
       const trigger = fixture.nativeElement.querySelector('.tm-select__trigger');
       expect(document.activeElement).toBe(trigger);
+    });
+
+    it('keyboard: keys pressed within one render all move the active option', async () => {
+      const { fixture, select } = await setup(Host);
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW); // opens on the first option
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fixture.whenStable();
+      expect(activeText()).toBe('Saudi Arabia');
+
+      // Two arrows with no render in between, as a fast typist or a loaded
+      // machine delivers them: both must land.
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      const press = (key: string) =>
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      press('ArrowDown');
+      await Promise.resolve();
+      press('ArrowDown');
+      await fixture.whenStable();
+      expect(activeText()).toBe('Ethiopia');
     });
 
     it('Escape closes without selecting (stage-1 Esc only, §3.4)', async () => {
@@ -530,6 +558,277 @@ describe('tm-select (§3.4)', () => {
       instance.cancel();
       await fixture.whenStable();
       expect(host.value()).toBe(4); // the committed Jordan, not the loaded 1
+    });
+  });
+  describe('option groups', () => {
+    @Component({
+      imports: [TmSelect, TmOption, TmOptionGroup],
+      template: `
+        <tm-select [(value)]="value" aria-label="Center type">
+          <tm-option-group label="Operating">
+            @for (name of operating(); track name) {
+              <tm-option [value]="name" [label]="name">{{ name }}</tm-option>
+            }
+          </tm-option-group>
+          <tm-option value="Sale" label="Sale">Sale</tm-option>
+          <tm-option-group label="Overhead">
+            <tm-option value="Cost">Cost</tm-option>
+          </tm-option-group>
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<string | undefined>(undefined);
+      readonly operating = signal<readonly string[]>(['Service', 'Operation']);
+    }
+
+    it('each group is a role=group named by its visible heading, holding its options', async () => {
+      const { select } = await setup(Host);
+      const groups = await select.getGroups();
+      expect(await Promise.all(groups.map((group) => group.getLabel()))).toEqual([
+        'Operating',
+        'Overhead',
+      ]);
+      const operating = await groups[0].getOptions();
+      expect(await Promise.all(operating.map((option) => option.getText()))).toEqual([
+        'Service',
+        'Operation',
+      ]);
+
+      const listbox = document.querySelector('[role="listbox"]')!;
+      const children = [...listbox.children].map((el) => el.getAttribute('role'));
+      expect(children).toEqual(['group', 'option', 'group']);
+      for (const group of listbox.querySelectorAll('[role="group"]')) {
+        const heading = document.getElementById(group.getAttribute('aria-labelledby')!)!;
+        expect(group.contains(heading)).toBe(true);
+        expect(heading.getAttribute('role')).toBeNull(); // never an option
+      }
+    });
+
+    it('arrows, Home and End step over the headings', async () => {
+      const { fixture, select } = await setup(Host);
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW); // opens on the first option
+      await fixture.whenStable();
+      const visited = [activeText()];
+      for (let i = 0; i < 4; i++) {
+        await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+        await fixture.whenStable();
+        visited.push(activeText());
+      }
+      // The last step wraps to the first option, never onto a heading.
+      expect(visited).toEqual(['Service', 'Operation', 'Sale', 'Cost', 'Service']);
+
+      await select.sendTriggerKeys(TestKey.END);
+      await fixture.whenStable();
+      expect(activeText()).toBe('Cost');
+      await select.sendTriggerKeys(TestKey.HOME);
+      await fixture.whenStable();
+      expect(activeText()).toBe('Service');
+    });
+
+    it('typeahead searches options only, never headings', async () => {
+      const { fixture, select } = await setup(Host);
+      await select.open();
+      await select.sendTriggerKeys('o'); // "Operating" is a heading; Operation is the option
+      await fixture.whenStable();
+      expect(activeText()).toBe('Operation');
+      await new Promise((resolve) => setTimeout(resolve, 600)); // the typeahead query resets
+      await select.sendTriggerKeys('c'); // Cost: a label-less option, found by its text
+      await fixture.whenStable();
+      expect(activeText()).toBe('Cost');
+    });
+
+    it('commits a grouped option; options arriving in a group keep their order and the value', async () => {
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      await select.selectOption('Sale');
+      await fixture.whenStable();
+      expect(host.value()).toBe('Sale');
+
+      host.operating.set(['Service', 'Production', 'Operation']);
+      await fixture.whenStable();
+      const options = await select.getOptions();
+      expect(await Promise.all(options.map((option) => option.getText()))).toEqual([
+        'Service',
+        'Production',
+        'Operation',
+        'Sale',
+        'Cost',
+      ]);
+      expect(await options[3].isSelected()).toBe(true);
+      expect(host.value()).toBe('Sale');
+    });
+
+    it('a flat select has no groups', async () => {
+      @Component({
+        imports: [TmSelect, TmOption],
+        template: `
+          <tm-select aria-label="Flat">
+            <tm-option [value]="1" label="One">One</tm-option>
+          </tm-select>
+        `,
+      })
+      class FlatHost {}
+
+      const { select } = await setup(FlatHost);
+      expect(await select.getGroups()).toEqual([]);
+    });
+  });
+
+  describe('readonly', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <tm-select readonly [(value)]="value" aria-label="Readonly">
+          <tm-option [value]="1" label="One">One</tm-option>
+          <tm-option [value]="2" label="Two">Two</tm-option>
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<number | undefined>(1);
+    }
+
+    it('a readonly select never opens, by click or by key, and keeps its value', async () => {
+      const { fixture, select } = await setup(Host);
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      expect(trigger.getAttribute('aria-readonly')).toBe('true');
+      trigger.focus();
+      trigger.click();
+      await fixture.whenStable();
+      expect(await select.isOpen()).toBe(false);
+      expect(document.querySelector('.tm-select__panel')).toBeNull();
+
+      await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+      await fixture.whenStable();
+      await select.sendTriggerKeys(TestKey.ENTER);
+      await fixture.whenStable();
+      expect(await select.isOpen()).toBe(false);
+      expect(fixture.componentInstance.value()).toBe(1);
+    });
+  });
+
+  // Keys a fast typist or a loaded machine delivers with no render between
+  // them must act exactly as the same keys pressed one at a time.
+  describe('keys pressed within one render', () => {
+    @Component({
+      imports: [TmSelect, TmOption],
+      template: `
+        <tm-select
+          [(value)]="value"
+          placeholder="Pick a country"
+          (selectionChange)="emissions.push($event)"
+        >
+          @for (country of countries; track country.id) {
+            <tm-option [value]="country.id" [label]="country.name">{{ country.name }}</tm-option>
+          }
+        </tm-select>
+      `,
+    })
+    class Host {
+      readonly value = signal<number | undefined>(undefined);
+      readonly countries = COUNTRIES;
+      readonly emissions: (number | undefined)[] = [];
+    }
+
+    /** What a key sequence leaves behind: value, emissions, panel and highlight. */
+    interface Outcome {
+      /** The bound value. */
+      readonly value: number | undefined;
+      /** Every `selectionChange` emission, in order. */
+      readonly emissions: readonly (number | undefined)[];
+      /** Whether the panel is open. */
+      readonly open: boolean;
+      /** The active option's text while the panel is open. */
+      readonly active: string | undefined;
+    }
+
+    /** Lets every render, the overlay's re-measure and a frame land. */
+    async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await fixture.whenStable();
+    }
+
+    /**
+     * Presses `keys` on the trigger, from a closed or an open panel, either
+     * in one render window (only microtask yields between keys, as separate
+     * input events get) or one at a time with every render settled between.
+     */
+    async function run(
+      keys: readonly string[],
+      options: { readonly startOpen: boolean; readonly burst: boolean },
+    ): Promise<Outcome> {
+      TestBed.resetTestingModule();
+      const { fixture, select } = await setup(Host);
+      const host = fixture.componentInstance;
+      const trigger = fixture.nativeElement.querySelector('.tm-select__trigger') as HTMLElement;
+      trigger.focus();
+      if (options.startOpen) {
+        await select.sendTriggerKeys(TestKey.DOWN_ARROW);
+        await settle(fixture);
+      }
+      for (const key of keys) {
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        if (options.burst) {
+          await Promise.resolve();
+        } else {
+          await settle(fixture);
+        }
+      }
+      await settle(fixture);
+      const open = await select.isOpen();
+      return {
+        value: host.value(),
+        emissions: [...host.emissions],
+        open,
+        active: open ? activeText() : undefined,
+      };
+    }
+
+    /** Runs `keys` both ways and expects the burst to match the stepwise run. */
+    async function expectBurstMatchesStepwise(
+      keys: readonly string[],
+      startOpen: boolean,
+    ): Promise<Outcome> {
+      const stepwise = await run(keys, { startOpen, burst: false });
+      const burst = await run(keys, { startOpen, burst: true });
+      expect(burst).toEqual(stepwise);
+      return burst;
+    }
+
+    it('a commit then a character: the character reopens and searches once', async () => {
+      const outcome = await expectBurstMatchesStepwise(['ArrowDown', 'Enter', 'e'], true);
+      expect(outcome).toEqual({
+        value: 2,
+        emissions: [2],
+        open: true,
+        active: 'Ethiopia',
+      });
+    });
+
+    it('a commit then an arrow and Enter: the arrow reopens, Enter commits once more', async () => {
+      const outcome = await expectBurstMatchesStepwise(
+        ['ArrowDown', 'Enter', 'ArrowDown', 'Enter'],
+        true,
+      );
+      expect(outcome.value).toBe(2);
+      expect(outcome.open).toBe(false);
+    });
+
+    it('a commit then an arrow: the arrow reopens the panel', async () => {
+      const outcome = await expectBurstMatchesStepwise(['ArrowDown', 'Enter', 'ArrowDown'], true);
+      expect(outcome.open).toBe(true);
+      expect(outcome.emissions).toEqual([2]);
+    });
+
+    it('keys right after the opening key wait for the rows instead of being dropped', async () => {
+      const arrows = await expectBurstMatchesStepwise(['ArrowDown', 'ArrowDown'], false);
+      expect(arrows.active).toBe('United Arab Emirates');
+
+      const typed = await expectBurstMatchesStepwise(['u', 'ArrowDown'], false);
+      expect(typed.active).toBe('Ethiopia');
     });
   });
 });

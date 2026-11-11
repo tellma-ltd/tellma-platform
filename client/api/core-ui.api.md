@@ -87,6 +87,9 @@ export const TM_UI_STRINGS_EN: {
     readonly select: {
         readonly placeholder: "Select an option";
     };
+    readonly multiSelect: {
+        readonly placeholder: "Select options";
+    };
     readonly l10n: {
         readonly quarter: "Q{quarter} {year}";
     };

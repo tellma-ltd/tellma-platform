@@ -22,7 +22,7 @@ namespace Tellma.Core.Tests.Data.Model
         /// <returns>The definition.</returns>
         public static TellmaModelDefinition Definition(IEnumerable<Type> entities, IEnumerable<Type>? tableTypes = null)
         {
-            return TellmaModelDefinition.Create(entities, tableTypes ?? [], [], static type => type);
+            return TellmaModelDefinition.Create(entities, tableTypes ?? [], [], new Dictionary<Type, Type>());
         }
 
         /// <summary>The design-time model of a definition.</summary>
