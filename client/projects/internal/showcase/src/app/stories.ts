@@ -18,6 +18,7 @@ import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridEntityStory } from './grid/grid-entity-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
+import { GridSearchPageStory } from './grid/grid-search-page-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
 import { FilePreviewStory } from './file-preview/file-preview-story';
 import { FilesStory } from './files/files-story';
@@ -116,6 +117,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
     id: 'grid-list-screen',
     title: 'Grid (list screen: selectable + searchable)',
     component: GridListScreenStory,
+    wide: true,
+  },
+  {
+    id: 'grid-search-page',
+    title: 'Grid (search page: driver, row activation, sort)',
+    component: GridSearchPageStory,
     wide: true,
   },
   { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },

@@ -89,6 +89,7 @@ import type {
   TmGridLoadingDef,
 } from '../tm-grid-templates';
 import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store';
+import type { TmGridRowActivation, TmGridSort } from '../tm-grid-types';
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
@@ -183,6 +184,26 @@ const FIND_SCAN_CELLS_PER_SLICE = 2_000;
 
 /** Uniquifies the per-instance error-overlay message element id. */
 let nextErrorMsgId = 0;
+
+/** Uniquifies the per-instance scroller id (a driver's `aria-controls` target). */
+let nextScrollerId = 0;
+
+/**
+ * A second activation of the same row within this window is ignored, in ms,
+ * so a double-click (or a key repeat) opens the row once.
+ */
+const ROW_ACTIVATION_GUARD_MS = 400;
+
+/** Pointer travel under which a press and release is a click, not a drag, in px. */
+const CLICK_SLOP_PX = 4;
+
+/** The header sort state of a column that is not sortable. */
+const UNSORTABLE: ɵTmGridHeaderSortVm = {
+  sortable: false,
+  direction: null,
+  next: null,
+  ariaSort: null,
+};
 
 function cellSelector(cell: TmRowCol): string {
   return `[data-tm-cell][data-row="${cell.row}"][data-col="${cell.col}"]`;
@@ -432,6 +453,15 @@ export interface ɵTmGridRowVm {
   readonly outlierTransform: string | null;
   /** Whether the row carries the readonly zebra stripe. */
   readonly zebra: boolean;
+  /**
+   * Whether this is the active row of a row-activation grid (the row tint
+   * and the accent bar).
+   */
+  readonly activeRow: boolean;
+  /** The row element's id: what a driver's `aria-activedescendant` names. */
+  readonly elementId: string;
+  /** The consumer's `rowClass` classes, space-separated (empty for none). */
+  readonly rowClass: string;
   /** Whether the row is checkbox-checked (row tint + row-level aria-selected). */
   readonly checked: boolean;
   /** Whether the row header highlights (a selection range covers the row). */
@@ -448,6 +478,18 @@ export interface ɵTmGridRowVm {
   readonly ariaSetSize: number | null;
   /** The row's cells, in column order. */
   readonly cells: readonly ɵTmGridCellVm[];
+}
+
+/** One column header's sort state. */
+export interface ɵTmGridHeaderSortVm {
+  /** Whether the header is a sort control (a sortable column with a key). */
+  readonly sortable: boolean;
+  /** The column's current sort direction, or `null` when it is not the sorted column. */
+  readonly direction: 'asc' | 'desc' | null;
+  /** The direction a click moves to (`null`: the click clears the sort), for the hover preview. */
+  readonly next: 'asc' | 'desc' | null;
+  /** The header's `aria-sort`, or `null` on every header but the sorted one. */
+  readonly ariaSort: 'ascending' | 'descending' | null;
 }
 
 /**
@@ -524,6 +566,18 @@ export interface ɵTmGridCoreDeps<T> {
   readonly selectable: Signal<boolean>;
   /** The two-way checked-row set of a `selectable` grid. */
   readonly selectedIds: WritableSignal<ReadonlySet<TmRowId>>;
+  /** Whether a readonly grid opens rows (`'row'`) or not (`'none'`). */
+  readonly rowActivation: Signal<'none' | 'row'>;
+  /** The consumer's per-row classes. */
+  readonly rowClass: Signal<((row: T) => string | readonly string[] | null) | undefined>;
+  /** Whether the row-number column renders. */
+  readonly rowHeaders: Signal<boolean>;
+  /** The two-way active row id. */
+  readonly activeRowId: WritableSignal<TmRowId | null>;
+  /** The two-way sort. */
+  readonly orderBy: WritableSignal<TmGridSort | null>;
+  /** Emits a row activation through the shell's output. */
+  readonly rowActivate: (activation: TmGridRowActivation<T>) => void;
   /** The density variant. */
   readonly size: Signal<'sm' | 'md' | 'lg'>;
   /** Consumer context-menu items appended after the built-ins. */
@@ -576,7 +630,21 @@ export interface ɵTmGridViewCore {
   readonly hitCols: Signal<readonly boolean[]>;
   /** Whether the row-checkbox chrome column renders (`selectable`, readonly). */
   readonly checkboxColumn: Signal<boolean>;
-  /** The select-all checkbox's tri-state over ALL data rows. */
+  /** The checkbox column's `aria-colindex` (after the row-number column, when one renders). */
+  readonly checkColIndex: Signal<number>;
+  /** Whether the row-number column and the corner render. */
+  readonly rowHeaders: Signal<boolean>;
+  /** Whether rows open on click and Enter (row activation on a readonly grid). */
+  readonly rowMode: Signal<boolean>;
+  /** The scroller's element id. */
+  readonly scrollerId: string;
+  /** The row-activation hint's element id (the scroller's `aria-describedby` in row mode). */
+  readonly rowHintId: string;
+  /** The localized row-activation hint. */
+  readonly rowActivationHint: Signal<string>;
+  /** Per column, the header's sort state. */
+  readonly headerSort: Signal<readonly ɵTmGridHeaderSortVm[]>;
+  /** The select-all checkbox's tri-state over the bound rows. */
   readonly checkAllState: Signal<'all' | 'none' | 'mixed'>;
   /** The select-all checkbox's accessible name. */
   readonly selectAllLabel: Signal<string>;
@@ -648,6 +716,8 @@ export interface ɵTmGridViewCore {
   onPointerDown(event: PointerEvent): void;
   /** The scroller's click handler (column headers, corner). */
   onClick(event: MouseEvent): void;
+  /** The scroller's auxclick handler (a middle click opens a row in a new tab). */
+  onAuxClick(event: MouseEvent): void;
   /** The scroller's dblclick handler (opens the editor in *edit* mode). */
   onDblClick(event: MouseEvent): void;
   /** The scroller's contextmenu handler (select target, open the menu). */
@@ -742,6 +812,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private destroyed = false;
   /** The last individually toggled checkbox row — the Shift+click anchor. */
   private lastToggledRowId: TmRowId | null = null;
+  /** The last emitted row activation: the double-activation guard. */
+  private lastActivation: { readonly rowId: TmRowId; readonly at: number } | null = null;
   /** Debounces the checked-count announcement across toggle bursts. */
   private checkedAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Kills superseded find-scan chains (re-query, rows change, destroy). */
@@ -779,9 +851,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** Every errored cell by identity (collapsed ones included), the jump order. */
   private readonly errorCellRefs: Signal<readonly FieldErrorCell[]>;
   /** The active cell's raw field errors (feeds the localized overlay message). */
-  private readonly activeCellFieldErrors: Signal<
-    readonly ValidationError.WithOptionalFieldTree[]
-  >;
+  private readonly activeCellFieldErrors: Signal<readonly ValidationError.WithOptionalFieldTree[]>;
   private readonly activeCellResolvedErrors: ReturnType<typeof tmResolveFieldErrors>;
 
   /** The bound rows: `data`, else the field's value, else empty. */
@@ -816,7 +886,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly hitCols: Signal<readonly boolean[]>;
   /** Whether the row-checkbox chrome column renders (`selectable`, readonly). */
   readonly checkboxColumn: Signal<boolean>;
-  /** The select-all checkbox's tri-state over ALL data rows. */
+  /** The checkbox column's `aria-colindex`. */
+  readonly checkColIndex: Signal<number>;
+  /** Whether the row-number column and the corner render. */
+  readonly rowHeaders: Signal<boolean>;
+  /** Whether rows open on click and Enter (row activation on a readonly grid). */
+  readonly rowMode: Signal<boolean>;
+  /** The scroller's element id. */
+  readonly scrollerId = `tm-grid-${nextScrollerId++}`;
+  /** The row-activation hint's element id. */
+  readonly rowHintId = `${this.scrollerId}-hint`;
+  /** The localized row-activation hint. */
+  readonly rowActivationHint: Signal<string>;
+  /** Per column, the header's sort state. */
+  readonly headerSort: Signal<readonly ɵTmGridHeaderSortVm[]>;
+  /** The active row element's id, or `null` with no active row. */
+  readonly activeDescendantId: Signal<string | null>;
+  /** The select-all checkbox's tri-state over the bound rows. */
   readonly checkAllState: Signal<'all' | 'none' | 'mixed'>;
   /** The select-all checkbox's accessible name. */
   readonly selectAllLabel: Signal<string>;
@@ -912,6 +998,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // shell throws in dev mode when `selectable` meets an editable grid,
     // and the chrome column stays off in prod builds.
     this.checkboxColumn = computed(() => deps.selectable() && !this.editable());
+    // Row activation is a readonly-grid affordance too; the shell throws in
+    // dev mode on an editable grid, and it stays off in prod builds.
+    this.rowMode = computed(() => deps.rowActivation() === 'row' && !this.editable());
+    this.rowHeaders = deps.rowHeaders;
+    this.checkColIndex = computed(() => (deps.rowHeaders() ? 2 : 1));
+    this.rowActivationHint = deps.translate('grid.rowActivationHint');
     this.gridRole = computed(() => (this.engine.model.isTree ? 'treegrid' : 'grid'));
     this.loading = deps.loading;
     this.emptyDef = deps.emptyDef;
@@ -923,8 +1015,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     this.columnsInternal = computed(() => {
       // Chrome columns preceding the data columns in `aria-colindex` space:
-      // the row header, plus the checkbox column when it renders.
-      const chromeCols = this.checkboxColumn() ? 2 : 1;
+      // the row header and the checkbox column, each when it renders.
+      const chromeCols = (deps.rowHeaders() ? 1 : 0) + (this.checkboxColumn() ? 1 : 0);
       return deps.columns().map((dir, index) => this.buildColumn(dir, index, chromeCols));
     });
     this.columnModel = this.columnsInternal;
@@ -979,7 +1071,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
     this.ariaRowCount = computed(() => this.engine.model.viewRowCount() + 1);
     this.ariaColCount = computed(
-      () => this.engine.model.columnCount() + (this.checkboxColumn() ? 2 : 1),
+      () =>
+        this.engine.model.columnCount() +
+        (deps.rowHeaders() ? 1 : 0) +
+        (this.checkboxColumn() ? 1 : 0),
     );
     this.showEmpty = computed(
       () => !deps.loading() && !this.editable() && this.engine.model.viewRowCount() === 0,
@@ -995,7 +1090,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.renderRows = computed(() => this.buildRenderRows());
     this.gridTemplate = computed(() => {
       const overrides = this.widthOverrides();
-      const tracks = ['var(--grid-row-header-width)'];
+      const tracks: string[] = [];
+      if (deps.rowHeaders()) {
+        tracks.push('var(--grid-row-header-width)');
+      }
       if (this.checkboxColumn()) {
         tracks.push('var(--grid-check-col-width)');
       }
@@ -1015,8 +1113,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.selectAllLabel = deps.translate('grid.selectAll');
     this.selectRowLabel = deps.translate('grid.selectRow');
     this.newRowLabel = deps.translate('grid.newRow');
-    // The tri-state ranges over ALL data rows (collapsed tree rows
-    // included): select-all is all↔none over the DATA, not the viewport.
+    // The tri-state ranges over the BOUND rows (collapsed tree rows
+    // included) — the current page of a paged list, not the viewport. Ids
+    // checked on other pages do not count here (spec 0010 §C.5).
     this.checkAllState = computed(() => {
       const selected = deps.selectedIds();
       const rows = this.rows();
@@ -1031,6 +1130,36 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         }
       }
       return checked === 0 ? 'none' : checked === rows.length ? 'all' : 'mixed';
+    });
+
+    // ---- sort headers (spec 0010 §C.3) ----
+    // Separate from the column models so a sort change re-renders the
+    // header indicators only, never the body's columns.
+    this.headerSort = computed(() => {
+      const sort = deps.orderBy();
+      return deps.columns().map((column): ɵTmGridHeaderSortVm => {
+        const key = column.key();
+        if (!column.sortable() || key === undefined) {
+          return UNSORTABLE;
+        }
+        const direction = sort?.key === key ? sort.direction : null;
+        return {
+          sortable: true,
+          direction,
+          next: direction === null ? 'asc' : direction === 'asc' ? 'desc' : null,
+          ariaSort: direction === null ? null : direction === 'asc' ? 'ascending' : 'descending',
+        };
+      });
+    });
+
+    // ---- the driver's active descendant (spec 0010 §C.2) ----
+    // The active row is always rendered (as an outlier outside the window),
+    // so the id never dangles.
+    this.activeDescendantId = computed(() => {
+      const active = this.engine.nav.activeCell();
+      return active === null || this.engine.model.rowAt(active.row) === null
+        ? null
+        : `${this.scrollerId}-r${active.row}`;
     });
 
     // ---- find (§8.7) ----
@@ -1434,6 +1563,140 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
   }
 
+  // ---- the active row and row activation (spec 0010 §C.1, §C.2) ----
+
+  /**
+   * Moves the active row by a count, or to the first or last data row:
+   * clamped, never wrapping, keeping the active column (the first one from
+   * no active row, where every move starts at the first row). Collapses the
+   * selection onto the new cell and scrolls it into view; focus stays
+   * wherever it is (a driving search field keeps it).
+   */
+  moveActiveRow(by: number | 'first' | 'last'): void {
+    const engine = this.engine;
+    const target = untracked((): TmRowCol | null => {
+      let last = engine.model.viewRowCount() - 1;
+      if (last >= 0 && engine.model.isPlaceholder(last)) {
+        last -= 1; // the new-row placeholder is not a row to open
+      }
+      if (last < 0) {
+        return null;
+      }
+      const active = engine.nav.activeCell();
+      const row =
+        by === 'first'
+          ? 0
+          : by === 'last'
+            ? last
+            : active === null
+              ? 0
+              : Math.min(last, Math.max(0, active.row + Math.trunc(by)));
+      return { row, col: active?.col ?? 0 };
+    });
+    if (target === null) {
+      return;
+    }
+    engine.nav.setActive(target);
+    engine.selection.collapseTo(target);
+    this.requestReveal();
+  }
+
+  /**
+   * Emits a row activation for a row (the active one when no id is given).
+   * Returns `false` when the grid holds no such row. A second activation of
+   * the same row within the guard window is swallowed — still `true`, so a
+   * driver keeps consuming the key — and a double-click opens once.
+   */
+  activateRow(rowId: TmRowId | undefined, via: 'pointer' | 'keyboard', newTab: boolean): boolean {
+    const engine = this.engine;
+    const id = untracked((): TmRowId | null => {
+      if (rowId !== undefined) {
+        return rowId;
+      }
+      const active = engine.nav.activeCell();
+      return active === null ? null : (engine.model.rowAt(active.row)?.id ?? null);
+    });
+    const row = id === null ? undefined : untracked(() => engine.model.rowById(id));
+    if (id === null || row === undefined) {
+      return false;
+    }
+    const now = Date.now();
+    const last = this.lastActivation;
+    if (last !== null && last.rowId === id && now - last.at < ROW_ACTIVATION_GUARD_MS) {
+      return true;
+    }
+    this.lastActivation = { rowId: id, at: now };
+    this.deps.rowActivate({ row, rowId: id, via, newTab });
+    return true;
+  }
+
+  /**
+   * The data cell a pointer gesture on `target` would open the row from, or
+   * `null`: only in row mode, and never from interactive cell content (a
+   * link keeps its native click), the tree expander, an open editor or a
+   * cell-anchored overlay. Chrome cells (row header, checkbox) are not data
+   * cells, so they never qualify. Carries the row's id.
+   */
+  private activationCell(target: Element): (TmRowCol & { readonly id: TmRowId }) | null {
+    if (!untracked(this.rowMode) || this.inOverlay(target)) {
+      return null;
+    }
+    const cellElement = target.closest('[data-tm-cell]');
+    if (cellElement === null || target.closest('[data-tm-expander], [data-tm-editor]') !== null) {
+      return null;
+    }
+    // The cell itself carries a roving tabindex: only STRICT descendants
+    // count as interactive content.
+    const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
+    if (interactive !== null && interactive !== cellElement && cellElement.contains(interactive)) {
+      return null;
+    }
+    const cell = this.cellFromElement(cellElement);
+    const view = cell === null ? null : untracked(() => this.engine.model.rowAt(cell.row));
+    return cell === null || view === null ? null : { ...cell, id: view.id };
+  }
+
+  /** The `a[href]` inside a data cell that `target` sits in, or `null`. */
+  private cellLink(target: EventTarget | null): Element | null {
+    if (!(target instanceof Element) || this.inOverlay(target)) {
+      return null;
+    }
+    const link = target.closest('a[href]');
+    return link !== null && link.closest('[data-tm-cell]') !== null ? link : null;
+  }
+
+  // ---- sort (spec 0010 §C.3) ----
+
+  /**
+   * A click on a sortable header: cycles its column asc → desc → unsorted,
+   * or starts another column at asc, and announces the change. The grid
+   * never reorders — the consumer sorts the data it binds.
+   */
+  private cycleSort(col: number): void {
+    const column = untracked(this.deps.columns)[col];
+    const key = column === undefined ? undefined : untracked(column.key);
+    if (key === undefined || !untracked(column!.sortable)) {
+      return;
+    }
+    const current = untracked(this.deps.orderBy);
+    const next: TmGridSort | null =
+      current?.key !== key
+        ? { key, direction: 'asc' }
+        : current.direction === 'asc'
+          ? { key, direction: 'desc' }
+          : null;
+    this.deps.orderBy.set(next);
+    if (next === null) {
+      this.announcements.announce('grid.announce.sortCleared');
+    } else {
+      const header = untracked(this.columnsInternal)[col]?.header;
+      this.announcements.announce('grid.announce.sorted', {
+        column: header === undefined ? key : untracked(header),
+        direction: next.direction,
+      });
+    }
+  }
+
   // ---- DOM event pipeline (wired by the view template) ----
 
   /** The scroller's scroll handler. */
@@ -1510,6 +1773,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       selectable: untracked(this.checkboxColumn),
       isTree: engine.model.isTree,
       activeIsBoolean,
+      rowActivation: untracked(this.rowMode),
     });
     // After Esc parked focus on the container, Tab/Shift+Tab must leave the
     // grid natively — the engineered mid-grid exit. On an editable grid the
@@ -1614,7 +1878,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /** The scroller's pointerdown handler: cell presses, row headers, drags. */
   onPointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || !(event.target instanceof Element)) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    if (event.button === 1) {
+      // A middle press on a data cell of a row-activation grid moves the
+      // active cell now (the instant highlight) and keeps the browser's
+      // autoscroll off; its auxclick opens the row in a new tab.
+      const pressed = this.activationCell(event.target);
+      if (pressed !== null && event.pointerType !== 'touch') {
+        event.preventDefault();
+        this.escapedSignal.set(false);
+        this.engine.clickCell(pressed);
+        this.requestFocusActive();
+      }
+      return;
+    }
+    if (event.button !== 0) {
       return;
     }
     const target = event.target;
@@ -1663,8 +1943,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
     }
     // The pointer's Mod (add a range, add rows or columns): ⌘ on Apple
-    // platforms, Ctrl elsewhere.
-    const mod = tmIsApplePlatform() ? event.metaKey : event.ctrlKey;
+    // platforms, Ctrl elsewhere; the other of the two is no modifier the
+    // grid gives a meaning.
+    const apple = tmIsApplePlatform();
+    const mod = apple ? event.metaKey : event.ctrlKey;
+    const otherControl = apple ? event.ctrlKey : event.metaKey;
     const cellElement = target.closest('[data-tm-cell]');
     if (cellElement !== null) {
       const cell = this.cellFromElement(cellElement);
@@ -1690,7 +1973,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       // The cell itself carries a roving tabindex — only STRICT descendants
       // count as interactive content.
       const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
-      if (interactive !== null && interactive !== cellElement && cellElement.contains(interactive)) {
+      if (
+        interactive !== null &&
+        interactive !== cellElement &&
+        cellElement.contains(interactive)
+      ) {
         this.escapedSignal.set(false);
         this.engine.clickCell(cell, { shift: event.shiftKey, mod });
         return;
@@ -1713,7 +2000,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.engine.edit.toggleBoolean(cell);
         return;
       }
-      this.beginDrag(event, 'cells');
+      // Row activation (spec 0010 §C.1): a press and release under the
+      // click slop opens the row — with Mod, in a new tab. Shift (extend),
+      // Alt and the non-Mod control key keep the press a selection gesture;
+      // a drag past the slop is a range drag as ever.
+      const opensRow =
+        !event.shiftKey && !event.altKey && !otherControl ? this.activationCell(target) : null;
+      this.beginDrag(
+        event,
+        'cells',
+        opensRow === null
+          ? undefined
+          : { onClick: () => this.activateRow(opensRow.id, 'pointer', mod) },
+      );
       return;
     }
     const rowHeader = target.closest('[data-tm-rowhdr]');
@@ -1749,16 +2048,50 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       event.preventDefault();
       this.escapedSignal.set(false);
+      if (!event.shiftKey && !mod && !event.altKey && untracked(this.headerSort)[col]?.sortable) {
+        // A sortable header (spec 0010 §C.3): a click sorts and leaves the
+        // selection (and focus) alone; only a drag past the slop turns the
+        // press into the column selection a plain header makes on press.
+        this.beginDrag(event, 'cols', {
+          onDragStart: () => this.pressSelectColumn(col, false),
+          onClick: () => this.cycleSort(col),
+        });
+        return;
+      }
       if (event.shiftKey) {
         this.engine.selection.extendActiveTo({ row: 0, col });
       } else {
-        if (untracked(() => this.engine.model.viewRowCount()) > 0) {
-          this.engine.nav.setActive({ row: 0, col });
-        }
-        this.engine.selection.selectCols(col, col, mod);
-        this.requestFocusActive();
+        this.pressSelectColumn(col, mod);
       }
       this.beginDrag(event, 'cols');
+    }
+  }
+
+  /**
+   * A header press's column selection: the column's first cell becomes
+   * active (when there are rows), the column is selected (added to the
+   * selection with Mod), and the active cell takes focus.
+   */
+  private pressSelectColumn(col: number, add: boolean): void {
+    if (untracked(() => this.engine.model.viewRowCount()) > 0) {
+      this.engine.nav.setActive({ row: 0, col });
+    }
+    this.engine.selection.selectCols(col, col, add);
+    this.requestFocusActive();
+  }
+
+  /**
+   * The scroller's auxclick handler: a middle click on a data cell of a
+   * row-activation grid opens the row in a new tab (its press already moved
+   * the active cell). A middle click on a link stays the browser's own.
+   */
+  onAuxClick(event: MouseEvent): void {
+    if (event.button !== 1 || !(event.target instanceof Element)) {
+      return;
+    }
+    const opens = this.activationCell(event.target);
+    if (opens !== null) {
+      this.activateRow(opens.id, 'pointer', true);
     }
   }
 
@@ -1835,6 +2168,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.escapedSignal.set(false);
       this.engine.clickCell(cell);
       this.requestFocusActive();
+      // A tap opens the row in row mode — not one on a link or button in the
+      // cell, whose own click is the tap's meaning.
+      const opens = this.activationCell(target);
+      if (opens !== null) {
+        this.activateRow(opens.id, 'pointer', false);
+      }
       return;
     }
     const rowHeader = target.closest('[data-tm-rowhdr]');
@@ -1860,11 +2199,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return;
       }
       this.escapedSignal.set(false);
-      if (untracked(() => this.engine.model.viewRowCount()) > 0) {
-        this.engine.nav.setActive({ row: 0, col });
+      if (untracked(this.headerSort)[col]?.sortable) {
+        this.cycleSort(col); // a tap on a sortable header sorts, like a click
+        return;
       }
-      this.engine.selection.selectCols(col, col, false);
-      this.requestFocusActive();
+      this.pressSelectColumn(col, false);
     }
   }
 
@@ -1912,6 +2251,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       return; // a cell-anchored overlay surface keeps its native menu
     }
+    const keyboardSourced = event.clientX === 0 && event.clientY === 0;
+    const link = keyboardSourced ? null : this.cellLink(event.target);
+    if (link !== null) {
+      // A link in a cell keeps the browser's menu (open in a new tab, copy
+      // the link): move the active cell there and leave the event alone
+      // (spec 0010 §C.1). The Menu key and Shift+F10 still open the grid's.
+      const cellElement = link.closest('[data-tm-cell]');
+      const cell = cellElement === null ? null : this.cellFromElement(cellElement);
+      if (cell !== null) {
+        this.escapedSignal.set(false);
+        this.engine.clickCell(cell);
+      }
+      return;
+    }
     event.preventDefault();
     const menu = this.menuRef;
     if (menu === null) {
@@ -1930,7 +2283,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.selectMenuTarget(event.target);
     }
     const element = this.activeCellElement();
-    const keyboardSourced = event.clientX === 0 && event.clientY === 0;
     const anchor =
       keyboardSourced && element !== null
         ? element.getBoundingClientRect()
@@ -2119,7 +2471,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       );
       const resolver = column?.resolveLabels;
       if (resolver === undefined) {
-        this.engine.clipboard.applyResolution(request.id, this.withFallback(request, new Map(), fallback));
+        this.engine.clipboard.applyResolution(
+          request.id,
+          this.withFallback(request, new Map(), fallback),
+        );
         continue;
       }
       Promise.resolve()
@@ -2339,12 +2694,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
     }
 
-    if (
-      isDevMode() &&
-      format === undefined &&
-      type === 'entity' &&
-      !this.warnedColumns.has(id)
-    ) {
+    if (isDevMode() && format === undefined && type === 'entity' && !this.warnedColumns.has(id)) {
       this.warnedColumns.add(id);
       console.warn(
         `tm-grid: column "${id}" of type '${type}' has no [format]; ` +
@@ -2631,12 +2981,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     const activeFind = this.findOpenSignal() ? this.activeFindMatchSignal() : null;
 
     const session = editable ? engine.edit.session() : null;
+    // Row mode tints the active row; `rowClass` styles every rendered row.
+    const activeRow = this.rowMode() && active !== null ? active.row : -1;
+    const rowClassOf = this.deps.rowClass();
     const fieldErrors = editable ? this.fieldErrorCells() : EMPTY_FIELD_ERRORS;
     // The clipboard marquee (§9.5): the armed cut (editable only) OR a plain
     // copy (any grid, incl. readonly — you can copy from a readonly grid).
     // Identity sets so windowed rendering marks exactly the marquee cells
     // whatever the current scroll position.
-    const marquee = (editable ? engine.clipboard.pendingCut() : null) ?? engine.clipboard.copyMarquee();
+    const marquee =
+      (editable ? engine.clipboard.pendingCut() : null) ?? engine.clipboard.copyMarquee();
     const cutRowIds = marquee === null ? null : new Set(marquee.rowIds);
     const cutColumnIds = marquee === null ? null : new Set(marquee.columnIds);
     // A lone selected cell shows only the active ring — no range fill (§8.6).
@@ -2676,7 +3030,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           : (aboveInCut ? '' : 't') +
             (belowInCut ? '' : 'b') +
             (colPos === 0 || !cutColumnIds!.has(columns[colPos - 1].id) ? 's' : '') +
-            (colPos === columns.length - 1 || !cutColumnIds!.has(columns[colPos + 1].id) ? 'e' : '');
+            (colPos === columns.length - 1 || !cutColumnIds!.has(columns[colPos + 1].id)
+              ? 'e'
+              : '');
         const cell: TmRowCol = { row: viewIndex, col: column.index };
         const selected = engine.selection.isCellSelected(cell);
         const isActive = active !== null && active.row === viewIndex && active.col === column.index;
@@ -2758,20 +3114,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           hierarchy: isHierarchy,
           level: isHierarchy && view !== null ? view.level : 0,
           expander,
-          loadingChildren:
-            isHierarchy && view !== null && loadingChildren!.has(view.id),
+          loadingChildren: isHierarchy && view !== null && loadingChildren!.has(view.id),
         };
       });
       const siblingPlace = view === null ? undefined : treeAria?.get(view.id);
+      const classes = view === null || rowClassOf === undefined ? null : rowClassOf(view.row);
       rows.push({
         rowKey,
         viewIndex,
+        activeRow: viewIndex === activeRow,
+        elementId: `${this.scrollerId}-r${viewIndex}`,
+        rowClass: classes === null ? '' : typeof classes === 'string' ? classes : classes.join(' '),
         ariaRowIndex: viewIndex + 2,
         isPlaceholder,
         outlier,
-        outlierTransform: outlier
-          ? `translateY(${(viewIndex - win.start) * rowHeight}px)`
-          : null,
+        outlierTransform: outlier ? `translateY(${(viewIndex - win.start) * rowHeight}px)` : null,
         zebra: !editable && !isTree && viewIndex % 2 === 1,
         checked: checkedIds !== null && view !== null && checkedIds.has(view.id),
         headerHit: engine.selection.rowIntersects(viewIndex),
@@ -2779,11 +3136,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         // The tree placeholder is a root-level ghost: level 1, no set place.
         ariaLevel: isTree ? (view?.level ?? 0) + 1 : null,
         ariaExpanded:
-          isTree && view !== null && view.expandable
-            ? view.expanded
-              ? 'true'
-              : 'false'
-            : null,
+          isTree && view !== null && view.expandable ? (view.expanded ? 'true' : 'false') : null,
         ariaPosInSet: siblingPlace?.pos ?? null,
         ariaSetSize: siblingPlace?.size ?? null,
         cells,
@@ -2830,6 +3183,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return true;
       }
       case 'enter': {
+        if (!intent.backward && untracked(this.rowMode)) {
+          // Row activation: Enter opens the active row (spec 0010 §C.1); F2
+          // is the key that reaches a link in the cell.
+          return this.activateRow(undefined, 'keyboard', false);
+        }
         if (!intent.backward) {
           // Enter on an editable non-boolean cell opens the editor in
           // *edit* mode (§8.2); the keymap already routed editable boolean
@@ -2853,6 +3211,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return true;
       }
       case 'edit': {
+        if (untracked(this.rowMode)) {
+          // F2 in a row-activation grid actuates the cell's first link or
+          // button (Enter opens the row there instead).
+          return this.activateCellLink();
+        }
         // F2 / Alt+ArrowDown / type-to-edit. A readonly cell is a NO-OP,
         // not a swallow — the key may still mean something to the browser.
         const active = untracked(() => engine.nav.activeCell());
@@ -2961,6 +3324,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       case 'toggleSelectAllCheckbox':
         this.toggleSelectAllCheckbox();
         return true;
+      case 'activateRow':
+        return untracked(this.rowMode) && this.activateRow(undefined, 'keyboard', intent.newTab);
       case 'find':
         this.openFind();
         return true;
@@ -3106,19 +3471,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
-   * The select-all checkbox (header click / Ctrl+Shift+Space): `all` clears
-   * to none; `none` and `mixed` check every data row — hidden-by-collapse
-   * rows included, select-all ranges over the DATA, not the viewport.
+   * The select-all checkbox (header click / Ctrl+Shift+Space) over the
+   * BOUND rows — hidden-by-collapse rows included, the data rather than the
+   * viewport, and the current page rather than every page: `all` unchecks
+   * the bound rows, `none` and `mixed` check them. Ids checked on other
+   * pages stay checked either way.
    */
   private toggleSelectAllCheckbox(): void {
-    if (untracked(this.checkAllState) === 'all') {
-      this.deps.selectedIds.set(new Set());
-      return;
-    }
     const rowIdOf = untracked(this.deps.rowId);
-    const next = new Set<TmRowId>();
+    const uncheck = untracked(this.checkAllState) === 'all';
+    const next = new Set<TmRowId>(untracked(this.deps.selectedIds));
     for (const row of untracked(this.rows)) {
-      next.add(rowIdOf(row));
+      if (uncheck) {
+        next.delete(rowIdOf(row));
+      } else {
+        next.add(rowIdOf(row));
+      }
     }
     this.deps.selectedIds.set(next);
   }
@@ -3715,7 +4083,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (text !== null) {
       return text === this.editorOpenText; // an errored cell's raw text, unchanged
     }
-    return Object.is(untracked(() => editor.value()), this.editorOpenValue);
+    return Object.is(
+      untracked(() => editor.value()),
+      this.editorOpenValue,
+    );
   }
 
   /**
@@ -3731,8 +4102,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private commitEditorText(text: string, adopted: AdoptedSearch | null): void {
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
-    const column =
-      session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
+    const column = session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
     if (column?.type !== 'entity') {
       adopted?.abort();
       engine.edit.commitText(text);
@@ -3824,7 +4194,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     outcome: AdoptedResult,
     text: string,
     column: ColumnInternal<T>,
-  ): { readonly decided?: TmLabelResolution<unknown>; readonly fallback?: TmLabelResolution<unknown> } {
+  ): {
+    readonly decided?: TmLabelResolution<unknown>;
+    readonly fallback?: TmLabelResolution<unknown>;
+  } {
     if (outcome === 'failed' || outcome.items.length === 0) {
       return {};
     }
@@ -3990,7 +4363,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
   }
 
-  /** Enter on a readonly cell activates its first interactive projected child. */
+  /**
+   * Actuates the active cell's first interactive projected child: Enter on
+   * a readonly cell, or F2 under row activation.
+   */
   private activateCellLink(): boolean {
     const element = this.activeCellElement();
     const interactive = element?.querySelector<HTMLElement>(INTERACTIVE_CONTENT_SELECTOR) ?? null;
@@ -4115,7 +4491,19 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.beginDrag(event, 'cells');
   }
 
-  private beginDrag(event: PointerEvent, mode: 'cells' | 'rows' | 'cols'): void {
+  /**
+   * The shared pointer-drag pipeline: pointer capture on the scroller,
+   * document-level move/end listeners, hit-testing under the pointer, and
+   * edge auto-scroll. With `click` handlers the press is a click until the
+   * pointer travels past the click slop: no range extension (and no
+   * `onDragStart`) before that, and a release still under it calls
+   * `onClick` instead.
+   */
+  private beginDrag(
+    event: PointerEvent,
+    mode: 'cells' | 'rows' | 'cols',
+    click?: { readonly onClick: () => void; readonly onDragStart?: () => void },
+  ): void {
     const scroller = untracked(this.scrollerSignal);
     if (scroller === null) {
       return;
@@ -4134,6 +4522,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     let lastX = event.clientX;
     let lastY = event.clientY;
     let frame = 0;
+    // Without click handlers every press drags from the start.
+    let dragging = click === undefined;
 
     const applyPoint = (): void => {
       const cellElement = this.dragHitElement(lastX, lastY);
@@ -4196,6 +4586,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       lastX = move.clientX;
       lastY = move.clientY;
+      if (!dragging) {
+        if (Math.hypot(lastX - event.clientX, lastY - event.clientY) < CLICK_SLOP_PX) {
+          return; // still a click
+        }
+        dragging = true;
+        click?.onDragStart?.();
+      }
       applyPoint();
       if (frame === 0) {
         frame = requestAnimationFrame(autoScrollStep);
@@ -4206,6 +4603,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return;
       }
       this.endDrag();
+      if (!dragging && end.type === 'pointerup') {
+        click?.onClick();
+      }
     };
     // Listeners on the DOCUMENT so the drag's pointerup is seen even after
     // capture is lost (the handle unmounting past the edge) — otherwise
@@ -4525,6 +4925,53 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       { injector },
     );
 
+    // The two-way active row (spec 0010 §C.2). Created after the reconcile
+    // effect above, so a data change has remapped the active cell before
+    // this compares it with the model. `synced` is the model value this
+    // effect last left behind: a model that differs from it was written by
+    // the consumer, and wins; otherwise the grid's own active row is
+    // written out.
+    let synced: TmRowId | null = null;
+    effect(
+      () => {
+        const requested = this.deps.activeRowId();
+        const active = this.engine.nav.activeCell();
+        this.engine.model.viewRows();
+        untracked(() => {
+          const engine = this.engine;
+          if (
+            requested !== synced &&
+            requested !== null &&
+            engine.model.rowById(requested) !== undefined
+          ) {
+            // A consumer write: the active cell moves to that row, in the
+            // current column (else the first), and scrolls into view —
+            // focus stays wherever it is.
+            if (engine.model.isTree) {
+              engine.expandAncestorsOf(requested);
+            }
+            const row = engine.model.viewIndexOfRow(requested);
+            if (row !== -1) {
+              const target = { row, col: active?.col ?? 0 };
+              engine.nav.setActive(target);
+              engine.selection.collapseTo(target);
+              this.requestReveal();
+            }
+          }
+          // Write back the actual row: the grid's own change, or the
+          // consumer's write as applied (an unknown id reads back as the
+          // row that stayed active, `null` when there is none).
+          const current = engine.nav.activeCell();
+          const actual = current === null ? null : (engine.model.rowAt(current.row)?.id ?? null);
+          synced = actual;
+          if (requested !== actual) {
+            this.deps.activeRowId.set(actual);
+          }
+        });
+      },
+      { injector },
+    );
+
     // Coarse selection announcements: multi-cell shapes only, no arrow spam.
     let lastSelectionKey: string | undefined;
     effect(
@@ -4681,9 +5128,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           return;
         }
         untracked(() => this.viewportHeight.set(scroller.clientHeight));
-        const observer = new ResizeObserver(() =>
-          this.viewportHeight.set(scroller.clientHeight),
-        );
+        const observer = new ResizeObserver(() => this.viewportHeight.set(scroller.clientHeight));
         observer.observe(scroller);
         onCleanup(() => observer.disconnect());
       },
@@ -4831,7 +5276,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         if (scroller === null) {
           return;
         }
-        onCleanup(ɵtmObserveLongPress(scroller, (point) => this.onLongPress(point)));
+        onCleanup(
+          ɵtmObserveLongPress(scroller, (point) => this.onLongPress(point), {
+            // A press on a link in a cell keeps the platform's own link
+            // menu: no timer, no grid menu (spec 0010 §C.1).
+            enabled: (press) => this.cellLink(press.target) === null,
+          }),
+        );
       },
       { injector },
     );
@@ -4855,10 +5306,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           }
           this.checkedAnnounceTimer = setTimeout(() => {
             this.checkedAnnounceTimer = null;
-            this.announcements.announce('grid.announce.checkedCount', {
-              selected: untracked(this.deps.selectedIds).size,
-              total: untracked(this.rows).length,
-            });
+            this.announceCheckedCount();
           }, CHECKED_ANNOUNCE_DEBOUNCE_MS);
         });
       },
@@ -4899,6 +5347,35 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       },
       { injector },
     );
+  }
+
+  /**
+   * Speaks the checked count. With ids checked outside the bound rows
+   * (other pages of a list), it says both: how many are checked here and in
+   * all.
+   */
+  private announceCheckedCount(): void {
+    const selected = untracked(this.deps.selectedIds);
+    const rows = untracked(this.rows);
+    const rowIdOf = untracked(this.deps.rowId);
+    let onPage = 0;
+    for (const row of rows) {
+      if (selected.has(rowIdOf(row))) {
+        onPage += 1;
+      }
+    }
+    if (onPage < selected.size) {
+      this.announcements.announce('grid.announce.checkedCountAcross', {
+        onPage,
+        total: rows.length,
+        selected: selected.size,
+      });
+    } else {
+      this.announcements.announce('grid.announce.checkedCount', {
+        selected: selected.size,
+        total: rows.length,
+      });
+    }
   }
 
   /** One error-tally warm-up slice; chains the next via a macrotask. */

@@ -117,17 +117,23 @@ function everything(apple: boolean): TmGridKeyContext {
     selectable: true,
     isTree: true,
     activeIsBoolean: false,
+    rowActivation: true,
   };
 }
 
-/** Every condition met except one. */
-function without(condition: TmGridKeyCondition, apple: boolean): TmGridKeyContext {
+/** Every condition met except the binding's own (each of them, for a list). */
+function without(
+  when: TmGridKeyCondition | readonly TmGridKeyCondition[],
+  apple: boolean,
+): TmGridKeyContext {
+  const unmet: readonly TmGridKeyCondition[] = typeof when === 'string' ? [when] : when;
   return {
     ...everything(apple),
-    editable: condition !== 'editable',
-    searchable: condition !== 'searchable',
-    selectable: condition !== 'selectable',
-    isTree: condition !== 'tree',
+    editable: !unmet.includes('editable'),
+    searchable: !unmet.includes('searchable'),
+    selectable: !unmet.includes('selectable'),
+    isTree: !unmet.includes('tree'),
+    rowActivation: !unmet.includes('rowActivation'),
   };
 }
 
@@ -169,11 +175,14 @@ describe('tmResolveGridKey (binding table)', () => {
 
       it.each(
         TM_GRID_KEY_BINDINGS.filter((binding) => binding.when !== undefined).map(
-          (binding) => [binding.keys, binding.when, binding] as const,
+          (binding) => [binding.keys, String(binding.when), binding] as const,
         ),
-      )('does not act on %s unless the grid is %s', (_keys, when, binding) => {
+      )('does not act on %s unless the grid is %s', (_keys, _when, binding) => {
         // A bare Space falls through to type-to-edit without row checkboxes.
-        const intent = tmResolveGridKey(pressBinding(binding.keys, apple), without(when!, apple));
+        const intent = tmResolveGridKey(
+          pressBinding(binding.keys, apple),
+          without(binding.when!, apple),
+        );
         expect(intent === null || isTypeToEdit(intent), JSON.stringify(intent)).toBe(true);
       });
     });
@@ -355,6 +364,41 @@ describe('tmResolveGridKey (type-to-edit)', () => {
       const event = keydown(physicalKey('P'), modifiers);
       expect(tmResolveGridKey(event, everything(true)), JSON.stringify(modifiers)).toBeNull();
     }
+  });
+});
+
+describe('tmResolveGridKey (readonly grids)', () => {
+  const none: Modifiers = { ctrl: false, alt: false, shift: false, meta: false };
+  const readonlyGrid = (rowActivation: boolean): TmGridKeyContext => ({
+    ...everything(false),
+    editable: false,
+    rowActivation,
+  });
+
+  for (const rowActivation of [false, true]) {
+    it(`leaves typed characters to the page ${rowActivation ? 'with' : 'without'} row activation`, () => {
+      for (const written of ['A', 'Z', '7', '=', 'Minus']) {
+        for (const shift of [false, true]) {
+          const event = keydown(physicalKey(written), { ...none, shift });
+          expect(tmResolveGridKey(event, readonlyGrid(rowActivation)), written).toBeNull();
+        }
+      }
+    });
+  }
+
+  it('opens the row in a new tab on Mod+Enter only under row activation', () => {
+    for (const apple of [false, true]) {
+      const modEnter = keydown(physicalKey('Enter'), { ...none, ctrl: !apple, meta: apple });
+      const ctx = { ...readonlyGrid(true), apple };
+      expect(tmResolveGridKey(modEnter, ctx)).toEqual({ kind: 'activateRow', newTab: true });
+      expect(tmResolveGridKey(modEnter, { ...ctx, rowActivation: false })).toBeNull();
+    }
+  });
+
+  it('reaches the cell content on F2 only under row activation', () => {
+    const f2 = keydown(physicalKey('F2'), none);
+    expect(tmResolveGridKey(f2, readonlyGrid(true))).toEqual({ kind: 'edit', mode: 'edit' });
+    expect(tmResolveGridKey(f2, readonlyGrid(false))).toBeNull();
   });
 });
 

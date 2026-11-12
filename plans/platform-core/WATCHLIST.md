@@ -1127,6 +1127,12 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
   (b) On Apple, Option+Shift+<letter> types a character (∏, Í) and seeds the editor by design.
   Check both in the Appendix A manual pass, and decide whether the platform family needs another
   chord on those layouts or platforms.
+- §4.3's page family against the grid's row activation (lead raised in grid list-page work). Spec
+  0010 §C.1 opens the active row in a new tab on Mod+Enter, so `TM_GRID_KEYS` now publishes
+  `Mod+Enter` (only while `rowActivation="row"`, but the table is static). §4.3 refuses every
+  `TM_GRID_KEYS` entry with a modifier, which makes the page family's `Mod+Enter` unregistrable
+  everywhere. Either exempt `Mod+Enter` (the grid prevents it only when it acts, so §4.2 step 2
+  already gives it to the focused grid), or drop it from the page family.
 - §1 says /shell imports /attention, and §5.2 has both shells render <tm-banner-host /> from /attention. Spec 0028 §1 also lists TmArrivals and TmAttention as tenant-shell-rooted services in /attention, so the tenantless shell must not instantiate them; nothing says how /attention scopes those roots versus the banner host. This is minor, but it is an ordering detail for the 0027-c and 0028-d split.
 
 **Slow or heavy tests (planning estimates):**

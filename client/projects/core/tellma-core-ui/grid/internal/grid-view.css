@@ -51,6 +51,19 @@
      double-tap must synthesize dblclick (opens the editor) without the
      300ms tap delay. */
   touch-action: manipulation;
+  /* Rows arriving never re-flow the columns: the vertical scrollbar's gutter
+     is reserved whether or not the rows overflow (spec 0010 §C.7). The
+     reserved strip carries the grid's two bands — the header's colour and
+     rule beside the header row, the body's own (transparent) background
+     below it — so an empty gutter reads as part of the grid. The background
+     stays put while the content scrolls, as the sticky header does. */
+  scrollbar-gutter: stable;
+  background: linear-gradient(
+    var(--grid-header-bg) calc(var(--grid-row-height) - var(--border-width)),
+    var(--grid-header-line) calc(var(--grid-row-height) - var(--border-width)),
+    var(--grid-header-line) var(--grid-row-height),
+    transparent var(--grid-row-height)
+  );
 }
 
 .tm-grid__scroller:focus-visible {
@@ -119,6 +132,46 @@
      background-image over the base color) — set as `background:` it would
      replace the header and show the page through it. */
   background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
+}
+
+/* ---- sort indicator (sortable headers) ---- */
+
+.tm-grid__colhdr--sortable {
+  cursor: pointer;
+}
+
+/* The label yields the indicator's slot, so a long label's ellipsis never
+   pushes the arrow out of the header. */
+.tm-grid__colhdr--sortable .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--icon-size-sm));
+}
+
+/* A fixed slot after the label, present whether or not the column is
+   sorted: sorting never shifts the label. */
+.tm-grid__sort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--icon-size-sm);
+  block-size: calc(var(--grid-row-height) - var(--border-width));
+  vertical-align: bottom;
+}
+
+/* The next direction's arrow is the hover preview: hidden at rest, and
+   shown faintly in place of the current one while a pointer hovers. */
+.tm-grid__sort-glyph--next {
+  display: none;
+  color: var(--text-muted);
+}
+
+@media (hover: hover) {
+  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph {
+    display: none;
+  }
+
+  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph--next {
+    display: inline-flex;
+  }
 }
 
 .tm-grid__resize {
@@ -258,13 +311,31 @@
      cells take real (roving) focus; the active-cell inset ring below is the
      equally-visible substitute. */
   outline: none;
+  /* A consumer row class styles its row through these inherited custom
+     properties; unset, each falls back to transparent, inherited ink and
+     inherited weight. */
+  background-color: var(--tm-grid-row-bg);
+  color: var(--tm-grid-row-ink);
+  font-weight: var(--tm-grid-row-weight);
 }
 
 /* Row/cell base tints paint via background-COLOR, so the selection's
    background-image (below) always composites over them — a shorthand
-   `background` here would reset the image and mask the range highlight. */
+   `background` here would reset the image and mask the range highlight.
+   A consumer row background wins over the stripe. */
 .tm-grid__row--zebra > .tm-grid__cell {
-  background-color: var(--grid-zebra-bg);
+  background-color: var(--tm-grid-row-bg, var(--grid-zebra-bg));
+}
+
+/* The shipped row modifiers: a de-emphasized row (a tree ancestor shown only
+   for a matching descendant) and an emphasized one (a totals row). */
+.tm-grid__row--muted {
+  --tm-grid-row-ink: var(--text-secondary);
+}
+
+.tm-grid__row--emphasis {
+  --tm-grid-row-bg: var(--surface-subtle);
+  --tm-grid-row-weight: var(--weight-semibold);
 }
 
 /* Checkbox-checked rows: a PERSISTENT row tint, distinct from the
@@ -273,6 +344,35 @@
 .tm-grid__row--checked > .tm-grid__cell,
 .tm-grid__row--checked > .tm-grid__checkcell {
   background-color: var(--surface-selected);
+}
+
+/* The active row of a row-activation grid: a row tint (over stripes, row
+   classes and the checked tint, declared after them) and a 2px accent bar
+   on the inline-start edge of the first painted cell. The focus ring stays
+   on the active cell. */
+.tm-grid__row--active > .tm-grid__cell,
+.tm-grid__row--active > .tm-grid__checkcell {
+  background-color: var(--grid-active-row-bg);
+}
+
+.tm-grid__row--active > :first-child {
+  position: relative; /* anchors the accent bar on a chrome cell too */
+}
+
+.tm-grid__row--active > :first-child::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 1;
+  inline-size: var(--focus-ring-width);
+  background-color: var(--grid-selection-border);
+  pointer-events: none;
+}
+
+/* Rows open on click: the whole data area reads as clickable. */
+.tm-grid__scroller--rows .tm-grid__cell {
+  cursor: pointer;
 }
 
 /* The placeholder's editable cells carry the untinted background (typing
@@ -583,6 +683,17 @@
 /* ---- forced colors: states never rely on tint alone ---- */
 
 @media (forced-colors: active) {
+  /* The gutter's bands are a background image; system colours replace it. */
+  .tm-grid__scroller {
+    background: Canvas;
+  }
+
+  /* The active row's accent bar keeps a system colour of its own. */
+  .tm-grid__row--active > :first-child::before {
+    forced-color-adjust: none;
+    background-color: Highlight;
+  }
+
   .tm-grid__scroller,
   .tm-grid__corner,
   .tm-grid__colhdr,

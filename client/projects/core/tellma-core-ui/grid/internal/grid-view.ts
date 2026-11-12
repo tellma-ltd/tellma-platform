@@ -22,7 +22,7 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
-import { ChevronDown, ChevronRight } from 'lucide';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide';
 
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmMenu } from '@tellma/core-ui/menu';
@@ -41,6 +41,10 @@ import { ɵTmGridTouchHandles } from './touch-handles';
 // symmetric and never needs to).
 const EXPANDED_GLYPH: TmIconSource = ChevronDown;
 const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
+
+// The sort indicator's two glyphs: vertical arrows, which never mirror.
+const SORT_ASC_GLYPH: TmIconSource = ArrowUp;
+const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
@@ -71,16 +75,20 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
       #scroller
       cdkScrollable
       class="tm-grid__scroller"
+      [id]="core().scrollerId"
       [attr.role]="core().gridRole()"
       aria-multiselectable="true"
       [class.tm-grid__scroller--readonly]="!core().editable()"
+      [class.tm-grid__scroller--rows]="core().rowMode()"
       [attr.aria-rowcount]="core().ariaRowCount()"
       [attr.aria-colcount]="core().ariaColCount()"
       [attr.aria-busy]="core().loading() ? 'true' : null"
+      [attr.aria-describedby]="core().rowMode() ? core().rowHintId : null"
       [tabindex]="core().containerTabindex()"
       (keydown)="core().onKeydown($event)"
       (pointerdown)="core().onPointerDown($event)"
       (click)="core().onClick($event)"
+      (auxclick)="core().onAuxClick($event)"
       (dblclick)="core().onDblClick($event)"
       (contextmenu)="core().onContextMenu($event)"
       (focusout)="core().onFocusOut($event)"
@@ -90,9 +98,16 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
       (scroll)="onScrollerScroll($event)"
     >
       <div class="tm-grid__header" role="row" aria-rowindex="1">
-        <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
+        @if (core().rowHeaders()) {
+          <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
+        }
         @if (core().checkboxColumn()) {
-          <div class="tm-grid__checkhdr" role="columnheader" aria-colindex="2" data-tm-checkhdr>
+          <div
+            class="tm-grid__checkhdr"
+            role="columnheader"
+            data-tm-checkhdr
+            [attr.aria-colindex]="core().checkColIndex()"
+          >
             <div
               class="tm-grid__check"
               role="checkbox"
@@ -106,13 +121,17 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
           </div>
         }
         @for (col of core().columnModel(); track col.id) {
+          @let sort = core().headerSort()[col.index];
           <div
             class="tm-grid__colhdr"
             role="columnheader"
             data-tm-colhdr
             [attr.data-col]="col.index"
+            [attr.data-key]="col.key"
             [attr.aria-colindex]="col.ariaColIndex"
+            [attr.aria-sort]="sort?.ariaSort ?? null"
             [class.tm-grid__colhdr--hit]="core().hitCols()[col.index]"
+            [class.tm-grid__colhdr--sortable]="sort?.sortable"
             [style.text-align]="col.align"
           >
             @if (col.headerTemplate; as headerTemplate) {
@@ -122,6 +141,25 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
               />
             } @else {
               <span class="tm-grid__colhdr-label">{{ col.header() }}</span>
+            }
+            @if (sort?.sortable) {
+              <!-- Sort slot: the current arrow, then the hover preview. -->
+              <span class="tm-grid__sort" aria-hidden="true">
+                @if (sort?.direction; as direction) {
+                  <tm-icon
+                    class="tm-grid__sort-glyph"
+                    size="sm"
+                    [svg]="direction === 'asc' ? sortAscGlyph : sortDescGlyph"
+                  />
+                }
+                @if (sort?.next; as next) {
+                  <tm-icon
+                    class="tm-grid__sort-glyph tm-grid__sort-glyph--next"
+                    size="sm"
+                    [svg]="next === 'asc' ? sortAscGlyph : sortDescGlyph"
+                  />
+                }
+              </span>
             }
             <div class="tm-grid__resize" data-tm-resize (pointerdown)="core().resize.start(col, $event)"></div>
           </div>
@@ -134,6 +172,9 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
             <div
               class="tm-grid__row"
               role="row"
+              [id]="row.elementId"
+              [class]="row.rowClass"
+              [class.tm-grid__row--active]="row.activeRow"
               [attr.aria-rowindex]="row.ariaRowIndex"
               [attr.aria-level]="row.ariaLevel"
               [attr.aria-expanded]="row.ariaExpanded"
@@ -146,23 +187,25 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
               [class.tm-grid__row--outlier]="row.outlier"
               [style.transform]="row.outlierTransform"
             >
-              <div
-                class="tm-grid__rowhdr"
-                role="rowheader"
-                aria-colindex="1"
-                data-tm-rowhdr
-                [attr.data-row]="row.viewIndex"
-                [attr.aria-label]="row.isPlaceholder ? core().newRowLabel() : null"
-                [class.tm-grid__rowhdr--hit]="row.headerHit"
-              >
-                {{ row.rowHeaderText }}
-              </div>
+              @if (core().rowHeaders()) {
+                <div
+                  class="tm-grid__rowhdr"
+                  role="rowheader"
+                  aria-colindex="1"
+                  data-tm-rowhdr
+                  [attr.data-row]="row.viewIndex"
+                  [attr.aria-label]="row.isPlaceholder ? core().newRowLabel() : null"
+                  [class.tm-grid__rowhdr--hit]="row.headerHit"
+                >
+                  {{ row.rowHeaderText }}
+                </div>
+              }
               @if (core().checkboxColumn()) {
                 <div
                   class="tm-grid__checkcell"
                   role="gridcell"
-                  aria-colindex="2"
                   data-tm-checkcell
+                  [attr.aria-colindex]="core().checkColIndex()"
                   [attr.data-row]="row.viewIndex"
                 >
                   <!-- The placeholder row has no checkbox; its chrome cell
@@ -271,6 +314,11 @@ const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
       </div>
     </div>
 
+    @if (core().rowMode()) {
+      <!-- The scroller's row-activation hint. -->
+      <span class="tm-visually-hidden" [id]="core().rowHintId">{{ core().rowActivationHint() }}</span>
+    }
+
     <!-- Loading / empty overlay: a sibling of the scroller (not inside its
          scrolling flow) so it covers the visible viewport regardless of the
          scroll position — inside the scroller it would flow after the
@@ -360,6 +408,10 @@ export class ɵTmGridView {
   protected readonly expandedGlyph = EXPANDED_GLYPH;
   /** The tree expander's glyph on a collapsed row, mirrored in right-to-left text. */
   protected readonly collapsedGlyph = COLLAPSED_GLYPH;
+  /** The ascending sort indicator: an up arrow. */
+  protected readonly sortAscGlyph = SORT_ASC_GLYPH;
+  /** The descending sort indicator: a down arrow. */
+  protected readonly sortDescGlyph = SORT_DESC_GLYPH;
 
   /** The select-all checkbox's `aria-checked` value (`mixed` is tri-state). */
   protected readonly checkAllAria = computed(() => {

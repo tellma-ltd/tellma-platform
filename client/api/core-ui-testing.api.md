@@ -213,6 +213,7 @@ export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
 
 // @public
 export class TmGridHarness extends ComponentHarness {
+    activateRow(rowIndex: number): Promise<void>;
     cancelEditor(): Promise<void>;
     clickCell(rowIndex: number, colIndex: number): Promise<void>;
     clickColumnHeader(colIndex: number): Promise<void>;
@@ -220,6 +221,7 @@ export class TmGridHarness extends ComponentHarness {
     clickRowHeader(rowIndex: number): Promise<void>;
     commitEditor(via?: TmGridEditorCommitVia): Promise<void>;
     getActiveCell(): Promise<TmGridCellCoordinate | null>;
+    getActiveRowIndex(): Promise<number | null>;
     getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
     getCellText(rowIndex: number, colIndex: number): Promise<string>;
     getColCount(): Promise<number>;
@@ -230,6 +232,7 @@ export class TmGridHarness extends ComponentHarness {
     getPendingCount(): Promise<number>;
     getRenderedRowCount(): Promise<number>;
     getRowCount(): Promise<number>;
+    getSort(): Promise<TmGridHarnessSort | null>;
     protected readonly gridElement: () => Promise<TestElement>;
     hasPlaceholderRow(): Promise<boolean>;
     static hostSelector: string;
@@ -241,9 +244,16 @@ export class TmGridHarness extends ComponentHarness {
     pressKeys(...keys: (string | TestKey)[]): Promise<void>;
     selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
     shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    sortBy(key: string, direction?: 'asc' | 'desc'): Promise<void>;
     tallyNext(): Promise<void>;
     tallyPrevious(): Promise<void>;
     typeInEditor(text: string): Promise<void>;
+}
+
+// @public
+export interface TmGridHarnessSort {
+    readonly direction: 'asc' | 'desc';
+    readonly key: string;
 }
 
 // @public

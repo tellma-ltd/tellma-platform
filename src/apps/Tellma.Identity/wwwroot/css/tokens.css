@@ -234,6 +234,7 @@
     --grid-error-border: var(--error-border);
     --grid-readonly-bg: var(--field-bg-filled);
     --grid-zebra-bg: var(--surface-subtle);
+    --grid-active-row-bg: var(--surface-selected);
     --grid-cut-border: var(--color-primary);
     --grid-find-match-bg: var(--warning-bg);
     --grid-find-active-outline: var(--warning);

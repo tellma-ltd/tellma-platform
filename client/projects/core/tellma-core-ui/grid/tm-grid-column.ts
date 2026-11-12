@@ -155,6 +155,14 @@ export class TmGridColumn<T = unknown, V = unknown> {
   readonly maxDecimals = input<number | undefined>(undefined);
   /** Marks the column that renders the tree hierarchy (defaults to the first). */
   readonly hierarchy = input(false, { transform: booleanAttribute });
+  /**
+   * Makes the header a sort control for the grid's two-way `orderBy`: a
+   * click cycles ascending, descending, then unsorted, and a click on
+   * another sortable column starts it ascending. The grid only shows and
+   * edits the sort — the consumer orders the rows it binds. Requires `key`,
+   * which names the column in the sort.
+   */
+  readonly sortable = input(false, { transform: booleanAttribute });
 
   /** Custom static display template. */
   readonly displayDef = contentChild(TmGridDisplayDef<T, V>);

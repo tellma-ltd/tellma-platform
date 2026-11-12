@@ -34,6 +34,8 @@ export interface TmGridKeyContext {
   readonly isTree: boolean;
   /** Whether the active cell is a boolean column's cell. */
   readonly activeIsBoolean: boolean;
+  /** Whether the readonly grid opens rows (row activation is on). */
+  readonly rowActivation: boolean;
 }
 
 /** A resolved keyboard intent. */
@@ -49,6 +51,7 @@ export type TmGridIntent =
       readonly dropdown?: boolean;
     }
   | { readonly kind: 'toggleBoolean' }
+  | { readonly kind: 'activateRow'; readonly newTab: boolean }
   | { readonly kind: 'toggleCheck' }
   | { readonly kind: 'toggleSelectAllCheckbox' }
   | { readonly kind: 'clear' }
@@ -68,9 +71,9 @@ export type TmGridIntent =
 
 /**
  * The grid state a binding needs before it acts: an editable grid, the find
- * bar enabled, row checkboxes enabled, or a tree.
+ * bar enabled, row checkboxes enabled, a tree, or row activation.
  */
-export type TmGridKeyCondition = 'editable' | 'searchable' | 'selectable' | 'tree';
+export type TmGridKeyCondition = 'editable' | 'searchable' | 'selectable' | 'tree' | 'rowActivation';
 
 /** One row of the grid's binding table. */
 export interface TmGridKeyBinding {
@@ -83,8 +86,11 @@ export interface TmGridKeyBinding {
   readonly intent: TmGridIntent | null;
   /** The full translation key of the help label, under `tmUi.grid.keys`. */
   readonly labelKey: string;
-  /** The grid state the binding needs; absent, it always acts. */
-  readonly when?: TmGridKeyCondition;
+  /**
+   * The grid state the binding needs; a list acts when any one of its
+   * states holds. Absent, the binding always acts.
+   */
+  readonly when?: TmGridKeyCondition | readonly TmGridKeyCondition[];
 }
 
 /** The find shortcut: the grid, its open editor and the find bar all match it. */
@@ -168,9 +174,24 @@ export const TM_GRID_KEY_BINDINGS: readonly TmGridKeyBinding[] = [
     labelKey: label('tab'),
     when: 'editable',
   },
+  // Enter opens the row under row activation, which the core decides; Mod
+  // asks the consumer for a new tab, so only row activation binds it.
   { keys: 'Enter', intent: { kind: 'enter', backward: false }, labelKey: label('enter') },
+  {
+    keys: 'Mod+Enter',
+    intent: { kind: 'activateRow', newTab: true },
+    labelKey: label('openRowNewTab'),
+    when: 'rowActivation',
+  },
   { keys: 'Shift+Enter', intent: { kind: 'enter', backward: true }, labelKey: label('moveUp') },
-  { keys: 'F2', intent: { kind: 'edit', mode: 'edit' }, labelKey: label('edit'), when: 'editable' },
+  // F2 edits an editable cell and, under row activation (always readonly),
+  // reaches the cell's link or button instead.
+  {
+    keys: 'F2',
+    intent: { kind: 'edit', mode: 'edit' },
+    labelKey: label('edit'),
+    when: ['editable', 'rowActivation'],
+  },
   {
     keys: 'Alt+ArrowDown',
     intent: { kind: 'edit', mode: 'edit', dropdown: true },
@@ -235,8 +256,14 @@ const CHARACTER_BINDINGS: readonly TmGridKeyBinding[] = TM_GRID_KEY_BINDINGS.fil
   isCharacterKey(binding.keys),
 );
 
-/** Whether a binding's condition holds in the grid's current state. */
-function conditionHolds(when: TmGridKeyCondition | undefined, ctx: TmGridKeyContext): boolean {
+/** Whether a binding's condition (any one of a list) holds in the grid's current state. */
+function conditionHolds(
+  when: TmGridKeyCondition | readonly TmGridKeyCondition[] | undefined,
+  ctx: TmGridKeyContext,
+): boolean {
+  if (Array.isArray(when)) {
+    return when.some((one: TmGridKeyCondition) => conditionHolds(one, ctx));
+  }
   switch (when) {
     case 'editable':
       return ctx.editable;
@@ -246,6 +273,8 @@ function conditionHolds(when: TmGridKeyCondition | undefined, ctx: TmGridKeyCont
       return ctx.selectable;
     case 'tree':
       return ctx.isTree;
+    case 'rowActivation':
+      return ctx.rowActivation;
     default:
       return true;
   }
@@ -337,6 +366,11 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
     return ctx.editable ? { kind: 'edit', mode: 'enter', seed: ' ' } : null;
   }
 
+  // Section: Mod+Enter — open the row in a new tab, under row activation.
+  if (key === 'Enter' && mod && !alt && !other && !shift) {
+    return ctx.rowActivation ? { kind: 'activateRow', newTab: true } : null;
+  }
+
   // Section: the remaining named keys, none of which takes Alt or Mod;
   // only Tab, Enter and F10 take Shift.
   if (!alt && !mod && !other) {
@@ -357,7 +391,7 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
     if (!shift) {
       switch (key) {
         case 'F2':
-          return ctx.editable ? { kind: 'edit', mode: 'edit' } : null;
+          return ctx.editable || ctx.rowActivation ? { kind: 'edit', mode: 'edit' } : null;
         case 'Delete':
         case 'Backspace':
           return ctx.editable ? { kind: 'clear' } : null;
