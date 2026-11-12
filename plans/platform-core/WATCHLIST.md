@@ -1039,6 +1039,11 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-069 → PC-071: `expired(source, sh?)` ignores a 401 whose request handle `sh` no longer matches the cookie, so PC-071 only has to pass the request's handle. Within 60 s of a sign-in (`mark.at`) `expired()` shows the sign-in-failed boot page and keeps the cookie; its retry deletes the cookie and reloads.
 - PC-069 → PC-075: once PC-075 writes `sub` into the boot record, an expiry is reported twice (`cookie`/`401`, then `boot`); dedupe it there.
 - PC-069: the boot bundle is at its 3,072 B ceiling for English-only (zero headroom after PC-022's typographic apostrophes). The next byte added to the bundled boot modules needs an equal saving or a D-048 ruling.
+- PC-071 → PC-104: TmLocalization must provide the internal `TM_API_LOCALE` seam (`client/projects/core/tellma-core/src/api/tm-api-seams.ts`): `acceptLanguage()` returns §7.7 step 4's string and `calendarCode()` the calendar. Until then the HTTP layer sends the document's `lang` and no `Tellma-Calendar`.
+- PC-071 → PC-096: TmCacheRefresher must provide the internal `TM_API_CACHE` seam (`observe(t, tags, 'header')`, `refresh(t, docs, 'header')`); the default does nothing. TmHttpApi already calls `observe` one task after the body and `refresh(t, ['tenant'], 'header')` on `read-only`.
+- PC-071 → PC-110: TmUpdates must provide the internal `TM_API_UPDATES` seam (`check(): Promise<'ready' | 'none' | 'failed' | 'unreachable' | 'disabled'>`); the default answers `disabled`. TmErrorPresenter reads the step-up challenge from `TmApiError.challenge`, a member PC-071 added to §10.1's shape.
+- PC-071 → PC-113: TmAppVersion.compare must reuse `tmCompareBuilds` (`src/api/tm-api-wire.ts`), so the §5.6 verdict and TmAppVersion order builds alike; TmHttpApi reads the UI version from `TM_CLIENT_METADATA` until then. Blob fetches are deliberately kept out of TmRequestLog.
+- PC-071 → PC-059: `TmHttpApi.blobFetcher` takes `signal` through an intersection with `TmBlobFetchOptions`; once PC-059 adds `signal` to `TmBlobFetchOptions`, drop the intersection. `provideTellma` now replaces the HttpClient default of `TM_BLOB_FETCHER` with the HTTP layer's fetcher.
 ## 0025
 
 **Possible contradictions and gaps (unverified leads):**

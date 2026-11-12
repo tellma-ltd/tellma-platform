@@ -7,7 +7,7 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the plain-JSON value types of the HTTP layer (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the boot script's result types and the app clock (`TM_NOW`) | eager |
+| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the boot script's result types and the app clock (`TM_NOW`) | eager |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -72,6 +72,43 @@ another tenant, or when a `404 tenant-not-found` takes it. `tmSingleLiveTenant` 
 single-membership rule, run over `src/launch/launch-landing-vectors.json`, which the server's
 landing test links too.
 
+## The HTTP layer
+
+Every request the app makes goes through `TmApi`, over `fetch`; an upload, the one call that
+reports its progress, goes over `XMLHttpRequest`. A route such as `centers/query` goes to the
+routed tenant's API (`/17/api/web/centers/query`), or to the tenant a call names; a route with a
+leading `/` is tenantless and sent as is. A tenant route with no tenant throws in development.
+
+- **Reads** take a signal and are retried: a network failure twice (1 s, then 3 s, ±25 %), a `429`
+  and a `503` with `Retry-After` twice after the wait it asks for (capped at 10 s and 30 s), and a
+  build mismatch blamed on the server once after 30 s. An abort ends a call or a wait at once. A
+  read of a route the Contracts chunk describes but does not list as idempotent throws in
+  development and runs once in production.
+- **Writes** are never aborted or retried, a write while the browser is offline is not sent, and
+  `writesInFlight` counts the unsettled ones.
+- **`download`** streams the body, reporting bytes; **`upload`** posts the raw file to
+  `/{t}/blobs/{kind}`; **`send`** is a keepalive `POST` of at most 16 KB whose answer is never read;
+  **`fingerprint`** names a route's contract fingerprint for drafts.
+- **Every call** carries `Tellma-Client`, `Accept-Language` and a fresh `traceparent`; tenant calls
+  add `Tellma-Calendar` and, for described routes, `Tellma-Contract`. Reads may add
+  `Tellma-Activity: background` and `Tellma-Priority: low`, writes `Tellma-Confirm`.
+- **Around every call** the profile cookie is checked before the send and again on the answer:
+  no session runs the expiry path and rejects `unauthenticated`; another user runs the
+  changed-user path and rejects `cancelled`, discarding the answer. A `401` for a session the
+  cookie no longer names ends nothing. While the tab signs out, only the sign-out write and
+  sends go out, and the reads in flight are aborted.
+- **A watchdog** ends a call that hangs for 60 s, or 6 min for a long route, as `offline`
+  (`outcome-unknown`); a download's watchdog restarts at each chunk.
+- **Every refusal** is a `TmApiError` whose `kind` says how the platform presents it, whose `code`
+  names the cause and whose `traceId` is the reference support quotes. A `412 client-outdated` or a
+  `404 route-not-found` is judged by comparing the server's `Tellma-Build` with the UI version by
+  SemVer precedence; when the builds do not say, the worker's update check decides, capped at 3 s.
+- **`online`** is false while the browser is offline or after a network failure; a visible tab then
+  probes `GET /health/live` every 5 s, backing off to 30 s, until any answer.
+
+`provideTellma` puts `tm-image`'s blob fetcher over the same layer, so an image request gets the
+user check, the session's headers and the caller's signal.
+
 ## Features and the merge rule
 
 A distribution's app is one `provideTellma` call: the emitted metadata loaders, the languages it
@@ -120,7 +157,14 @@ if (TmDecimals.compare(total, creditLimit) > 0) { … }
 `TmTelemetry` and `TmRequestLog` are abstract classes provided in root with quiet defaults that
 keep nothing and send nothing, and `provideTmPageScope()` returns no providers yet. Code records
 against them today; the observability features replace the defaults without changing a call
-site. Tests replace them through `@tellma/core-testing`.
+site. Tests replace them through `@tellma/core-testing`, which also puts `TmFakeApi` behind
+`TmApi`.
+
+The HTTP layer reaches three services that arrive later through internal seams in `src/api/`, each
+with a default that is correct until its owner replaces it: the request locale (the document's
+language and no calendar, until the localization service), the cache refresher (nothing cached, so
+nothing to revalidate), and the worker's update check (`disabled`, as no worker controls the
+page yet).
 
 ## Import rules
 

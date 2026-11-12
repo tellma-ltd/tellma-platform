@@ -57,6 +57,48 @@ export interface TmActionMetadata {
 }
 
 // @public
+export abstract class TmApi {
+    abstract download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
+    abstract fingerprint(route: string): Promise<string | null>;
+    abstract readonly online: Signal<boolean>;
+    abstract read<T>(route: string, body: unknown, options: TmReadOptions): Promise<T>;
+    abstract send(route: string, body: unknown, options?: TmSendOptions): void;
+    abstract upload(kind: string, file: Blob, options: TmUploadOptions): Promise<TmBlobDescriptor>;
+    abstract write<T>(route: string, body: unknown, options?: TmWriteOptions): Promise<T>;
+    abstract readonly writesInFlight: Signal<number>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmApi, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmApi>;
+}
+
+// @public
+export class TmApiError extends Error {
+    constructor(init: TmApiErrorInit);
+    readonly challenge: TmStepUpChallenge | null;
+    readonly code: string;
+    readonly kind: TmApiErrorKind;
+    readonly name = "TmApiError";
+    readonly problem: TmProblem | null;
+    readonly retryAfterMs: number | null;
+    readonly status: number;
+    readonly traceId: string;
+}
+
+// @public
+export interface TmApiErrorInit {
+    readonly challenge?: TmStepUpChallenge | null;
+    readonly code?: string;
+    readonly kind: TmApiErrorKind;
+    readonly message?: string;
+    readonly problem?: TmProblem | null;
+    readonly retryAfterMs?: number | null;
+    readonly status?: number;
+    readonly traceId?: string;
+}
+
+// @public
+export type TmApiErrorKind = 'cancelled' | 'offline' | 'unauthenticated' | 'step-up' | 'forbidden' | 'not-found' | 'tenant-not-found' | 'tenant-unavailable' | 'read-only' | 'validation' | 'query-invalid' | 'bad-request' | 'conflict' | 'confirmation' | 'limit' | 'client-outdated' | 'unavailable' | 'partial-failure' | 'server';
+
+// @public
 export interface TmAppConfig {
     readonly calendars?: readonly TmCalendarDefinition[];
     readonly features: readonly TmFeature[];
@@ -80,6 +122,18 @@ export interface TmAppDeclarations {
     readonly sections: readonly TmNavSection[];
     readonly settingsTabs: readonly TmSettingsTabDeclaration[];
     readonly widgets: readonly TmWidgetTypeDeclaration[];
+}
+
+// @public
+export interface TmBlobDescriptor {
+    readonly contentType: string;
+    readonly expiresAt?: string;
+    readonly fileName?: string;
+    readonly height?: number;
+    readonly id: number;
+    readonly kind: string;
+    readonly size: TmDecimal;
+    readonly width?: number;
 }
 
 // @public
@@ -319,6 +373,18 @@ export interface TmDistributionSupportInfo {
 export interface TmDistributionTelemetryInfo {
     readonly enabled: boolean;
     readonly sampleRate: number;
+}
+
+// @public
+export interface TmDownload {
+    readonly blob: Blob;
+    readonly contentType: string;
+    readonly fileName: string;
+}
+
+// @public
+export interface TmDownloadOptions extends TmReadOptions {
+    readonly onProgress?: (bytes: number) => void;
 }
 
 // @public
@@ -643,6 +709,19 @@ export type TmPageKind = 'home' | 'search' | 'details' | 'report' | 'studio' | '
 export function tmParseProfileCookie(cookies: string): TmProfile | null;
 
 // @public
+export type TmProblem = TmJsonObject & {
+    readonly code: string;
+    readonly instance: string;
+    readonly status: number;
+};
+
+// @public
+export type TmProblemError = TmJsonObject & {
+    readonly code: string;
+    readonly message: string;
+};
+
+// @public
 export interface TmProfile {
     readonly email: string;
     readonly locale: string | null;
@@ -676,6 +755,16 @@ export interface TmPropertyMetadata {
     readonly scale?: number;
     readonly type: TmDataType;
     readonly unique?: true;
+}
+
+// @public
+export interface TmReadOptions {
+    readonly background?: boolean;
+    readonly long?: boolean;
+    readonly method?: 'GET';
+    readonly priority?: 'low';
+    readonly signal: AbortSignal;
+    readonly tenantId?: number;
 }
 
 // @public
@@ -805,6 +894,11 @@ export interface TmSecurableOwnerMetadata {
 
 // @public
 export type TmSecurableRef = readonly [resource: string, action: string];
+
+// @public
+export interface TmSendOptions {
+    readonly background?: boolean;
+}
 
 // @public
 export class TmSession {
@@ -937,6 +1031,14 @@ export type TmTenantCategory = 'Live' | 'Sandbox';
 export type TmTenantState = 'Provisioning' | 'Active' | 'ReadOnly' | 'Frozen' | 'Suspended' | 'Retired';
 
 // @public
+export interface TmUploadOptions {
+    readonly fileName: string;
+    readonly onProgress?: (fraction: number) => void;
+    readonly signal: AbortSignal;
+    readonly tenantId?: number;
+}
+
+// @public
 export interface TmValueDescriptor {
     readonly array?: true;
     readonly enum?: string;
@@ -974,6 +1076,13 @@ export interface TmWidgetSize {
 export interface TmWidgetTypeDeclaration {
     readonly [member: string]: unknown;
     readonly key: string;
+}
+
+// @public
+export interface TmWriteOptions {
+    readonly confirmations?: readonly string[];
+    readonly long?: boolean;
+    readonly tenantId?: number;
 }
 
 ```
