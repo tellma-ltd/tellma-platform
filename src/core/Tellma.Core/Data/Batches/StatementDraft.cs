@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data.TableTypes;
@@ -151,6 +152,24 @@ namespace Tellma.Core.Data.Batches
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
                 throw;
             }
+        }
+
+        /// <summary>
+        ///     Binds a parameter a query compiled at the statement's ordinal names: an engine name,
+        ///     <c>@qx{ordinal}_…</c>.
+        /// </summary>
+        /// <param name="parameter">The parameter.</param>
+        /// <exception cref="ArgumentException">The name is not in the engine namespace of the statement's ordinal.</exception>
+        public void Engine(BatchParameter parameter)
+        {
+            ArgumentNullException.ThrowIfNull(parameter);
+            string prefix = string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.EnginePrefix}{Ordinal}_");
+            if (!parameter.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"The parameter '{parameter.Name}' is not in the engine namespace of statement {Ordinal} ({prefix}…).", nameof(parameter));
+            }
+
+            _parameters.Add(parameter);
         }
 
         /// <summary>Binds a parameter under a batch-wide reserved name (<c>@tm_…</c>).</summary>

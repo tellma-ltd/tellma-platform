@@ -448,9 +448,14 @@ namespace Tellma.Core.Queryex
             ///     The logical name of the foreign-key property on this entity. It must be declared
             ///     separately, like any other property, and must agree in type with the target's key.
             /// </param>
+            /// <param name="isOptional">
+            ///     Whether the target row may be missing although the foreign key holds a value, such
+            ///     as a one-to-one extension table keyed by this entity's own key. An optional step is
+            ///     joined as an outer join and makes every path through it nullable.
+            /// </param>
             /// <returns>This builder, for chaining.</returns>
             /// <exception cref="ArgumentException">A name is empty, malformed, or already taken.</exception>
-            public EntityBuilder Navigation(string name, string target, string foreignKey)
+            public EntityBuilder Navigation(string name, string target, string foreignKey, bool isOptional = false)
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(name);
                 ArgumentException.ThrowIfNullOrWhiteSpace(target);
@@ -458,7 +463,7 @@ namespace Tellma.Core.Queryex
                 ValidateLogicalName(name, nameof(name));
                 AddMemberName(name, nameof(name));
 
-                _navigations.Add(new PendingNavigation(new NavigationDescriptor(name), target, foreignKey));
+                _navigations.Add(new PendingNavigation(new NavigationDescriptor(name, isOptional), target, foreignKey));
                 return this;
             }
 

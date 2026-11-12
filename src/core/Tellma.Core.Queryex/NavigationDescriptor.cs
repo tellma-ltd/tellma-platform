@@ -17,9 +17,11 @@ namespace Tellma.Core.Queryex
     {
         /// <summary>Initializes the descriptor. Built through <see cref="QueryexSchemaBuilder" />.</summary>
         /// <param name="name">The logical navigation name.</param>
-        internal NavigationDescriptor(string name)
+        /// <param name="isOptional">Whether the target row may be missing although the foreign key is present.</param>
+        internal NavigationDescriptor(string name, bool isOptional)
         {
             Name = name;
+            IsOptional = isOptional;
         }
 
         /// <summary>The logical navigation name, as expression authors write it.</summary>
@@ -40,6 +42,20 @@ namespace Tellma.Core.Queryex
         ///     drives both the kind of join emitted and the nullity of any path through it.
         /// </summary>
         public PropertyDescriptor ForeignKey { get; internal set; } = null!;
+
+        /// <summary>
+        ///     Whether the target row may be missing even where <see cref="ForeignKey" /> holds a
+        ///     value, such as a one-to-one extension table keyed by the declaring entity's own key.
+        /// </summary>
+        /// <remarks>
+        ///     Such a step is joined as an optional one and makes every path through it nullable,
+        ///     exactly as a nullable foreign key does: an inner join would silently drop the rows
+        ///     that have no target.
+        /// </remarks>
+        public bool IsOptional { get; }
+
+        /// <summary>Whether the step may find no target row: its foreign key may be absent, or it is optional.</summary>
+        internal bool MayBeMissing => IsOptional || !ForeignKey.IsNotNull;
 
         /// <summary>Returns the logical name, for diagnostics and debugging.</summary>
         /// <returns>The logical navigation name.</returns>

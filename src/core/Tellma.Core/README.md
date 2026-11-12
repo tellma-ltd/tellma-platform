@@ -283,8 +283,33 @@ before it surfaces. A statement's reader stages its results on the cursor, so on
 counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
 `DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
 `tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
-statement compilers (queries, saves, updates, deletes, the version-tag cache) join the batch in
+remaining statement compilers (saves, updates, deletes, the version-tag cache) join the batch in
 later releases; until then those members throw `NotSupportedException`.
+
+### Queries
+
+The batch's query statements compile through the query language (`Tellma.Core.Queryex`) against
+the schema of the tenant's multilingual shape. `QueryexSchemaProvider` (also
+`IQueryexSchemaProvider`) builds one schema per shape from the entity metadata and the runtime
+model: every entity under its metadata name, each mapped scalar with its store type, references
+and parent keys as navigations, a sibling as an optional navigation on the owner's id (a left
+join), and a tree's node; JSON, period and platform-secret columns are withheld, and only the
+group twins the shape admits are properties. Its fingerprint digests the model.
+
+| Member | Statements |
+|---|---|
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys; a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it) follow. A grouped spec takes none of the three. |
+| `Count` | A capped count: a result of cap + 1 means more than the cap. |
+| `EvaluateConstant` | One row of path-free expressions. |
+| `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |
+| `Query<TEntity>` | Entities: the root query with the keys the materializer needs appended, each named child collection restricted to its parents' keys (captured once, or the caller's id restriction), grandchildren through their parents' captured keys, the ancestors of a tree, and the JSON columns only with `AllProperties`. Related entities dedupe by id, and each set's projection is the columns every instance carries. |
+
+Every query statement of a batch binds the same context values (today, now, the user, the time
+zone), read once per batch, and an identical statement composed in the same write epoch answers
+from the first. A refused compile throws `ArgumentException` naming the diagnostics and leaves the
+batch as it was. `IDisplayNames` renders an entity's display name from the columns it names under a
+shape, by the rule the browser renders with; both sides read the golden file
+`display-name-golden.json` of the client's core package.
 
 ## Tenancy
 

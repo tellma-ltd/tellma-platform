@@ -101,7 +101,7 @@ namespace Tellma.Core.Data.Batches
         /// <param name="fieldType">The reader's field type.</param>
         /// <param name="column">The column's schema.</param>
         /// <returns>The scale, or null.</returns>
-        private static int? ScaleOf(Type fieldType, DbColumn column)
+        internal static int? ScaleOf(Type fieldType, DbColumn column)
         {
             return fieldType == typeof(decimal) ? column.NumericScale
                 : IsInteger(fieldType) ? 0
@@ -111,7 +111,7 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Whether a field type is one of the integer types a result column reads as.</summary>
         /// <param name="fieldType">The reader's field type.</param>
         /// <returns>True for <c>int</c>, <c>bigint</c>, <c>smallint</c> and <c>tinyint</c>.</returns>
-        private static bool IsInteger(Type fieldType)
+        internal static bool IsInteger(Type fieldType)
         {
             return fieldType == typeof(int) || fieldType == typeof(long) || fieldType == typeof(short) || fieldType == typeof(byte);
         }
@@ -119,7 +119,7 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Whether a SQL type name is <c>hierarchyid</c>, which travels as its path string.</summary>
         /// <param name="dataType">The SQL type name.</param>
         /// <returns>True when it is.</returns>
-        private static bool IsHierarchyId(string dataType)
+        internal static bool IsHierarchyId(string dataType)
         {
             return dataType.EndsWith("hierarchyid", StringComparison.OrdinalIgnoreCase);
         }

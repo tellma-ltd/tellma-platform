@@ -5,6 +5,7 @@
 
 using Microsoft.Data.SqlClient;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
 
@@ -71,6 +72,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <inheritdoc />
         public QueryexContextValues Context => throw NoRequestContext(nameof(Context));
+
+        /// <inheritdoc />
+        public MultilingualShape Shape => throw NoRequestContext(nameof(Shape));
 
         /// <inheritdoc />
         public IDataBatch CreateBatch(BatchPurpose purpose)
@@ -141,7 +145,7 @@ namespace Tellma.Core.Data.Batches
         private static InvalidOperationException NoRequestContext(string member)
         {
             return new InvalidOperationException(
-                $"A tenant database opened outside a tenant scope has no request context, so it has no {member}. Its batches carry raw statements only.");
+                $"A tenant database opened outside a tenant scope has no request context, so it has no {member}. Its batches carry raw statements only, never a query statement.");
         }
     }
 }
