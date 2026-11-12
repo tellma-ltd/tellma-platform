@@ -359,6 +359,22 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-058 (orchestrator, 2026-11-12): PC-023 entry-point ceilings, and the shared core-ui primary
+- **Provisional ruling**, for Review 1 to confirm. Each new spec 0023 entry point takes its measured size plus about 0.1 KB, as in D-049:
+
+  | Entry point | Spec 0023 §1 | Measured | Ceiling |
+  |---|---|---|---|
+  | chip | 2 KB | 5.60 KB | 5.7 KB |
+  | toast | 4 KB | 5.28 KB | 5.4 KB |
+  | banner | 2 KB | 2.48 KB | 2.6 KB |
+  | busy-overlay | 1 KB | 2.37 KB | 2.5 KB |
+
+  The overshoot is mostly stylesheets (0.4 to 1.3 KB each) and duplicated Angular class metadata (0.17 to 0.49 KB each). If Review 1 finds avoidable code, the ceilings fall back.
+- **Core-ui primary ".".** PC-023 raises it from 8.48 to 8.58 KB of new strings, and PC-048 from 8.48 to 8.61 KB (D-057). Whichever of the two integrates second re-measures after the merge and sets the ceiling to measured + 0.1 KB. That should be about 8.8 KB; neither branch's own number (8.7 or 9) carries over.
+- **Banner buttons.** The banner uses its own 24 px buttons, because tmButton's smallest step is 30 px. Review 1 checks touch targets.
+- **Process note.** Agents that write logs or drafts into the shared session scratchpad overwrote one another's files. From now on, briefs say: write logs under `<slot>/.tmp` with unique names.
+- **Misalignment for Ahmad:** spec 0023 §1's budgets for chip, banner and busy-overlay are below the measured cost of their styles alone. §10's `{count}` placeholders become ICU `{count, number}`, and toast.more is a new key.
+
 ### D-057 (orchestrator, 2026-11-12): PC-048 budgets, and the ./grid re-split
 - **Situation.** PC-048 (spec 0010 §C.1–§C.3, §C.5–§C.7) took ./grid from 38.73 KB to 41.92 KB gzip, after 0.10 KB of savings. Spec 0010 §C.11 gives ./grid 42 KB for all of §C.1–§C.14. That leaves 0.08 KB for §C.4 and §C.14 (PC-051) and for §C.8 and §C.9 (PC-054). This is the third ./grid raise, which trips D-031's re-split clause.
 - **Ruling.**
@@ -366,7 +382,14 @@ Format, one entry per ruling:
   2. **No further ./grid raise without a re-split or real savings.** Fix item PC-F21 measures where ./grid's bytes go (source-map explorer or similar) and does one of two things: moves features to on-demand or secondary entry points, or takes honest savings, until §C.4, §C.8, §C.9 and §C.14 fit inside 42 KB. Spec §C.11 itself names loading the editable-only machinery on demand as the obvious cut. PC-051 and PC-054 do not start until PC-F21 is done.
   3. **The @tellma/core-ui primary entry goes from 8.5 KB to 9 KB** under D-031: 8.48 KB → 8.61 KB, all new spec'd strings.
   4. **Mod+Enter in TM_GRID_KEYS** (§C.1/§C.12) conflicts with spec 0027 §4.3, whose registry refuses modifier entries. The 0027 checkpoint rules on it; WATCHLIST ## 0027 has the lead.
+- **After PC-048's fix round (integrated 9007c81):**
+  - ./grid is exactly 42.00 KB (43,008 B), with no headroom.
+  - The core-ui primary "." measures 8.61 KB, with its ceiling at 8.71. PC-023 re-measures it after its own merge.
+  - R1-5 and R1-6 were pushed back to Ahmad. The row-activation hint stays on the scroller: moving it to the tab-stop cell would make NVDA and JAWS repeat it on every arrow key. The emphasis tint stays equal to the zebra stripe, per §C.6. It is a candidate to land with PC-F21's on-demand editing.
+  - The api:check golden's union order for `rowActivation` differs between a single-project build and the full build. CI uses the full-build order.
 - **Misalignments for Ahmad:**
+  - Spec 0010 §C.1: the row-activation hint is announced only from the scroller.
+  - Spec 0010 §C.6: the emphasis background is the same colour as the zebra stripe.
   - Spec 0010 §C.11 budgets ./grid at 42 KB for §C.1–§C.14, but §C.1–§C.3 and §C.5–§C.7 alone fill it.
   - Mod+Enter appears in both spec 0010 §C.1/§C.12 and spec 0027 §4.3's refusal rule.
 
