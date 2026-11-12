@@ -31,12 +31,10 @@ namespace Tellma.Testing.Entities
             ArgumentNullException.ThrowIfNull(contribution);
 
             // --- The stand-in core tables the fixture's foreign keys and the platform's statements name ---
+            // Core contributes the access tables and core.Blobs itself.
             _ = contribution
-                .Entity<FixtureUser>()
                 .Entity<FixtureJob>()
-                .Entity<FixtureBlob>()
-                .Model<FixtureVersionTagConfiguration>()
-                .Model<FixtureUserStampConfiguration>();
+                .Model<FixtureVersionTagConfiguration>();
 
             // --- The fixture schema; children come with their parents ---
             _ = contribution

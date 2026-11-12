@@ -52,7 +52,7 @@ namespace Tellma.Core.Tests.Data
         [Theory]
         [InlineData(typeof(WidgetKind), 8)]
         [InlineData(typeof(LongStatus), 29)]
-        [InlineData(typeof(Access), 19)]
+        [InlineData(typeof(AccessRights), 19)]
         public void Enum_lengths_take_the_longest_value_and_at_least_eight(Type enumType, int length)
         {
             // A flags combination is written "Read, Write, Delete" by the string conversion.
@@ -109,9 +109,11 @@ namespace Tellma.Core.Tests.Data
         public void The_audit_columns_of_the_user_table_reference_the_user_table_itself()
         {
             IEntityType users = model.Entity<MyTestUser>();
+            List<IForeignKey> audit = [.. users.GetForeignKeys()
+                .Where(static foreignKey => foreignKey.Properties[0].Name is nameof(MyTestUser.CreatedById) or nameof(MyTestUser.ModifiedById))];
 
-            Assert.All(users.GetForeignKeys(), foreignKey => Assert.Same(users, foreignKey.PrincipalEntityType));
-            Assert.Equal(["FK_Users_CreatedById", "FK_Users_ModifiedById"], users.GetForeignKeys().Select(static fk => fk.GetConstraintName()).Order());
+            Assert.All(audit, foreignKey => Assert.Same(users, foreignKey.PrincipalEntityType));
+            Assert.Equal(["FK_Users_CreatedById", "FK_Users_ModifiedById"], audit.Select(static fk => fk.GetConstraintName()).Order());
         }
 
         // --- Timestamps ---
@@ -500,17 +502,29 @@ namespace Tellma.Core.Tests.Data
         [Fact]
         public void No_key_is_generated_by_the_database()
         {
-            Assert.DoesNotContain("IDENTITY", model.Sql, StringComparison.Ordinal);
+            // The seed inserts guard IDENTITY_INSERT behind a catalog probe on every table; no column is an identity.
+            string[] ddl = [.. model.Sql.ReplaceLineEndings("\n").Split('\n')
+                .Where(static line => !line.Contains("IDENTITY_INSERT", StringComparison.Ordinal)
+                    && !line.Contains("[sys].[identity_columns]", StringComparison.Ordinal))];
+            Assert.DoesNotContain(ddl, static line => line.Contains("IDENTITY", StringComparison.Ordinal));
             Assert.Contains("CREATE SEQUENCE [fixture].[sq_Widgets] AS int START WITH 1000 INCREMENT BY 1 NO CYCLE;", model.Sql, StringComparison.Ordinal);
         }
 
         [Fact]
         public void Every_keyed_table_refuses_a_non_positive_id()
         {
+            // Every keyed table, beside any checks of its own; the access tables keyed otherwise have none.
             foreach (IEntityType entityType in model.DesignModel.GetEntityTypes().Where(static entityType => entityType.GetSchema() != "dbo"))
             {
-                ICheckConstraint check = Assert.Single(entityType.GetCheckConstraints());
-                Assert.Equal(($"CK_{entityType.GetTableName()}_Id", "[Id] > 0"), (check.Name, check.Sql));
+                if (entityType.FindPrimaryKey()!.Properties is [{ Name: "Id" }])
+                {
+                    ICheckConstraint check = Assert.Single(entityType.GetCheckConstraints(), static check => check.Name?.EndsWith("_Id", StringComparison.Ordinal) == true);
+                    Assert.Equal(($"CK_{entityType.GetTableName()}_Id", "[Id] > 0"), (check.Name, check.Sql));
+                }
+                else
+                {
+                    Assert.Empty(entityType.GetCheckConstraints());
+                }
             }
         }
 

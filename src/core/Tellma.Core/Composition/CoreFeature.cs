@@ -3,10 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Access;
+using Tellma.Core.Blobs;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
 using Tellma.Core.Localization;
@@ -62,6 +65,22 @@ namespace Tellma.Core.Composition
             _ = contribution
                 .Model<TellmaSchemaRowConfiguration>()
                 .Model<TellmaProvisioningRowConfiguration>();
+
+            // --- Access: users and roles with their children, each configuration closed over the leaf ---
+            // spec 0014 §1.2. The services of the two stacks join these lines when they land.
+            _ = contribution
+                .Entity<User>()
+                .Entity<Role>()
+                .Model(typeof(UserConfiguration<>))
+                .Model(typeof(RoleConfiguration<>))
+                .Model(typeof(RoleMembershipConfiguration<>))
+                .Model(typeof(PermissionConfiguration<>))
+                .Model<UserStampConfiguration>()
+                .Model<UserPreferenceConfiguration>()
+                .TableType<UserPreferenceList>();
+
+            // --- Blobs: the table every blob reference resolves to; never a stack ---
+            _ = contribution.Model<BlobConfiguration>();
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

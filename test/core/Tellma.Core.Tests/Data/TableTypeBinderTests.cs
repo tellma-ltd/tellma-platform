@@ -98,7 +98,7 @@ namespace Tellma.Core.Tests.Data
                 Kind = WidgetKind.Fancy,
                 OptionalKind = null,
                 Status = LongStatus.PendingConfirmationByTheOwner,
-                Access = Access.Read | Access.Write,
+                Access = AccessRights.Read | AccessRights.Write,
                 Name = "Gadget",
                 Subject = "subject-1",
                 Price = 12.5m,

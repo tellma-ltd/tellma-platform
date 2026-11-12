@@ -100,9 +100,21 @@ the startup gate validates.
   one (`UserConfiguration<TUser> where TUser : User`) closed over the leaf registered for its type
   parameter's constraint. `CoreFeature` contributes `dbo.__TellmaSchema` and
   `dbo.__TellmaProvisioning` this way; no module or distribution can contribute one.
+- **The access tables** (`Tellma.Core.Access`). `CoreFeature` contributes `User` and `Role` (whose
+  children `RoleMembership` and `Permission` follow), each configuration open over its leaf: the
+  stored `State` derived from the invitation and join evidence, the covering `UX_Users_Subject`
+  the connect prologue seeks, the kind and evidence checks, the membership window, the wildcard
+  and filter-version checks, and the seeds (the system user, the `Administrator` role, its wildcard
+  grant and the system user's membership in it, all in the reserved band below 1000). Beside them,
+  two tables that are never entities: `core.UserStamps` (one row per user, the per-user version
+  tags and inbox markers, deleted with the user; queryable read-only) and `core.UserPreferences`
+  (key and JSON value per user, deleted with the user), with the `UserPreferenceList` table type.
+- **`core.Blobs`** (`Tellma.Core.Blobs`), the table every `[BlobReference]` resolves to: never a
+  stack, its storage key and hash shadow columns, its audit reference to the user leaf, and the
+  sweep's, the storage key's and the staging quota's indexes.
 - **Standalone table types**: every `contribution.TableType<T>()` class, in `dbo` under its class
   name unless its `[TableType]` says otherwise. `CoreFeature` contributes `IdList`, `BigIdList`,
-  `GuidList`, `StringList`, `DateList`, `IdStampList` and `VersionTagList`.
+  `GuidList`, `StringList`, `DateList`, `IdStampList`, `VersionTagList` and `UserPreferenceList`.
 - **The platform collation** (`DatabaseCollations.Platform`) and named default constraints.
 
 Standalone types follow the entity rules: enums by name, timestamps `datetimeoffset(3)` unless
@@ -135,7 +147,7 @@ only where a convention or Core's configuration declares it, under the platform'
 | `CollationConvention` | `[Collation]` → the column's collation, which the row image copies |
 | `TableTypeConvention` | `[TableType]` → the extension's opt-in, granted to `tellma_app`; `[ExcludeFromTableType]` → the column's exclusion; standalone classes registered with their collations, exclusions and enums by name |
 | `TemporalConvention` | `[Temporal]` → system versioning, history `<schema>.<Table>History`, shadow `ValidFrom`/`ValidTo` left out of the table type; children follow their parent unless `[Temporal(false)]`; a table-per-type root or leaf fails |
-| `ChildConvention` | `[ParentKey]` → `FK_<Table>_<Column>` to the parent, no cascade, `IX_<Table>_<Column> INCLUDE (Id)` |
+| `ChildConvention` | `[ParentKey]` → `FK_<Table>_<Column>` to the parent, no cascade, `IX_<Table>_<Column> INCLUDE (Id)` unless a configuration declares an index that leads with the parent key, which then serves the parent's reads |
 | `ReferenceConvention` | `[References(typeof(T))]` → `FK_<Table>_<Column>` to the leaf registered for `T`, no cascade, `IX_<Table>_<Column>` |
 | `SiblingConvention` | `[Sibling]` → `FK_<Table>_Id` to the owner's leaf, `ON DELETE CASCADE` |
 | `TableIndexConvention` | `[TableIndex(…)]` → `IX_<Table>_<Columns>` in the declared order |
