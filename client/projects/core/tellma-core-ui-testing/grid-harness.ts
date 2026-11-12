@@ -19,6 +19,14 @@ export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
 /** How {@link TmGridHarness.commitEditor} commits the open session. */
 export type TmGridEditorCommitVia = 'enter' | 'tab';
 
+/** A grid's sort as its headers show it: the sorted column's key and direction. */
+export interface TmGridHarnessSort {
+  /** The sorted column's `key`. */
+  readonly key: string;
+  /** The sort direction. */
+  readonly direction: 'asc' | 'desc';
+}
+
 /** A cell address: view-space row index and data-column index (both 0-based). */
 export interface TmGridCellCoordinate {
   /** The view-space row index (the `data-row` attribute). */
@@ -213,8 +221,8 @@ export class TmGridHarness extends ComponentHarness {
 
   /**
    * The full ARIA column count (`aria-colcount`): the data columns plus the
-   * row-header column, and — on a `selectable` grid — the row-checkbox
-   * chrome column.
+   * row-header column (unless `rowHeaders` is off), and — on a `selectable`
+   * grid — the row-checkbox chrome column.
    */
   async getColCount(): Promise<number> {
     return Number(await (await this.gridElement()).getAttribute('aria-colcount'));
@@ -296,6 +304,49 @@ export class TmGridHarness extends ComponentHarness {
   async clickColumnHeader(colIndex: number): Promise<void> {
     await (await this.gridElement()).focus();
     await (await this.locatorFor(`[role="columnheader"][data-col="${colIndex}"]`)()).click();
+  }
+
+  /**
+   * Opens a row of a `rowActivation="row"` grid like a user: a press and
+   * release on the row's first data cell (the cell itself, never a link in
+   * it), which activates the row and emits `rowActivate`.
+   */
+  async activateRow(rowIndex: number): Promise<void> {
+    await this.clickCell(rowIndex, 0);
+    await this.forceStabilize();
+  }
+
+  /** The active cell's view-space row index, or `null` with no active cell. */
+  async getActiveRowIndex(): Promise<number | null> {
+    return (await this.getActiveCell())?.row ?? null;
+  }
+
+  /**
+   * Sorts by a sortable column like a user: clicks its header until the
+   * grid shows that column sorted in that direction (at most one cycle).
+   */
+  async sortBy(key: string, direction: 'asc' | 'desc' = 'asc'): Promise<void> {
+    const header = await this.locatorFor(`[role="columnheader"][data-key="${key}"]`)();
+    for (let click = 0; click < 3; click++) {
+      const sort = await this.getSort();
+      if (sort?.key === key && sort.direction === direction) {
+        return;
+      }
+      await header.click();
+      await this.forceStabilize();
+    }
+    throw new Error(`TmGridHarness: the column "${key}" did not sort ${direction}.`);
+  }
+
+  /** The sort the headers show (`aria-sort`), or `null` when no column is sorted. */
+  async getSort(): Promise<TmGridHarnessSort | null> {
+    const sorted = await this.locatorForOptional('[role="columnheader"][aria-sort]')();
+    if (sorted === null) {
+      return null;
+    }
+    const key = (await sorted.getAttribute('data-key')) ?? '';
+    const ariaSort = await sorted.getAttribute('aria-sort');
+    return { key, direction: ariaSort === 'descending' ? 'desc' : 'asc' };
   }
 
   /** Clicks the select-all corner. */

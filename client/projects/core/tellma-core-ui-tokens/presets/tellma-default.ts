@@ -632,6 +632,9 @@ export const tmTokensDefault: TmTokens = {
       errorBorder: '{status.error.border}',
       readonlyBg: '{field.bgFilled}',
       zebraBg: '{surface.subtle}',
+      // The active row of a list that opens rows: the selected-surface tint
+      // under a 2px accent bar, distinct from the zebra stripe it replaces.
+      activeRowBg: '{surface.selected}',
       cutBorder: '{action.primary}',
       findMatchBg: '{status.warning.bg}',
       findActiveOutline: '{status.warning.fg}',

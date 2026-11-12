@@ -28,19 +28,17 @@ import {
   TmGrid,
   TmGridColumn,
   TmGridDisplayDef,
+  TmGridDriver,
   TmGridEmptyDef,
   TmGridLoadingDef,
+  type TmGridRowActivation,
+  type TmGridSort,
 } from '@tellma/core-ui/grid';
 import { TmIcon, provideTellmaIcons } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmKbd } from '@tellma/core-ui/kbd';
-import {
-  TmContextMenuTrigger,
-  TmMenu,
-  TmMenuHeaderDef,
-  TmMenuTrigger,
-} from '@tellma/core-ui/menu';
+import { TmContextMenuTrigger, TmMenu, TmMenuHeaderDef, TmMenuTrigger } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
@@ -156,6 +154,7 @@ class ExamplePage {}
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
+    TmGridDriver,
     TmGridEmptyDef,
     TmGridLoadingDef,
     TmIcon,
@@ -209,7 +208,9 @@ class ExamplePage {}
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
     <tm-multi-select aria-label="placeholder">
-      <tm-option-group label="placeholder"><tm-option [value]="0">placeholder</tm-option></tm-option-group>
+      <tm-option-group label="placeholder"
+        ><tm-option [value]="0">placeholder</tm-option></tm-option-group
+      >
     </tm-multi-select>
     <tm-spinner />
     <tm-badge>placeholder</tm-badge>
@@ -242,7 +243,14 @@ class ExamplePage {}
       <ng-template tmPopoverContent>placeholder</ng-template>
     </tm-popover>
     <span tmTooltip="placeholder">placeholder</span>
-    <tm-grid gridId="placeholder-grid" [data]="rows" [rowId]="rowId" style="block-size: 120px">
+    <input [tmGridDriver]="placeholderGrid" aria-label="placeholder" />
+    <tm-grid
+      #placeholderGrid
+      gridId="placeholder-grid"
+      [data]="rows"
+      [rowId]="rowId"
+      style="block-size: 120px"
+    >
       <tm-grid-column key="name" header="placeholder">
         <span *tmGridDisplay="let value">{{ value }}</span>
       </tm-grid-column>
@@ -322,6 +330,15 @@ class ExampleHost {
     active: false,
     status: 'Draft',
   });
+
+  // The search-page example's members: the two-way checked set, active row
+  // and sort, the row-open handler and a row-class function.
+  protected readonly selected = signal<ReadonlySet<string | number>>(new Set());
+  protected readonly active = signal<string | number | null>(null);
+  protected readonly order = signal<TmGridSort | null>(null);
+  protected readonly onRow = (activation: TmGridRowActivation<ExampleRow>): void => void activation;
+  protected readonly byStatus = (row: ExampleRow): string | null =>
+    row.active ? null : 'tm-grid__row--muted';
 }
 
 /** The example templates' grids — flat and tree — read off the debug tree. */
@@ -412,8 +429,7 @@ const MARKERS: {
       fixture.debugElement
         .queryAll(By.directive(TmMenu))
         .some(
-          (el) =>
-            (el.componentInstance as unknown as { header(): unknown }).header() !== undefined,
+          (el) => (el.componentInstance as unknown as { header(): unknown }).header() !== undefined,
         ),
   },
   {
@@ -425,8 +441,7 @@ const MARKERS: {
   {
     name: 'TmFilePicker',
     pattern: /\btmFilePicker\b/,
-    instantiated: (fixture) =>
-      fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
   },
   {
     // The placeholder ng-template is unprojected content of tm-image (the
@@ -503,6 +518,22 @@ const MARKERS: {
     name: 'loading',
     pattern: /\bloading\b/,
     instantiated: (fixture) => grids(fixture).some((grid) => grid.loading()),
+  },
+  {
+    name: 'TmGridDriver',
+    pattern: /\btmGridDriver\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmGridDriver)).length > 0,
+  },
+  {
+    name: 'rowActivation',
+    pattern: /\browActivation\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.rowActivation() === 'row'),
+  },
+  {
+    name: 'sortable',
+    pattern: /\bsortable\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.columns().some((column) => column.sortable())),
   },
   {
     name: 'hierarchy',

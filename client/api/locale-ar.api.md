@@ -74,6 +74,7 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly newRow: "صف جديد";
         readonly selectAll: "تحديد كل الصفوف";
         readonly selectRow: "تحديد الصف";
+        readonly rowActivationHint: "{gender, select, female {اضغطي} other {اضغط}} Enter لفتح صف. {gender, select, female {اضغطي} other {اضغط}} F2 للوصول إلى رابط في خلية.";
         readonly menu: {
             readonly cut: "{gender, select, female {قصي} other {قص}}";
             readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
@@ -119,6 +120,9 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly lazyLoadFailed: "تعذر تحميل الصفوف الفرعية";
             readonly errorJump: "الخطأ {index, number} من {count, number}";
             readonly checkedCount: "تم تحديد {selected, number} من {total, number}";
+            readonly checkedCountAcross: "تم تحديد {onPage, number} من {total, number} هنا، و{selected, number} في المجموع";
+            readonly sorted: "تم الفرز حسب {column}، {direction, select, asc {تصاعديا} other {تنازليا}}";
+            readonly sortCleared: "تم إلغاء الفرز";
             readonly loaded: "{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}";
             readonly loading: "جار التحميل";
         };
@@ -154,9 +158,10 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly checkRow: "تحديد خانة اختيار الصف أو إلغاء تحديدها";
             readonly checkAll: "تحديد خانات اختيار كل الصفوف أو إلغاء تحديدها";
             readonly tab: "الانتقال إلى الخلية التالية أو السابقة";
-            readonly enter: "تحرير الخلية أو الانتقال لأسفل";
+            readonly enter: "فتح الصف، أو تحرير الخلية، أو الانتقال لأسفل";
+            readonly openRowNewTab: "فتح الصف في علامة تبويب جديدة";
             readonly moveUp: "الانتقال لأعلى";
-            readonly edit: "تحرير الخلية";
+            readonly edit: "تحرير الخلية، أو الوصول إلى الرابط فيها";
             readonly openDropdown: "فتح القائمة المنسدلة للخلية";
             readonly clear: "مسح الخلايا المحددة";
             readonly escape: "إلغاء القص أو النسخ، أو مغادرة الجدول";

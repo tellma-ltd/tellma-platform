@@ -124,6 +124,7 @@ export const TM_UI_STRINGS_EN: {
         readonly newRow: "New row";
         readonly selectAll: "Select all rows";
         readonly selectRow: "Select row";
+        readonly rowActivationHint: "Press Enter to open a row. Press F2 to reach a link in a cell.";
         readonly menu: {
             readonly cut: "Cut";
             readonly copy: "Copy";
@@ -169,6 +170,9 @@ export const TM_UI_STRINGS_EN: {
             readonly lazyLoadFailed: "Could not load child rows";
             readonly errorJump: "Error {index, number} of {count, number}";
             readonly checkedCount: "{selected, number} of {total, number} selected";
+            readonly checkedCountAcross: "{onPage, number} of {total, number} selected here, {selected, number} in all";
+            readonly sorted: "Sorted by {column}, {direction, select, asc {ascending} other {descending}}";
+            readonly sortCleared: "Sort cleared";
             readonly loaded: "{count, plural, =0 {No records} one {1 record} other {# records}} loaded";
             readonly loading: "Loading";
         };
@@ -204,9 +208,10 @@ export const TM_UI_STRINGS_EN: {
             readonly checkRow: "Check or uncheck the row";
             readonly checkAll: "Check or uncheck all rows";
             readonly tab: "Move to the next or previous cell";
-            readonly enter: "Edit the cell or move down";
+            readonly enter: "Open the row, edit the cell, or move down";
+            readonly openRowNewTab: "Open the row in a new tab";
             readonly moveUp: "Move up";
-            readonly edit: "Edit the cell";
+            readonly edit: "Edit the cell, or reach the link in it";
             readonly openDropdown: "Open the cell’s dropdown";
             readonly clear: "Clear the selected cells";
             readonly escape: "Cancel the cut or copy, or leave the grid";

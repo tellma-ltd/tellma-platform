@@ -25,7 +25,7 @@ export class TmChip {
     focus(): void;
     readonly href: _angular_core.InputSignal<string | null>;
     readonly icon: _angular_core.InputSignal<string | undefined>;
-    protected readonly kind: _angular_core.Signal<"button" | "link" | "text">;
+    protected readonly kind: _angular_core.Signal<"link" | "button" | "text">;
     readonly label: _angular_core.InputSignal<string>;
     protected onKeydown(event: KeyboardEvent): void;
     readonly removable: _angular_core.InputSignalWithTransform<boolean, unknown>;

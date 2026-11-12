@@ -131,3 +131,27 @@ export const SelectableSearchableListScreen = {
     </tm-grid>
   `,
 };
+
+/**
+ * The search-page shape: `rowActivation="row"` opens a row on a click, a
+ * tap or Enter (`rowActivate` reports the row and whether to open a new
+ * tab), and the search field's `tmGridDriver` moves and opens the active
+ * row while focus stays in the field. Sortable headers edit the two-way
+ * `orderBy` and the consumer orders its rows; `rowClass` styles rows through
+ * the shipped `tm-grid__row--muted` and `tm-grid__row--emphasis` modifiers,
+ * and `[rowHeaders]="false"` drops the row numbers. `selected`, `active`,
+ * `order` (signals), `onRow` and `byStatus` are members of the consuming
+ * component.
+ */
+export const SearchPage = {
+  template: `
+    <input tmInput type="search" aria-label="Search customers" [tmGridDriver]="grid" />
+    <tm-grid #grid gridId="search.customers" [data]="rows" [rowId]="rowId" rowActivation="row"
+             [rowHeaders]="false" [rowClass]="byStatus" selectable [(selectedIds)]="selected"
+             [(activeRowId)]="active" [(orderBy)]="order" (rowActivate)="onRow($event)"
+             style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" sortable />
+      <tm-grid-column key="qty" type="number" header="Orders" [width]="100" sortable />
+    </tm-grid>
+  `,
+};

@@ -16,6 +16,7 @@ import {
   input,
   isDevMode,
   model,
+  output,
   signal,
   type Signal,
 } from '@angular/core';
@@ -36,8 +37,10 @@ import type { TmMenuItem } from '@tellma/core-ui/menu';
 import { ɵTmGridCore, type ɵTmGridTreeConfig } from './internal/grid-core';
 import { TmGridColumn } from './tm-grid-column';
 import { TM_GRID_CONTEXT } from './tm-grid-context';
+import type { TmGridDriverTarget } from './tm-grid-driver';
 import { TmGridEmptyDef, TmGridLoadingDef } from './tm-grid-templates';
 import { TmGridStateStore } from './tm-grid-state-store';
+import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
 
 /**
  * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
@@ -51,7 +54,7 @@ import { TmGridStateStore } from './tm-grid-state-store';
  * @sealed
  */
 @Directive()
-export abstract class TmGridBase<T> {
+export abstract class TmGridBase<T> implements TmGridDriverTarget {
   private readonly sizeDefaults = inject(TM_FORM_FIELD_DEFAULTS);
 
   /**
@@ -107,13 +110,58 @@ export abstract class TmGridBase<T> {
    * agree about how dense the app is.
    */
   readonly size = input<TmControlSize>(this.sizeDefaults.size);
+  /**
+   * `'row'` makes a readonly list open records: a click anywhere in a row,
+   * Enter on it, a middle click or a touch tap emits `rowActivate` (Mod or
+   * the middle button asking for a new tab), while drags, Shift+click and
+   * links in cells keep their meanings. F2 reaches a cell's link or
+   * button. Readonly grids only — `'row'` on an editable grid is a
+   * dev-mode error. `'none'` keeps every other behavior unchanged.
+   */
+  readonly rowActivation = input<'none' | 'row'>('none');
+  /**
+   * Classes for a rendered row's element, from a pure function of the row
+   * (it runs for the rendered window only). A class styles the row through
+   * the custom properties its cells read — `--tm-grid-row-bg`,
+   * `--tm-grid-row-ink` and `--tm-grid-row-weight` — and the shipped
+   * `tm-grid__row--muted` and `tm-grid__row--emphasis` modifiers cover a
+   * de-emphasized row and a totals row. Selection, checked and active
+   * states paint over them.
+   */
+  readonly rowClass = input<((row: T) => string | readonly string[] | null) | undefined>(undefined);
+  /**
+   * Whether the row-number column (and the corner above it) renders. A
+   * list without row numbers keeps the selections they offered by pointer
+   * through Mod+A and Shift+Space.
+   */
+  readonly rowHeaders = input(true, { transform: booleanAttribute });
 
   /**
    * The checked row ids of a `selectable` grid. Fully independent of
    * cell-range selection: bulk actions read from it, ranges drive copy.
-   * Every change lands as a FRESH `ReadonlySet` instance.
+   * Every change lands as a FRESH `ReadonlySet` instance. Ids of rows no
+   * longer bound (another page of results) stay checked: the select-all
+   * checkbox adds or removes only the bound rows' ids.
    */
   readonly selectedIds = model<ReadonlySet<string | number>>(new Set());
+  /**
+   * The active cell's row, two-way. The grid writes every change of the
+   * active row (a click, an arrow, a data change); a consumer write moves
+   * the active cell to that row — in the current column, else the first —
+   * and scrolls it into view without moving focus. An id the grid does not
+   * hold is ignored, and the model is written back with the actual row
+   * (`null` with none).
+   */
+  readonly activeRowId = model<TmRowId | null>(null);
+  /**
+   * The sorted column, two-way, set by clicks on `sortable` column
+   * headers. The grid shows the sort and never reorders the rows: the
+   * consumer sorts the data it binds.
+   */
+  readonly orderBy = model<TmGridSort | null>(null);
+
+  /** Emits when the user opens a row of a `rowActivation="row"` grid, or `activateRow` is called. */
+  readonly rowActivate = output<TmGridRowActivation<T>>();
 
   /** The projected column definitions, in display order. */
   readonly columns = contentChildren(TmGridColumn);
@@ -133,6 +181,15 @@ export abstract class TmGridBase<T> {
   readonly errorCount: Signal<number>;
   /** Count of cells awaiting async paste resolutions. */
   readonly pendingCount: Signal<number>;
+  /** The scroll container's element id — what a driver's `aria-controls` names. */
+  readonly controlsId: Signal<string>;
+  /**
+   * The active row element's id — what a driver's `aria-activedescendant`
+   * names; `null` with no active row.
+   */
+  readonly activeDescendantId: Signal<string | null>;
+  /** The visible row count: how far PageDown and PageUp move. */
+  readonly pageStep: Signal<number>;
 
   constructor() {
     const elementRef = inject(ElementRef) as ElementRef<HTMLElement>;
@@ -176,6 +233,12 @@ export abstract class TmGridBase<T> {
       searchable: this.searchable,
       selectable: this.selectable,
       selectedIds: this.selectedIds,
+      rowActivation: this.rowActivation,
+      rowClass: this.rowClass,
+      rowHeaders: this.rowHeaders,
+      activeRowId: this.activeRowId,
+      orderBy: this.orderBy,
+      rowActivate: (activation) => this.rowActivate.emit(activation),
       size: this.size,
       extraMenuItems: this.extraMenuItems,
       // The query token is the generic directive class, so the query signal
@@ -187,6 +250,9 @@ export abstract class TmGridBase<T> {
     });
     this.errorCount = this.core.errorCount;
     this.pendingCount = this.core.pendingCount;
+    this.controlsId = signal(this.core.scrollerId).asReadonly();
+    this.activeDescendantId = this.core.activeDescendantId;
+    this.pageStep = this.core.pageSize;
 
     if (isDevMode()) {
       // Exactly one of data/field must be bound — a configuration error,
@@ -210,6 +276,23 @@ export abstract class TmGridBase<T> {
             'tm-grid: [selectable] requires a readonly grid — bind [data], ' +
               'or keep [readonly] on while the [field] binding is selectable.',
           );
+        }
+      });
+      // Row activation opens records from a LIST; an editable grid's click
+      // and Enter belong to editing.
+      effect(() => {
+        if (this.rowActivation() === 'row' && this.field() !== undefined && !this.readonly()) {
+          throw new Error('tm-grid: rowActivation="row" requires a readonly grid.');
+        }
+      });
+      // A sort names its column by key, so a sortable column needs one.
+      effect(() => {
+        const columns = this.columns();
+        const unkeyed = columns.findIndex((column) => column.sortable() && !column.key());
+        if (unkeyed >= 0) {
+          // A template-drawn header has no text: name the column by position.
+          const name = columns[unkeyed].header() || `#${unkeyed + 1}`;
+          throw new Error(`tm-grid: the sortable column "${name}" has no key.`);
         }
       });
     }
@@ -245,5 +328,27 @@ export abstract class TmGridBase<T> {
   /** Focuses the grid: the active cell when one exists, else the container. */
   focus(): void {
     this.core.focus();
+  }
+
+  /**
+   * Moves the active row by a count, or to the first or last row: clamped,
+   * never wrapping, keeping the active column. With no active row, a move
+   * starts at the first row. Scrolls the row into view without moving
+   * focus.
+   */
+  moveActiveRow(by: number | 'first' | 'last'): void {
+    this.core.moveActiveRow(by);
+  }
+
+  /**
+   * Opens a row — the active one when no id is given — emitting
+   * `rowActivate` as a keyboard activation. Returns `false` when the grid
+   * holds no such row. A second activation of the same row within 400 ms is
+   * ignored (still returning `true`), so a quick double activation opens
+   * once; a held Enter in the grid or a driver opens once however long it
+   * repeats.
+   */
+  activateRow(rowId?: TmRowId, options?: { newTab?: boolean }): boolean {
+    return this.core.activateRow(rowId, 'keyboard', options?.newTab === true);
   }
 }

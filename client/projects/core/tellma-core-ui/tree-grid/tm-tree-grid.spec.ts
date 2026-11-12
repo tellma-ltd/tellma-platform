@@ -290,9 +290,8 @@ describe('tm-tree-grid', () => {
     collapsed.componentInstance.gridId.set('spec-tree-depth0');
     collapsed.componentInstance.depth.set(0);
     await stable(collapsed);
-    const collapsedGrid = await TestbedHarnessEnvironment.loader(collapsed).getHarness(
-      TmTreeGridHarness,
-    );
+    const collapsedGrid =
+      await TestbedHarnessEnvironment.loader(collapsed).getHarness(TmTreeGridHarness);
     expect(await collapsedGrid.getVisibleRowCount()).toBe(3); // roots only
     expect(await collapsedGrid.isExpanded(0)).toBe(false);
     collapsed.destroy();
@@ -301,9 +300,8 @@ describe('tm-tree-grid', () => {
     shallow.componentInstance.gridId.set('spec-tree-depth1');
     shallow.componentInstance.depth.set(1);
     await stable(shallow);
-    const shallowGrid = await TestbedHarnessEnvironment.loader(shallow).getHarness(
-      TmTreeGridHarness,
-    );
+    const shallowGrid =
+      await TestbedHarnessEnvironment.loader(shallow).getHarness(TmTreeGridHarness);
     // Roots expanded, deeper levels collapsed: 1, 2, 3, 5, 6 (4 hidden).
     expect(await shallowGrid.getVisibleRowCount()).toBe(5);
     expect(await shallowGrid.isExpanded(0)).toBe(true);
@@ -357,5 +355,61 @@ describe('tm-tree-grid', () => {
     await stable(fixture);
     const duplicate = TestBed.createComponent(DataHost);
     expect(() => duplicate.detectChanges()).toThrowError(/already live/);
+  });
+});
+
+/** A collapsed tree list with a two-way active row, row classes and no row numbers. */
+@Component({
+  imports: [TmTreeGrid, TmGridColumn],
+  template: `
+    <tm-tree-grid
+      gridId="spec-tree-list"
+      [data]="rows"
+      [rowId]="rowId"
+      [parentId]="parentId"
+      [defaultExpandedDepth]="0"
+      rowActivation="row"
+      [rowHeaders]="false"
+      [rowClass]="rowClass"
+      [(activeRowId)]="active"
+      style="block-size: 300px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="200" />
+    </tm-tree-grid>
+  `,
+})
+class ListTreeHost {
+  readonly rows = makeNodes();
+  readonly active = signal<number | string | null>(null);
+  readonly rowId = (row: Node): number => row.id;
+  readonly parentId = (row: Node): number | null => row.parentId;
+  readonly rowClass = (row: Node): string | null =>
+    row.parentId === null ? 'tm-grid__row--muted' : null;
+}
+
+describe('tm-tree-grid list-page members', () => {
+  it('expands the ancestors of a consumer-written active row and activates it', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(ListTreeHost);
+    await stable(fixture);
+    const grid = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmTreeGridHarness);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    // Collapsed to the roots; no row numbers, and the roots carry the class.
+    expect(await grid.getVisibleRowCount()).toBe(3);
+    expect(scroller.querySelector('[data-tm-rowhdr]')).toBeNull();
+    expect(scroller.querySelector('.tm-grid__row')!.classList).toContain('tm-grid__row--muted');
+
+    // A grandchild under two collapsed ancestors: both expand, and it is active.
+    fixture.componentInstance.active.set(4);
+    await stable(fixture);
+    expect(await grid.getVisibleRowCount()).toBe(6);
+    expect(await grid.getActiveRowIndex()).toBe(2);
+    expect(await grid.getCellText(2, 0)).toBe('Grand A1a');
+    expect(fixture.componentInstance.active()).toBe(4);
+    expect(scroller.querySelector('.tm-grid__row--active')!.getAttribute('aria-rowindex')).toBe(
+      '4',
+    );
   });
 });

@@ -10,12 +10,12 @@ export interface TmLongPressOptions {
   /** Movement tolerance before the press cancels. Defaults to 8px. */
   readonly slopPx?: number;
   /**
-   * Consulted when a press starts (and again when its timer elapses). While
-   * it returns `false` the press starts no timer and arms no suppression, so
-   * the platform's own long-press behavior is left intact. Defaults to
-   * always-enabled.
+   * Consulted with the press's `pointerdown` when it starts (and again when
+   * its timer elapses). While it returns `false` the press starts no timer
+   * and arms no suppression, so the platform's own long-press behavior — a
+   * link's menu, say — is left intact. Defaults to always-enabled.
    */
-  readonly enabled?: () => boolean;
+  readonly enabled?: (press: PointerEvent) => boolean;
 }
 
 /**
@@ -46,6 +46,8 @@ export function tmObserveLongPress(
   let startX = 0;
   let startY = 0;
   let pointerId: number | null = null;
+  /** The pointerdown of the press being timed, re-checked when its timer elapses. */
+  let press: PointerEvent | null = null;
   /** Armed between a fired press and the single trailing event it spawns. */
   let suppressArmed = false;
   /** The node the firing press landed on; the trailing burst targets it, its subtree, or an ancestor. */
@@ -57,6 +59,7 @@ export function tmObserveLongPress(
     clearTimeout(timer);
     timer = undefined;
     pointerId = null;
+    press = null;
   };
 
   const disarm = (): void => {
@@ -67,7 +70,7 @@ export function tmObserveLongPress(
   };
 
   const onPointerDown = (event: PointerEvent): void => {
-    if (event.pointerType === 'mouse' || !event.isPrimary || !enabled()) {
+    if (event.pointerType === 'mouse' || !event.isPrimary || !enabled(event)) {
       return;
     }
     // A fresh press with a (reused) pointer id starts a NEW gesture — the
@@ -80,10 +83,11 @@ export function tmObserveLongPress(
     startX = event.clientX;
     startY = event.clientY;
     pointerId = event.pointerId;
+    press = event;
     pressedTarget = event.target instanceof Node ? event.target : element;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (pointerId === null || !enabled()) {
+      if (pointerId === null || press === null || !enabled(press)) {
         cancel();
         return;
       }

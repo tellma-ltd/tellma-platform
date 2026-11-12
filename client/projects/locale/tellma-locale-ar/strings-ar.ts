@@ -18,6 +18,7 @@ const enter = '{gender, select, female {أدخلي} other {أدخل}}';
 /** Grid imperatives reused across several strings, same {gender} pattern. */
 const copyVerb = '{gender, select, female {انسخي} other {انسخ}}';
 const insertVerb = '{gender, select, female {أدرجي} other {أدرج}}';
+const pressVerb = '{gender, select, female {اضغطي} other {اضغط}}';
 
 /**
  * Counted rows with full Arabic plural categories. `rowsObject` is the
@@ -103,6 +104,7 @@ export const TM_LOCALE_AR_STRINGS = {
     newRow: 'صف جديد',
     selectAll: 'تحديد كل الصفوف',
     selectRow: 'تحديد الصف',
+    rowActivationHint: `${pressVerb} Enter لفتح صف. ${pressVerb} F2 للوصول إلى رابط في خلية.`,
     menu: {
       cut: '{gender, select, female {قصي} other {قص}}',
       copy: copyVerb,
@@ -153,6 +155,10 @@ export const TM_LOCALE_AR_STRINGS = {
       lazyLoadFailed: 'تعذر تحميل الصفوف الفرعية',
       errorJump: 'الخطأ {index, number} من {count, number}',
       checkedCount: 'تم تحديد {selected, number} من {total, number}',
+      checkedCountAcross:
+        'تم تحديد {onPage, number} من {total, number} هنا، و{selected, number} في المجموع',
+      sorted: 'تم الفرز حسب {column}، {direction, select, asc {تصاعديا} other {تنازليا}}',
+      sortCleared: 'تم إلغاء الفرز',
       loaded:
         '{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}',
       loading: 'جار التحميل',
@@ -192,9 +198,10 @@ export const TM_LOCALE_AR_STRINGS = {
       checkRow: 'تحديد خانة اختيار الصف أو إلغاء تحديدها',
       checkAll: 'تحديد خانات اختيار كل الصفوف أو إلغاء تحديدها',
       tab: 'الانتقال إلى الخلية التالية أو السابقة',
-      enter: 'تحرير الخلية أو الانتقال لأسفل',
+      enter: 'فتح الصف، أو تحرير الخلية، أو الانتقال لأسفل',
+      openRowNewTab: 'فتح الصف في علامة تبويب جديدة',
       moveUp: 'الانتقال لأعلى',
-      edit: 'تحرير الخلية',
+      edit: 'تحرير الخلية، أو الوصول إلى الرابط فيها',
       openDropdown: 'فتح القائمة المنسدلة للخلية',
       clear: 'مسح الخلايا المحددة',
       escape: 'إلغاء القص أو النسخ، أو مغادرة الجدول',
