@@ -4,14 +4,24 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Component, computed, inject, input, signal } from '@angular/core';
+import { CircleCheckBig, CircleX, Info, TriangleAlert } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 
 /** The severity of a {@link TmAlert}. */
 export type TmAlertKind = 'info' | 'success' | 'warning' | 'error';
 
 /** How a {@link TmAlert} announces itself to assistive technology. */
 export type TmAlertLive = 'off' | 'polite' | 'assertive';
+
+/** The glyph of each kind, drawn through tm-icon. */
+const KIND_GLYPHS = {
+  info: Info,
+  success: CircleCheckBig,
+  warning: TriangleAlert,
+  error: CircleX,
+} as const;
 
 /**
  * Page- and section-level status message: a static kind glyph plus
@@ -41,44 +51,14 @@ export type TmAlertLive = 'off' | 'polite' | 'assertive';
  */
 @Component({
   selector: 'tm-alert',
+  imports: [TmIcon],
   template: `
     <!-- The glyph is chosen by MEANING, not by tone alone. Circle-x marks
          something that failed or was refused with nothing to correct in
          place; the caution triangle marks a decision the reader has not
          made yet. A field error, which can be fixed where it stands, uses
          circle-! instead and lives in tm-form-field. -->
-    <svg
-      class="tm-alert__icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.75"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      @switch (kind()) {
-        @case ('info') {
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 16v-4" />
-          <path d="M12 8h.01" />
-        }
-        @case ('success') {
-          <path d="M21.801 10A10 10 0 1 1 17 3.335" />
-          <path d="m9 11 3 3L22 4" />
-        }
-        @case ('warning') {
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-          <path d="M12 9v4" />
-          <path d="M12 17h.01" />
-        }
-        @case ('error') {
-          <circle cx="12" cy="12" r="10" />
-          <path d="m15 9-6 6" />
-          <path d="m9 9 6 6" />
-        }
-      }
-    </svg>
+    <tm-icon class="tm-alert__icon" [svg]="icon()" />
     <div class="tm-alert__content" [attr.role]="role()">
       @if (revealed() || live() === 'off') {
         <span class="tm-alert__sr-kind">{{ kindPrefix() }}</span>
@@ -125,6 +105,9 @@ export class TmAlert {
   protected readonly role = computed(() =>
     this.live() === 'polite' ? 'status' : this.live() === 'assertive' ? 'alert' : null,
   );
+
+  /** The kind's glyph data. */
+  protected readonly icon = computed(() => KIND_GLYPHS[this.kind()]);
 
   /** The localized visually-hidden kind prefix ("Error:", …). */
   protected readonly kindPrefix = computed(() => this.translate(`alert.${this.kind()}`)());

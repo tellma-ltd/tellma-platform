@@ -44,9 +44,8 @@
 }
 
 .tm-alert__icon {
-  flex: none;
-  inline-size: var(--alert-icon-size);
-  block-size: var(--alert-icon-size);
+  /* A tm-icon, sized by the alert's icon token. */
+  --icon-size: var(--alert-icon-size);
   /* Optically center the glyph on the first text line. */
   margin-block-start: calc((1lh - var(--alert-icon-size)) / 2);
 }

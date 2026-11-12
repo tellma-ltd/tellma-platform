@@ -7,6 +7,7 @@ import {
   booleanAttribute,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -18,8 +19,10 @@ import {
   viewChild,
   type Signal,
 } from '@angular/core';
+import { Directionality } from '@angular/cdk/bidi';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { transformedValue, type ParseResult, type ValidationError } from '@angular/forms/signals';
+import { Calendar, CircleAlert } from 'lucide';
 
 import {
   TM_PARSE_ERROR,
@@ -35,6 +38,7 @@ import {
   tmResolveFieldErrors,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
+import { TmIcon } from '@tellma/core-ui/icon';
 import {
   tmDatePlaceholder,
   tmFormatDate,
@@ -89,7 +93,7 @@ const POPUP_VIEWPORT_MARGIN = 8;
  */
 @Component({
   selector: 'tm-date-picker',
-  imports: [OverlayModule, ɵTmDatePopup],
+  imports: [OverlayModule, TmIcon, ɵTmDatePopup],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmDatePicker }],
   template: `
     <input
@@ -120,20 +124,7 @@ const POPUP_VIEWPORT_MARGIN = 8;
          control it would sit past the button below and shove it sideways
          every time an error came and went. -->
     @if (showsInvalid()) {
-      <svg
-        class="tm-form-field__error-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" x2="12" y1="8" y2="12" />
-        <line x1="12" x2="12.01" y1="16" y2="16" />
-      </svg>
+      <tm-icon class="tm-form-field__error-icon" [svg]="glyphs.error" />
     }
     <button
       type="button"
@@ -143,20 +134,7 @@ const POPUP_VIEWPORT_MARGIN = 8;
       [attr.aria-label]="toggleLabel()"
       (click)="onToggleClick()"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M8 2v4" />
-        <path d="M16 2v4" />
-        <rect width="18" height="18" x="3" y="4" rx="2" />
-        <path d="M3 10h18" />
-      </svg>
+      <tm-icon [svg]="glyphs.calendar" />
     </button>
 
     <ng-template
@@ -258,6 +236,8 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
   readonly controlId = signal(`tm-date-picker-${nextUniqueId++}`).asReadonly();
   /** The popup's element id — the combobox's aria-controls target. */
   protected readonly popupId = `${this.controlId()}-popup`;
+  /** The control's glyph data: the invalid mark and the calendar button's glyph. */
+  protected readonly glyphs = { error: CircleAlert, calendar: Calendar } as const;
 
   /** The display calendar in effect: the instance input, else the ambient one. */
   protected readonly activeCalendar = computed(() => this.calendar() ?? this.l10n.calendar());
@@ -469,6 +449,23 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
         }
       });
     });
+
+    // A live flip of the document's direction mirrors an open popup in
+    // place. The CDK stamps the pane's `dir` only when it attaches, so the
+    // pane is re-stamped (its layout, paging chevrons and arrow keys then
+    // agree with the page again) and re-anchored at the text edge the date
+    // now sits against. Handing the CDK the live Directionality itself,
+    // rather than its value, keeps the next open following the page too.
+    const directionality = inject(Directionality);
+    const directionChange = directionality.change.subscribe(() => {
+      if (!untracked(this.popupOpen)) {
+        return;
+      }
+      this.overlay()?.overlayRef.setDirection(directionality);
+      this.popupAlign.set(this.alignOfOrigin());
+      this.anchored.reanchor();
+    });
+    inject(DestroyRef).onDestroy(() => directionChange.unsubscribe());
   }
 
   /**
