@@ -147,7 +147,11 @@ let nextCardId = 0;
         <span class="tm-card__error-name">{{ errorName() }}</span>
       }
       @if (invalid() !== undefined) {
-        <span class="tm-card__dot" aria-hidden="true"></span>
+        <span
+          class="tm-card__dot"
+          [class.tm-card__dot--on]="invalid() === true"
+          aria-hidden="true"
+        ></span>
       }
     </ng-template>
   `,

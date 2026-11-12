@@ -88,7 +88,9 @@
   visibility: hidden;
 }
 
-.tm-card--invalid .tm-card__dot {
+/* Painted from the dot's own class, never from an ancestor's state, so an
+   invalid card leaves the dots of the cards nested in its body alone. */
+.tm-card__dot--on {
   visibility: visible;
 }
 
@@ -193,7 +195,9 @@
   padding: var(--card-body-padding);
 }
 
-.tm-card--flush .tm-card__body {
+/* Child combinators throughout: a flush card leaves nested cards' bodies
+   padded. */
+.tm-card--flush > .tm-card__region > .tm-card__body {
   padding: 0;
 }
 

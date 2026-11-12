@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { animationsSettled } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -36,6 +37,9 @@ test('the pending button keeps its width and takes its pending name', async ({ p
   const dialog = page.getByRole('alertdialog', { name: 'Something went wrong' });
   const reload = dialog.getByRole('button', { name: 'Reload' });
   await expect(reload).toBeFocused();
+  // Focus lands while the dialog is still scaling in; measure the settled
+  // layout, not a frame of the entrance.
+  await animationsSettled(page.locator('.cdk-overlay-container'));
   const footer = dialog.locator('[tmModalFooter]');
   const idle = (await reload.boundingBox())!;
   const closeBefore = (await footer.getByRole('button', { name: 'Close' }).boundingBox())!;

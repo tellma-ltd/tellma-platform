@@ -157,9 +157,11 @@ let nextRegionId = 0;
         </div>
       }
     </div>
-    <!-- The footer: the caller's buttons, then Close. Each label cell also
-         holds the pending name, invisibly, so the button is as wide as the
-         wider of the two and never resizes when its run starts. -->
+    <!-- The footer: the caller's buttons, then Close. Focus starts on the
+         primary-styled button (Close when no primary is given). Each label
+         cell also holds the pending name, invisibly, so the button is as
+         wide as the wider of the two and never resizes when its run
+         starts. -->
     <div tmModalFooter (focusin)="onFooterFocus($event)">
       @for (button of footer(); track $index) {
         <button
@@ -173,7 +175,7 @@ let nextRegionId = 0;
           [attr.aria-label]="
             pending()?.key === button.key ? (button.pendingLabel ?? button.label) : null
           "
-          [attr.cdkFocusInitial]="$first ? '' : null"
+          [attr.cdkFocusInitial]="button.variant === 'primary' ? '' : null"
           (click)="activate(button)"
         >
           <span class="tm-error-dialog__label">
@@ -188,7 +190,9 @@ let nextRegionId = 0;
       }
     </div>
   `,
-  styleUrl: './tm-error-dialog-content.css',
+  // The Details list's look comes with the dialog, scoped to this view, so
+  // an app that uses only the error dialog needs no global stylesheet.
+  styleUrls: ['./tm-error-dialog-content.css', '../../styles/tm-description-list.css'],
 })
 export class ɵTmErrorDialogContent {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;

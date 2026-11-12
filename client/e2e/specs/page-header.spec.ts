@@ -58,6 +58,48 @@ for (const dir of ['ltr', 'rtl'] as const) {
   });
 }
 
+// A phone-width toolbar too narrow for both slots: the start slot clips its
+// own items, so none of them shows (or takes a click) past its box, under
+// the end slot.
+for (const dir of ['ltr', 'rtl'] as const) {
+  test(`a crowded toolbar clips its start slot short of the end slot at 390 px (${dir})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(storyUrl('page-header', { dir }));
+    const toolbar = page.getByTestId('header-details').locator('.tm-page-header__toolbar');
+    const start = toolbar.locator('.tm-page-header__toolbar-start');
+    await expect(start.locator('button')).toHaveCount(3);
+
+    const probe = await toolbar.evaluate((row) => {
+      const startSlot = row.querySelector<HTMLElement>('.tm-page-header__toolbar-start')!;
+      const startBox = startSlot.getBoundingClientRect();
+      // The start items really do overflow their slot here.
+      const itemsWidth = Array.from(startSlot.children).reduce(
+        (sum, item) => sum + item.getBoundingClientRect().width,
+        0,
+      );
+      // Sweep the row's middle line: every point where a start item is
+      // hit must lie inside the start slot's box.
+      const rowBox = row.getBoundingClientRect();
+      const y = rowBox.top + rowBox.height / 2;
+      const strays: number[] = [];
+      for (let x = Math.ceil(rowBox.left); x < rowBox.right; x++) {
+        const hit = document.elementFromPoint(x, y);
+        if (
+          hit?.closest('.tm-page-header__toolbar-start') &&
+          (x < startBox.left - 0.5 || x > startBox.right + 0.5)
+        ) {
+          strays.push(x);
+        }
+      }
+      return { overflows: itemsWidth > startBox.width, strays };
+    });
+    expect(probe.overflows).toBe(true);
+    expect(probe.strays).toEqual([]);
+  });
+}
+
 test('the toolbar row and the band are absent while empty', async ({ page }) => {
   await page.goto(storyUrl('page-header'));
   const plain = page.getByTestId('header-plain');

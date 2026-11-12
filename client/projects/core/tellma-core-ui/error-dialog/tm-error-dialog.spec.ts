@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Component, ErrorHandler } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
@@ -144,7 +145,64 @@ describe('TmErrorDialog', () => {
     expect(await result).toBe('close');
   });
 
-  it('puts primary, secondary and Close in the footer, focusing the first', async () => {
+  it('styles the Details list itself, with no global stylesheet loaded', async () => {
+    const { fixture, loader, dialog } = await setup();
+    void dialog.show({
+      title: 'T',
+      message: 'M',
+      details: [{ label: 'Status', value: '500' }],
+    });
+    await fixture.whenStable();
+    const harness = await loader.getHarness(TmErrorDialogHarness);
+    await harness.toggleDetails();
+    const pair = document.querySelector<HTMLElement>('.tm-error-dialog__region dl > div')!;
+    const value = pair.querySelector('dd')!;
+    // The inline layout: label beside value, and no browser-default indent.
+    expect(getComputedStyle(pair).display).toBe('grid');
+    expect(getComputedStyle(value).marginInlineStart).toBe('0px');
+    await harness.pressEscape();
+  });
+
+  it('reports a throwing action and keeps the dialog open, unless the action closes it', async () => {
+    const { fixture, loader, dialog, errors } = await setup();
+    const failure = new Error('clipboard');
+    const result = track(
+      dialog.show({
+        title: 'T',
+        message: 'M',
+        actions: [
+          {
+            label: 'Copy',
+            run: () => {
+              throw failure;
+            },
+          },
+          {
+            label: 'Report',
+            run: () => {
+              throw failure;
+            },
+            closes: true,
+          },
+        ],
+      }),
+    );
+    await fixture.whenStable();
+    const harness = await loader.getHarness(TmErrorDialogHarness);
+    await harness.toggleDetails();
+    await harness.runAction('Copy');
+    await flush();
+    expect(errors).toEqual([failure]);
+    expect(result()).toBe('pending');
+    expect(document.querySelector('tm-error-dialog-content')).not.toBeNull();
+
+    await harness.runAction('Report');
+    await flush();
+    expect(errors).toEqual([failure, failure]);
+    expect(result()).toBe('close');
+  });
+
+  it('puts primary, secondary and Close in the footer, focusing the primary', async () => {
     const { fixture, loader, dialog } = await setup();
     void dialog.show({
       title: 'T',
@@ -163,6 +221,19 @@ describe('TmErrorDialog', () => {
     const close = document.querySelector('.tm-error-dialog__button[data-key="close"]')!;
     expect(close.classList.contains('tm-button--secondary')).toBe(true);
     expect(await harness.getFocusedButtonKey()).toBe('primary');
+    await harness.pressEscape();
+  });
+
+  it('focuses Close, the primary button, when only a secondary is given', async () => {
+    const { fixture, loader, dialog } = await setup();
+    void dialog.show({ title: 'T', message: 'M', secondary: { label: 'Go to the first line' } });
+    await fixture.whenStable();
+    const harness = await loader.getHarness(TmErrorDialogHarness);
+    expect((await harness.getButtons()).map((button) => button.key)).toEqual([
+      'secondary',
+      'close',
+    ]);
+    expect(await harness.getFocusedButtonKey()).toBe('close');
     await harness.pressEscape();
   });
 
@@ -309,6 +380,52 @@ describe('TmErrorDialog', () => {
     expect(errors).toEqual([failure]);
     expect((await harness.getButtons())[0].pending).toBe(false);
     await harness.pressEscape();
+  });
+
+  it('returns a run that throws to idle and reports the error', async () => {
+    const { fixture, loader, dialog, errors } = await setup();
+    const failure = new Error('sync');
+    const result = track(
+      dialog.show({
+        title: 'T',
+        message: 'M',
+        primary: {
+          label: 'Retry',
+          run: () => {
+            throw failure;
+          },
+        },
+      }),
+    );
+    await fixture.whenStable();
+    const harness = await loader.getHarness(TmErrorDialogHarness);
+    await harness.clickButton('primary');
+    await fixture.whenStable();
+    expect(errors).toEqual([failure]);
+    expect((await harness.getButtons())[0].pending).toBe(false);
+    expect(result()).toBe('pending');
+    await harness.pressEscape();
+  });
+
+  it('announces a replacement assertively, since focus does not move', async () => {
+    const { fixture, dialog } = await setup();
+    const announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce');
+    void dialog.show({ title: 'Something went wrong', message: 'The server failed.' });
+    await fixture.whenStable();
+    // Opening is announced by the dialog itself, through its name.
+    expect(announce).not.toHaveBeenCalled();
+
+    void dialog.show({ title: 'The document was not saved', message: 'Two lines are invalid.' });
+    await fixture.whenStable();
+    expect(announce).toHaveBeenCalledWith(
+      'The document was not saved. Two lines are invalid.',
+      'assertive',
+    );
+
+    void dialog.show({ title: 'Still not saved!', message: 'One line is invalid.' });
+    await fixture.whenStable();
+    expect(announce).toHaveBeenLastCalledWith('Still not saved! One line is invalid.', 'assertive');
+    (document.querySelector('.tm-error-dialog__button[data-key="close"]') as HTMLElement).click();
   });
 
   it('replaces an open dialog in place: the earlier promise resolves replaced', async () => {

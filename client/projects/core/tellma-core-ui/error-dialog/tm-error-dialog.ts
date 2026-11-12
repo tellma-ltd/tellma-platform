@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { inject, Injectable, signal, type WritableSignal } from '@angular/core';
 
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
@@ -80,11 +81,14 @@ let nextMessageId = 0;
  * Shows a failure the user must acknowledge, in an alert dialog: the
  * message, any affected items, a reference to quote to support, and a
  * Details disclosure, with a Close button and up to two caller buttons in
- * the footer. Focus starts on the first footer button.
+ * the footer. Focus starts on the primary button (Close, when no
+ * `primary` is given).
  *
  * One error dialog shows at a time: a `show` while one is open replaces
  * its content in place, keeping focus on the same footer position, and
- * the earlier promise resolves `'replaced'`.
+ * the earlier promise resolves `'replaced'`. The new title and message are
+ * announced assertively, since focus does not move to tell a screen reader
+ * the failure changed.
  *
  * ```ts
  * const answer = await errorDialog.show({
@@ -99,6 +103,7 @@ let nextMessageId = 0;
 @Injectable({ providedIn: 'root' })
 export class TmErrorDialog {
   private readonly modal = inject(TmModal);
+  private readonly announcer = inject(LiveAnnouncer);
 
   /** The dialog on screen, if any. */
   private active: ActiveDialog | null = null;
@@ -119,6 +124,9 @@ export class TmErrorDialog {
         active.resolve = resolve;
         active.ref.ɵsetTitle(options.title);
         active.state.update((state) => ({ options, generation: state.generation + 1 }));
+        // Focus stays put, so nothing else tells a screen reader that the
+        // failure on screen changed.
+        void this.announcer.announce(announcement(options), 'assertive');
         return;
       }
       const messageId = `tm-error-dialog-message-${nextMessageId++}`;
@@ -155,4 +163,16 @@ export class TmErrorDialog {
       });
     });
   }
+}
+
+/**
+ * What a replacement announces: the title, then the message, as two
+ * sentences (a full stop is added after a title that has no closing
+ * punctuation of its own).
+ */
+function announcement(options: TmErrorDialogOptions): string {
+  const title = options.title.trim();
+  // Latin, Arabic (U+061F) and CJK (U+3002) sentence ends.
+  const separator = /[.!?؟。]$/u.test(title) ? ' ' : '. ';
+  return `${title}${separator}${options.message}`;
 }

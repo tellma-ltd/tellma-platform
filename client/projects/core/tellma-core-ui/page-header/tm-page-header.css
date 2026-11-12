@@ -128,12 +128,19 @@
   overflow-x: clip;
 }
 
+/* The start slot shrinks first and clips its own overflow at its end, so
+   its items never spill under the end slot. Like the row, it reaches a
+   focus ring's width past its box at both ends; the end-side reach stays
+   inside the gap before the end slot. */
 .tm-page-header__toolbar-start {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
   gap: var(--page-header-gap);
   min-inline-size: 0;
+  margin-inline: calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)));
+  padding-inline: calc(var(--focus-ring-width) + var(--focus-ring-offset));
+  overflow-x: clip;
 }
 
 /* Both toolbar slots empty: no row 2. */

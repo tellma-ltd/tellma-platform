@@ -10,8 +10,8 @@ import { storyUrl } from '../support/story-map';
 
 /**
  * Browser battery for tm-splitter: the axe floor in both themes and
- * directions, the keyboard in both directions, a mouse drag following the
- * pointer and stopping at the clamp, the 24 px hit area, and the clamp
+ * directions, the keyboard in both directions and across a live switch to
+ * Arabic, a mouse drag following the pointer and stopping at the clamp, the 24 px hit area, and the clamp
  * re-applied when the container shrinks. The touch drag runs in the touch
  * project's own spec.
  */
@@ -92,6 +92,37 @@ for (const dir of ['ltr', 'rtl'] as const) {
     expect(Math.abs((await listWidth(page)) - 0.66 * container)).toBeLessThanOrEqual(1);
   });
 }
+
+// The app switches English to Arabic while the splitter is on screen: the
+// direction is read live, at each key and each drag, never cached from the
+// first render.
+test('a live English to Arabic switch remaps the arrows and the drag', async ({ page }) => {
+  await page.goto(storyUrl('splitter'));
+  const separator = bar(page);
+  await separator.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('list-size')).toHaveText('List: 436');
+
+  await page.getByTestId('lang-ar').click();
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(separator).toHaveAccessibleName('تغيير حجم اللوحتين');
+
+  // Right-to-left, the list is on the right: ArrowRight shrinks it.
+  await separator.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('list-size')).toHaveText('List: 420');
+  expect(await listWidth(page)).toBe(420);
+
+  // Dragging the bar left now grows the list.
+  const box = (await separator.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 60, y, { steps: 4 });
+  await page.mouse.up();
+  expect(await listWidth(page)).toBeCloseTo(480, 0);
+});
 
 test('the bar takes the pointer 24 px across, with the resize cursor', async ({ page }) => {
   await page.goto(storyUrl('splitter'));
