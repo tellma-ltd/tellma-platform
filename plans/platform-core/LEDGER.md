@@ -87,16 +87,16 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-11 16:24 | | | 2026-11-17 20:00 | Line green: CI 43056016205 on 67fa80d (PC-F20). PC-045, PC-F19 done; PC-069 cleared to push; PC-020 integrate queued behind the D-028 cap |
 | 2026-11-11 17:40 | 22 | 8 | 2026-11-17 20:00 | ΔU 10 since 12:03 over ~6 h (≈1.7/h) with 5 heavy agents; Opus-heavy (Fable +2). 29 done; in flight PC-012 fix1, PC-027 fix2+int, PC-069 fix2+int, PC-020 int, PC-032 r1 |
 | 2026-11-11 21:31 | | | 2026-11-17 20:00 | PC-012 (last Phase 1 checkpoint) integrated 7db93ca, CI 43103329956 pending → PC-B01 batch review on green, in the next free checkpoint slot (pc-3 after PC-020 lands). PC-028 launched in pc-2; ready T1: PC-029, PC-048, PC-071 |
+| 2026-11-12 01:24 | 35 | 16 | 2026-11-17 20:00 | ΔU 13 since 17:40 (≈1.6/h, 5 heavy agents + PC-B01 Fable finders). 34 done; in flight PC-059/PC-029 fix+int, PC-028 fix1, PC-071 impl, PC-F18, PC-B01 |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-059 | pc-1 | pc/PC-059 | impl | impl-PC-059 / abdf31b812d513607 (Opus inherit) |  | 2026-11-11 19:3x |
-| PC-028 | pc-2 | pc/PC-028 | impl | impl-PC-028 / aef9c5db3086a49c4 (Opus inherit, xhigh) |  | 2026-11-11 21:31 |
-| PC-B01 | pc-f | pc/PC-B01 | batch (Phase 1: PC-000…PC-014 at 7db93ca; Fable finders ×3, Opus fixer; D-051) | workflow |  | 2026-11-11 21:37 |
-| PC-032 | pc-4 | pc/PC-032 | fix2 + integrate (resumed; R2 0/1/5: compressed index.html served without CSP and security headers; malformed tenant segment → 500; Hub group can host writes; ShortCircuit escapes auth; SPA fallback logs /index.html; completion log lacks tenant fields) | impl-PC-032 / abc6b91c8d7cce2da (Opus inherit) | r2-PC-032 / a8b66f3d9e1d39062 (fable, high) | 2026-11-11 14:36 |
-| PC-020 | pc-3 | pc/PC-020 | integrate (resumed 16:3x: re-merge, gates, push) | impl-PC-020 / a61a08d03618812fe (Opus inherit) | R1 acb51d47533b06a0e (Opus inherit, high) | 2026-11-11 09:05 |
+| PC-059 | pc-1 | pc/PC-059 | fix1 + integrate (resumed; R1 0/1/1: ./alert must be 2.25 KB per D-053; boot-expiry versionchange settles before the delete commits) | impl-PC-059 / abdf31b812d513607 (Opus inherit) | r1-PC-059 / ada13525e7699cb9b (Opus, high) | 2026-11-11 19:3x |
+| PC-101 | pc-2 | pc/PC-101 | impl | a8e70f25ff9352b95 |  | 2026-11-12 (after PC-028) |
+| PC-029 | pc-4 | pc/PC-029 | fix1 + integrate (resumed; R1 0/0/4: commit Tests line; ChildConvention skip only for unfiltered indexes; CHECK edge tests; Users history-row test) | impl-PC-029 / a62a156cdab6cb720 (Opus inherit) | r1-PC-029 / a6993725dd3948551 (Opus, high) | 2026-11-11 22:12 |
+| PC-071 | pc-3 | pc/PC-071 | fix1 (R1 1/0/7: blocking logout rejected unauthenticated after cookie clear; retry skips user check; tab-wide 'older' verdict; superseded-session 401; HttpClient leak into initial bundle; blob fetcher reason/TmFakeApi; upload watchdog; tests) — then R2 fable | impl-PC-071 / ae3f7284d121dcaf7 (Opus inherit) | r1 a46c24bf803e2ad2c done | 2026-11-11 23:12 |
 
 ## Fix items
 
@@ -127,6 +127,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
+| PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -138,6 +139,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Spec 0017 to be brought in line with PC-F08: host non-dumpable and debugger pipes removed on Linux once a worker starts; worker setsid/non-dumpable and refused signal/terminal syscalls; BlobPdfWorkerPtraceUnrestricted's new meaning; hosting guidance (unprivileged account with nothing else under it, run as a service, CAP_SYS_PTRACE only where crash dumps are wanted; D-043); Tellma:Blobs:PdfWorkerConcurrency (§1.3/§3.5), the PDF-thumbnail host rule (Linux glibc only; Windows/macOS Development only; musl never), log events BlobPdfThumbnailsDisabled and BlobPdfWorkerPtraceUnrestricted (§10.2) | PC-F08 fix1, D-040 |
 | Staging: run dotnet-dump, dotnet-counters, dotnet-trace and a managed debugger against a Linux host after a PDF worker has started, to confirm PC-F08's measured diagnostics costs | PC-F08 fix2, D-043 |
 | Spec 0010 §C.11: ./menu ceiling 8.5 KB (was 7; D-042); §C.10: group dividers drawn above a group whenever a non-separator entry precedes it; one Escape entry per menu that collapses an expanded submenu or closes the menu, replacing "each level pushes its own entry" (D-044) | PC-041, D-042 |
+| Spec 0012 §2 convention table (child IX_<Table>_<Parent>Id INCLUDE (Id) on every child) vs spec 0014 §3.6–§3.7: the convention now skips its index when a configuration declares an unfiltered index leading with the parent key; spec 0014 §3.1 Users.State should read ISNULL(CAST(CASE … AS varchar(8)), 'New') | PC-029 |
+| Spec 0012 §6.4/§6.5: transient numbers before the severity-20 rule; a timed-out Read/Validate re-runs once (not 3×); after NotCommitted any final re-run failure re-probes (not only 2627); probe lookup is FORCESEEK (D-052) | PC-028 |
 | Spec 0012 §5.4 (batch read dedup): a read repeated after a declared write must not reuse the earlier handle; built as a write epoch that clears the dedup cache (PC-027 review 2). Also §TransactionMode.Explicit: no hook for the pre-commit C# decision the spec cites | PC-027 |
 | Spec 0010 §F examples 1–2 ('uq' lookup by date): EndDate checked outside the TOP (1) seek; hoisted 'uq' variables get OPTION (RECOMPILE) as a CompiledQuery.Recompile flag, host-bound parameter is the faster alternative; spec 0012's composers must merge the hint into their one OPTION clause, and its three IF guards that embed Body must assign under the hint first (D-050) | PC-012 |
 | Spec 0012 §5.2 vs analyzer TELLMA0003: the analyzer accepts nameof holes, but §5.2 binds every non-SqlIdentifier scalar as a parameter, so a nameof hole renders as @tb{b}_p{n}, never an identifier; ruled at R1: column names via SqlIdentifier(nameof(...)), the analyzer refuses a bare nameof hole; §12.3 should say so | PC-027 impl, R1 |
@@ -155,6 +158,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client e2e grid-clipboard test stuck on the shared clipboard lock (PC-B01 fixer, local; 14 load failures on first full run, reruns green) | 2026-11-12 | watch; PC-F18 area |
 | (lesson) client tooling tests that lint sample text through a typed-linted path must set disallowAutomaticSingleRunInference, or they pass locally and fail under CI=true | 2026-11-11 | consider a shared ESLint helper for tooling tests (PC-F19) |
 | client core-ui tm-grid-clipboard.spec.ts "menu Paste reads the async clipboard and drives the same ladder" (CI ef67f47: expected 'Alpha' to be 'MenuPasted'; no client change since the previous green sha) | 2026-11-11 | timing-dependent (turn-capped wait vs real Blob read); PC-F18 |
 | client grid @perf scroll probe (nightly; long tasks > 50 ms on flat grid and tree) | 2026-11-11 | @quarantine; PC-F17 |
@@ -219,7 +223,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-017 | 0017-a | 1 | done | e1133a6, 0c184db, 2193781, 65ce1d1 (pc) | 12.83M | 12 deviations; MaxSizeBytes narrow-only (D-022); Linux create-only via link(2) (D-024); no R2 (3 majors, no blocking) |
 | PC-018 | 0012-a | 1 | done | 7c001cb, 05131bc, a996caa (pc) | 27.44M | 14 deviations; planner notes PC-033/034/063 |
 | PC-019 | 0013-b | 1 | done | 6a36b74, 7f9bee7, b22322e, 97330a0 (pc) | 22.56M (impl+fix+int 20.97 fable, r1 1.59 Opus) | CI 42992138704 green (Linux pinned-ICU leg passed); Identity integration suite not re-run after the last two merges (no .NET input changed); Linux leg now requires pinned ICU 78.2 (TELLMA_REQUIRE_PINNED_ICU=1) |
-| PC-020 | 0023-b | 1 | fix1 | 184c8c2, 061247d, 0bdf24b (branch) | impl 10.37M (Opus) |  |
+| PC-020 | 0023-b | 1 | done | 184c8c2, 061247d, 5d9ccc2 (pc) | 22.60M + r1 (impl+fix+int Opus; D-049 budgets) | CI 43117918168 green; three merges of platform-core; e2e 705/705 on 2ca1d86 |
 | PC-021 | 0012-b | 1 | done | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | green at 8043295, CI 42947124853; 11 deviations; D-037 |
 | PC-022 | 0013-c | 1 | done | 897f7fc, 3f2b60c, ef67f47 (pc) | 9.10M (impl+fix+int 7.67, r1 1.43; Opus) | CI 43026874374 red (client unit: tm-grid-clipboard.spec.ts menu Paste, expected 'Alpha' to be 'MenuPasted'; no client change since green 63c64cc) → re-run green (attempt 2); 364bcc2 green; RequestContext.Localization (zone resolved once per process, UTC fallback); ApplyCultures applies LocalizationScope; added Queryex_QX4009 strings |
 | PC-023 | 0023-c | 1 | todo | | | |
@@ -227,11 +231,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-025 | 0011-c | 1 | done | ef6a61c, 3c46607, 3db32cd (pc) | 22.05M (impl+fix+int 20.60 fable, r1 1.45 Opus) | CI 43007537552 green |
 | PC-026 | 0023-d | 1 | todo | | | |
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
-| PC-028 | 0012-c2 | 1 | impl |  |  |  |
-| PC-029 | 0014-a | 1 | todo | | | |
+| PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
+| PC-029 | 0014-a | 1 | fix1 | c3bce14 | impl 8.28M (Opus), r1 2.15 |  |
 | PC-030 | 0023-e | 1 | todo | | | |
 | PC-031 | 0023-f | 1 | todo | | | |
-| PC-032 | 0011-e | 1 | fix2 | 521655a, 427c7c1 | impl+fix1 15.67M (Opus), r1 3.42, r2 3.57 (Fable) |  |
+| PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | todo | | | |
 | PC-034 | 0011-d | 1 | todo | | | |
 | PC-035 | 0021-a | 1 | todo | | | |
@@ -258,7 +262,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | todo | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
-| PC-059 | 0010-d3 | 1 | impl |  |  |  |
+| PC-059 | 0010-d3 | 1 | fix1 | c60627e | impl 11.04M (Opus) |  |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | todo | | | |
@@ -270,7 +274,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-068 | 0015-d | 1 | todo | | | |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | todo | | | |
-| PC-071 | 0024-d | 1 | todo | | | |
+| PC-071 | 0024-d | 1 | fix1 | 11c16b1 | impl 7.98 |  |
 | PC-072 | 0015-f | 1 | todo | | | |
 | PC-073 | 0024-e | 1 | todo | | | |
 | PC-074 | 0015-g | 1 | todo | | | |
@@ -300,7 +304,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |
-| PC-101 | 0010-f4 | 1 | todo | | | |
+| PC-101 | 0010-f4 | 1 | impl |  |  |  |
 | PC-102 | 0029-f | 1 | todo | | | |
 | PC-103 | 0024-g | 1 | todo | | | |
 | PC-104 | 0024-h | 1 | todo | | | |

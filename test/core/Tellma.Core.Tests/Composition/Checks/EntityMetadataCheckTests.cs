@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
@@ -59,9 +60,7 @@ namespace Tellma.Core.Tests.Composition.Checks
             static void Compose(TellmaBuilder tellma)
             {
                 _ = tellma.AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdUser>()
                     .Entity<MdJob>()
-                    .Entity<MdBlob>()
                     .Entity<Untabled>()
                     .Entity<TwinLess>()));
             }
@@ -89,11 +88,9 @@ namespace Tellma.Core.Tests.Composition.Checks
             {
                 _ = tellma
                     .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                        .Entity<MdUser>()
                         .Entity<MdJob>()
-                        .Entity<MdBlob>()
                         .Model<DefaultUserConfiguration>()))
-                    .UseEntity<MdUser, MyMdUser>();
+                    .UseEntity<User, MdMember>();
             }
 
             CompositionProblem problem = Assert.Single((await TestComposition.CheckAsync(Compose)).From(Check));
@@ -120,14 +117,14 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         /// <summary>The one problem of a composition whose model cannot be built.</summary>
-        /// <param name="contribute">The entity that breaks the model, beside the platform stand-ins.</param>
+        /// <param name="contribute">The entity that breaks the model, beside the job stand-in.</param>
         /// <returns>The problem.</returns>
         private static async Task<CompositionProblem> CannotBuildAsync(Action<FeatureContribution> contribute)
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution =>
                 {
-                    _ = contribution.Entity<MdUser>().Entity<MdJob>().Entity<MdBlob>();
+                    _ = contribution.Entity<MdJob>();
                     contribute(contribution);
                 })));
 
@@ -142,16 +139,14 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             _ = tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdUser>()
                     .Entity<MdJob>()
-                    .Entity<MdBlob>()
                     .Entity<Account>()
                     .Entity<Region>()
                     .Entity<Shipment>()
                     .Entity<ShipmentExtra>()
                     .Entity<Carrier>()
                     .Model<AccountConfiguration>()))
-                .UseEntity<MdUser, MyMdUser>()
+                .UseEntity<User, MdMember>()
                 .UseEntity<Region, MyRegion>();
         }
     }

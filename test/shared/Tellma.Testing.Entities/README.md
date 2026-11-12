@@ -1,7 +1,7 @@
 # Tellma.Testing.Entities
 
 The data layer's shared SQL fixture. Every integration suite of the runtime package that needs a
-tenant-shaped database references it. It holds the fixture schema, the stand-in core tables, the
+tenant-shaped database references it. It holds the fixture schema, the remaining stand-in core tables, the
 fixture context with its migrations, and the helpers that create a fixture database and open a
 tenant over it. It references no test framework, so `dotnet test` never runs it.
 
@@ -10,8 +10,8 @@ tenant over it. It references no test framework, so `dotnet test` never runs it.
 | File | Contents |
 |---|---|
 | `FixtureEntities.cs` | Schema `fixture`: `Widgets` (top-level, system-versioned, activatable, natural key, multilingual name, write-once unique subject, JSON settings, an image reference), its child `WidgetParts`, its grandchild `WidgetPartNotes` and its sibling `WidgetExtras`; the tree `Nodes` (`MaxDepth = 8`) and its child `Links`, which has a second foreign key to its parent; `Shipments`, a job entity with a `long` key. |
-| `PlatformStandIns.cs` | Stand-ins for the core tables the fixture's foreign keys and the platform's statements name: `core.Users`, `core.Jobs`, `core.Blobs` (with `core.sq_Blobs`), `core.VersionTags` and `core.UserStamps`. Each is replaced when the feature that owns the production table contributes it, and the migrations are regenerated. |
-| `FixtureFeature.cs`, `FixtureComposition.cs` | The feature that contributes all of the above, and the composition a fixture host and the fixture context are both built from, so the two share one model and one storage fingerprint. |
+| `PlatformStandIns.cs` | Stand-ins for the core tables the platform's statements name but no feature contributes yet: `core.Jobs` and `core.VersionTags`. Each is replaced when the feature that owns the production table contributes it, and the migrations are regenerated. Core itself contributes the production access tables (`core.Users`, `core.Roles`, `core.RoleMemberships`, `core.Permissions`, `core.UserStamps`, `core.UserPreferences`, with their seeds) and `core.Blobs`, so every audit and blob foreign key of the fixture resolves to a production-shaped table. |
+| `FixtureFeature.cs`, `FixtureComposition.cs` | The feature that contributes the fixture entities and the stand-ins, and the composition a fixture host and the fixture context are both built from, so the two share one model and one storage fingerprint. |
 | `TellmaFixtureDbContext.cs` | The fixture context, which builds the composition's tenant model as a tenant context builds it, under the table-type sweep scope `tellma.fixture`, and its design-time factory. |
 | `Migrations/` | The fixture migrations, scaffolded by `dotnet-ef` and never edited by hand. |
 | `FixtureDatabase.cs` | Creates a fixture database the way provisioning creates a tenant database: platform collation, read-committed snapshot, the `tellma_app` role, then the migrations, then change tracking on every table outside `dbo` except the history tables, then the fingerprint row the schema guard reads. |

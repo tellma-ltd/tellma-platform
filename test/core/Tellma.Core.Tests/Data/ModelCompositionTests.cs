@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.TableTypes;
@@ -29,7 +30,7 @@ namespace Tellma.Core.Tests.Data
 
             Assert.Equal(tables.Count, tables.Distinct().Count());
             Assert.Null(model.DesignModel.FindEntityType(typeof(Center)));
-            Assert.Null(model.DesignModel.FindEntityType(typeof(TestUser)));
+            Assert.Null(model.DesignModel.FindEntityType(typeof(User)));
             Assert.NotNull(model.DesignModel.FindEntityType(typeof(MyCenter)));
             Assert.NotNull(model.DesignModel.FindEntityType(typeof(MyTestUser)));
             Assert.All(model.DesignModel.GetEntityTypes(), static entityType => Assert.Null(entityType.BaseType));
@@ -42,7 +43,8 @@ namespace Tellma.Core.Tests.Data
 
             Assert.Equal(
                 [
-                    "core.Blobs", "core.Jobs", "core.Users",
+                    "core.Blobs", "core.Jobs", "core.Permissions", "core.RoleMemberships", "core.Roles",
+                    "core.UserPreferences", "core.UserStamps", "core.Users",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",
                     "fixture.Configured", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras",
                     "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets",
@@ -81,7 +83,7 @@ namespace Tellma.Core.Tests.Data
                 .ToDictionary(static type => type.Name);
 
             Assert.Equal(
-                ["BigIdList", "CollatedKeyList", "DateList", "GuidList", "IdList", "IdStampList", "StringList", "VersionTagList"],
+                ["BigIdList", "CollatedKeyList", "DateList", "GuidList", "IdList", "IdStampList", "StringList", "UserPreferenceList", "VersionTagList"],
                 standalone.Keys.Order(StringComparer.Ordinal));
             Assert.All(standalone.Values, static type => Assert.Equal(("dbo", "tellma_app"), (type.Schema, Assert.Single(type.Grants))));
             Assert.Equal("date", standalone[nameof(DateList)].Columns.Single().StoreType);
