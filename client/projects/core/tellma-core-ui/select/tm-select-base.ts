@@ -271,6 +271,21 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     this.pendingInput.update((n) => n + 1);
   }
 
+  /**
+   * Holds a whole text for the typeahead until the rows render: its first
+   * character seeds it, and the rest follow in order as if typed, so the
+   * active option is the one typing the text would have reached. Internal:
+   * the grid's cell editor seeds a select with text typed before it mounted.
+   */
+  protected ɵholdTypeaheadText(text: string): void {
+    const [first, ...rest] = Array.from(text);
+    if (first === undefined) {
+      return;
+    }
+    this.holdTypeaheadKey(first);
+    this.pendingRelays.push(...rest.map((key) => new KeyboardEvent('keydown', { key, bubbles: true })));
+  }
+
   // ---- TmFormFieldControl ----
   /** Renders its own trigger chrome; the field adds only label/hint/error. */
   readonly ownsChrome = true;

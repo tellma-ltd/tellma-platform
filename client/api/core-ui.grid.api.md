@@ -16,7 +16,6 @@ import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';

@@ -19,6 +19,7 @@
 export {
   ɵTmGridEditing,
   type ɵTmGridEditingColumn,
+  type ɵTmGridDraftHandoff,
   type ɵTmGridEditingHost,
   type ɵTmGridEditorOpenOptions,
 } from './editing';

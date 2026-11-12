@@ -6,11 +6,12 @@
 // The grid's editing controller: opening an editor session on a cell and
 // mounting its editor, commit (with the entity label-resolution ladder)
 // and cancel. A readonly grid never needs any of it, so it ships in this
-// entry point, which the grid loads with import() once it is editable
+// entry point, which the grid preloads with import() once it is editable
 // (spec 0010 §C.11, Part C flag 6); the grid's own core keeps every path a
 // readonly grid runs, the editing keys included. The core implements
 // `ɵTmGridEditingHost`, the seam this controller works through, and keeps
-// a draft of what the user types while this code is on its way (`resume`).
+// a draft input for what the user types while this code is on its way
+// (`resume`, `resolveLabel`).
 
 import {
   isDevMode,
@@ -24,11 +25,12 @@ import {
 } from '@angular/core';
 
 import type { TmCellEditor, TmLabelResolution, TmRowId } from '@tellma/core-ui/contracts';
-import type {
-  ɵTmEntityAdoptedSearch,
-  TmEntityId,
-  TmEntityPickerPage,
-  TmEntitySearchFn,
+import {
+  ɵtmEntitySearchOnce,
+  type ɵTmEntityAdoptedSearch,
+  type TmEntityId,
+  type TmEntityPickerPage,
+  type TmEntitySearchFn,
 } from '@tellma/core-ui/entity-picker';
 import type {
   TmGridColumnType,
@@ -143,6 +145,20 @@ export interface ɵTmGridEditingHost<T> {
   ): void;
 }
 
+/** The grid's draft as an editor takes it over: its text and caret. */
+export interface ɵTmGridDraftHandoff {
+  /** The draft's text. */
+  readonly text: string;
+  /** Whether the text differs from what the editor opens with, which it must then take. */
+  readonly changed: boolean;
+  /** The caret's or selection's start. */
+  readonly selectionStart: number;
+  /** The selection's end. */
+  readonly selectionEnd: number;
+  /** Which end of the selection the caret is at. */
+  readonly selectionDirection: 'forward' | 'backward' | 'none';
+}
+
 /** How an editor opens: under an IME composition, or showing its choices. */
 export interface ɵTmGridEditorOpenOptions {
   /** The open answers an IME composition's first keydown: unseeded. */
@@ -222,19 +238,17 @@ export class ɵTmGridEditing<T> {
 
   /**
    * Mounts the editor of the session the grid opened before this code
-   * arrived, with the text the user typed into the grid's draft meanwhile
-   * (`null`: nothing typed, the editor opens as the session asked). The
-   * editor takes focus only when focus is still in the grid (`focus`), so
-   * the arrival never pulls it from where the user went.
+   * arrived, focused, and hands it the draft the user typed meanwhile: its
+   * text, when it differs from what the editor opens with, and its caret.
    */
-  resume(opts: ɵTmGridEditorOpenOptions | undefined, text: string | null, focus: boolean): void {
+  resume(opts: ɵTmGridEditorOpenOptions | undefined, draft: ɵTmGridDraftHandoff): void {
     const engine = this.host.engine;
     const session = untracked(() => engine.edit.session());
     if (session === null) {
       return;
     }
     try {
-      if (!this.admits(session.cell) || !this.mount(opts, focus)) {
+      if (!this.admits(session.cell) || !this.mount(opts)) {
         engine.edit.cancel();
         return;
       }
@@ -245,11 +259,40 @@ export class ɵTmGridEditing<T> {
       throw error;
     }
     const mounted = this.session.current();
-    if (text !== null && mounted !== null) {
+    if (mounted === null) {
+      return;
+    }
+    if (draft.changed) {
       // The draft replaces what the mount seeded; the pristine baseline the
       // mount recorded still judges the commit.
-      this.seed(mounted.editor, text);
+      this.seed(mounted.editor, draft.text);
     }
+    // The caret goes where it was in the draft, when the editor's focused
+    // input holds the same text.
+    const focused = document.activeElement;
+    if (
+      (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement) &&
+      focused.value === draft.text
+    ) {
+      focused.setSelectionRange(draft.selectionStart, draft.selectionEnd, draft.selectionDirection);
+    }
+  }
+
+  /**
+   * Resolves an entity commit the grid made before this code arrived, left
+   * pending in its cell, exactly as the built-in picker's own commit would:
+   * the column's search for the text decides it where it can, and the
+   * column's resolver where it cannot.
+   */
+  resolveLabel(request: TmGridResolutionRequest, text: string): void {
+    const column = untracked(this.host.columnsInternal).find((each) => each.id === request.columnId);
+    const search = column?.entitySearch;
+    const itemId = column?.entityItemId;
+    if (column === undefined || search === undefined || itemId === undefined) {
+      this.host.runResolutions([request]);
+      return;
+    }
+    this.settleLabel(request, text, column, ɵtmEntitySearchOnce(search, itemId, text));
   }
 
   /** Whether the mounted editor's dropdown panel is open. */
@@ -377,11 +420,10 @@ export class ɵTmGridEditing<T> {
    * outside a tick in zoneless Angular, so the call is re-entrancy-safe,
    * and the synchronous mount is what lets an IME composition land inside
    * the editor's input within the same task (`opts.ime`); every other open
-   * path shares it for one behavior. The editor takes focus unless `focus`
-   * is false. Returns whether an editor mounted (the session is cancelled
-   * when none did).
+   * path shares it for one behavior. The editor takes focus. Returns
+   * whether an editor mounted (the session is cancelled when none did).
    */
-  private mount(opts: ɵTmGridEditorOpenOptions | undefined, focus = true): boolean {
+  private mount(opts: ɵTmGridEditorOpenOptions | undefined): boolean {
     const engine = this.host.engine;
     const session = untracked(() => engine.edit.session());
     const column =
@@ -474,9 +516,7 @@ export class ɵTmGridEditing<T> {
     }
 
     const editor = mounted.editor;
-    if (focus) {
-      editor.focus();
-    }
+    editor.focus();
     // Every open starts WITHOUT a pristine baseline; only the branches that
     // seed a known text install one. Leaving the previous session's baseline
     // in place would make a later commit of a coincidentally equal string
@@ -643,6 +683,21 @@ export class ɵTmGridEditing<T> {
       this.host.runResolutions([request]);
       return;
     }
+    this.settleLabel(request, text, column, adopted);
+  }
+
+  /**
+   * Answers a pending entity commit from a search for its text: the search
+   * decides where it can (`decideFromSearch`), and the column's resolver
+   * takes the rest, with the search's verdict as its fallback.
+   */
+  private settleLabel(
+    request: TmGridResolutionRequest,
+    text: string,
+    column: ɵTmGridEditingColumn<T>,
+    adopted: AdoptedSearch,
+  ): void {
+    const engine = this.host.engine;
     // Undo while pending aborts the request; the adopted search is part of
     // that request now, so it goes with it.
     request.context.signal.addEventListener('abort', adopted.abort, { once: true });

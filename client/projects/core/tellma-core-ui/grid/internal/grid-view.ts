@@ -293,11 +293,21 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                     <div class="tm-grid__editor" data-tm-editor>
                       <ng-container #editorOutlet />
                       @if (core().draft(); as draft) {
-                        <!-- The draft typed before the editing code arrived,
-                             shown as typed until the editor mounts with it. -->
-                        <span class="tm-grid__draft" data-tm-draft [attr.dir]="cell.dir">{{
-                          draft.text ?? cell.text
-                        }}</span>
+                        <!-- The draft: a plain input that takes the typing
+                             until the editing code arrives and the editor
+                             mounts with its text. The core sets its value
+                             and focuses it. -->
+                        <input
+                          class="tm-grid__draft"
+                          data-tm-draft
+                          autocomplete="off"
+                          [attr.dir]="cell.dir"
+                          [attr.aria-label]="draft.label"
+                          [attr.inputmode]="draft.numeric ? 'decimal' : null"
+                          [style.text-align]="cell.align"
+                          (compositionstart)="core().onDraftComposition(true)"
+                          (compositionend)="core().onDraftComposition(false)"
+                        />
                         <tm-spinner class="tm-grid__cell-spin" />
                       }
                     </div>

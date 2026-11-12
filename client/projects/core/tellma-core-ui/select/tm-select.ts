@@ -322,18 +322,17 @@ export class TmSelect<T>
   }
 
   /**
-   * Type-to-edit seed: opens the panel and feeds the first character into
-   * the typeahead, moving the active option to the first match — the same
-   * behavior as typing that character on the closed trigger. Committing
-   * stays an explicit activation; seeding never changes the value.
+   * Type-to-edit seed: opens the panel and feeds the text into the
+   * typeahead, moving the active option to the first match — the same
+   * behavior as typing that text on the closed trigger. Committing stays an
+   * explicit activation; seeding never changes the value.
    */
   seed(text: string): void {
     if (this.disabled() || this.readonly()) {
       return;
     }
-    const first = text[0];
-    if (first !== undefined && first !== ' ') {
-      this.holdTypeaheadKey(first);
+    if (text !== '' && !text.startsWith(' ')) {
+      this.ɵholdTypeaheadText(text);
     }
     this.focus();
     this.setExpanded(true);

@@ -9,6 +9,7 @@ import {
   ApplicationRef,
   computed,
   effect,
+  ErrorHandler,
   InjectionToken,
   isDevMode,
   PendingTasks,
@@ -83,7 +84,6 @@ import type {
   ɵTmGridEditing,
   ɵTmGridEditingHost,
   ɵTmGridEditorOpenOptions,
-  ɵTmGridStatusBar,
 } from '@tellma/core-ui/grid-editing';
 
 import type { TmGridColumn } from '../tm-grid-column';
@@ -103,7 +103,6 @@ import { ɵTmGridColumnResize } from './column-resize';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
 import {
   TM_GRID_FIND_KEYS,
-  tmIsTypedText,
   tmResolveEditingKey,
   tmResolveGridKey,
   type TmGridEditingCommitTarget,
@@ -114,8 +113,11 @@ import {
 export interface ɵTmGridEditingCode {
   /** The editing controller class. */
   readonly ɵTmGridEditing: typeof ɵTmGridEditing;
-  /** The editable grid's status-bar component. */
-  readonly ɵTmGridStatusBar: typeof ɵTmGridStatusBar;
+  /**
+   * The editable grid's status-bar component. Typed loosely, as the view's
+   * component outlet takes it, so this seam names none of its internals.
+   */
+  readonly ɵTmGridStatusBar: Type<unknown>;
 }
 
 /**
@@ -129,9 +131,10 @@ export const ɵTM_GRID_EDITING_LOADER = new InjectionToken<() => Promise<ɵTmGri
 );
 
 /**
- * How long (ms) the grid waits for its editing code before it gives up on
- * that load: the typed draft commits as text, the failure goes to the error
- * handler, and the next edit or paste asks again. Tests shorten it.
+ * How long (ms) the grid waits for its editing code before it stops holding
+ * the app unstable for it: the failure goes to the error handler (once per
+ * grid), any draft stays open and usable, and the next edit or paste asks
+ * again. Tests and the showcase change it.
  */
 export const ɵTM_GRID_EDITING_LOAD_TIMEOUT = new InjectionToken<number>(
   'ɵTM_GRID_EDITING_LOAD_TIMEOUT',
@@ -139,17 +142,15 @@ export const ɵTM_GRID_EDITING_LOAD_TIMEOUT = new InjectionToken<number>(
 );
 
 /**
- * The draft of a session the grid opened before its editing code arrived.
- * The editing cell shows it until the editor mounts with it.
+ * The draft of a session the grid opened before its editing code arrived: a
+ * plain input in the editing cell that holds the user's text until the
+ * editor mounts with it.
  */
 export interface ɵTmGridDraft {
-  /** What the user typed, or `null` while nothing is (the cell shows its own text). */
-  readonly text: string | null;
-  /**
-   * The text an edit-mode draft started from when its first key was typed:
-   * a draft still equal to it commits nothing. `null` for type-to-edit.
-   */
-  readonly base: string | null;
+  /** The input's accessible name: the column's header text. */
+  readonly label: string;
+  /** Whether the column takes numbers, so a touch keyboard offers digits. */
+  readonly numeric: boolean;
 }
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
@@ -726,9 +727,12 @@ export interface ɵTmGridViewCore {
   readonly statusBar: Signal<Type<unknown> | null>;
   /**
    * The draft of a session opened before the editing code arrived, or
-   * `null`; the view shows it in the editing cell until the editor mounts.
+   * `null`; the view renders its input in the editing cell until the editor
+   * mounts.
    */
   readonly draft: Signal<ɵTmGridDraft | null>;
+  /** The draft input's composition events: an IME composition starts or ends. */
+  onDraftComposition(composing: boolean): void;
   /** Jumps to the next (+1) / previous (−1) errored cell, row-major, cycling. */
   gotoError(direction: 1 | -1): void;
   /** Updates the find query (the scan is debounced and chunked). */
@@ -793,16 +797,43 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   private readonly fieldWriter: ɵTmGridFieldWriter<T>;
   /** The editing controller, once its on-demand code has arrived. */
   private editing: ɵTmGridEditing<T> | null = null;
-  /** Whether the editing code has been asked for (and not failed). */
+  /** Whether a load of the editing code is in flight. */
   private editingRequested = false;
+  /** Ends the load in flight early (grid disposal), or `null` while none is. */
+  private endLoad: (() => void) | null = null;
+  /** Cancels the idle preload still waiting to start, or `null`. */
+  private cancelPreload: (() => void) | null = null;
+  /** Whether a failed load was reported: a grid reports its first only. */
+  private loadFailureReported = false;
   /**
-   * The draft of a session opened before the editing code arrived: typing
-   * edits it, any commit writes it through the engine at once, and the
-   * editor mounts with it when the code arrives.
+   * The draft of a session opened before the editing code arrived: a plain
+   * input in the editing cell, where the browser owns the text (modifiers,
+   * dead keys, IME, the caret, undo, the touch keyboard). The user's commit
+   * gestures write it through the engine, and the editor takes it over when
+   * the code arrives.
    */
   readonly draft = signal<ɵTmGridDraft | null>(null);
+  /** The draft's input element while a draft is open. */
+  private draftInput: HTMLInputElement | null = null;
+  /**
+   * The text the draft opened with on an edit-mode or IME open: a draft
+   * still equal to it commits nothing. `null` for type-to-edit, whose seed
+   * is already an edit.
+   */
+  private draftBase: string | null = null;
+  /** The text the draft opened with: an editor resuming it shows this much already. */
+  private draftStart = '';
   /** The open options of the draft's session, applied when its editor mounts. */
   private draftOpts: ɵTmGridEditorOpenOptions | undefined;
+  /** Whether an IME composition is in progress in the draft input. */
+  private draftComposing = false;
+  /** Editing code that arrived mid-composition, installed when it ends. */
+  private arrivedCode: ɵTmGridEditingCode | null = null;
+  /**
+   * Entity commits made before the editing code arrived, pending in their
+   * cells until it resolves them as the editor would.
+   */
+  private deferredLabels: { readonly request: TmGridResolutionRequest; readonly text: string }[] = [];
   /** The editing cell's editor outlet, or `null` while none renders. */
   editorOutlet: ViewContainerRef | null = null;
   /** The status-bar component, set when the editing code arrives. */
@@ -1862,16 +1893,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   }
 
   /**
-   * The keydown branch while an editor session is open. Any editing
-   * keystroke on a scrolled-away cell scrolls it back first, a key the
-   * editor consumed stays its own, and Mod+F opens the grid's find. Before
-   * the editing code arrives, the draft takes the typing (see
-   * `onDraftKeydown`), and a key an editor would have kept commits the draft
-   * and then acts on the grid. The rest resolves through the editing keys.
+   * The keydown branch while an editor session is open, its editor mounted
+   * or its draft still standing in. Any editing keystroke on a
+   * scrolled-away cell scrolls it back first, a key the editor consumed
+   * stays its own, and Mod+F opens the grid's find. The rest resolves
+   * through the editing keys; a key they do not name stays with the input,
+   * the draft's as much as the editor's, so the grid never acts on it.
    */
   private onEditingKeydown(event: KeyboardEvent, session: TmGridEditSession): void {
     // Any editing keystroke on a scrolled-away cell scrolls it back first (§4).
     this.revealActiveCell();
+    const editing = this.editing;
+    if (editing === null) {
+      // A key in the draft is a gesture: a load that failed asks again.
+      this.loadEditing();
+    }
     if (event.defaultPrevented) {
       return;
     }
@@ -1883,23 +1919,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       this.openFind();
       return;
     }
-    const editing = this.editing;
-    if (editing === null && this.onDraftKeydown(event, session)) {
-      return;
-    }
     const resolved = tmResolveEditingKey(event, {
       mode: session.mode,
       isDropdownOpen: editing?.isDropdownOpen() ?? false,
     });
     if (resolved === null) {
-      if (editing === null) {
-        // A key an editor would have kept (the caret keys, clipboard and
-        // undo shortcuts): there is no editor to keep it yet, so the draft
-        // commits and the key acts on the grid as it does on any cell —
-        // never swallowed, never replayed later.
-        this.commitEditor({ refocus: false });
-        this.onKeydown(event);
-      }
       return;
     }
     switch (resolved.kind) {
@@ -1927,44 +1951,17 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   }
 
   /**
-   * Typing into a draft, before the editing code arrives: a typed
-   * character (the type-to-edit test, AltGraph and Option included)
-   * extends it and Backspace shortens it; the caret is always at its end,
-   * so Delete has nothing to delete, exactly as in an editor. An edit-mode
-   * draft's first key starts from the text the editor would have opened
-   * with. Returns whether the key was the draft's.
+   * The text a draft opens with: the type-to-edit seed; nothing under an
+   * IME composition, which supplies its own; otherwise what the cell's
+   * editor would open with. An enum's panel and a consumer template take
+   * typing as a fresh search or value instead, so theirs opens empty.
    */
-  private onDraftKeydown(event: KeyboardEvent, session: TmGridEditSession): boolean {
-    const bare = !event.ctrlKey && !event.altKey && !event.metaKey;
-    const erase = bare && event.key === 'Backspace';
-    if (!(bare && event.key === 'Delete') && !erase && !tmIsTypedText(event, tmIsApplePlatform())) {
-      return false;
+  private draftStartText(cell: TmRowCol, seedText: string | undefined, ime: boolean): string {
+    if (seedText !== undefined) {
+      return seedText;
     }
-    event.preventDefault();
-    const draft = untracked(this.draft);
-    if (draft === null || event.key === 'Delete') {
-      return true;
-    }
-    let base = draft.base;
-    let text = draft.text;
-    if (text === null) {
-      base = this.draftBase(session.cell);
-      text = base;
-    }
-    // Backspace drops one code point, so a surrogate pair goes whole.
-    text = erase ? Array.from(text).slice(0, -1).join('') : text + event.key;
-    this.draft.set({ text, base });
-    return true;
-  }
-
-  /**
-   * The text an edit-mode draft starts from: what the cell's editor would
-   * open with. An enum's panel and a consumer template take typing as a
-   * fresh search or value instead, so theirs starts empty.
-   */
-  private draftBase(cell: TmRowCol): string {
     const column = untracked(this.columnsInternal)[cell.col];
-    return column === undefined || column.editorDef !== undefined || column.type === 'enum'
+    return ime || column === undefined || column.editorDef !== undefined || column.type === 'enum'
       ? ''
       : this.editTextOf(cell);
   }
@@ -2511,7 +2508,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
    * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
    * every overlay surface (select panel, error overlay, context menu,
    * calendar popup) — an open editor commits. Safer for forms than
-   * Excel's keep-editing.
+   * Excel's keep-editing. A draft owns no overlay, so focus moving into
+   * one commits a draft too.
    */
   onFocusOut(event: FocusEvent): void {
     const engine = this.engineInstance;
@@ -2520,8 +2518,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     }
     const next = event.relatedTarget;
     if (next instanceof Element) {
-      if (this.deps.host.contains(next) || this.inOverlay(next)) {
-        return; // focus stayed inside the grid or one of its overlay surfaces
+      if (this.deps.host.contains(next) || (this.editing !== null && this.inOverlay(next))) {
+        return; // focus stayed inside the grid or one of its editor's overlay surfaces
       }
     } else if (this.focusDroppedByRerender()) {
       return; // the editor's own overlay re-rendered under the pointer
@@ -2550,18 +2548,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   /**
    * The scroller's paste handler: reduces the richest available clipboard
    * flavor through the resolution ladder (§9.3) and hands it to the engine.
-   * While an editor is open the event stays with the editor untouched
-   * (plain text editing inside the cell, §8.4).
+   * While an editor or a draft is open the event stays with its input
+   * untouched (plain text editing inside the cell).
    */
   onPaste(event: ClipboardEvent): void {
     const engine = this.engineInstance;
     if (engine !== null && untracked(() => engine.edit.session()) !== null) {
-      if (this.editing !== null) {
-        return; // native paste into the open editor
-      }
-      // A draft has no input to paste into: it commits, and the paste lands
-      // on the grid.
-      this.commitEditor({ refocus: false });
+      return; // native paste into the open editor's or draft's input
     }
     // An editable grid whose editing code failed to load asks again: the
     // status bar it brings is where an editable grid reports paste errors.
@@ -3876,63 +3869,175 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   // ---- editor session (§8.4): the on-demand editing code ----
 
   /**
-   * Starts loading the editing code, once: when the grid becomes editable,
-   * so it is normally in place before the first keystroke, and at the
-   * latest on the first open. The load is a pending task, so a test's or
-   * the app's stability waits for it, bounded by the load timeout. On
-   * arrival it builds the editing controller, hands the view the status
-   * bar, and mounts the editor of a draft opened meanwhile. A failed or
-   * timed-out load commits the draft as text, goes to the error handler,
-   * and leaves the next open or paste to ask again.
+   * Preloads the editing code once an editable grid has rendered, when the
+   * browser is next idle, so the code is normally in place before the first
+   * keystroke and the draft stays a rare fallback. The wait is a pending
+   * task, so a test's or the app's stability covers it; an open or a paste
+   * meanwhile starts the load at once.
+   */
+  private preloadEditing(): void {
+    if (this.editing !== null || this.editingRequested || this.cancelPreload !== null) {
+      return;
+    }
+    const removeTask = this.deps.injector.get(PendingTasks).add();
+    const start = (): void => {
+      this.cancelPreload = null;
+      this.loadEditing(); // takes its own pending task before this one ends
+      removeTask();
+    };
+    // Safari has no idle callback; a zero timeout still yields to the render.
+    const idle = typeof requestIdleCallback === 'function';
+    const handle = idle ? requestIdleCallback(start, { timeout: 2000 }) : setTimeout(start);
+    this.cancelPreload = () => {
+      (idle ? cancelIdleCallback : clearTimeout)(handle as number);
+      removeTask();
+    };
+  }
+
+  /**
+   * Loads the editing code, one attempt at a time. The attempt is a pending
+   * task, bounded by the load timeout. On arrival, even after the timeout,
+   * the code is installed (see `installEditing`). A failure or a timeout
+   * leaves any draft open and usable, reports the error once per grid, and
+   * lets the next gesture ask again.
    */
   private loadEditing(): void {
-    if (this.editingRequested) {
+    if (this.editing !== null || this.editingRequested || this.destroyed) {
       return;
     }
     this.editingRequested = true;
     const injector = this.deps.injector;
+    const removeTask = injector.get(PendingTasks).add();
+    // A preload still waiting for idle has nothing left to start.
+    this.cancelPreload?.();
+    this.cancelPreload = null;
     const timeoutMs = injector.get(ɵTM_GRID_EDITING_LOAD_TIMEOUT);
-    injector.get(PendingTasks).run(async () => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`tm-grid: the editing code did not load within ${timeoutMs} ms.`)),
-          timeoutMs,
-        );
-      });
-      try {
-        this.installEditing(await Promise.race([injector.get(ɵTM_GRID_EDITING_LOADER)(), timeout]));
-      } catch (error) {
-        this.editingRequested = false;
-        if (!this.destroyed) {
-          this.commitEditor({ refocus: false });
-        }
-        throw error;
-      } finally {
+    let open = true;
+    const timer = setTimeout(() => {
+      end();
+      this.reportLoadFailure(new Error(`tm-grid: no editing code after ${timeoutMs} ms.`));
+    }, timeoutMs);
+    // Ends this attempt once: its timer, its pending task, the in-flight flag.
+    const end = (): void => {
+      if (open) {
+        open = false;
         clearTimeout(timer);
+        removeTask();
+        this.editingRequested = false;
+        this.endLoad = null;
       }
-    });
+    };
+    this.endLoad = end;
+    let loading: Promise<ɵTmGridEditingCode>;
+    try {
+      loading = injector.get(ɵTM_GRID_EDITING_LOADER)();
+    } catch (error) {
+      loading = Promise.reject(error);
+    }
+    loading.then(
+      (code) => {
+        end();
+        this.installEditing(code);
+      },
+      (error: unknown) => {
+        end();
+        this.reportLoadFailure(error);
+      },
+    );
+  }
+
+  /** Reports a failed load to the error handler: the first only, and never after disposal. */
+  private reportLoadFailure(error: unknown): void {
+    if (this.destroyed || this.loadFailureReported) {
+      return;
+    }
+    this.loadFailureReported = true;
+    this.deps.injector.get(ErrorHandler).handleError(error);
   }
 
   /**
-   * Builds the editing controller from the code that arrived, hands the
-   * view its status bar, and mounts the editor of a draft opened meanwhile.
-   * The editor takes focus only while focus is still in the grid.
+   * Builds the editing controller from the code that arrived and hands the
+   * view its status bar. An open draft is handed over: while its input has
+   * focus, the editor mounts with the draft's text and caret and takes
+   * focus; otherwise the draft commits as it stands, so the arrival never
+   * pulls focus or opens a panel where the user is not. An IME composition
+   * in progress finishes in the draft first. Entity commits waiting on the
+   * code are resolved last.
    */
   private installEditing(code: ɵTmGridEditingCode): void {
     if (this.destroyed || this.editing !== null) {
       return;
     }
+    const input = untracked(this.draft) !== null ? this.draftInput : null;
+    if (input !== null && this.draftComposing) {
+      this.arrivedCode = code;
+      return;
+    }
+    this.arrivedCode = null;
     const editing = new code.ɵTmGridEditing<T>(this, this.deps.injector);
-    this.editing = editing;
     this.statusBar.set(code.ɵTmGridStatusBar);
-    const draft = untracked(this.draft);
-    if (draft !== null) {
-      // The cell stops showing the draft as the editor takes it over.
-      this.draft.set(null);
-      const scroller = untracked(this.scrollerSignal);
-      const focus = scroller !== null && scroller.contains(document.activeElement);
-      editing.resume(this.draftOpts, draft.text, focus);
+    if (input === null) {
+      this.editing = editing;
+    } else if (document.activeElement === input) {
+      const text = input.value;
+      // The editor mounts and takes focus while the draft input is still in
+      // place, so focus moves from one to the other and never drops.
+      this.editing = editing;
+      try {
+        editing.resume(this.draftOpts, {
+          text,
+          changed: text !== this.draftStart,
+          // A text input always reports its selection.
+          selectionStart: input.selectionStart!,
+          selectionEnd: input.selectionEnd!,
+          selectionDirection: input.selectionDirection as 'forward' | 'backward' | 'none',
+        });
+      } finally {
+        this.closeDraft();
+      }
+    } else {
+      this.commitDraft();
+      this.editing = editing;
+    }
+    this.drainDeferredLabels();
+  }
+
+  /** Resolves the entity commits made before the editing code arrived (see `commitDraft`). */
+  private drainDeferredLabels(): void {
+    const editing = this.editing;
+    if (editing === null) {
+      return;
+    }
+    const queued = this.deferredLabels;
+    this.deferredLabels = [];
+    for (const { request, text } of queued) {
+      // An undo, a readonly flip or a disposal aborted it meanwhile.
+      if (!request.context.signal.aborted) {
+        editing.resolveLabel(request, text);
+      }
+    }
+  }
+
+  /** The draft input's composition events: the code waiting on a composition installs when it ends. */
+  onDraftComposition(composing: boolean): void {
+    this.draftComposing = composing;
+    if (!composing) {
+      this.installArrivedCode();
+    }
+  }
+
+  /**
+   * Installs editing code that waited on a composition in the draft, once
+   * nothing holds it: after the composition's own last input event.
+   */
+  private installArrivedCode(): void {
+    const code = this.arrivedCode;
+    if (code !== null) {
+      queueMicrotask(() => {
+        if (this.arrivedCode === code) {
+          this.installEditing(code);
+        }
+      });
     }
   }
 
@@ -3974,10 +4079,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
 
   /**
    * Opens an editor session on a cell (see `ɵTmGridEditing.open`). Before
-   * the editing code arrives, the session opens in the engine at once with
-   * a draft the cell shows; the editor mounts with it on arrival. A draft
-   * already open is never replaced: it commits first. Returns whether a
-   * session opened.
+   * the editing code arrives, the session opens in the engine with a draft:
+   * a plain input in the cell, focused at once (inside the gesture, so a
+   * touch keyboard rises) and holding the seed or the text the editor would
+   * open with. A draft already open is never replaced: it commits first.
+   * Returns whether a session opened.
    */
   private openEditor(
     cell: TmRowCol,
@@ -4001,47 +4107,90 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     this.escapedSignal.set(false);
     // The opening keystroke on a scrolled-away cell scrolls it back (§4).
     this.revealActiveCell();
+    // `hasEditor` above vouched for the column.
+    const column = untracked(this.columnsInternal)[cell.col]!;
+    const start = this.draftStartText(cell, seedText, opts?.ime === true);
     this.draftOpts = opts;
-    this.draft.set({ text: seedText ?? null, base: null });
+    this.draftStart = start;
+    this.draftBase = seedText === undefined ? start : null;
+    this.draftComposing = false;
+    this.draft.set({ label: untracked(column.header), numeric: column.type === 'number' });
+    // Render the input now, so focus (and an IME composition's first
+    // keydown) lands in it within this task, as with an editor's mount.
+    this.appRef.tick();
+    const input =
+      untracked(this.scrollerSignal)?.querySelector<HTMLInputElement>('input[data-tm-draft]') ??
+      null;
+    this.draftInput = input;
+    if (input !== null) {
+      input.value = start;
+      input.setSelectionRange(start.length, start.length);
+      input.focus({ preventScroll: true });
+    }
     this.loadEditing();
     return true;
   }
 
+  /** Closes the draft: its input goes with the next render. */
+  private closeDraft(): void {
+    this.draft.set(null);
+    this.draftInput = null;
+    this.draftComposing = false;
+    this.installArrivedCode();
+  }
+
   /**
-   * Commits the open session (see `ɵTmGridEditing.commit`). Before the
-   * editing code arrives, the draft commits through the engine at once, as
-   * the editor would commit its text: an entity column's text through
-   * label resolution, any other column's through the column's parse. A
-   * draft nothing was typed into, or typed back to where it started,
-   * writes nothing. Without a session there is nothing to commit.
+   * Commits the open session (see `ɵTmGridEditing.commit`); before the
+   * editing code arrives, the draft commits (see `commitDraft`). Without a
+   * session there is nothing to commit.
    */
   private commitEditor(opts: { refocus: boolean }): void {
     if (this.editing !== null) {
       this.editing.commit(opts);
       return;
     }
-    const draft = untracked(this.draft);
-    if (draft === null) {
-      return;
-    }
-    this.draft.set(null);
-    const engine = this.engine;
-    const session = untracked(() => engine.edit.session());
-    if (session !== null) {
-      const text = draft.text;
-      if (text === null || text === draft.base) {
-        engine.edit.cancel();
-      } else if (untracked(this.columnsInternal)[session.cell.col]?.type === 'entity') {
-        const request = engine.commitEditorLabel(text);
-        if (request !== null) {
-          this.runResolutions([request]);
-        }
-      } else {
-        engine.edit.commitText(text);
-      }
+    if (untracked(this.draft) !== null) {
+      this.commitDraft();
     }
     if (opts.refocus) {
       this.requestFocusActive();
+    }
+  }
+
+  /**
+   * Commits the draft's text through the engine, as the editor would
+   * commit it. A draft still equal to the text it opened with writes
+   * nothing. A built-in entity picker's text goes pending in its cell until
+   * the editing code resolves it with the picker's own search
+   * (`drainDeferredLabels`); a template editor's entity text takes the
+   * label resolution at once; any other column's text takes its parse.
+   */
+  private commitDraft(): void {
+    const text = this.draftInput?.value ?? this.draftStart;
+    const base = this.draftBase;
+    this.closeDraft();
+    const engine = this.engine;
+    const session = untracked(() => engine.edit.session());
+    if (session === null) {
+      return;
+    }
+    const column = untracked(this.columnsInternal)[session.cell.col];
+    if (text === base) {
+      engine.edit.cancel();
+    } else if (column?.type === 'entity') {
+      const viaSearch = column.editorDef === undefined;
+      const request = engine.commitEditorLabel(text, { deferToHost: viaSearch });
+      if (request === null) {
+        return; // an earlier rung settled it
+      }
+      if (viaSearch) {
+        this.deferredLabels.push({ request, text });
+        this.drainDeferredLabels();
+      } else {
+        this.runResolutions([request]);
+      }
+    } else {
+      engine.edit.commitText(text);
     }
   }
 
@@ -4056,7 +4205,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       return;
     }
     if (untracked(this.draft) !== null) {
-      this.draft.set(null);
+      this.closeDraft();
       this.engine.edit.cancel();
     }
     if (opts.refocus) {
@@ -4238,10 +4387,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     // shortcut) fired right after the gesture would reach an unfocused grid
     // and be dropped. A move to a not-yet-rendered cell (paging past the
     // window) leaves the element null and falls through to that effect, which
-    // also owns DOM-move focus reclaim. Skipped while escaped or an editor
-    // owns focus — the effect resolves those; this only ever brings focus
-    // forward in time, never changes which cell it lands on.
-    if (untracked(this.escapedSignal) || (this.editing?.current() ?? null) !== null) {
+    // also owns DOM-move focus reclaim. Skipped while escaped or while an
+    // editor or a draft owns focus — the effect resolves those; this only
+    // ever brings focus forward in time, never changes which cell it lands on.
+    if (
+      untracked(this.escapedSignal) ||
+      (this.editing?.current() ?? null) !== null ||
+      untracked(this.draft) !== null
+    ) {
       return;
     }
     this.activeCellElement()?.focus({ preventScroll: true });
@@ -4840,12 +4993,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       { injector },
     );
 
-    // The editing code loads as soon as the grid is editable, ahead of the
-    // first keystroke; a readonly grid never asks for it.
+    // The editing code preloads once the grid is editable, when the browser
+    // is next idle, ahead of the first keystroke; a readonly grid never asks
+    // for it.
     effect(
       () => {
         if (this.editable()) {
-          untracked(() => this.loadEditing());
+          untracked(() => this.preloadEditing());
         }
       },
       { injector },
@@ -5033,7 +5187,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
             }
             return;
           }
-          // A draft has no editor yet: its cell holds focus like any cell.
+          // A draft's input owns focus the same way.
+          const draftInput = untracked(this.draft) === null ? null : this.draftInput;
+          if (draftInput !== null) {
+            if (droppedByDomMove) {
+              draftInput.focus({ preventScroll: true });
+            }
+            return;
+          }
           scroller.querySelector<HTMLElement>(cellSelector(active))?.focus({ preventScroll: true });
         });
       },
@@ -5275,7 +5436,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       clearTimeout(this.findDebounceTimer);
       this.findDebounceTimer = null;
     }
+    // The editing code's load and its preload end here, with no report.
+    this.endLoad?.();
+    this.cancelPreload?.();
+    this.cancelPreload = null;
+    this.arrivedCode = null;
+    this.deferredLabels = [];
     this.draft.set(null);
+    this.draftInput = null;
     this.editing?.destroy();
     if (this.handle !== null) {
       this.persistWidths();

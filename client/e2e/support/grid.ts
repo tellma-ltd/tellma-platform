@@ -225,10 +225,16 @@ export function editor(page: Page): Locator {
 
 /**
  * The open editor's input (the built-in text editor, or any input-hosting
- * registered editor).
+ * registered editor) — never the draft input a grid shows while its editing
+ * code is on its way.
  */
 export function editorInput(page: Page): Locator {
-  return page.locator('[data-tm-editor] input');
+  return page.locator('[data-tm-editor] input:not([data-tm-draft])');
+}
+
+/** The draft input an editable grid shows while its editing code is on its way. */
+export function draftInput(page: Page): Locator {
+  return page.locator('input[data-tm-draft]');
 }
 
 /** The editable status bar's error tally chip. */

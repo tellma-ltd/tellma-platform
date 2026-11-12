@@ -657,3 +657,527 @@ passed in full.
 - Spec 0004 §8.4's type-to-edit now has a short window in which typing goes to a draft rather than
   an editor, with the behaviours listed under the design deviations. The spec could say so if this
   design stands.
+
+## Review 2
+
+Reviewer 2 (Opus), on c07bef9: the change 15ba8ec plus fix round 1, base 9007c81. Logs, probe
+sources and mutation runs are in `.tmp/r2-pcf21-*`. The probes and mutations were temporary, and
+the tree is clean.
+
+What I ran on a clean build. `client/.angular/cache` was moved to `.tmp/r2-pcf21-ngcache`, `dist`
+was removed, and a full `pnpm run build` took 3 min 9 s.
+- `size:check`: pass.
+  - ./grid **38.27 / 38.75**, ./grid-editing **6.27 / 6.37**, ./tree-grid 0.97, ./grid-engine 14.84.
+  - Both static-graph checks pass.
+  - The gate fires: adding ./menu to ./grid's excludes failed it with "'./grid' reaches './menu'"
+    (reverted).
+- `api:check`: pass (45 reports). The clean d.ts declares `InputSignal<"row" | "none">`, and so does
+  the golden (`core-ui.grid.api.md:70`).
+- `lint`, `typecheck`, `lint:test` (90 tests): pass.
+- Unit tests:
+  - `ng test core-ui --include "grid/**/*.spec.ts"`: 8 files, 402 tests pass.
+  - tree-grid: 13 pass.
+  - grid-editing now has no specs of its own.
+- e2e, with `--repeat-each 3 --workers 2`:
+  - Run 1, 183 passed in 5.2 min. Chromium ran grid-lazy-editing, grid-editing, grid-date,
+    grid-a11y-editable and grid-keyboard-layout. Touch ran grid-touch and grid-touch-search-page.
+  - Run 2, 114 passed in 2.9 min: grid-entity and grid-rtl on chromium.
+  - The touch project's `testMatch` never runs grid-lazy-editing (R2-9).
+- Probes (temporary, now deleted):
+  - Unit specs with gated, rejecting and stalled loaders, P1–P9: `.tmp/r2-pcf21-probe.spec.ts.txt`
+    and `.tmp/r2-pcf21-probe2.spec.ts.txt`.
+  - A trusted-input e2e on the lazy story: `.tmp/r2-pcf21-shift.e2e.ts.txt`.
+- Mutations of grid-core.ts against `tm-grid-lazy-editing.spec.ts` (reverted):
+  - **A:** three changes, with these results:
+    - The commit-first guard in `openEditor` removed: the double-click test still passes.
+    - `tmIsTypedText` in `onDraftKeydown` swapped for the old `key.length === 1 && !ctrl && !meta`:
+      the AltGr test fails.
+    - `focus` forced true in `installEditing`: the arrival-focus test fails.
+  - **B:** the press and blur commits of a draft deferred by a macrotask. The "outside click
+    handler" test and the double-click test fail.
+  - **C:** `requestFocusActive` and the roving-focus effect reverted to step aside for any open
+    session. All 17 tests pass.
+
+R1 findings, judged by the code:
+- **R1-1:** fixed. Verified on the clean build above.
+- **R1-2:** fixed. A double-click's first press now commits the draft synchronously, and mutation B
+  shows the test pins that. The extra guard in `openEditor` is unpinned (mutation A) but harmless.
+- **R1-3:** fixed for ordering.
+  - Blur, a press, a touch tap, a toggle, the context menu, a long-press, Paste, Mod+F, `gotoError`,
+    commit-and-move, Escape, a readonly flip and a content switch each close the engine session
+    synchronously.
+  - No session outlives `commitEditor` or `cancelEditor`. The draft's write lands before a toggle,
+    a menu action or a paste.
+  - A destroy drops the draft, as it dropped an open editor's text before the split.
+  - The focus half is moot now, and its changed checks are unpinned (mutation C).
+- **R1-4:** not fixed in a browser. The predicate is shared, but the modifier keydown that comes
+  before an AltGr character commits the draft first. See R2-1.
+- **R1-5:** fixed, but R2-4 is a side effect of letting Mod+Z act on the grid.
+- **R1-6:** the window is bounded, but the failure path now loses text (R2-2) and outlives the grid
+  (R2-8).
+- **R1-7:** fixed for text, number and date only (R2-5).
+- **R1-8, R1-9, R1-10:** fixed.
+
+Answers to the brief:
+- **Session lifecycle, write order, double-click, a press on another cell, Escape:** correct (see
+  R1-2 and R1-3 above). Escape cancels at once and keeps focus on the cell.
+- **Timeout and failure:** the `PendingTasks` task ends, the keyboard is free, and the next open or
+  paste retries, all verified by the unit tests. But see R2-2 and R2-8.
+- **Focus on arrival:** right for text, number and date. Enum and entity: R2-5.
+- **RTL:** the draft span takes `cell.dir`, and its padding is logical. I found no window-specific
+  RTL problem. The RTL e2e run settles first, so it never sees the window.
+- **Touch:** R2-11, plus the coverage gap in R2-9.
+- **Entity columns:** R2-3. **Undo:** R2-4.
+- **Validation:** a committed draft goes through the same engine commit as editor text: `commitText`
+  with the column's parse, or the label ladder. It shows invalid input and cell errors exactly as an
+  editor commit does.
+- **The `gotoGrid` settle wait:** it hides no bug in the specs it settles, which test the editor.
+  - It does mean none of the existing batteries runs in the window, and users can reach it. The
+    window opens on the first render of an editable grid, or when Edit flips a readonly grid, until
+    the chunk arrives.
+  - Typing in the window has R2-1, R2-2 and R2-3.
+  - The new window e2e types with `keyboard.type`, which sends no Shift keydown, so it cannot see
+    R2-1.
+  - The test that failed on the starved runner showed R2-3's other half: a label two entities share
+    goes to the resolver.
+- **The ɵ loader seam exported from ./grid:** acceptable. The showcase needs a package import, and
+  ./grid already exports `ɵTmGridCore` the same way. The golden side effect is R2-10.
+- **The listed window deviations:**
+  - Enum drafts through the column's parse: acceptable. The result is a visible invalid input, not
+    a wrong value.
+  - Caret keys commit and move: acceptable, but it breaks spec 0004 §8.4 edit mode ("arrows move
+    the caret") for the window.
+  - IME not captured: acceptable, but it breaks 0004 §8.4's "type-to-edit must not eat CJK input"
+    for the window, for Amharic input methods too.
+  - Template editors through the column's parse: acceptable for text-like templates.
+  - Entity drafts ask the resolver: not acceptable as it stands (R2-3).
+  - Not listed: R2-4, R2-6, R2-7 and R2-11.
+  - A plain `<input>` as the draft surface would remove most of these deviations; see R2-1's fix.
+
+### Findings
+
+**R2-1 (blocking): a modifier or dead-key keydown commits the draft, and the next character
+replaces it. A capital letter, an AltGr character or an accented character typed in the window
+therefore loses everything typed before it.**
+- **Where:**
+  - `grid/internal/grid-core.ts:1894-1902`, the window branch for "a key an editor would have kept".
+  - `onDraftKeydown`'s typed-text gate at `:1937-1942`.
+- **What happens:**
+  1. In the window, the user types "ab" into the draft.
+  2. To type "C" they press Shift. Its keydown (`key: 'Shift'`) is not typed text, and
+     `tmResolveEditingKey` returns `null` for it. The branch commits "ab" and closes the session.
+  3. "C" arrives with no session. `tmResolveGridKey` resolves type-to-edit, which opens a new draft
+     seeded "C" in enter mode, replacing the cell's content.
+  4. Enter commits "Cd". "ab" is gone, with no error.
+- **Other keys that do the same:**
+  - Control then AltGraph, which Windows sends before an AltGr character. On German "@" or Polish
+    "ą", "a@b" commits as "@b".
+  - CapsLock.
+  - A dead key (`key: 'Dead'`): the accents on French, Spanish and Portuguese layouts.
+  - Alt or Meta pressed alone.
+- **Evidence:**
+  - Real browser, trusted input, on the lazy story: `type('ab')`, `press('Shift+C')`, `type('d')`,
+    Enter. The description is "Cd".
+  - Unit probe P8: "a", Shift, "B", "c" gives "Bc".
+  - Unit probe P9: "a", Control, AltGraph, "@", "b" gives "@b".
+  - This is why R1-4 is not fixed. Its test (`tm-grid-lazy-editing.spec.ts:444`) dispatches only
+    the "@" keydown.
+- **Fix:** either change would do.
+  - In that branch, ignore keys that never act alone, with no commit and no `preventDefault`:
+    `Shift`, `Control`, `Alt`, `AltGraph`, `Meta`, `CapsLock`, `NumLock`, `ScrollLock`, `Fn`,
+    `FnLock`, `Hyper`, `Super`, `OS`, `Symbol`, `SymbolLock`, `Dead`, `Compose`, `Process`,
+    `Unidentified`. Chromium reports a dead key's composed character on the next keydown, so
+    "Dead" then "é" extends the draft.
+  - Or make the draft surface a bare `<input>` in the cell, without `tm-input`, focused on open,
+    and hand its value and caret to the editor on arrival.
+    - It costs ./grid a few hundred bytes.
+    - It takes modifiers, dead keys, IME compositions, the caret keys, Delete, native undo, paste
+      into the draft and the touch keyboard natively.
+    - That removes R2-1, R2-4, R2-7 and R2-11, and the IME and caret deviations, with no key
+      table.
+- **Tests:**
+  - Unit: "a", a Shift keydown, then "B" gives the draft "aB". Control, AltGraph, then "@" (the
+    Windows sequence) gives "a@". "Dead" then "é" gives "aé".
+  - e2e: `press('Shift+C')` in the window.
+
+**R2-2 (major): a failed or timed-out load commits the draft at whatever moment it fails. While
+the code keeps failing, every keystroke replaces the one before it.**
+- **Where:** `grid-core.ts:3905-3910`, where the catch commits the draft, with the retry on each
+  open at `:4006`.
+- **Scenario A: the load keeps failing,** as when the user is offline or a chunk returns 404 after
+  a deploy.
+  1. The user types "1". A draft opens and asks for the code again, and the import rejects.
+  2. The catch commits "1" and closes the session.
+  3. "2" arrives with no session. Type-to-edit opens a draft "2" that replaces "1", and the next
+     rejection commits it.
+  4. The cell ends with the last character only. Probe P1: "1", "2", "3" gives "3", with five
+     errors reported.
+  - No cell error marks the loss, and the status bar that would show a tally never loads.
+- **Scenario B: a slow network.** The 10 s timer starts when the grid becomes editable, not when the
+  draft opens. A user typing "Long" as it fires gets "Lo" committed, then a new draft "ng" that
+  replaces it (probe P2).
+- **Why the commit is unneeded:** the draft is complete without the editing code. Enter, Tab, the
+  arrows, a press, blur and Escape all settle it through the engine.
+- **Fix:**
+  - On a failure or timeout, end the pending task and report the error, but leave the draft open.
+    The user's own commit gesture settles it.
+  - Keep the retry on the next open or paste.
+  - Update the test at `tm-grid-lazy-editing.spec.ts:549`, which asserts that the draft commits.
+- **Test:** a loader that always rejects, three keys with a macrotask between each. The draft reads
+  "123", and Enter commits "123".
+
+**R2-3 (major): an entity draft on a column without a resolver turns valid text into an invalid
+input and clears the cell.**
+- **Where:**
+  - `grid-core.ts:4034-4037`: `commitEditorLabel(text)`, without `deferToHost`.
+  - Rung (3) of `commitLabel` in `grid-engine/tm-grid-edit-state.ts`.
+- **What happens:**
+  - Spec 0006 §7.4 says a column with `search` but no resolver "still resolves typed text". Take
+    such a column, type "Bob" in the window and press Enter.
+  - The ladder has no resolver and no host rung, so it writes the cleared value with a parse error.
+  - Probe P3: `agentId` goes from 11 to `null`, and the cell shows "Bob" in error. The editor would
+    have adopted its own search and written 12.
+- **The listed deviation does not cover it.** It says entity drafts go to `resolvePastedLabels`, but
+  this column has none, so nothing decides and the verdict is wrong.
+- **With a resolver, the draft also skips 0006 §7.4's search rungs:**
+  - A label two entities share goes to the resolver, which may return one of them. The search
+    would have called it ambiguous.
+  - Every entity draft costs a resolver call. The spec's "commonly none" no longer holds.
+- **Fix:**
+  - Commit an entity draft with `deferToHost: true`, so the cell goes pending under the grid's
+    affordance.
+  - Answer the request from the column's search, with the decision the controller already makes.
+    Either:
+    - let `installEditing` hand the pending request to a new `ɵTmGridEditing` method that runs
+      `entitySearch(text)` and `decideFromSearch`, with a failed load answering
+      `{ failed: true }`; or
+    - call `column.entitySearch` from ./grid and move `decideFromSearch` to ./grid-engine.
+- **Tests:**
+  - A typed unique label on a column with no resolver, committed in the window: the value is
+    written, with zero resolver calls.
+  - A label two entities share: ambiguous.
+
+**R2-4 (minor): Mod+Z on a draft runs the grid's undo, which can revert an earlier, unrelated
+edit.**
+- **Where:** `grid-core.ts:1894-1902`: Mod+Z commits the draft, then `onKeydown` runs the undo.
+- **What happens:**
+  - In the window, F2 on a cell, then Ctrl+Z. The untouched draft cancels, and the grid's undo
+    reverts the previous history entry. Probe P5 reverted an "A" committed a moment earlier.
+  - After typing, the first Ctrl+Z undoes the draft's own commit and a second undoes earlier edits.
+  - Mod+Y and Mod+Shift+Z redo the same way.
+  - In an editor, Mod+Z is the input's native undo. Spec 0004 §11 runs the grid's undo only "when
+    the grid has focus and no editor is open".
+- **Fix:** in the window, treat Mod+Z, Mod+Y and Mod+Shift+Z as draft keys. Mod+Z restores the draft
+  to its start, or cancels it when untouched. `preventDefault` them, and never let them reach the
+  grid's undo.
+
+**R2-5 (minor): R1-7 is fixed only for text, number and date. An enum resume takes focus, and an
+entity resume opens its dropdown, while the user is elsewhere.**
+- **Where:**
+  - `grid-editing/editing.ts:251`, and `:504`, `:506` and `:514`: `seed` and `openDropdown` run
+    whatever `focus` says.
+  - `select/tm-select.ts:338-339`: `seed` calls `focus()` and opens the panel.
+- **What happens:**
+  - Probe P6: an enum draft "p", focus moved to an input in an overlay pane, then the code arrives.
+    Focus ends in the select's combobox.
+  - An entity resume's `seed` opens the dropdown under a user who is not in the grid.
+- **Fix:** either of these.
+  - When focus is outside the grid at arrival, commit the draft rather than resuming it. A draft
+    owns no overlay, so a focusout into an overlay need not keep it open.
+  - Or mount without seeding or opening any panel, and seed on the next focus.
+
+**R2-6 (minor): an enum draft resumes with only its first character.**
+- **Where:** `editing.ts:251` calls `tm-select.ts:330-339`. Its `seed` feeds only `text[0]` to the
+  typeahead, replacing the mount's own seed.
+- **What happens:**
+  - The options are kg, pallet and pcs. Type "pc" in the window.
+  - On arrival the active option is "pallet" (probe P4), and Enter commits it.
+  - Typing "pc" into the editor would have reached "pcs".
+- **Fix:** feed the whole draft to the typeahead through an internal select hook. Or commit an enum
+  draft longer than one character instead of resuming it. Otherwise, list it as a window deviation.
+
+**R2-7 (minor): an IME-opened draft starts from the cell's text.**
+- **Where:** `grid-core.ts:1949-1952`, where `draftBase` applies to any draft whose text is `null`,
+  with the IME open at `:1825`.
+- **What happens:**
+  - A composing keydown opens the draft (edit mode, `ime`), and the composition is lost (a listed
+    deviation).
+  - The user then types "a", and the draft becomes "Alphaa" (probe P7).
+  - Under `ime` the editor opens unseeded, with an empty baseline, so it would hold "a".
+- **Fix:** start from `''` when `draftOpts.ime` is set.
+
+**R2-8 (minor): the load's timer and its error outlive the grid, and a persistent failure reports
+once per attempt.**
+- **Where:** `grid-core.ts:3888-3917`.
+- **What happens:**
+  - A user leaves the route within 10 s while the chunk is slow. The pending task keeps the app
+    unstable until the timer fires.
+  - Then the error handler receives "did not load within 10000 ms" for a grid that no longer
+    exists.
+  - Under R2-2's scenario A, probe P1 logged five errors for three keys.
+- **Fix:**
+  - Race a destroy signal as well, clear the timer in `onDestroy`, and do not rethrow once
+    destroyed.
+  - Report a failing load once per grid, or once per run of failures.
+
+**R2-9 (minor): test gaps.**
+- No test sends the keydowns a real keyboard sends around a character: Shift, Control, AltGraph,
+  Dead. So R2-1 passed every gate.
+  - The AltGr unit test (`tm-grid-lazy-editing.spec.ts:444`) dispatches only "@".
+  - The e2e uses `keyboard.type`.
+- The fix round's focus checks are unpinned. Reverting `requestFocusActive` (`grid-core.ts:4244`)
+  and the roving-focus effect (`:5027-5028`) to "any open session" passes all 17 tests
+  (mutation C).
+- R1-2's guard, which commits an open draft inside `openEditor` (`grid-core.ts:3995-3997`), is
+  unpinned. Without it the double-click test passes, because the first press commits.
+- The window e2e runs on chromium only. The touch project's `testMatch`
+  (`e2e/playwright.config.ts:89`) skips grid-lazy-editing, so no test double-taps in the window.
+- The story keeps the 10 s load timeout (`grid-lazy-editing-story.ts:42-50`).
+  - A runner that takes more than 10 s before `release()` closes the window.
+  - The arrival tests then fail on the abandoned loader.
+  - Provide `ɵTM_GRID_EDITING_LOAD_TIMEOUT` with a long value in the story.
+
+**R2-10 (minor): the grid golden now depends on grid-editing's icon imports.**
+- **Where:**
+  - `client/api/core-ui.grid.api.md:19` (`import * as lucide from 'lucide'`).
+  - `grid-core.ts:114-119`: `ɵTmGridEditingCode.ɵTmGridStatusBar` is typed
+    `typeof ɵTmGridStatusBar`.
+- **What happens:** the exported token's type makes api-extractor follow into the status bar's
+  declarations. A change to the status bar's glyphs then drifts ./grid's golden, though no ./grid
+  declaration changed.
+- **Fix:** type that member as `Type<unknown>`, which is all `NgComponentOutlet` takes. Confirm with
+  `api:check` that the lucide line drops.
+
+**R2-11 (minor): touch editing in the window has no keyboard.**
+- **Where:** the draft design (`grid-core.ts:3982-4007`), and the arrival focus at
+  `editing.ts:477-479`.
+- **What happens:**
+  - On a phone or tablet, a double-tap in the window opens a draft on a cell with no input, so no
+    on-screen keyboard appears, and nothing can be typed.
+  - On arrival the editor's `focus()` runs outside a user gesture. iOS Safari does not raise the
+    keyboard for that, so the user must tap again.
+- **Fix:** list it as a window deviation. The bare-input draft surface in R2-1's fix removes it,
+  because the double-tap would focus a real input inside the gesture.
+
+**Spec misalignments for Ahmad** (some are already in the implementer's list):
+- Spec 0010 §C.11:
+  - Its table has no ./grid-editing row (6.37), and ./grid's lowered ceiling is not recorded.
+  - It still says on-demand loading "is not part of this amendment".
+- Spec 0010 §C.15:
+  - Its budget line puts the popup editors' +1 KB on ./grid, while the new budget notes say they
+    belong in ./grid-editing.
+  - It makes popup editors "always edit mode" (the arrows never commit and move). A draft in the
+    window commits and moves on the arrows and on Enter. When §C.15 lands, the draft needs a rule
+    for popup columns.
+- Spec 0004 §8.4 (edit-mode caret, IME), spec 0004 §11 (undo only with no editor open), and spec
+  0006 §7.4 (typed-commit resolution, including the no-resolver case): if the keyed draft stands,
+  each needs a window clause. The bare-input draft surface removes most of that need.
+
+### Responses
+
+Fix round 2. The design first, then each finding.
+
+#### Design: the draft is a real input, and the code preloads when idle
+
+The keyed draft is gone. Both of the orchestrator's directions are in.
+
+**(a) The draft is a bare `<input data-tm-draft>` in the editing cell.**
+- `openEditor` opens the engine session, renders the input with `ApplicationRef.tick()` (the same move the editor's mount makes) and fills it:
+  - the type-to-edit seed;
+  - `''` under an IME composition;
+  - otherwise the text the editor would open with (`''` for enum and template columns).
+- It focuses the input synchronously, inside the gesture. On a phone, a double-tap therefore raises the keyboard.
+- The browser owns the text: modifiers, dead keys, IME, the caret, Delete, local undo and paste. The grid has no key table for it.
+- **Keys.** A key in the draft goes through the same path as a key in an open editor:
+  - `onEditingKeydown` and `tmResolveEditingKey`, with the session's own mode.
+  - A key that resolver does not name stays with the input, untouched.
+  - Escape cancels, F2 toggles the mode, and Enter and Tab commit and move.
+  - The arrows follow the editor's own rules. In an F2 (edit-mode) draft they move the caret. In a typed (enter-mode) draft they commit and move, as the editor does under spec 0004 §8.4.
+  - Mod+Z, Mod+Y and Mod+Shift+Z are the input's own, so they never reach the grid's undo.
+- **Commits.** A draft commits only on the user's own gestures: Enter, Tab, an enter-mode arrow, blur, or a press or an open on another cell.
+  - A draft owns no overlay, so focus moving into one commits it.
+  - Nothing commits a draft because a load failed or timed out.
+- **Arrival.**
+  - If the draft input has focus, the editor mounts and takes focus while the input is still in place, so focus never drops. It then receives the draft's text (`seed`, only when the text changed from what the mount installs) and its caret or selection (`setSelectionRange` on the focused input).
+  - If the input does not have focus, the draft commits as it stands, and the arrival opens nothing.
+  - If an IME composition is in progress, the code waits for `compositionend` and installs then.
+
+**(b) Preload on idle.**
+- Once an editable grid has rendered, `preloadEditing` waits for `requestIdleCallback` (2 s timeout; Safari falls back to `setTimeout`), then loads.
+- A pending task covers the wait, so app stability still includes the editing code.
+- An open or a paste in the meantime starts the load at once.
+- The lazy chunk keeps the initial bundle as it was. The draft is now the correctness fallback for a slow or failed network.
+
+**Loading.**
+- Each attempt has its own timeout and pending task.
+- **A failure or a timeout:**
+  - ends the attempt;
+  - reports the error once per grid;
+  - leaves the draft untouched.
+- **Retries.** The next gesture asks again quietly. That covers any key in a draft, an open and a paste.
+- **Late arrival.** Code that arrives after its attempt timed out is still installed.
+- **Destroy:**
+  - ends the attempt (its timer and pending task);
+  - cancels the preload;
+  - drops the pending entity commits;
+  - suppresses any report.
+
+**Entity columns (R2-3): the cell stays pending.**
+- A built-in-picker entity draft commits with `commitEditorLabel(text, { deferToHost: true })`. The cell goes to the grid's pending state (spinner, cleared value, one open history entry), and the request is queued.
+- On arrival, `ɵTmGridEditing.resolveLabel` runs the column's search for the text through `ɵtmEntitySearchOnce`, then answers through `settleLabel`. That is the tail of the editor's own commit, split out and unchanged:
+  - `decideFromSearch` decides where it can;
+  - the resolver runs with the search's fallback where it cannot;
+  - a failed search on a resolver-less column gives a retryable failure.
+- **Shared code.** The result normalization (object form, de-duplication by id) moved from the picker into `entity-picker/tm-entity-search.ts`. The picker and the grid now share it.
+- **Templates.** A template editor's entity draft takes the resolver at once, as its editor would.
+- **Undo, a readonly flip and disposal** abort the queued request, and the drain skips it.
+
+Why I chose pending over waiting with the draft open:
+- The user's commit gesture commits immediately, as for every other column.
+- The pending state already exists for resolver round trips, with its spinner and undo.
+- The verdict comes from the editor's own code and the picker's own normalization, so the two paths cannot drift.
+- The cost: while the code never arrives, the cell stays pending. It writes nothing invalid and nothing null beyond the engine's usual pending clear.
+
+**Window-only deviations, replacing the earlier list:**
+1. **Enum.** An enum draft committed before the code arrives goes through the column's parse: a full label commits its value, and a prefix becomes an invalid input. On arrival, the editor takes the whole text as typeahead (R2-6).
+2. **Entity.** An entity draft committed before the code arrives waits pending in its cell for the code. If the code never arrives, it stays pending.
+3. **Number and date.** A number or date draft is a plain text input: no number filtering and no calendar until the code arrives (Alt+ArrowDown is remembered). Its text takes the column's parse on commit, as a typed editor commit does.
+4. **iOS.** The handoff's `focus()` runs outside a gesture. iOS should keep the keyboard, because focus moves between two inputs, but this is not verified on iOS (the touch project emulates Chromium).
+
+#### R2-1 (blocking): fixed
+
+The draft is a real input. Shift, Control, AltGraph, CapsLock, a dead key, Alt, Meta and Process keydowns never reach a grid path that acts: the editing resolver names none of them. The browser composes the character.
+- **Unit test:** "modifier and dead-key keydowns leave the draft to the browser".
+  - It sends eight modifier keydowns, Windows' Ctrl+Alt+AltGraph "@" among them.
+  - Each one is not prevented, and the draft stays open.
+  - The draft then commits "aB@é".
+- **e2e test (trusted):** "Shift, AltGr and accented characters typed while the code loads all land, and the editor takes them over".
+  - Input: `down('Shift')`, `press('KeyC')`, `up('Shift')`; then `down('Control')`, `down('AltGraph')`, "@", and both up; then "dé".
+  - After a 500 ms slow-load pause and more typing, the editor holds "abC@dé ok" with focus and caret, and the commit includes the next key.
+
+#### R2-2 (major): fixed
+
+A failed or timed-out load never commits or replaces the draft.
+- The draft stays usable, and the user's own commit gesture commits through the engine.
+- The error is reported once per grid, and the next gesture retries quietly.
+- The timeout now starts with each attempt, not when the grid becomes editable.
+
+Tests:
+- Unit: "a stalled load leaves the draft open and usable, and reports once". It types "1", then "2" and "3" across a second timeout, gets "123" and one report, and the Enter retry loads the code.
+- Unit: "a failed load leaves the draft whole while every key asks again, and reports once". It gets "123" after several rejected retries, one report, and a paste retry that loads.
+- e2e: "a failed load leaves the draft whole, reports once, and the next gesture asks again". It runs through the story's fail hook.
+
+#### R2-3 (major): fixed
+
+See the Entity columns section in the design.
+
+Tests:
+- Unit: "an entity draft waits in its cell's pending state, then resolves through the column's search". The cell shows the spinner and no error; after arrival the value is 12 with zero resolver calls.
+- Unit: "an entity draft on a column with no resolver resolves typed text through the search". "Bob" resolves to 12. "Dana", a label two agents share, is ambiguous.
+- e2e: "an entity draft committed before the code arrives resolves through the column's search". The story's agent column has a search and no resolver.
+
+#### R2-4 (minor): fixed
+
+A key the editing resolver does not name stays with the input, so Mod+Z, Mod+Y and Mod+Shift+Z are the input's native undo and redo, as in an editor.
+- Unit test: "undo and redo keys in a draft are the input's own and never reach the grid's undo".
+- e2e test: "undo in a draft is the input's own: it never reverts an earlier edit".
+
+#### R2-5 (minor): fixed
+
+I took the first option:
+- Focus moving into an overlay commits a draft.
+- At arrival, a draft whose input lacks focus commits instead of resuming.
+- `resume` therefore always runs with focus in the draft, so `seed` and `openDropdown` only run under the user.
+
+Tests:
+- "a draft commits when focus moves into an overlay, and the arrival leaves focus there".
+- "the arrival commits a draft whose input lost focus within the grid, and moves no focus".
+
+#### R2-6 (minor): fixed
+
+`tm-select`'s `seed` now feeds the whole text to the typeahead. A new protected `ɵholdTypeaheadText` on the select base seeds with the first character and relays the rest in order behind it, through the panel's existing relay queue. The ɵ prefix keeps it out of the public surface: the select golden is unchanged.
+- Unit test: "an enum draft hands the editor its whole text, which picks the option typing it reaches". "pc" over kg, pallet and pcs commits "pcs".
+- `./select` measures 8.64 KB (was 8.59), under its 9 KB ceiling.
+
+#### R2-7 (minor): fixed
+
+An IME open now starts the draft at `''`. The composition itself happens in the draft input, which takes focus inside the composing keydown, as with the editor. The code waits for `compositionend` before it installs.
+- Unit test: "an IME composition opens an empty draft, and the code waits for the composition to end".
+
+#### R2-8 (minor): fixed
+
+- Destroy ends the attempt: it clears the timer, ends the pending task and suppresses the report. It also cancels the idle preload.
+- The report is once per grid.
+- Unit test: "a grid destroyed while its code loads ends the load: no timer, no report". The app becomes stable at once, and no error arrives after the timeout.
+
+#### R2-9 (minor): fixed, with one remainder
+
+- **Trusted modifier keydowns.** See R2-1.
+- **R1-2's guard is pinned.** The new test "an open on another cell commits the draft first, even with no press before it" dispatches only the dblclick. It fails with the guard removed: mutation run, then reverted.
+- **Touch.** A new block in `grid-touch.spec.ts`, which the touch project runs: "a double-tap focuses the draft input inside the gesture, so typing lands".
+- **Story timeout.** The story provides a 10-minute `ɵTM_GRID_EDITING_LOAD_TIMEOUT`. Its hooks are one-shot, so a test waits for each new request.
+- **Remainder (pushed back as unpinnable here):**
+  - The roving-focus effect's draft branch reclaims focus into the draft input only after a DOM-move focus drop, as the editor branch does. A mutation that removes it still passes all 25 unit tests: no test in this battery moves the editing row's DOM.
+  - `requestFocusActive`'s draft guard is equally defensive: no flow calls it while a draft is open.
+  - Both mirror the editor's checks.
+
+#### R2-10 (minor): fixed
+
+`ɵTmGridEditingCode.ɵTmGridStatusBar` is typed `Type<unknown>`. The grid golden no longer imports `lucide`: re-approved from a clean build, its only remaining difference from the pre-PC-F21 golden is the `ApplicationRef` import. The select, grid-editing and entity-picker goldens are unchanged (their new members are ɵ and filtered).
+
+#### R2-11 (minor): fixed
+
+A double-tap opens the draft from the dblclick handler and focuses its input in that handler, inside the gesture. The touch e2e test shows the input focused and the typing landing.
+
+#### Sizes (clean build, cache moved aside)
+
+| Entry point | Before PC-F21 | Fix round 1 | Fix round 2 | Ceiling |
+|---|---|---|---|---|
+| ./grid | 42.00 | 38.27 | **38.99** (39,924 B) | 39.25 (was 38.75) |
+| ./grid-editing | (new) | 6.27 | **6.44** (6,594 B) | 6.5 (was 6.37) |
+| ./select | 8.59 | 8.59 | 8.64 | 9 |
+| ./entity-picker | 11.28 | 11.28 | 11.37 | 12 |
+| ./tree-grid | 0.97 | 0.97 | 0.97 | 8 |
+
+**./grid +0.72 KB:**
+- the input, its template and style;
+- the idle preload;
+- the per-attempt load with one report;
+- the pending entity queue;
+- the composition and caret handoff.
+
+The keyed draft's handlers went. I took two small trims: one arrival path, and one preload branch. Under the spec's 42 KB, PC-051 and PC-054 have **3.01 KB** between them, which still meets the brief's 3 KB floor.
+
+**./grid-editing +0.17 KB:** `resolveLabel`, the caret handoff and the shared search runner.
+
+The budgetNotes are updated.
+
+#### Gates (clean build)
+
+All on one clean build: `client/.angular/cache` moved aside and `client/dist` removed before `pnpm run build`.
+- build: pass.
+- lint (eslint + stylelint): pass. Stylelint first caught a hardcoded `1em` in the draft's padding; it now uses the spinner's `--spinner-size` token.
+- lint:test, typecheck, tokens:check, docs:build: pass.
+- test (all projects): 2,296 passed, 0 failed (core-ui 1,845; core 401; core-ui-tokens 23; core-testing 15; locale-ar 9; others 3).
+- api:approve then api:check: 45 ok. The only golden change is the grid's dropped `lucide` import (R2-10).
+- size:check: pass, including both static-graph checks (`./grid` and `./tree-grid` reach no editing entry point).
+- e2e PR tier (chromium + touch, `--workers 2`, `@nightly|@perf|@quarantine` excluded): 789 passed, 0 flaky, 26.4 min.
+
+After the gates, one TSDoc line in `grid-core.ts` lost a section reference (comment only, eslint re-run on the file).
+
+#### Spec misalignments for Ahmad (as they stand after this change)
+
+- **Spec 0010 §C.11:**
+  - Its table has no ./grid-editing row (now 6.5).
+  - It does not record ./grid's ceiling of 39.25 (lowered from 42).
+  - It still says on-demand loading "is not part of this amendment". The grid now preloads ./grid-editing on idle and keeps a draft input as the fallback.
+- **Spec 0010 §C.15:**
+  - Its budget line puts the popup editors' +1 KB on ./grid. The budget notes say it belongs in ./grid-editing.
+  - On "always edit mode": the draft follows the engine session's mode, so if §C.15 makes popup columns open their sessions in edit mode, their drafts move the caret on the arrows with no further rule. If §C.15 only changes the popup editors themselves, the draft still commits and moves on a typed draft's arrows, and the spec should say which.
+- **Spec 0004 §8.4:**
+  - Type-to-edit, IME, the edit-mode caret and Delete now behave in the window as in an editor.
+  - The remaining window clauses are the deviations above: an enum or entity draft committed before the code arrives, and number and date drafts as plain text inputs.
+- **Spec 0004 §11:** no clause needed. A draft is an open editor for undo: the grid's undo never runs while one is open.
+- **Spec 0006 §7.4:**
+  - Typed-commit resolution now runs exactly the picker's rungs, including the search-only and duplicate-label cases.
+  - The only window clause: a commit made before the code arrives waits in the cell's pending state until the search can run.

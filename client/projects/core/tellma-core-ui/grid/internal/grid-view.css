@@ -539,15 +539,25 @@
   background: var(--field-bg);
 }
 
-/* The draft typed before the editing code arrives: plain text where the
-   editor's input will be, kept whole (spaces included) and clipped at the
-   cell's edge. */
+/* The draft input that takes the typing before the editing code arrives:
+   it matches the text editor's input, so nothing moves when that editor
+   takes over, and leaves room at the end for the pending spinner. */
 .tm-grid__draft {
   flex: 1 1 auto;
+  inline-size: 100%;
   min-inline-size: 0;
-  padding-inline: var(--tm-grid-cell-padding-x);
-  overflow: hidden;
-  white-space: pre;
+  box-sizing: border-box;
+  margin: 0;
+  border: none;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the input fills a cell that already draws the active-cell ring; a second
+     ring inside it would double-draw the same affordance. */
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding-block: 0;
+  padding-inline: var(--space-2) calc(var(--space-2) * 2 + var(--spinner-size));
 }
 
 /* A hierarchy cell's editor keeps the tree indentation via padding (not an
