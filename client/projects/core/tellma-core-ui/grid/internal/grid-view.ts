@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { NgTemplateOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
@@ -32,7 +32,6 @@ import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
-import { ɵTmGridStatusBar } from './status-bar';
 import { ɵTmGridTouchHandles } from './touch-handles';
 
 // The tree expander's two glyphs, shared by every grid so tm-icon validates
@@ -50,7 +49,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
  * row window, the row-checkbox chrome column, the loading/empty overlays,
- * the editing-cell editor outlet, the editable-mode status bar, the
+ * the editing-cell editor outlet, the editable-mode status-bar slot, the
  * context menu, the find bar, the coarse-pointer selection handles, and
  * the active-cell error overlay. `tm-grid` and `tm-tree-grid` are thin
  * shells around this component so the large template compiles exactly
@@ -61,6 +60,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
   selector: 'tm-grid-view',
   imports: [
     CdkScrollable,
+    NgComponentOutlet,
     NgTemplateOutlet,
     OverlayModule,
     TmIcon,
@@ -68,7 +68,6 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
     TmSpinner,
     ɵTmErrorPopover,
     ɵTmGridFindBar,
-    ɵTmGridStatusBar,
     ɵTmGridTouchHandles,
   ],
   template: `
@@ -371,7 +370,11 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
     }
 
     @if (core().editable()) {
-      <tm-grid-status-bar class="tm-grid__status" [core]="core()" />
+      <!-- The status bar's fixed band; the bar itself arrives with the
+           editing code, which an editable grid loads on demand. -->
+      <div class="tm-grid__status">
+        <ng-container *ngComponentOutlet="core().statusBar(); inputs: { core: core() }" />
+      </div>
     } @else {
       <!-- Readonly grids have no status bar; the transient clipboard-failure
            notice overlays the grid's block-end edge instead (zero layout shift). -->

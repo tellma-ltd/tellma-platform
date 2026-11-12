@@ -277,6 +277,40 @@ export default defineConfig(
     },
   },
 
+  // Grid on-demand editing boundary (spec 0010 §C.11, Part C flag 6): the
+  // editing code and the editor controls it mounts load only once a grid is
+  // editable, so the grid and tree grid import them as types alone. A value
+  // import would put them back on every readonly grid's route, and the size
+  // gate cannot see that: it measures each entry point on its own weight.
+  {
+    files: [
+      'projects/core/tellma-core-ui/grid/**/*.ts',
+      'projects/core/tellma-core-ui/tree-grid/**/*.ts',
+    ],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid-editing',
+            '@tellma/core-ui/date-picker',
+            '@tellma/core-ui/entity-picker',
+            '@tellma/core-ui/input',
+            '@tellma/core-ui/number',
+            '@tellma/core-ui/select',
+          ].map((name) => ({
+            name,
+            allowTypeImports: true,
+            message:
+              'The grid loads its editing code on demand: import this as a type only, and ' +
+              "reach the code through import('@tellma/core-ui/grid-editing').",
+          })),
+        },
+      ],
+    },
+  },
+
   // Grid-engine entry-point boundary (spec 0004 §1, DoD 14): pure TypeScript
   // plus @angular/core SIGNALS only — no DOM, no dependency injection, no
   // components, no other @tellma packages except the contracts types. The
