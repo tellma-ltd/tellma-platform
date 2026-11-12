@@ -174,7 +174,7 @@ Result: 23/23 passed. No container was left behind; ryuk removed it.
 
 ### Responses
 
-- **R1-1: fixed.** `PasskeyCeremonies.RegisterThenSignInAsync` now navigates with
+- **R1-1: fixed in 526c4b9.** `PasskeyCeremonies.RegisterThenSignInAsync` now navigates with
   `WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded`. When the
   conditional ceremony runs, it still waits only for commit, so the ceremony can navigate away freely.
   When the button will be pressed, it waits for `DOMContentLoaded`, which fires only after the
@@ -186,5 +186,5 @@ Result: 23/23 passed. No container was left behind; ryuk removed it.
   `isConditionalMediationAvailable` to false through an init script. With it, both passkey E2E tests
   (standalone and in-proc) took the button path and passed in two runs (2/2 each). The edit was then
   reverted.
-- **R1-2: fixed.** `OidcFlowClient._backchannel` and `_emails` now have one-line `<summary>`
+- **R1-2: fixed in 526c4b9.** `OidcFlowClient._backchannel` and `_emails` now have one-line `<summary>`
   docs, using the wording the review suggested.
