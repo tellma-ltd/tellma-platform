@@ -198,14 +198,39 @@ async function setup(): Promise<{
 }
 
 /**
- * Waits (bounded) for an async-clipboard chain to land — `Blob.text()`
- * settles on its own task queue, so a single macrotask turn is not enough.
+ * How long {@link eventually} waits by default: ample for a loaded machine
+ * (a passing run settles in a few milliseconds), yet well inside the
+ * runner's per-test timeout, so a condition that never holds fails here
+ * with a message rather than as an anonymous test timeout.
+ */
+const EVENTUALLY_TIMEOUT_MS = 2_000;
+
+/**
+ * Waits for an async-clipboard chain to land. `Blob.text()` settles on its
+ * own task queue, so how many macrotask turns that takes depends on how busy
+ * the machine is: the wait is bounded by wall-clock time, not by a count of
+ * turns.
+ *
+ * @param fixture - The fixture whose stability is awaited between checks.
+ * @param what - What the predicate waits for, named in the failure message.
+ * @param predicate - Returns true once the awaited state has been reached.
+ * @param timeoutMs - How long to wait before failing.
+ * @throws Error when the predicate still fails after `timeoutMs`.
  */
 async function eventually(
   fixture: ComponentFixture<unknown>,
+  what: string,
   predicate: () => boolean,
+  timeoutMs = EVENTUALLY_TIMEOUT_MS,
 ): Promise<void> {
-  for (let i = 0; i < 20 && !predicate(); i++) {
+  const deadline = performance.now() + timeoutMs;
+  // Each turn lets the fixture settle and one macrotask run, then re-checks;
+  // the deadline is checked only after a failed check, so a condition that
+  // already holds returns without waiting.
+  while (!predicate()) {
+    if (performance.now() >= deadline) {
+      throw new Error(`Timed out after ${timeoutMs} ms waiting for ${what}.`);
+    }
     await stable(fixture);
   }
 }
@@ -765,7 +790,11 @@ describe('tm-grid (clipboard menu)', () => {
       expect(paste).toBeDefined();
       expect(paste!.getAttribute('aria-disabled')).not.toBe('true');
       paste!.click();
-      await eventually(fixture, () => host.model()[0].name === 'MenuPasted');
+      await eventually(
+        fixture,
+        'the menu paste to reach the model',
+        () => host.model()[0].name === 'MenuPasted',
+      );
       expect(host.model()[0].name).toBe('MenuPasted');
     } finally {
       restore();
