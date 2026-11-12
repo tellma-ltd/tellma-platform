@@ -47,9 +47,9 @@ function deleteUserDocuments(indexedDB: IDBFactory, sub: string): Promise<void> 
         resolve();
       };
       // Every opener of a tm-* database yields to a delete or an upgrade of
-      // it (spec 0010 §D.5), which would otherwise wait on this connection;
-      // a delete already queued on it still commits.
-      db.onversionchange = done;
+      // it (spec 0010 §D.5), which would otherwise wait on this connection.
+      // Closing lets the running delete finish, and its end below settles.
+      db.onversionchange = () => db.close();
       try {
         const [lower, upper] = tmUserKeyBounds(sub);
         const transaction = db.transaction(TM_STORE_DOCS, 'readwrite');

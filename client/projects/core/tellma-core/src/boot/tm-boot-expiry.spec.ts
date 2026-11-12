@@ -89,6 +89,34 @@ describe('tmDeleteExpiredUser', () => {
     expect(blocked).toBe(false);
   });
 
+  it('settles only after its delete commits when an upgrade asks for its connection', async () => {
+    await seed();
+    const events: string[] = [];
+    let upgraded!: Promise<IDBDatabase>;
+    // The moment the expiry starts its delete, another tab asks to upgrade
+    // the database: the expiry's connection receives `versionchange` while
+    // the delete is still running.
+    const original = IDBDatabase.prototype.transaction;
+    const spy = vi
+      .spyOn(IDBDatabase.prototype, 'transaction')
+      .mockImplementation(function (this: IDBDatabase, ...args: Parameters<IDBDatabase['transaction']>) {
+        const transaction = original.apply(this, args);
+        transaction.addEventListener('complete', () => events.push('committed'));
+        transaction.addEventListener('abort', () => events.push('aborted'));
+        const request = indexedDB.open(TM_STORE_DATABASE, 2);
+        request.onupgradeneeded = () => events.push('upgraded');
+        upgraded = settle(request);
+        return transaction;
+      });
+    try {
+      await tmDeleteExpiredUser(indexedDB, null, '0b4f', NEVER).then(() => events.push('settled'));
+    } finally {
+      spy.mockRestore();
+    }
+    (await upgraded).close();
+    expect(events).toEqual(['committed', 'settled', 'upgraded']);
+  });
+
   it('ends when the time box ends, even while the delete hangs', async () => {
     const hanging = { open: () => ({}) } as unknown as IDBFactory;
     const caching = { delete: () => NEVER.then(() => true) };
