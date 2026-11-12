@@ -20,6 +20,7 @@ import { EntityPickerStory } from './entity-picker/entity-picker-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridEntityStory } from './grid/grid-entity-story';
+import { GridLazyEditingStory } from './grid/grid-lazy-editing-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridSearchPageStory } from './grid/grid-search-page-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
@@ -135,6 +136,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   },
   { id: 'grid-states', title: 'Grid (states)', component: GridStatesStory, wide: true },
   { id: 'grid-editable', title: 'Grid (editable)', component: GridEditableStory, wide: true },
+  {
+    id: 'grid-lazy-editing',
+    title: 'Grid (editing code on its way)',
+    component: GridLazyEditingStory,
+    wide: true,
+  },
   {
     id: 'grid-entity',
     title: 'Grid (entity picker editor)',

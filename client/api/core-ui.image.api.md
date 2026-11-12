@@ -54,7 +54,7 @@ export class TmImage {
     readonly imageChange: _angular_core.OutputEmitterRef<TmImageEdit | null>;
     readonly maxEdgePx: _angular_core.InputSignal<number>;
     readonly maxFileBytes: _angular_core.InputSignal<number>;
-    readonly mode: _angular_core.InputSignal<"view" | "edit">;
+    readonly mode: _angular_core.InputSignal<"edit" | "view">;
     protected readonly noticeText: _angular_core.Signal<string | null>;
     protected onDelete(): void;
     protected onFilePicked(event: Event): Promise<void>;
@@ -68,7 +68,7 @@ export class TmImage {
     protected readonly previewWidth: _angular_core.Signal<number>;
     protected readonly removeLabel: _angular_core.Signal<string>;
     protected readonly replaceLabel: _angular_core.Signal<string>;
-    readonly shape: _angular_core.InputSignal<"rect" | "circle">;
+    readonly shape: _angular_core.InputSignal<"circle" | "rect">;
     readonly src: _angular_core.InputSignal<string>;
     readonly srcForSize: _angular_core.InputSignal<(src: string, size: number) => string>;
     readonly width: _angular_core.InputSignal<number>;

@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 
 namespace Tellma.Core.Abstractions.Composition
 {
@@ -128,6 +129,49 @@ namespace Tellma.Core.Abstractions.Composition
         {
             ArgumentNullException.ThrowIfNull(descriptor);
             return Add(new ValueSetContributionItem(descriptor));
+        }
+
+        /// <summary>
+        ///     Registers a notification type, which the feature's code raises. The platform composes it
+        ///     into the notification type registry, after the types of the features realised before
+        ///     this one; the startup gate refuses a key registered twice or a type that breaks the
+        ///     descriptor's rules.
+        /// </summary>
+        /// <param name="descriptor">The type.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="descriptor" /> is null.</exception>
+        public FeatureContribution NotificationType(NotificationTypeDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+            return Add(new NotificationTypeContributionItem(descriptor));
+        }
+
+        /// <summary>
+        ///     Registers a notification channel. A channel other than <c>inbox</c> delivers through the
+        ///     <see cref="INotificationChannel" /> the feature also registers as a scoped service for it;
+        ///     the startup gate refuses a key registered twice or one that breaks the grammar.
+        /// </summary>
+        /// <param name="descriptor">The channel.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="descriptor" /> is null.</exception>
+        public FeatureContribution NotificationChannel(NotificationChannelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+            return Add(new NotificationChannelContributionItem(descriptor));
+        }
+
+        /// <summary>
+        ///     Registers a client event, which the feature's code publishes. Publishing a name no
+        ///     feature registered is refused; the startup gate refuses a name registered twice or one
+        ///     that breaks the grammar.
+        /// </summary>
+        /// <param name="name">The event's name, such as <c>inbox.changed</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="name" /> is null.</exception>
+        public FeatureContribution ClientEvent(string name)
+        {
+            ArgumentNullException.ThrowIfNull(name);
+            return Add(new ClientEventContributionItem(name));
         }
 
         /// <summary>

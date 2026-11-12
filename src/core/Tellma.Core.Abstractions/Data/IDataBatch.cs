@@ -34,6 +34,12 @@ namespace Tellma.Core.Abstractions.Data
         /// <exception cref="InvalidOperationException">Set after the batch executed.</exception>
         TransactionMode TransactionMode { get; set; }
 
+        /// <summary>
+        ///     Whether the batch still takes statements and commit callbacks: true until it executes,
+        ///     false from then on, and false once a contributor's failure left it incomplete.
+        /// </summary>
+        bool IsComposing { get; }
+
         /// <summary>The limits every query statement of the batch is compiled under; the default limits unless set.</summary>
         QueryexLimits Limits { get; set; }
 

@@ -59,6 +59,7 @@ import type {
   TmEntitySearchFn,
   TmEntitySearchResult,
 } from './tm-entity-picker-types';
+import { ɵtmNormalizeEntityResult } from './tm-entity-search';
 
 let nextUniqueId = 0;
 
@@ -1426,43 +1427,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /**
    * Normalizes both result forms to the object form — the ONE funnel every
    * result set passes through (rendering, resolution, and the host's adopted
-   * search alike), which is why the id de-duplication belongs here too.
+   * search alike), which is why the id de-duplication belongs there too.
    */
   private normalizeResult(result: TmEntitySearchResult<T>): NormalizedResult<T> {
-    if (Array.isArray(result)) {
-      return { items: this.distinctById(result as readonly T[]), hasMore: false };
-    }
-    // Array.isArray does not narrow the readonly-array member out of the
-    // union in the false branch, so the object form is asserted.
-    const objectForm = result as { readonly items: readonly T[]; readonly hasMore?: boolean };
-    return { items: this.distinctById(objectForm.items), hasMore: objectForm.hasMore === true };
-  }
-
-  /**
-   * Drops repeated ids, keeping the first occurrence. The search contract
-   * does not promise distinct ids — a joined or unioned query can fan one
-   * entity out across rows — while the listbox tracks rows BY id, and
-   * duplicate track keys abort the render of the whole dropdown. Dropping
-   * the repeat is the only rendering that can be right: the rows name the
-   * same entity, so a pick on either commits the same value — and it is
-   * also the only honest COUNT, since two rows for one entity make the text
-   * that found them unique, not ambiguous.
-   */
-  private distinctById(items: readonly T[]): readonly T[] {
-    if (items.length < 2) {
-      return items;
-    }
-    const itemId = untracked(this.itemId);
-    const seen = new Set<Id>();
-    const distinct: T[] = [];
-    for (const item of items) {
-      const id = itemId(item);
-      if (!seen.has(id)) {
-        seen.add(id);
-        distinct.push(item);
-      }
-    }
-    return distinct.length === items.length ? items : distinct;
+    return ɵtmNormalizeEntityResult(result, untracked(this.itemId));
   }
 
   /** Renders a fresh result set and schedules the highlight protocol. */

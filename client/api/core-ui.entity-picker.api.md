@@ -16,7 +16,7 @@ import { Type } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
-export type TmEntityId = string | number;
+export type TmEntityId = number | string;
 
 // @public
 export interface TmEntityPick<Id extends TmEntityId = TmEntityId, T = unknown> {
@@ -30,7 +30,7 @@ export interface TmEntityPicked<T, Id extends TmEntityId> {
     readonly id: Id;
     readonly item?: T;
     readonly label: string;
-    readonly source: 'list' | 'auto' | 'advanced' | 'create' | 'edit';
+    readonly source: 'advanced' | 'auto' | 'create' | 'edit' | 'list';
 }
 
 // @public
@@ -107,7 +107,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     setFieldError(showsError: boolean): void;
     protected readonly showsHasMore: Signal<boolean>;
     protected readonly showsInvalid: Signal<boolean>;
-    protected readonly statusKind: Signal<"loading" | "empty" | "error" | null>;
+    protected readonly statusKind: Signal<"empty" | "error" | "loading" | null>;
     readonly text: SignalLike<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: Signal<boolean>;
@@ -122,7 +122,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
 // @public
 export type TmEntityPickerPage = Type<unknown> | {
     component: Type<unknown>;
-    size?: 'sm' | 'md' | 'lg';
+    size?: 'lg' | 'md' | 'sm';
     title?: string;
 };
 
@@ -133,7 +133,7 @@ export interface TmEntityPickerPageData<Id extends TmEntityId = TmEntityId> {
 }
 
 // @public
-export type TmEntitySearchFn<T> = (query: string, signal: AbortSignal) => TmEntitySearchResult<T> | Promise<TmEntitySearchResult<T>>;
+export type TmEntitySearchFn<T> = (query: string, signal: AbortSignal) => Promise<TmEntitySearchResult<T>> | TmEntitySearchResult<T>;
 
 // @public
 export type TmEntitySearchResult<T> = readonly T[] | {

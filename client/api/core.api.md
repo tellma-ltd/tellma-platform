@@ -46,12 +46,12 @@ export interface TmActionMetadata {
     readonly destructive: boolean;
     readonly fields?: readonly TmActionField[];
     readonly idempotent: boolean;
-    readonly kind: 'entity' | 'api';
+    readonly kind: 'api' | 'entity';
     readonly labelFallback?: string;
     readonly labelKey: string;
     readonly mutation: boolean;
     readonly name: string;
-    readonly result: 'entities' | 'own' | 'none';
+    readonly result: 'entities' | 'none' | 'own';
     readonly singleTarget: boolean;
     readonly supportsFilter: boolean;
 }
@@ -97,7 +97,7 @@ export interface TmApiErrorInit {
 }
 
 // @public
-export type TmApiErrorKind = 'cancelled' | 'offline' | 'unauthenticated' | 'step-up' | 'forbidden' | 'not-found' | 'tenant-not-found' | 'tenant-unavailable' | 'read-only' | 'validation' | 'query-invalid' | 'bad-request' | 'conflict' | 'confirmation' | 'limit' | 'client-outdated' | 'unavailable' | 'partial-failure' | 'server';
+export type TmApiErrorKind = 'bad-request' | 'cancelled' | 'client-outdated' | 'confirmation' | 'conflict' | 'forbidden' | 'limit' | 'not-found' | 'offline' | 'partial-failure' | 'query-invalid' | 'read-only' | 'server' | 'step-up' | 'tenant-not-found' | 'tenant-unavailable' | 'unauthenticated' | 'unavailable' | 'validation';
 
 // @public
 export interface TmAppConfig {
@@ -143,11 +143,11 @@ export interface TmBlobKindPolicy {
     readonly image: {
         readonly maxDimension: number;
         readonly fit: 'contain' | 'cover-square';
-        readonly format: 'webp' | 'jpeg' | 'png';
+        readonly format: 'jpeg' | 'png' | 'webp';
     } | null;
     readonly kind: string;
     readonly maxSize: number;
-    readonly readAccess: 'owner-read' | 'any-member';
+    readonly readAccess: 'any-member' | 'owner-read';
     readonly thumbnail: boolean;
 }
 
@@ -166,7 +166,7 @@ export interface TmBootLanguage {
 }
 
 // @public
-export type TmBootPageReason = 'unsupported' | 'cookies' | 'sign-in-failed' | 'load-failed';
+export type TmBootPageReason = 'cookies' | 'load-failed' | 'sign-in-failed' | 'unsupported';
 
 // @public
 export interface TmBootRecord {
@@ -190,7 +190,7 @@ export interface TmBootResult {
 }
 
 // @public
-export type TmBootState = 'run' | 'redirect' | 'page';
+export type TmBootState = 'page' | 'redirect' | 'run';
 
 // @public
 export interface TmBootStrings {
@@ -204,7 +204,7 @@ export interface TmBootStrings {
 }
 
 // @public
-export type TmBootTheme = 'system' | 'light' | 'dark';
+export type TmBootTheme = 'dark' | 'light' | 'system';
 
 // @public
 export interface TmCalendarDefinition {
@@ -254,7 +254,7 @@ export interface TmCodedReportDeclaration extends TmCodedReportPatch {
 // @public
 export interface TmCodedReportMetadata {
     readonly descriptionKey?: string;
-    readonly export: 'Platform' | 'Custom' | 'None';
+    readonly export: 'Custom' | 'None' | 'Platform';
     readonly feature: string;
     readonly key: string;
     readonly kind: TmReportKind;
@@ -289,7 +289,7 @@ export interface TmContracts {
 }
 
 // @public
-export type TmDataType = 'string' | 'integer' | 'decimal' | 'float' | 'bool' | 'date' | 'datetime' | 'instant' | 'time' | 'guid' | 'enum' | 'json' | 'binary';
+export type TmDataType = 'binary' | 'bool' | 'date' | 'datetime' | 'decimal' | 'enum' | 'float' | 'guid' | 'instant' | 'integer' | 'json' | 'string' | 'time';
 
 // @public
 export type TmDecimal = string & {
@@ -308,10 +308,10 @@ export const TmDecimals: Readonly<{
 }>;
 
 // @public
-export type TmDeclarationKey = `${'page' | 'section' | 'entry' | 'settingsTab' | 'appBar'}:${string}`;
+export type TmDeclarationKey = `${'appBar' | 'entry' | 'page' | 'section' | 'settingsTab'}:${string}`;
 
 // @public
-export type TmDeclarationPatch = TmEntityDeclaration | TmPageDeclaration | TmCodedReportDeclaration | TmWidgetTypeDeclaration | TmOverride;
+export type TmDeclarationPatch = TmCodedReportDeclaration | TmEntityDeclaration | TmOverride | TmPageDeclaration | TmWidgetTypeDeclaration;
 
 // @public
 export interface TmDisplayNameRule {
@@ -324,7 +324,7 @@ export interface TmDisplayNameRule {
 export interface TmDistributionIdentityInfo {
     readonly accountUrl: string;
     readonly authority: string;
-    readonly mode: 'Standalone' | 'InProc';
+    readonly mode: 'InProc' | 'Standalone';
 }
 
 // @public
@@ -445,14 +445,14 @@ export interface TmEntityMetadata extends TmEntitySummary {
 }
 
 // @public
-export type TmEntityOperation = 'query' | 'details' | 'save' | 'delete' | 'import' | 'export';
+export type TmEntityOperation = 'delete' | 'details' | 'export' | 'import' | 'query' | 'save';
 
 // @public
 export interface TmEntitySummary {
     readonly capabilities: readonly string[];
     readonly displayName: TmDisplayNameRule;
     readonly icon?: string;
-    readonly kind: 'stack' | 'child' | 'readonly';
+    readonly kind: 'child' | 'readonly' | 'stack';
     readonly labelFallback?: string;
     readonly labelKey: string;
     readonly name: string;
@@ -496,7 +496,7 @@ export interface TmFeatureDefinition {
     readonly key: string;
     readonly overrides?: readonly TmDeclarationPatch[];
     readonly pages?: readonly TmPageDeclaration[];
-    readonly providers?: readonly (Provider | EnvironmentProviders)[];
+    readonly providers?: readonly (EnvironmentProviders | Provider)[];
     readonly reports?: readonly TmCodedReportDeclaration[];
     readonly sections?: readonly TmNavSection[];
     readonly settingsTabs?: readonly TmSettingsTabDeclaration[];
@@ -528,7 +528,7 @@ export interface TmJobResultMetadata {
 }
 
 // @public
-export type TmJson = null | boolean | number | string | readonly TmJson[] | TmJsonObject;
+export type TmJson = boolean | number | string | TmJsonObject | readonly TmJson[] | null;
 
 // @public
 export type TmJsonObject = {
@@ -636,7 +636,7 @@ export interface TmNavEntry {
 export interface TmNavigationMetadata {
     readonly foreignKey: string;
     readonly json: string;
-    readonly kind: 'reference' | 'owner' | 'sibling';
+    readonly kind: 'owner' | 'reference' | 'sibling';
     readonly labelFallback?: string;
     readonly labelKey: string;
     readonly name: string;
@@ -659,7 +659,7 @@ export interface TmNotificationChannelMetadata {
 }
 
 // @public
-export type TmNotificationSeverity = 'Info' | 'Success' | 'Warning' | 'Error';
+export type TmNotificationSeverity = 'Error' | 'Info' | 'Success' | 'Warning';
 
 // @public
 export interface TmNotificationTypeMetadata {
@@ -704,7 +704,7 @@ export interface TmPageDefinition {
 }
 
 // @public
-export type TmPageKind = 'home' | 'search' | 'details' | 'report' | 'studio' | 'dashboard' | 'settings' | 'access' | 'custom';
+export type TmPageKind = 'access' | 'custom' | 'dashboard' | 'details' | 'home' | 'report' | 'search' | 'settings' | 'studio';
 
 // @public
 export function tmParseProfileCookie(cookies: string): TmProfile | null;
@@ -750,7 +750,7 @@ export interface TmPropertyMetadata {
     };
     readonly name: string;
     readonly nullable: boolean;
-    readonly ownership: 'editable' | 'write-once' | 'server-owned' | 'derived' | 'database-owned';
+    readonly ownership: 'database-owned' | 'derived' | 'editable' | 'server-owned' | 'write-once';
     readonly precision?: number;
     readonly queryable: boolean;
     readonly scale?: number;
@@ -777,24 +777,24 @@ export interface TmReportChoice {
     readonly label2?: string;
     readonly label3?: string;
     readonly labelKey?: string;
-    readonly value: string | number | boolean;
+    readonly value: boolean | number | string;
 }
 
 // @public
-export type TmReportDisplay = 'number' | 'integer' | 'percent' | 'monthName' | 'weekdayName' | 'text' | 'enum' | 'date' | 'month' | 'quarter' | 'year' | 'datetime' | 'instant' | 'bool';
+export type TmReportDisplay = 'bool' | 'date' | 'datetime' | 'enum' | 'instant' | 'integer' | 'month' | 'monthName' | 'number' | 'percent' | 'quarter' | 'text' | 'weekdayName' | 'year';
 
 // @public
 export interface TmReportFormat {
-    readonly calendar?: 'gc' | 'uq' | 'et';
+    readonly calendar?: 'et' | 'gc' | 'uq';
     readonly choices?: readonly TmReportChoice[];
-    readonly dateStyle?: 'numeric' | 'medium' | 'long';
+    readonly dateStyle?: 'long' | 'medium' | 'numeric';
     readonly decimals?: number;
     readonly enum?: string;
     readonly grouping?: boolean;
 }
 
 // @public
-export type TmReportKind = 'List' | 'Summary' | 'Pivot' | 'Chart';
+export type TmReportKind = 'Chart' | 'List' | 'Pivot' | 'Summary';
 
 // @public
 export interface TmReportParameter {
@@ -814,7 +814,7 @@ export interface TmReportParameter {
 }
 
 // @public
-export type TmReportParameterType = 'Numeric' | 'String' | 'Bool' | 'Date' | 'DateTime' | 'DateTimeOffset' | 'Guid';
+export type TmReportParameterType = 'Bool' | 'Date' | 'DateTime' | 'DateTimeOffset' | 'Guid' | 'Numeric' | 'String';
 
 // @public
 export interface TmRequestEnd {
@@ -840,14 +840,14 @@ export abstract class TmRequestLog {
 }
 
 // @public
-export type TmRequestOutcome = 'pending' | 'ok' | 'cancelled' | 'error';
+export type TmRequestOutcome = 'cancelled' | 'error' | 'ok' | 'pending';
 
 // @public
 export interface TmRequestRecord {
     readonly background: boolean;
     readonly code?: string;
     readonly durationMs: number | null;
-    readonly method: 'POST' | 'GET';
+    readonly method: 'GET' | 'POST';
     readonly outcome: TmRequestOutcome;
     readonly route: string;
     readonly slow: boolean;
@@ -858,10 +858,10 @@ export interface TmRequestRecord {
 }
 
 // @public
-export type TmRequestStart = Pick<TmRequestRecord, 'traceId' | 'route' | 'tenantId' | 'method' | 'background'>;
+export type TmRequestStart = Pick<TmRequestRecord, 'background' | 'method' | 'route' | 'tenantId' | 'traceId'>;
 
 // @public
-export type TmRouteSkeleton = 'search' | 'details' | 'report' | 'dashboard' | 'home' | 'me' | 'blank';
+export type TmRouteSkeleton = 'blank' | 'dashboard' | 'details' | 'home' | 'me' | 'report' | 'search';
 
 // @public
 export interface TmRoutingMetadata {
@@ -913,7 +913,7 @@ export class TmSession {
 }
 
 // @public
-export type TmSessionCheck = 'same' | 'missing' | 'changed';
+export type TmSessionCheck = 'changed' | 'missing' | 'same';
 
 // @public
 export const tmSessionGuard: CanActivateFn;
@@ -953,10 +953,10 @@ export interface TmSettingsTabDeclaration {
 }
 
 // @public
-export type TmSettingValueType = 'Boolean' | 'Int32' | 'Int64' | 'Decimal' | 'String' | 'Date' | 'Time' | 'Guid' | 'Enum' | 'Json';
+export type TmSettingValueType = 'Boolean' | 'Date' | 'Decimal' | 'Enum' | 'Guid' | 'Int32' | 'Int64' | 'Json' | 'String' | 'Time';
 
 // @public
-export type TmSettingVisibility = 'Server' | 'Client' | 'Secret';
+export type TmSettingVisibility = 'Client' | 'Secret' | 'Server';
 
 // @public
 export interface TmShellSlot {
@@ -1010,7 +1010,7 @@ export abstract class TmTelemetry {
 // @public
 export interface TmTelemetryItem {
     readonly at: number;
-    readonly kind: 'event' | 'timing' | 'error';
+    readonly kind: 'error' | 'event' | 'timing';
     readonly name: string;
     readonly props: TmTelemetryProps;
     readonly tenantId: number | null;
@@ -1023,13 +1023,13 @@ export interface TmTelemetryOptions {
 }
 
 // @public
-export type TmTelemetryProps = Readonly<Record<string, string | number | boolean>>;
+export type TmTelemetryProps = Readonly<Record<string, boolean | number | string>>;
 
 // @public
 export type TmTenantCategory = 'Live' | 'Sandbox';
 
 // @public
-export type TmTenantState = 'Provisioning' | 'Active' | 'ReadOnly' | 'Frozen' | 'Suspended' | 'Retired';
+export type TmTenantState = 'Active' | 'Frozen' | 'Provisioning' | 'ReadOnly' | 'Retired' | 'Suspended';
 
 // @public
 export interface TmUploadOptions {

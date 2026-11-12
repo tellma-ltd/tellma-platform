@@ -137,7 +137,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     readonly touched: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected readonly translate: _tellma_core_ui.TmUiTranslateFn;
     abstract readonly value: ModelSignal<V>;
-    readonly valueKey: _angular_core.InputSignal<((value: T) => string | number) | undefined>;
+    readonly valueKey: _angular_core.InputSignal<((value: T) => number | string) | undefined>;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmSelectBase<any, any>, never, never, { "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "valueKey": { "alias": "valueKey"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "touch": "touch"; "opened": "opened"; "closed": "closed"; }, ["options"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSelectBase<any, any>, never>;
 }
@@ -145,7 +145,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
 // @public
 export interface TmSelectEntry<T> {
     readonly group: TmOptionGroup | null;
-    readonly key: TmOptionGroup | string;
+    readonly key: string | TmOptionGroup;
     readonly options: readonly TmOption<T>[];
 }
 

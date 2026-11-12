@@ -25,12 +25,17 @@ export * from './tm-grid-templates';
 export * from './tm-grid-state-store';
 export * from './tm-grid-types';
 
-// The shared-internals surface for the tree grid (golden-excluded ɵ names).
+// The shared-internals surface for the tree grid, and the editing-load seams
+// tests and the showcase hold open (golden-excluded ɵ names).
 export {
+  ɵTM_GRID_EDITING_LOAD_TIMEOUT,
+  ɵTM_GRID_EDITING_LOADER,
   ɵTmGridCore,
   type ɵTmGridCellVm,
   type ɵTmGridColumnVm,
   type ɵTmGridCoreDeps,
+  type ɵTmGridDraft,
+  type ɵTmGridEditingCode,
   type ɵTmGridHeaderSortVm,
   type ɵTmGridRowVm,
   type ɵTmGridTreeConfig,
