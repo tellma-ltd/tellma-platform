@@ -81,6 +81,28 @@ namespace Tellma.Core.Data.Queries
             return Map(shape).Schema;
         }
 
+        /// <summary>Whether a platform entity keeps a column out of every query.</summary>
+        /// <param name="entity">The entity's name.</param>
+        /// <param name="property">The property's name.</param>
+        /// <returns>True when the column is withheld.</returns>
+        internal static bool IsWithheld(string entity, string property)
+        {
+            return Withheld.Contains((entity, property));
+        }
+
+        /// <summary>The collation a column declares for itself, or null when it takes the database's.</summary>
+        /// <param name="property">The column's property.</param>
+        /// <returns>The collation name, or null.</returns>
+        /// <remarks>
+        ///     Read off the property's <see cref="CollationAttribute" />, which is how a tenant entity's
+        ///     column gets a collation: the model the context runs on keeps no collation, so it cannot
+        ///     be read back from there. A shadow column has no attribute and takes the database's.
+        /// </remarks>
+        private static string? Collation(IProperty property)
+        {
+            return property.PropertyInfo is null ? null : EntityShapes.GetAttribute<CollationAttribute>(property.PropertyInfo)?.Name;
+        }
+
         /// <summary>The schema of a shape with its maps.</summary>
         /// <param name="shape">The tenant's multilingual shape.</param>
         /// <returns>The map.</returns>
@@ -114,7 +136,7 @@ namespace Tellma.Core.Data.Queries
 
                 foreach (ColumnPlan column in entity.Columns.Where(column => column.Shape <= shape))
                 {
-                    _ = declared.Property(column.Name, column.Type, column.Column, column.IsNotNull, column.IsUnique, column.Store);
+                    _ = declared.Property(column.Name, column.Type, column.Column, column.IsNotNull, column.IsUnique, column.Store, column.Collation);
                     if (column.Metadata is PropertyMetadata property)
                     {
                         _ = admitted.Add(property);
@@ -194,7 +216,8 @@ namespace Tellma.Core.Data.Queries
                     {
                         _ = writer.Add("property").Add(column.Name).Add(column.Column).Add(column.Type.ToString())
                             .Add(column.IsNotNull).Add(column.IsUnique).Add(column.Store.Family.ToString())
-                            .Add(column.Store.Size?.ToString(CultureInfo.InvariantCulture)).Add(column.Store.Scale?.ToString(CultureInfo.InvariantCulture));
+                            .Add(column.Store.Size?.ToString(CultureInfo.InvariantCulture)).Add(column.Store.Scale?.ToString(CultureInfo.InvariantCulture))
+                            .Add(column.Collation);
                     }
 
                     _ = writer.Add("node").Add(entity.TreeNode);
@@ -278,7 +301,7 @@ namespace Tellma.Core.Data.Queries
 
                     bool omitted = property.Name == periodStart
                         || property.Name == periodEnd
-                        || Withheld.Contains((metadata.Name, property.Name));
+                        || IsWithheld(metadata.Name, property.Name);
                     if (omitted || QueryexStoreTypes.Of(property.GetColumnType()) is not { } typed)
                     {
                         continue;
@@ -292,7 +315,8 @@ namespace Tellma.Core.Data.Queries
                         !property.IsNullable,
                         unique.Contains(property),
                         twins.GetValueOrDefault(property.Name, MultilingualShape.Primary),
-                        described);
+                        described,
+                        Collation(property));
                     if (property.Name == metadata.Key.Name)
                     {
                         key = column;
@@ -328,8 +352,17 @@ namespace Tellma.Core.Data.Queries
         /// <param name="IsUnique">Whether the key or a single-column unique index covers it.</param>
         /// <param name="Shape">The narrowest shape that admits it.</param>
         /// <param name="Metadata">The property's metadata; null for a shadow column.</param>
+        /// <param name="Collation">The collation the column declares for itself; null when it takes the database's.</param>
         private sealed record ColumnPlan(
-            string Name, string Column, QueryexType Type, QueryexStoreType Store, bool IsNotNull, bool IsUnique, MultilingualShape Shape, PropertyMetadata? Metadata);
+            string Name,
+            string Column,
+            QueryexType Type,
+            QueryexStoreType Store,
+            bool IsNotNull,
+            bool IsUnique,
+            MultilingualShape Shape,
+            PropertyMetadata? Metadata,
+            string? Collation = null);
 
         /// <summary>One navigation of an entity.</summary>
         /// <param name="Name">The navigation's name.</param>

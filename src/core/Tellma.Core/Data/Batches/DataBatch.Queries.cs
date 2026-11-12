@@ -56,12 +56,12 @@ namespace Tellma.Core.Data.Batches
                 return (BatchResult<RowPage>)shared;
             }
 
-            // --- Refusals: a grouped page has no keys to capture, count or climb from ---
+            // --- Refusals: a grouped page has no keys to capture or climb from; its count counts its groups ---
             bool capture = options.CaptureKeys || options.IncludeAncestors;
-            if (spec.Aggregate && (capture || options.CountCap is not null))
+            if (spec.Aggregate && capture)
             {
                 throw new ArgumentException(
-                    "A grouped rows query neither captures keys, counts its rows nor includes ancestors; those apply to rows of an entity.", nameof(options));
+                    "A grouped rows query neither captures keys nor includes ancestors; those apply to rows of an entity.", nameof(options));
             }
 
             int? countTake = options.CountCap is int cap ? CountTake(cap, nameof(options)) : null;
@@ -339,10 +339,43 @@ namespace Tellma.Core.Data.Batches
         /// <summary>A spec narrowed to the keys a twin captured: its filter, restrictions and paging are the twin's already.</summary>
         /// <param name="spec">The spec.</param>
         /// <param name="keys">The captured keys.</param>
-        /// <returns>The narrowed spec, its ordering kept.</returns>
+        /// <returns>The narrowed spec, its ordering kept with the twin's tie order.</returns>
         private static QuerySpec Restricted(QuerySpec spec, SqlIdentifier keys)
         {
-            return spec with { Filter = null, Restrictions = [new KeySetRestriction(spec.Root.Key.Name, keys.Name)], Skip = null, Take = null };
+            return spec with
+            {
+                Filter = null,
+                Restrictions = [new KeySetRestriction(spec.Root.Key.Name, keys.Name)],
+                OrderBy = TieBroken(spec),
+                Skip = null,
+                Take = null,
+            };
+        }
+
+        /// <summary>
+        ///     A spec's ordering with the root key as its last item, so a statement that drops the
+        ///     spec's paging still orders rows that tie as the paged spec did.
+        /// </summary>
+        /// <param name="spec">The spec.</param>
+        /// <returns>
+        ///     The ordering, the key appended unless it is already the last item; null for a spec with
+        ///     none, which the language refuses to page, so it has no paged order to keep.
+        /// </returns>
+        private static string? TieBroken(QuerySpec spec)
+        {
+            string key = spec.Root.Key.Name;
+            if (string.IsNullOrWhiteSpace(spec.OrderBy))
+            {
+                return null;
+            }
+
+            // The last item, read off after the last comma: an item that is not the bare key, with or
+            // without a direction, gets the key after it.
+            string[] last = spec.OrderBy[(spec.OrderBy.LastIndexOf(',') + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            bool endsInKey = last.Length is 1 or 2
+                && string.Equals(last[0], key, StringComparison.OrdinalIgnoreCase)
+                && (last.Length == 1 || last[1].Equals("asc", StringComparison.OrdinalIgnoreCase) || last[1].Equals("desc", StringComparison.OrdinalIgnoreCase));
+            return endsInKey ? spec.OrderBy : $"{spec.OrderBy}, {key}";
         }
 
         /// <summary>The <c>OPTION</c> clause a statement that embeds a compiled body carries.</summary>
@@ -489,6 +522,7 @@ namespace Tellma.Core.Data.Batches
             foreach (PathUse path in discovery.Paths)
             {
                 EntityDescriptor owner = root;
+                int walked = 0;
                 for (int depth = 0; depth < path.Segments.Count - 1; depth++)
                 {
                     NavigationDescriptor? navigation = owner.Navigations.FirstOrDefault(candidate => string.Equals(candidate.Name, path.Segments[depth], StringComparison.OrdinalIgnoreCase));
@@ -502,6 +536,21 @@ namespace Tellma.Core.Data.Batches
                     Need(ownerPrefix + navigation.ForeignKey.Name);
                     Need(string.Join('.', path.Segments.Take(depth + 1)) + "." + navigation.Target.Key.Name);
                     owner = navigation.Target;
+                    walked++;
+                }
+
+                // A column the schema declares but the entity's class does not hold, such as a
+                // tree's node, would compile and run, then fail in the materializer.
+                if (walked == path.Segments.Count - 1)
+                {
+                    string property = path.Segments[^1];
+                    EntityMetadata metadata = Map.Metadata(owner);
+                    if (!metadata.Properties.Any(candidate => string.Equals(candidate.Name, property, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        throw new ArgumentException(
+                            $"The entity query selects '{string.Join('.', path.Segments)}', which the class of {metadata.Name} does not hold. An entity query selects the properties of its classes; a rows query reads any column.",
+                            nameof(select));
+                    }
                 }
             }
 
@@ -578,7 +627,10 @@ namespace Tellma.Core.Data.Batches
             plan.Add(new PlannedStatement(ordinal, compiled.Sql, Slots(compiled, arguments), EntityType: entityType, Reader: Read(ordinal, compiled.Columns, store)));
         }
 
-        /// <summary>Plans a capped count of a spec's rows: its keys, ordered and limited to the cap plus one, counted.</summary>
+        /// <summary>
+        ///     Plans a capped count of a spec's rows: its keys, ordered and limited to the cap plus
+        ///     one, counted; for a grouped spec, its groups, capped the same way.
+        /// </summary>
         /// <param name="plan">The plan.</param>
         /// <param name="spec">The spec.</param>
         /// <param name="arguments">The declared parameters, or null.</param>
@@ -589,8 +641,16 @@ namespace Tellma.Core.Data.Batches
         {
             int ordinal = plan.NextOrdinal;
             string key = spec.Root.Key.Name;
-            QuerySpec keys = spec with { Select = key, OrderBy = key, Skip = null, Take = take, UndeclaredColumns = [] };
-            CompiledQuery compiled = Compile(keys, arguments, ordinal);
+
+            // A group has no key of its own: the grouped body is counted as it stands, its skip
+            // dropped. Only an ordering can be limited, so an unordered one is counted whole and the
+            // count is capped as it is read; its groups are all computed either way.
+            QuerySpec counted = !spec.Aggregate
+                ? spec with { Select = key, OrderBy = key, Skip = null, Take = take, UndeclaredColumns = [] }
+                : string.IsNullOrWhiteSpace(spec.OrderBy)
+                    ? spec with { Skip = null, Take = null, UndeclaredColumns = [] }
+                    : spec with { Skip = null, Take = take, UndeclaredColumns = [] };
+            CompiledQuery compiled = Compile(counted, arguments, ordinal);
 
             string text = $"{compiled.Prologue}SELECT COUNT(*) AS [Count] FROM (\n{compiled.Body}) AS [q]\n{Option(compiled)};\n";
             plan.Add(new PlannedStatement(ordinal, text, Slots(compiled, arguments), EntityType: entityType, Reader: async (cursor, cancellationToken) =>
@@ -603,7 +663,7 @@ namespace Tellma.Core.Data.Batches
                 }
 
                 cursor.CountRows(1);
-                store(reader.GetInt32(0));
+                store(Math.Min(reader.GetInt32(0), take));
             }));
         }
 
@@ -626,7 +686,8 @@ namespace Tellma.Core.Data.Batches
 
             const string Word = ReservedSqlNames.StatementNames.Ancestors;
             string table = ReservedSqlNames.Statement(ordinal, Word);
-            CompiledQuery compiled = Compile(spec with { Restrictions = [new KeySetRestriction(root.Key.Name, table)], Skip = null, Take = null }, arguments, ordinal);
+            CompiledQuery compiled = Compile(
+                spec with { Restrictions = [new KeySetRestriction(root.Key.Name, table)], OrderBy = TieBroken(spec), Skip = null, Take = null }, arguments, ordinal);
 
             string id = SqlNames.QuoteObjectName(root.Key.Column);
             string path = SqlNames.QuoteObjectName(node.Column);

@@ -91,6 +91,34 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
+        public async Task A_grouped_page_counts_its_groups()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+            QuerySpec spec = new()
+            {
+                Root = Entity(scope, "fixture.Widget"),
+                Select = "Kind, count()",
+                Aggregate = true,
+                OrderBy = "Kind",
+                Skip = 0,
+                Take = 1,
+            };
+
+            BatchResult<RowPage> page = batch.Rows(spec, null, new RowQueryOptions { CountCap = 10 });
+            BatchResult<RowPage> capped = batch.Rows(spec, null, new RowQueryOptions { CountCap = 1 });
+            BatchResult<RowPage> unordered = batch.Rows(
+                spec with { Select = "OptionalKind, count()", OrderBy = null, Skip = null, Take = null }, null, new RowQueryOptions { CountCap = 1 });
+            _ = await batch.ExecuteAsync(Token);
+
+            // Plain and Fancy: one group on the page, two counted, and the cap plus one when capped at
+            // one. The unordered page's three groups (Fancy, Plain, none) are counted whole and capped.
+            Assert.Equal(["Fancy"], Strings(page.Value.Rows, 0));
+            Assert.Equal((2, 2), (page.Value.Count, capped.Value.Count));
+            Assert.Equal((3, 2), (unordered.Value.Rows.RowCount, unordered.Value.Count));
+        }
+
+        [Fact]
         public async Task An_assertion_passes_on_its_count_and_throws_its_error_and_code_on_any_other()
         {
             await using AsyncServiceScope scope = fixture.CreateScope();
@@ -203,6 +231,21 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal([2, 3], Ints(byDeclared.Value.Rows, 0));
             Assert.Equal([11, 12], Ints(parts.Value.Rows, 0));
             Assert.Equal(1, fixture.RoundTrips);
+        }
+
+        [Fact]
+        public async Task A_text_list_restricts_a_binary_collated_column_by_its_exact_bytes()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            var batch = (DataBatch)Batch(scope);
+            SqlIdentifier subjects = batch.Tvp<StringList>([new() { Id = "Sub-A" }]);
+
+            // The list's column takes the database's collation and the subject column its own: compared
+            // bare, the server refuses the two as a collation conflict.
+            BatchResult<RowPage> users = batch.Rows(Restricted(Entity(scope, "core.User"), "Subject", subjects), null, null);
+            _ = await batch.ExecuteAsync(Token);
+
+            Assert.Equal([2], Ints(users.Value.Rows, 0));
         }
 
         [Fact]
@@ -469,6 +512,18 @@ namespace Tellma.Core.IntegrationTests.Data
             Array levels = rows.Value.Rows.GetBuffer(1);
             Assert.Equal(expected, string.Join(",", levels.Cast<object>()));
             Assert.Equal("1,2,3,1,2", expected);
+        }
+
+        [Fact]
+        public async Task A_rows_query_reads_a_nodes_position_as_its_path()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+
+            BatchResult<RowPage> rows = batch.Rows(new QuerySpec { Root = Entity(scope, "fixture.Node"), Select = "Id, Node", OrderBy = "Id" }, null, null);
+            _ = await batch.ExecuteAsync(Token);
+
+            Assert.Equal(["/1/", "/1/1/", "/1/1/1/", "/2/", "/1/2/"], Strings(rows.Value.Rows, 1));
         }
 
         // ===================== Helpers =====================

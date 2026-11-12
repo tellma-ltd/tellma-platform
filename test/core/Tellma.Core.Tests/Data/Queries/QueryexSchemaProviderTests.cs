@@ -6,6 +6,7 @@
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Queryex;
@@ -119,6 +120,50 @@ namespace Tellma.Core.Tests.Data.Queries
 
             Assert.DoesNotContain(blob.Properties, static property => property.Name is "StorageKey" or "Sha256");
             Assert.Contains(blob.Properties, static property => property.Name == "ContentType");
+
+            // The job's state and lease token are withheld too, once a job entity is composed.
+            Assert.True(QueryexSchemaProvider.IsWithheld("core.Job", "StateJson"));
+            Assert.True(QueryexSchemaProvider.IsWithheld("core.Job", "LeaseToken"));
+            Assert.False(QueryexSchemaProvider.IsWithheld("core.Job", "Id"));
+            Assert.False(QueryexSchemaProvider.IsWithheld("qx.Gadget", "StateJson"));
+        }
+
+        [Fact]
+        public void Columns_the_language_cannot_read_are_absent_and_a_filtered_unique_index_counts_as_unique()
+        {
+            EntityDescriptor gadget = Entity(MultilingualShape.All, "qx.Gadget");
+
+            Assert.DoesNotContain(gadget.Properties, static property => property.Name is "Thumbnail" or "OpensAt" or "Ratio");
+
+            // A nullable unique column's index is filtered to the values present, and is unique all the same.
+            PropertyDescriptor serial = Property(gadget, "Serial");
+            Assert.True(serial.IsUnique);
+            Assert.False(serial.IsNotNull);
+        }
+
+        [Fact]
+        public void A_column_that_declares_its_own_collation_carries_it_and_others_carry_none()
+        {
+            EntityDescriptor gadget = Entity(MultilingualShape.Primary, "qx.Gadget");
+
+            Assert.Equal(DatabaseCollations.Binary, Property(gadget, "Serial").Collation);
+            Assert.Null(Property(gadget, "Code").Collation);
+            Assert.Null(Property(gadget, "Name").Collation);
+        }
+
+        [Theory]
+        [InlineData("varbinary(max)")]
+        [InlineData("varbinary(16)")]
+        [InlineData("binary(8)")]
+        [InlineData("time")]
+        [InlineData("time(3)")]
+        [InlineData("float")]
+        [InlineData("real")]
+        [InlineData("sql_variant")]
+        [InlineData("xml")]
+        public void A_store_type_the_language_has_no_type_for_maps_to_nothing(string storeType)
+        {
+            Assert.Null(QueryexStoreTypes.Of(storeType));
         }
 
         [Fact]

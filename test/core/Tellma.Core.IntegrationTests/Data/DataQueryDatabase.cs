@@ -34,7 +34,10 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The day every scope's request context names as today, which no server clock reads.</summary>
         public static readonly DateOnly Today = new(2026, 3, 14);
 
-        /// <summary>The seed: widgets 1 to 4, their parts, notes and extras, nodes 1 to 5, and two shipments.</summary>
+        /// <summary>
+        ///     The seed: widgets 1 to 4, their parts, notes and extras, nodes 1 to 5, two shipments, and
+        ///     users 2 and 3, whose binary-collated subjects differ only in case.
+        /// </summary>
         private static readonly string[] Seed =
         [
             Stamped(
@@ -62,6 +65,11 @@ namespace Tellma.Core.IntegrationTests.Data
                 "[Id], [State], [Payload]",
                 string.Create(CultureInfo.InvariantCulture, $"({FirstShipmentId}, 'Pending', NULL)"),
                 string.Create(CultureInfo.InvariantCulture, $"({SecondShipmentId}, 'Shipped', N'x')")),
+            Stamped(
+                "core.Users",
+                "[Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive]",
+                "(2, 'Individual', 'Sub-A', N'a@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'Upper', 1)",
+                "(3, 'Individual', 'sub-a', N'b@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'Lower', 1)"),
         ];
 
         /// <summary>The round trips of every connection closed since the last <see cref="ResetRoundTrips" />.</summary>

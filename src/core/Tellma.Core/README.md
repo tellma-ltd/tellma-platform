@@ -294,15 +294,16 @@ the schema of the tenant's multilingual shape. `QueryexSchemaProvider` (also
 model: every entity under its metadata name, each mapped scalar with its store type, references
 and parent keys as navigations, a sibling as an optional navigation on the owner's id (a left
 join), and a tree's node; JSON, period and platform-secret columns are withheld, and only the
-group twins the shape admits are properties. Its fingerprint digests the model.
+group twins the shape admits are properties. A column's own `[Collation]` rides on its property,
+so a key-set restriction converts the table's keys to it. Its fingerprint digests the model.
 
 | Member | Statements |
 |---|---|
-| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys; a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it) follow. A grouped spec takes none of the three. |
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order with the key as its last tiebreak; a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
 | `Count` | A capped count: a result of cap + 1 means more than the cap. |
 | `EvaluateConstant` | One row of path-free expressions. |
 | `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |
-| `Query<TEntity>` | Entities: the root query with the keys the materializer needs appended, each named child collection restricted to its parents' keys (captured once, or the caller's id restriction), grandchildren through their parents' captured keys, the ancestors of a tree, and the JSON columns only with `AllProperties`. Related entities dedupe by id, and each set's projection is the columns every instance carries. |
+| `Query<TEntity>` | Entities: the root query with the keys the materializer needs appended, each named child collection restricted to its parents' keys (captured once, or the caller's id restriction), grandchildren through their parents' captured keys, the ancestors of a tree, and the JSON columns only with `AllProperties`. It selects only properties of its classes: a schema column a class does not hold, such as a tree's node, is a caller error that a rows query reads instead. Related entities dedupe by id, and each set's projection is the columns every instance carries. |
 
 Every query statement of a batch binds the same context values (today, now, the user, the time
 zone), read once per batch, and an identical statement composed in the same write epoch answers

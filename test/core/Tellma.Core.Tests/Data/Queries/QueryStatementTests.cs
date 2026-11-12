@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Data;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Data.Batches;
@@ -83,7 +84,7 @@ namespace Tellma.Core.Tests.Data.Queries
                     [T].[Price] AS [c1]
                 FROM [qx].[Gadgets] AS [T]
                 WHERE ([T].[Id] IN (SELECT [Id] FROM @tb0_keys))
-                ORDER BY [c0] ASC
+                ORDER BY [c0] ASC, [T].[Id] ASC
                 ;
 
                 """,
@@ -170,7 +171,7 @@ namespace Tellma.Core.Tests.Data.Queries
                     [T].[Name] AS [c1]
                 FROM [qx].[Zones] AS [T]
                 WHERE (([T].[IsActive] = 1) AND ([T].[Id] IN (SELECT [Id] FROM @tb2_anc)))
-                ORDER BY [c0] ASC
+                ORDER BY [c0] ASC, [T].[Id] ASC
                 ;
 
                 """,
@@ -180,6 +181,169 @@ namespace Tellma.Core.Tests.Data.Queries
             // The user's filter narrows the page, never the ancestors.
             Assert.Contains("@qx0_p0", batch.Statements[0].Text, StringComparison.Ordinal);
             Assert.Empty(batch.Statements[2].Parameters);
+        }
+
+        [Fact]
+        public void A_captured_page_ordered_by_its_key_or_unordered_gets_no_second_tiebreak()
+        {
+            DataBatch batch = _harness.Batch();
+
+            _ = batch.Rows(new QuerySpec { Root = Entity("qx.Gadget"), Select = "Name", OrderBy = "Name, id desc", Take = 5 }, null, new RowQueryOptions { CaptureKeys = true });
+            _ = batch.Rows(new QuerySpec { Root = Entity("qx.Gadget"), Select = "Price" }, null, new RowQueryOptions { CaptureKeys = true });
+
+            // An ordering that ends in the key keeps it; an unordered spec, never paged, stays unordered.
+            Assert.Contains("ORDER BY [c0] ASC, [T].[Id] DESC\n;", batch.Statements[1].Text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+            Assert.DoesNotContain("ORDER BY", batch.Statements[3].Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_grouped_page_counts_its_groups_up_to_the_cap_plus_one()
+        {
+            DataBatch batch = _harness.Batch();
+            QuerySpec spec = new() { Root = Entity("qx.Gadget"), Select = "Kind, count()", Aggregate = true, Filter = FilterTree.Leaf("Price > 5"), OrderBy = "Kind", Skip = 20, Take = 20 };
+
+            _ = batch.Rows(spec, null, new RowQueryOptions { CountCap = 100 });
+
+            Assert.Equal(2, batch.Statements.Count);
+            Assert.Equal(
+                """
+                SELECT COUNT(*) AS [Count] FROM (
+                SELECT
+                    [T].[Kind] AS [c0],
+                    COUNT_BIG(*) AS [c1]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE (([T].[Price] IS NOT NULL) AND ([T].[Price] > @qx1_p0))
+                GROUP BY [T].[Kind]
+                ORDER BY [c0] ASC
+                OFFSET 0 ROWS FETCH NEXT @qx1_take ROWS ONLY
+                ) AS [q]
+                ;
+
+                """,
+                batch.Statements[1].Text,
+                ignoreLineEndingDifferences: true);
+            Assert.Equal(101, Scalar(batch.Statements[1], "@qx1_take").Value);
+
+            // Groups have no keys to capture or climb from, and a standalone count counts an entity's rows.
+            _ = Assert.Throws<ArgumentException>(() => batch.Rows(spec, null, new RowQueryOptions { CountCap = 100, CaptureKeys = true }));
+            _ = Assert.Throws<ArgumentException>(() => batch.Count(spec, null));
+            Assert.Equal(2, batch.Statements.Count);
+
+            // An unordered grouped page cannot be limited, so its count counts every group.
+            _ = batch.Rows(spec with { OrderBy = null, Skip = null, Take = null }, null, new RowQueryOptions { CountCap = 100 });
+            Assert.Equal(4, batch.Statements.Count);
+            Assert.DoesNotContain("FETCH", batch.Statements[3].Text, StringComparison.Ordinal);
+            Assert.StartsWith("SELECT COUNT(*) AS [Count] FROM (", batch.Statements[3].Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_recompiled_filter_keeps_its_hint_on_each_statement_that_reads_the_body()
+        {
+            QuerySpec spec = new() { Root = Entity("qx.Gadget"), Select = "Name", Filter = FilterTree.Leaf("DueOn >= startOfMonth(today(), 'uq')"), OrderBy = "Name", Take = 20 };
+
+            DataBatch rows = _harness.Batch();
+            _ = rows.Rows(spec, null, new RowQueryOptions { CaptureKeys = true, CountCap = 100 });
+            Assert.Equal(3, rows.Statements.Count);
+            Assert.Equal(
+                """
+                DECLARE @tb0_keys TABLE ([Id] int PRIMARY KEY);
+                DECLARE @qx0_v0 date = (SELECT [M].[StartDate] FROM (SELECT TOP (1) [M].[Year], [M].[Month], [M].[StartDate], [M].[EndDate] FROM [core].[CalendarMonths] AS [M] WHERE [M].[Calendar] = @qx0_p1 AND [M].[StartDate] <= @qx0_p0 ORDER BY [M].[StartDate] DESC) AS [M] WHERE @qx0_p0 < [M].[EndDate]);
+
+                INSERT INTO @tb0_keys ([Id])
+                SELECT
+                    [T].[Id] AS [c0]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE (([T].[DueOn] IS NOT NULL) AND (@qx0_v0 IS NOT NULL) AND ([T].[DueOn] >= @qx0_v0))
+                ORDER BY [T].[Name] ASC, [c0] ASC
+                OFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY
+                OPTION (RECOMPILE)
+                ;
+
+                """,
+                rows.Statements[0].Text,
+                ignoreLineEndingDifferences: true);
+            Assert.Equal(
+                """
+                DECLARE @qx2_v0 date = (SELECT [M].[StartDate] FROM (SELECT TOP (1) [M].[Year], [M].[Month], [M].[StartDate], [M].[EndDate] FROM [core].[CalendarMonths] AS [M] WHERE [M].[Calendar] = @qx2_p1 AND [M].[StartDate] <= @qx2_p0 ORDER BY [M].[StartDate] DESC) AS [M] WHERE @qx2_p0 < [M].[EndDate]);
+
+                SELECT COUNT(*) AS [Count] FROM (
+                SELECT
+                    [T].[Id] AS [c0]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE (([T].[DueOn] IS NOT NULL) AND (@qx2_v0 IS NOT NULL) AND ([T].[DueOn] >= @qx2_v0))
+                ORDER BY [c0] ASC
+                OFFSET 0 ROWS FETCH NEXT @qx2_take ROWS ONLY
+                ) AS [q]
+                OPTION (RECOMPILE)
+                ;
+
+                """,
+                rows.Statements[2].Text,
+                ignoreLineEndingDifferences: true);
+
+            DataBatch asserted = _harness.Batch();
+            asserted.Assert(spec, null, 1, 50404, "Entity.NotFound");
+            Assert.Equal(
+                """
+                DECLARE @tb0_count int;
+                DECLARE @qx0_v0 date = (SELECT [M].[StartDate] FROM (SELECT TOP (1) [M].[Year], [M].[Month], [M].[StartDate], [M].[EndDate] FROM [core].[CalendarMonths] AS [M] WHERE [M].[Calendar] = @qx0_p1 AND [M].[StartDate] <= @qx0_p0 ORDER BY [M].[StartDate] DESC) AS [M] WHERE @qx0_p0 < [M].[EndDate]);
+
+                SELECT @tb0_count = COUNT(*) FROM (
+                SELECT
+                    [T].[Name] AS [c0]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE (([T].[DueOn] IS NOT NULL) AND (@qx0_v0 IS NOT NULL) AND ([T].[DueOn] >= @qx0_v0))
+                ORDER BY [c0] ASC, [T].[Id] ASC
+                OFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY
+                ) AS [q]
+                OPTION (RECOMPILE);
+                IF @tb0_count <> @tb0_p0 THROW 50404, N'Entity.NotFound', 1;
+
+                """,
+                Assert.Single(asserted.Statements).Text,
+                ignoreLineEndingDifferences: true);
+        }
+
+        [Fact]
+        public void A_restriction_on_a_column_of_its_own_collation_converts_the_keys_to_it()
+        {
+            DataBatch batch = _harness.Batch();
+            SqlIdentifier serials = batch.Tvp<StringList>([new() { Id = "a" }]);
+            SqlIdentifier codes = batch.Tvp<StringList>([new() { Id = "b" }]);
+
+            _ = batch.Rows(
+                new QuerySpec { Root = Entity("qx.Gadget"), Select = "Name", Restrictions = [new KeySetRestriction("Serial", serials.Name), new KeySetRestriction("Code", codes.Name)] },
+                null,
+                null);
+
+            string text = batch.Statements[^1].Text;
+            Assert.Contains($"([T].[Serial] IN (SELECT [Id] COLLATE Latin1_General_100_BIN2 FROM {serials.Name}))", text, StringComparison.Ordinal);
+            Assert.Contains($"([T].[Code] IN (SELECT [Id] FROM {codes.Name}))", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_query_call_over_the_parameter_budget_leaves_the_batch_as_it_was()
+        {
+            DataBatch batch = _harness.Batch();
+            batch.Limits = QueryexLimits.Default with { MaxListItems = 2000, MaxParameters = 2000 };
+            QuerySpec Listed(int count)
+            {
+                return new()
+                {
+                    Root = Entity("qx.Gadget"),
+                    Select = "Name",
+                    Filter = FilterTree.Leaf($"Id in ({string.Join(", ", Enumerable.Range(1, count))})"),
+                    OrderBy = "Name",
+                    Take = 20,
+                };
+            }
+
+            // Each statement fits on its own; the twin and the count together do not.
+            _ = Assert.Throws<InvalidOperationException>(() => batch.Rows(Listed(1100), null, new RowQueryOptions { CountCap = 100, CaptureKeys = true }));
+            Assert.Empty(batch.Statements);
+
+            _ = batch.Rows(Listed(500), null, new RowQueryOptions { CountCap = 100, CaptureKeys = true });
+            Assert.Equal([0, 1, 2], batch.Statements.Select(static statement => statement.Ordinal));
         }
 
         [Fact]
@@ -459,6 +623,22 @@ namespace Tellma.Core.Tests.Data.Queries
             _ = Assert.Throws<ArgumentException>(() => batch.Query(new EntityQuery<Gadget> { Select = "Name", IncludeAncestors = true }));
             _ = Assert.Throws<ArgumentException>(() => batch.Query(new EntityQuery<Gadget> { Select = "Nope" }));
             Assert.Empty(batch.Statements);
+        }
+
+        [Fact]
+        public void An_entity_query_refuses_a_column_its_class_does_not_hold_and_a_rows_query_reads_it()
+        {
+            DataBatch batch = _harness.Batch();
+
+            // The tree's node is a column of the schema, never a property of the class.
+            ArgumentException node = Assert.Throws<ArgumentException>(() => batch.Query(new EntityQuery<Zone> { Select = "Code, Node" }));
+            Assert.Contains("'Node'", node.Message, StringComparison.Ordinal);
+            _ = Assert.Throws<ArgumentException>(() => batch.Query(new EntityQuery<Gadget> { Select = "Name, Zone.Node" }));
+            _ = Assert.Throws<ArgumentException>(() => batch.Query(new EntityQuery<Zone> { Select = "Parent.Node" }));
+            Assert.Empty(batch.Statements);
+
+            _ = batch.Rows(new QuerySpec { Root = Entity("qx.Zone"), Select = "Code, Node" }, null, null);
+            _ = Assert.Single(batch.Statements);
         }
 
         [Fact]

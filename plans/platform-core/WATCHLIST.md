@@ -624,6 +624,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-028 → PC-038: IVersionTagRegistry, VersionTagEffects and UserVersionTagRule are declared in Tellma.Core.Abstractions.Caching; PC-038 implements and registers them, never re-declares them. PC-028 already emits the version-tag guard text (PersistChecks): PC-038 reuses it rather than re-implementing it. DataBatch.TagParameter() binds @tm_tag for the bump epilogue.
 - PC-028 → PC-038/PC-050 (connect prologue): the executor emits the version-tag guard and the 50401 caller re-check from the GuardPremises passed to DataBatch.MarkConnectPrologue(GuardPremises); the prologue must declare @tm_UserId and, for a user, bind @tm_ExpectedUserPermissionsTag (ReservedSqlNames.ExpectedUserPermissionsTag).
 - PC-028 → PC-037 (save emitter): call DataBatch.DeclareInsertedRoots(table, ids) (int and long overloads; the first non-empty call wins) so the commit probe can verify; statements that throw 50409/50404 read their preceding set with cursor.NextIfAsync plus ReadConflictsAsync/ReadMissingIdsAsync; StatementDraft.EntityType names the entity of tree statements. Persist re-checks run in every transaction mode; a TransactionHead statement is refused when the text opens no transaction.
+- PC-033 → the owner of spec 0012's startup validation report (§11.1: `Fingerprint` "is part of `EntityMetadata`'s startup validation output"): `QueryexSchemaProvider.Fingerprint` exists (SHA-256 over every entity's name, source, key, properties with their store types and own collations, navigations, and the calendar maps) but no startup check or report reads it yet. The engine's caches key on schema identity, not on it.
 
 ## 0013
 - (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
@@ -745,6 +746,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - No new runtime NuGet beyond 0011/0012 pins; tests use already-pinned Microsoft.Extensions.Diagnostics.Testing (MetricCollector) and Microsoft.Extensions.TimeProvider.Testing (FakeTimeProvider)
 - A C# public-API golden mechanism for §17 does not exist in the repo: either a new pin (e.g. PublicApiGenerator) or a hand-rolled reflection dump
 - Optional property-testing library (FsCheck/CsCheck) for the §18.1 scheduler property test, or a hand-rolled randomized harness (Queryex's suites set the precedent)
+- PC-033 → the 0015 read-pipeline checkpoints: `DataBatch.KeysOf(handle)` is the seam that names the statement-local key table a `Rows` or `Query` handle captured, so a later statement can restrict on it; it is `internal` (0015's runtime is in `Tellma.Core`), and spec 0012 §5.2's `RowPage` carries no capture table, so no public contract can name one. 0015's per-participant batch views (§5.2 write authority) must see through to the underlying `DataBatch` or forward `KeysOf`, or a child restriction on a captured page cannot be composed.
 
 ## 0016
 
@@ -1220,6 +1222,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - The TypeScript compiler (already present) for the emitted .d.ts compile test
 - No new npm packages
 - (D-046, from PC-019) The enum-name clash startup check (<entity schema>.<EnumTypeName>) covers only entity-property enums. When the 0029 emit lands, extend it to setting-key and action-field enums.
+- PC-033 → the 0029 client display-name renderer: `client/projects/core/tellma-core/src/entity/display-name-golden.json` pins the .NET renderer's date rows, `3/15/2026` (`en`, gregorian) and `15/3/2026` (`ar-SA-u-nu-latn`, gregorian, compared after bidi marks are stripped). The TypeScript renderer must produce the same strings against the same file; nothing on the client reads it yet.
 
 ## 0030
 

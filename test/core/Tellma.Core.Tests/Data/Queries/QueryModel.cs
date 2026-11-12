@@ -7,14 +7,16 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Data.Queries
 {
     // A sound model for the query statements: a top-level entity with a multilingual name, a prefixed
-    // display name, enums (one nullable), a JSON column, a reference to a tree and a sibling; a child
-    // with a JSON column of its own and a grandchild; and a tree.
+    // display name, enums (one nullable), a JSON column, a binary-collated unique serial, columns the
+    // language does not read, a reference to a tree and a sibling; a child with a JSON column of its
+    // own and a grandchild; and a tree.
 
     /// <summary>Composes the query model into a composition.</summary>
     internal static class QueryModel
@@ -82,6 +84,21 @@ namespace Tellma.Core.Tests.Data.Queries
 
         /// <summary>A date.</summary>
         public DateOnly? DueOn { get; set; }
+
+        /// <summary>A serial: unique where present, through a filtered index, and compared byte by byte.</summary>
+        [MaxLength(64)]
+        [Unique]
+        [Collation(DatabaseCollations.Binary)]
+        public string? Serial { get; set; }
+
+        /// <summary>A thumbnail, <c>varbinary</c>: a column the query language does not read.</summary>
+        public byte[]? Thumbnail { get; set; }
+
+        /// <summary>An opening time, <c>time</c>: a column the query language does not read.</summary>
+        public TimeOnly? OpensAt { get; set; }
+
+        /// <summary>A ratio, <c>float</c>: a column the query language does not read.</summary>
+        public double? Ratio { get; set; }
 
         /// <summary>The settings, as JSON.</summary>
         [JsonColumn]
