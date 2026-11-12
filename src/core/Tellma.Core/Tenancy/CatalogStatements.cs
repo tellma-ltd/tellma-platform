@@ -137,6 +137,17 @@ namespace Tellma.Core.Tenancy
              WHERE m.[Subject] = @subject AND t.[State] <> N'Retired';
             """;
 
+        /// <summary>
+        ///     One tenant's membership hints in subject order, for the admin surface; seeks
+        ///     <c>IX_TenantMemberships_TenantId</c>.
+        /// </summary>
+        public const string MembersOf = """
+            SELECT m.[Subject], m.[IsActive], m.[UpdatedAt]
+              FROM [catalog].[TenantMemberships] AS m
+             WHERE m.[TenantId] = @tenantId
+             ORDER BY m.[Subject];
+            """;
+
         /// <summary>The membership upsert from <c>@rows</c>, without <c>MERGE</c>, in one transaction.</summary>
         public const string UpsertMemberships = """
             SET XACT_ABORT ON; BEGIN TRAN;

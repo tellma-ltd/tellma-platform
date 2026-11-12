@@ -84,7 +84,7 @@ Ordering traps:
 - Stand-ins. 0012's fixture needs core.Users, core.UserStamps, core.VersionTags, core.Jobs and core.Blobs. Use stand-ins in Tellma.Testing.Entities until 0013/0014/0017 contribute the real tables, then swap them. Plan a small swap task inside those specs' checkpoints.
 - Client esproj. 0011's DoD lists Tellma.Distro.Acme.Client, but its build needs spec 0024's tellma-client and a repo-root pnpm workspace (currently client/pnpm-workspace.yaml), and CI's build job has no Node. Move the esproj, the SPA proxy wiring and the pnpm workspace relocation into 0024's first checkpoint.
 - Shared vector files. launch-landing-vectors.json (0011-f) and display-name-golden.json (0012-d) live in @tellma/core, which 0024 creates. Whichever checkpoint lands first creates the file at its final path (client/projects/core/tellma-core/src/...), and 0024/0029 adopt it.
-- Test helpers. Move OidcFlowClient from Tellma.Identity.IntegrationTests into a shared test-support project before 0011-g. Consolidate the three duplicate SqlServerFixture classes into Tellma.Testing.Support when Tellma.Testing.Entities is created.
+- Test helpers. Move OidcFlowClient from Tellma.Identity.IntegrationTests into a shared test-support project before 0011-g. Consolidate the three duplicate SqlServerFixture classes into Tellma.Testing.Support when Tellma.Testing.Entities is created. (Closed by PC-027: the four copies are one fixture in Tellma.Testing.Support/Sql. Tellma.Identity.E2E's IdentityServerFixtureBase still starts its own container.)
 - Analyzer reach. Once Abstractions carries the analyzer asset (0012-g), every project referencing Abstractions runs TELLMA0001–0006, including Tellma.Identity and the connectors. CI design-e2e's package flow must pack Tellma.Core.Queryex and the analyzer with its ScriptDom DLL, and 0012-a's Abstractions→Queryex edge already breaks that flow. Fix CI in 0012-a.
 - CI capacity. Both specs require Category=Integration on Windows LocalDB per PR, but ci.yml has only an ubuntu integration job with a 25-minute timeout. Add a Windows job, and budget time for the combined 0011/0012 suites (roughly 6–12 min added).
 - Problem codes. 0011's web tests that assert problem codes need an interim mapping, because 0016 owns problem details. Keep it minimal and let 0016 replace it.
@@ -503,6 +503,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Node.js with full ICU (Intl.DateTimeFormat 'ethiopic' calendar) to generate the checked-in Ethiopic vector file (§F.19), also reused by spec 0013 §12
 - The .NET BCL UmAlQuraCalendar (range 1900-04-30..2077-11-16) and System.Data.SqlTypes.SqlDecimal. No new NuGet packages are allowed ('no new package reference').
 
+- PC-012 → a later Queryex checkpoint (or a fix item): the null-safe comparison forms in Lowerer.Comparisons still repeat a non-atomic operand at group grain; a constant factor per comparison, not the exponential growth PC-012 fixed for calendar calls. Reuse PlanNamedScalar.
 ## 0010-G
 
 **Possible contradictions and gaps (unverified leads):**
@@ -539,7 +540,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - §10 requires Category=Integration on Windows LocalDB on every PR; ci.yml runs integration on ubuntu only.
 - §1.1 pins conflict with Directory.Packages.props: EF 10.0.9, SqlClient 6.1.1 ('kept on the version EF resolves to') and Testcontainers 4.13.0. ASP.NET packages would stay on 10.0.9 while KeyPerFile is 10.0.11, a mixed servicing line.
 - §3.4 fixes the first registry load at a 10-second bound with no option, which slows the readiness tests.
-- §5.1/§3.5: removing db.query.text, naming the SQL span per 0012 §6.1 and tagging tellma.db.role on raw catalog SqlCommands all assume the SqlClient instrumentation's enrich hook exposes the command. This needs verifying on OpenTelemetry.Instrumentation.SqlClient 1.16 with SqlClient 6.1.6; otherwise the executor must own its own Activity.
+- (db.query.text removal verified by PC-032: EnrichWithSqlCommand runs after the tags are set; SqlClient 1.16 replaces literals with '?'. The span-name and tellma.db.role parts stay open.) §5.1/§3.5: removing db.query.text, naming the SQL span per 0012 §6.1 and tagging tellma.db.role on raw catalog SqlCommands all assume the SqlClient instrumentation's enrich hook exposes the command. This needs verifying on OpenTelemetry.Instrumentation.SqlClient 1.16 with SqlClient 6.1.6; otherwise the executor must own its own Activity.
 - DatabaseCollations is claimed both by §1.1/§6.7 and by 0010 §A.11's placement table; whichever lands first must create it.
 - §2.3 core.taxonomy reads taxonomy.json 'from the repository root when present' without saying how a running host finds the root (walk up from the content root?).
 
@@ -563,6 +564,13 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Azure (deployment only, not tests): Blob storage + Key Vault key for the Data Protection ring, Key Vault references/AddAzureKeyVault, managed identity for SQL, App Service settings (Always On, WEBSITES_CONTAINER_STOP_TIME_LIMIT=30), Application Insights connection string
 - Identity: in-proc engine signing keys for Development; Tellma:Identity:ClientSecret/ServiceClientSecret outside Development
 - (from PC-025) Front doors (tenant filter, MCP filter, the worker after CreateScopeAsync) must set CultureInfo.CurrentCulture/CurrentUICulture from RequestContext.CultureInfo after EnsureAccessAsync/CreateScopeAsync returns: an initializer's AsyncLocal change does not flow back (spec 0013 §9.3 step 5 cannot work as written). The guard meters only the outcomes it decides; the tenant middleware meters pre-binding outcomes and scopes{kind=request} and needs a seam into the internal TenancyMetrics. ITellmaLinks.Target reads stacks through the internal IStackRouteSource (default NoStackRoutes); the stack-registry checkpoint replaces it. AddTellma registers ISandboxContext → TenantSandboxContext (scoped; throws outside a tenant): in-process identity needs its own answer for tenantless mail and must not override host-wide with Never.
+
+- PC-032 → PC-034: ITenantProvisioningTrigger and NotConfiguredProvisioningTrigger (registered with TryAdd, answers 501) exist already; replace the registration, do not re-declare the types.
+- PC-032 → PC-085: Azure Monitor exporter and webhook endpoint stamping were deferred here.
+- PC-032 → PC-081: the SPA catch-all fallback turns a 405 into a 404; revisit with the SPA host.
+
+- PC-032 → the spec 0016 MCP endpoint checkpoint: the web-host audit refuses a tenant endpoint without a guard marker except Hub and Mcp surfaces; `/{tenantId}/mcp` must stamp the internal TenantFrontDoorMetadata(Mcp) beside AddEndpointFilter<TenantAccessFilter> (Tellma.Core.Mcp has InternalsVisibleTo), or the audit fails startup.
+- PC-032 → PC-063: IStackRouteSource gained `Routes`; the stack registry must implement it (the audit checks stack segments against reserved route words).
 
 ## 0012
 
@@ -598,6 +606,14 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - SQL Server 2019+ (2022 recommended to match UseCompatibilityLevel(160)): hierarchyid, system-versioned temporal tables, STRING_AGG, change tracking (fixture), sp_sequence_get_range, sys.dm_exec_query_stats (VIEW SERVER STATE), KILL for fault injection (ALTER ANY CONNECTION); LocalDB on Windows, Testcontainers mssql 2022 on Linux; TELLMA_TEST_SQL override
 - NuGet: Microsoft.EntityFrameworkCore.SqlServer.HierarchyId 10.0.11, Microsoft.Data.SqlClient 6.1.6, Microsoft.SqlServer.TransactSql.ScriptDom 170.x (verify it loads in a netstandard2.0 analyzer host in VS and dotnet build, and pack its DLL beside the analyzer), Microsoft.CodeAnalysis.CSharp.Analyzer.Testing (or the Microsoft.CodeAnalysis.Testing family) — new CPM pins; Roslyn stays at the 5.0.0 pin EF Design requires
 - CI: a Windows LocalDB integration job (spec requires LocalDB and Testcontainers per PR); the design-e2e package flow must pack Tellma.Core.Queryex and the analyzer
+
+- PC-027 → PC-040 (TELLMA0003): refuse a bare `nameof(...)` hole in IDataBatch.Sql; a column or object name is written `SqlIdentifier(nameof(...))` (ruled at PC-027 review 1; the analyzer did not exist yet).
+- PC-027 → the 0012 error-taxonomy checkpoint: cancelling a batch on a client-side failure helps only while the server still runs it; a small writing batch can commit before the client sees the failing result set, so a defect raised after send must be classified as ambiguous (may have committed) for a writing batch.
+
+- PC-012 → spec 0012's batch composers (Count, Assert, key capture; PC-027 line): a CompiledQuery with `Recompile` set must get RECOMPILE merged into the composer's single OPTION clause (e.g. `OPTION (RECOMPILE, MAXRECURSION 32)`); Assert counts into a variable first, since IF takes no OPTION (D-050). The spec 0012 guards that embed Body under IF (spec text around lines 1700, 1717 and 1722 of docs/specs/0012) must assign the result to a variable under the hint and then test it, or a flagged filter runs on a cached plan.
+
+- PC-027 → the owner of TransactionMode.Explicit's callers: spec 0012 says Explicit exists so a decision is taken in C# before commit, but the executor commits straight after reading and exposes no hook; the contract for that hook is unspecified (PC-027 review 2, R2-4).
+- PC-027 → PC-028 (error mapping): StatementOrdinalAt maps SqlException.LineNumber alone; for an error raised in a trigger or called procedure (SqlError.Procedure set) the line counts within that module, so such errors must not be mapped to a batch statement.
 
 ## 0013
 - (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
@@ -972,6 +988,8 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Browser features: Popover API (popover=manual) for the toast and busy-overlay hosts; the `inert` attribute; Intl.Segmenter (avatar initials); navigator.clipboard (copy, with fallback); document.execCommand('delete') for undoable clear; HTML5 DnD (no touch DnD on Samsung Internet or Firefox Android, Review flag 1).
 
 ## 0024
+- (PC-069 → PC-075) TmSession must write `boot.patch({sub})`, and only after the store boot step's sweep and readAll; until it lands every launch is cold, warm launch is unreachable and the 3c branch never runs.
+- (PC-069 → PC-110) Replace the interim TmSessionPaths bodies (signOut omitted; expired only sets state and reloads; changedUser only emits and replaces to /, no broadcast) and add spec 0024 §8.8's re-check triggers. Until then a tab of user A keeps showing A's data (and session-storage drafts) after user B signs in elsewhere, until it navigates; PC-071 onward renders data while this gap is open.
 - (PC-067) The app-config check reports `string-key-collision` only when the build passes the string packs to it (optional argument); the build/config-check checkpoint must pass them. (The declaration registry lives on globalThis under `Symbol.for`, so loading @tellma/core twice is safe.)
 
 **Possible contradictions and gaps (unverified leads):**
@@ -1018,6 +1036,9 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Azure SignalR origins in connect-src (only when Azure:SignalR:ConnectionString is set) and Azure App Service for the staging smoke. Deployment-time only.
 - (D-046, from PC-019) The server pins CLDR 48 culture data with two corrections: om-ET, om-KE, ti-ER and ti-ET numeric dates stay day-first (CLDR 48 switched them to M/d/yy), and ar-SA/ar-SO use '%' instead of U+066A. The client's §7.7 fallback formats for om/ti/so must apply the same day-first rule, or one user sees two date orders.
 
+- PC-069 → PC-071: `expired(source, sh?)` ignores a 401 whose request handle `sh` no longer matches the cookie, so PC-071 only has to pass the request's handle. Within 60 s of a sign-in (`mark.at`) `expired()` shows the sign-in-failed boot page and keeps the cookie; its retry deletes the cookie and reloads.
+- PC-069 → PC-075: once PC-075 writes `sub` into the boot record, an expiry is reported twice (`cookie`/`401`, then `boot`); dedupe it there.
+- PC-069: the boot bundle is at its 3,072 B ceiling for English-only (zero headroom after PC-022's typographic apostrophes). The next byte added to the bundled boot modules needs an equal saving or a D-048 ruling.
 ## 0025
 
 **Possible contradictions and gaps (unverified leads):**

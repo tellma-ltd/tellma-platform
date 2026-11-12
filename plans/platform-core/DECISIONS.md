@@ -359,6 +359,36 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-051 (orchestrator, 2026-11-11): a batch review may borrow an idle fix slot
+- Situation: Phase 1 closed (PC-012 green on CI 43103329956) with all four checkpoint slots in use and the fix slot pc-f idle.
+- Ruling: PC-B01 runs in pc-f rather than waiting for a checkpoint slot. A stop-the-line fix arriving meanwhile takes pc-f2 when free, else the next slot to free. The batch finders only read, so D-028's cap counts only the batch fixer.
+- Revisit if: a red CI finds both fix slots busy.
+
+### D-050 (orchestrator, 2026-11-11): PC-012 'uq' lookups: end check outside the seek, RECOMPILE on hoisted variables
+- Ruling: a lookup by date checks the month's EndDate on the one row the `TOP (1) … ORDER BY StartDate DESC` seek finds, outside the seek (deviation 1). Answers are identical for non-overlapping months. Spec 0010's form scanned every month backward for a date past the table's end: 35 s vs 139 ms for 8,400 such rows, and equal in range.
+- Ruling (flag 4): a statement that declares a hoisted 'uq' calendar variable carries `OPTION (RECOMPILE)`. The benchmark (10M lines over 1M headers) measured the hoisted variable at 18–26× a bound parameter for month selectivity; RECOMPILE brings it to 1.7–2.0×. The host-evaluated-parameter alternative (the host resolves the call against a cached month table and binds a parameter, ≈1.0×) is a design change left for Ahmad.
+- Amended after Review 1: OPTION cannot sit in Body (Body is embedded as a derived table or under IF: Msg 156) and a statement takes one OPTION clause. So RECOMPILE is a structural `Recompile` flag on CompiledQuery; the standalone Sql appends ` OPTION (RECOMPILE)` after Body. It is set only when a surviving 'uq' calendar variable is read from a predicate (WHERE, ON, HAVING), never for hierarchy-only variables or constant statements. This changes the spec 0010 §F.3 Sql = Prologue + Body invariant and adds a public member. Spec 0012's composers that embed Body merge the hint into their own single OPTION clause (WATCHLIST ## 0012).
+- Confirmed after the fix round: the standalone Sql writes the hint as its own clause line (Body ends in a line feed): Prologue + Body + "OPTION (RECOMPILE)
+" + ";
+". The flag is read from WHERE (semi-join predicates included) or HAVING; ON had no hoisted-variable case.
+- Also accepted: TypedEquivalence and the call hash compare selector arguments by resolved value, ignoring case ('UQ' = 'uq'), a fix to pre-existing behaviour; no golden changed.
+- **Misalignment for Ahmad:** spec 0010 §F examples 1 and 2 (lookup text) and the hoisting design's plan quality; recorded under LEDGER.md merge-time tasks.
+- Revisit if: compile cost of RECOMPILE shows up in report latency, or Ahmad picks the host-parameter design.
+
+### D-049 (orchestrator, 2026-11-11): PC-020 indicator budgets at birth
+- Ruling: the seven spec 0023 indicator entry points take ceilings of measured size + ≈0.1 KB (rounded up to 0.05) after the savings Reviewer 1 found, in KB gzip: avatar 2.63 (2.75), badge 2.08 (2.2), copy 3.20 (3.3), empty-state 1.30 (1.4), progress 2.56 (2.7), relative-time 1.21 (1.35), skeleton 1.53 (1.65). Each budgetNote states the measured size and savings taken.
+- Why: savings taken were data-tone/data-shape/data-size attribute bindings instead of per-value classes (badge, counter, progress bar, skeleton, empty-state); a single copy-button template measured heavier (3.25) than two templates and was not taken. The spec's §1 figures (8 KB set total) predate the components.
+- Also: the warning progress fill uses color-mix(in srgb, var(--warning) 75%, var(--text-strong)), 3.77:1 against the light track (WCAG 1.4.11), since no darker warning role exists.
+- **Misalignment for Ahmad:** spec 0023 §1 budgets; recorded under LEDGER.md merge-time tasks (with the `textStyle` input name).
+- Revisit if: a later checkpoint raises any of these ceilings again (D-031 counts this as the first raise).
+
+### D-048 (orchestrator, 2026-11-11): PC-069 boot budget per language and interim expiry
+- Ruling (reworded after Review 2): spec 0024 §4.2's 3 KB gzip covers the boot code plus the always-embedded English fallback; each further string table adds 0.4 KB gzip (en+ar or ar-only ≤ 3.4 KB, en+ar+am ≤ 3.8 KB). The boot-template test asserts English-only and Acme's real en+ar configuration, computing the allowance from the language count.
+- Ruling: until the session checkpoints land, TmSession's interim `expired()` reloads (or routes to the boot page) after setting state, so an expired tab never keeps showing the user's data. Writing `sub` into the boot record and the §8.8 re-check triggers stay with their owners (WATCHLIST ## 0024).
+- Why: measured template 2,863 B, en 3,065 B, en+ar 3,389 B, en+ar+am 3,712 B (Reviewer 1); the old check watched only a configuration that never ships. An expired tab would otherwise be a dead end that still shows data.
+- **Misalignment for Ahmad:** spec 0024 §4.2 should state what 3 KB covers and the per-language allowance; recorded under LEDGER.md merge-time tasks.
+- Revisit if: a distribution offers four or more languages, or the boot strings grow.
+
 ### D-047 (orchestrator, 2026-11-11): PC-014 sign-in language and pending authorization requests
 - Ruling: a language switch on the sign-in page rewrites ui_locales nested in identity-page return addresses (at most three deep), but never a pending authorization request; only the consent page's own switch rewrites the request's ui_locales.
 - Why: spec 0010 §A.10 has the authorization endpoint re-apply the language from the request, and protocol messages are never edited in passing. Reviewer 2 (Opus xhigh, 0/0/0) traced the redirect surface and upheld it.

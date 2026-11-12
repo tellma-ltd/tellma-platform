@@ -37,6 +37,13 @@ disabled/readonly/required).
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
 | `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
+| `@tellma/core-ui/badge` | `tm-badge` — a status label in a colour tone, with an optional leading dot or icon; `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+") |
+| `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; `tmInitials` and `tmAvatarTone` |
+| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring` — the same as a ring around an icon button |
+| `@tellma/core-ui/skeleton` | `tm-skeleton` — static line, block, circle and table placeholders with the final geometry of what replaces them |
+| `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |
+| `@tellma/core-ui/copy` | `tm-copy-button` — one-click copy with a "Press Ctrl+C to copy" fallback; `tm-reference` — a trace id or version as a mono chip with that button |
+| `@tellma/core-ui/empty-state` | `tm-empty-state` — the one anatomy for "nothing to show" and inline failures: icon, heading, detail and actions |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
@@ -109,9 +116,12 @@ the components ship no hardcoded sizes or colors.
 - Entry points import shared code via `@tellma/core-ui` only — never a
   relative `../` path (each entry point is its own compilation unit).
 - Component hosts must be `display: block`: an inline host wrapping a block
-  child hit-tests above the child in Chromium, swallowing real clicks. The
-  inline glyphs that sit inside text and controls (`tm-icon`, `tm-kbd`) are
-  `inline-flex` instead; neither takes pointer input.
+  child hit-tests above the child in Chromium, swallowing real clicks. Hosts
+  that sit inside a line of text or beside a name are atomic inline boxes
+  (`inline-flex`) instead, which hit-test like blocks: the glyphs
+  (`tm-icon`, `tm-kbd`), `tm-badge`, `tm-counter`, `tm-avatar`,
+  `tm-progress-ring`, `tm-copy-button` and `tm-reference`. `tm-relative-time`
+  is plain `inline` text, since it wraps only inline content.
 - `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
   point builds on, so they import no other `@tellma` entry point (lint
   enforces it). Library glyphs draw through `<tm-icon [svg]>` with data

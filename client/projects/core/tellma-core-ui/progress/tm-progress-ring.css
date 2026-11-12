@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-progress-ring — an inline box the ring's diameter wide (bound on the
+   host), drawn as a track and an arc. The geometry is CSS, so the stroke
+   width is the token's, and the circle's radius leaves room for it. */
+
+:host {
+  display: inline-flex;
+  flex: none;
+}
+
+.tm-progress-ring__svg {
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+}
+
+.tm-progress-ring__track,
+.tm-progress-ring__arc {
+  cx: 50%;
+  cy: 50%;
+  r: calc(50% - var(--progress-ring-stroke) / 2);
+  stroke-width: var(--progress-ring-stroke);
+}
+
+.tm-progress-ring__track {
+  stroke: var(--progress-track);
+}
+
+/* The arc starts at 12 o'clock and runs clockwise in both directions — a
+   clock face does not mirror. */
+.tm-progress-ring__arc {
+  stroke: var(--progress-accent);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* Zero draws no arc (a round cap would paint a dot). */
+.tm-progress-ring__arc--empty {
+  visibility: hidden;
+}
+
+/* A null value spins a quarter arc. */
+.tm-progress-ring__arc--spin {
+  animation: tm-progress-ring-spin var(--progress-ring-duration) linear infinite;
+}
+
+@keyframes tm-progress-ring-spin {
+  from {
+    transform: rotate(-90deg);
+  }
+
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+/* Reduced motion: no spin. The whole ring draws at half strength, which
+   says "running" without pretending to a share. */
+@media (prefers-reduced-motion: reduce) {
+  .tm-progress-ring__arc--spin {
+    stroke-dasharray: none;
+    opacity: 0.5;
+    animation: none;
+  }
+}
+
+/* Forced colours: the arc in Highlight over a GrayText track, so the
+   share stays readable. */
+@media (forced-colors: active) {
+  :host {
+    forced-color-adjust: none;
+  }
+
+  .tm-progress-ring__track {
+    stroke: GrayText;
+  }
+
+  .tm-progress-ring__arc {
+    stroke: Highlight;
+  }
+}

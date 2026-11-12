@@ -13,12 +13,16 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export * from './alert-harness';
+export * from './avatar-harness';
 export * from './button-harness';
 export * from './date-picker-harness';
 export * from './entity-picker-harness';
 export * from './input-harness';
 export * from './number-harness';
 export * from './checkbox-harness';
+export * from './copy-button-harness';
+export * from './counter-harness';
+export * from './empty-state-harness';
 export * from './select-harness';
 export * from './multi-select-harness';
 export * from './file-preview-harness';
@@ -28,6 +32,9 @@ export * from './image-harness';
 export * from './menu-harness';
 export * from './modal-harness';
 export * from './popover-harness';
+export * from './progress-bar-harness';
+export * from './reference-harness';
+export * from './relative-time-harness';
 export * from './tooltip-harness';
 export * from './grid-harness';
 export * from './tabs-harness';

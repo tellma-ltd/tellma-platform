@@ -1,0 +1,136 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-avatar — a fixed circle. It sits beside names in rows and bars, so the
+   host is inline-flex rather than block. The size attribute re-points one
+   local per dimension; the tone attribute re-points the fill and ink to a
+   categorical slot. Nothing about the circle's box changes between the
+   photo, its loading state, its failure and the initials. */
+
+:host {
+  --tm-avatar-size: var(--avatar-size-sm);
+  --tm-avatar-font-size: var(--avatar-font-size-sm);
+  --tm-avatar-bg: var(--avatar-bg);
+  --tm-avatar-text: var(--avatar-text);
+  --icon-size: var(--avatar-icon-size-sm);
+
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  box-sizing: border-box;
+  inline-size: var(--tm-avatar-size);
+  block-size: var(--tm-avatar-size);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--tm-avatar-bg);
+  color: var(--tm-avatar-text);
+  vertical-align: middle;
+}
+
+/* Sizes. */
+
+:host([data-size='xs']) {
+  --tm-avatar-size: var(--avatar-size-xs);
+  --tm-avatar-font-size: var(--avatar-font-size-xs);
+  --icon-size: var(--avatar-icon-size-xs);
+}
+
+:host([data-size='md']) {
+  --tm-avatar-size: var(--avatar-size-md);
+  --tm-avatar-font-size: var(--avatar-font-size-md);
+  --icon-size: var(--avatar-icon-size-md);
+}
+
+:host([data-size='lg']) {
+  --tm-avatar-size: var(--avatar-size-lg);
+  --tm-avatar-font-size: var(--avatar-font-size-lg);
+  --icon-size: var(--avatar-icon-size-lg);
+}
+
+:host([data-size='xl']) {
+  --tm-avatar-size: var(--avatar-size-xl);
+  --tm-avatar-font-size: var(--avatar-font-size-xl);
+  --icon-size: var(--avatar-icon-size-xl);
+}
+
+/* Keyed tones: a categorical slot's tint fills the circle and the same
+   hue's on-tint draws the initials, at 4.5:1 or more in both schemes. */
+
+:host([data-tone='1']) {
+  --tm-avatar-bg: var(--categorical-1-tint);
+  --tm-avatar-text: var(--categorical-1-on-tint);
+}
+
+:host([data-tone='2']) {
+  --tm-avatar-bg: var(--categorical-2-tint);
+  --tm-avatar-text: var(--categorical-2-on-tint);
+}
+
+:host([data-tone='3']) {
+  --tm-avatar-bg: var(--categorical-3-tint);
+  --tm-avatar-text: var(--categorical-3-on-tint);
+}
+
+:host([data-tone='4']) {
+  --tm-avatar-bg: var(--categorical-4-tint);
+  --tm-avatar-text: var(--categorical-4-on-tint);
+}
+
+:host([data-tone='5']) {
+  --tm-avatar-bg: var(--categorical-5-tint);
+  --tm-avatar-text: var(--categorical-5-on-tint);
+}
+
+:host([data-tone='6']) {
+  --tm-avatar-bg: var(--categorical-6-tint);
+  --tm-avatar-text: var(--categorical-6-on-tint);
+}
+
+:host([data-tone='7']) {
+  --tm-avatar-bg: var(--categorical-7-tint);
+  --tm-avatar-text: var(--categorical-7-on-tint);
+}
+
+:host([data-tone='8']) {
+  --tm-avatar-bg: var(--categorical-8-tint);
+  --tm-avatar-text: var(--categorical-8-on-tint);
+}
+
+/* The 1px edge of the circle, drawn over everything inside it. It is
+   transparent, so it shows only where forced colours paint it; on a
+   pseudo-element, so it costs the photo no pixels. */
+:host::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: var(--border-width) solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* The photo fills the circle (its own box is the same diameter). */
+.tm-avatar__image {
+  flex: none;
+}
+
+/* The face — initials or the person glyph — fills the circle in the tint,
+   whether it stands alone or as the photo's placeholder. */
+.tm-avatar__face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 100%;
+  background: var(--tm-avatar-bg);
+  color: var(--tm-avatar-text);
+  font-family: var(--font-ui);
+  font-size: var(--tm-avatar-font-size);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}

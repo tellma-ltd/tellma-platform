@@ -14,6 +14,8 @@
          the scaffolded code back in. The Design package is developmentDependency=true, so it is
          referenced directly, as a migrator project references it. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <!-- The web host, so the context's writer pin searches its tenant middleware too. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>none</PrivateAssets>
     </PackageReference>

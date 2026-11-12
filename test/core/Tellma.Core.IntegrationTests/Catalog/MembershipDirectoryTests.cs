@@ -45,6 +45,23 @@ namespace Tellma.Core.IntegrationTests.Catalog
         }
 
         [Fact]
+        public async Task A_tenants_members_list_its_hints_alone_in_subject_order()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "members_of");
+            int[] ids = await RegisterAsync(host, 2);
+            await host.Directory.RecordAsync(
+                [Hint(ids[0], "carol", true), Hint(ids[0], "alice", false), Hint(ids[1], "mallory", true), Hint(ids[0], "bob", true)],
+                Token);
+
+            IReadOnlyList<TenantMemberHint> members = await host.Directory.ListMembersAsync(ids[0], Token);
+
+            Assert.Equal(["alice", "bob", "carol"], members.Select(static member => member.Subject));
+            Assert.Equal([false, true, true], members.Select(static member => member.IsActive));
+            Assert.All(members, static member => Assert.NotEqual(default, member.UpdatedAt));
+            Assert.Empty(await host.Directory.ListMembersAsync(4242, Token));
+        }
+
+        [Fact]
         public async Task Subjects_compare_byte_for_byte_so_one_never_sees_anothers_tenants()
         {
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "members_case");
