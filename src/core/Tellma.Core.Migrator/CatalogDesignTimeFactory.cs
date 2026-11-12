@@ -34,16 +34,12 @@ namespace Tellma.Core.Migrator
         public const string ConnectionStringVariable = "TELLMA_CATALOG_MIGRATIONS_SQL";
 
         /// <summary>The LocalDB database used when neither <c>--connection</c> nor the variable names one.</summary>
-        public const string DefaultConnectionString =
-            "Server=(localdb)\\MSSQLLocalDB;Database=TellmaCatalogDesign;Trusted_Connection=True;TrustServerCertificate=True";
+        public const string DefaultDatabase = "TellmaCatalogDesign";
 
         /// <inheritdoc />
         public CatalogDbContext CreateDbContext(string[] args)
         {
-            string connectionString = Environment.GetEnvironmentVariable(ConnectionStringVariable) is { Length: > 0 } configured
-                ? configured
-                : DefaultConnectionString;
-
+            string connectionString = DesignTimeConnections.Resolve(args, ConnectionStringVariable, DesignTimeConnections.LocalDb(DefaultDatabase));
             DbContextOptionsBuilder<CatalogDbContext> builder = CatalogDbContext.Configure(new DbContextOptionsBuilder<CatalogDbContext>(), connectionString);
             _ = builder.AddInterceptors(new ApplicationRoleInterceptor());
             return new CatalogDbContext(builder.Options);

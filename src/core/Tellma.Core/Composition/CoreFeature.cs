@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Calendars;
+using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.TableTypes;
@@ -60,6 +61,9 @@ namespace Tellma.Core.Composition
                 .Singleton<ILanguageCatalog, LanguageCatalog>()
                 .Singleton<IValueSetRegistry, ValueSetRegistry>()
                 .Singleton<ILocalizationNegotiator, LocalizationNegotiator>();
+
+            // --- The client metadata's distribution, features and routing sections (spec 0024 §3.2) ---
+            _ = contribution.Singleton<IClientAssetContributor, CoreClientAssetContributor>();
 
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution

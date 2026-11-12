@@ -4,8 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Metadata;
@@ -52,6 +54,34 @@ namespace Tellma.Core.Data
             // design-time model still builds or finds that one through EF's cache.
             DbContextOptionsBuilder<TellmaDbContext> options = Options(connectionString);
             _ = options.UseModel(_model.Value);
+            return new TellmaDbContext(options.Options, Definition);
+        }
+
+        /// <summary>
+        ///     Creates a context of the composition's model that migrates a tenant database: its
+        ///     migrations are the ones <paramref name="migrationsAssembly" /> carries, which is the
+        ///     distribution's migrator project.
+        /// </summary>
+        /// <param name="connectionString">The database's connection string.</param>
+        /// <param name="migrationsAssembly">The assembly that carries the tenant model's migrations.</param>
+        /// <param name="interceptors">Interceptors to add, such as the design-time role creation.</param>
+        /// <returns>The context; the caller disposes it.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="migrationsAssembly" /> or <paramref name="interceptors" /> is null.</exception>
+        public TellmaDbContext CreateMigrationContext(string? connectionString, Assembly migrationsAssembly, params IInterceptor[] interceptors)
+        {
+            ArgumentNullException.ThrowIfNull(migrationsAssembly);
+            ArgumentNullException.ThrowIfNull(interceptors);
+
+            // The platform's provider options, then the migrations assembly; the model is the one
+            // this factory built, so the migrator applies migrations to the model the hosts serve.
+            DbContextOptionsBuilder<TellmaDbContext> options = Options(connectionString);
+            _ = options.UseSqlServer(sql => sql.MigrationsAssembly(migrationsAssembly));
+            _ = options.UseModel(_model.Value);
+            if (interceptors.Length > 0)
+            {
+                _ = options.AddInterceptors(interceptors);
+            }
+
             return new TellmaDbContext(options.Options, Definition);
         }
 

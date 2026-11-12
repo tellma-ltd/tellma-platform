@@ -15,6 +15,7 @@ using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Localization;
+using Tellma.Core.Provisioning;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Composition
@@ -148,6 +149,9 @@ namespace Tellma.Core.Composition
 
             // --- The data layer: the batch executor, the scoped tenant database and the handle factory ---
             DataComposition.Register(services, options);
+
+            // --- The provisioning step runner, which the migrator drives (spec 0011 §6.2) ---
+            services.TryAddSingleton<ProvisioningStepRunner>();
 
             // --- Server-built links (spec 0011 §5.10) ---
             // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
@@ -481,6 +485,7 @@ namespace Tellma.Core.Composition
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
+                new ProvisioningStepsCheck(_record),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

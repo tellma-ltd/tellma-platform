@@ -84,5 +84,6 @@
     <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.Imaging.SmokeHost/Tellma.Core.Imaging.SmokeHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.Imaging.TestWorker/Tellma.Core.Imaging.TestWorker.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Migrator.TestDistribution/Tellma.Core.Migrator.TestDistribution.csproj" />
   </Folder>
 </Solution>

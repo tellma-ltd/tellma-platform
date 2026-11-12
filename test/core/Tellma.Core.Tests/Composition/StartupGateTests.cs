@@ -187,6 +187,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.calendars"] = false,
                 ["core.value-sets"] = false,
                 ["core.time-zones"] = true,
+                ["core.provisioning-steps"] = false,
             };
 
             Assert.Equal(expected, checks);

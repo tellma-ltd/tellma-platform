@@ -58,7 +58,8 @@
          holds a transaction open to make a transition lose its race on purpose. -->
     <InternalsVisibleTo Include="Tellma.Core.IntegrationTests" />
     <!-- The migrator is an adapter of this runtime that ships with it: it turns the registry's
-         startup verification off (it creates and migrates the catalog itself) and records membership
+         startup verification and first load off (it creates and migrates the catalog itself), builds
+         the tenant model's migration context, runs the provisioning steps, and records membership
          hints as the provisioning writer. -->
     <InternalsVisibleTo Include="Tellma.Core.Migrator" />
     <!-- The ASP.NET Core host is an adapter of this runtime that ships with it: its tenant middleware

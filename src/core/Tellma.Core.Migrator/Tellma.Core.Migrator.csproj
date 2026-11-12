@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Tellma's migrator adapter: the platform-owned catalog migrations (schema "catalog", history catalog.__EFMigrationsHistory) and their design-time factory, CatalogDesignTimeFactory. Referenced only by a distribution's migrator project, which it brings the EF Design packages to. It is its own dotnet-ef startup project: dotnet ef migrations add &lt;Name&gt; --project src/core/Tellma.Core.Migrator --startup-project src/core/Tellma.Core.Migrator --namespace Tellma.Core.Migrator.Migrations --output-dir Migrations</Description>
+    <Description>Tellma's migrator: TellmaMigrator.RunAsync, the entry point of a distribution's migrator project, with its commands (emit-client-assets, migrate, provision, set-state, status); TellmaDesignTimeDbContextFactory, the base of a distribution's tenant design-time factory; and the platform-owned catalog migrations (schema "catalog", history catalog.__EFMigrationsHistory) with their own design-time factory, CatalogDesignTimeFactory. Referenced only by a distribution's migrator project, which it brings the EF Design packages to. It is its own dotnet-ef startup project for the catalog: dotnet ef migrations add &lt;Name&gt; --project src/core/Tellma.Core.Migrator --startup-project src/core/Tellma.Core.Migrator --namespace Tellma.Core.Migrator.Migrations --output-dir Migrations</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +16,16 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>none</PrivateAssets>
     </PackageReference>
+    <!-- The generic host every command but emit-client-assets runs in, so the startup gate and the
+         registry's refresh loop run as they do in the web host. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites drive the commands in process with their own configuration, output and
+         migrations assembly, and test the grant statements and the command line directly. -->
+    <InternalsVisibleTo Include="Tellma.Core.Tests" />
+    <InternalsVisibleTo Include="Tellma.Core.IntegrationTests" />
   </ItemGroup>
 
 </Project>

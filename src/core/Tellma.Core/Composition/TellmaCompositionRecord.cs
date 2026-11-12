@@ -55,6 +55,9 @@ namespace Tellma.Core.Composition
         /// <summary>The value sets the features contributed, in realisation order; the platform's own four are not among them.</summary>
         public List<ContributedValueSet> ValueSets { get; } = [];
 
+        /// <summary>The tenant provisioning step classes the features contributed, in realisation order, each once.</summary>
+        public List<ContributedType> ProvisioningSteps { get; } = [];
+
         /// <summary>What the distribution declared about languages: the offered codes and the added languages.</summary>
         public LanguageDeclaration Languages { get; private set; } = LanguageDeclaration.None;
 
