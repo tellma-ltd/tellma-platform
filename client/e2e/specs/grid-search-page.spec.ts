@@ -139,6 +139,24 @@ for (const dir of ['ltr', 'rtl'] as const) {
         await expect(search(page)).toBeFocused();
       });
 
+      test('an Enter queued right behind the arrows opens the row they reached', async ({
+        page,
+      }) => {
+        await search(page).click();
+        // Keys queued behind a busy page are dispatched in one go, before the
+        // next render: the same keydowns, sent in one task.
+        await search(page).evaluate((input) => {
+          for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) {
+            input.dispatchEvent(
+              new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+            );
+          }
+        });
+        await expect(page.getByTestId('activated')).toHaveText('1 via keyboard');
+        await expect(page.getByTestId('activation-count')).toHaveText('1');
+        await expect(page.getByTestId('active-row')).toHaveText('1');
+      });
+
       test('characters, Home, End and the horizontal arrows stay with the field', async ({
         page,
       }) => {
