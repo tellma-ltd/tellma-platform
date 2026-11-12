@@ -660,6 +660,27 @@ describe('tm-grid active row model and driver', () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it('opens the row an arrow just reached, before the page renders again', async () => {
+    const { fixture, host, input } = await setup();
+    input.focus();
+    // Keys queued behind a busy page arrive in one task, before the next
+    // render writes the active-row model back: Enter still opens the row the
+    // arrows reached.
+    keydown(input, 'ArrowDown');
+    keydown(input, 'ArrowDown');
+    expect(keydown(input, 'Enter').defaultPrevented).toBe(true);
+    keydown(input, 'ArrowDown');
+    expect(keydown(input, 'Enter', mod).defaultPrevented).toBe(true);
+    // A repeat on a row just reached is consumed too, and opens nothing more.
+    expect(keydown(input, 'Enter', { repeat: true }).defaultPrevented).toBe(true);
+    await stable(fixture);
+    expect(host.activations.map((a) => [a.rowId, a.via, a.newTab])).toEqual([
+      [1, 'keyboard', false],
+      [2, 'keyboard', true],
+    ]);
+    expect(host.active()).toBe(2);
+  });
+
   it('moves to the first and last rows and reports a missing row', async () => {
     const { fixture, host } = await setup();
     host.grid().moveActiveRow('last');
