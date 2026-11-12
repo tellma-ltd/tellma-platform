@@ -17,6 +17,7 @@ using Tellma.Core.Data.Batches;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Provisioning;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Composition
@@ -156,6 +157,9 @@ namespace Tellma.Core.Composition
 
             // --- Background jobs: the options (spec 0020 §12.1) ---
             JobsComposition.Register(services, options);
+
+            // --- The provisioning step runner, which the migrator drives (spec 0011 §6.2) ---
+            services.TryAddSingleton<ProvisioningStepRunner>();
 
             // --- Server-built links (spec 0011 §5.10) ---
             // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
@@ -492,6 +496,7 @@ namespace Tellma.Core.Composition
                 new NotificationChannelsCheck(_record),
                 new ClientEventsCheck(_record),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
+                new ProvisioningStepsCheck(_record),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

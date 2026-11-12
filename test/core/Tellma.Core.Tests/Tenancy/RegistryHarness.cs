@@ -32,6 +32,7 @@ namespace Tellma.Core.Tests.Tenancy
         /// <param name="verifyCatalog">Whether startup verifies the catalog's migrations.</param>
         /// <param name="configureServices">Adds services, such as scoped listeners, beside the given ones.</param>
         /// <param name="listenerTimeout">The bound on one listener call; 5 seconds when null.</param>
+        /// <param name="loadOnStart">Whether startup loads the first snapshot.</param>
         /// <param name="listeners">The tenant-state listeners.</param>
         public RegistryHarness(
             Action<TellmaSqlOptions>? configure = null,
@@ -39,6 +40,7 @@ namespace Tellma.Core.Tests.Tenancy
             bool verifyCatalog = true,
             Action<IServiceCollection>? configureServices = null,
             TimeSpan? listenerTimeout = null,
+            bool loadOnStart = true,
             params ITenantStateListener[] listeners)
         {
             TellmaSqlOptions sql = new();
@@ -72,6 +74,7 @@ namespace Tellma.Core.Tests.Tenancy
                 Options.Create(new TenantRegistryStartupOptions
                 {
                     VerifyCatalog = verifyCatalog,
+                    LoadOnStart = loadOnStart,
                     ListenerTimeout = listenerTimeout ?? TimeSpan.FromSeconds(5),
                 }));
         }

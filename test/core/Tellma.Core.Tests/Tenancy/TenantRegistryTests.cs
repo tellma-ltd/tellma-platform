@@ -531,6 +531,24 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         [Fact]
+        public async Task A_startup_without_the_first_load_reads_nothing_until_a_forced_refresh()
+        {
+            using RegistryHarness harness = new(loadOnStart: false);
+            harness.Catalog.Write(FakeCatalogReader.Row(1));
+
+            await harness.Registry.InitializeAsync(Token);
+
+            Assert.Equal(0, harness.Catalog.HistoryReads);
+            Assert.Equal(0, harness.Catalog.Reloads);
+            Assert.False(harness.Registry.IsAvailable);
+
+            await harness.Registry.RefreshAsync(force: true, Token);
+
+            Assert.True(harness.Registry.IsAvailable);
+            Assert.Equal([1], harness.TenantIds);
+        }
+
+        [Fact]
         public async Task A_catalog_database_that_cannot_be_opened_outside_Development_starts_the_host_not_ready()
         {
             using RegistryHarness harness = new();

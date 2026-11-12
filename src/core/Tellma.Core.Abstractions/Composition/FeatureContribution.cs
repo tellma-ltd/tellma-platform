@@ -6,6 +6,7 @@
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Abstractions.Composition
 {
@@ -198,6 +199,20 @@ namespace Tellma.Core.Abstractions.Composition
             where TService : class
         {
             return Add(new StackContributionItem(typeof(TEntity), typeof(TService), null));
+        }
+
+        /// <summary>
+        ///     Contributes a tenant provisioning step. The migrator runs it, in its order, on every
+        ///     tenant database whose recorded version of it is behind. Contributing the same class twice,
+        ///     from this feature or another, is a composition problem, and a second step with the same
+        ///     name anywhere in the composition is a startup problem.
+        /// </summary>
+        /// <typeparam name="TStep">The step class, created from the tenant scope it runs in.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution ProvisioningStep<TStep>()
+            where TStep : class, ITenantProvisioningStep
+        {
+            return Add(new ProvisioningStepContributionItem(typeof(TStep)));
         }
 
         /// <summary>
