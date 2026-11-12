@@ -19,7 +19,9 @@ import { storyUrl } from '../support/story-map';
 
 /** The text of the chip that holds focus. */
 function focusedChipText(page: Page): Promise<string | null> {
-  return page.evaluate(() => document.activeElement?.closest('tm-chip')?.textContent?.trim() ?? null);
+  return page.evaluate(
+    () => document.activeElement?.closest('tm-chip')?.textContent?.trim() ?? null,
+  );
 }
 
 /** Whether focus is on the remove button of the focused chip. */
@@ -27,6 +29,20 @@ function focusOnRemove(page: Page): Promise<boolean> {
   return page.evaluate(
     () => document.activeElement?.classList.contains('tm-chip__remove') === true,
   );
+}
+
+/** Whether the focused chip lies wholly inside the line's box. */
+function focusedChipInView(line: HTMLElement): boolean {
+  const chip = document.activeElement!.closest('tm-chip')!.getBoundingClientRect();
+  const box = line.getBoundingClientRect();
+  return chip.left >= box.left - 0.5 && chip.right <= box.right + 0.5;
+}
+
+/** Whether the line's last chip lies wholly inside the line's box. */
+function lastChipInView(line: HTMLElement): boolean {
+  const chip = line.querySelector('tm-chip:last-of-type')!.getBoundingClientRect();
+  const box = line.getBoundingClientRect();
+  return chip.left >= box.left - 0.5 && chip.right <= box.right + 0.5;
 }
 
 /** The chips a set shows (collapse mode hides the rest). */
@@ -39,7 +55,9 @@ test.describe('axe floor', () => {
     for (const dir of ['ltr', 'rtl'] as const) {
       test(`chip story is axe-clean (${theme}, ${dir})`, async ({ page }) => {
         await page.goto(storyUrl('chip', { theme, dir }));
-        await expect(page.getByTestId('set-collapse').locator('.tm-chip-set__more-button')).toBeVisible();
+        await expect(
+          page.getByTestId('set-collapse').locator('.tm-chip-set__more-button'),
+        ).toBeVisible();
         await expectNoAxeViolations(page);
       });
     }
@@ -76,7 +94,9 @@ test.describe('keyboard', () => {
     });
   }
 
-  test('Enter on a chip’s label button activates it; the arrows go on from there', async ({ page }) => {
+  test('Enter on a chip’s label button activates it; the arrows go on from there', async ({
+    page,
+  }) => {
     await page.goto(storyUrl('chip'));
     const set = page.getByTestId('set-collapse');
     await page.getByTestId('collapse-wide').click();
@@ -139,31 +159,35 @@ test.describe('collapse', () => {
 });
 
 test.describe('scroll', () => {
-  test('the focused chip scrolls into view along the line, and the page stays put', async ({
-    page,
-  }) => {
-    await page.goto(storyUrl('chip'));
-    const set = page.getByTestId('set-scroll');
-    const pageScroll = await page.evaluate(() => window.scrollY);
-    const lineTops = await set
-      .locator('tm-chip')
-      .evaluateAll((chips) => new Set(chips.map((chip) => Math.round(chip.getBoundingClientRect().top))).size);
-    expect(lineTops).toBe(1);
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`the focused chip scrolls into view along the line, and the page stays put (${dir})`, async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('chip', { dir }));
+      const set = page.getByTestId('set-scroll');
+      const pageScroll = await page.evaluate(() => window.scrollY);
+      const lineTops = await set
+        .locator('tm-chip')
+        .evaluateAll(
+          (chips) =>
+            new Set(chips.map((chip) => Math.round(chip.getBoundingClientRect().top))).size,
+        );
+      expect(lineTops).toBe(1);
 
-    await set.locator('.tm-chip__remove').first().focus();
-    await page.keyboard.press('End');
-    expect(await focusedChipText(page)).toBe('Inventory');
-    const inView = await set.evaluate((line) => {
-      const chip = document.activeElement!.closest('tm-chip')!.getBoundingClientRect();
-      const box = line.getBoundingClientRect();
-      return chip.left >= box.left - 0.5 && chip.right <= box.right + 0.5 && line.scrollLeft !== 0;
+      // The last chip starts out of view, past the line's end.
+      expect(await set.evaluate(lastChipInView)).toBe(false);
+      await set.locator('.tm-chip__remove').first().focus();
+      await page.keyboard.press('End');
+      expect(await focusedChipText(page)).toBe('Inventory');
+      expect(await set.evaluate(focusedChipInView)).toBe(true);
+      expect(await page.evaluate(() => window.scrollY)).toBe(pageScroll);
+
+      await page.keyboard.press('Home');
+      expect(await focusedChipText(page)).toBe('Service');
+      expect(await set.evaluate(focusedChipInView)).toBe(true);
+      expect(await set.evaluate((line) => line.scrollLeft)).toBe(0);
     });
-    expect(inView).toBe(true);
-    expect(await page.evaluate(() => window.scrollY)).toBe(pageScroll);
-
-    await page.keyboard.press('Home');
-    expect(await set.evaluate((line) => line.scrollLeft)).toBe(0);
-  });
+  }
 
   test('hands focus to the input past the end, and Backspace in the empty input comes back', async ({
     page,

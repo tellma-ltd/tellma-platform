@@ -9,6 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi, TM_NOW } from '@tellma/core-ui';
+import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmToastHarness, TmToastStackHarness } from '@tellma/core-ui-testing';
 
 import { provideTellmaToasts, TmToasts, type TmToastsOptions } from './tm-toasts';
@@ -38,6 +39,13 @@ function titles(): string[] {
   return Array.from(document.querySelectorAll('.tm-toast__title')).map(
     (title) => title.textContent?.trim() ?? '',
   );
+}
+
+/** Presses a key on the focused element and returns the event. */
+function pressOnFocused(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+  (document.activeElement ?? document.body).dispatchEvent(event);
+  return event;
 }
 
 /** Records how a ref's `closed` resolves, once it does. */
@@ -368,6 +376,106 @@ describe('TmToasts — focus', () => {
     origin.dispatchEvent(later);
     expect(later.defaultPrevented).toBe(false);
     older.close();
+    origin.remove();
+  });
+
+  it('keeps focus in the stack when a new toast pushes the focused one out, and lets go after', () => {
+    const { toasts } = setup({ maxVisible: 1 });
+    const under = vi.fn();
+    const releaseUnder = tmPushEscapeDismissal(under);
+    const origin = document.createElement('button');
+    document.body.appendChild(origin);
+    origin.focus();
+    toasts.show({ tone: 'neutral', title: 'First' });
+    expect(toasts.focus()).toBe(true);
+    toasts.show({ tone: 'neutral', title: 'Second' });
+    expect(titles()).toEqual(['Second']);
+    expect(document.activeElement?.closest('.tm-toast')?.textContent).toContain('Second');
+
+    // Escape closes the toast that now holds focus and returns focus.
+    pressOnFocused('Escape');
+    expect(document.activeElement).toBe(origin);
+    expect(titles()).toEqual(['First']);
+    // The hold is released: the timers run and Escape reaches what lies under the stack.
+    vi.advanceTimersByTime(6000);
+    expect(titles()).toEqual([]);
+    pressOnFocused('Escape');
+    expect(under).toHaveBeenCalledTimes(1);
+    releaseUnder();
+    origin.remove();
+  });
+
+  it('moves focus to the toast’s close button when a replacement drops the focused action', () => {
+    const { toasts } = setup();
+    toasts.show({ tone: 'accent', title: 'Uploading', key: 'job', action: { label: 'Track', run: () => undefined } });
+    expect(toasts.focus()).toBe(true);
+    expect(document.activeElement?.classList.contains('tm-toast__action')).toBe(true);
+    toasts.show({ tone: 'success', title: 'Uploaded', key: 'job' });
+    TestBed.tick();
+    expect(document.activeElement?.classList.contains('tm-toast__close')).toBe(true);
+    expect(document.activeElement?.closest('.tm-toast')?.textContent).toContain('Uploaded');
+    toasts.clear();
+  });
+
+  it('returns focus where it came from on Tab past the last button or Shift+Tab before the first', () => {
+    const { toasts } = setup();
+    const origin = document.createElement('button');
+    document.body.appendChild(origin);
+    toasts.show({ tone: 'neutral', title: 'Older' });
+    toasts.show({ tone: 'accent', title: 'Newer', action: { label: 'Track', run: () => undefined } });
+    TestBed.tick();
+    const buttons = () => Array.from(hostElement().querySelectorAll<HTMLElement>('.tm-toasts button'));
+
+    origin.focus();
+    toasts.focus();
+    buttons().at(-1)!.focus();
+    expect(pressOnFocused('Tab').defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(origin);
+
+    toasts.focus();
+    expect(pressOnFocused('Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(origin);
+
+    // Between the buttons, Tab is the browser's.
+    toasts.focus();
+    expect(pressOnFocused('Tab').defaultPrevented).toBe(false);
+    toasts.clear();
+    origin.remove();
+  });
+
+  it('wraps Tab around the stack when there is nowhere to return to', () => {
+    const { toasts } = setup();
+    toasts.show({ tone: 'neutral', title: 'Older' });
+    toasts.show({ tone: 'neutral', title: 'Newer' });
+    TestBed.tick();
+    const origin = document.createElement('button');
+    document.body.appendChild(origin);
+    origin.focus();
+    toasts.focus();
+    origin.remove();
+    const buttons = Array.from(hostElement().querySelectorAll<HTMLElement>('.tm-toasts button'));
+    buttons.at(-1)!.focus();
+    expect(pressOnFocused('Tab').defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(buttons[0]);
+    expect(pressOnFocused('Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(buttons.at(-1));
+    toasts.clear();
+  });
+
+  it('returns focus on Escape from the pill, and then lets Escape through', () => {
+    const { toasts } = setup({ maxVisible: 1, overflow: (hidden) => ({ label: `${hidden} more`, run: () => undefined }) });
+    toasts.show({ tone: 'neutral', title: 'Older' });
+    toasts.show({ tone: 'neutral', title: 'Newer' });
+    TestBed.tick();
+    const origin = document.createElement('button');
+    document.body.appendChild(origin);
+    origin.focus();
+    hostElement().querySelector<HTMLElement>('button.tm-toasts__pill')!.focus();
+    expect(pressOnFocused('Escape').defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(origin);
+    expect(titles()).toEqual(['Newer']);
+    expect(pressOnFocused('Escape').defaultPrevented).toBe(false);
+    toasts.clear();
     origin.remove();
   });
 

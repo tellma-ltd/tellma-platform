@@ -43,7 +43,8 @@ function parseCssTime(value: string): number | null {
  * a save or a sign-out. A root service.
  *
  * `run(work)` blocks at once, in the same task: every child of `<body>`
- * goes `inert`, the keyboard is held, focus is set aside and the cursor
+ * goes `inert` (top-layer popovers and live regions stay readable, so
+ * announcements are still heard), the keyboard is held, focus is set aside and the cursor
  * turns to `progress`, with nothing drawn yet. After `--busy-overlay-delay`
  * (200 ms) a scrim veils the page with a spinner and the label, which is
  * announced as it changes. When the last run settles, everything is undone
@@ -229,9 +230,20 @@ export class TmBusyOverlay {
     }
   }
 
-  /** Makes one `<body>` child inert, unless it is the host or already inert. */
+  /**
+   * Makes one `<body>` child inert, unless it is the host, already inert,
+   * or a top-layer popover or live region. Those stay in the accessibility
+   * tree, so a toast or an announcement made during the run is heard; the
+   * raised host still takes the pointer and the window still holds the keys.
+   */
   private makeInert(element: Element): void {
-    if (element === this.element || !(element instanceof HTMLElement) || element.inert) {
+    if (
+      element === this.element ||
+      !(element instanceof HTMLElement) ||
+      element.inert ||
+      element.hasAttribute('popover') ||
+      element.hasAttribute('aria-live')
+    ) {
       return;
     }
     element.inert = true;

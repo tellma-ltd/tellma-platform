@@ -12,8 +12,9 @@ import { TmToasts, type TmToast, type TmToastRef } from '@tellma/core-ui/toast';
 /**
  * TmToasts: every tone, a detail and an action, a sticky error, a keyed
  * toast replaced in place, five at once (two behind the pill), focus() and
- * clear(), and a toast shown over an open modal. The log line records how
- * each toast closed.
+ * clear(), a toast shown over an open modal and one a modal opens over, and
+ * a focused toast crowded out by newer ones. The log line records how each
+ * toast closed.
  */
 @Component({
   imports: [TmButton],
@@ -67,6 +68,12 @@ import { TmToasts, type TmToast, type TmToastRef } from '@tellma/core-ui/toast';
       <button tmButton type="button" data-testid="clear-toasts" (click)="toasts.clear()">Clear</button>
       <button tmButton type="button" data-testid="open-modal" (click)="openModal()">
         Open a modal, then toast
+      </button>
+      <button tmButton type="button" data-testid="toast-then-modal" (click)="toastThenModal()">
+        Toast, then open a modal
+      </button>
+      <button tmButton type="button" data-testid="crowd-out" (click)="crowdOut()">
+        Focus a toast, then crowd it out
       </button>
     </section>
     <p class="log" data-testid="toast-log">{{ events().join(', ') }}</p>
@@ -135,6 +142,26 @@ export class ToastStory {
     for (const title of ['First', 'Second', 'Third', 'Fourth', 'Fifth']) {
       this.show({ tone: 'neutral', title });
     }
+  }
+
+  /** Shows a toast, then opens a modal: the toast must rise above it. */
+  protected toastThenModal(): void {
+    this.show({ tone: 'neutral', title: 'Shown before the modal' });
+    this.modal.open(this.modalBody(), { title: 'A modal' });
+  }
+
+  /**
+   * Shows a toast and focuses it; a second later three more arrive and
+   * push it out of the stack, taking its focused button with it.
+   */
+  protected crowdOut(): void {
+    this.show({ tone: 'neutral', title: 'Crowded out' });
+    this.focused.set(this.toasts.focus());
+    setTimeout(() => {
+      for (const title of ['Second', 'Third', 'Fourth']) {
+        this.show({ tone: 'neutral', title });
+      }
+    }, 1000);
   }
 
   /** Opens a modal, then shows a toast that must sit above it. */

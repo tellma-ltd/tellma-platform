@@ -104,6 +104,7 @@ export class TmChipSet implements TmChipSetRef {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   private readonly injector = inject(Injector);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly l10n = inject(TmL10n);
@@ -206,7 +207,7 @@ export class TmChipSet implements TmChipSetRef {
         });
       },
     });
-    inject(DestroyRef).onDestroy(() => this.observer?.disconnect());
+    this.destroyRef.onDestroy(() => this.observer?.disconnect());
   }
 
   /** Focuses the last visible chip (a host calls it on Backspace in its empty input). */
@@ -228,7 +229,10 @@ export class TmChipSet implements TmChipSetRef {
    * @internal
    */
   chipDestroyed(chip: object): void {
-    if (chip !== this.focusedChip) {
+    // A set going away with its chips (chips declared in the set's own
+    // view are destroyed after the view is marked destroyed) has nowhere
+    // to move focus, and can no longer schedule a render callback.
+    if (chip !== this.focusedChip || this.destroyRef.destroyed) {
       return;
     }
     this.focusedChip = null;
@@ -427,6 +431,8 @@ export class TmChipSet implements TmChipSetRef {
    */
   private applyVisibleCount(count: number, refresh = true): void {
     const chips = this.chips();
+    const active = document.activeElement;
+    const focusedIndex = chips.findIndex((chip) => chip.ɵelement.contains(active));
     chips.forEach((chip, index) =>
       chip.ɵelement.classList.toggle('tm-chip--collapsed', index >= count),
     );
@@ -436,6 +442,13 @@ export class TmChipSet implements TmChipSetRef {
     this.visibleCount.set(count);
     if (refresh) {
       this.changeDetector.detectChanges();
+    }
+    // A focused chip that has just collapsed hands focus to the "+N" chip,
+    // which now stands for it, rather than letting it fall to the page.
+    if (focusedIndex >= count) {
+      this.moreItem()
+        ?.nativeElement.querySelector<HTMLElement>('button')
+        ?.focus({ preventScroll: true });
     }
   }
 }

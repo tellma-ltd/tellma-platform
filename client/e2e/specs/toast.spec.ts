@@ -38,7 +38,9 @@ async function openPaused(page: Page): Promise<void> {
 test.describe('axe floor', () => {
   for (const theme of ['light', 'dark'] as const) {
     for (const dir of ['ltr', 'rtl'] as const) {
-      test(`toast story is axe-clean with every tone on show (${theme}, ${dir})`, async ({ page }) => {
+      test(`toast story is axe-clean with every tone on show (${theme}, ${dir})`, async ({
+        page,
+      }) => {
         await page.goto(storyUrl('toast', { theme, dir }));
         await page.getByTestId('show-success').click();
         await page.getByTestId('show-accent').click();
@@ -103,7 +105,9 @@ test.describe('timers', () => {
     );
   });
 
-  test('the pointer on the stack pauses every timer, and leaving resumes them', async ({ page }) => {
+  test('the pointer on the stack pauses every timer, and leaving resumes them', async ({
+    page,
+  }) => {
     await openPaused(page);
     await page.getByTestId('show-neutral').click();
     await page.clock.runFor(3000);
@@ -140,6 +144,34 @@ test.describe('timers', () => {
     await expect(page.getByTestId('toast-log')).toHaveText('Invoice posted: dismiss');
   });
 
+  test('@cross-engine a focused toast crowded out of the stack hands focus to the newest, and lets go after', async ({
+    page,
+  }) => {
+    await openPaused(page);
+    const trigger = page.getByTestId('crowd-out');
+    // From the keyboard: WebKit does not focus a clicked button, and the
+    // trigger must hold focus to be where focus returns.
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await page.clock.runFor(20);
+    await expect(cards(page).first().locator('.tm-toast__close')).toBeFocused();
+
+    // Three newer toasts push the focused one out of the stack.
+    await page.clock.runFor(1000);
+    await expect(cards(page).locator('.tm-toast__title')).toHaveText(['Fourth', 'Third', 'Second']);
+    await expect(cards(page).first().locator('.tm-toast__close')).toBeFocused();
+
+    // Escape still belongs to the stack, and focus goes back where it came from.
+    await page.keyboard.press('Escape');
+    await page.clock.runFor(20);
+    await expect(trigger).toBeFocused();
+    await expect(page.getByTestId('toast-log')).toHaveText('Fourth: dismiss');
+
+    // The hold is released: every timer runs again.
+    await page.clock.runFor(6100);
+    await expect(cards(page)).toHaveCount(0);
+  });
+
   test('focus() answers false with nothing on show', async ({ page }) => {
     await page.goto(storyUrl('toast'));
     await page.getByTestId('focus-toasts').click();
@@ -167,7 +199,10 @@ test.describe('stack', () => {
     await page.getByTestId('show-keyed').click();
     await page.getByTestId('show-neutral').click();
     await page.getByTestId('show-keyed').click();
-    await expect(cards(page).locator('.tm-toast__title')).toHaveText(['Draft saved', 'Upload step 2']);
+    await expect(cards(page).locator('.tm-toast__title')).toHaveText([
+      'Draft saved',
+      'Upload step 2',
+    ]);
     await expect(page.getByTestId('toast-log')).toHaveText('Upload step 1: replaced');
   });
 
@@ -191,7 +226,9 @@ test.describe('stack', () => {
 });
 
 test.describe('announcements', () => {
-  test('a toast is read politely, an error assertively, a moment after it shows', async ({ page }) => {
+  test('a toast is read politely, an error assertively, a moment after it shows', async ({
+    page,
+  }) => {
     await openPaused(page);
     const polite = page.locator('.tm-toast-host [role="status"]');
     const assertive = page.locator('.tm-toast-host [role="alert"]');
@@ -221,6 +258,41 @@ test.describe('layering', () => {
     await card.locator('.tm-toast__close').click();
     await expect(cards(page)).toHaveCount(0);
     await expect(page.getByTestId('modal-body')).toBeVisible();
+  });
+
+  test('a modal opened after a toast does not cover it', async ({ page }) => {
+    await page.goto(storyUrl('toast'));
+    await page.getByTestId('toast-then-modal').click();
+    await expect(page.getByTestId('modal-body')).toBeVisible();
+    const card = cards(page).first();
+    await expect(card).toContainText('Shown before the modal');
+    const box = (await card.boundingBox())!;
+    const onTop = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.tm-toast') !== null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(onTop).toBe(true);
+    await card.locator('.tm-toast__close').click();
+    await expect(cards(page)).toHaveCount(0);
+    await expect(page.getByTestId('modal-body')).toBeVisible();
+  });
+
+  test('Tab past the toasts goes back into the modal, not to the page behind it', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('toast'));
+    await page.getByTestId('open-modal').click();
+    const trigger = page.getByTestId('modal-focus-toasts');
+    await trigger.click();
+    const close = cards(page).first().locator('.tm-toast__close');
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(trigger).toBeFocused();
+    await expect(cards(page)).toHaveCount(1);
   });
 
   test('focus() from inside a modal reaches the toast, and Escape closes the toast only', async ({

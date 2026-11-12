@@ -308,4 +308,44 @@ describe('tm-chip-set', () => {
     controls(fixture)[0].click();
     expect(host.activated).toEqual(['Service']);
   });
+
+  it('hands focus to the "+N" chip when the focused chip collapses', async () => {
+    const { fixture, host, set } = await setup((h) => {
+      h.overflow.set('collapse');
+      h.removable.set(false);
+      h.width.set(1200);
+    });
+    expect((await set.getVisibleChips()).length).toBe(5);
+    const last = controls(fixture).at(-1)!;
+    last.focus();
+    host.width.set(240);
+    await settle(fixture);
+    expect(last.closest('tm-chip')!.classList.contains('tm-chip--collapsed')).toBe(true);
+    expect(document.activeElement?.classList.contains('tm-chip-set__more-button')).toBe(true);
+    expect((document.activeElement as HTMLElement).tabIndex).toBe(0);
+  });
+});
+
+@Component({
+  imports: [TmChip, TmChipSet],
+  template: `
+    <tm-chip-set ariaLabel="Drill through">
+      <tm-chip label="SAL-0042" href="#sal-0042" />
+      <tm-chip label="SAL-0043" href="#sal-0043" />
+    </tm-chip-set>
+  `,
+})
+class StaticChips {}
+
+describe('tm-chip-set with chips in its own view', () => {
+  it('is destroyed cleanly while one of its chips holds focus', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(StaticChips);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('a.tm-chip__label')!;
+    link.focus();
+    expect(document.activeElement).toBe(link);
+    expect(() => fixture.destroy()).not.toThrow();
+  });
 });

@@ -97,7 +97,9 @@ export function provideTellmaToasts(options: TmToastsOptions): EnvironmentProvid
 
 /** The service's private view of one open toast. */
 interface OpenToast {
+  /** The toast's id, kept when a keyed show replaces it. */
   readonly id: number;
+  /** What the toast shows; a replacement or an update swaps it. */
   toast: TmToast;
   /** The live handle; a replacement swaps it for a new one. */
   ref: ToastRef;
@@ -113,7 +115,11 @@ interface OpenToast {
 class ToastRef implements TmToastRef {
   /** Whether the handle still controls its toast. */
   live = true;
+
+  /** Resolves with how the toast closed, or `'replaced'`. */
   readonly closed: Promise<TmToastCloseReason>;
+
+  /** Settles {@link closed}. */
   private resolve!: (reason: TmToastCloseReason) => void;
 
   constructor(
@@ -123,12 +129,14 @@ class ToastRef implements TmToastRef {
     this.closed = new Promise((resolve) => (this.resolve = resolve));
   }
 
+  /** Closes the toast (`'api'`); does nothing once the handle is settled. */
   close(): void {
     if (this.live) {
       this.owner.ɵclose(this.id, 'api');
     }
   }
 
+  /** Changes the toast in place and restarts its timer; does nothing once settled. */
   update(patch: Partial<TmToast>): void {
     if (this.live) {
       this.owner.ɵupdate(this.id, patch);
@@ -213,12 +221,16 @@ export class TmToasts {
     );
   });
 
-  /** The live regions' text. */
+  /** The polite live region's text. */
   private readonly politeText = signal('');
+
+  /** The assertive live region's text (the `error` tone). */
   private readonly assertiveText = signal('');
 
   /** Announcements waiting for their region to be emptied first. */
   private readonly pending = { polite: [] as string[], assertive: [] as string[] };
+
+  /** Each region's pending fill, which runs a moment after it was emptied. */
   private readonly announceTimers: {
     polite?: ReturnType<typeof setTimeout>;
     assertive?: ReturnType<typeof setTimeout>;

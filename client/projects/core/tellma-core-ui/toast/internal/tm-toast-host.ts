@@ -4,11 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
+  afterRenderEffect,
   Component,
   DestroyRef,
   type ElementRef,
   inject,
   input,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CircleCheckBig, CircleX, Info, TriangleAlert, X } from 'lucide';
@@ -54,6 +56,7 @@ const TONE_GLYPHS = {
       (pointerleave)="controller().setPaused('hover', false)"
       (focusin)="onFocusin($event)"
       (focusout)="onFocusout($event)"
+      (keydown)="onKeydown($event)"
     >
       @for (entry of controller().visible(); track entry.id) {
         <div
@@ -140,11 +143,26 @@ export class TmToastHost {
   /** Where focus came from when it entered the stack: Escape returns it there. */
   private origin: HTMLElement | null = null;
 
-  /** Releases the stack's place on the shared Escape stack while it holds focus. */
+  /**
+   * Releases the stack's place on the shared Escape stack. Set while the
+   * stack holds focus: it is also the sign that the stack holds it.
+   */
   private releaseEscape: (() => void) | null = null;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.releaseEscape?.());
+    // A render can take the focused control away without a close: a new
+    // toast pushes its card out of the window, a replacement drops its
+    // action, or the pill goes. Firefox and WebKit then report no focus
+    // change at all, so after every render of the stack the host checks
+    // whether the focus it holds has fallen out of it.
+    afterRenderEffect({
+      write: () => {
+        this.controller().visible();
+        this.controller().pill();
+        untracked(() => this.recoverFocus());
+      },
+    });
   }
 
   /**
@@ -153,8 +171,8 @@ export class TmToastHost {
    * is there to focus.
    */
   focusNewest(): boolean {
-    const button = this.region().nativeElement.querySelector<HTMLElement>('.tm-toast button');
-    if (button === null) {
+    const button = this.controls()[0];
+    if (button === undefined) {
       return false;
     }
     button.focus();
@@ -173,55 +191,144 @@ export class TmToastHost {
     if (card === null || !(active instanceof HTMLElement) || !card.contains(active)) {
       return;
     }
-    if (this.origin?.isConnected === true) {
-      this.origin.focus({ preventScroll: true });
+    if (this.returnFocus()) {
       return;
     }
-    const other = Array.from(region.querySelectorAll<HTMLElement>('.tm-toast')).find(
-      (element) => element !== card,
-    );
-    const button = other?.querySelector<HTMLElement>('button');
-    if (button !== undefined && button !== null) {
-      button.focus();
+    const other = this.controls().find((control) => !card.contains(control));
+    if (other !== undefined) {
+      other.focus();
     } else {
       active.blur();
+      this.leave();
     }
   }
 
   /**
    * Focus entering the stack from outside: timers pause, the origin is
-   * remembered, and Escape closes the focused toast.
+   * remembered, and Escape closes the focused toast. Focus the host moves
+   * itself, while it already holds focus, keeps the first origin.
    */
   protected onFocusin(event: FocusEvent): void {
     const region = this.region().nativeElement;
     const from = event.relatedTarget;
-    if (from instanceof Node && region.contains(from)) {
+    if ((from instanceof Node && region.contains(from)) || this.releaseEscape !== null) {
       return;
     }
     this.origin = from instanceof HTMLElement ? from : null;
     this.controller().setPaused('focus', true);
-    this.releaseEscape ??= tmPushEscapeDismissal(() => this.dismissFocused());
+    this.releaseEscape = tmPushEscapeDismissal(() => this.dismissFocused());
   }
 
-  /** Focus leaving the stack: timers resume and Escape is released. */
+  /**
+   * Focus leaving a control of the stack. A move within the stack changes
+   * nothing, and a move to another element releases the hold. A loss to
+   * nowhere waits a microtask: Chromium reports a control removed by a
+   * render that way, and the render's own check has by then answered it
+   * by focusing another control.
+   */
   protected onFocusout(event: FocusEvent): void {
+    const region = this.region().nativeElement;
     const to = event.relatedTarget;
-    if (to instanceof Node && this.region().nativeElement.contains(to)) {
+    if (to instanceof Node && region.contains(to)) {
       return;
     }
-    this.origin = null;
-    this.controller().setPaused('focus', false);
-    this.releaseEscape?.();
-    this.releaseEscape = null;
+    if (to !== null) {
+      this.leave();
+      return;
+    }
+    queueMicrotask(() => {
+      if (!region.contains(document.activeElement)) {
+        this.leave();
+      }
+    });
   }
 
-  /** Escape: closes the toast that holds focus, which hands focus back. */
+  /**
+   * Tab and Shift+Tab stay among the toasts' buttons: past the last (or
+   * before the first) focus goes back where it came from, so a modal that
+   * sent the user here gets focus back instead of the page behind it.
+   * Without an origin to return to, focus wraps around the stack.
+   */
+  protected onKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    const controls = this.controls();
+    const index = controls.indexOf(event.target as HTMLElement);
+    const edge = event.shiftKey ? 0 : controls.length - 1;
+    if (index === -1 || index !== edge) {
+      return;
+    }
+    event.preventDefault();
+    if (!this.returnFocus()) {
+      controls[event.shiftKey ? controls.length - 1 : 0]?.focus();
+    }
+  }
+
+  /** The stack's focusable controls, newest card first, then the pill. */
+  private controls(): HTMLElement[] {
+    return Array.from(this.region().nativeElement.querySelectorAll<HTMLElement>('button'));
+  }
+
+  /** Returns focus where it came from, when that is still in the page. */
+  private returnFocus(): boolean {
+    const origin = this.origin;
+    if (origin?.isConnected !== true) {
+      return false;
+    }
+    origin.focus({ preventScroll: true });
+    if (document.activeElement !== origin) {
+      return false;
+    }
+    // Focus left the stack, perhaps from a control the browser has already
+    // dropped, which reports no focus change: release the hold here.
+    this.leave();
+    return true;
+  }
+
+  /**
+   * After a render: if the stack holds focus but the focused control is
+   * gone, focus moves to the newest toast, else back where it came from,
+   * else the hold is released, so the timers run and Escape reaches what
+   * lies under the stack again.
+   */
+  private recoverFocus(): void {
+    const active = document.activeElement;
+    if (this.releaseEscape === null || this.region().nativeElement.contains(active)) {
+      return;
+    }
+    if (active !== null && active !== document.body) {
+      // Focus moved somewhere else on purpose; the focusout check releases.
+      return;
+    }
+    if (!this.focusNewest() && !this.returnFocus()) {
+      this.leave();
+    }
+  }
+
+  /** The stack no longer holds focus: timers resume and Escape is released. */
+  private leave(): void {
+    this.origin = null;
+    if (this.releaseEscape !== null) {
+      this.releaseEscape();
+      this.releaseEscape = null;
+      this.controller().setPaused('focus', false);
+    }
+  }
+
+  /**
+   * Escape: closes the toast that holds focus, which hands focus back. On
+   * the pill, focus simply goes back.
+   */
   private dismissFocused(): void {
     const card = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
       '[data-toast-id]',
     );
     if (card !== null && card !== undefined) {
       this.controller().dismiss(Number(card.dataset['toastId']));
+    } else if (!this.returnFocus()) {
+      (document.activeElement as HTMLElement | null)?.blur();
+      this.leave();
     }
   }
 }

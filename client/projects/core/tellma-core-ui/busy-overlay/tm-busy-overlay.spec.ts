@@ -226,6 +226,32 @@ describe('TmBusyOverlay', () => {
     late.remove();
   });
 
+  it('leaves top-layer popovers and live regions readable, so announcements are heard', async () => {
+    const { busy } = setup();
+    const toasts = document.createElement('div');
+    toasts.setAttribute('popover', 'manual');
+    const announcer = document.createElement('div');
+    announcer.setAttribute('aria-live', 'polite');
+    const content = page();
+    document.body.append(toasts, announcer);
+    const work = deferred();
+    const result = busy.run(work.promise);
+    const late = document.createElement('div');
+    late.setAttribute('aria-live', 'assertive');
+    document.body.appendChild(late);
+    await flush();
+    expect(content.main.inert).toBe(true);
+    expect(toasts.inert).toBe(false);
+    expect(announcer.inert).toBe(false);
+    expect(late.inert).toBe(false);
+    work.resolve();
+    await result;
+    toasts.remove();
+    announcer.remove();
+    late.remove();
+    content.remove();
+  });
+
   it('lets keys through again once unblocked', async () => {
     const { busy } = setup();
     const work = deferred();
