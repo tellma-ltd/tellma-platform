@@ -1,0 +1,14 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-relative-time — a run of text in the surrounding font. Inline, so it
+   sits in a sentence or a cell; its digits are tabular, since the text
+   changes every minute. */
+:host {
+  display: inline;
+  font-variant-numeric: tabular-nums;
+}

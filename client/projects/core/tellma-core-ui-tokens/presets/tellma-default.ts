@@ -338,6 +338,71 @@ export const tmTokensDefault: TmTokens = {
       headingFontSize: '{font.size.sm}',
       bodyFontSize: '13px',
     },
+    // tm-avatar: a person as a round photo or as initials on a tinted
+    // circle. Five fixed diameters, each with its own initials size (two
+    // capitals fit the smallest) and the glyph shown for an empty name. A
+    // keyed avatar paints a `categorical` slot's tint and on-tint pair; an
+    // unkeyed one the accent teal with ink initials (6.1:1 in both schemes,
+    // because the accent and the ink primitive do not change with them).
+    avatar: {
+      sizeXs: '20px',
+      sizeSm: '24px',
+      sizeMd: '28px',
+      sizeLg: '40px',
+      sizeXl: '72px',
+      fontSizeXs: '9px',
+      fontSizeSm: '10px',
+      fontSizeMd: '11px',
+      fontSizeLg: '15px',
+      fontSizeXl: '26px',
+      iconSizeXs: '12px',
+      iconSizeSm: '14px',
+      iconSizeMd: '16px',
+      iconSizeLg: '24px',
+      iconSizeXl: '40px',
+      bg: '{action.accent}',
+      text: '{ink.900}',
+    },
+    // tm-badge: a status label in a 20px pill. The status tones tint the
+    // pill with the status roles in the component CSS and keep body ink for
+    // the text (a status ink on its own tint is below 4.5:1 for some
+    // tones); the tone's ink draws the dot and the icon. Accent is the one
+    // solid badge.
+    badge: {
+      height: '20px',
+      paddingX: '8px',
+      gap: '4px',
+      radius: '{radius.full}',
+      fontSize: '11px',
+      iconSize: '12px',
+      dotSize: '6px',
+      text: '{text.body}',
+      neutralBg: '{surface.sunken}',
+      neutralBorder: '{border.default}',
+      neutralInk: '{text.secondary}',
+      accentBg: '{action.primary}',
+      accentText: '{action.onPrimary}',
+    },
+    // tm-counter: a number in a 16px pill. Overlay counters sit on their
+    // parent's block-start, inline-end corner inside a halo of the surface
+    // they sit on (`--counter-halo` is the one variable a host sets, to its
+    // bar colour); inline counters reserve two digits in the component CSS.
+    // Every fill carries text at 4.5:1 or more in both schemes.
+    counter: {
+      height: '16px',
+      minWidth: '16px',
+      paddingX: '4px',
+      fontSize: '11px',
+      halo: '{surface.card}',
+      haloWidth: '2px',
+      overlayOffset: '-4px',
+      neutralBg: '{text.secondary}',
+      neutralText: '{surface.card}',
+      accentBg: '{action.primary}',
+      accentText: '{action.onPrimary}',
+      attentionBg: '{status.error.fg}',
+      attentionText: '{action.onPrimary}',
+    },
     // tmButton: heights ride the shared field-height scale (buttons align
     // with form fields in toolbars); per-variant colors resolve per scheme
     // through the semantic action/field/status roles.
@@ -439,6 +504,23 @@ export const tmTokensDefault: TmTokens = {
       optionGap: '8px',
       iconSize: '15px',
       noticeFontSize: '11.5px',
+    },
+    // tm-empty-state: every "nothing to show" and inline-failure state in
+    // one centred anatomy — a 22px icon, a 14px heading, a 12px detail held
+    // to a readable measure, then the actions. `page` centres in the space
+    // left; `panel` is the compact form for a popover or a widget.
+    emptyState: {
+      iconSize: '22px',
+      gap: '8px',
+      headingFontSize: '{font.size.sm}',
+      detailFontSize: '{font.size.xs}',
+      detailMaxWidth: '42ch',
+      actionsGap: '8px',
+      paddingPage: '24px',
+      paddingPanel: '16px',
+      iconColor: '{text.muted}',
+      headingColor: '{text.strong}',
+      detailColor: '{text.secondary}',
     },
     // tm-grid / tm-tree-grid: row density mirrors the field-height scale
     // one notch tighter (data rows, not form fields); selection fill is a
@@ -623,6 +705,43 @@ export const tmTokensDefault: TmTokens = {
       // The gap every popover keeps from the viewport edges, so a lg panel
       // on a phone is full width less this on each side.
       viewportMargin: '8px',
+    },
+    // tm-progress-bar and tm-progress-ring. The bar is a 4px track that
+    // consumers overlay on an edge, so it takes no layout space; once shown
+    // it stays at least `minVisible`, so a fast answer never flashes it.
+    // The indeterminate sweep and the ring's spin are the only motion here,
+    // and both stop under reduced motion. Every fill reads at 3:1 or more
+    // against the track in both schemes: the accent is the action teal, not
+    // the lighter accent teal, and the warning fill is the warning role
+    // pulled a quarter of the way to the strong text colour (darker in
+    // light, lighter in dark), since the warning role alone is 2.45:1
+    // against the light track.
+    progress: {
+      height: '4px',
+      radius: '{radius.full}',
+      track: '{border.default}',
+      accent: '{action.primary}',
+      success: '{status.success.fg}',
+      warning: 'color-mix(in srgb, var(--warning) 75%, var(--text-strong))',
+      error: '{status.error.fg}',
+      minVisible: '250ms',
+      sweepDuration: '1.4s',
+      sweepWidth: '40%',
+      ringStroke: '1.5px',
+      ringDuration: '1s',
+    },
+    // tm-skeleton: static placeholders with the final geometry of what
+    // replaces them. A text line is an 8px bar on a 20px pitch (a line of
+    // body text); the last of several lines stops at 60%. The table shape
+    // rides the grid's row heights so a list's placeholder and its rows
+    // match. Nothing animates.
+    skeleton: {
+      bg: '{border.subtle}',
+      radius: '{radius.xs}',
+      barHeight: '8px',
+      lineGap: '12px',
+      lastLineWidth: '60%',
+      cellPaddingX: '8px',
     },
     // tm-tab-group: strip geometry; the active indicator draws inside the
     // tab box so activation never reflows. A vertical strip is a nav list

@@ -1,0 +1,108 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-badge — a 20px pill that sits in text and table rows, so its host is
+   inline-flex rather than block. Geometry and the neutral and accent colours
+   come from the --badge-* tokens; the status tones tint with the status
+   roles, as tm-alert does. The text keeps body ink in every tinted tone (a
+   status ink on its own tint falls below 4.5:1 for some tones); the tone's
+   ink draws the dot and the icon. */
+
+:host {
+  /* One local set per tone, re-pointed by the data-tone rules below. */
+  --tm-badge-bg: var(--badge-neutral-bg);
+  --tm-badge-border: var(--badge-neutral-border);
+  --tm-badge-ink: var(--badge-neutral-ink);
+  --tm-badge-text: var(--badge-text);
+  --icon-size: var(--badge-icon-size);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--badge-gap);
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  block-size: var(--badge-height);
+  padding-inline: var(--badge-padding-x);
+  border: var(--border-width) solid var(--tm-badge-border);
+  border-radius: var(--badge-radius);
+  background: var(--tm-badge-bg);
+  color: var(--tm-badge-text);
+  font-family: var(--font-ui);
+  font-size: var(--badge-font-size);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Tones. */
+
+:host([data-tone='accent']) {
+  --tm-badge-bg: var(--badge-accent-bg);
+  --tm-badge-border: var(--badge-accent-bg);
+  --tm-badge-ink: var(--badge-accent-text);
+  --tm-badge-text: var(--badge-accent-text);
+}
+
+:host([data-tone='info']) {
+  --tm-badge-bg: var(--info-bg);
+  --tm-badge-border: var(--info-border);
+  --tm-badge-ink: var(--info);
+}
+
+:host([data-tone='success']) {
+  --tm-badge-bg: var(--success-bg);
+  --tm-badge-border: var(--success-border);
+  --tm-badge-ink: var(--success);
+}
+
+:host([data-tone='warning']) {
+  --tm-badge-bg: var(--warning-bg);
+  --tm-badge-border: var(--warning-border);
+  --tm-badge-ink: var(--warning);
+}
+
+:host([data-tone='error']) {
+  --tm-badge-bg: var(--error-bg);
+  --tm-badge-border: var(--error-border);
+  --tm-badge-ink: var(--error);
+}
+
+/* Leading marks: the dot and the icon take the tone's ink. */
+
+.tm-badge__dot {
+  flex: none;
+  inline-size: var(--badge-dot-size);
+  block-size: var(--badge-dot-size);
+  border-radius: var(--radius-full);
+  background: var(--tm-badge-ink);
+}
+
+.tm-badge__icon {
+  color: var(--tm-badge-ink);
+}
+
+/* The label ellipsizes rather than overflowing a narrow container. Its
+   line box is the font's own (not the host's line-height 1), so the clip
+   that the ellipsis needs never cuts a descender or an Arabic letter's
+   dots below the baseline. */
+.tm-badge__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  line-height: normal;
+  text-overflow: ellipsis;
+}
+
+@media (forced-colors: active) {
+  /* The tint is forced away; the pill keeps its border (painted in the
+     system text colour) and the dot keeps a system fill, so neither
+     vanishes with the background. */
+  .tm-badge__dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
