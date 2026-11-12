@@ -25,8 +25,9 @@ namespace Tellma.Core.Data.Conventions
     ///         twice is left unpaired for the metadata validation to report.
     ///     </para>
     ///     <para>
-    ///         When a model configuration declares an index that starts with the parent key, that index
-    ///         stands in for the convention's, which is then not added.
+    ///         When a model configuration declares an unfiltered index that starts with the parent key,
+    ///         that index stands in for the convention's, which is then not added. A filtered index
+    ///         never stands in, since it does not hold every child of a parent.
     ///     </para>
     /// </remarks>
     internal sealed class ChildConvention : IModelFinalizingConvention
@@ -44,11 +45,13 @@ namespace Tellma.Core.Data.Conventions
                 string declaration = ConventionModel.Declaration("ParentKey", child, parentKey.Name);
                 _ = ConventionModel.AddForeignKey(child, parentKey, pairing.Parent, DeleteBehavior.NoAction, unique: false, declaration);
 
-                // An index a model configuration declares with the parent key first serves the same
-                // seeks (the clustered key rides along in every nonclustered index), so a second one
-                // would only cost writes: the configuration's index stands in for the convention's.
+                // An unfiltered index a model configuration declares with the parent key first serves
+                // the same seeks (the clustered key rides along in every nonclustered index), so a
+                // second one would only cost writes: the configuration's index stands in for the
+                // convention's. A filtered one holds only some of a parent's children, so it never does.
                 if (child.GetIndexes().Any(index => index.GetConfigurationSource() == ConfigurationSource.Explicit
-                    && index.Properties[0] == parentKey))
+                    && index.Properties[0] == parentKey
+                    && index.GetFilter() is null))
                 {
                     continue;
                 }

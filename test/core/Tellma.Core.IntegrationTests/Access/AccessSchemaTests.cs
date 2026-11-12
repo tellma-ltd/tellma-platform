@@ -226,12 +226,37 @@ namespace Tellma.Core.IntegrationTests.Access
                 $"INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action], [Filter], [FilterQueryexVersion]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], 1, {resource}, {action}, {filter}, {version});");
         }
 
-        [Fact]
-        public async Task A_membership_that_ends_before_it_starts_is_refused()
+        [Theory]
+        [InlineData("2026-01-01T00:00:00+00:00")]
+        [InlineData("2026-02-01T00:00:00+00:00")]
+        public async Task A_membership_that_does_not_end_after_it_starts_is_refused(string startsAt)
         {
+            // The window is half-open, so a membership ending the instant it starts is empty and refused.
             await AssertRefusedAsync(
                 "CK_RoleMemberships_Window",
-                "INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], 1, 1, '2026-02-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');");
+                $"INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], 1, 1, '{startsAt}', '2026-01-01T00:00:00+00:00');");
+        }
+
+        [Fact]
+        public async Task A_membership_with_one_open_bound_is_accepted()
+        {
+            Assert.Equal(["2"], await database.ColumnAsync("""
+                SET XACT_ABORT ON;
+                BEGIN TRANSACTION;
+                INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], 1, 1, '2026-01-01T00:00:00+00:00', NULL);
+                INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], 1, 1, NULL, '2026-01-01T00:00:00+00:00');
+                SELECT COUNT(*) FROM [core].[RoleMemberships] WHERE [Id] >= 1000;
+                ROLLBACK TRANSACTION;
+                """));
+        }
+
+        [Fact]
+        public async Task A_service_account_with_an_invitation_status_is_refused()
+        {
+            // The invitation date is absent, so only the status clause of the check can refuse the row.
+            await AssertRefusedAsync(
+                "CK_Users_ServiceEvidence",
+                $"INSERT INTO [core].[Users] ({UserColumns}) VALUES (NEXT VALUE FOR [core].[sq_Users], 'Service', NULL, NULL, NULL, 'Invited', NULL, N'Refused', SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);");
         }
 
         // --- History and cascades ---
@@ -250,17 +275,24 @@ namespace Tellma.Core.IntegrationTests.Access
                     "UPDATE [core].[Roles] SET [Name2] = N'History 2' WHERE [Name] = N'History';",
                     "UPDATE [core].[Roles] SET [Name3] = N'History 3' WHERE [Name] = N'History';",
                     "UPDATE p SET [Action] = 'Update' FROM [core].[Permissions] AS p JOIN [core].[Roles] AS r ON r.[Id] = p.[RoleId] WHERE r.[Name] = N'History';",
-                    "UPDATE m SET [Notes] = N'Noted' FROM [core].[RoleMemberships] AS m JOIN [core].[Roles] AS r ON r.[Id] = m.[RoleId] WHERE r.[Name] = N'History';");
+                    "UPDATE m SET [Notes] = N'Noted' FROM [core].[RoleMemberships] AS m JOIN [core].[Roles] AS r ON r.[Id] = m.[RoleId] WHERE r.[Name] = N'History';",
+                    InsertUser("Individual", "'sub-history'", "'history@example.com'", invited: true, joined: false, "History user"),
+                    "UPDATE [core].[Users] SET [JoinedAt] = SYSDATETIMEOFFSET(), [InviteStatus] = 'Active' WHERE [Name] = N'History user';");
 
                 // An insert writes no history; each update writes the row as it was.
                 Assert.Equal(["2"], await database.ColumnAsync("SELECT COUNT(*) FROM [core].[RolesHistory] WHERE [Name] = N'History';"));
                 Assert.Equal(["1"], await database.ColumnAsync("SELECT COUNT(*) FROM [core].[PermissionsHistory] WHERE [Action] = 'Read' AND [Resource] = 'core.Users';"));
                 Assert.Equal(["1"], await database.ColumnAsync("SELECT COUNT(*) FROM [core].[RoleMembershipsHistory] WHERE [UserId] = 1 AND [RoleId] >= 1000;"));
+
+                // The user's history row keeps the derived state it had before the join.
+                Assert.Equal(["Invited|Invited"], await database.ColumnAsync("SELECT CONCAT_WS(N'|', [State], [InviteStatus]) FROM [core].[UsersHistory] WHERE [Name] = N'History user';"));
+                Assert.Equal(["Joined"], await database.ColumnAsync("SELECT [State] FROM [core].[Users] WHERE [Name] = N'History user';"));
             }
             finally
             {
                 await SqlServerFixture.ExecuteAsync(
                     database.ConnectionString,
+                    "DELETE FROM [core].[Users] WHERE [Name] = N'History user';",
                     "DELETE m FROM [core].[RoleMemberships] AS m JOIN [core].[Roles] AS r ON r.[Id] = m.[RoleId] WHERE r.[Name] = N'History';",
                     "DELETE p FROM [core].[Permissions] AS p JOIN [core].[Roles] AS r ON r.[Id] = p.[RoleId] WHERE r.[Name] = N'History';",
                     "DELETE FROM [core].[Roles] WHERE [Name] = N'History';");
