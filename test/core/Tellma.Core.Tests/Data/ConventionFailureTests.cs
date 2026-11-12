@@ -108,6 +108,16 @@ namespace Tellma.Core.Tests.Data
         }
 
         [Fact]
+        public void A_collation_configured_fluently_is_refused_with_the_property_named()
+        {
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => TestModels.DesignModel(TellmaModelDefinition.Create(
+                [typeof(TestUser), typeof(FluentlyCollated)], [], [typeof(FluentCollation)], new Dictionary<Type, Type>())));
+
+            Assert.StartsWith("FluentlyCollated.Code configures its collation with UseCollation.", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("[Collation]", exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void A_column_name_with_a_closing_bracket_is_delimited_in_the_generated_sql()
         {
             IModel built = TestModels.DesignModel(typeof(Bracketed));
@@ -123,6 +133,25 @@ namespace Tellma.Core.Tests.Data
             {
                 _ = builder.Ignore(static target => target.ModifiedById);
             }
+        }
+
+        /// <summary>Gives <see cref="FluentlyCollated.Code" /> a collation through the fluent API.</summary>
+        public sealed class FluentCollation : IEntityTypeConfiguration<FluentlyCollated>
+        {
+            /// <inheritdoc />
+            public void Configure(EntityTypeBuilder<FluentlyCollated> builder)
+            {
+                _ = builder.Property(static entity => entity.Code).UseCollation("Latin1_General_100_BIN2");
+            }
+        }
+
+        /// <summary>An entity whose code is collated fluently rather than by attribute.</summary>
+        [Table("FluentlyCollated", Schema = "probe")]
+        public sealed class FluentlyCollated : TopLevelEntity
+        {
+            /// <summary>The code, collated by the configuration above.</summary>
+            [MaxLength(64)]
+            public string? Code { get; set; }
         }
 
         /// <summary>A unique column whose name holds a closing bracket.</summary>

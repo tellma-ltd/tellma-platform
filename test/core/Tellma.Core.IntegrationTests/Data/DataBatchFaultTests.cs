@@ -10,6 +10,7 @@ using System.Data.Common;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
@@ -956,6 +957,12 @@ namespace Tellma.Core.IntegrationTests.Data
 
             /// <inheritdoc />
             public int TenantId => FixtureTenant.TenantId;
+
+            /// <inheritdoc />
+            public MultilingualShape Shape => throw new InvalidOperationException("The fault batches carry raw statements only, so they read no tenant settings.");
+
+            /// <inheritdoc />
+            public QueryexContextValues Context => throw new InvalidOperationException("The fault batches carry raw statements only, so they bind no context values.");
 
             /// <inheritdoc />
             public async ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)

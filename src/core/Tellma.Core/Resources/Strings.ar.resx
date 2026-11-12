@@ -582,6 +582,9 @@
   <data name="Queryex_QX3202" xml:space="preserve">
     <value>ليس للتعبير نوع؛ حوّل القيمة الفارغة (null) إلى نوع.</value>
   </data>
+  <data name="Queryex_QX3203" xml:space="preserve">
+    <value>تحمل هذه الأعمدة نصوصًا بترتيبات مقارنة (collation) مختلفة، فلا يمكن مقارنتها أو دمجها.</value>
+  </data>
   <data name="Queryex_QX3300" xml:space="preserve">
     <value>يجب أن يكون الوسيط الأول للدالة {function} مسارًا.</value>
   </data>

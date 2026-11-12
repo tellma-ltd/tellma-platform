@@ -391,10 +391,15 @@ namespace Tellma.Core.Queryex
             /// <param name="isNotNull">Whether the column cannot hold an absent value.</param>
             /// <param name="isUnique">Whether the column is backed by a unique constraint or index.</param>
             /// <param name="storeType">The physical column type, or null for the default mapping.</param>
+            /// <param name="collation">
+            ///     The collation the column declares for itself, such as <c>Latin1_General_100_BIN2</c>;
+            ///     null when it takes the database's. Only a text property may declare one.
+            /// </param>
             /// <returns>This builder, for chaining.</returns>
             /// <exception cref="ArgumentException">
-            ///     A name is empty or malformed, a name or column is already taken, or the store type
-            ///     does not belong to <paramref name="type" />.
+            ///     A name is empty or malformed, a name or column is already taken, the store type
+            ///     does not belong to <paramref name="type" />, or the collation is not a bare
+            ///     collation name or is declared on a property that is not text.
             /// </exception>
             public EntityBuilder Property(
                 string name,
@@ -402,7 +407,8 @@ namespace Tellma.Core.Queryex
                 string column,
                 bool isNotNull = false,
                 bool isUnique = false,
-                QueryexStoreType? storeType = null)
+                QueryexStoreType? storeType = null,
+                string? collation = null)
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(name);
                 ArgumentException.ThrowIfNullOrWhiteSpace(column);
@@ -418,7 +424,26 @@ namespace Tellma.Core.Queryex
                         nameof(storeType));
                 }
 
-                _properties.Add(new PropertyDescriptor(name, column, type, isNotNull, isUnique, storeType));
+                // The collation reaches emitted SQL as written, so it is held to a collation name's
+                // form: letters, digits and underscores, nothing that could end the clause.
+                if (collation is not null)
+                {
+                    if (type != QueryexType.QxString)
+                    {
+                        throw new ArgumentException(
+                            Invariant($"Property '{Descriptor.Name}.{name}' is {type}, so it cannot declare a collation."),
+                            nameof(collation));
+                    }
+
+                    if (collation.Length is 0 or > 128 || !collation.All(static character => char.IsAsciiLetterOrDigit(character) || character == '_'))
+                    {
+                        throw new ArgumentException(
+                            Invariant($"Property '{Descriptor.Name}.{name}' declares the collation '{collation}', which is not a collation name."),
+                            nameof(collation));
+                    }
+                }
+
+                _properties.Add(new PropertyDescriptor(name, column, type, isNotNull, isUnique, storeType, collation));
                 return this;
             }
 
@@ -448,9 +473,14 @@ namespace Tellma.Core.Queryex
             ///     The logical name of the foreign-key property on this entity. It must be declared
             ///     separately, like any other property, and must agree in type with the target's key.
             /// </param>
+            /// <param name="isOptional">
+            ///     Whether the target row may be missing although the foreign key holds a value, such
+            ///     as a one-to-one extension table keyed by this entity's own key. An optional step is
+            ///     joined as an outer join and makes every path through it nullable.
+            /// </param>
             /// <returns>This builder, for chaining.</returns>
             /// <exception cref="ArgumentException">A name is empty, malformed, or already taken.</exception>
-            public EntityBuilder Navigation(string name, string target, string foreignKey)
+            public EntityBuilder Navigation(string name, string target, string foreignKey, bool isOptional = false)
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(name);
                 ArgumentException.ThrowIfNullOrWhiteSpace(target);
@@ -458,7 +488,7 @@ namespace Tellma.Core.Queryex
                 ValidateLogicalName(name, nameof(name));
                 AddMemberName(name, nameof(name));
 
-                _navigations.Add(new PendingNavigation(new NavigationDescriptor(name), target, foreignKey));
+                _navigations.Add(new PendingNavigation(new NavigationDescriptor(name, isOptional), target, foreignKey));
                 return this;
             }
 

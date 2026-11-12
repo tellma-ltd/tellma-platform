@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.SqlServer.Types;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
@@ -438,6 +438,8 @@ namespace Tellma.Testing.Entities.Migrations
                     Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
                     Subject = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     Price = table.Column<decimal>(type: "decimal(19,4)", nullable: true),
+                    OptionalKind = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: true),
+                    DueOn = table.Column<DateOnly>(type: "date", nullable: true),
                     Settings = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ImageId = table.Column<int>(type: "int", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
@@ -1208,10 +1210,10 @@ namespace Tellma.Testing.Entities.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "WidgetsList",
-                physicalName: "WidgetsList_5b8e141b",
+                physicalName: "WidgetsList_32217e51",
                 schema: "fixture",
                 scope: "tellma.fixture",
-                definitionHash: "5b8e141b011a59bfc830bbaa72feb9738853eeeed95fcc36085d493c79b93882",
+                definitionHash: "32217e51a4b3ca214a93e22e6bc8fae5db03b594b54d3f1ae23ff884d51230cd",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -1222,6 +1224,8 @@ namespace Tellma.Testing.Entities.Migrations
                     new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
                     new TableTypeColumnDefinition { Name = "Subject", StoreType = "nvarchar(64)", MaxLength = 64 },
                     new TableTypeColumnDefinition { Name = "Price", StoreType = "decimal(19,4)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "OptionalKind", StoreType = "varchar(8)", IsNullable = true, MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "DueOn", StoreType = "date", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "Settings", StoreType = "nvarchar(max)", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "ImageId", StoreType = "int", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
@@ -1233,7 +1237,7 @@ namespace Tellma.Testing.Entities.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_8fc97fb9", "LinksList_da254281", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_7aefe66b", "WidgetsList_5b8e141b" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_8fc97fb9", "LinksList_da254281", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_7aefe66b", "WidgetsList_32217e51" });
         }
 
         /// <inheritdoc />

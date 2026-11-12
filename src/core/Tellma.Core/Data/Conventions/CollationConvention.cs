@@ -16,6 +16,12 @@ namespace Tellma.Core.Data.Conventions
     ///     which the table's row-image type copies. A standalone table type's columns take theirs when
     ///     <see cref="TableTypeConvention" /> registers the type.
     /// </summary>
+    /// <remarks>
+    ///     The attribute is the only way a column of the tenant model declares a collation of its
+    ///     own: the runtime model keeps no collation, so what reads one at run time, such as the
+    ///     query schema, reads the attribute. A collation configured fluently on a property would be
+    ///     invisible to it, so it fails the model.
+    /// </remarks>
     internal sealed class CollationConvention : IModelFinalizingConvention
     {
         /// <inheritdoc />
@@ -25,6 +31,13 @@ namespace Tellma.Core.Data.Conventions
             {
                 foreach (IConventionProperty property in entityType.GetDeclaredProperties())
                 {
+                    // --- A fluent collation is refused: the attribute is the one source ---
+                    if (property.GetCollationConfigurationSource() == ConfigurationSource.Explicit)
+                    {
+                        throw new InvalidOperationException(
+                            $"{entityType.ClrType.Name}.{property.Name} configures its collation with UseCollation. A column of the tenant model declares its own collation with [Collation] on the property, which is what reads the collation at run time.");
+                    }
+
                     if (property.PropertyInfo is not null
                         && EntityShapes.GetAttribute<CollationAttribute>(property.PropertyInfo) is { } collation)
                     {

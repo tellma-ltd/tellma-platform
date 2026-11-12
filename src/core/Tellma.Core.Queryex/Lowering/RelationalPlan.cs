@@ -37,11 +37,12 @@ namespace Tellma.Core.Queryex.Lowering
             Parent = parent;
             Origin = origin;
 
-            // Inner only where the step cannot be missing and nothing above it can be either.
-            // Behind an optional step even a mandatory one may have no row, and an inner join there
-            // would silently drop rows whose optional ancestor is absent.
+            // Inner only where the step cannot be missing and nothing above it can be either. A
+            // step may be missing through a nullable foreign key or because the schema declares
+            // it optional. Behind an optional step even a mandatory one may have no row, and an
+            // inner join there would silently drop rows whose optional ancestor is absent.
             IsInner = parent is null
-                || (navigation is not null && navigation.ForeignKey.IsNotNull && parent.IsInner);
+                || (navigation is not null && !navigation.MayBeMissing && parent.IsInner);
         }
 
         /// <summary>The entity this node reads.</summary>

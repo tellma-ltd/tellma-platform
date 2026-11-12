@@ -71,6 +71,13 @@ namespace Tellma.Testing.Entities
         [Column(TypeName = "decimal(19,4)")]
         public decimal? Price { get; set; }
 
+        /// <summary>An optional second kind, <c>varchar(8) NULL</c>: the fixture's nullable enum.</summary>
+        [MaxLength(8)]
+        public WidgetKind? OptionalKind { get; set; }
+
+        /// <summary>The day the widget is due, <c>date NULL</c>: the fixture's date key.</summary>
+        public DateOnly? DueOn { get; set; }
+
         /// <summary>Free-form settings, a JSON document.</summary>
         [JsonColumn]
         public string? Settings { get; set; }
