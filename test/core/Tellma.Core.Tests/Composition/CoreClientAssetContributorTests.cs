@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Composition;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition
@@ -67,12 +68,9 @@ namespace Tellma.Core.Tests.Composition
                 .Compose(static tellma => tellma.AddFeature(new PlainFeature()), TestComposition.Configuration(configuration))
                 .BuildServiceProvider();
 
+            // The core feature's own contributor alone: the core chunk also carries other contributors' sections.
             ClientAssetContext context = new(provider);
-            foreach (IClientAssetContributor contributor in provider.GetServices<IClientAssetContributor>())
-            {
-                contributor.Contribute(context);
-            }
-
+            provider.GetServices<IClientAssetContributor>().OfType<CoreClientAssetContributor>().Single().Contribute(context);
             return context;
         }
     }
