@@ -9,13 +9,17 @@ import {
   ApplicationRef,
   computed,
   effect,
+  ErrorHandler,
+  InjectionToken,
   isDevMode,
+  PendingTasks,
   signal,
   untracked,
   type DestroyRef,
   type Injector,
   type Signal,
   type TemplateRef,
+  type Type,
   type ViewContainerRef,
   type WritableSignal,
 } from '@angular/core';
@@ -26,7 +30,6 @@ import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2
 import {
   TM_PARSE_ERROR,
   type SignalLike,
-  type TmCellEditor,
   type TmGridContentState,
   type TmGridScrollPosition,
   type TmLabelResolution,
@@ -45,7 +48,6 @@ import {
 import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
 import { tmIsApplePlatform, tmKeysMatch, tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
 import type {
-  ɵTmEntityAdoptedSearch,
   TmEntityId,
   TmEntityPickerPage,
   TmEntitySearchFn,
@@ -77,12 +79,17 @@ import {
   type TmMenuEntry,
   type TmMenuItem,
 } from '@tellma/core-ui/menu';
+// Types only: the editing code itself arrives through import() (loadEditing).
+import type {
+  ɵTmGridEditing,
+  ɵTmGridEditingHost,
+  ɵTmGridEditorOpenOptions,
+} from '@tellma/core-ui/grid-editing';
 
 import type { TmGridColumn } from '../tm-grid-column';
 import type {
   TmGridDisplayContext,
   TmGridDisplayDef,
-  TmGridEditorContext,
   TmGridEditorDef,
   TmGridEmptyDef,
   TmGridHeaderContext,
@@ -93,7 +100,6 @@ import type { TmGridRowActivation, TmGridSort } from '../tm-grid-types';
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
-import { ɵTmGridEditorSession, type ɵTmGridEditorMountConfig } from './editor-session';
 import { ɵTmGridFieldWriter, ɵtmChildField, ɵtmRowField } from './field-writer';
 import {
   TM_GRID_FIND_KEYS,
@@ -102,6 +108,50 @@ import {
   type TmGridEditingCommitTarget,
   type TmGridIntent,
 } from './grid-keymap';
+
+/** What the grid takes from its on-demand editing code. */
+export interface ɵTmGridEditingCode {
+  /** The editing controller class. */
+  readonly ɵTmGridEditing: typeof ɵTmGridEditing;
+  /**
+   * The editable grid's status-bar component. Typed loosely, as the view's
+   * component outlet takes it, so this seam names none of its internals.
+   */
+  readonly ɵTmGridStatusBar: Type<unknown>;
+}
+
+/**
+ * Loads the grid's on-demand editing code. Tests replace it to see whether
+ * and when a grid asks for that code, or to hold the load open; an app
+ * never provides it.
+ */
+export const ɵTM_GRID_EDITING_LOADER = new InjectionToken<() => Promise<ɵTmGridEditingCode>>(
+  'ɵTM_GRID_EDITING_LOADER',
+  { providedIn: 'root', factory: () => () => import('@tellma/core-ui/grid-editing') },
+);
+
+/**
+ * How long (ms) the grid waits for its editing code before it stops holding
+ * the app unstable for it: the failure goes to the error handler (once per
+ * grid), any draft stays open and usable, and the next edit or paste asks
+ * again. Tests and the showcase change it.
+ */
+export const ɵTM_GRID_EDITING_LOAD_TIMEOUT = new InjectionToken<number>(
+  'ɵTM_GRID_EDITING_LOAD_TIMEOUT',
+  { providedIn: 'root', factory: () => 10_000 },
+);
+
+/**
+ * The draft of a session the grid opened before its editing code arrived: a
+ * plain input in the editing cell that holds the user's text until the
+ * editor mounts with it.
+ */
+export interface ɵTmGridDraft {
+  /** The input's accessible name: the column's header text. */
+  readonly label: string;
+  /** Whether the column takes numbers, so a touch keyboard offers digits. */
+  readonly numeric: boolean;
+}
 
 /** Row height fallback (px) while the `--grid-row-height` token is unresolvable. */
 const DEFAULT_ROW_HEIGHT = 32;
@@ -151,21 +201,6 @@ const GRID_MENU_ICONS = {
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
-
-/**
- * "This session recorded no value baseline" — distinct from every value a
- * cell can hold, `undefined` and `null` included.
- */
-const NO_VALUE_BASELINE: unique symbol = Symbol('tmNoValueBaseline');
-
-/**
- * A search taken over from an entity editor at commit time. Detached from
- * the editor's lifetime, so whoever holds it owns aborting it.
- */
-type AdoptedSearch = ɵTmEntityAdoptedSearch<unknown>;
-
-/** What an adopted search settles to. */
-type AdoptedResult = Awaited<AdoptedSearch['settled']>;
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -668,7 +703,11 @@ export interface ɵTmGridViewCore {
   readonly resize: ɵTmGridColumnResize;
   /** Count of cells in error state (invalid inputs ∪ field-invalid cells). */
   readonly errorCount: Signal<number>;
-  /** Count of cells awaiting async paste resolutions. */
+  /**
+   * Count of cells awaiting an asynchronous resolution (pasted labels, typed
+   * entity commits, and entity drafts waiting on the editing code); a Save
+   * waits for it to reach 0.
+   */
   readonly pendingCount: Signal<number>;
   /** The context-menu entries (built-ins + consumer extras). */
   readonly menuItems: Signal<readonly TmMenuEntry[]>;
@@ -684,6 +723,20 @@ export interface ɵTmGridViewCore {
    * view renders a block-end overlay strip for readonly grids.
    */
   readonly transientNotice: Signal<string | null>;
+  /**
+   * The editable grid's status-bar component once the editing code has
+   * loaded, or `null` until then; the view renders it in a slot that holds
+   * its place meanwhile.
+   */
+  readonly statusBar: Signal<Type<unknown> | null>;
+  /**
+   * The draft of a session opened before the editing code arrived, or
+   * `null`; the view renders its input in the editing cell until the editor
+   * mounts.
+   */
+  readonly draft: Signal<ɵTmGridDraft | null>;
+  /** The draft input's composition events: an IME composition starts or ends. */
+  onDraftComposition(composing: boolean): void;
   /** Jumps to the next (+1) / previous (−1) errored cell, row-major, cycling. */
   gotoError(direction: 1 | -1): void;
   /** Updates the find query (the scan is debounced and chunked). */
@@ -733,14 +786,63 @@ export interface ɵTmGridViewCore {
  * state-store lifecycle. Constructed by `TmGridBase` with the host's
  * dependencies; the view component (`ɵTmGridView`) renders its signals and
  * routes DOM events back into it.
+ *
+ * Editing lives in `@tellma/core-ui/grid-editing`, which an editable grid
+ * loads on demand (`loadEditing`); this class implements the seam that code
+ * works through (`ɵTmGridEditingHost`), whose members are public for that
+ * reason only.
  */
-export class ɵTmGridCore<T> implements ɵTmGridViewCore {
+export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T> {
   private readonly deps: ɵTmGridCoreDeps<T>;
   private readonly announcements: ɵTmGridAnnouncements;
   private readonly clipboardDom: ɵTmGridClipboardDom;
-  private readonly appRef: ApplicationRef;
+  /** The application, ticked to render an editor's outlet before it mounts. */
+  readonly appRef: ApplicationRef;
   private readonly fieldWriter: ɵTmGridFieldWriter<T>;
-  private readonly editorSession: ɵTmGridEditorSession;
+  /** The editing controller, once its on-demand code has arrived. */
+  private editing: ɵTmGridEditing<T> | null = null;
+  /** Whether a load of the editing code is in flight. */
+  private editingRequested = false;
+  /** Ends the load in flight early (grid disposal), or `null` while none is. */
+  private endLoad: (() => void) | null = null;
+  /** Cancels the idle preload still waiting to start, or `null`. */
+  private cancelPreload: (() => void) | null = null;
+  /** Whether a failed load was reported: a grid reports its first only. */
+  private loadFailureReported = false;
+  /**
+   * The draft of a session opened before the editing code arrived: a plain
+   * input in the editing cell, where the browser owns the text (modifiers,
+   * dead keys, IME, the caret, undo, the touch keyboard). The user's commit
+   * gestures write it through the engine, and the editor takes it over when
+   * the code arrives.
+   */
+  readonly draft = signal<ɵTmGridDraft | null>(null);
+  /** The draft's input element while a draft is open. */
+  private draftInput: HTMLInputElement | null = null;
+  /**
+   * The text the draft opened with on an edit-mode or IME open: a draft
+   * still equal to it commits nothing. `null` for type-to-edit, whose seed
+   * is already an edit.
+   */
+  private draftBase: string | null = null;
+  /** The text the draft opened with: an editor resuming it shows this much already. */
+  private draftStart = '';
+  /** The open options of the draft's session, applied when its editor mounts. */
+  private draftOpts: ɵTmGridEditorOpenOptions | undefined;
+  /** Whether an IME composition is in progress in the draft input. */
+  private draftComposing = false;
+  /** Editing code that arrived mid-composition, installed when it ends. */
+  private arrivedCode: ɵTmGridEditingCode | null = null;
+  /**
+   * Entity commits made before the editing code arrived, pending in their
+   * cells until it resolves them as the editor would.
+   */
+  private deferredLabels: { readonly request: TmGridResolutionRequest; readonly text: string }[] =
+    [];
+  /** The editing cell's editor outlet, or `null` while none renders. */
+  editorOutlet: ViewContainerRef | null = null;
+  /** The status-bar component, set when the editing code arrives. */
+  readonly statusBar = signal<Type<unknown> | null>(null);
   private engineInstance: TmGridEngine<T> | null = null;
   private handle: TmGridStateHandle | null = null;
   private lastContentKey: string | number | undefined;
@@ -774,12 +876,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** Columns already warned about a missing required `format` (one warn each). */
   private readonly warnedColumns = new Set<string>();
 
+  /** The scroll container, once the view rendered it. */
   private readonly scrollerSignal = signal<HTMLElement | null>(null);
   private readonly scrollTop = signal(0);
   private readonly scrollLeft = signal(0);
   private readonly viewportHeight = signal(0);
   private readonly rowHeightSignal = signal(DEFAULT_ROW_HEIGHT);
-  private readonly escapedSignal = signal(false);
+  /** Whether Escape parked focus on the scroller (the mid-grid exit). */
+  readonly escapedSignal = signal(false);
   private readonly widthOverrides = signal<ReadonlyMap<string, number>>(new Map());
   private readonly focusRequest = signal(0);
   private readonly revealRequest = signal(0);
@@ -837,7 +941,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /** The active match, or `null`. */
   private readonly activeFindMatchSignal: Signal<ɵTmGridFindMatch | null>;
 
-  private readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
+  /** The column model: directive inputs resolved with type defaults, in view order. */
+  readonly columnsInternal: Signal<readonly ColumnInternal<T>[]>;
   private readonly engineColumns: Signal<ReadonlyArray<TmGridEngineColumn<T>>>;
   private readonly window: Signal<ReturnType<typeof tmComputeAxisWindow>>;
   /** The data-column index rendering the hierarchy (trees; -1 otherwise). */
@@ -936,7 +1041,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly gridTemplate: Signal<string>;
   /** Count of cells in error state (invalid inputs ∪ field-invalid cells, distinct). */
   readonly errorCount: Signal<number>;
-  /** Count of cells awaiting async paste resolutions. */
+  /**
+   * Count of cells awaiting an asynchronous resolution (pasted labels, typed
+   * entity commits, and entity drafts waiting on the editing code); a Save
+   * waits for it to reach 0.
+   */
   readonly pendingCount: Signal<number>;
   /** The column-resize pointer controller. */
   readonly resize: ɵTmGridColumnResize;
@@ -956,7 +1065,6 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.announcements = new ɵTmGridAnnouncements(deps.announcer, deps.translate);
     this.appRef = deps.injector.get(ApplicationRef);
     this.errorDisplay = deps.injector.get(TM_ERROR_DISPLAY);
-    this.editorSession = new ɵTmGridEditorSession(deps.injector);
     this.fieldWriter = new ɵTmGridFieldWriter<T>({
       field: () => this.deps.field(),
       newRow: () => this.deps.newRow(),
@@ -1460,7 +1568,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
 
   /** Hands the core the editing cell's editor outlet (or `null` when closed). */
   attachEditorOutlet(outlet: ViewContainerRef | null): void {
-    this.editorSession.attachOutlet(outlet);
+    this.editorOutlet = outlet;
   }
 
   /** Hands the core the context menu (or `null` when it is gone). */
@@ -1794,15 +1902,21 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   }
 
   /**
-   * The keydown branch while an editor session is open. The handler runs
-   * at the scroller (after the editor's own listeners), so it acts only on
-   * keys the editor did not `preventDefault` — this is how the two-stage
-   * Esc composes: the select's aria layer consumes Esc №1 closing its
-   * panel; Esc №2 reaches here and cancels the session.
+   * The keydown branch while an editor session is open, its editor mounted
+   * or its draft still standing in. Any editing keystroke on a
+   * scrolled-away cell scrolls it back first, a key the editor consumed
+   * stays its own, and Mod+F opens the grid's find. The rest resolves
+   * through the editing keys; a key they do not name stays with the input,
+   * the draft's as much as the editor's, so the grid never acts on it.
    */
   private onEditingKeydown(event: KeyboardEvent, session: TmGridEditSession): void {
     // Any editing keystroke on a scrolled-away cell scrolls it back first (§4).
     this.revealActiveCell();
+    const editing = this.editing;
+    if (editing === null) {
+      // A key in the draft is a gesture: a load that failed asks again.
+      this.loadEditing();
+    }
     if (event.defaultPrevented) {
       return;
     }
@@ -1814,10 +1928,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       this.openFind();
       return;
     }
-    const mounted = this.editorSession.current();
     const resolved = tmResolveEditingKey(event, {
       mode: session.mode,
-      isDropdownOpen: mounted?.isDropdownOpen() ?? false,
+      isDropdownOpen: editing?.isDropdownOpen() ?? false,
     });
     if (resolved === null) {
       return;
@@ -1832,11 +1945,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (
-          mounted !== null &&
-          (mounted.kind === 'enum' || mounted.kind === 'date' || mounted.kind === 'entity')
-        ) {
-          mounted.openDropdown();
+        if (editing === null) {
+          // The draft's editor opens showing its choices when it mounts.
+          this.draftOpts = { ...this.draftOpts, dropdown: true };
+          event.preventDefault();
+        } else if (editing.openDropdown()) {
           event.preventDefault();
         }
         return;
@@ -1844,6 +1957,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         this.commitAndMove(resolved.target, event);
         return;
     }
+  }
+
+  /**
+   * The text a draft opens with: the type-to-edit seed; nothing under an
+   * IME composition, which supplies its own; otherwise what the cell's
+   * editor would open with. An enum's panel and a consumer template take
+   * typing as a fresh search or value instead, so theirs opens empty.
+   */
+  private draftStartText(cell: TmRowCol, seedText: string | undefined, ime: boolean): string {
+    if (seedText !== undefined) {
+      return seedText;
+    }
+    const column = untracked(this.columnsInternal)[cell.col];
+    return ime || column === undefined || column.editorDef !== undefined || column.type === 'enum'
+      ? ''
+      : this.editTextOf(cell);
   }
 
   /** Commits the session, then executes the key's move. */
@@ -2388,7 +2517,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * Commit-on-blur (§8.4): when focus leaves the grid — and lands outside
    * every overlay surface (select panel, error overlay, context menu,
    * calendar popup) — an open editor commits. Safer for forms than
-   * Excel's keep-editing.
+   * Excel's keep-editing. A draft owns no overlay, so focus moving into
+   * one commits a draft too.
    */
   onFocusOut(event: FocusEvent): void {
     const engine = this.engineInstance;
@@ -2397,8 +2527,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
     const next = event.relatedTarget;
     if (next instanceof Element) {
-      if (this.deps.host.contains(next) || this.inOverlay(next)) {
-        return; // focus stayed inside the grid or one of its overlay surfaces
+      if (this.deps.host.contains(next) || (this.editing !== null && this.inOverlay(next))) {
+        return; // focus stayed inside the grid or one of its editor's overlay surfaces
       }
     } else if (this.focusDroppedByRerender()) {
       return; // the editor's own overlay re-rendered under the pointer
@@ -2427,13 +2557,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   /**
    * The scroller's paste handler: reduces the richest available clipboard
    * flavor through the resolution ladder (§9.3) and hands it to the engine.
-   * While an editor is open the event stays with the editor untouched
-   * (plain text editing inside the cell, §8.4).
+   * While an editor or a draft is open the event stays with its input
+   * untouched (plain text editing inside the cell).
    */
   onPaste(event: ClipboardEvent): void {
     const engine = this.engineInstance;
     if (engine !== null && untracked(() => engine.edit.session()) !== null) {
-      return; // native paste into the open editor
+      return; // native paste into the open editor's or draft's input
+    }
+    // An editable grid whose editing code failed to load asks again: the
+    // status bar it brings is where an editable grid reports paste errors.
+    if (this.editing === null && untracked(this.editable)) {
+      this.loadEditing();
     }
     event.preventDefault();
     const data = event.clipboardData;
@@ -2473,7 +2608,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * engine only collects for resolver-carrying columns) short-circuits with
    * an empty answered map.
    */
-  private runResolutions(
+  runResolutions(
     requests: readonly TmGridResolutionRequest[],
     fallback?: TmLabelResolution<unknown>,
   ): void {
@@ -3740,63 +3875,240 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     }
   }
 
-  // ---- editor session (§8.4) ----
+  // ---- editor session (§8.4): the on-demand editing code ----
 
   /**
-   * Opens an editor session on a cell and mounts its editor SYNCHRONOUSLY.
-   * The outlet only exists once the session signal has rendered, so the
-   * core forces one render pass via `ApplicationRef.tick()` — DOM event
-   * handlers always run outside a tick in zoneless Angular, so the call is
-   * re-entrancy-safe, and the synchronous mount is what lets an IME
-   * composition land inside the editor's input within the same task
-   * (`opts.ime`); every other open path shares it for one behavior.
+   * Preloads the editing code once an editable grid has rendered, when the
+   * browser is next idle, so the code is normally in place before the first
+   * keystroke and the draft stays a rare fallback. The wait is a pending
+   * task, so a test's or the app's stability covers it; an open or a paste
+   * meanwhile starts the load at once.
+   */
+  private preloadEditing(): void {
+    if (this.editing !== null || this.editingRequested || this.cancelPreload !== null) {
+      return;
+    }
+    const removeTask = this.deps.injector.get(PendingTasks).add();
+    const start = (): void => {
+      this.cancelPreload = null;
+      this.loadEditing(); // takes its own pending task before this one ends
+      removeTask();
+    };
+    // Safari has no idle callback; a zero timeout still yields to the render.
+    const idle = typeof requestIdleCallback === 'function';
+    const handle = idle ? requestIdleCallback(start, { timeout: 2000 }) : setTimeout(start);
+    this.cancelPreload = () => {
+      (idle ? cancelIdleCallback : clearTimeout)(handle as number);
+      removeTask();
+    };
+  }
+
+  /**
+   * Loads the editing code, one attempt at a time. The attempt is a pending
+   * task, bounded by the load timeout. On arrival, even after the timeout,
+   * the code is installed (see `installEditing`). A failure or a timeout
+   * leaves any draft open and usable, reports the error once per grid, and
+   * lets the next gesture ask again.
+   */
+  private loadEditing(): void {
+    if (this.editing !== null || this.editingRequested || this.destroyed) {
+      return;
+    }
+    this.editingRequested = true;
+    const injector = this.deps.injector;
+    const removeTask = injector.get(PendingTasks).add();
+    // A preload still waiting for idle has nothing left to start.
+    this.cancelPreload?.();
+    this.cancelPreload = null;
+    const timeoutMs = injector.get(ɵTM_GRID_EDITING_LOAD_TIMEOUT);
+    let open = true;
+    const timer = setTimeout(() => {
+      end();
+      this.reportLoadFailure(new Error(`tm-grid: no editing code after ${timeoutMs} ms.`));
+    }, timeoutMs);
+    // Ends this attempt once: its timer, its pending task, the in-flight flag.
+    const end = (): void => {
+      if (open) {
+        open = false;
+        clearTimeout(timer);
+        removeTask();
+        this.editingRequested = false;
+        this.endLoad = null;
+      }
+    };
+    this.endLoad = end;
+    let loading: Promise<ɵTmGridEditingCode>;
+    try {
+      loading = injector.get(ɵTM_GRID_EDITING_LOADER)();
+    } catch (error) {
+      loading = Promise.reject(error);
+    }
+    loading.then(
+      (code) => {
+        end();
+        this.installEditing(code);
+      },
+      (error: unknown) => {
+        end();
+        this.reportLoadFailure(error);
+      },
+    );
+  }
+
+  /** Reports a failed load to the error handler: the first only, and never after disposal. */
+  private reportLoadFailure(error: unknown): void {
+    if (this.destroyed || this.loadFailureReported) {
+      return;
+    }
+    this.loadFailureReported = true;
+    this.deps.injector.get(ErrorHandler).handleError(error);
+  }
+
+  /**
+   * Builds the editing controller from the code that arrived and hands the
+   * view its status bar. An open draft is handed over: while its input has
+   * focus, the editor mounts with the draft's text and caret and takes
+   * focus; otherwise the draft commits as it stands, so the arrival never
+   * pulls focus or opens a panel where the user is not. An IME composition
+   * in progress finishes in the draft first. Entity commits waiting on the
+   * code are resolved last.
+   */
+  private installEditing(code: ɵTmGridEditingCode): void {
+    if (this.destroyed || this.editing !== null) {
+      return;
+    }
+    const input = untracked(this.draft) !== null ? this.draftInput : null;
+    if (input !== null && this.draftComposing) {
+      this.arrivedCode = code;
+      return;
+    }
+    this.arrivedCode = null;
+    const editing = new code.ɵTmGridEditing<T>(this, this.deps.injector);
+    this.statusBar.set(code.ɵTmGridStatusBar);
+    if (input === null) {
+      this.editing = editing;
+    } else if (document.activeElement === input) {
+      const text = input.value;
+      // The editor mounts and takes focus while the draft input is still in
+      // place, so focus moves from one to the other and never drops.
+      this.editing = editing;
+      try {
+        editing.resume(this.draftOpts, {
+          text,
+          changed: text !== this.draftStart,
+          // A text input always reports its selection.
+          selectionStart: input.selectionStart!,
+          selectionEnd: input.selectionEnd!,
+          selectionDirection: input.selectionDirection as 'forward' | 'backward' | 'none',
+        });
+      } finally {
+        this.closeDraft();
+      }
+    } else {
+      this.commitDraft();
+      this.editing = editing;
+    }
+    this.drainDeferredLabels();
+  }
+
+  /** Resolves the entity commits made before the editing code arrived (see `commitDraft`). */
+  private drainDeferredLabels(): void {
+    const editing = this.editing;
+    if (editing === null) {
+      return;
+    }
+    const queued = this.deferredLabels;
+    this.deferredLabels = [];
+    for (const { request, text } of queued) {
+      // An undo, a readonly flip or a disposal aborted it meanwhile.
+      if (!request.context.signal.aborted) {
+        editing.resolveLabel(request, text);
+      }
+    }
+  }
+
+  /** The draft input's composition events: the code waiting on a composition installs when it ends. */
+  onDraftComposition(composing: boolean): void {
+    this.draftComposing = composing;
+    if (!composing) {
+      this.installArrivedCode();
+    }
+  }
+
+  /**
+   * Installs editing code that waited on a composition in the draft, once
+   * nothing holds it: after the composition's own last input event.
+   */
+  private installArrivedCode(): void {
+    const code = this.arrivedCode;
+    if (code !== null) {
+      queueMicrotask(() => {
+        if (this.arrivedCode === code) {
+          this.installEditing(code);
+        }
+      });
+    }
+  }
+
+  /**
+   * Whether a cell's column can host an editor: every column but an
+   * `entity` one without a `*tmGridEditor` template or the built-in
+   * picker's three facilities. Such a cell never opens a session (the
+   * editing code reports the misconfiguration in development).
+   */
+  hasEditor(cell: TmRowCol): boolean {
+    const column = untracked(this.columnsInternal)[cell.col];
+    return (
+      column !== undefined &&
+      (column.editorDef !== undefined ||
+        column.type !== 'entity' ||
+        (column.entitySearch !== undefined &&
+          column.entityItemId !== undefined &&
+          column.entityItemLabel !== undefined))
+    );
+  }
+
+  /**
+   * The text an edit-mode open edits: the cell's display text, except that
+   * a number column edits its full-precision value — while an errored cell
+   * edits the raw text the user typed, which the display text already is.
+   */
+  editTextOf(cell: TmRowCol): string {
+    const engine = this.engine;
+    const column = untracked(this.columnsInternal)[cell.col];
+    const view = untracked(() => engine.model.rowAt(cell.row));
+    const invalid =
+      view !== null &&
+      column !== undefined &&
+      untracked(() => engine.annotations.invalidInput(view.id, column.id)) !== undefined;
+    return column?.editSeedText !== undefined && !invalid
+      ? column.editSeedText(untracked(() => engine.model.cellValue(cell)))
+      : untracked(() => engine.displayText(cell));
+  }
+
+  /**
+   * Opens an editor session on a cell (see `ɵTmGridEditing.open`). Before
+   * the editing code arrives, the session opens in the engine with a draft:
+   * a plain input in the cell, focused at once (inside the gesture, so a
+   * touch keyboard rises) and holding the seed or the text the editor would
+   * open with. A draft already open is never replaced: it commits first.
    * Returns whether a session opened.
    */
   private openEditor(
     cell: TmRowCol,
     mode: 'edit' | 'enter',
     seedText?: string,
-    opts?: { ime?: boolean; dropdown?: boolean },
+    opts?: ɵTmGridEditorOpenOptions,
   ): boolean {
+    if (this.editing !== null) {
+      return this.editing.open(cell, mode, seedText, opts);
+    }
+    if (!this.hasEditor(cell)) {
+      return false;
+    }
     const engine = this.engine;
-    const column = untracked(this.columnsInternal)[cell.col];
-    if (column === undefined) {
-      return false;
-    }
-    if (
-      column.editorDef === undefined &&
-      column.type === 'entity' &&
-      column.entitySearch === undefined
-    ) {
-      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
-        throw new Error(
-          `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
-            `[search]/[itemId]/[itemLabel] for the built-in tm-entity-picker, or project ` +
-            `a *tmGridEditor template hosting a control that implements TmCellEditor.`,
-        );
-      }
-      return false;
-    }
-    if (
-      column.type === 'entity' &&
-      column.editorDef === undefined &&
-      column.entitySearch !== undefined &&
-      (column.entityItemId === undefined || column.entityItemLabel === undefined)
-    ) {
-      // Gated on cell editability exactly like the no-editor guard above: a
-      // cell that could never have opened an editor must not be the thing
-      // that reports the column's misconfiguration.
-      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
-        throw new Error(
-          `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
-            `both are required alongside [search] for the built-in tm-entity-picker editor.`,
-        );
-      }
-      // In production the cell stays non-editable, exactly like the
-      // no-editor case above. Opening anyway would render every option as
-      // "[object Object]" through the String(item) fallbacks and commit
-      // that string into the foreign-key field.
-      return false;
+    if (untracked(() => engine.edit.session()) !== null) {
+      this.commitEditor({ refocus: false });
     }
     if (!engine.edit.openEdit(cell, mode, seedText)) {
       return false;
@@ -3804,447 +4116,108 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     this.escapedSignal.set(false);
     // The opening keystroke on a scrolled-away cell scrolls it back (§4).
     this.revealActiveCell();
-    const view = untracked(() => engine.model.rowAt(cell.row));
-    const valueAtOpen = untracked(() => engine.model.cellValue(cell));
-    const displayText = untracked(() => engine.displayText(cell));
-    // Number columns edit on the full-precision value (see `editSeedText`), but
-    // an invalid-input cell must still show the raw text the user typed — which
-    // `displayText` already returns for it.
-    const hasInvalidInput =
-      view !== null &&
-      untracked(() => engine.annotations.invalidInput(view.id, column.id)) !== undefined;
-    const editText =
-      column.editSeedText !== undefined && !hasInvalidInput
-        ? column.editSeedText(valueAtOpen)
-        : displayText;
-    const header = untracked(column.header);
-
-    let config: ɵTmGridEditorMountConfig;
-    if (column.editorDef !== undefined) {
-      config = {
-        kind: 'template',
-        template: column.editorDef.template as TemplateRef<TmGridEditorContext<unknown, unknown>>,
-        context: { $implicit: valueAtOpen, row: view?.row },
-      };
-    } else if (column.type === 'entity') {
-      const format = column.format;
-      // The row is addressed by IDENTITY, not captured: an immutable model
-      // replaces the row object on every write, so a snapshot taken here
-      // would render the committed id through the row as it stood when the
-      // editor opened — and would pin that object for the editor's whole
-      // lifetime. `null` on the placeholder row, which has no identity yet.
-      const rowId: TmRowId | null = view?.id ?? null;
-      config = {
-        kind: 'entity',
-        label: header,
-        search: column.entitySearch!,
-        // Both are guaranteed by the half-config guard above (which throws
-        // in dev and refuses the open in prod); the `??` only satisfies the
-        // picker's required inputs, and its branch is unreachable.
-        itemId: column.entityItemId ?? ((item: unknown) => String(item)),
-        itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
-        // The column's `format` doubles as the picker's committed-id display
-        // resolver; an empty string defers to the picker's own fallbacks
-        // (label memo, then String(id) with the dev warning). On the
-        // placeholder row there is no row to hand a consumer `format`
-        // (whose signature promises one) — defer to the fallbacks instead
-        // of calling it with undefined.
-        displayWith:
-          format === undefined
-            ? undefined
-            : (id: unknown) => {
-                const row = rowId === null ? undefined : engine.model.rowById(rowId);
-                if (row === undefined) {
-                  return null;
-                }
-                const text = format(id, row);
-                return text === '' ? null : text;
-              },
-        advancedSearch: column.entityAdvancedSearch,
-        create: column.entityCreate,
-        edit: column.entityEdit,
-        onActivation: () => this.onEditorActivation(),
-      };
-    } else if (column.type === 'enum') {
-      config = {
-        kind: 'enum',
-        label: header,
-        options: column.enumOptions ?? [],
-        optionLabel: column.optionLabel,
-        optionValue: column.optionValue,
-        onActivation: () => this.onEditorActivation(),
-      };
-    } else if (column.type === 'number') {
-      config = { kind: 'number', label: header };
-    } else if (column.type === 'date') {
-      config = { kind: 'date', label: header, onActivation: () => this.onEditorActivation() };
-    } else {
-      config = { kind: 'text', label: header };
+    // `hasEditor` above vouched for the column.
+    const column = untracked(this.columnsInternal)[cell.col]!;
+    const start = this.draftStartText(cell, seedText, opts?.ime === true);
+    this.draftOpts = opts;
+    this.draftStart = start;
+    this.draftBase = seedText === undefined ? start : null;
+    this.draftComposing = false;
+    this.draft.set({ label: untracked(column.header), numeric: column.type === 'number' });
+    // Render the input now, so focus (and an IME composition's first
+    // keydown) lands in it within this task, as with an editor's mount.
+    this.appRef.tick();
+    const input =
+      untracked(this.scrollerSignal)?.querySelector<HTMLInputElement>('input[data-tm-draft]') ??
+      null;
+    this.draftInput = input;
+    if (input !== null) {
+      input.value = start;
+      input.setSelectionRange(start.length, start.length);
+      input.focus({ preventScroll: true });
     }
-
-    this.editorSession.stage(config);
-    this.appRef.tick(); // render the outlet now (see the method TSDoc)
-    const mounted = this.editorSession.mountIfReady();
-    if (mounted === null) {
-      // Nothing registered (prod fallback of the dev-mode throw).
-      engine.edit.cancel();
-      return false;
-    }
-
-    const editor = mounted.editor;
-    editor.focus();
-    // Every open starts WITHOUT a pristine baseline; only the branches that
-    // seed a known text install one. Leaving the previous session's baseline
-    // in place would make a later commit of a coincidentally equal string
-    // (an emptied cell after an emptied cell) look pristine and be dropped.
-    this.editorOpenText = null;
-    this.editorOpenValue = NO_VALUE_BASELINE;
-    if (opts?.ime === true) {
-      // IME opens UNSEEDED: the composition itself supplies the content.
-      this.editorOpenText = '';
-      if (mounted.kind === 'entity') {
-        // The committed id is installed even though the text is empty: the
-        // Edit… row still targets it, and an abandoned composition must
-        // leave the cell exactly as it was — which on the new-row
-        // placeholder means not materializing a row at all, so the value
-        // baseline is recorded here as well. (The dropdown's own selection
-        // mirror follows the TEXT, so it shows nothing until one is typed.)
-        editor.value.set(valueAtOpen);
-        mounted.setTextQuiet?.('');
-        this.editorOpenValue = valueAtOpen;
-      }
-    } else if (mounted.kind === 'enum') {
-      editor.value.set(valueAtOpen);
-      if (seedText !== undefined) {
-        // Type-to-edit: the select opens its panel seeding the typeahead.
-        editor.seed?.(seedText);
-      } else {
-        mounted.openDropdown();
-      }
-    } else if (mounted.kind === 'entity') {
-      // The committed id first: the dropdown mirrors it (check glyph) and
-      // the Edit… footer row targets it.
-      editor.value.set(valueAtOpen);
-      if (seedText !== undefined) {
-        // Type-to-edit: replaces the content and searches the seed at once.
-        editor.seed?.(seedText);
-      } else {
-        // Edit mode shows the display text (or an errored cell's raw text)
-        // with the dropdown CLOSED — `seed()` would search; the quiet
-        // install does not. The pristine baseline makes F2 + Enter commit
-        // nothing (no re-resolution of the committed label).
-        mounted.setTextQuiet?.(editText);
-        this.editorOpenText = editText;
-        // An entity editor owns BOTH channels, and on a clean cell the text
-        // channel stands down (it reports null so the id commits). The text
-        // baseline alone can therefore never recognize an untouched
-        // session; the value baseline is what makes F2 + Enter a no-op.
-        //
-        // An INVALID-INPUT cell gets no value baseline: it opens on raw
-        // text that is not the value's display text, so "the value channel
-        // is authoritative again" means the user cleared the bad text —
-        // a real edit, and the only way to clear the annotation from the
-        // editor. Its own pristine case (the raw text still unchanged) is
-        // covered by the text baseline above.
-        if (!hasInvalidInput) {
-          this.editorOpenValue = valueAtOpen;
-        }
-      }
-    } else if (seedText !== undefined) {
-      if (editor.seed !== undefined) {
-        editor.seed(seedText);
-      } else {
-        editor.value.set(seedText);
-      }
-      // A type-to-edit seed REPLACES the content — committing it unchanged
-      // is still a user edit, so the baseline stays null (set above), never
-      // the seed.
-    } else if (mounted.kind === 'text' || mounted.kind === 'number' || mounted.kind === 'date') {
-      // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
-      // formatted text; for an invalid-input cell that is the raw text) — but a
-      // number column edits its full-precision value, not the rounded display.
-      if (editor.seed !== undefined) {
-        editor.seed(editText);
-      } else {
-        editor.value.set(editText);
-      }
-      this.editorOpenText = editText;
-    } else {
-      // Consumer template editor: the grid owns the value channel and
-      // seeds it with the raw cell value (also carried in the context).
-      editor.value.set(valueAtOpen);
-    }
-    // Alt+ArrowDown means "show me the choices": one press reaches them,
-    // whatever the cell's editor is. An enum's panel is already open above
-    // (it has nothing to type, so every open shows it); a date's calendar
-    // and an entity's dropdown are not, because typing is those cells'
-    // primary path and F2 must not pop them. Type-to-edit is exempt — the
-    // seed IS the intent.
-    if (opts?.dropdown === true && seedText === undefined && !mounted.isDropdownOpen()) {
-      mounted.openDropdown();
-    }
+    this.loadEditing();
     return true;
   }
 
-  /**
-   * A dropdown editor produced a value by pointing at it — an enum option
-   * activated, or a day picked in a date cell's calendar. Commit and CLOSE,
-   * no move (Sheets): the pick IS the edit, so it must not sit uncommitted
-   * waiting for an Enter that a mouse user has no reason to press.
-   */
-  private onEditorActivation(): void {
-    if (untracked(() => this.engine.edit.session()) !== null) {
-      this.commitEditor({ refocus: true });
-    }
+  /** Closes the draft: its input goes with the next render. */
+  private closeDraft(): void {
+    this.draft.set(null);
+    this.draftInput = null;
+    this.draftComposing = false;
+    this.installArrivedCode();
   }
 
   /**
-   * The text a text-channel editor was OPENED with (edit mode's display
-   * text), or `null` when there is no pristine baseline (seeded opens,
-   * enum/template editors). A commit whose text still equals this baseline
-   * writes nothing — opening and closing an editor never rewrites the
-   * model, so a display-rounded cell's underlying precision survives an
-   * F2 + Enter pass untouched.
-   */
-  private editorOpenText: string | null = null;
-
-  /**
-   * The VALUE an entity editor was opened with, or `NO_VALUE_BASELINE` when
-   * the session has none. Entity editors are the only ones that own both
-   * channels, and a clean entity cell hands the commit to the value channel
-   * — so the text baseline above cannot see an untouched session and the
-   * value baseline has to.
-   */
-  private editorOpenValue: unknown = NO_VALUE_BASELINE;
-
-  /**
-   * Commits the open session through the engine: the enum select commits
-   * its VALUE; text-path editors commit their text through the column's
-   * parse — unless `text()` is `null` (content not representable as text,
-   * or an entity picker whose value channel is authoritative), which
-   * commits the value channel directly. A pristine text editor (the text
-   * still equals what it opened with) commits nothing. Unresolved text on
-   * an `entity` column takes the label-resolution ladder instead of the
-   * plain text commit (see `commitEditorText`).
+   * Commits the open session (see `ɵTmGridEditing.commit`); before the
+   * editing code arrives, the draft commits (see `commitDraft`). Without a
+   * session there is nothing to commit.
    */
   private commitEditor(opts: { refocus: boolean }): void {
-    const engine = this.engine;
-    const mounted = this.editorSession.current();
-    if (mounted === null) {
-      engine.edit.cancel();
-    } else if (mounted.kind === 'enum') {
-      engine.edit.commitValue(untracked(() => mounted.editor.value()));
-    } else {
-      let adopted: AdoptedSearch | null = null;
-      if (mounted.kind === 'entity') {
-        // Take the editor's search over FIRST: `commit()` below closes the
-        // dropdown, and a closing popup aborts what it was fetching. What
-        // is adopted here is detached from the editor's lifetime, so it
-        // survives the teardown that follows — and every early exit past
-        // this point has to abort it, or the request leaks.
-        const pending = untracked(() => mounted.editor.text());
-        // Text the session opened with is not a commit to resolve, so
-        // adopting for it would issue a request only to abort it below.
-        adopted =
-          pending === null || pending === this.editorOpenText
-            ? null
-            : (mounted.adoptSearch?.(pending) ?? null);
-        // The picker's synchronous fast path: a fresh unique result for the
-        // current unresolved text auto-picks (no request) before the
-        // channels are read. PULLED here — a push through the activation
-        // output would re-enter this commit mid-flight.
-        mounted.editor.commit();
-        if (this.isPristineEntitySession(mounted.editor)) {
-          adopted?.abort();
-          engine.edit.cancel();
-          this.closeEditor(opts);
-          return;
-        }
-      }
-      const text = untracked(() => mounted.editor.text());
-      if (text === null) {
-        adopted?.abort(); // the fast path answered it
-        engine.edit.commitValue(untracked(() => mounted.editor.value()));
-      } else if (text === this.editorOpenText) {
-        adopted?.abort();
-        engine.edit.cancel();
-      } else {
-        this.commitEditorText(text, adopted);
-      }
+    if (this.editing !== null) {
+      this.editing.commit(opts);
+      return;
     }
-    this.closeEditor(opts);
+    if (untracked(this.draft) !== null) {
+      this.commitDraft();
+    }
+    if (opts.refocus) {
+      this.requestFocusActive();
+    }
   }
 
   /**
-   * Whether an entity session is still exactly as it opened — neither
-   * channel moved. Such a commit must write NOTHING: on a real row the
-   * value write would be elided anyway, but on the new-row placeholder any
-   * commit at all materializes the row, so opening an editor on the `*` row
-   * and closing it would append a blank row the user never typed into.
-   *
-   * Only "the value is unchanged" is checked here, never "the value write
-   * would be a no-op": a commit also clears the cell's invalid input, and a
-   * session that opened on one has no value baseline for exactly that
-   * reason.
+   * Commits the draft's text through the engine, as the editor would
+   * commit it. A draft still equal to the text it opened with writes
+   * nothing. A built-in entity picker's text goes pending in its cell until
+   * the editing code resolves it with the picker's own search
+   * (`drainDeferredLabels`); a template editor's entity text takes the
+   * label resolution at once; any other column's text takes its parse.
    */
-  private isPristineEntitySession(editor: TmCellEditor<unknown>): boolean {
-    if (this.editorOpenValue === NO_VALUE_BASELINE) {
-      return false; // a seeded/IME open, or an errored cell: an edit by construction
-    }
-    const text = untracked(() => editor.text());
-    if (text !== null) {
-      return text === this.editorOpenText; // an errored cell's raw text, unchanged
-    }
-    return Object.is(
-      untracked(() => editor.value()),
-      this.editorOpenValue,
-    );
-  }
-
-  /**
-   * Text commits: `entity` columns route through the label-resolution
-   * ladder — the same conversion chain pasted labels take (consumer parse,
-   * then `resolvePastedLabels` with the single text under the grid's
-   * pending affordance and sequence tokens, else a definitive invalid
-   * input) — applying to consumer template editors on entity columns too.
-   * Every other column commits through the column's parse as before. The
-   * resolver runs in a microtask, after the editor's teardown completes —
-   * exactly one authoritative resolution, under the GRID's pending state.
-   */
-  private commitEditorText(text: string, adopted: AdoptedSearch | null): void {
+  private commitDraft(): void {
+    const text = this.draftInput?.value ?? this.draftStart;
+    const base = this.draftBase;
+    this.closeDraft();
     const engine = this.engine;
     const session = untracked(() => engine.edit.session());
-    const column = session === null ? undefined : untracked(this.columnsInternal)[session.cell.col];
-    if (column?.type !== 'entity') {
-      adopted?.abort();
+    if (session === null) {
+      return;
+    }
+    const column = untracked(this.columnsInternal)[session.cell.col];
+    if (text === base) {
+      engine.edit.cancel();
+    } else if (column?.type === 'entity') {
+      const viaSearch = column.editorDef === undefined;
+      const request = engine.commitEditorLabel(text, { deferToHost: viaSearch });
+      if (request === null) {
+        return; // an earlier rung settled it
+      }
+      if (viaSearch) {
+        this.deferredLabels.push({ request, text });
+        this.drainDeferredLabels();
+      } else {
+        this.runResolutions([request]);
+      }
+    } else {
       engine.edit.commitText(text);
-      return;
     }
-    const request = engine.commitEditorLabel(text, { deferToHost: adopted !== null });
-    if (request === null) {
-      adopted?.abort(); // an earlier rung settled it — the search is nobody's input now
-      return;
-    }
-    if (adopted === null) {
-      this.runResolutions([request]);
-      return;
-    }
-    // Undo while pending aborts the request; the adopted search is part of
-    // that request now, so it goes with it.
-    request.context.signal.addEventListener('abort', adopted.abort, { once: true });
-    void adopted.settled
-      .then((outcome) => {
-        if (request.context.signal.aborted) {
-          // Undone, or the grid was disposed. An abort surfaces here as a
-          // search FAILURE (the picker cannot tell the two apart), and
-          // falling through on a failure would start the very round trip
-          // the abort was cancelling — against a request that is already
-          // gone, from a grid that may already be destroyed.
-          return;
-        }
-        const verdict = this.decideFromSearch(outcome, text, column);
-        if (verdict.decided !== undefined) {
-          engine.clipboard.applyResolution(request.id, new Map([[text, verdict.decided]]));
-          return;
-        }
-        if (outcome === 'failed' && column.resolveLabels === undefined) {
-          // The search FAILED and there is no identity authority to ask
-          // instead — so nothing ever examined this text. Left to
-          // `runResolutions`, the unanswered label would default to the
-          // definitive `notFound` ("there is no Alice"), which is a verdict
-          // no one reached; a dropped round trip is retryable and must say
-          // so, exactly as a REJECTED resolver does.
-          engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
-          return;
-        }
-        // The search could not settle it. The SAME request carries on to
-        // the column's resolver — same pending mark, same sequence token,
-        // same open history entry — carrying whatever the search DID
-        // conclude as the fallback, for a resolver that cannot name it
-        // either.
-        this.runResolutions([request], verdict.fallback);
-      })
-      .catch(() => {
-        // A consumer accessor threw inside the decision. The request must
-        // still be answered: an unanswered one leaves the cell pending
-        // forever inside a history entry that never finalizes.
-        this.engine.clipboard.applyResolution(request.id, new Map(), { failed: true });
-      });
   }
 
   /**
-   * What the editor's own search says about the committed text.
-   *
-   * The two facilities answer different questions. `search` asks "what
-   * matches this query?" — ranked, capped, typically scoped to what a user
-   * may pick today. `resolvePastedLabels` asks "which entity IS this
-   * label?" — an identity lookup that may reach codes, aliases, or records
-   * the type-ahead never offers. So the search is authoritative about
-   * MULTIPLICITY and the resolver about IDENTITY OF SOMETHING THE SEARCH
-   * CANNOT SEE. Three answers:
-   *
-   * The line between the two verdicts is whether the search's answer is an
-   * IDENTITY fact or only a ranking one:
-   *
-   * - `decided` — the text names exactly one entity, or names several BY
-   *   LABEL. Both are identity facts the resolver cannot improve on, so it
-   *   is not consulted at all.
-   * - `fallback` — the search matched several rows and the text is none of
-   *   their labels. That is a dead end for the search and still an open
-   *   identity question: a consumer type-ahead that matches codes as well
-   *   as names returns several rows for a code, and that code is exactly
-   *   what the resolver knows. So the resolver is asked, and this verdict
-   *   is used only if it cannot name the text either — which is what keeps
-   *   the better message ("'Al' matches more than one Agent" is true and
-   *   useful; "no match for 'Al'" is neither).
-   *
-   * A TRUNCATED result set (`hasMore`) can be trusted about what it
-   * contains and never about what it does not: the duplicate that would
-   * make a lone exact match ambiguous may be sitting past the cap.
+   * Cancels the open session without writing the model (see
+   * `ɵTmGridEditing.cancel`); before the editing code arrives, the draft
+   * goes with it.
    */
-  private decideFromSearch(
-    outcome: AdoptedResult,
-    text: string,
-    column: ColumnInternal<T>,
-  ): {
-    readonly decided?: TmLabelResolution<unknown>;
-    readonly fallback?: TmLabelResolution<unknown>;
-  } {
-    if (outcome === 'failed' || outcome.items.length === 0) {
-      return {};
-    }
-    const itemId = column.entityItemId;
-    const itemLabel = column.entityItemLabel;
-    if (itemId === undefined || itemLabel === undefined) {
-      return {}; // half-configured column: the editor never mounts, but stay honest
-    }
-    const items = outcome.items;
-    const exact = items.filter((item: unknown) => itemLabel(item as never) === text);
-    if (exact.length > 1) {
-      // Two entities carry this exact label. Rows past a cap could only
-      // agree, and no identity lookup can undo it.
-      return { decided: { error: 'ambiguous' } };
-    }
-    if (!outcome.hasMore && (exact.length === 1 || items.length === 1)) {
-      return { decided: { value: itemId((exact[0] ?? items[0]) as never) } };
-    }
-    return { fallback: { error: 'ambiguous' } };
-  }
-
-  /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */
   private cancelEditor(opts: { refocus: boolean }): void {
-    this.editorSession.current()?.editor.cancel();
-    this.engine.edit.cancel();
-    this.closeEditor(opts);
-  }
-
-  private closeEditor(opts: { refocus: boolean }): void {
-    this.editorSession.destroy();
+    if (this.editing !== null) {
+      this.editing.cancel(opts);
+      return;
+    }
+    if (untracked(this.draft) !== null) {
+      this.closeDraft();
+      this.engine.edit.cancel();
+    }
     if (opts.refocus) {
-      // Synchronously, so focus never falls to <body> (a body-focus frame
-      // would look like a grid blur to outside observers) — then again
-      // after render, when the move (if any) re-targets the active cell.
-      this.activeCellElement()?.focus({ preventScroll: true });
       this.requestFocusActive();
     }
   }
@@ -4402,7 +4375,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : null;
   }
 
-  private activeCellElement(): HTMLElement | null {
+  /** The active cell's element, or `null` when none is active or rendered. */
+  activeCellElement(): HTMLElement | null {
     const scroller = untracked(this.scrollerSignal);
     const active = untracked(() => this.engine.nav.activeCell());
     if (scroller === null || active === null) {
@@ -4411,7 +4385,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     return scroller.querySelector<HTMLElement>(cellSelector(active));
   }
 
-  private requestFocusActive(): void {
+  /** Focuses the active cell: now when it is rendered, and again after render. */
+  requestFocusActive(): void {
     this.pendingGestureFocus = true;
     this.focusRequest.update((value) => value + 1);
     // Land focus SYNCHRONOUSLY when the active cell is already rendered — a
@@ -4421,15 +4396,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // shortcut) fired right after the gesture would reach an unfocused grid
     // and be dropped. A move to a not-yet-rendered cell (paging past the
     // window) leaves the element null and falls through to that effect, which
-    // also owns DOM-move focus reclaim. Skipped while escaped or an editor
-    // owns focus — the effect resolves those; this only ever brings focus
-    // forward in time, never changes which cell it lands on.
-    if (untracked(this.escapedSignal) || untracked(() => this.engine.edit.session()) !== null) {
+    // also owns DOM-move focus reclaim. Skipped while escaped or while an
+    // editor or a draft owns focus — the effect resolves those; this only
+    // ever brings focus forward in time, never changes which cell it lands on.
+    if (
+      untracked(this.escapedSignal) ||
+      (this.editing?.current() ?? null) !== null ||
+      untracked(this.draft) !== null
+    ) {
       return;
     }
     this.activeCellElement()?.focus({ preventScroll: true });
   }
 
+  /** Scrolls the active cell into view after the next render. */
   private requestReveal(): void {
     this.revealRequest.update((value) => value + 1);
   }
@@ -4439,7 +4419,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * math (accounting for the sticky header band), horizontal from rects
    * (proportional columns resolve in CSS, and rect deltas are direction-safe).
    */
-  private revealActiveCell(): void {
+  revealActiveCell(): void {
     const scroller = untracked(this.scrollerSignal);
     const active = untracked(() => this.engine.nav.activeCell());
     if (scroller === null || active === null) {
@@ -5022,6 +5002,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       { injector },
     );
 
+    // The editing code preloads once the grid is editable, when the browser
+    // is next idle, ahead of the first keystroke; a readonly grid never asks
+    // for it.
+    effect(
+      () => {
+        if (this.editable()) {
+          untracked(() => this.preloadEditing());
+        }
+      },
+      { injector },
+    );
+
     // Mode flip (§5.1): editable → readonly never mutates data. The open
     // editor CANCELS (a flip usually follows Save/Cancel — a mode change
     // must not write as a side effect), a pending cut clears, in-flight
@@ -5195,11 +5187,20 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
           if (!shouldFocus) {
             return;
           }
-          if (untracked(() => this.engine.edit.session()) !== null) {
+          const editor = this.editing?.current()?.editor;
+          if (editor !== undefined) {
             // An open editor owns focus. Only reclaim after a DOM-move drop
             // — and into the EDITOR, never the cell under it.
             if (droppedByDomMove) {
-              this.editorSession.current()?.editor.focus();
+              editor.focus();
+            }
+            return;
+          }
+          // A draft's input owns focus the same way.
+          const draftInput = untracked(this.draft) === null ? null : this.draftInput;
+          if (draftInput !== null) {
+            if (droppedByDomMove) {
+              draftInput.focus({ preventScroll: true });
             }
             return;
           }
@@ -5444,7 +5445,15 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       clearTimeout(this.findDebounceTimer);
       this.findDebounceTimer = null;
     }
-    this.editorSession.destroy();
+    // The editing code's load and its preload end here, with no report.
+    this.endLoad?.();
+    this.cancelPreload?.();
+    this.cancelPreload = null;
+    this.arrivedCode = null;
+    this.deferredLabels = [];
+    this.draft.set(null);
+    this.draftInput = null;
+    this.editing?.destroy();
     if (this.handle !== null) {
       this.persistWidths();
       this.persistContentState();

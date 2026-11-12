@@ -34,6 +34,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
+| `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
 | `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |

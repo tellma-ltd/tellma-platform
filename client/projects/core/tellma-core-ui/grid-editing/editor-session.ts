@@ -29,7 +29,6 @@ import type {
   TmEntitySearchFn,
 } from '@tellma/core-ui/entity-picker';
 
-import type { TmGridEditorContext } from '../tm-grid-templates';
 import {
   ɵTmGridDateEditor,
   ɵTmGridEntityEditor,
@@ -37,6 +36,18 @@ import {
   ɵTmGridNumberEditor,
   ɵTmGridTextEditor,
 } from './editors';
+
+/**
+ * The context a consumer `*tmGridEditor` template renders with: the cell's
+ * value when the editor opened and the row. Declared here by shape, so this
+ * entry point never imports the grid it serves.
+ */
+export interface ɵTmGridEditorTemplateContext {
+  /** The cell's value when the editor opened. */
+  readonly $implicit: unknown;
+  /** The row being edited (`undefined` on the new-row placeholder). */
+  readonly row: unknown;
+}
 
 /** Which editor source a mount resolved to. */
 export type ɵTmGridEditorKind = 'text' | 'number' | 'date' | 'enum' | 'entity' | 'template';
@@ -46,9 +57,9 @@ export type ɵTmGridEditorMountConfig =
   | {
       readonly kind: 'template';
       /** The consumer's `*tmGridEditor` template. */
-      readonly template: TemplateRef<TmGridEditorContext<unknown, unknown>>;
+      readonly template: TemplateRef<ɵTmGridEditorTemplateContext>;
       /** The template's context (value at open + row). */
-      readonly context: TmGridEditorContext<unknown, unknown>;
+      readonly context: ɵTmGridEditorTemplateContext;
     }
   | {
       readonly kind: 'text';
@@ -134,27 +145,32 @@ export interface ɵTmGridMountedEditor {
 /**
  * Mount/teardown of the single live editor view. The outlet is the
  * `ng-container` the shared view template renders inside the editing
- * cell's `[data-tm-editor]` container; the composition root forces that
- * outlet into existence synchronously (see its `openEditor`) and then asks
- * this class to mount into it.
+ * cell's `[data-tm-editor]` container; the editing controller forces that
+ * outlet into existence synchronously (see its `mount`) and then asks this
+ * class to mount into it.
  */
 export class ɵTmGridEditorSession {
-  private outlet: ViewContainerRef | null = null;
+  /** The staged mount, waiting for its outlet; `null` when none is staged. */
   private pending: ɵTmGridEditorMountConfig | null = null;
+  /** The mounted editor, or `null` while nothing is live. */
   private mounted: ɵTmGridMountedEditor | null = null;
+  /** Destroys the mounted view, or `null` while nothing is live. */
   private destroyView: (() => void) | null = null;
+  /** The mounted dropdown editor's activation subscription, if any. */
   private activationSub: OutputRefSubscription | null = null;
 
-  constructor(private readonly injector: Injector) {}
+  /**
+   * @param injector The grid's injector, parent of each cell-scoped one.
+   * @param outlet Reads the editing cell's outlet, or `null` while none renders.
+   */
+  constructor(
+    private readonly injector: Injector,
+    private readonly outlet: () => ViewContainerRef | null,
+  ) {}
 
   /** The mounted editor, or `null` while nothing is live. */
   current(): ɵTmGridMountedEditor | null {
     return this.mounted;
-  }
-
-  /** The shared view hands the editing cell's outlet over (or `null`). */
-  attachOutlet(outlet: ViewContainerRef | null): void {
-    this.outlet = outlet;
   }
 
   /** Stages the next mount; `mountIfReady` performs it once the outlet exists. */
@@ -173,7 +189,7 @@ export class ɵTmGridEditorSession {
    */
   mountIfReady(): ɵTmGridMountedEditor | null {
     const config = this.pending;
-    const outlet = this.outlet;
+    const outlet = this.outlet();
     if (config === null || outlet === null) {
       return this.mounted;
     }
@@ -197,7 +213,7 @@ export class ɵTmGridEditorSession {
     let adoptSearch: ɵTmGridMountedEditor['adoptSearch'];
 
     if (config.kind === 'template') {
-      const view: EmbeddedViewRef<TmGridEditorContext<unknown, unknown>> =
+      const view: EmbeddedViewRef<ɵTmGridEditorTemplateContext> =
         outlet.createEmbeddedView(config.template, config.context, { injector: cellInjector });
       view.detectChanges();
       this.destroyView = () => view.destroy();

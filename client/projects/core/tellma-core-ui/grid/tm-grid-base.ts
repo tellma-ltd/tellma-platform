@@ -176,10 +176,19 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
   /**
    * Count of distinct cells in error state: held invalid inputs plus the
    * bound field's validation-errored cells. Consumers gate Save buttons on
-   * it.
+   * it together with {@link TmGridBase.pendingCount}: a cell still awaiting
+   * resolution counts in neither error nor value yet, so a Save must also
+   * wait for `pendingCount` to reach 0.
    */
   readonly errorCount: Signal<number>;
-  /** Count of cells awaiting async paste resolutions. */
+  /**
+   * Count of cells awaiting an asynchronous resolution: pasted labels, typed
+   * entity commits waiting on the column's search or resolver, and entity
+   * text typed while the grid's editing code is still loading. Until such a
+   * cell settles, its model value is not yet written, so a Save must wait
+   * for this count to reach 0 as well as for
+   * {@link TmGridBase.errorCount} to be 0.
+   */
   readonly pendingCount: Signal<number>;
   /** The scroll container's element id — what a driver's `aria-controls` names. */
   readonly controlsId: Signal<string>;
