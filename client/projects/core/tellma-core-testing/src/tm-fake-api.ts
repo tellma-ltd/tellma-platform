@@ -10,6 +10,7 @@ import {
   type TmBlobDescriptor,
   type TmDownload,
   type TmDownloadOptions,
+  type TmFetchBlobOptions,
   type TmReadOptions,
   type TmSendOptions,
   type TmUploadOptions,
@@ -17,15 +18,15 @@ import {
 } from '@tellma/core';
 
 /** What kind of call a {@link TmFakeApi} recorded. */
-export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'send';
+export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'fetch-blob' | 'send';
 
 /** One call a {@link TmFakeApi} received. */
 export interface TmFakeApiCall {
   /** What kind of call it was. */
   readonly kind: TmFakeApiCallKind;
-  /** The route; an upload's is `blobs/<kind>`. */
+  /** The route; an upload's is `blobs/<kind>`, and a blob fetch's is its URL. */
   readonly route: string;
-  /** The body; an upload's is the file. */
+  /** The body; an upload's is the file, and a blob fetch has none. */
   readonly body: unknown;
   /** The options the call received, or an empty object. */
   readonly options: object;
@@ -41,7 +42,9 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
  * A {@link TmApi} that answers from a script and records every call, so a
  * test runs a page or a service with no server. A route with no answer
  * rejects with an error naming it; an aborted read, download or upload
- * rejects as the real layer does, with a `cancelled` `TmApiError`.
+ * rejects as the real layer does, with a `cancelled` `TmApiError`, and an
+ * aborted blob fetch with its signal's reason. With `provideTellma`, the
+ * images `tm-image` fetches are scripted by URL, such as `/17/blobs/51`.
  *
  * @example
  * ```ts
@@ -77,7 +80,7 @@ export class TmFakeApi extends TmApi {
    * any other value is the answer of every call. A later script replaces an
    * earlier one.
    *
-   * @param route - The route, such as `centers/query`; an upload's is `blobs/<kind>`.
+   * @param route - The route, such as `centers/query`; an upload's is `blobs/<kind>`, and a blob fetch's is its URL.
    * @param answer - The answer, or the function that answers.
    */
   respond(route: string, answer: unknown): void {
@@ -130,6 +133,15 @@ export class TmFakeApi extends TmApi {
   /** Records the upload and answers it from the script under `blobs/<kind>`. */
   override upload(kind: string, file: Blob, options: TmUploadOptions): Promise<TmBlobDescriptor> {
     return this.#answer({ kind: 'upload', route: `blobs/${kind}`, body: file, options }, options.signal) as Promise<TmBlobDescriptor>;
+  }
+
+  /** Records the blob fetch and answers it from the script under its URL. */
+  override fetchBlob(url: string, options: TmFetchBlobOptions = {}): ReturnType<TmApi['fetchBlob']> {
+    const signal = options.signal ?? null;
+    return this.#answer({ kind: 'fetch-blob', route: url, body: undefined, options }, signal).catch((error: unknown) => {
+      // As the real layer does, an aborted fetch rejects with its signal's reason.
+      throw signal?.aborted === true ? (signal.reason as unknown) : error;
+    }) as ReturnType<TmApi['fetchBlob']>;
   }
 
   /** Records the send; its answer is never read, so it needs no script. */

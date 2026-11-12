@@ -36,6 +36,7 @@ export {
   type TmBlobDescriptor,
   type TmDownload,
   type TmDownloadOptions,
+  type TmFetchBlobOptions,
   type TmReadOptions,
   type TmSendOptions,
   type TmUploadOptions,

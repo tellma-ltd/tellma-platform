@@ -64,6 +64,18 @@ describe('TmFakeApi', () => {
     expect(api.calls()[0]).toMatchObject({ kind: 'upload', route: 'blobs/customer-image', body: file });
   });
 
+  it('scripts blob fetches under their URL, rejecting an abort with its reason', async () => {
+    const result = { status: 304, blob: null, etag: '"v1"' };
+    api.respond('/17/blobs/51', result);
+    await expect(api.fetchBlob('/17/blobs/51', { ifNoneMatch: '"v1"' })).resolves.toBe(result);
+    expect(api.calls()[0]).toMatchObject({ kind: 'fetch-blob', route: '/17/blobs/51', options: { ifNoneMatch: '"v1"' } });
+    api.respond('/17/blobs/52', () => new Promise(() => undefined));
+    const controller = new AbortController();
+    const fetched = api.fetchBlob('/17/blobs/52', { signal: controller.signal });
+    controller.abort();
+    await expect(fetched).rejects.toBe(controller.signal.reason);
+  });
+
   it('counts the pending writes', async () => {
     let finish!: (value: unknown) => void;
     api.respond('centers/save', () => new Promise((resolve) => (finish = resolve)));

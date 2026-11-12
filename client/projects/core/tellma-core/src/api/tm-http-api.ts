@@ -5,7 +5,7 @@
 
 import { effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
+import type { TmBlobFetchResult } from '@tellma/core-ui/image';
 
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
@@ -21,6 +21,7 @@ import type {
   TmBlobDescriptor,
   TmDownload,
   TmDownloadOptions,
+  TmFetchBlobOptions,
   TmReadOptions,
   TmSendOptions,
   TmUploadOptions,
@@ -154,8 +155,10 @@ interface TmCall {
   readonly retried: boolean;
   /** Whether the request log records the call. */
   readonly logged: boolean;
-  /** Whether the user check runs around the call. */
+  /** Whether the user check runs before the call is sent. */
   readonly authenticated: boolean;
+  /** Whether the user check runs on the answer; never for the sign-out, whose answer clears the session. */
+  readonly checksAnswer: boolean;
   /** Whether the call is background work. */
   readonly background: boolean;
   /** The watchdog, in milliseconds. */
@@ -272,8 +275,10 @@ export class TmHttpApi implements TmApi {
   readonly #random = (array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => this.#host.random(array);
   // The calls a session leaving the tab aborts: reads, downloads, uploads and blob fetches.
   readonly #cancellable = new Set<AbortController>();
-  // The server builds already judged older once: a second verdict asks the worker (§5.6's rollback).
-  readonly #judgedOlder = new Set<string>();
+  // When each server build was first judged older. A verdict for that build
+  // within the first one's retry window is the same slot swap; a later one is
+  // §5.6's second verdict, as after a rollback, and asks the worker.
+  readonly #judgedOlder = new Map<string, number>();
   #contracts: TmContractIndex | null = null;
   #contractsLoad: Promise<TmContractIndex> | null = null;
   #client: string | null = null;
@@ -283,16 +288,6 @@ export class TmHttpApi implements TmApi {
 
   /** This tab's unsettled writes. */
   readonly writesInFlight: Signal<number> = this.#writes.asReadonly();
-
-  /**
-   * The blob fetcher of `tm-image`: a `GET` with `If-None-Match`, the user
-   * check at both ends and the caller's signal, never retried.
-   */
-  readonly blobFetcher: (url: string, options?: TmBlobFetchOptions & { readonly signal?: AbortSignal }) => Promise<TmBlobFetchResult> = (
-    url,
-    options,
-  ) =>
-    this.#cancellableCall(options?.signal ?? null, (cancel) => this.#fetchBlob(url, options?.ifNoneMatch, cancel));
 
   /** Aborts the tab's cancellable calls when the session leaves it: an expiry or a sign-out. */
   constructor() {
@@ -330,6 +325,20 @@ export class TmHttpApi implements TmApi {
   /** {@inheritDoc TmApi.upload} */
   upload(kind: string, file: Blob, options: TmUploadOptions): Promise<TmBlobDescriptor> {
     return this.#cancellableCall(options.signal, (cancel) => this.#upload(kind, file, options, cancel));
+  }
+
+  /** {@inheritDoc TmApi.fetchBlob} */
+  async fetchBlob(url: string, options: TmFetchBlobOptions = {}): Promise<TmBlobFetchResult> {
+    const signal = options.signal ?? null;
+    try {
+      return await this.#cancellableCall(signal, (cancel) => this.#fetchBlob(url, options.ifNoneMatch, cancel));
+    } catch (error) {
+      // The blob cache tells an abort from a failure by the signal's own reason (spec 0010 §D.6).
+      if (signal?.aborted === true) {
+        throw signal.reason;
+      }
+      throw error;
+    }
   }
 
   /** {@inheritDoc TmApi.send} */
@@ -493,6 +502,8 @@ export class TmHttpApi implements TmApi {
       retried: read && idempotent,
       logged: true,
       authenticated,
+      // The sign-out's answer clears the session, so the cookie is gone by design.
+      checksAnswer: authenticated && route !== LOGOUT_ROUTE,
       background: read && options.background === true,
       watchdogMs: options.long === true || contracts.long.has(key) ? LONG_WATCHDOG_MS : WATCHDOG_MS,
       cancel,
@@ -530,8 +541,10 @@ export class TmHttpApi implements TmApi {
       retried: false,
       logged: true,
       authenticated,
+      checksAnswer: authenticated,
       background: false,
-      watchdogMs: 0,
+      // Restarted at each progress event, so only a stalled upload or a lost answer ends it.
+      watchdogMs: WATCHDOG_MS,
       cancel,
       traceId,
       sh: this.#session.profile()?.sh,
@@ -563,6 +576,7 @@ export class TmHttpApi implements TmApi {
       // Images would crowd out the calls a support message quotes.
       logged: false,
       authenticated,
+      checksAnswer: authenticated,
       background: false,
       watchdogMs: WATCHDOG_MS,
       cancel,
@@ -768,6 +782,14 @@ export class TmHttpApi implements TmApi {
         result = { ok: false, error: new TmApiError({ kind: 'cancelled', traceId: call.traceId }), retry: null, build: result.build };
         break;
       }
+      // Step 1's gates run again before the retry is sent: during the wait the
+      // session may have left the tab, or another user may have signed in.
+      try {
+        this.#admit(call.route, 'read', call.cancel, call.traceId);
+      } catch (error) {
+        result = { ok: false, error: error as TmApiError, retry: null, build: result.build };
+        break;
+      }
     }
     handle?.end(this.#ending(result));
     if (result.ok) {
@@ -838,7 +860,19 @@ export class TmHttpApi implements TmApi {
     return new Promise((resolve) => {
       const xhr = this.#host.xhr();
       const abort = (): void => xhr.abort();
+      // The watchdog restarts at each progress event: a slow upload that keeps
+      // sending is alive, while a stalled one, or a lost answer, ends.
+      let timedOut = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const rearm = (): void => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          timedOut = true;
+          xhr.abort();
+        }, call.watchdogMs);
+      };
       const settle = (attempt: Promise<TmAttempt<TmBlobDescriptor>> | TmAttempt<TmBlobDescriptor>): void => {
+        clearTimeout(timer);
         call.cancel?.removeEventListener('abort', abort);
         resolve(attempt);
       };
@@ -849,6 +883,7 @@ export class TmHttpApi implements TmApi {
         xhr.setRequestHeader(name, value);
       }
       xhr.upload.onprogress = (event): void => {
+        rearm();
         if (event.lengthComputable && event.total > 0) {
           onProgress?.(event.loaded / event.total);
         }
@@ -861,8 +896,9 @@ export class TmHttpApi implements TmApi {
         );
       };
       xhr.onerror = (): void => settle(this.#unanswered(call, false));
-      xhr.onabort = (): void => settle(this.#unanswered(call, false));
+      xhr.onabort = (): void => settle(this.#unanswered(call, timedOut));
       call.cancel?.addEventListener('abort', abort, { once: true });
+      rearm();
       xhr.send(file);
     });
   }
@@ -916,7 +952,7 @@ export class TmHttpApi implements TmApi {
     const traceId = answer.header('Tellma-Trace-Id') || call.traceId;
 
     // --- Step 4: the response check; another user's answer is discarded ---
-    if (call.authenticated) {
+    if (call.checksAnswer) {
       try {
         this.#check(traceId);
       } catch (error) {
@@ -980,6 +1016,13 @@ export class TmHttpApi implements TmApi {
         code = 'unexpected-response';
       }
     }
+    // A 401 for a session the cookie no longer names (the same user signed in
+    // again elsewhere) ends nothing: the session is fine, so the call is cancelled.
+    const current = this.#session.profile()?.sh;
+    const replaced = call.sh !== undefined && current !== undefined && current !== call.sh;
+    if (kind === 'unauthenticated' && call.authenticated && replaced) {
+      kind = 'cancelled';
+    }
     const error = new TmApiError({
       kind,
       status,
@@ -1035,18 +1078,36 @@ export class TmHttpApi implements TmApi {
       source = 'build';
       // So an old tab whose only calls are background syncs still learns of the update.
       this.#updates.check().catch(() => undefined);
-    } else if (order === -1 && build !== null && !this.#judgedOlder.has(build)) {
-      this.#judgedOlder.add(build);
+    } else if (order === -1 && build !== null && this.#firstOlderVerdict(build)) {
       verdict = 'server-outdated';
       source = 'build';
     } else {
-      // Unordered builds, or a second older verdict for the same build (a
-      // rollback): the worker decides, and only a confirmed `none` blames the server.
+      // Unordered builds, or a second older verdict for the same build past
+      // the first one's retry window (a rollback): the worker decides, and
+      // only a confirmed `none` blames the server.
       verdict = (await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated';
       source = 'worker';
     }
     this.#telemetry.event('tm.api.client-outdated', { verdict, source });
     return { kind: 'client-outdated', code: verdict };
+  }
+
+  /**
+   * Whether an older server build's verdict counts as its first: the first
+   * verdict for the build, or one within the first one's retry window, which
+   * the same slot swap answered.
+   *
+   * @param build - The older server build.
+   * @returns `true` for a first verdict, `false` for a second one.
+   */
+  #firstOlderVerdict(build: string): boolean {
+    const now = this.#now();
+    const first = this.#judgedOlder.get(build);
+    if (first === undefined) {
+      this.#judgedOlder.set(build, now);
+      return true;
+    }
+    return now - first < SERVER_OUTDATED_WAIT_MS;
   }
 
   /**

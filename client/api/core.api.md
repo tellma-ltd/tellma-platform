@@ -59,6 +59,7 @@ export interface TmActionMetadata {
 // @public
 export abstract class TmApi {
     abstract download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
+    abstract fetchBlob(url: string, options?: TmFetchBlobOptions): Promise<TmBlobFetchResult>;
     abstract fingerprint(route: string): Promise<string | null>;
     abstract readonly online: Signal<boolean>;
     abstract read<T>(route: string, body: unknown, options: TmReadOptions): Promise<T>;
@@ -506,6 +507,11 @@ export interface TmFeatureDefinition {
 export interface TmFeatureMetadata {
     readonly key: string;
     readonly version: string;
+}
+
+// @public
+export interface TmFetchBlobOptions extends TmBlobFetchOptions {
+    readonly signal?: AbortSignal;
 }
 
 // @public

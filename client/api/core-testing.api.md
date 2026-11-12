@@ -15,6 +15,7 @@ export function provideTellmaTesting(): EnvironmentProviders;
 export class TmFakeApi extends TmApi {
     readonly calls: Signal<readonly TmFakeApiCall[]>;
     download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
+    fetchBlob(url: string, options?: TmFetchBlobOptions): ReturnType<TmApi['fetchBlob']>;
     fingerprint(route: string): Promise<string | null>;
     readonly online: Signal<boolean>;
     read<T>(route: string, body: unknown, options: TmReadOptions): Promise<T>;
@@ -38,7 +39,7 @@ export interface TmFakeApiCall {
 }
 
 // @public
-export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'send';
+export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'fetch-blob' | 'send';
 
 // @public
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;

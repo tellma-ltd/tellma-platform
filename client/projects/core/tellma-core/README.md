@@ -87,18 +87,22 @@ leading `/` is tenantless and sent as is. A tenant route with no tenant throws i
 - **Writes** are never aborted or retried, a write while the browser is offline is not sent, and
   `writesInFlight` counts the unsettled ones.
 - **`download`** streams the body, reporting bytes; **`upload`** posts the raw file to
-  `/{t}/blobs/{kind}`; **`send`** is a keepalive `POST` of at most 16 KB whose answer is never read;
+  `/{t}/blobs/{kind}`; **`fetchBlob`** fetches an image's bytes for `tm-image`, revalidating with
+  `If-None-Match`; **`send`** is a keepalive `POST` of at most 16 KB whose answer is never read;
   **`fingerprint`** names a route's contract fingerprint for drafts.
 - **Every call** carries `Tellma-Client`, `Accept-Language` and a fresh `traceparent`; tenant calls
   add `Tellma-Calendar` and, for described routes, `Tellma-Contract`. Reads may add
   `Tellma-Activity: background` and `Tellma-Priority: low`, writes `Tellma-Confirm`.
 - **Around every call** the profile cookie is checked before the send and again on the answer:
   no session runs the expiry path and rejects `unauthenticated`; another user runs the
-  changed-user path and rejects `cancelled`, discarding the answer. A `401` for a session the
-  cookie no longer names ends nothing. While the tab signs out, only the sign-out write and
-  sends go out, and the reads in flight are aborted.
+  changed-user path and rejects `cancelled`, discarding the answer. The sign-out's answer, which
+  clears the cookie, is not checked, and a retry is checked again before it is sent. A `401` for a
+  session the cookie no longer names ends nothing and rejects `cancelled`. Once the session leaves
+  the tab (an expiry or a sign-out) only the sign-out write and sends go out, and the reads,
+  downloads, uploads and blob fetches in flight are aborted.
 - **A watchdog** ends a call that hangs for 60 s, or 6 min for a long route, as `offline`
-  (`outcome-unknown`); a download's watchdog restarts at each chunk.
+  (`outcome-unknown`); a download's watchdog restarts at each chunk, an upload's at each progress
+  event.
 - **Every refusal** is a `TmApiError` whose `kind` says how the platform presents it, whose `code`
   names the cause and whose `traceId` is the reference support quotes. A `412 client-outdated` or a
   `404 route-not-found` is judged by comparing the server's `Tellma-Build` with the UI version by
@@ -106,8 +110,9 @@ leading `/` is tenantless and sent as is. A tenant route with no tenant throws i
 - **`online`** is false while the browser is offline or after a network failure; a visible tab then
   probes `GET /health/live` every 5 s, backing off to 30 s, until any answer.
 
-`provideTellma` puts `tm-image`'s blob fetcher over the same layer, so an image request gets the
-user check, the session's headers and the caller's signal.
+`provideTellma` points `tm-image`'s blob fetcher at `TmApi.fetchBlob`, so an image request gets the
+user check, the session's headers and the caller's signal, whose reason an aborted fetch rejects
+with; under `provideTellmaTesting()`, `TmFakeApi` answers it.
 
 ## Features and the merge rule
 

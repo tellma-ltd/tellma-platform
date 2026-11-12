@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { inject, Injectable, type Signal } from '@angular/core';
+import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
 
 import type { TmDecimal } from '../json/tm-json';
 import { TmHttpApi } from './tm-http-api';
@@ -62,6 +63,12 @@ export interface TmUploadOptions {
 export interface TmSendOptions {
   /** Marks the send as background work, which renews no session. */
   readonly background?: boolean;
+}
+
+/** Options of a blob fetch: `tm-image`'s, and the signal that aborts it. */
+export interface TmFetchBlobOptions extends TmBlobFetchOptions {
+  /** Aborts the fetch; the fetch then rejects with the signal's reason. */
+  readonly signal?: AbortSignal;
 }
 
 /** A downloaded file. */
@@ -161,6 +168,17 @@ export abstract class TmApi {
    * @returns The staged blob, which a record save attaches by its id.
    */
   abstract upload(kind: string, file: Blob, options: TmUploadOptions): Promise<TmBlobDescriptor>;
+
+  /**
+   * Fetches the bytes of an image or another blob for `tm-image`, whose
+   * `TM_BLOB_FETCHER` `provideTellma` points here. A `GET`, revalidated with
+   * `If-None-Match`, never retried, and kept out of the request log.
+   *
+   * @param url - The blob's URL, such as `/17/blobs/51?size=64`.
+   * @param options - The held ETag, and the signal that aborts the fetch.
+   * @returns The status (`304` when the held copy is current), the bytes and the ETag.
+   */
+  abstract fetchBlob(url: string, options?: TmFetchBlobOptions): Promise<TmBlobFetchResult>;
 
   /**
    * Sends a small body that outlives the page and whose answer is never read,

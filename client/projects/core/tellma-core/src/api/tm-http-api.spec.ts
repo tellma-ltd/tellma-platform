@@ -7,9 +7,10 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { TM_BLOB_FETCHER } from '@tellma/core-ui/image';
-import { tmTestMetadata } from '@tellma/core-testing';
+import { provideTellmaTesting, TmFakeApi, tmTestMetadata } from '@tellma/core-testing';
 
 import { provideTellma } from '../app/provide-tellma';
+import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
 import { TM_CLIENT_METADATA, type TmContracts } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
@@ -99,6 +100,8 @@ async function setUp(options: { url?: string } = {}): Promise<TmRig> {
   TestBed.configureTestingModule({
     providers: [
       ...tmSessionTestingProviders(sessionHost, null, NOW),
+      // The clock follows the faked timers, so waits move it.
+      { provide: TM_NOW, useValue: () => Date.now() },
       { provide: TmTelemetry, useClass: TmRecordingApiTelemetry },
       { provide: TmRequestLog, useClass: TmRecordingRequestLog },
       provideRouter([{ path: '**', component: TmPage }]),
@@ -112,6 +115,7 @@ async function setUp(options: { url?: string } = {}): Promise<TmRig> {
   });
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  vi.setSystemTime(NOW);
   return {
     host,
     sessionHost,
@@ -356,10 +360,10 @@ describe('TmHttpApi', () => {
       expect(rig.sessionHost.reloads).toBe(1);
     });
 
-    it('skips anonymous routes', async () => {
+    it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
       const rig = await setUp();
       rig.sessionHost.cookieJar = '';
-      const read = track(rig.api.read('/api/distribution-info', undefined, { ...signal(), method: 'GET' }));
+      const read = track(rig.api.read(route, undefined, { ...signal(), method: 'GET' }));
       await flush();
       rig.host.last().answer(tmAnswer(200, { slug: 'acme' }));
       await flush();
@@ -377,7 +381,7 @@ describe('TmHttpApi', () => {
       expect(rig.sessionHost.reloads).toBe(1);
     });
 
-    it('ignores a 401 for a session the cookie no longer names', async () => {
+    it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {
       const rig = await setUp();
       const read = track(rig.api.read('centers/query', {}, signal()));
       await flush();
@@ -386,7 +390,7 @@ describe('TmHttpApi', () => {
       rig.sessionHost.cookieJar = `tellma.profile=${tmProfileCookieValue(renewed)}`;
       rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
       await flush();
-      expect(read.error).toMatchObject({ kind: 'unauthenticated' });
+      expect(read.error).toMatchObject({ kind: 'cancelled', status: 401 });
       expect(rig.sessionHost.reloads).toBe(0);
       expect(rig.paths.state()).toBe('active');
     });
@@ -632,7 +636,7 @@ describe('TmHttpApi', () => {
       expect(rig.host.requests).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(rig.host.requests).toHaveLength(2);
-      rig.host.last().answer(tmProblemAnswer(503, 'maintenance', { 'Retry-After': new Date(NOW + 5_000).toUTCString() }));
+      rig.host.last().answer(tmProblemAnswer(503, 'maintenance', { 'Retry-After': new Date(Date.now() + 5_000).toUTCString() }));
       await vi.advanceTimersByTimeAsync(4_999);
       expect(rig.host.requests).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(1);
@@ -666,6 +670,36 @@ describe('TmHttpApi', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       expect(rig.host.requests).toHaveLength(1);
       expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
+    });
+
+    it('checks the user again before a retry is sent', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      rig.host.last().answer(tmProblemAnswer(503, 'maintenance', { 'Retry-After': '5' }));
+      await flush();
+      // Another user signs in elsewhere during the wait.
+      rig.sessionHost.cookieJar = tmProfileCookies(SARA);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await flush();
+      expect(rig.host.requests).toHaveLength(1);
+      expect(read.error).toMatchObject({ kind: 'cancelled' });
+      expect(rig.sessionHost.replaced).toEqual(['/']);
+      expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
+    });
+
+    it('runs the expiry path instead of a retry when the session ends during the wait', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      rig.host.last().answer(tmProblemAnswer(429, 'rate-limited', { 'Retry-After': '2' }));
+      await flush();
+      rig.sessionHost.cookieJar = '';
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flush();
+      expect(rig.host.requests).toHaveLength(1);
+      expect(read.error).toMatchObject({ kind: 'unauthenticated' });
+      expect(rig.paths.state()).toBe('expired');
     });
 
     it('never retries a write', async () => {
@@ -758,10 +792,11 @@ describe('TmHttpApi', () => {
       expect(verdicts(rig)).toEqual([]);
     });
 
-    it('asks the worker at the second older verdict for the same build, as after a rollback', async () => {
+    it('asks the worker at a second older verdict for the same build past the retry window, as after a rollback', async () => {
       const rig = await setUp();
       rig.updates.answer = 'ready';
       expect((await verdictOf(rig, '0.9.0')).error).toMatchObject({ code: 'server-outdated' });
+      await vi.advanceTimersByTimeAsync(30_000);
       expect((await verdictOf(rig, '0.9.0')).error).toMatchObject({ code: 'client-outdated' });
       rig.updates.answer = 'none';
       expect((await verdictOf(rig, '0.9.0')).error).toMatchObject({ code: 'server-outdated' });
@@ -770,6 +805,29 @@ describe('TmHttpApi', () => {
         { verdict: 'client-outdated', source: 'worker' },
         { verdict: 'server-outdated', source: 'worker' },
       ]);
+    });
+
+    it('judges the calls one slot swap answers at once as the same first verdict', async () => {
+      const rig = await setUp();
+      rig.updates.answer = 'ready';
+      const reads = [0, 1, 2].map(() => track(rig.api.read('centers/query', {}, signal())));
+      await flush();
+      expect(rig.host.requests).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(5_000);
+      for (const request of [...rig.host.requests]) {
+        request.answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '0.9.0' }));
+      }
+      await flush();
+      expect(rig.updates.checks).toBe(0);
+      expect(verdicts(rig)).toEqual(Array(3).fill({ verdict: 'server-outdated', source: 'build' }));
+      // Each read retries once, 30 s after its own verdict, and the swap has finished by then.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(rig.host.requests).toHaveLength(6);
+      for (const request of rig.host.requests.slice(3)) {
+        request.answer(tmAnswer(200, { ok: true }));
+      }
+      await flush();
+      expect(reads.map((read) => read.value)).toEqual(Array(3).fill({ ok: true }));
     });
 
     it('retries a read judged server-outdated once, after 30 s', async () => {
@@ -953,32 +1011,59 @@ describe('TmHttpApi', () => {
   });
 
   describe('the session leaving the tab', () => {
-    it('rejects new calls cancelled while signing out, except the sign-out and sends', async () => {
+    it.each(['signing-out', 'expired'] as const)('rejects new calls cancelled once %s, except the sign-out and sends', async (state) => {
       const rig = await setUp();
-      rig.paths.state.set('signing-out');
+      rig.paths.state.set(state);
       const read = track(rig.api.read('centers/query', {}, signal()));
       const write = track(rig.api.write('centers/save', {}));
+      const download = track(rig.api.download('centers/export', {}, signal()));
+      const upload = track(rig.api.upload('attachment', new Blob(['1']), { ...signal(), fileName: 'a.txt' }));
+      const blob = track(rig.api.fetchBlob('/17/blobs/51'));
       const logout = track(rig.api.write('/bff/logout', { scope: 'global' }));
       rig.api.send('/api/telemetry', { items: [] });
       await flush();
-      expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(write.error).toMatchObject({ kind: 'cancelled' });
+      for (const call of [read, write, download, upload, blob]) {
+        expect(call.error).toMatchObject({ kind: 'cancelled' });
+      }
+      expect(rig.host.uploads).toHaveLength(0);
       expect(rig.host.requests.map((request) => request.url)).toEqual(['/bff/logout', '/api/telemetry']);
       rig.host.requests[0].answer(tmAnswer(200, { redirectUrl: '/signout' }));
       await flush();
       expect(logout.value).toEqual({ redirectUrl: '/signout' });
     });
 
-    it('aborts the reads in flight', async () => {
+    it("delivers the sign-out's answer, which clears the session cookie", async () => {
+      const rig = await setUp();
+      rig.paths.state.set('signing-out');
+      const logout = track(rig.api.write('/bff/logout', { scope: 'global' }));
+      await flush();
+      // The server's answer deletes both cookies, the profile cookie included.
+      rig.sessionHost.cookieJar = '';
+      rig.host.last().answer(tmAnswer(200, { redirectUrl: '/signout' }));
+      await flush();
+      expect(logout.value).toEqual({ redirectUrl: '/signout' });
+      expect(rig.log.entries[0].end).toMatchObject({ outcome: 'ok', status: 200 });
+      expect(rig.paths.state()).toBe('signing-out');
+      expect(rig.sessionHost.reloads).toBe(0);
+    });
+
+    it.each(['signing-out', 'expired'] as const)('aborts the reads, downloads, uploads and blob fetches in flight once %s', async (state) => {
       const rig = await setUp();
       const read = track(rig.api.read('centers/query', {}, signal()));
+      const download = track(rig.api.download('centers/export', {}, signal()));
+      const blob = track(rig.api.fetchBlob('/17/blobs/51'));
       const write = track(rig.api.write('centers/save', {}));
+      const upload = track(rig.api.upload('attachment', new Blob(['1']), { ...signal(), fileName: 'a.txt' }));
       await flush();
-      rig.paths.state.set('signing-out');
+      expect(rig.host.requests).toHaveLength(4);
+      rig.paths.state.set(state);
       TestBed.tick();
       await flush();
-      expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(rig.host.requests[1].aborted).toBe(false);
+      for (const call of [read, download, blob, upload]) {
+        expect(call.error).toMatchObject({ kind: 'cancelled' });
+      }
+      expect(rig.host.uploads[0].aborted).toBe(true);
+      expect(rig.host.requests.find((request) => request.url.endsWith('centers/save'))?.aborted).toBe(false);
       expect(write.settled).toBe(false);
     });
   });
@@ -1111,6 +1196,25 @@ describe('TmHttpApi', () => {
       expect(rig.host.uploads).toHaveLength(1);
     });
 
+    it('ends an upload that stalls or whose answer is lost after 60 s, restarting at each progress event', async () => {
+      const rig = await setUp();
+      const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
+      await flush();
+      const xhr = rig.host.uploads[0];
+      for (let i = 1; i <= 3; i++) {
+        await vi.advanceTimersByTimeAsync(50_000);
+        xhr.progress(i * 2, 8);
+      }
+      // The whole file is sent; the answer never comes.
+      xhr.progress(8, 8);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(upload.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(xhr.aborted).toBe(true);
+      expect(upload.error).toMatchObject({ kind: 'offline', code: 'outcome-unknown' });
+      expect(rig.host.uploads).toHaveLength(1);
+    });
+
     it('applies the user check on the answer', async () => {
       const rig = await setUp();
       const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
@@ -1166,21 +1270,32 @@ describe('TmHttpApi', () => {
   });
 
   describe('the blob fetcher', () => {
-    it('is provided by provideTellma over the layer', async () => {
-      await setUp();
-      TestBed.resetTestingModule();
+    /** The providers of an app whose metadata is never loaded. */
+    const app = (): ReturnType<typeof provideTellma> => {
       const unused = (): Promise<never> => Promise.reject(new Error('unused'));
-      TestBed.configureTestingModule({
-        providers: [
-          provideTellma({ metadata: { core: unused, entities: unused, contracts: unused, strings: {} }, languages: [], features: [] }),
-        ],
-      });
-      expect(TestBed.inject(TM_BLOB_FETCHER)).toBe(TestBed.inject(TmHttpApi).blobFetcher);
+      return provideTellma({ metadata: { core: unused, entities: unused, contracts: unused, strings: {} }, languages: [], features: [] });
+    };
+
+    it('is provided by provideTellma over TmApi', async () => {
+      const options = { ifNoneMatch: '"v1"' };
+      const result = { status: 304, blob: null, etag: '"v1"' };
+      const fetchBlob = vi.fn(() => Promise.resolve(result));
+      TestBed.configureTestingModule({ providers: [app(), { provide: TmApi, useValue: { fetchBlob } }] });
+      await expect(TestBed.inject(TM_BLOB_FETCHER)('/17/blobs/51', options)).resolves.toBe(result);
+      expect(fetchBlob).toHaveBeenCalledWith('/17/blobs/51', options);
+    });
+
+    it('is answered by TmFakeApi under provideTellmaTesting', async () => {
+      TestBed.configureTestingModule({ providers: [app(), provideTellmaTesting()] });
+      const fake = TestBed.inject(TmFakeApi);
+      fake.respond('/17/blobs/51', { status: 200, blob: new Blob(['png']), etag: '"v3"' });
+      await expect(TestBed.inject(TM_BLOB_FETCHER)('/17/blobs/51')).resolves.toMatchObject({ status: 200, etag: '"v3"' });
+      expect(fake.calls()).toMatchObject([{ kind: 'fetch-blob', route: '/17/blobs/51' }]);
     });
 
     it('revalidates with If-None-Match and reports a 304 with no body', async () => {
       const rig = await setUp();
-      const fetched = track(rig.api.blobFetcher('/17/blobs/51?size=64', { ifNoneMatch: '"v1"' }));
+      const fetched = track(rig.api.fetchBlob('/17/blobs/51?size=64', { ifNoneMatch: '"v1"' }));
       await flush();
       const request = rig.host.last();
       expect(request.init.method).toBe('GET');
@@ -1194,7 +1309,7 @@ describe('TmHttpApi', () => {
 
     it('fetches the bytes of a 200', async () => {
       const rig = await setUp();
-      const fetched = track(rig.api.blobFetcher('/17/blobs/51'));
+      const fetched = track(rig.api.fetchBlob('/17/blobs/51'));
       await flush();
       rig.host.last().answer(new Response(new Blob(['png']), { status: 200, headers: { ETag: '"v2"' } }));
       await flush();
@@ -1204,12 +1319,13 @@ describe('TmHttpApi', () => {
     it("honours the caller's signal and never retries", async () => {
       const rig = await setUp();
       const controller = new AbortController();
-      const aborted = track(rig.api.blobFetcher('/17/blobs/51', { signal: controller.signal }));
+      const aborted = track(rig.api.fetchBlob('/17/blobs/51', { signal: controller.signal }));
       await flush();
       controller.abort();
       await flush();
-      expect(aborted.error).toMatchObject({ kind: 'cancelled' });
-      const failed = track(rig.api.blobFetcher('/17/blobs/52'));
+      expect(aborted.error).toBe(controller.signal.reason);
+      expect(rig.host.requests[0].aborted).toBe(true);
+      const failed = track(rig.api.fetchBlob('/17/blobs/52'));
       await flush();
       rig.host.last().fail();
       await vi.advanceTimersByTimeAsync(10_000);
@@ -1220,12 +1336,12 @@ describe('TmHttpApi', () => {
     it('applies the user check at both ends, and maps a refusal', async () => {
       const rig = await setUp();
       rig.sessionHost.cookieJar = tmProfileCookies(SARA);
-      const changed = track(rig.api.blobFetcher('/17/blobs/51'));
+      const changed = track(rig.api.fetchBlob('/17/blobs/51'));
       await flush();
       expect(changed.error).toMatchObject({ kind: 'cancelled' });
       expect(rig.host.requests).toHaveLength(0);
       rig.sessionHost.cookieJar = tmProfileCookies(FARAH, 'ar');
-      const missing = track(rig.api.blobFetcher('/17/blobs/51'));
+      const missing = track(rig.api.fetchBlob('/17/blobs/51'));
       await flush();
       rig.host.last().answer(tmProblemAnswer(404, 'not-found'));
       await flush();

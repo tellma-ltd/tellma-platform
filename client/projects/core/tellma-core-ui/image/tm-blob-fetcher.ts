@@ -3,8 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, InjectionToken } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { inject, InjectionToken, Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 /** One fetched blob response, as {@link TmBlobFetcher} reports it. */
@@ -32,14 +31,22 @@ export type TmBlobFetcher = (url: string, options?: TmBlobFetchOptions) => Promi
 /**
  * The blob-fetching seam of `tm-image`. The default implementation rides
  * `HttpClient`, so the app's interceptors apply — auth headers (and later
- * BFF cookies) reach image requests without any component knowledge.
+ * BFF cookies) reach image requests without any component knowledge. It
+ * loads `@angular/common/http` at its first fetch, so an app that provides
+ * its own fetcher never ships it; an app on the default provides
+ * `HttpClient`, as `provideHttpClient()` does.
  * Provide a custom implementation to swap the transport wholesale.
  */
 export const TM_BLOB_FETCHER = new InjectionToken<TmBlobFetcher>('TM_BLOB_FETCHER', {
   providedIn: 'root',
   factory: (): TmBlobFetcher => {
-    const http = inject(HttpClient);
+    const injector = inject(Injector);
     return async (url, options) => {
+      // A dynamic import keeps HttpClient out of the eager bundle of every app
+      // that overrides this token: a static one would keep it there, since the
+      // bundler cannot tell that the factory never runs.
+      const { HttpClient, HttpErrorResponse, HttpHeaders } = await import('@angular/common/http');
+      const http = injector.get(HttpClient);
       let headers = new HttpHeaders();
       if (options?.ifNoneMatch !== undefined) {
         headers = headers.set('If-None-Match', options.ifNoneMatch);
