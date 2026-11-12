@@ -46,7 +46,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     }): void;
     clearHistory(): void;
     readonly columns: Signal<readonly TmGridColumn<any, any>[]>;
-    readonly contentKey: _angular_core.InputSignal<string | number | undefined>;
+    readonly contentKey: _angular_core.InputSignal<number | string | undefined>;
     readonly controlsId: Signal<string>;
     protected readonly core: ɵTmGridCore<T>;
     readonly data: _angular_core.InputSignal<readonly T[] | undefined>;
@@ -58,20 +58,20 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     readonly gridId: _angular_core.InputSignal<string>;
     readonly loading: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
-    moveActiveRow(by: number | 'first' | 'last'): void;
+    moveActiveRow(by: 'first' | 'last' | number): void;
     readonly newRow: _angular_core.InputSignal<((parent?: T) => T) | undefined>;
     readonly orderBy: _angular_core.ModelSignal<TmGridSort | null>;
     readonly pageStep: Signal<number>;
     readonly pendingCount: Signal<number>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowActivate: _angular_core.OutputEmitterRef<TmGridRowActivation<T>>;
-    readonly rowActivation: _angular_core.InputSignal<"row" | "none">;
+    readonly rowActivation: _angular_core.InputSignal<"none" | "row">;
     readonly rowClass: _angular_core.InputSignal<((row: T) => string | readonly string[] | null) | undefined>;
     readonly rowHeaders: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowId: _angular_core.InputSignal<(row: T) => TmRowId>;
     readonly searchable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly selectable: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    readonly selectedIds: _angular_core.ModelSignal<ReadonlySet<string | number>>;
+    readonly selectedIds: _angular_core.ModelSignal<ReadonlySet<number | string>>;
     readonly size: _angular_core.InputSignal<TmControlSize>;
     protected treeConfig(): ɵTmGridTreeConfig<T> | undefined;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridBase<any>, never, never, { "gridId": { "alias": "gridId"; "required": true; "isSignal": true; }; "contentKey": { "alias": "contentKey"; "required": false; "isSignal": true; }; "data": { "alias": "data"; "required": false; "isSignal": true; }; "field": { "alias": "field"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "newRow": { "alias": "newRow"; "required": false; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "searchable": { "alias": "searchable"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "extraMenuItems": { "alias": "extraMenuItems"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "rowActivation": { "alias": "rowActivation"; "required": false; "isSignal": true; }; "rowClass": { "alias": "rowClass"; "required": false; "isSignal": true; }; "rowHeaders": { "alias": "rowHeaders"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; "activeRowId": { "alias": "activeRowId"; "required": false; "isSignal": true; }; "orderBy": { "alias": "orderBy"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; "activeRowId": "activeRowIdChange"; "orderBy": "orderByChange"; "rowActivate": "rowActivate"; }, ["columns", "emptyDef", "loadingDef"], never, true, never>;
@@ -102,8 +102,8 @@ export class TmGridColumn<T = unknown, V = unknown> {
     readonly optionLabel: _angular_core.InputSignal<((option: never) => string) | undefined>;
     readonly options: _angular_core.InputSignal<readonly unknown[] | undefined>;
     readonly optionValue: _angular_core.InputSignal<((option: never) => V) | undefined>;
-    readonly parse: _angular_core.InputSignal<((text: string, ctx: TmParseContext) => V | TmParseError) | undefined>;
-    readonly readonly: _angular_core.InputSignalWithTransform<boolean | ((row: T) => boolean), string | boolean | ((row: T) => boolean)>;
+    readonly parse: _angular_core.InputSignal<((text: string, ctx: TmParseContext) => TmParseError | V) | undefined>;
+    readonly readonly: _angular_core.InputSignalWithTransform<boolean | ((row: T) => boolean), boolean | string | ((row: T) => boolean)>;
     readonly resolvePastedLabels: _angular_core.InputSignal<((labels: string[], ctx: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<V>>>) | undefined>;
     readonly search: _angular_core.InputSignal<TmEntitySearchFn<unknown> | undefined>;
     readonly sortable: _angular_core.InputSignalWithTransform<boolean, unknown>;
@@ -115,7 +115,7 @@ export class TmGridColumn<T = unknown, V = unknown> {
 }
 
 // @public
-export type TmGridColumnAlign = 'start' | 'end' | 'center' | 'left' | 'right';
+export type TmGridColumnAlign = 'center' | 'end' | 'left' | 'right' | 'start';
 
 // @public
 export interface TmGridContext {
@@ -156,7 +156,7 @@ export interface TmGridDriverTarget {
     readonly activeDescendantId: Signal<string | null>;
     readonly activeRowId: Signal<TmRowId | null>;
     readonly controlsId: Signal<string>;
-    moveActiveRow(by: number | 'first' | 'last'): void;
+    moveActiveRow(by: 'first' | 'last' | number): void;
     readonly pageStep: Signal<number>;
 }
 
@@ -212,7 +212,7 @@ export interface TmGridRowActivation<T> {
     readonly newTab: boolean;
     readonly row: T;
     readonly rowId: TmRowId;
-    readonly via: 'pointer' | 'keyboard';
+    readonly via: 'keyboard' | 'pointer';
 }
 
 // @public
@@ -224,21 +224,21 @@ export interface TmGridSort {
 // @public
 export class TmGridStateHandle {
     constructor(store: TmGridStateStore,
-    gridId: string, contentKeyValue: string | number | undefined, onRelease: () => void);
+    gridId: string, contentKeyValue: number | string | undefined, onRelease: () => void);
     clearHistory(): void;
-    get contentKey(): string | number | undefined;
+    get contentKey(): number | string | undefined;
     getContentState(): TmGridContentState | undefined;
     getWidths(): TmGridColumnWidths | undefined;
     readonly gridId: string;
     release(): void;
     setContentState(state: TmGridContentState): void;
     setWidths(widths: TmGridColumnWidths): void;
-    switchContent(contentKey: string | number | undefined): void;
+    switchContent(contentKey: number | string | undefined): void;
 }
 
 // @public
 export class TmGridStateStore {
-    register(gridId: string, contentKey: string | number | undefined): TmGridStateHandle;
+    register(gridId: string, contentKey: number | string | undefined): TmGridStateHandle;
     restoreWidths(gridId: string, blob: string): void;
     serializeWidths(gridId: string): string | null;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmGridStateStore, never>;

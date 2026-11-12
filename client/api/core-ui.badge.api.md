@@ -16,7 +16,7 @@ export class TmBadge {
 }
 
 // @public
-export type TmBadgeTone = 'neutral' | 'accent' | 'info' | 'success' | 'warning' | 'error';
+export type TmBadgeTone = 'accent' | 'error' | 'info' | 'neutral' | 'success' | 'warning';
 
 // @public
 export class TmCounter {
@@ -34,6 +34,6 @@ export class TmCounter {
 export type TmCounterPlacement = 'inline' | 'overlay';
 
 // @public
-export type TmCounterTone = 'neutral' | 'accent' | 'attention';
+export type TmCounterTone = 'accent' | 'attention' | 'neutral';
 
 ```

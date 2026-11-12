@@ -45,7 +45,12 @@ pnpm start              # showcase dev server (the component showcase + e2e targ
 ESLint and stylelint configs load its built presets, as a distribution's would.
 
 **Changing a public API?** `api:check` fails on any drift; review the surface
-change, run `api:approve`, and commit the golden diff alongside the code.
+change, run `api:approve`, and commit the golden diff alongside the code. The
+reports list every union's members in one canonical order
+(`tools/api/union-order.mjs`): TypeScript prints an inferred union in the order
+the compiler first met its member types, which differs between a clean build,
+a warm `.angular/cache` and a single-project `ng build`, so without the sort the
+same API could approve to different goldens.
 
 **No hardcoded ports.** Every server binds to a port from the worktree's
 `.dev-ports.local` (once `dotnet tellma setup-worktree` exists) or an

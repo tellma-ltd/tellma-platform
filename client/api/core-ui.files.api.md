@@ -45,7 +45,7 @@ export class TmFilePicker implements OnDestroy {
 }
 
 // @public
-export type TmFileRejectionReason = 'size' | 'type' | 'count' | 'folder';
+export type TmFileRejectionReason = 'count' | 'folder' | 'size' | 'type';
 
 // @public
 export interface TmFileSelection {

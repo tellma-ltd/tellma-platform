@@ -11,7 +11,7 @@ export class TmRelativeTime {
     constructor();
     protected readonly absolute: _angular_core.Signal<string>;
     protected readonly text: _angular_core.Signal<string>;
-    readonly textStyle: _angular_core.InputSignal<"long" | "short" | "narrow">;
+    readonly textStyle: _angular_core.InputSignal<"long" | "narrow" | "short">;
     readonly value: _angular_core.InputSignal<string>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmRelativeTime, "tm-relative-time", never, { "value": { "alias": "value"; "required": true; "isSignal": true; }; "textStyle": { "alias": "textStyle"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmRelativeTime, never>;

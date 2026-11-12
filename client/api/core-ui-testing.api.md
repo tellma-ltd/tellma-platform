@@ -13,7 +13,7 @@ import { TestKey } from '@angular/cdk/testing';
 // @public
 export class TmAlertHarness extends ComponentHarness {
     getHeading(): Promise<string | null>;
-    getKind(): Promise<'info' | 'success' | 'warning' | 'error'>;
+    getKind(): Promise<'error' | 'info' | 'success' | 'warning'>;
     getRole(): Promise<string | null>;
     getText(): Promise<string>;
     static hostSelector: string;
@@ -36,9 +36,9 @@ export class TmButtonHarness extends ComponentHarness {
     click(): Promise<void>;
     focus(): Promise<void>;
     getDisabledReason(): Promise<string | null>;
-    getSize(): Promise<'sm' | 'md' | 'lg'>;
+    getSize(): Promise<'lg' | 'md' | 'sm'>;
     getText(): Promise<string>;
-    getVariant(): Promise<'primary' | 'secondary' | 'ghost' | 'danger'>;
+    getVariant(): Promise<'danger' | 'ghost' | 'primary' | 'secondary'>;
     static hostSelector: string;
     isDisabled(): Promise<boolean>;
     isFocused(): Promise<boolean>;
@@ -75,7 +75,7 @@ export class TmCopyButtonHarness extends ComponentHarness {
 export class TmCounterHarness extends ComponentHarness {
     getPlacement(): Promise<'inline' | 'overlay'>;
     getText(): Promise<string>;
-    getTone(): Promise<'neutral' | 'accent' | 'attention'>;
+    getTone(): Promise<'accent' | 'attention' | 'neutral'>;
     static hostSelector: string;
     isHiddenFromAssistiveTechnology(): Promise<boolean>;
     isShown(): Promise<boolean>;
@@ -112,7 +112,7 @@ export class TmEmptyStateHarness extends ComponentHarness {
     getDetail(): Promise<string>;
     getHeading(): Promise<string>;
     getSize(): Promise<'page' | 'panel'>;
-    getTone(): Promise<'neutral' | 'error'>;
+    getTone(): Promise<'error' | 'neutral'>;
     hasIcon(): Promise<boolean>;
     static hostSelector: string;
     isAnnounced(): Promise<boolean>;
@@ -405,7 +405,7 @@ export class TmOptionHarness extends ComponentHarness {
 // @public
 export class TmPopoverHarness extends ComponentHarness {
     getAriaLabel(): Promise<string | null>;
-    getSize(): Promise<'auto' | 'sm' | 'md' | 'lg'>;
+    getSize(): Promise<'auto' | 'lg' | 'md' | 'sm'>;
     getText(): Promise<string>;
     static hostSelector: string;
     isFocused(): Promise<boolean>;
@@ -414,7 +414,7 @@ export class TmPopoverHarness extends ComponentHarness {
 // @public
 export class TmProgressBarHarness extends ComponentHarness {
     getLabel(): Promise<string | null>;
-    getTone(): Promise<'accent' | 'success' | 'warning' | 'error'>;
+    getTone(): Promise<'accent' | 'error' | 'success' | 'warning'>;
     getValue(): Promise<number | null>;
     static hostSelector: string;
     isIndeterminate(): Promise<boolean>;

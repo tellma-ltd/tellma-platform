@@ -24,6 +24,6 @@ export class TmButton {
 export type TmButtonSize = TmControlSize;
 
 // @public
-export type TmButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type TmButtonVariant = 'danger' | 'ghost' | 'primary' | 'secondary';
 
 ```

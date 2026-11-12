@@ -54,13 +54,13 @@ export class TmMenu {
 }
 
 // @public
-export type TmMenuAnchor = Element | DOMRect | {
+export type TmMenuAnchor = DOMRect | Element | {
     readonly x: number;
     readonly y: number;
 };
 
 // @public
-export type TmMenuEntry = TmMenuItem | TmMenuLink | TmMenuSubmenu | TmMenuGroup | TmMenuSeparator;
+export type TmMenuEntry = TmMenuGroup | TmMenuItem | TmMenuLink | TmMenuSeparator | TmMenuSubmenu;
 
 // @public
 export interface TmMenuGroup {
@@ -78,7 +78,7 @@ export class TmMenuHeaderDef {
 }
 
 // @public
-export type TmMenuIcon = TemplateRef<void> | string | TmIconSource;
+export type TmMenuIcon = string | TemplateRef<void> | TmIconSource;
 
 // @public
 export interface TmMenuItem {
@@ -131,7 +131,7 @@ export interface TmMenuSubmenu {
     readonly disabledReason?: string;
     readonly icon?: TmMenuIcon;
     readonly id: string;
-    readonly items: readonly (TmMenuItem | TmMenuLink | TmMenuGroup | TmMenuSeparator)[];
+    readonly items: readonly (TmMenuGroup | TmMenuItem | TmMenuLink | TmMenuSeparator)[];
     readonly label?: string;
     readonly labelKey?: string;
     readonly shortcut?: TmKeys;
