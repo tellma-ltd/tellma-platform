@@ -15,9 +15,9 @@ export class TmDescriptionList {
 }
 
 // @public
-export type TmDescriptionListColumns = 1 | 2 | 'auto';
+export type TmDescriptionListColumns = 'auto' | 1 | 2;
 
 // @public
-export type TmDescriptionListLayout = 'stacked' | 'inline';
+export type TmDescriptionListLayout = 'inline' | 'stacked';
 
 ```

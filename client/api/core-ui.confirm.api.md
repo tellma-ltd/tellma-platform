@@ -22,7 +22,7 @@ export interface TmConfirmChoice<K extends string> {
 }
 
 // @public
-export type TmConfirmIcon = 'warning' | 'error' | 'info';
+export type TmConfirmIcon = 'error' | 'info' | 'warning';
 
 // @public
 export interface TmConfirmOptions<K extends string> {
@@ -34,7 +34,7 @@ export interface TmConfirmOptions<K extends string> {
 }
 
 // @public
-export type TmConfirmVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type TmConfirmVariant = 'danger' | 'ghost' | 'primary' | 'secondary';
 
 // @public
 export interface TmConfirmYesNoOptions {

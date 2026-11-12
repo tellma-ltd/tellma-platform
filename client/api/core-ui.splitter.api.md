@@ -49,6 +49,6 @@ export class TmSplitterPane {
 }
 
 // @public
-export type TmSplitterSide = 'start' | 'end';
+export type TmSplitterSide = 'end' | 'start';
 
 ```

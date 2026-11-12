@@ -252,7 +252,7 @@ export interface TmErrorDialogButtonState {
 
 // @public
 export class TmErrorDialogHarness extends ComponentHarness {
-    clickButton(key: 'primary' | 'secondary' | 'close'): Promise<void>;
+    clickButton(key: 'close' | 'primary' | 'secondary'): Promise<void>;
     getActionLabels(): Promise<string[]>;
     getButtons(): Promise<TmErrorDialogButtonState[]>;
     getDetails(): Promise<{
@@ -585,7 +585,7 @@ export class TmSplitterHarness extends ComponentHarness {
     getMaxValue(): Promise<number | null>;
     getMinValue(): Promise<number | null>;
     getOrientation(): Promise<'horizontal' | 'vertical'>;
-    getPaneSize(side: 'start' | 'end'): Promise<number>;
+    getPaneSize(side: 'end' | 'start'): Promise<number>;
     getValue(): Promise<number | null>;
     static hostSelector: string;
     isFocused(): Promise<boolean>;
@@ -593,7 +593,7 @@ export class TmSplitterHarness extends ComponentHarness {
 }
 
 // @public
-export type TmSplitterKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown' | 'Home' | 'End';
+export type TmSplitterKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Home';
 
 // @public
 export class TmTabGroupHarness extends ComponentHarness {

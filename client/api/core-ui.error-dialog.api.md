@@ -44,6 +44,6 @@ export interface TmErrorDialogOptions {
 }
 
 // @public
-export type TmErrorDialogResult = 'primary' | 'secondary' | 'close' | 'replaced';
+export type TmErrorDialogResult = 'close' | 'primary' | 'replaced' | 'secondary';
 
 ```
