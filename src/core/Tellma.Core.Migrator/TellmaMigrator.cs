@@ -89,10 +89,23 @@ namespace Tellma.Core.Migrator
                 return MigratorExitCodes.Usage;
             }
 
-            // --- The emit builds no host ---
+            // --- The emit builds no host; its failures map to the same codes as a command's ---
             if (line is EmitClientAssetsCommandLine emit)
             {
-                return await EmitClientAssetsCommand.RunAsync(emit, slug, compose, settings, output, error, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    return await EmitClientAssetsCommand.RunAsync(emit, slug, compose, settings, output, error, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    await error.WriteLineAsync("The command was stopped before it finished; rerun it to converge.").ConfigureAwait(false);
+                    return MigratorExitCodes.PartialFailure;
+                }
+                catch (Exception exception)
+                {
+                    await error.WriteLineAsync($"emit-client-assets: failed ({TenantOutcome.Describe(exception)})").ConfigureAwait(false);
+                    return MigratorExitCodes.PartialFailure;
+                }
             }
 
             // --- The host's configuration, with the job worker forced off by the last source ---
@@ -123,6 +136,12 @@ namespace Tellma.Core.Migrator
             catch (TellmaCompositionException exception)
             {
                 await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
+                return MigratorExitCodes.CompositionProblems;
+            }
+            catch (Exception exception)
+            {
+                // The distribution's composition method itself threw: the composition is the problem.
+                await error.WriteLineAsync(ComposeFailed(exception)).ConfigureAwait(false);
                 return MigratorExitCodes.CompositionProblems;
             }
 
@@ -166,12 +185,11 @@ namespace Tellma.Core.Migrator
                 return MigratorExitCodes.PartialFailure;
             }
 
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
             try
             {
                 MigratorContext context = new(host.Services, slug, compose, migrateIdentityStore, settings.ResolveMigrationsAssembly(), output);
-                using var stopping = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken, host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
-
                 return await RunCommandAsync(line, context, stopping.Token).ConfigureAwait(false);
             }
             catch (MigratorUsageException exception)
@@ -179,14 +197,14 @@ namespace Tellma.Core.Migrator
                 await WriteUsageAsync(error, exception).ConfigureAwait(false);
                 return MigratorExitCodes.Usage;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
             {
                 await error.WriteLineAsync("The command was stopped before it finished; rerun it to converge.").ConfigureAwait(false);
                 return MigratorExitCodes.PartialFailure;
             }
             catch (Exception exception)
             {
-                // A failure outside a tenant's guarded work: the whole command failed, and a rerun converges.
+                // A failure outside a tenant's guarded work, a cancellation that is not the run's included: the whole command failed, and a rerun converges.
                 MigratorLog.CommandFailed(host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(MigratorLog.Category), exception);
                 await error.WriteLineAsync($"The command failed: {TenantOutcome.Describe(exception)}").ConfigureAwait(false);
                 return MigratorExitCodes.PartialFailure;
@@ -195,6 +213,14 @@ namespace Tellma.Core.Migrator
             {
                 await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
             }
+        }
+
+        /// <summary>The text of a composition method that threw something other than a composition problem.</summary>
+        /// <param name="exception">What it threw.</param>
+        /// <returns>The text.</returns>
+        internal static string ComposeFailed(Exception exception)
+        {
+            return $"The composition failed: {exception.GetType().Name}: {exception.Message}";
         }
 
         /// <summary>

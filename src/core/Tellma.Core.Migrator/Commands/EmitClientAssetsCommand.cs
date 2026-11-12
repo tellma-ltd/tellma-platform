@@ -72,6 +72,12 @@ namespace Tellma.Core.Migrator.Commands
                 await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
                 return MigratorExitCodes.CompositionProblems;
             }
+            catch (Exception exception)
+            {
+                // The distribution's composition method itself threw: the composition is the problem.
+                await error.WriteLineAsync(TellmaMigrator.ComposeFailed(exception)).ConfigureAwait(false);
+                return MigratorExitCodes.CompositionProblems;
+            }
 
             ServiceProvider provider = services.BuildServiceProvider();
             await using (provider.ConfigureAwait(false))

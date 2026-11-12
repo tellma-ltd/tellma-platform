@@ -7,8 +7,10 @@ using Microsoft.Data.SqlClient;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Composition;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Migrator;
 using Tellma.Core.Migrator.Sql;
@@ -490,6 +492,71 @@ namespace Tellma.Core.IntegrationTests.Migrator
             MigratorResult other = await migrator.RunAsync("provision", "--name", "Someone Else", "--category", "Live", "--tenant", "5");
             Assert.True(other.ExitCode == MigratorExitCodes.PartialFailure, other.ToString());
             Assert.Contains("is already registered as 'Gadgets Inc'", other.Output, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Rerunning_a_line_that_spells_its_server_with_a_protocol_prefix_resumes_the_row()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_rerunsrv"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+
+            // The catalog stores the server canonically: no protocol prefix, lower case.
+            string server = "TCP:" + new SqlConnectionStringBuilder(migrator.CatalogConnectionString).DataSource;
+            string[] command = ["provision", "--name", "Gadgets Inc", "--category", "Live", "--tenant", "5", "--server", server, "--database", migrator.TenantDatabaseName(5)];
+
+            migrator.Values[ProbeStep.FailTenantKey] = "5";
+            MigratorResult failed = await migrator.RunAsync(command);
+            Assert.True(failed.ExitCode == MigratorExitCodes.PartialFailure, failed.ToString());
+
+            migrator.Values.Remove(ProbeStep.FailTenantKey);
+            MigratorResult resumed = await migrator.RunAsync(command);
+            Assert.True(resumed.ExitCode == MigratorExitCodes.Converged, resumed.ToString());
+            Assert.Equal("Active", await StateAsync(migrator, 5));
+        }
+
+        [Fact]
+        public async Task A_registration_drawn_from_the_sequence_prints_its_id_at_once_and_names_the_resume_when_it_fails()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_seqresume"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+
+            // --- The registering run fails in its step: the id and the resume are printed ---
+            migrator.Values[ProbeStep.FailTenantKey] = "1000";
+            MigratorResult failed = await migrator.RunAsync("provision", "--name", "Gadgets Inc", "--category", "Live");
+            Assert.True(failed.ExitCode == MigratorExitCodes.PartialFailure, failed.ToString());
+            Assert.Equal("provision: registered tenant 1000", failed.Lines[0]);
+            Assert.Contains("provision: resume it with provision --tenant 1000; rerunning this line registers another tenant", failed.Lines);
+
+            // --- The named resume converges the same row ---
+            migrator.Values.Remove(ProbeStep.FailTenantKey);
+            MigratorResult resumed = await migrator.RunAsync("provision", "--tenant", "1000");
+            Assert.True(resumed.ExitCode == MigratorExitCodes.Converged, resumed.ToString());
+            Assert.DoesNotContain(resumed.Lines, static line => line.StartsWith("provision: registered", StringComparison.Ordinal));
+            Assert.Equal("Active", await StateAsync(migrator, 1000));
+        }
+
+        [Fact]
+        public async Task One_step_class_registered_under_two_names_runs_and_records_each()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_named"));
+            migrator.Seed(1);
+
+            // Two instances of one class, as a feature registers one step per seed it ships.
+            migrator.Services = static services =>
+            {
+                TellmaCompositionRecord record = services.Select(static descriptor => descriptor.ImplementationInstance).OfType<TellmaCompositionRecord>().Single();
+                ITellmaFeature owner = record.Features.Single(static feature => feature.Name == "probe-steps");
+                record.ProvisioningSteps.Add(new ProvisioningStepRegistration(typeof(NamedProbeStep), owner, static _ => new NamedProbeStep("probe.seed-a")));
+                record.ProvisioningSteps.Add(new ProvisioningStepRegistration(typeof(NamedProbeStep), owner, static _ => new NamedProbeStep("probe.seed-b")));
+            };
+
+            MigratorResult result = await migrator.RunAsync("migrate");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 3 step(s)", StringComparison.Ordinal));
+            Assert.Equal(
+                ["probe.counter", "probe.seed-a", "probe.seed-b"],
+                await ListAsync(migrator.TenantConnectionString(1), "SELECT [Step] FROM [dbo].[__TellmaProvisioning] ORDER BY [Step];"));
         }
 
         [Fact]

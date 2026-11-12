@@ -27,12 +27,59 @@ namespace Tellma.Core.Tests.Composition.Checks
                 .ProvisioningStep<SampleStep>()
                 .ProvisioningStep<OtherStep>())));
 
-            List<ServiceDescriptor> steps = [.. services.Where(static descriptor => descriptor.ServiceType == typeof(ITenantProvisioningStep))];
-            Assert.Equal([typeof(SampleStep), typeof(OtherStep)], steps.Select(static descriptor => descriptor.ImplementationType));
-            Assert.All(steps, static descriptor => Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime));
+            // --- Each class scoped by itself, and recorded once with its owner, in contribution order ---
+            Assert.Equal([typeof(SampleStep), typeof(OtherStep)], Record(services).ProvisioningSteps.Select(static step => step.StepType));
+            Assert.All(Record(services).ProvisioningSteps, static step => Assert.Equal("acme", step.Owner.Name));
+            foreach (Type stepType in new[] { typeof(SampleStep), typeof(OtherStep) })
+            {
+                ServiceDescriptor descriptor = Assert.Single(services, descriptor => descriptor.ServiceType == stepType);
+                Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+                Assert.Equal(stepType, descriptor.ImplementationType);
+            }
 
             await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
             Assert.Empty((await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: false, TestContext.Current.CancellationToken)).From(Check));
+        }
+
+        [Fact]
+        public async Task A_step_generic_over_a_substituted_entity_is_closed_over_the_registered_leaf()
+        {
+            IServiceCollection services = TestComposition.Compose(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("acme", contribute: static c => c.ProvisioningStep<EntityStep<SampleEntity>>()))
+                .UseEntity<SampleEntity, TrackedLeaf>());
+
+            Assert.Equal(typeof(EntityStep<TrackedLeaf>), Assert.Single(Record(services).ProvisioningSteps).StepType);
+            Assert.Contains(services, static descriptor => descriptor.ServiceType == typeof(EntityStep<TrackedLeaf>) && descriptor.Lifetime == ServiceLifetime.Scoped);
+            Assert.DoesNotContain(services, static descriptor => descriptor.ServiceType == typeof(EntityStep<SampleEntity>));
+
+            // The runner and the gate create the step their registration names, over the leaf.
+            await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            Assert.IsType<EntityStep<TrackedLeaf>>(Record(services).ProvisioningSteps[0].Create(scope.ServiceProvider));
+        }
+
+        [Fact]
+        public async Task One_class_may_run_as_several_steps_each_keyed_by_its_own_name()
+        {
+            IServiceCollection services = TestComposition.Compose(static tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme")));
+            TellmaCompositionRecord record = Record(services);
+            ITellmaFeature owner = record.Features.Single(static feature => feature.Name == "acme");
+
+            // --- Two instances of one class under two names, as a realiser adds one per seed: sound ---
+            record.ProvisioningSteps.Add(new ProvisioningStepRegistration(typeof(NamedStep), owner, static _ => new NamedStep("acme.seed-a")));
+            record.ProvisioningSteps.Add(new ProvisioningStepRegistration(typeof(NamedStep), owner, static _ => new NamedStep("acme.seed-b")));
+            await using (ServiceProvider provider = services.BuildServiceProvider(validateScopes: true))
+            {
+                Assert.Empty((await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: false, TestContext.Current.CancellationToken)).From(Check));
+            }
+
+            // --- A third under a name already taken: reported ---
+            record.ProvisioningSteps.Add(new ProvisioningStepRegistration(typeof(NamedStep), owner, static _ => new NamedStep("ACME.SEED-A")));
+            await using (ServiceProvider provider = services.BuildServiceProvider(validateScopes: true))
+            {
+                IReadOnlyList<CompositionProblem> problems = (await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: false, TestContext.Current.CancellationToken)).From(Check);
+                Assert.Contains("share the name 'acme.seed-a'", Assert.Single(problems).Problem, StringComparison.Ordinal);
+            }
         }
 
         [Fact]
@@ -95,6 +142,14 @@ namespace Tellma.Core.Tests.Composition.Checks
             Assert.Contains("could not be created", Assert.Single(problems).Problem, StringComparison.Ordinal);
         }
 
+        /// <summary>The realised composition's record.</summary>
+        /// <param name="services">The composed services.</param>
+        /// <returns>The record.</returns>
+        private static TellmaCompositionRecord Record(IServiceCollection services)
+        {
+            return (TellmaCompositionRecord)services.Single(static descriptor => descriptor.ServiceType == typeof(TellmaCompositionRecord)).ImplementationInstance!;
+        }
+
         /// <summary>Runs the check over a composition of the given steps.</summary>
         /// <param name="contribute">Contributes the steps.</param>
         /// <returns>The check's problems.</returns>
@@ -112,6 +167,47 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             /// <inheritdoc />
             public int Order => 200;
+
+            /// <inheritdoc />
+            public int Version => 1;
+
+            /// <inheritdoc />
+            public Task RunAsync(TenantProvisioningContext context)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>A step written against a pack's entity, which a distribution may substitute.</summary>
+        /// <typeparam name="TEntity">The entity, or the leaf that replaces it.</typeparam>
+        private sealed class EntityStep<TEntity> : ITenantProvisioningStep
+            where TEntity : SampleEntity
+        {
+            /// <inheritdoc />
+            public string Name => "acme.entity";
+
+            /// <inheritdoc />
+            public int Order => 200;
+
+            /// <inheritdoc />
+            public int Version => 1;
+
+            /// <inheritdoc />
+            public Task RunAsync(TenantProvisioningContext context)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>One class that runs under the name each instance is given.</summary>
+        /// <param name="name">The instance's name.</param>
+        private sealed class NamedStep(string name) : ITenantProvisioningStep
+        {
+            /// <inheritdoc />
+            public string Name => name;
+
+            /// <inheritdoc />
+            public int Order => 900;
 
             /// <inheritdoc />
             public int Version => 1;

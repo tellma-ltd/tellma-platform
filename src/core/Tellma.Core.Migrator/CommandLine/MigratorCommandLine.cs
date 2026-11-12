@@ -55,9 +55,11 @@ namespace Tellma.Core.Migrator.CommandLine
         private static EmitClientAssetsCommandLine ParseEmit(Options options)
         {
             options.Allow();
-            return options.Operands.Count == 1
-                ? new EmitClientAssetsCommandLine(options.Operands[0])
-                : throw new MigratorUsageException("emit-client-assets takes exactly one directory.");
+
+            // A blank operand, such as an unset variable in a script, names no folder.
+            return options.Operands is [string directory] && !string.IsNullOrWhiteSpace(directory)
+                ? new EmitClientAssetsCommandLine(directory)
+                : throw new MigratorUsageException("emit-client-assets takes exactly one directory, which must not be blank.");
         }
 
         /// <summary>Parses <c>migrate</c>.</summary>

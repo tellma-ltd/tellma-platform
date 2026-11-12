@@ -105,6 +105,29 @@ namespace Tellma.Core.IntegrationTests.Migrator
         }
     }
 
+    /// <summary>
+    ///     One step class registered several times, each instance under the name it is given, the way
+    ///     a feature runs one step per seed it ships.
+    /// </summary>
+    /// <param name="name">The instance's name.</param>
+    internal sealed class NamedProbeStep(string name) : ITenantProvisioningStep
+    {
+        /// <inheritdoc />
+        public string Name => name;
+
+        /// <inheritdoc />
+        public int Order => 300;
+
+        /// <inheritdoc />
+        public int Version => 1;
+
+        /// <inheritdoc />
+        public Task RunAsync(TenantProvisioningContext context)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>The feature that contributes <see cref="ProbeStep" />.</summary>
     internal sealed class ProbeStepFeature : ITellmaFeature
     {

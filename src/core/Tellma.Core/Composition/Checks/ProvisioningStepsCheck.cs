@@ -16,11 +16,11 @@ namespace Tellma.Core.Composition.Checks
     ///     1, and no two steps share a name.
     /// </summary>
     /// <remarks>
-    ///     Reads the composition alone: each step is created once in the gate's scope, outside any
-    ///     tenant, and only its name, order and version are read. Names are compared without regard
-    ///     to case, because the step record's key column compares them that way.
+    ///     Reads the composition alone: each step is created once in a scope of the gate's own,
+    ///     outside any tenant, and only its name, order and version are read. Names are compared
+    ///     without regard to case, because the step record's key column compares them that way.
     /// </remarks>
-    /// <param name="record">The realised composition, which lists the contributed step classes.</param>
+    /// <param name="record">The realised composition, which lists the steps it runs.</param>
     internal sealed class ProvisioningStepsCheck(TellmaCompositionRecord record) : IStartupCheck
     {
         /// <inheritdoc />
@@ -30,33 +30,24 @@ namespace Tellma.Core.Composition.Checks
         public bool RequiresInfrastructure => false;
 
         /// <inheritdoc />
-        public Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(services);
 
             List<CompositionProblem> problems = [];
-            List<(ITenantProvisioningStep Step, ContributedType Contributed)> steps = [];
+            List<(ITenantProvisioningStep Step, ProvisioningStepRegistration Contributed)> steps = [];
 
-            // --- Each step, created as its tenant scope would create it ---
-            foreach (ContributedType contributed in record.ProvisioningSteps)
+            // --- Each step, created by its own factory in a scope, as its tenant scope would create it ---
+            AsyncServiceScope scope = services.CreateAsyncScope();
+            await using (scope.ConfigureAwait(false))
             {
-                try
-                {
-                    steps.Add(((ITenantProvisioningStep)ActivatorUtilities.CreateInstance(services, contributed.Type), contributed));
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    problems.Add(new CompositionProblem(
-                        Name,
-                        $"The provisioning step {TypeDisplay.Qualified(contributed.Type)} of feature '{contributed.Owner.Name}' could not be created: {exception.GetType().Name}: {exception.Message}",
-                        "Register every service the step's constructor takes, and keep the constructor from reaching a tenant: the step runs its work in RunAsync."));
-                }
+                CreateEach(scope.ServiceProvider, steps, problems);
             }
 
             // --- Name, order and version of each ---
-            foreach ((ITenantProvisioningStep step, ContributedType contributed) in steps)
+            foreach ((ITenantProvisioningStep step, ProvisioningStepRegistration contributed) in steps)
             {
-                string label = $"{TypeDisplay.Qualified(contributed.Type)} of feature '{contributed.Owner.Name}'";
+                string label = $"{TypeDisplay.Qualified(contributed.StepType)} of feature '{contributed.Owner.Name}'";
                 if (!ProvisioningStepNames.IsValid(step.Name))
                 {
                     problems.Add(new CompositionProblem(
@@ -83,19 +74,44 @@ namespace Tellma.Core.Composition.Checks
             }
 
             // --- One step per name ---
-            foreach (IGrouping<string, (ITenantProvisioningStep Step, ContributedType Contributed)> clash in steps
+            foreach (IGrouping<string, (ITenantProvisioningStep Step, ProvisioningStepRegistration Contributed)> clash in steps
                 .Where(static pair => ProvisioningStepNames.IsValid(pair.Step.Name))
                 .GroupBy(static pair => pair.Step.Name, StringComparer.OrdinalIgnoreCase)
                 .Where(static group => group.Count() > 1))
             {
-                string types = string.Join(" and ", clash.Select(static pair => $"{TypeDisplay.Qualified(pair.Contributed.Type)} (feature '{pair.Contributed.Owner.Name}')"));
+                string types = string.Join(" and ", clash.Select(static pair => $"{TypeDisplay.Qualified(pair.Contributed.StepType)} (feature '{pair.Contributed.Owner.Name}')"));
                 problems.Add(new CompositionProblem(
                     Name,
                     $"The provisioning steps {types} share the name '{clash.Key}'.",
                     "Give each provisioning step a name of its own, prefixed with its feature's name."));
             }
 
-            return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
+            return problems;
+        }
+
+        /// <summary>Creates each registered step; a step that cannot be created is a problem.</summary>
+        /// <param name="services">The scope's services.</param>
+        /// <param name="steps">Receives each created step with its registration.</param>
+        /// <param name="problems">Receives each failure.</param>
+        private void CreateEach(
+            IServiceProvider services,
+            List<(ITenantProvisioningStep Step, ProvisioningStepRegistration Contributed)> steps,
+            List<CompositionProblem> problems)
+        {
+            foreach (ProvisioningStepRegistration contributed in record.ProvisioningSteps)
+            {
+                try
+                {
+                    steps.Add((contributed.Create(services), contributed));
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    problems.Add(new CompositionProblem(
+                        Name,
+                        $"The provisioning step {TypeDisplay.Qualified(contributed.StepType)} of feature '{contributed.Owner.Name}' could not be created: {exception.GetType().Name}: {exception.Message}",
+                        "Register every service the step's constructor takes, and keep the constructor from reaching a tenant: the step runs its work in RunAsync."));
+                }
+            }
         }
     }
 }

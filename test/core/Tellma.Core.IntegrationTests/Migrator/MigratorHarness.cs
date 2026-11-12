@@ -85,6 +85,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
         /// <summary>A further composition every run adds to the test distribution's.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>A further change every run makes to the host's services, after the composition is realised.</summary>
+        public Action<IServiceCollection>? Services { get; set; }
+
         /// <summary>The environment every run is hosted in.</summary>
         public string EnvironmentName { get; set; } = "Development";
 
@@ -124,6 +127,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             using StringWriter error = new(CultureInfo.InvariantCulture);
             Dictionary<string, string?> values = new(Values, StringComparer.OrdinalIgnoreCase);
             Action<TellmaBuilder>? extra = Compose;
+            Action<IServiceCollection>? services = Services;
 
             int code = await TellmaMigrator.RunAsync(
                 args,
@@ -142,7 +146,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
                     EnvironmentName = EnvironmentName,
                     ContentRootPath = AppContext.BaseDirectory,
                     ConfigureConfiguration = configuration => configuration.AddInMemoryCollection(values),
-                    ConfigureServices = static services => services.AddLogging(static logging => logging.ClearProviders()),
+                    ConfigureServices = collection =>
+                    {
+                        _ = collection.AddLogging(static logging => logging.ClearProviders());
+                        services?.Invoke(collection);
+                    },
                 },
                 TestContext.Current.CancellationToken);
 

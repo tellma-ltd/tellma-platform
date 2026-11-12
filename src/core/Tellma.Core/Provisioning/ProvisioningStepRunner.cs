@@ -38,10 +38,10 @@ namespace Tellma.Core.Provisioning
     ///         every batch a step sends checks it first.
     ///     </para>
     /// </remarks>
-    /// <param name="services">The root services, which create a step outside any tenant to read its name, order and version.</param>
+    /// <param name="services">The root services, whose scope creates each step outside any tenant to read its name, order and version.</param>
     /// <param name="scopes">Opens each step's tenant scope.</param>
     /// <param name="connections">Opens the tenant database for the step record.</param>
-    /// <param name="record">The realised composition, which lists the contributed step classes.</param>
+    /// <param name="record">The realised composition, which lists the steps it runs, each with its factory.</param>
     /// <param name="versions">The running platform version, recorded with each completion.</param>
     /// <param name="logger">The logger.</param>
     internal sealed class ProvisioningStepRunner(
@@ -163,26 +163,27 @@ namespace Tellma.Core.Provisioning
         }
 
         /// <summary>
-        ///     Every contributed step's name, order and version, read from an instance created outside
-        ///     any tenant, as the startup gate created it when it validated them.
+        ///     Every registered step's name, order and version, read from an instance its factory
+        ///     created outside any tenant, as the startup gate created it when it validated them.
         /// </summary>
-        /// <returns>One description per contributed step class.</returns>
+        /// <returns>One description per registered step: a class may stand behind several.</returns>
         private async Task<List<StepDescription>> DescribeAsync()
         {
             AsyncServiceScope scope = services.CreateAsyncScope();
             await using (scope.ConfigureAwait(false))
             {
-                return [.. record.ProvisioningSteps.Select(contributed =>
+                return [.. record.ProvisioningSteps.Select(registration =>
                 {
-                    var step = (ITenantProvisioningStep)ActivatorUtilities.CreateInstance(scope.ServiceProvider, contributed.Type);
-                    return new StepDescription(contributed.Type, step.Name, step.Order, step.Version);
+                    ITenantProvisioningStep step = registration.Create(scope.ServiceProvider);
+                    return new StepDescription(registration, step.Name, step.Order, step.Version);
                 })];
             }
         }
 
         /// <summary>
         ///     Runs one step: a root activity named after it with no parent, the step's own system
-        ///     scope opened inside it, its frame opened there, then the step created from that scope.
+        ///     scope opened inside it, its frame opened there, then the step created from that scope by
+        ///     its registration's factory, so no other step is created.
         /// </summary>
         /// <param name="tenant">The tenant.</param>
         /// <param name="step">The step's description.</param>
@@ -207,7 +208,7 @@ namespace Tellma.Core.Provisioning
                 await using (scope.ConfigureAwait(false))
                 {
                     scope.Services.GetService<IProvisioningFrameOpener>()?.Open(scope.Services, step.Name);
-                    ITenantProvisioningStep instance = scope.Services.GetServices<ITenantProvisioningStep>().First(candidate => candidate.GetType() == step.Type);
+                    ITenantProvisioningStep instance = step.Registration.Create(scope.Services);
                     await instance.RunAsync(new TenantProvisioningContext(tenant, scope.Services, isNew, adminSubject, adminEmail)).ConfigureAwait(false);
                 }
             }
@@ -217,11 +218,11 @@ namespace Tellma.Core.Provisioning
             }
         }
 
-        /// <summary>One contributed step as its instance describes itself.</summary>
-        /// <param name="Type">The step class.</param>
+        /// <summary>One registered step as its instance describes itself.</summary>
+        /// <param name="Registration">The registration, whose factory creates the step.</param>
         /// <param name="Name">The step's name.</param>
         /// <param name="Order">The step's order.</param>
         /// <param name="Version">The step's version.</param>
-        private sealed record StepDescription(Type Type, string Name, int Order, int Version);
+        private sealed record StepDescription(ProvisioningStepRegistration Registration, string Name, int Order, int Version);
     }
 }

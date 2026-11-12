@@ -89,6 +89,38 @@ namespace Tellma.Core.Tests.Migrator
         }
 
         [Fact]
+        public async Task A_composition_method_that_throws_is_a_composition_problem_for_a_command_and_the_emit()
+        {
+            using EmitDirectory directory = new();
+            static void Throwing(TellmaBuilder _)
+            {
+                throw new InvalidOperationException("The distribution's composition broke.");
+            }
+
+            Run status = await RunAsync(["status"], compose: Throwing);
+            Run emit = await RunAsync(["emit-client-assets", directory.Path], compose: Throwing, configuration: new Dictionary<string, string?> { ["Tellma:DisplayName"] = "Acme ERP" });
+
+            Run[] runs = [status, emit];
+            Assert.All(runs, static run =>
+            {
+                Assert.Equal(MigratorExitCodes.CompositionProblems, run.ExitCode);
+                Assert.Contains("The composition failed: InvalidOperationException: The distribution's composition broke.", run.Error, StringComparison.Ordinal);
+                Assert.Empty(run.Output);
+            });
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task A_blank_emit_folder_is_a_usage_error(string folder)
+        {
+            Run run = await RunAsync(["emit-client-assets", folder]);
+
+            Assert.Equal(MigratorExitCodes.Usage, run.ExitCode);
+            Assert.Contains("must not be blank", run.Error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task A_service_graph_that_does_not_resolve_in_Development_is_a_composition_problem()
         {
             Run run = await RunAsync(

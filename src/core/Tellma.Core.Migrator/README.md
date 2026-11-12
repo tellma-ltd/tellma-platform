@@ -22,12 +22,13 @@ tenant-model migrations are scaffolded with.
 |---|---|
 | `emit-client-assets <dir>` | Realises the composition with no host or database, runs only the startup checks that read the composition alone, runs every `IClientAssetContributor`, and writes the client metadata into the generated folder `<dir>`. |
 | `migrate [--catalog-only] [--tenant <id>]... [--all-tenants] [--parallelism <n>]` | Creates a missing catalog, migrates it (and the in-proc identity store), grants `tellma_app`, registers and provisions the `Tellma:Seed:Tenants`, then migrates every tenant in parallel and prints one line per tenant. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`. Rerunning the same line converges: an id the catalog holds with the same registration is resumed, and an active tenant is reported `provisioned (already)`. `--admin-subject` is accepted in Development only. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`, printing `provision: registered tenant <id>` as soon as the row exists. A line with `--tenant` converges when rerun: an id the catalog holds with the same registration (servers compared canonically) is resumed, and an active tenant is reported `provisioned (already)`. A line without `--tenant` draws a new id from the sequence on every run, so it is not rerun: the resume is `provision --tenant <id>`, which a failed run prints. `--admin-subject` is accepted in Development only. |
 | `set-state --tenant <id> --state <state> [--reason …]` | Moves a tenant to another state, as the actor `migrator`. |
 | `status` | Prints the catalog's pending migrations, each tenant's state, recorded schema fingerprints against the model's and pending migrations, then the composition's problems. Writes nothing. |
 
 Exit codes: `0` converged, `1` usage error, `2` partial failure (the report says which database or
-tenant failed; a rerun converges), `3` composition problems.
+tenant failed and how to resume it), `3` composition problems, a composition method that throws
+included. `emit-client-assets` uses the same codes: a folder it cannot write is `2`.
 
 Every command but `emit-client-assets` runs inside a started generic host built from the
 distribution's composition, with `Tellma:Jobs:Enabled = false` as the last configuration source,

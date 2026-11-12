@@ -18,10 +18,12 @@ namespace Tellma.Core.Migrator.Commands
     ///     then brings it to active under its tenant lock.
     /// </summary>
     /// <remarks>
-    ///     A rerun of the same command line converges: a registration naming an id the catalog
-    ///     already holds with the same name, category, live tenant and location resumes that row
-    ///     instead of registering it again, and a tenant an earlier run turned active is reported
-    ///     provisioned already.
+    ///     A rerun of a line that requests an id converges: when the catalog already holds that id
+    ///     with the same name, category, live tenant and location, the row is resumed instead of
+    ///     registered again, and a tenant an earlier run turned active is reported provisioned
+    ///     already. A line without <c>--tenant</c> draws a new id from the sequence each time, so the
+    ///     command prints the id it registered at once and names <c>provision --tenant &lt;id&gt;</c>
+    ///     as the resume when the run fails.
     /// </remarks>
     /// <param name="context">The run.</param>
     internal sealed class ProvisionCommand(MigratorContext context)
@@ -51,14 +53,21 @@ namespace Tellma.Core.Migrator.Commands
             // --- The registration, under the catalog lock; or the row to resume ---
             if (line.Name is not null)
             {
+                bool registered;
                 try
                 {
-                    tenantId = await RegisterAsync(catalog, line, cancellationToken).ConfigureAwait(false);
+                    (tenantId, registered) = await RegisterAsync(catalog, line, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is TenantStateException or ArgumentException or MigratorFailureException)
                 {
                     context.WriteLine($"provision: failed ({TenantOutcome.Describe(exception)})");
                     return MigratorExitCodes.PartialFailure;
+                }
+
+                // The id is printed before anything else can fail, so the operator always knows the resume.
+                if (registered)
+                {
+                    context.WriteLine(string.Create(CultureInfo.InvariantCulture, $"provision: registered tenant {tenantId}"));
                 }
             }
             else
@@ -74,10 +83,15 @@ namespace Tellma.Core.Migrator.Commands
                 .ProvisionAsync(tenantId, context.Administrator(line.AdminEmail, line.AdminSubject), cancellationToken)
                 .ConfigureAwait(false);
 
-            // --- The report ---
+            // --- The report; a failed run of a sequence-allocated registration names its resume ---
             foreach (string reportLine in outcome.Lines())
             {
                 context.WriteLine(reportLine);
+            }
+
+            if (outcome.IsFailure && line.Name is not null && line.Tenant is null)
+            {
+                context.WriteLine(string.Create(CultureInfo.InvariantCulture, $"provision: resume it with provision --tenant {tenantId}; rerunning this line registers another tenant"));
             }
 
             return outcome.IsFailure ? MigratorExitCodes.PartialFailure : MigratorExitCodes.Converged;
@@ -91,16 +105,17 @@ namespace Tellma.Core.Migrator.Commands
         /// <param name="catalog">The catalog.</param>
         /// <param name="line">The command line, with a name and a category.</param>
         /// <param name="cancellationToken">Cancels the work.</param>
-        /// <returns>The registered tenant's id.</returns>
+        /// <returns>The tenant's id, and whether this run registered it rather than finding it.</returns>
         /// <exception cref="MigratorFailureException">The requested id is held by a row registered otherwise.</exception>
-        private async Task<int> RegisterAsync(ITenantCatalog catalog, ProvisionCommandLine line, CancellationToken cancellationToken)
+        private async Task<(int TenantId, bool Registered)> RegisterAsync(ITenantCatalog catalog, ProvisionCommandLine line, CancellationToken cancellationToken)
         {
             CatalogConnection catalogConnection = context.Services.GetRequiredService<CatalogConnection>();
 
-            // A database named alone lives on the catalog's server, under the default profile.
+            // A database named alone lives on the catalog's server, under the default profile; the
+            // server is spelled as the catalog stores it, so a rerun compares like with like.
             TenantLocation? location = line.Database is null
                 ? null
-                : new TenantLocation(line.Server ?? catalogConnection.Server, line.Database, TellmaSqlOptions.DefaultProfile);
+                : new TenantLocation(TenantLocations.Canonicalize(line.Server ?? catalogConnection.Server), line.Database, TellmaSqlOptions.DefaultProfile);
 
             await using MigrationLock held = await MigrationLock
                 .AcquireAsync(catalogConnection.ConnectionString, MigrationLock.CatalogResource, cancellationToken)
@@ -111,7 +126,7 @@ namespace Tellma.Core.Migrator.Commands
                 && (await catalog.ListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(row => row.Id == requested) is { } existing)
             {
                 return Matches(existing, line, location)
-                    ? requested
+                    ? (requested, false)
                     : throw new MigratorFailureException(string.Create(
                         CultureInfo.InvariantCulture,
                         $"Tenant {requested} is already registered as '{existing.Descriptor.Name}' ({existing.Descriptor.Category}, database {existing.Location.Database}), which this command line does not describe; run provision --tenant {requested} alone to resume it, or request another id."));
@@ -121,13 +136,14 @@ namespace Tellma.Core.Migrator.Commands
                 .RegisterAsync(new TenantRegistration(line.Name!, line.Category!.Value, line.LiveTenant, location), MigratorContext.Actor, line.Tenant, cancellationToken)
                 .ConfigureAwait(false);
 
-            return registered.Id;
+            return (registered.Id, true);
         }
 
         /// <summary>
         ///     Whether an existing row is the registration a command line describes: the same name,
-        ///     category and live tenant, and, when the line names a database, the same server and
-        ///     database. The credential profile is configuration, not part of the registration.
+        ///     category and live tenant, and, when the line names a database, the same server (both
+        ///     canonical: no <c>tcp:</c> prefix, no default port) and database. The credential profile
+        ///     is configuration, not part of the registration.
         /// </summary>
         /// <param name="existing">The row.</param>
         /// <param name="line">The command line.</param>

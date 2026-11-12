@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
@@ -55,8 +56,13 @@ namespace Tellma.Core.Composition
         /// <summary>The value sets the features contributed, in realisation order; the platform's own four are not among them.</summary>
         public List<ContributedValueSet> ValueSets { get; } = [];
 
-        /// <summary>The tenant provisioning step classes the features contributed, in realisation order, each once.</summary>
-        public List<ContributedType> ProvisioningSteps { get; } = [];
+        /// <summary>
+        ///     The tenant provisioning steps the composition runs, in realisation order: each class a
+        ///     feature contributed, once, and every instance a realiser adds, so one class may run as
+        ///     many steps (one per report seed, say). The runner keys each by the name its instance
+        ///     reports.
+        /// </summary>
+        public List<ProvisioningStepRegistration> ProvisioningSteps { get; } = [];
 
         /// <summary>What the distribution declared about languages: the offered codes and the added languages.</summary>
         public LanguageDeclaration Languages { get; private set; } = LanguageDeclaration.None;
@@ -92,6 +98,15 @@ namespace Tellma.Core.Composition
             Languages = languages;
         }
     }
+
+    /// <summary>One provisioning step the composition runs.</summary>
+    /// <param name="StepType">The step's class, closed over the registered leaves.</param>
+    /// <param name="Owner">The feature the step belongs to.</param>
+    /// <param name="Create">
+    ///     Creates the step from a scope's services: the tenant scope it runs in, or a scope outside any
+    ///     tenant where only its name, order and version are read.
+    /// </param>
+    internal sealed record ProvisioningStepRegistration(Type StepType, ITellmaFeature Owner, Func<IServiceProvider, ITenantProvisioningStep> Create);
 
     /// <summary>A type a feature contributed.</summary>
     /// <param name="Type">The contributed type.</param>
