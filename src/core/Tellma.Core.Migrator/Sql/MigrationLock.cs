@@ -12,12 +12,20 @@ namespace Tellma.Core.Migrator.Sql
     /// <summary>
     ///     An exclusive application lock in the catalog, owned by a session of its own: the catalog's
     ///     while the catalog migrates and tenants register, a tenant's while that tenant migrates or
-    ///     provisions, so overlapping runs never interleave on one database (spec 0011 §7.5).
+    ///     provisions, so overlapping runs never interleave on one database.
     /// </summary>
     /// <remarks>
-    ///     The lock lives on a connection outside the pool, opened for it alone, and is released
-    ///     explicitly before that connection closes, so it never outlives the work it guards in a
-    ///     pooled session.
+    ///     <para>
+    ///         The lock lives on a connection outside the pool, opened for it alone, and is released
+    ///         explicitly before that connection closes, so it never outlives the work it guards in a
+    ///         pooled session.
+    ///     </para>
+    ///     <para>
+    ///         The server releases a session lock when the session ends, for instance on a failover
+    ///         or a reset connection, and nothing tells the holder. The work therefore calls
+    ///         <see cref="EnsureHeldAsync" /> before each write that another run must not interleave
+    ///         with, and stops when the lock is gone.
+    ///     </para>
     /// </remarks>
     internal sealed class MigrationLock : IAsyncDisposable
     {
@@ -34,6 +42,8 @@ namespace Tellma.Core.Migrator.Sql
             """;
 
         private const string ReleaseStatement = "EXEC sp_releaseapplock @Resource = @resource, @LockOwner = N'Session';";
+
+        private const string ModeStatement = "SELECT APPLOCK_MODE(N'public', @resource, N'Session');";
 
         private readonly SqlConnection _connection;
 
@@ -96,6 +106,32 @@ namespace Tellma.Core.Migrator.Sql
             }
         }
 
+        /// <summary>Confirms that the lock's session still holds the lock exclusively.</summary>
+        /// <param name="cancellationToken">Cancels the check.</param>
+        /// <returns>A task that completes when the lock is confirmed.</returns>
+        /// <exception cref="MigratorFailureException">The lock's session ended or no longer holds the lock.</exception>
+        public async Task EnsureHeldAsync(CancellationToken cancellationToken)
+        {
+            string? mode;
+            try
+            {
+                await using SqlCommand command = _connection.CreateCommand();
+                command.CommandText = ModeStatement;
+                _ = command.Parameters.Add(new SqlParameter("@resource", SqlDbType.NVarChar, 255) { Value = Resource });
+                mode = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+            }
+            catch (Exception exception) when (exception is SqlException or InvalidOperationException)
+            {
+                // A killed or broken session fails the command, or has already closed the connection.
+                throw Lost(exception);
+            }
+
+            if (!string.Equals(mode, "Exclusive", StringComparison.Ordinal))
+            {
+                throw Lost(inner: null);
+            }
+        }
+
         /// <inheritdoc />
         public async ValueTask DisposeAsync()
         {
@@ -119,6 +155,15 @@ namespace Tellma.Core.Migrator.Sql
             {
                 await _connection.DisposeAsync().ConfigureAwait(false);
             }
+        }
+
+        /// <summary>The failure of a lock whose session no longer holds it.</summary>
+        /// <param name="inner">What the check failed with, or null when the session answered without the lock.</param>
+        /// <returns>The failure.</returns>
+        private MigratorFailureException Lost(Exception? inner)
+        {
+            string message = $"The migration lock '{Resource}' was lost: its catalog session ended, so another migrator run may hold it now. Nothing more was written; rerun the migrator.";
+            return inner is null ? new MigratorFailureException(message) : new MigratorFailureException(message, inner);
         }
     }
 }

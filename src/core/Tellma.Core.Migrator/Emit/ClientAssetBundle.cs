@@ -18,7 +18,7 @@ namespace Tellma.Core.Migrator.Emit
     internal sealed record EmittedFile(string RelativePath, ReadOnlyMemory<byte> Content);
 
     /// <summary>
-    ///     The files one emit writes into a distribution's generated folder (spec 0024 §3.2): the
+    ///     The files one emit writes into a distribution's generated folder: the
     ///     three metadata chunks under <c>assets/</c>, each named after the hash of its bytes; the
     ///     loaders module <c>tellma-metadata.ts</c> that names them; and every contributor's generated
     ///     file. Every byte is a function of the sections and files alone.
@@ -48,7 +48,7 @@ namespace Tellma.Core.Migrator.Emit
 
         /// <summary>
         ///     Each chunk's members that are present even when no contributor writes them, with their
-        ///     empty value: the Core chunk's array sections (spec 0024 §3.1), and every member of the
+        ///     empty value: the Core chunk's array sections, and every member of the
         ///     Entities and Contracts chunks, so each chunk always has the shape the client reads.
         /// </summary>
         private static readonly Dictionary<ClientMetadataChunk, (string Name, byte[] Empty)[]> Defaults = new()

@@ -159,8 +159,9 @@ namespace Tellma.Core.Abstractions.Composition
 
         /// <summary>
         ///     Contributes a tenant provisioning step. The migrator runs it, in its order, on every
-        ///     tenant database whose recorded version of it is behind; a second step with the same name
-        ///     anywhere in the composition is a startup problem.
+        ///     tenant database whose recorded version of it is behind. Contributing the same class twice,
+        ///     from this feature or another, is a composition problem, and a second step with the same
+        ///     name anywhere in the composition is a startup problem.
         /// </summary>
         /// <typeparam name="TStep">The step class, created from the tenant scope it runs in.</typeparam>
         /// <returns>This contribution, for chaining.</returns>

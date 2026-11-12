@@ -60,6 +60,33 @@ namespace Tellma.Core.Migrator
             return new TenantOutcome(tenantId, outcome, null, []);
         }
 
+        /// <summary>A rerun's outcome on a tenant an earlier run already provisioned: nothing was left to do.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <returns>The outcome.</returns>
+        public static TenantOutcome AlreadyProvisioned(int tenantId)
+        {
+            return new TenantOutcome(tenantId, Provisioned, "already", []);
+        }
+
+        /// <summary>
+        ///     What <c>migrate</c> reports for a tenant whose state it does not migrate: frozen,
+        ///     provisioning or retired; null for the states it migrates (active, read-only, suspended).
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="state">The tenant's state as the catalog holds it.</param>
+        /// <returns>The outcome, or null when the tenant is migrated.</returns>
+        public static TenantOutcome? Unmigrated(int tenantId, TenantState state)
+        {
+            return state switch
+            {
+                TenantState.Active or TenantState.ReadOnly or TenantState.Suspended => null,
+                TenantState.Frozen => Of(tenantId, Frozen),
+                TenantState.Provisioning => Of(tenantId, Provisioning),
+                TenantState.Retired => Of(tenantId, Retired),
+                _ => Failure(tenantId, string.Create(CultureInfo.InvariantCulture, $"the tenant's state {state} is unknown to this migrator")),
+            };
+        }
+
         /// <summary>
         ///     The text a failure prints: the message alone for the failures the migrator and the
         ///     tenancy raise for an operator to read, else the exception's type and message.

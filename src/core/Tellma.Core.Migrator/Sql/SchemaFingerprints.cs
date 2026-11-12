@@ -17,8 +17,8 @@ namespace Tellma.Core.Migrator.Sql
     internal sealed record SchemaFingerprintRow(string Fingerprint, string MigrationId, string PlatformVersion, DateTimeOffset AppliedAt);
 
     /// <summary>
-    ///     Records a tenant database's schema fingerprint after a successful migration (spec 0012
-    ///     §4.3): only when the database's history ends at the migrator's own last migration, the
+    ///     Records a tenant database's schema fingerprint after a successful migration:
+    ///     only when the database's history ends at the migrator's own last migration, the
     ///     model's fingerprint is inserted when absent and every row but the two newest is deleted. A
     ///     database whose history ends elsewhere is ahead of the migrator and gets no row.
     /// </summary>

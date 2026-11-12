@@ -15,8 +15,14 @@ namespace Tellma.Core.Migrator.Commands
 {
     /// <summary>
     ///     <c>provision</c>: registers a tenant under the catalog lock, or resumes a provisioning one,
-    ///     then brings it to active under its tenant lock (spec 0011 §6.1).
+    ///     then brings it to active under its tenant lock.
     /// </summary>
+    /// <remarks>
+    ///     A rerun of the same command line converges: a registration naming an id the catalog
+    ///     already holds with the same name, category, live tenant and location resumes that row
+    ///     instead of registering it again, and a tenant an earlier run turned active is reported
+    ///     provisioned already.
+    /// </remarks>
     /// <param name="context">The run.</param>
     internal sealed class ProvisionCommand(MigratorContext context)
     {
@@ -62,18 +68,11 @@ namespace Tellma.Core.Migrator.Commands
 
             // The registry's first load waits for the commands; the steps' tenant scopes read it.
             await context.Services.GetRequiredService<ITenantRegistry>().RefreshAsync(force: true, cancellationToken).ConfigureAwait(false);
-            TenantInfo? tenant = (await catalog.ListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(row => row.Id == tenantId);
-            TenantOutcome outcome = tenant switch
-            {
-                null => TenantOutcome.Failure(tenantId, "the catalog holds no such tenant"),
-                { Descriptor.State: TenantState.Provisioning } => await new TenantMigration(context)
-                    .ProvisionAsync(tenant, context.Administrator(line.AdminEmail, line.AdminSubject), cancellationToken)
-                    .ConfigureAwait(false),
 
-                // A rerun after the run that turned it active has nothing left to do.
-                { Descriptor.State: TenantState.Active or TenantState.ReadOnly } => new TenantOutcome(tenantId, TenantOutcome.Provisioned, "already", []),
-                _ => TenantOutcome.Failure(tenantId, string.Create(CultureInfo.InvariantCulture, $"the tenant is {tenant.Descriptor.State}; only a provisioning tenant is provisioned")),
-            };
+            // The tenant's row is read under its lock, where a run that finished it first is told apart.
+            TenantOutcome outcome = await new TenantMigration(context)
+                .ProvisionAsync(tenantId, context.Administrator(line.AdminEmail, line.AdminSubject), cancellationToken)
+                .ConfigureAwait(false);
 
             // --- The report ---
             foreach (string reportLine in outcome.Lines())
@@ -84,11 +83,16 @@ namespace Tellma.Core.Migrator.Commands
             return outcome.IsFailure ? MigratorExitCodes.PartialFailure : MigratorExitCodes.Converged;
         }
 
-        /// <summary>Registers the tenant the command line describes, under the catalog lock.</summary>
+        /// <summary>
+        ///     Registers the tenant the command line describes, under the catalog lock; or, when the
+        ///     line requests an id the catalog already holds with the same registration, the id of
+        ///     that row, which an earlier run of the same line registered.
+        /// </summary>
         /// <param name="catalog">The catalog.</param>
         /// <param name="line">The command line, with a name and a category.</param>
         /// <param name="cancellationToken">Cancels the work.</param>
         /// <returns>The registered tenant's id.</returns>
+        /// <exception cref="MigratorFailureException">The requested id is held by a row registered otherwise.</exception>
         private async Task<int> RegisterAsync(ITenantCatalog catalog, ProvisionCommandLine line, CancellationToken cancellationToken)
         {
             CatalogConnection catalogConnection = context.Services.GetRequiredService<CatalogConnection>();
@@ -102,11 +106,41 @@ namespace Tellma.Core.Migrator.Commands
                 .AcquireAsync(catalogConnection.ConnectionString, MigrationLock.CatalogResource, cancellationToken)
                 .ConfigureAwait(false);
 
+            // --- A rerun of the same line: the row it registered before ---
+            if (line.Tenant is int requested
+                && (await catalog.ListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(row => row.Id == requested) is { } existing)
+            {
+                return Matches(existing, line, location)
+                    ? requested
+                    : throw new MigratorFailureException(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Tenant {requested} is already registered as '{existing.Descriptor.Name}' ({existing.Descriptor.Category}, database {existing.Location.Database}), which this command line does not describe; run provision --tenant {requested} alone to resume it, or request another id."));
+            }
+
             TenantDescriptor registered = await catalog
                 .RegisterAsync(new TenantRegistration(line.Name!, line.Category!.Value, line.LiveTenant, location), MigratorContext.Actor, line.Tenant, cancellationToken)
                 .ConfigureAwait(false);
 
             return registered.Id;
+        }
+
+        /// <summary>
+        ///     Whether an existing row is the registration a command line describes: the same name,
+        ///     category and live tenant, and, when the line names a database, the same server and
+        ///     database. The credential profile is configuration, not part of the registration.
+        /// </summary>
+        /// <param name="existing">The row.</param>
+        /// <param name="line">The command line.</param>
+        /// <param name="location">The location the line names, or null when it names none.</param>
+        /// <returns>True when they match.</returns>
+        private static bool Matches(TenantInfo existing, ProvisionCommandLine line, TenantLocation? location)
+        {
+            return string.Equals(existing.Descriptor.Name, line.Name, StringComparison.Ordinal)
+                && existing.Descriptor.Category == line.Category
+                && existing.Descriptor.LiveTenantId == line.LiveTenant
+                && (location is null
+                    || (string.Equals(existing.Location.Server, location.Server, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(existing.Location.Database, location.Database, StringComparison.OrdinalIgnoreCase)));
         }
     }
 }

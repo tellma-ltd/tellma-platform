@@ -19,7 +19,8 @@ namespace Tellma.Core.IntegrationTests.Migrator
     /// <summary>
     ///     The migrator's commands against a real server, run in process over the test distribution:
     ///     the catalog's creation, the role and its grants, provisioning, the per-tenant report, the
-    ///     schema fingerprint, the provisioning record and the status report.
+    ///     schema fingerprint, the provisioning record, the status report, and runs that overlap or
+    ///     lose their lock.
     /// </summary>
     [Trait("Category", "Integration")]
     public class MigratorTests(SqlServerFixture sql)
@@ -328,6 +329,244 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.Equal("Active", await StateAsync(migrator, 1));
         }
 
+        [Fact]
+        public async Task Provision_turns_on_read_committed_snapshot_and_the_query_store_in_a_fresh_tenant_database()
+        {
+            MigratorHarness migrator = new(sql, "mig_fresh");
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+
+            MigratorResult result = await migrator.RunAsync("provision", "--name", "Fresh", "--category", "Live", "--tenant", "5");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.True(await SqlServerFixture.ScalarAsync<bool>(sql.MasterConnectionString, $"SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = N'{migrator.TenantDatabaseName(5)}';"));
+
+            // The migrator's own settings, which differ from the server's defaults.
+            string tenant = migrator.TenantConnectionString(5);
+            Assert.Equal("READ_WRITE", await SqlServerFixture.ScalarAsync<string>(tenant, "SELECT actual_state_desc FROM sys.database_query_store_options;"));
+            Assert.Equal(1024L, await SqlServerFixture.ScalarAsync<long>(tenant, "SELECT max_storage_size_mb FROM sys.database_query_store_options;"));
+            Assert.Equal(30L, await SqlServerFixture.ScalarAsync<long>(tenant, "SELECT stale_query_threshold_days FROM sys.database_query_store_options;"));
+        }
+
+        [Fact]
+        public async Task Provision_leaves_the_isolation_query_store_and_users_of_an_existing_database_alone()
+        {
+            MigratorHarness migrator = new(sql, "mig_existing");
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+
+            // --- An operator's database: a history table, read-committed snapshot and the query store off ---
+            string name = migrator.TenantDatabaseName(5);
+            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{name}] COLLATE {DatabaseCollations.Platform};");
+            await SqlServerFixture.ExecuteAsync(
+                migrator.TenantConnectionString(5),
+                "ALTER DATABASE CURRENT SET QUERY_STORE = OFF;",
+                "CREATE TABLE [dbo].[__EFMigrationsHistory] ([MigrationId] nvarchar(150) NOT NULL CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY, [ProductVersion] nvarchar(32) NOT NULL);");
+
+            // A principal with no login: creating its user would fail the run.
+            migrator.Values["Tellma:Sql:ApplicationPrincipal"] = "tellma_no_such_login";
+            MigratorResult result = await migrator.RunAsync("provision", "--name", "Existing", "--category", "Live", "--tenant", "5");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.Equal("Active", await StateAsync(migrator, 5));
+            Assert.False(await SqlServerFixture.ScalarAsync<bool>(sql.MasterConnectionString, $"SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = N'{name}';"));
+            Assert.Equal("OFF", await SqlServerFixture.ScalarAsync<string>(migrator.TenantConnectionString(5), "SELECT actual_state_desc FROM sys.database_query_store_options;"));
+            Assert.Null(await SqlServerFixture.ScalarAsync<int?>(migrator.TenantConnectionString(5), "SELECT DATABASE_PRINCIPAL_ID(N'tellma_no_such_login');"));
+        }
+
+        [Fact]
+        public async Task The_application_principal_joins_the_role_in_a_fresh_catalog_and_a_fresh_tenant_database()
+        {
+            MigratorHarness migrator = new(sql, "mig_principal");
+            migrator.Seed(1);
+            string login = migrator.CatalogName + "_web";
+            string password = "Tm!" + Guid.NewGuid().ToString("N") + "aA1";
+            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE LOGIN [{login}] WITH PASSWORD = N'{password}', CHECK_POLICY = OFF;");
+            try
+            {
+                migrator.Values["Tellma:Sql:ApplicationPrincipal"] = login;
+
+                MigratorResult result = await migrator.RunAsync("migrate");
+
+                Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+                foreach (string database in new[] { migrator.CatalogConnectionString, migrator.TenantConnectionString(1) })
+                {
+                    Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(database, $"""
+                        SELECT COUNT(*) FROM sys.database_role_members AS rm
+                          JOIN sys.database_principals AS r ON r.principal_id = rm.role_principal_id
+                          JOIN sys.database_principals AS m ON m.principal_id = rm.member_principal_id
+                         WHERE r.name = {Role} AND m.name = N'{login}' AND m.type = N'S'
+                           AND m.sid = SUSER_SID(N'{login}');
+                        """));
+                }
+            }
+            finally
+            {
+                await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"IF SUSER_ID(N'{login}') IS NOT NULL DROP LOGIN [{login}];");
+            }
+        }
+
+        [Fact]
+        public async Task Migrate_skips_a_frozen_tenant_even_when_named()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_frozen"));
+            migrator.Seed(1);
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("set-state", "--tenant", "1", "--state", "Frozen", "--reason", "relocation")).ExitCode);
+
+            migrator.Values[ProbeStep.VersionKey] = "2";
+            MigratorResult result = await migrator.RunAsync("migrate", "--tenant", "1");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.Contains("tenant 1: frozen", result.Lines);
+            Assert.Single(ProbeStep.RunsOf(RunKey(migrator)));
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(migrator.TenantConnectionString(1), $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{ProbeStep.StepName}';"));
+        }
+
+        [Fact]
+        public async Task Migrate_restores_a_revoked_grant_on_the_next_run()
+        {
+            MigratorHarness migrator = new(sql, "mig_regrant");
+            migrator.Seed(1);
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            string tenant = migrator.TenantConnectionString(1);
+            await SqlServerFixture.ExecuteAsync(
+                tenant,
+                $"REVOKE SELECT, INSERT, UPDATE, DELETE ON SCHEMA::[probe] FROM [{DatabaseRoles.Application}];",
+                $"""
+                DECLARE @sequence nvarchar(300) = (SELECT TOP (1) QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name) FROM sys.sequences ORDER BY name);
+                EXEC (N'REVOKE UPDATE ON OBJECT::' + @sequence + N' FROM [{DatabaseRoles.Application}];');
+                """);
+
+            MigratorResult result = await migrator.RunAsync("migrate");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            await AssertSchemaGrantsAsync(tenant, ["core", "probe"]);
+            await AssertEverySequenceGrantedAsync(tenant);
+        }
+
+        [Fact]
+        public async Task A_cancellation_raised_inside_one_tenants_step_fails_that_tenant_alone()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_cancel"));
+            migrator.Seed(1, 2);
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+
+            // The bumped step times out on tenant 1, the way an HTTP client's timeout surfaces.
+            migrator.Values[ProbeStep.VersionKey] = "2";
+            migrator.Values[ProbeStep.FailTenantKey] = "1";
+            migrator.Values[ProbeStep.FailureKey] = "canceled";
+            MigratorResult result = await migrator.RunAsync("migrate");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.PartialFailure, result.ToString());
+            Assert.Contains(result.Lines, line => line.StartsWith("tenant 1: failed (TaskCanceledException", StringComparison.Ordinal));
+            Assert.Contains("tenant 2: migrated (0 migration(s), 1 step(s))", result.Lines);
+        }
+
+        [Fact]
+        public async Task Rerunning_the_registering_provision_line_resumes_a_failed_run_and_then_reports_already()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_rerunline"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            string[] command = ["provision", "--name", "Gadgets Inc", "--category", "Live", "--tenant", "5"];
+
+            // --- The first run registers the tenant, then fails in its step ---
+            migrator.Values[ProbeStep.FailTenantKey] = "5";
+            MigratorResult failed = await migrator.RunAsync(command);
+            Assert.True(failed.ExitCode == MigratorExitCodes.PartialFailure, failed.ToString());
+            Assert.Equal("Provisioning", await StateAsync(migrator, 5));
+
+            // --- The same line resumes the row, then finds it done ---
+            migrator.Values.Remove(ProbeStep.FailTenantKey);
+            MigratorResult resumed = await migrator.RunAsync(command);
+            Assert.True(resumed.ExitCode == MigratorExitCodes.Converged, resumed.ToString());
+            Assert.Contains(resumed.Lines, line => line.StartsWith("tenant 5: provisioned (0 migration(s), 1 step(s))", StringComparison.Ordinal));
+            Assert.Equal("Active", await StateAsync(migrator, 5));
+
+            MigratorResult again = await migrator.RunAsync(command);
+            Assert.True(again.ExitCode == MigratorExitCodes.Converged, again.ToString());
+            Assert.Contains("tenant 5: provisioned (already)", again.Lines);
+            Assert.Equal([(5, 1, true)], ProbeStep.RunsOf(RunKey(migrator)));
+
+            // --- A line that describes another tenant under the same id is refused ---
+            MigratorResult other = await migrator.RunAsync("provision", "--name", "Someone Else", "--category", "Live", "--tenant", "5");
+            Assert.True(other.ExitCode == MigratorExitCodes.PartialFailure, other.ToString());
+            Assert.Contains("is already registered as 'Gadgets Inc'", other.Output, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Provision_refuses_a_provisioning_tenant_whose_database_is_ahead()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_pahead"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            migrator.Values[ProbeStep.FailTenantKey] = "5";
+            Assert.Equal(MigratorExitCodes.PartialFailure, (await migrator.RunAsync("provision", "--name", "Ahead", "--category", "Live", "--tenant", "5")).ExitCode);
+            await SqlServerFixture.ExecuteAsync(
+                migrator.TenantConnectionString(5),
+                "INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'99991231235959_Future', N'10.0.11');");
+            migrator.Values.Remove(ProbeStep.FailTenantKey);
+
+            MigratorResult result = await migrator.RunAsync("provision", "--tenant", "5");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.PartialFailure, result.ToString());
+            Assert.Contains(result.Lines, line => line.StartsWith("tenant 5: failed (its database is ahead of this migrator", StringComparison.Ordinal));
+            Assert.Equal("Provisioning", await StateAsync(migrator, 5));
+            Assert.Empty(ProbeStep.RunsOf(RunKey(migrator)));
+        }
+
+        [Fact]
+        public async Task Overlapping_provision_runs_serialise_on_the_tenant_lock_and_both_converge()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_overlap"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            migrator.Values[ProbeStep.GateKeyKey] = migrator.CatalogName;
+            ProbeStep.Gate gate = ProbeStep.Hold(migrator.CatalogName);
+            string[] command = ["provision", "--name", "Overlap", "--category", "Live", "--tenant", "5"];
+
+            // --- The first run registers the tenant and stops inside its step, holding the tenant lock ---
+            Task<MigratorResult> first = migrator.RunAsync(command);
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromMinutes(2), Token);
+
+            // --- The second run, having read the row as provisioning, waits for the lock ---
+            Task<MigratorResult> second = migrator.RunAsync(command);
+            await WaitForLockWaiterAsync(migrator);
+            gate.Released.SetResult();
+
+            MigratorResult[] results = await Task.WhenAll(first, second);
+            Assert.All(results, static result => Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString()));
+            Assert.Contains("tenant 5: provisioned (already)", results[1].Lines);
+            Assert.Equal([(5, 1, true)], ProbeStep.RunsOf(RunKey(migrator)));
+            Assert.Equal("Active", await StateAsync(migrator, 5));
+        }
+
+        [Fact]
+        public async Task A_run_whose_lock_session_ends_stops_before_it_turns_the_tenant_active()
+        {
+            MigratorHarness migrator = Steps(new(sql, "mig_lostlock"));
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            migrator.Values[ProbeStep.GateKeyKey] = migrator.CatalogName;
+            ProbeStep.Gate gate = ProbeStep.Hold(migrator.CatalogName);
+
+            // --- The run stops inside its step; the server then ends the session that holds its lock ---
+            Task<MigratorResult> run = migrator.RunAsync("provision", "--name", "Lost", "--category", "Live", "--tenant", "5");
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromMinutes(2), Token);
+            int session = await SqlServerFixture.ScalarAsync<int>(sql.MasterConnectionString, $"""
+                SELECT TOP (1) request_session_id FROM sys.dm_tran_locks
+                 WHERE resource_type = N'APPLICATION' AND request_owner_type = N'SESSION' AND request_status = N'GRANT'
+                   AND resource_database_id = DB_ID(N'{migrator.CatalogName}');
+                """);
+            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, string.Create(CultureInfo.InvariantCulture, $"KILL {session};"));
+            gate.Released.SetResult();
+
+            MigratorResult result = await run;
+            Assert.True(result.ExitCode == MigratorExitCodes.PartialFailure, result.ToString());
+            Assert.Contains(result.Lines, line => line.StartsWith("tenant 5: failed (The migration lock 'tellma:migrate:tenant:5' was lost", StringComparison.Ordinal));
+            Assert.Equal("Provisioning", await StateAsync(migrator, 5));
+
+            // --- A rerun converges ---
+            MigratorResult rerun = await migrator.RunAsync("provision", "--tenant", "5");
+            Assert.True(rerun.ExitCode == MigratorExitCodes.Converged, rerun.ToString());
+            Assert.Equal("Active", await StateAsync(migrator, 5));
+        }
+
         /// <summary>Adds the counted step to a harness's runs, counted under the harness's own key.</summary>
         /// <param name="migrator">The harness.</param>
         /// <returns>The harness.</returns>
@@ -344,6 +583,23 @@ namespace Tellma.Core.IntegrationTests.Migrator
         private static string RunKey(MigratorHarness migrator)
         {
             return migrator.CatalogName;
+        }
+
+        /// <summary>Waits until a run waits for a migration lock in a harness's catalog.</summary>
+        /// <param name="migrator">The harness.</param>
+        /// <returns>A task that completes when a lock request waits.</returns>
+        private async Task WaitForLockWaiterAsync(MigratorHarness migrator)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            timeout.CancelAfter(TimeSpan.FromMinutes(2));
+            string waiting = $"""
+                SELECT COUNT(*) FROM sys.dm_tran_locks
+                 WHERE resource_type = N'APPLICATION' AND request_status = N'WAIT' AND resource_database_id = DB_ID(N'{migrator.CatalogName}');
+                """;
+            while (await SqlServerFixture.ScalarAsync<int>(sql.MasterConnectionString, waiting) == 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token);
+            }
         }
 
         /// <summary>A tenant's state in the catalog.</summary>

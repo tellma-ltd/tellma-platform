@@ -25,7 +25,6 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             IServiceCollection services = TestComposition.Compose(static tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: static c => c
                 .ProvisioningStep<SampleStep>()
-                .ProvisioningStep<SampleStep>()
                 .ProvisioningStep<OtherStep>())));
 
             List<ServiceDescriptor> steps = [.. services.Where(static descriptor => descriptor.ServiceType == typeof(ITenantProvisioningStep))];
@@ -34,6 +33,28 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
             Assert.Empty((await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: false, TestContext.Current.CancellationToken)).From(Check));
+        }
+
+        [Fact]
+        public void The_same_step_class_contributed_twice_by_one_feature_is_a_composition_problem()
+        {
+            IReadOnlyList<CompositionProblem> problems = TestComposition.Problems(static tellma => tellma.AddFeature(new TestFeature<Tag.A>("acme", contribute: static c => c
+                .ProvisioningStep<SampleStep>()
+                .ProvisioningStep<SampleStep>())));
+
+            Assert.Contains("already, once", Assert.Single(problems).Problem, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_same_step_class_contributed_by_two_features_is_a_composition_problem()
+        {
+            IReadOnlyList<CompositionProblem> problems = TestComposition.Problems(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("acme", contribute: static c => c.ProvisioningStep<SampleStep>()))
+                .AddFeature(new TestFeature<Tag.B>("beta", contribute: static c => c.ProvisioningStep<SampleStep>())));
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Contains("Feature 'beta'", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("after feature 'acme' did", problem.Problem, StringComparison.Ordinal);
         }
 
         [Fact]

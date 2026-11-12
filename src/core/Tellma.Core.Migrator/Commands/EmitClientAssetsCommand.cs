@@ -18,8 +18,7 @@ namespace Tellma.Core.Migrator.Commands
     /// <summary>
     ///     <c>emit-client-assets &lt;dir&gt;</c>: realises the composition with no host, database or
     ///     connection, runs the startup checks that read the composition alone, runs every client
-    ///     asset contributor and writes the client metadata into the generated folder (spec 0011
-    ///     §6.1, spec 0024 §3.2).
+    ///     asset contributor and writes the client metadata into the generated folder.
     /// </summary>
     internal static class EmitClientAssetsCommand
     {
@@ -95,10 +94,21 @@ namespace Tellma.Core.Migrator.Commands
                     return MigratorExitCodes.CompositionProblems;
                 }
 
-                // --- The files ---
-                foreach (string written in await WriteAsync(Path.GetFullPath(line.Directory), bundle, cancellationToken).ConfigureAwait(false))
+                // --- The files; a folder that cannot be written fails the run, and a rerun converges ---
+                List<string> written;
+                try
                 {
-                    await output.WriteLineAsync(written).ConfigureAwait(false);
+                    written = await WriteAsync(Path.GetFullPath(line.Directory), bundle, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    await error.WriteLineAsync($"emit-client-assets: failed ({exception.Message})").ConfigureAwait(false);
+                    return MigratorExitCodes.PartialFailure;
+                }
+
+                foreach (string file in written)
+                {
+                    await output.WriteLineAsync(file).ConfigureAwait(false);
                 }
 
                 return MigratorExitCodes.Converged;

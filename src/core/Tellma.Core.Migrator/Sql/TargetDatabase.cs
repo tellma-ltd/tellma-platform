@@ -12,8 +12,7 @@ namespace Tellma.Core.Migrator.Sql
 {
     /// <summary>
     ///     One database the migrator prepares: created in the platform collation when it is missing,
-    ///     checked when it exists, and told apart as fresh when its model's history table is absent
-    ///     (spec 0011 §6.7).
+    ///     checked when it exists, and told apart as fresh when its model's history table is absent.
     /// </summary>
     /// <param name="connectionString">The database's connection string, as the migrator connects to it.</param>
     internal sealed class TargetDatabase(string connectionString)

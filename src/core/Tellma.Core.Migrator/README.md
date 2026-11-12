@@ -22,7 +22,7 @@ tenant-model migrations are scaffolded with.
 |---|---|
 | `emit-client-assets <dir>` | Realises the composition with no host or database, runs only the startup checks that read the composition alone, runs every `IClientAssetContributor`, and writes the client metadata into the generated folder `<dir>`. |
 | `migrate [--catalog-only] [--tenant <id>]... [--all-tenants] [--parallelism <n>]` | Creates a missing catalog, migrates it (and the in-proc identity store), grants `tellma_app`, registers and provisions the `Tellma:Seed:Tenants`, then migrates every tenant in parallel and prints one line per tenant. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`. `--admin-subject` is accepted in Development only. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`. Rerunning the same line converges: an id the catalog holds with the same registration is resumed, and an active tenant is reported `provisioned (already)`. `--admin-subject` is accepted in Development only. |
 | `set-state --tenant <id> --state <state> [--reason …]` | Moves a tenant to another state, as the actor `migrator`. |
 | `status` | Prints the catalog's pending migrations, each tenant's state, recorded schema fingerprints against the model's and pending migrations, then the composition's problems. Writes nothing. |
 
@@ -46,11 +46,19 @@ when it needs it, because `migrate` may have to create the catalog first.
 3. Provisions every seed tenant still `Provisioning`, each under its tenant lock
    (`tellma:migrate:tenant:<id>`).
 4. Migrates every `Active`, `ReadOnly` and `Suspended` tenant (or the named ones) under its tenant
-   lock: the role, `Migrate()`, the schema fingerprint row, the grants, the version-tag seed, the
-   due provisioning steps and the drift scan. A tenant whose database is ahead of this migrator is
-   reported `ahead`; a `Suspended` one stops after the version-tag seed (`suspended-steps-deferred`);
-   a `Frozen` one is skipped (`frozen`); a non-seed `Provisioning` row is left to `provision`
-   (`provisioning`).
+   lock, reading the row again once the lock is held: the role, `Migrate()`, the schema
+   fingerprint row, the grants, the version-tag seed, the due provisioning steps and the drift
+   scan. A tenant whose database is ahead of this migrator is reported `ahead`; a `Suspended` one
+   stops after the version-tag seed (`suspended-steps-deferred`); a `Frozen` one is skipped
+   (`frozen`), even when named or frozen while the run waited for its lock; a non-seed
+   `Provisioning` row is left to `provision` (`provisioning`).
+
+Each lock is a session lock on a catalog connection of its own. Before the fingerprint, before each
+provisioning step, before the invitation and before a tenant turns `Active`, the run confirms that
+its session still holds the lock (`APPLOCK_MODE`); a session the server ended, on a failover for
+instance, fails that tenant instead of letting two runs interleave. Only the run's own cancellation
+stops a run; any other failure, a timeout inside a step included, is that tenant's and the others go
+on.
 
 ### The application role's grants
 

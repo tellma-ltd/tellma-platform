@@ -19,8 +19,7 @@ namespace Tellma.Core.Migrator.Commands
 {
     /// <summary>
     ///     <c>migrate</c>: brings the catalog, the in-proc identity store and every tenant up to this
-    ///     migrator, registers and provisions the seed tenants, and prints one line per tenant
-    ///     (spec 0011 §6.1).
+    ///     migrator, registers and provisions the seed tenants, and prints one line per tenant.
     /// </summary>
     /// <param name="context">The run.</param>
     internal sealed class MigrateCommand(MigratorContext context)
@@ -41,8 +40,9 @@ namespace Tellma.Core.Migrator.Commands
                 (int applied, seeded) = await MigrateCatalogAsync(registerSeeds: !line.CatalogOnly, outcomes, cancellationToken).ConfigureAwait(false);
                 context.WriteLine(string.Create(CultureInfo.InvariantCulture, $"catalog: migrated ({applied} migration(s))"));
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
+                // Only the run's own cancellation stops the run; any other is the catalog's failure.
                 MigratorLog.CatalogFailed(context.Logger, exception);
                 context.WriteLine($"catalog: failed ({TenantOutcome.Describe(exception)})");
                 return MigratorExitCodes.PartialFailure;
@@ -53,7 +53,7 @@ namespace Tellma.Core.Migrator.Commands
                 return MigratorExitCodes.Converged;
             }
 
-            // --- The seed tenants still provisioning, under their own locks ---
+            // --- The seed tenants still provisioning, under their own locks; each is read again under its lock ---
             TenantMigration migration = new(context);
             IReadOnlyList<TenantInfo> tenants = await context.Services.GetRequiredService<ITenantCatalog>().ListAsync(cancellationToken).ConfigureAwait(false);
             ProvisioningAdministrator administrator = context.Administrator(email: null, subject: null);
@@ -61,38 +61,27 @@ namespace Tellma.Core.Migrator.Commands
             await Parallel.ForEachAsync(
                 seeds,
                 new ParallelOptions { MaxDegreeOfParallelism = line.Parallelism, CancellationToken = cancellationToken },
-                async (tenant, token) => outcomes[tenant.Id] = await migration.ProvisionAsync(tenant, administrator, token).ConfigureAwait(false))
+                async (tenant, token) => outcomes[tenant.Id] = await migration.ProvisionAsync(tenant.Id, administrator, token).ConfigureAwait(false))
                 .ConfigureAwait(false);
 
-            // --- Every other tenant: migrated, skipped or reported by its state ---
-            List<TenantInfo> targets = [];
+            // --- Every other tenant: migrated, or reported by its state; each migrated one is read again under its lock ---
+            List<int> targets = [];
             foreach (TenantInfo tenant in Targets(tenants, line.Tenants, outcomes))
             {
-                switch (tenant.Descriptor.State)
+                if (TenantOutcome.Unmigrated(tenant.Id, tenant.Descriptor.State) is { } unmigrated)
                 {
-                    case TenantState.Active or TenantState.ReadOnly or TenantState.Suspended:
-                        targets.Add(tenant);
-                        break;
-
-                    case TenantState.Frozen:
-                        outcomes[tenant.Id] = TenantOutcome.Of(tenant.Id, TenantOutcome.Frozen);
-                        break;
-
-                    case TenantState.Provisioning:
-                        outcomes[tenant.Id] = TenantOutcome.Of(tenant.Id, TenantOutcome.Provisioning);
-                        break;
-
-                    case TenantState.Retired:
-                    default:
-                        outcomes[tenant.Id] = TenantOutcome.Of(tenant.Id, TenantOutcome.Retired);
-                        break;
+                    outcomes[tenant.Id] = unmigrated;
+                }
+                else
+                {
+                    targets.Add(tenant.Id);
                 }
             }
 
             await Parallel.ForEachAsync(
                 targets,
                 new ParallelOptions { MaxDegreeOfParallelism = line.Parallelism, CancellationToken = cancellationToken },
-                async (tenant, token) => outcomes[tenant.Id] = await migration.MigrateAsync(tenant, token).ConfigureAwait(false))
+                async (tenantId, token) => outcomes[tenantId] = await migration.MigrateAsync(tenantId, token).ConfigureAwait(false))
                 .ConfigureAwait(false);
 
             // --- A named tenant the catalog does not hold ---
@@ -209,6 +198,8 @@ namespace Tellma.Core.Migrator.Commands
                 return (applied, []);
             }
 
+            // A catalog session lost during the migrations must not register rows another run now guards.
+            await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
             List<SeedTenant> seeds = context.Configuration.GetSection(MigratorContext.SeedTenantsKey).Get<List<SeedTenant>>() ?? [];
             ITenantCatalog tenants = context.Services.GetRequiredService<ITenantCatalog>();
             HashSet<int> existing = [.. (await tenants.ListAsync(cancellationToken).ConfigureAwait(false)).Select(static tenant => tenant.Id)];

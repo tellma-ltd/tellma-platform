@@ -135,8 +135,16 @@ namespace Tellma.Core.Migrator
 
             settings.ConfigureServices?.Invoke(builder.Services);
 
+            // --- The host: a service graph that does not resolve is a composition problem ---
+            (IHost? built, int buildExitCode, string? buildFailure) = Build(builder);
+            if (built is null)
+            {
+                await error.WriteLineAsync(buildFailure).ConfigureAwait(false);
+                return buildExitCode;
+            }
+
             // --- The startup gate, then one command, then the host stops ---
-            using IHost host = builder.Build();
+            using IHost host = built;
             try
             {
                 await host.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -145,6 +153,17 @@ namespace Tellma.Core.Migrator
             {
                 await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
                 return MigratorExitCodes.CompositionProblems;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await error.WriteLineAsync("The run was stopped while the host started; rerun it to converge.").ConfigureAwait(false);
+                return MigratorExitCodes.PartialFailure;
+            }
+            catch (Exception exception)
+            {
+                // A hosted service that failed to start: nothing ran, and a rerun after the fix converges.
+                await error.WriteLineAsync($"The host could not start: {TenantOutcome.Describe(exception)}").ConfigureAwait(false);
+                return MigratorExitCodes.PartialFailure;
             }
 
             try
@@ -175,6 +194,28 @@ namespace Tellma.Core.Migrator
             finally
             {
                 await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        ///     Builds the host. Development validates the service graph here, and a graph that does
+        ///     not resolve is a composition problem; any other failure fails the run.
+        /// </summary>
+        /// <param name="builder">The configured builder.</param>
+        /// <returns>The host, or null with the exit code and the text to print.</returns>
+        private static (IHost? Host, int ExitCode, string? Failure) Build(HostApplicationBuilder builder)
+        {
+            try
+            {
+                return (builder.Build(), MigratorExitCodes.Converged, null);
+            }
+            catch (AggregateException exception)
+            {
+                return (null, MigratorExitCodes.CompositionProblems, $"The composition's services do not resolve: {exception.Message}");
+            }
+            catch (Exception exception)
+            {
+                return (null, MigratorExitCodes.PartialFailure, $"The host could not be built: {TenantOutcome.Describe(exception)}");
             }
         }
 

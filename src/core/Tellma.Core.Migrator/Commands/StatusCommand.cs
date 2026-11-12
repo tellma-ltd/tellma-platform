@@ -19,7 +19,7 @@ namespace Tellma.Core.Migrator.Commands
     /// <summary>
     ///     <c>status</c>: the catalog's pending migrations; each tenant's state, recorded schema
     ///     fingerprints against the running model's, and pending migrations; then the composition's
-    ///     problems (spec 0011 §6.1). It writes nothing.
+    ///     problems. It writes nothing.
     /// </summary>
     /// <param name="context">The run.</param>
     internal sealed class StatusCommand(MigratorContext context)

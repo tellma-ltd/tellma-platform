@@ -13,9 +13,10 @@ namespace Tellma.Core.Composition.Realizers
     /// <summary>
     ///     Registers <see cref="ProvisioningStepContributionItem" />s: each step class once, as a
     ///     scoped <see cref="ITenantProvisioningStep" />, so the step runner creates it inside the
-    ///     tenant scope it runs in. The same class contributed twice is registered once, for the
-    ///     feature realised first; two classes that share a step name are the startup gate's to
-    ///     report, because a name is only known once a step exists.
+    ///     tenant scope it runs in. The same class contributed twice, by one feature or by two, is a
+    ///     composition problem, because a step runs once per tenant and belongs to one feature; two
+    ///     classes that share a step name are the startup gate's to report, because a name is only
+    ///     known once a step exists.
     /// </summary>
     internal sealed class ProvisioningStepContributionRealizer : IContributionRealizer<ProvisioningStepContributionItem>
     {
@@ -38,12 +39,21 @@ namespace Tellma.Core.Composition.Realizers
                 return;
             }
 
-            // --- Once per class, scoped, recorded with its owner ---
-            if (!context.Record.ProvisioningSteps.Exists(existing => existing.Type == stepType))
+            // --- A class contributed again, by its own feature or another, is refused ---
+            ContributedType? earlier = context.Record.ProvisioningSteps.Find(existing => existing.Type == stepType);
+            if (earlier is not null)
             {
-                context.Record.ProvisioningSteps.Add(new ContributedType(stepType, owner));
-                context.Services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ITenantProvisioningStep), stepType));
+                string by = ReferenceEquals(earlier.Owner, owner) ? "already, once" : $"after feature '{earlier.Owner.Name}' did";
+                context.Report(new CompositionProblem(
+                    CompositionNames.Source,
+                    $"Feature '{owner.Name}' contributes the provisioning step {TypeDisplay.Qualified(stepType)} {by}; a step runs once per tenant, so one feature contributes it once.",
+                    "Contribute each provisioning step class from one feature, once."));
+                return;
             }
+
+            // --- Scoped, recorded with its owner ---
+            context.Record.ProvisioningSteps.Add(new ContributedType(stepType, owner));
+            context.Services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ITenantProvisioningStep), stepType));
         }
     }
 }

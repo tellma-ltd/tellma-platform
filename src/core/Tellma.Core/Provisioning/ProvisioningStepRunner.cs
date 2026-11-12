@@ -28,6 +28,12 @@ namespace Tellma.Core.Provisioning
     ///         migration retries it, because nothing was recorded for it.
     ///     </para>
     ///     <para>
+    ///         A completion is recorded after the step's own work committed, in a transaction of its
+    ///         own, so a crash or a lost connection between the two runs the step again next time.
+    ///         That is safe because a step is idempotent: running it twice leaves what running it once
+    ///         does.
+    ///     </para>
+    ///     <para>
     ///         The tenant database must already list the running model's schema fingerprint, because
     ///         every batch a step sends checks it first.
     ///     </para>
@@ -79,11 +85,20 @@ namespace Tellma.Core.Provisioning
         /// <param name="isNew">Whether the tenant is being provisioned.</param>
         /// <param name="adminSubject">The first administrator's subject, in Development only.</param>
         /// <param name="adminEmail">The first administrator's email address, or null.</param>
+        /// <param name="beforeEachStep">
+        ///     Runs before each due step starts, and fails the run by throwing; the migrator confirms
+        ///     there that it still holds the tenant's lock. Null for none.
+        /// </param>
         /// <param name="cancellationToken">Cancels between steps; a running step completes.</param>
         /// <returns>The names of the steps that ran, in order.</returns>
         /// <exception cref="Exception">A step failed; the steps after it did not run and nothing was recorded for it.</exception>
         public async Task<IReadOnlyList<string>> RunAsync(
-            TenantDescriptor tenant, bool isNew, string? adminSubject, string? adminEmail, CancellationToken cancellationToken)
+            TenantDescriptor tenant,
+            bool isNew,
+            string? adminSubject,
+            string? adminEmail,
+            Func<CancellationToken, Task>? beforeEachStep,
+            CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(tenant);
 
@@ -93,6 +108,11 @@ namespace Tellma.Core.Provisioning
             foreach (StepDescription step in Due(await DescribeAsync().ConfigureAwait(false), recorded))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (beforeEachStep is not null)
+                {
+                    await beforeEachStep(cancellationToken).ConfigureAwait(false);
+                }
+
                 try
                 {
                     await RunStepAsync(tenant, step, isNew, adminSubject, adminEmail, cancellationToken).ConfigureAwait(false);
@@ -103,7 +123,7 @@ namespace Tellma.Core.Provisioning
                     throw;
                 }
 
-                // --- The completion, recorded once the step's work committed ---
+                // --- The completion, recorded once the step's work committed; a crash in between re-runs the idempotent step ---
                 SqlConnection connection = await connections.OpenAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
                 await using (connection.ConfigureAwait(false))
                 {

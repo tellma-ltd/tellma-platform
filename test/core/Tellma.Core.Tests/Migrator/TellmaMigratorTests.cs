@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -85,6 +86,50 @@ namespace Tellma.Core.Tests.Migrator
             Assert.Equal(MigratorExitCodes.Usage, run.ExitCode);
             Assert.Contains("--admin-subject is accepted in Development only", run.Error, StringComparison.Ordinal);
             Assert.Equal(["false"], GateProbe.Seen(key));
+        }
+
+        [Fact]
+        public async Task A_service_graph_that_does_not_resolve_in_Development_is_a_composition_problem()
+        {
+            Run run = await RunAsync(
+                ["status"],
+                compose: static tellma => tellma.AddFeature(new TestFeature<Tag.A>("probe", contribute: static c => c.Singleton<IUnresolvable, Unresolvable>())),
+                environmentName: Environments.Development);
+
+            Assert.Equal(MigratorExitCodes.CompositionProblems, run.ExitCode);
+            Assert.Contains("The composition's services do not resolve", run.Error, StringComparison.Ordinal);
+            Assert.Contains(nameof(IMissingDependency), run.Error, StringComparison.Ordinal);
+            Assert.Empty(run.Output);
+        }
+
+        [Fact]
+        public async Task A_hosted_service_that_fails_to_start_fails_the_run_before_the_command()
+        {
+            Run run = await RunAsync(["status"], services: static services => services.AddHostedService<FailingHostedService>());
+
+            Assert.Equal(MigratorExitCodes.PartialFailure, run.ExitCode);
+            Assert.Contains("The host could not start: InvalidOperationException: The hosted service refused to start.", run.Error, StringComparison.Ordinal);
+            Assert.Empty(run.Output);
+        }
+
+        [Fact]
+        public async Task Emit_into_a_folder_that_cannot_be_written_fails_the_run()
+        {
+            // A file where the folder should be: creating the folder fails on every platform.
+            string blocker = Path.Combine(Path.GetTempPath(), "tellma-emit-" + Key());
+            await File.WriteAllTextAsync(blocker, "not a folder", Token);
+            try
+            {
+                Run run = await RunAsync(["emit-client-assets", blocker], configuration: new Dictionary<string, string?> { ["Tellma:DisplayName"] = "Acme ERP" });
+
+                Assert.Equal(MigratorExitCodes.PartialFailure, run.ExitCode);
+                Assert.Contains("emit-client-assets: failed (", run.Error, StringComparison.Ordinal);
+                Assert.Empty(run.Output);
+            }
+            finally
+            {
+                File.Delete(blocker);
+            }
         }
 
         [Fact]
@@ -182,13 +227,19 @@ namespace Tellma.Core.Tests.Migrator
                 StringComparer.Ordinal);
         }
 
-        /// <summary>Runs the migrator in process with in-memory configuration, in Production.</summary>
+        /// <summary>Runs the migrator in process with in-memory configuration, in Production unless told otherwise.</summary>
         /// <param name="args">The command line.</param>
         /// <param name="compose">The composition; the core feature alone when null.</param>
         /// <param name="configuration">The configuration; the sound one when null.</param>
+        /// <param name="environmentName">The host's environment.</param>
+        /// <param name="services">Further services for the host, or null.</param>
         /// <returns>What the run printed and returned.</returns>
         private static async Task<Run> RunAsync(
-            string[] args, Action<TellmaBuilder>? compose = null, IReadOnlyDictionary<string, string?>? configuration = null)
+            string[] args,
+            Action<TellmaBuilder>? compose = null,
+            IReadOnlyDictionary<string, string?>? configuration = null,
+            string environmentName = "Production",
+            Action<IServiceCollection>? services = null)
         {
             using StringWriter output = new(CultureInfo.InvariantCulture);
             using StringWriter error = new(CultureInfo.InvariantCulture);
@@ -204,10 +255,14 @@ namespace Tellma.Core.Tests.Migrator
                     MigrationsAssembly = typeof(TellmaMigratorTests).Assembly,
                     Out = output,
                     Error = error,
-                    EnvironmentName = "Production",
+                    EnvironmentName = environmentName,
                     ContentRootPath = AppContext.BaseDirectory,
                     ConfigureConfiguration = configurationBuilder => configurationBuilder.AddInMemoryCollection(values),
-                    ConfigureServices = static services => services.AddLogging(static logging => logging.ClearProviders()),
+                    ConfigureServices = collection =>
+                    {
+                        _ = collection.AddLogging(static logging => logging.ClearProviders());
+                        services?.Invoke(collection);
+                    },
                 },
                 Token);
 
@@ -234,6 +289,36 @@ namespace Tellma.Core.Tests.Migrator
                 {
                     Directory.Delete(parent, recursive: true);
                 }
+            }
+        }
+
+        /// <summary>A service no composition registers.</summary>
+        private interface IMissingDependency;
+
+        /// <summary>A service whose only constructor needs <see cref="IMissingDependency" />.</summary>
+        private interface IUnresolvable;
+
+        /// <summary>The unresolvable service's implementation.</summary>
+        /// <param name="missing">The dependency nothing registers.</param>
+        private sealed class Unresolvable(IMissingDependency missing) : IUnresolvable
+        {
+            /// <summary>The dependency, kept so the constructor reads it.</summary>
+            public IMissingDependency Missing { get; } = missing;
+        }
+
+        /// <summary>A hosted service that refuses to start.</summary>
+        private sealed class FailingHostedService : IHostedService
+        {
+            /// <inheritdoc />
+            public Task StartAsync(CancellationToken cancellationToken)
+            {
+                throw new InvalidOperationException("The hosted service refused to start.");
+            }
+
+            /// <inheritdoc />
+            public Task StopAsync(CancellationToken cancellationToken)
+            {
+                return Task.CompletedTask;
             }
         }
 

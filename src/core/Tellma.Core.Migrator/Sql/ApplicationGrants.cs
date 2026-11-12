@@ -13,7 +13,7 @@ namespace Tellma.Core.Migrator.Sql
     /// <summary>
     ///     The statements that give the application role what the web application needs in a
     ///     database, recomputed from the model after every run, and the ones that create the
-    ///     application's own database user in a fresh database (spec 0011 §6.4).
+    ///     application's own database user in a fresh database.
     /// </summary>
     /// <remarks>
     ///     <para>

@@ -11,7 +11,7 @@ using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Migrator.Commands
 {
-    /// <summary><c>set-state</c>: moves a tenant to another state, as the migrator (spec 0011 §6.1).</summary>
+    /// <summary><c>set-state</c>: moves a tenant to another state, as the migrator.</summary>
     /// <param name="context">The run.</param>
     internal sealed class SetStateCommand(MigratorContext context)
     {
