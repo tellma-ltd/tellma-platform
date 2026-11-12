@@ -539,6 +539,17 @@
   background: var(--field-bg);
 }
 
+/* The draft typed before the editing code arrives: plain text where the
+   editor's input will be, kept whole (spaces included) and clipped at the
+   cell's edge. */
+.tm-grid__draft {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding-inline: var(--tm-grid-cell-padding-x);
+  overflow: hidden;
+  white-space: pre;
+}
+
 /* A hierarchy cell's editor keeps the tree indentation via padding (not an
    inset), so its field background still covers the WHOLE cell — otherwise the
    active-cell highlight bleeds through the uncovered indent strip. */

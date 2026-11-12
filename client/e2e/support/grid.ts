@@ -15,10 +15,17 @@ import { storyUrl, type StoryUrlOptions } from './story-map';
  * virtualization regardless of what happens to be rendered.
  */
 
-/** Navigates to a grid story and waits for the grid chrome to render. */
+/**
+ * Navigates to a grid story and waits for the grid chrome to render and the
+ * app to settle. An editable grid fetches its editing code on demand, and
+ * that load is a pending task, so a settled page has its editors in place: a
+ * test exercises the editor itself, not the draft a grid keeps while the code
+ * is on its way.
+ */
 export async function gotoGrid(page: Page, id: string, options: StoryUrlOptions = {}): Promise<void> {
   await page.goto(storyUrl(id, options));
   await expect(gridScroller(page)).toBeVisible();
+  await appStable(page);
 }
 
 /** The grid's scroll container (`role="grid"`, or `treegrid` on trees). */

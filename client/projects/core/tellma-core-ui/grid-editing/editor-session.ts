@@ -150,9 +150,13 @@ export interface ɵTmGridMountedEditor {
  * class to mount into it.
  */
 export class ɵTmGridEditorSession {
+  /** The staged mount, waiting for its outlet; `null` when none is staged. */
   private pending: ɵTmGridEditorMountConfig | null = null;
+  /** The mounted editor, or `null` while nothing is live. */
   private mounted: ɵTmGridMountedEditor | null = null;
+  /** Destroys the mounted view, or `null` while nothing is live. */
   private destroyView: (() => void) | null = null;
+  /** The mounted dropdown editor's activation subscription, if any. */
   private activationSub: OutputRefSubscription | null = null;
 
   /**

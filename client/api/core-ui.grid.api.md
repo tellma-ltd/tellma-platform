@@ -16,6 +16,7 @@ import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
@@ -66,7 +67,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     readonly pendingCount: Signal<number>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowActivate: _angular_core.OutputEmitterRef<TmGridRowActivation<T>>;
-    readonly rowActivation: _angular_core.InputSignal<"none" | "row">;
+    readonly rowActivation: _angular_core.InputSignal<"row" | "none">;
     readonly rowClass: _angular_core.InputSignal<((row: T) => string | readonly string[] | null) | undefined>;
     readonly rowHeaders: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowId: _angular_core.InputSignal<(row: T) => TmRowId>;

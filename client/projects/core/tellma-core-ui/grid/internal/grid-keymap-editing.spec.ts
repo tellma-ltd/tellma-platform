@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { tmResolveEditingKey, type TmGridEditingKeyContext } from './editing-keymap';
+import { tmResolveEditingKey, type TmGridEditingKeyContext } from './grid-keymap';
 
 function key(init: KeyboardEventInit & { key: string }): KeyboardEvent {
   return new KeyboardEvent('keydown', { cancelable: true, ...init });

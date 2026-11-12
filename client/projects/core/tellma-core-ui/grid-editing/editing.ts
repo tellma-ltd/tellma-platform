@@ -4,14 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 // The grid's editing controller: opening an editor session on a cell and
-// mounting its editor, the keys an open editor hands back to the grid,
-// commit (with the entity label-resolution ladder) and cancel. A readonly
-// grid never needs any of it, so it ships in this entry point, which the
-// grid loads with import() once it is editable (spec 0010 §C.11, Part C
-// flag 6); the grid's own core keeps every path a readonly grid runs. The
-// core implements `ɵTmGridEditingHost`, the seam this controller works
-// through, and holds what the user does while this code is on its way
-// (`resume`).
+// mounting its editor, commit (with the entity label-resolution ladder)
+// and cancel. A readonly grid never needs any of it, so it ships in this
+// entry point, which the grid loads with import() once it is editable
+// (spec 0010 §C.11, Part C flag 6); the grid's own core keeps every path a
+// readonly grid runs, the editing keys included. The core implements
+// `ɵTmGridEditingHost`, the seam this controller works through, and keeps
+// a draft of what the user types while this code is on its way (`resume`).
 
 import {
   isDevMode,
@@ -33,13 +32,11 @@ import type {
 } from '@tellma/core-ui/entity-picker';
 import type {
   TmGridColumnType,
-  TmGridEditSession,
   TmGridEngine,
   TmGridResolutionRequest,
   TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 
-import { tmResolveEditingKey, type TmGridEditingCommitTarget } from './editing-keymap';
 import {
   ɵTmGridEditorSession,
   type ɵTmGridEditorMountConfig,
@@ -105,8 +102,8 @@ export interface ɵTmGridEditingColumn<T> {
 
 /**
  * The grid core as the editing controller sees it: the engine, the column
- * model, focus and reveal requests, and the label-resolution runner the
- * paste path shares.
+ * model, the editor checks it shares with the core, focus and reveal
+ * requests, and the label-resolution runner the paste path shares.
  */
 export interface ɵTmGridEditingHost<T> {
   /** The grid's headless engine. */
@@ -115,16 +112,23 @@ export interface ɵTmGridEditingHost<T> {
   readonly columnsInternal: Signal<readonly ɵTmGridEditingColumn<T>[]>;
   /** Whether Escape parked focus on the scroller; an open clears it. */
   readonly escapedSignal: WritableSignal<boolean>;
-  /** The scroll container, once rendered. */
-  readonly scrollerSignal: Signal<HTMLElement | null>;
   /** Renders the editing cell's outlet synchronously before a mount. */
   readonly appRef: ApplicationRef;
   /** The editing cell's editor outlet, or `null` while none renders. */
   readonly editorOutlet: ViewContainerRef | null;
+  /**
+   * Whether a cell's column can host an editor: every column but an
+   * `entity` one without a `*tmGridEditor` template or the built-in
+   * picker's three facilities.
+   */
+  hasEditor(cell: TmRowCol): boolean;
+  /**
+   * The text an edit-mode open edits: the cell's display text, a number
+   * column's full-precision value, or an errored cell's raw text.
+   */
+  editTextOf(cell: TmRowCol): string;
   /** Scrolls the active cell into view now. */
   revealActiveCell(): void;
-  /** Scrolls the active cell into view after the next render. */
-  requestReveal(): void;
   /** Focuses the active cell, now when it is rendered and after render too. */
   requestFocusActive(): void;
   /** The active cell's element, or `null`. */
@@ -146,12 +150,6 @@ export interface ɵTmGridEditorOpenOptions {
   /** Alt+ArrowDown: the editor's dropdown opens with it. */
   readonly dropdown?: boolean;
 }
-
-/**
- * What the grid held while this code loaded: keys typed into the session it
- * opened ahead of the editor, and commits a gesture asked for meanwhile.
- */
-export type ɵTmGridHeldWork = KeyboardEvent | { readonly refocus: boolean };
 
 /**
  * The editing controller of one grid. It owns the single live editor view
@@ -224,22 +222,19 @@ export class ɵTmGridEditing<T> {
 
   /**
    * Mounts the editor of the session the grid opened before this code
-   * arrived, then replays what the grid held meanwhile, in order: keys
-   * reach the editor or the grid as if typed now, and a held commit
-   * commits. Typed characters extend the editor's text (a synthetic key
-   * event types nothing), so no keystroke is lost. Focus that a held commit
-   * left on the page body returns to the active cell, or to the element
-   * outside the grid the user had moved it to.
+   * arrived, with the text the user typed into the grid's draft meanwhile
+   * (`null`: nothing typed, the editor opens as the session asked). The
+   * editor takes focus only when focus is still in the grid (`focus`), so
+   * the arrival never pulls it from where the user went.
    */
-  resume(opts: ɵTmGridEditorOpenOptions | undefined, held: readonly ɵTmGridHeldWork[]): void {
+  resume(opts: ɵTmGridEditorOpenOptions | undefined, text: string | null, focus: boolean): void {
     const engine = this.host.engine;
     const session = untracked(() => engine.edit.session());
     if (session === null) {
       return;
     }
-    const before = document.activeElement;
     try {
-      if (!this.admits(session.cell) || !this.mount(opts)) {
+      if (!this.admits(session.cell) || !this.mount(opts, focus)) {
         engine.edit.cancel();
         return;
       }
@@ -249,66 +244,33 @@ export class ɵTmGridEditing<T> {
       engine.edit.cancel();
       throw error;
     }
-    for (const work of held) {
-      if (work instanceof KeyboardEvent) {
-        this.replay(work);
-      } else {
-        this.commit(work);
-      }
-    }
-    // A held commit tore the mounted editor down, and focus fell with it.
-    // Focus that was in the grid goes to the active cell, where the press
-    // that asked for the commit put it; focus the user moved out of the
-    // grid meanwhile goes back where they put it.
-    if (untracked(() => engine.edit.session()) === null && document.activeElement === document.body) {
-      const scroller = untracked(this.host.scrollerSignal);
-      if (before instanceof HTMLElement && before.isConnected && !scroller?.contains(before)) {
-        before.focus({ preventScroll: true });
-      } else {
-        this.host.requestFocusActive();
-      }
+    const mounted = this.session.current();
+    if (text !== null && mounted !== null) {
+      // The draft replaces what the mount seeded; the pristine baseline the
+      // mount recorded still judges the commit.
+      this.seed(mounted.editor, text);
     }
   }
 
+  /** Whether the mounted editor's dropdown panel is open. */
+  isDropdownOpen(): boolean {
+    return this.session.current()?.isDropdownOpen() ?? false;
+  }
+
   /**
-   * The keydown branch while an editor session is open, after the grid's
-   * own checks (reveal, an editor-consumed key, Mod+F). The handler runs at
-   * the scroller (after the editor's own listeners), so it acts only on
-   * keys the editor did not `preventDefault` — this is how the two-stage
-   * Esc composes: the select's aria layer consumes Esc №1 closing its
-   * panel; Esc №2 reaches here and cancels the session.
+   * Opens the mounted editor's dropdown panel (Alt+ArrowDown); returns
+   * whether the editor has one.
    */
-  keydown(event: KeyboardEvent, session: TmGridEditSession): void {
+  openDropdown(): boolean {
     const mounted = this.session.current();
-    const resolved = tmResolveEditingKey(event, {
-      mode: session.mode,
-      isDropdownOpen: mounted?.isDropdownOpen() ?? false,
-    });
-    if (resolved === null) {
-      return;
+    if (
+      mounted === null ||
+      (mounted.kind !== 'enum' && mounted.kind !== 'date' && mounted.kind !== 'entity')
+    ) {
+      return false;
     }
-    switch (resolved.kind) {
-      case 'cancel':
-        this.cancel({ refocus: true });
-        event.preventDefault();
-        return;
-      case 'toggleMode':
-        this.host.engine.edit.toggleMode();
-        event.preventDefault();
-        return;
-      case 'openDropdown':
-        if (
-          mounted !== null &&
-          (mounted.kind === 'enum' || mounted.kind === 'date' || mounted.kind === 'entity')
-        ) {
-          mounted.openDropdown();
-          event.preventDefault();
-        }
-        return;
-      case 'commitMove':
-        this.commitAndMove(resolved.target, event);
-        return;
-    }
+    mounted.openDropdown();
+    return true;
   }
 
   /**
@@ -369,7 +331,7 @@ export class ɵTmGridEditing<T> {
     this.close(opts);
   }
 
-  /** Cancels the open session: the model is never written (§8.2 Esc, §5.1). */
+  /** Cancels the open session: the model is never written. */
   cancel(opts: { readonly refocus: boolean }): void {
     this.session.current()?.editor.cancel();
     this.host.engine.edit.cancel();
@@ -385,47 +347,27 @@ export class ɵTmGridEditing<T> {
    * and an editable one reports the misconfiguration in development.
    */
   private admits(cell: TmRowCol): boolean {
+    if (this.host.hasEditor(cell)) {
+      return true;
+    }
     const engine = this.host.engine;
     const column = untracked(this.host.columnsInternal)[cell.col];
-    if (column === undefined) {
-      return false;
+    // A cell that could never have opened an editor stays quiet; an
+    // editable one reports the misconfiguration in development.
+    if (column !== undefined && isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
+      throw new Error(
+        column.entitySearch === undefined
+          ? `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
+              `[search]/[itemId]/[itemLabel] for the built-in tm-entity-picker, or project ` +
+              `a *tmGridEditor template hosting a control that implements TmCellEditor.`
+          : `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
+              `both are required alongside [search] for the built-in tm-entity-picker editor.`,
+      );
     }
-    if (
-      column.editorDef === undefined &&
-      column.type === 'entity' &&
-      column.entitySearch === undefined
-    ) {
-      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
-        throw new Error(
-          `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
-            `[search]/[itemId]/[itemLabel] for the built-in tm-entity-picker, or project ` +
-            `a *tmGridEditor template hosting a control that implements TmCellEditor.`,
-        );
-      }
-      return false;
-    }
-    if (
-      column.type === 'entity' &&
-      column.editorDef === undefined &&
-      column.entitySearch !== undefined &&
-      (column.entityItemId === undefined || column.entityItemLabel === undefined)
-    ) {
-      // Gated on cell editability exactly like the no-editor guard above: a
-      // cell that could never have opened an editor must not be the thing
-      // that reports the column's misconfiguration.
-      if (isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
-        throw new Error(
-          `tm-grid: column "${column.id}" binds [search] without [itemId]/[itemLabel] — ` +
-            `both are required alongside [search] for the built-in tm-entity-picker editor.`,
-        );
-      }
-      // In production the cell stays non-editable, exactly like the
-      // no-editor case above. Opening anyway would render every option as
-      // "[object Object]" through the String(item) fallbacks and commit
-      // that string into the foreign-key field.
-      return false;
-    }
-    return true;
+    // In production the cell stays non-editable: opening anyway would
+    // render every option as "[object Object]" through the String(item)
+    // fallbacks and commit that string into the foreign-key field.
+    return false;
   }
 
   /**
@@ -435,10 +377,11 @@ export class ɵTmGridEditing<T> {
    * outside a tick in zoneless Angular, so the call is re-entrancy-safe,
    * and the synchronous mount is what lets an IME composition land inside
    * the editor's input within the same task (`opts.ime`); every other open
-   * path shares it for one behavior. Returns whether an editor mounted (the
-   * session is cancelled when none did).
+   * path shares it for one behavior. The editor takes focus unless `focus`
+   * is false. Returns whether an editor mounted (the session is cancelled
+   * when none did).
    */
-  private mount(opts: ɵTmGridEditorOpenOptions | undefined): boolean {
+  private mount(opts: ɵTmGridEditorOpenOptions | undefined, focus = true): boolean {
     const engine = this.host.engine;
     const session = untracked(() => engine.edit.session());
     const column =
@@ -450,17 +393,12 @@ export class ɵTmGridEditing<T> {
     const seedText = session.seedText;
     const view = untracked(() => engine.model.rowAt(cell.row));
     const valueAtOpen = untracked(() => engine.model.cellValue(cell));
-    const displayText = untracked(() => engine.displayText(cell));
-    // Number columns edit on the full-precision value (see `editSeedText`), but
-    // an invalid-input cell must still show the raw text the user typed — which
-    // `displayText` already returns for it.
+    // An invalid-input cell opens on its raw text, which has no value
+    // baseline (see the entity branch below).
     const hasInvalidInput =
       view !== null &&
       untracked(() => engine.annotations.invalidInput(view.id, column.id)) !== undefined;
-    const editText =
-      column.editSeedText !== undefined && !hasInvalidInput
-        ? column.editSeedText(valueAtOpen)
-        : displayText;
+    const editText = this.host.editTextOf(cell);
     const header = untracked(column.header);
 
     let config: ɵTmGridEditorMountConfig;
@@ -536,7 +474,9 @@ export class ɵTmGridEditing<T> {
     }
 
     const editor = mounted.editor;
-    editor.focus();
+    if (focus) {
+      editor.focus();
+    }
     // Every open starts WITHOUT a pristine baseline; only the branches that
     // seed a known text install one. Leaving the previous session's baseline
     // in place would make a later commit of a coincidentally equal string
@@ -595,11 +535,7 @@ export class ɵTmGridEditing<T> {
         }
       }
     } else if (seedText !== undefined) {
-      if (editor.seed !== undefined) {
-        editor.seed(seedText);
-      } else {
-        editor.value.set(seedText);
-      }
+      this.seed(editor, seedText);
       // A type-to-edit seed REPLACES the content — committing it unchanged
       // is still a user edit, so the baseline stays null (set above), never
       // the seed.
@@ -607,11 +543,7 @@ export class ɵTmGridEditing<T> {
       // Edit mode edits the cell's CURRENT DISPLAY TEXT (Excel edits the
       // formatted text; for an invalid-input cell that is the raw text) — but a
       // number column edits its full-precision value, not the rounded display.
-      if (editor.seed !== undefined) {
-        editor.seed(editText);
-      } else {
-        editor.value.set(editText);
-      }
+      this.seed(editor, editText);
       this.editorOpenText = editText;
     } else {
       // Consumer template editor: the grid owns the value channel and
@@ -630,82 +562,19 @@ export class ɵTmGridEditing<T> {
     return true;
   }
 
-  // ---- held keys ----
-
   /**
-   * Replays one key held while this code loaded. A character or Backspace
-   * typed into an open text editor edits its content directly, since a
-   * synthetic key event types nothing; every other key is dispatched where
-   * focus is now (the editor, when one is open), so the editor's own key
-   * handling and then the grid's see it exactly as they would have.
+   * Installs text in an editor: through `seed()` (caret at the end), or
+   * its value channel for a control that has no seed.
    */
-  private replay(event: KeyboardEvent): void {
-    const mounted = this.session.current();
-    const typing =
-      (event.key.length === 1 && !event.ctrlKey && !event.metaKey) || event.key === 'Backspace';
-    if (typing && mounted !== null && mounted.kind !== 'enum' && mounted.editor.seed !== undefined) {
-      const text = untracked(() => mounted.editor.text()) ?? '';
-      mounted.editor.seed(event.key === 'Backspace' ? text.slice(0, -1) : text + event.key);
-      return;
+  private seed(editor: TmCellEditor<unknown>, text: string): void {
+    if (editor.seed !== undefined) {
+      editor.seed(text);
+    } else {
+      editor.value.set(text);
     }
-    const scroller = untracked(this.host.scrollerSignal);
-    const focused = document.activeElement;
-    const target =
-      scroller !== null && focused !== null && scroller.contains(focused)
-        ? focused
-        : (this.host.activeCellElement() ?? scroller);
-    target?.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: event.key,
-        code: event.code,
-        location: event.location,
-        altKey: event.altKey,
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
-        shiftKey: event.shiftKey,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
   }
 
   // ---- committing ----
-
-  /** Commits the session, then executes the key's move. */
-  private commitAndMove(target: TmGridEditingCommitTarget, event: KeyboardEvent): void {
-    const engine = this.host.engine;
-    this.commit({ refocus: true });
-    switch (target) {
-      case 'tabNext':
-      case 'tabPrev': {
-        const next = engine.nav.tab(target === 'tabPrev');
-        if (next === null || next === 'exit') {
-          // Committed, but the key is not consumed: the browser's own Tab
-          // from the re-focused cell exits the grid (§8.2).
-          return;
-        }
-        // Selection moves only — no editor opens on the target (Excel).
-        engine.nav.setActive(next, { keepTabRun: true });
-        engine.selection.collapseTo(next);
-        break;
-      }
-      case 'enterRun':
-      case 'enterRunBack': {
-        const next = engine.nav.enterTarget(target === 'enterRunBack');
-        if (next !== null) {
-          engine.nav.setActive(next);
-          engine.selection.collapseTo(next);
-        }
-        break;
-      }
-      default:
-        engine.moveActive(target);
-        break;
-    }
-    event.preventDefault();
-    this.host.requestReveal();
-    this.host.requestFocusActive();
-  }
 
   /**
    * A dropdown editor produced a value by pointing at it — an enum option

@@ -21,7 +21,6 @@ export {
   type ɵTmGridEditingColumn,
   type ɵTmGridEditingHost,
   type ɵTmGridEditorOpenOptions,
-  type ɵTmGridHeldWork,
 } from './editing';
 export type { ɵTmGridEditorTemplateContext, ɵTmGridMountedEditor } from './editor-session';
 

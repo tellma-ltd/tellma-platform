@@ -280,8 +280,9 @@ export default defineConfig(
   // Grid on-demand editing boundary (spec 0010 §C.11, Part C flag 6): the
   // editing code and the editor controls it mounts load only once a grid is
   // editable, so the grid and tree grid import them as types alone. A value
-  // import would put them back on every readonly grid's route, and the size
-  // gate cannot see that: it measures each entry point on its own weight.
+  // import would put them back on every readonly grid's route. The size
+  // gate's static-graph check (staticGraphExcludes) catches that through any
+  // entry point; this rule names the mistake where it is made.
   {
     files: [
       'projects/core/tellma-core-ui/grid/**/*.ts',
