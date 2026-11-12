@@ -198,12 +198,13 @@ async function setup(): Promise<{
 }
 
 /**
- * How long {@link eventually} waits by default: ample for a loaded machine
- * (a passing run settles in a few milliseconds), yet well inside the
- * runner's per-test timeout, so a condition that never holds fails here
- * with a message rather than as an anonymous test timeout.
+ * How long {@link eventually} waits by default. A passing run settles in a
+ * few milliseconds, so the budget is spent only when the wait fails or the
+ * machine is starved; it is sized to ride out a long stall yet stay inside
+ * the browser-mode runner's 15 s per-test timeout, so a condition that never
+ * holds fails here with a message rather than as an anonymous test timeout.
  */
-const EVENTUALLY_TIMEOUT_MS = 2_000;
+const EVENTUALLY_TIMEOUT_MS = 10_000;
 
 /**
  * Waits for an async-clipboard chain to land. `Blob.text()` settles on its
