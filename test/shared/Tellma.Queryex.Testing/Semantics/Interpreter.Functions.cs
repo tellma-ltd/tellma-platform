@@ -807,12 +807,26 @@ namespace Tellma.Queryex.Testing.Semantics
                 QueryexType.QxBool => QxValue.Flag((value.AsNumber != 0).IsTrue),
                 QueryexType.QxGuid => QxValue.Identifier(Guid.Parse(value.AsText, CultureInfo.InvariantCulture)),
                 QueryexType.QxDate => QxValue.Date(AsDate(value)),
-                QueryexType.QxDateTime => QxValue.Moment(AsMoment(value)),
+                QueryexType.QxDateTime => QxValue.Moment(value.Type == QueryexType.QxString
+                    ? ParseMoment(value.AsText)
+                    : AsMoment(value)),
                 QueryexType.QxDateTimeOffset => QxValue.Instant(
                     DateTimeOffset.Parse(value.AsText, CultureInfo.InvariantCulture)),
                 QueryexType.QxHierarchyId or QueryexType.QxGeography => QxValue.Absent(target),
                 _ => QxValue.Absent(target),
             };
+        }
+
+        /// <summary>Text read as a date and time, the way the backend reads its ISO 8601 form.</summary>
+        /// <param name="text">The text: a date, then a time to the minute or to the second with up to seven fractional digits.</param>
+        /// <returns>The date and time.</returns>
+        private static DateTime ParseMoment(string text)
+        {
+            return DateTime.ParseExact(
+                text,
+                ["yyyy-MM-dd'T'HH:mm:ss.FFFFFFF", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None);
         }
 
         /// <summary>A value read as a date.</summary>

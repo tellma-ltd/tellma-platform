@@ -47,6 +47,12 @@ namespace Tellma.Queryex.Inspection
     ///     that reads no row: <c>date startOfMonth(today()); numeric me()</c>. When there are any,
     ///     the page compiles the statement that answers them in place of the query.
     /// </param>
+    /// <param name="Conjuncts">
+    ///     Whether to report the composed filter's top-level restrictions, as discovery reads them.
+    /// </param>
+    /// <param name="Measure">
+    ///     A measure whose row condition to report, under the declared and omitted parameters.
+    /// </param>
     public sealed record InspectRequest(
         string? Select,
         string? Filter,
@@ -61,7 +67,9 @@ namespace Tellma.Queryex.Inspection
         string? Exists = null,
         string? Parameters = null,
         string? Omitted = null,
-        string? Constants = null);
+        string? Constants = null,
+        bool Conjuncts = false,
+        string? Measure = null);
 
     /// <summary>One scanned token, as the page shows it.</summary>
     /// <param name="Kind">What kind of token it is.</param>
@@ -101,6 +109,23 @@ namespace Tellma.Queryex.Inspection
     /// <param name="IsGroupingKey">Whether it is one of the grouping keys.</param>
     public sealed record ColumnView(int Ordinal, string Text, string Type, string Nullity, bool IsGroupingKey);
 
+    /// <summary>One top-level restriction of the filter, as the page shows it.</summary>
+    /// <param name="Location">Which filter leaf it is in.</param>
+    /// <param name="Start">Where the atom starts in that leaf.</param>
+    /// <param name="Length">How long the atom is.</param>
+    /// <param name="Compared">The compared path, dotted, or the compared expression's text.</param>
+    /// <param name="Operator">How it is compared.</param>
+    /// <param name="Value">The literal's value, or null for the absent value.</param>
+    /// <param name="Type">The compared side's type.</param>
+    public sealed record ConjunctView(
+        string? Location,
+        int Start,
+        int Length,
+        string Compared,
+        string Operator,
+        string? Value,
+        string Type);
+
     /// <summary>Everything the page shows for one query, or for one constant statement.</summary>
     /// <param name="Tokens">
     ///     The scanned tokens of the select list, or of a constant statement's first item.
@@ -114,6 +139,11 @@ namespace Tellma.Queryex.Inspection
     /// <param name="Columns">The result columns, when it compiled.</param>
     /// <param name="Rows">What a server answered, when one was asked.</param>
     /// <param name="Error">What went wrong outside the compiler, when something did.</param>
+    /// <param name="Conjuncts">The filter's top-level restrictions, when they were asked for.</param>
+    /// <param name="MeasureCondition">
+    ///     The rows the page's measure aggregates, as a predicate; what kept it from being worked
+    ///     out; or nothing when no measure was given.
+    /// </param>
     public sealed record InspectResponse(
         IReadOnlyList<TokenView> Tokens,
         string Canonical,
@@ -124,7 +154,9 @@ namespace Tellma.Queryex.Inspection
         IReadOnlyList<SlotView> Parameters,
         IReadOnlyList<ColumnView> Columns,
         IReadOnlyList<IReadOnlyList<string>>? Rows,
-        string? Error);
+        string? Error,
+        IReadOnlyList<ConjunctView>? Conjuncts = null,
+        string? MeasureCondition = null);
 
     /// <summary>
     ///     Runs one query, or one constant statement, through every stage and reports what each of
@@ -168,6 +200,35 @@ namespace Tellma.Queryex.Inspection
                 return new InspectResponse([], string.Empty, string.Empty, [], [], null, [], [], null, problem.Message);
             }
 
+            InspectResponse response = await CompileAsync(request, connectionString, select, root, declared, constants);
+
+            // A constant statement has no filter and no measure; a query has both readings beside
+            // its compilation, whatever the compilation came to.
+            return constants.Count > 0
+                ? response
+                : response with
+                {
+                    Conjuncts = request.Conjuncts ? Conjuncts(request, select, root) : null,
+                    MeasureCondition = Measured(request.Measure, declared, Names(request.Omitted)),
+                };
+        }
+
+        /// <summary>Compiles the page's query, or its constant statement, and runs it when asked.</summary>
+        /// <param name="request">What the page asked about.</param>
+        /// <param name="connectionString">A server to run against, when one was configured.</param>
+        /// <param name="select">The select list, defaulted when the page left it empty.</param>
+        /// <param name="root">The entity paths resolve from.</param>
+        /// <param name="declared">The declared parameters.</param>
+        /// <param name="constants">The items of a constant statement; none for a query.</param>
+        /// <returns>What each stage produced.</returns>
+        private static async Task<InspectResponse> CompileAsync(
+            InspectRequest request,
+            string? connectionString,
+            string select,
+            EntityDescriptor root,
+            List<QueryexParameterDeclaration> declared,
+            List<ConstantItem> constants)
+        {
             // The stage-by-stage panes follow the select list, or the first item of a constant
             // statement when the page asked for one.
             bool constant = constants.Count > 0;
@@ -273,6 +334,83 @@ namespace Tellma.Queryex.Inspection
                 [.. compiled.Value.Columns.Select(Column)],
                 rows,
                 error);
+        }
+
+        /// <summary>Reads the composed filter's top-level restrictions, as discovery does.</summary>
+        /// <param name="request">What the page asked about.</param>
+        /// <param name="select">The select list.</param>
+        /// <param name="root">The entity paths resolve from.</param>
+        /// <returns>The restrictions; none when the page's host structure is not of its form.</returns>
+        private static List<ConjunctView> Conjuncts(InspectRequest request, string select, EntityDescriptor root)
+        {
+            try
+            {
+                DiscoveryResult discovered = Engine.DiscoverQuery(
+                    new QueryDiscoverySpec
+                    {
+                        Select = select,
+                        Aggregate = request.Aggregate,
+                        Filter = Filter(request.Filter, request.Via, request.Exists),
+                        Having = request.Aggregate ? Leaf(request.Having) : null,
+                        OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
+                        Conjuncts = true,
+                    },
+                    new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = root });
+
+                return [.. (discovered.Conjuncts ?? []).Select(conjunct => new ConjunctView(
+                    conjunct.Site.Location,
+                    conjunct.Site.Span.Start,
+                    conjunct.Site.Span.Length,
+                    conjunct.Path is null ? conjunct.Expression ?? string.Empty : string.Join('.', conjunct.Path),
+                    conjunct.Operator.ToString(),
+                    conjunct.Value is IFormattable formattable
+                        ? formattable.ToString(null, CultureInfo.InvariantCulture)
+                        : conjunct.Value?.ToString(),
+                    conjunct.Type.ToString()))];
+            }
+            catch (ArgumentException)
+            {
+                // The compilation beside it reports the same mistake in the page's host structure.
+                return [];
+            }
+        }
+
+        /// <summary>Works out the rows a measure aggregates, under the page's parameters.</summary>
+        /// <param name="measure">The measure, or nothing.</param>
+        /// <param name="declared">The declared parameters.</param>
+        /// <param name="omitted">The declared parameters left out.</param>
+        /// <returns>The condition, what kept it from being worked out, or null without a measure.</returns>
+        /// <remarks>
+        ///     The page gives no parameter a value, so a parameter that is not left out stays in the
+        ///     condition as written.
+        /// </remarks>
+        private static string? Measured(string? measure, List<QueryexParameterDeclaration> declared, string[] omitted)
+        {
+            if (string.IsNullOrWhiteSpace(measure))
+            {
+                return null;
+            }
+
+            try
+            {
+                QueryexResult<MeasureRows> result = Engine.MeasureCondition(
+                    measure,
+                    new ParameterBindingOptions
+                    {
+                        Mode = QueryexMode.Aggregate,
+                        QueryexVersion = QueryexLanguage.Version,
+                        Parameters = declared,
+                        Omitted = omitted,
+                    });
+
+                return result.Succeeded
+                    ? result.Value.Condition ?? "(every row)"
+                    : string.Join(", ", result.Diagnostics.Select(d => d.Code + " @" + d.Span.Start.ToString(CultureInfo.InvariantCulture)));
+            }
+            catch (ArgumentException problem)
+            {
+                return problem.Message;
+            }
         }
 
         /// <summary>Turns a piece of predicate text into a filter, when there is any.</summary>

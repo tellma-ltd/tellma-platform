@@ -39,11 +39,13 @@
   <label><span>parameters (name type, …)</span><input type="text" id="parameters" value=""></label>
   <label><span>omitted parameters</span><input type="text" id="omitted" value=""></label>
   <label><span>constant items, in place of the query (type expression; …)</span><input type="text" id="constants" value=""></label>
+  <label><span>measure, for its row condition</span><input type="text" id="measure" value=""></label>
 </div>
 
 <div class="options">
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="aggregate"> aggregate</label>
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="execute"> run it</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="conjuncts"> conjuncts</label>
   <label style="display:flex;gap:6px;align-items:center">root <select id="root"></select></label>
   <span id="status"></span>
 </div>
@@ -57,13 +59,15 @@
   <section><h2>tokens</h2><div id="tokens"></div></section>
   <section><h2>printed back</h2><pre id="printed"></pre></section>
   <section><h2>rows</h2><div id="rows"></div></section>
+  <section><h2>conjuncts</h2><div id="conjunctList"></div></section>
+  <section><h2>measure condition</h2><pre id="measureCondition"></pre></section>
 </div>
 
 <script>
 // Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
 // that watching every stage react as the input changes is the whole point of the tool.
 const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists',
-  'parameters', 'omitted', 'constants'];
+  'parameters', 'omitted', 'constants', 'measure'];
 const el = id => document.getElementById(id);
 
 function table(headers, rows) {
@@ -92,7 +96,9 @@ async function inspect() {
     exists: el('exists').value,
     parameters: el('parameters').value,
     omitted: el('omitted').value,
-    constants: el('constants').value
+    constants: el('constants').value,
+    conjuncts: el('conjuncts').checked,
+    measure: el('measure').value
   };
 
   el('status').textContent = 'compiling…';
@@ -127,6 +133,12 @@ async function inspect() {
   el('rows').innerHTML = result.rows
     ? table((result.columns ?? []).map(c => c.text), result.rows)
     : '';
+
+  // What discovery reads off the filter, and the rows a measure aggregates.
+  el('conjunctList').innerHTML = table(['leaf', 'at', 'compared', 'operator', 'value', 'type'],
+    (result.conjuncts ?? []).map(c => [c.location, c.start + '+' + c.length, c.compared, c.operator,
+      c.value === null ? '(null)' : c.value, c.type]));
+  el('measureCondition').textContent = result.measureCondition ?? '';
 }
 
 let pending;
@@ -141,7 +153,7 @@ async function start() {
   el('root').value = 'Invoice';
 
   for (const id of fields) { el(id).addEventListener('input', schedule); }
-  for (const id of ['aggregate', 'execute', 'root']) { el(id).addEventListener('change', inspect); }
+  for (const id of ['aggregate', 'execute', 'conjuncts', 'root']) { el(id).addEventListener('change', inspect); }
   await inspect();
 }
 
