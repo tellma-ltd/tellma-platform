@@ -21,7 +21,7 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
 // @public
-export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): EnvironmentProviders;
+export function provideTmCalendar(calendar: Signal<TmCalendar> | TmCalendar): EnvironmentProviders;
 
 // @public
 export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
@@ -326,7 +326,7 @@ export const TM_UI_STRINGS_EN: {
 export const TM_UI_TRANSLATE: InjectionToken<TmUiTranslateFn>;
 
 // @public
-export type TmBreakpoint = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
+export type TmBreakpoint = 'lg' | 'md' | 'sm' | 'xl' | 'xs' | 'xxl';
 
 // @public
 export class TmBreakpoints {
@@ -353,7 +353,7 @@ export interface TmClientCacheClearOptions {
 }
 
 // @public
-export type TmControlSize = 'sm' | 'md' | 'lg';
+export type TmControlSize = 'lg' | 'md' | 'sm';
 
 // @public
 export function tmDefaultActiveLocale(): Signal<string>;
@@ -404,7 +404,7 @@ export class TmL10n {
     formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string;
     formatDateTime(instant: string | null | undefined, options?: {
         readonly dateStyle?: TmDateStyle;
-        readonly timeStyle?: TmTimeStyle | 'none';
+        readonly timeStyle?: 'none' | TmTimeStyle;
         readonly zoneLabel?: TmZoneLabelMode;
     }): string;
     formatMonthName(month: number, options?: {
@@ -413,7 +413,7 @@ export class TmL10n {
     formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
     formatRelativeTime(instant: string | null | undefined, options: {
         readonly now: number;
-        readonly style?: 'long' | 'short' | 'narrow';
+        readonly style?: 'long' | 'narrow' | 'short';
     }): string;
     formatTime(instant: string | null | undefined, options?: {
         readonly timeStyle?: TmTimeStyle;
@@ -440,7 +440,7 @@ export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.Wit
 // @public
 export class TmTheme {
     constructor();
-    readonly effective: Signal<'light' | 'dark'>;
+    readonly effective: Signal<'dark' | 'light'>;
     set(setting: TmThemeSetting): void;
     readonly setting: Signal<TmThemeSetting>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTheme, never>;
@@ -453,13 +453,13 @@ export interface TmThemeOptions {
 }
 
 // @public
-export type TmThemeSetting = 'system' | 'light' | 'dark';
+export type TmThemeSetting = 'dark' | 'light' | 'system';
 
 // @public
 export type TmUiArgumentFormatter = (type: TmUiArgumentType, value: unknown, style: string, locale: string) => string;
 
 // @public
-export type TmUiArgumentType = 'number' | 'date' | 'time';
+export type TmUiArgumentType = 'date' | 'number' | 'time';
 
 // @public
 export type TmUiMessageContext = Record<string, unknown>;

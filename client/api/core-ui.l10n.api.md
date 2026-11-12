@@ -48,14 +48,14 @@ export function tmDatePlaceholder(locale: string, options?: {
 }): string;
 
 // @public
-export type TmDateStyle = 'numeric' | 'medium' | 'long' | 'month' | 'quarter' | 'year' | 'weekday';
+export type TmDateStyle = 'long' | 'medium' | 'month' | 'numeric' | 'quarter' | 'weekday' | 'year';
 
 // @public
 export interface TmDateTimeFormatOptions {
     readonly calendar?: TmCalendar;
     readonly dateStyle?: TmDateStyle;
     readonly quarterPattern?: string;
-    readonly timeStyle?: TmTimeStyle | 'none';
+    readonly timeStyle?: 'none' | TmTimeStyle;
     readonly timeZone: string;
     readonly zoneLabel?: boolean;
 }
@@ -90,7 +90,7 @@ export function tmFormatWeekdayName(weekday: number, locale: string): string;
 export function tmFormatZoneName(timeZone: string, locale: string, at: number): string;
 
 // @public
-export function tmFormatZoneOffset(instant: string | number, locale: string, timeZone: string): string;
+export function tmFormatZoneOffset(instant: number | string, locale: string, timeZone: string): string;
 
 // @public
 export function tmGregorianCalendar(): TmCalendar;
@@ -112,16 +112,16 @@ export interface TmNumberParseOptions extends TmNumberFormatOptions {
 }
 
 // @public
-export function tmParseDate(text: string, locale: string, options?: TmDateParseOptions): string | null | TmParseError;
+export function tmParseDate(text: string, locale: string, options?: TmDateParseOptions): string | TmParseError | null;
 
 // @public
-export function tmParseNumber(text: string, locale: string, options?: TmNumberParseOptions): number | null | TmParseError;
+export function tmParseNumber(text: string, locale: string, options?: TmNumberParseOptions): number | TmParseError | null;
 
 // @public
 export interface TmRelativeTimeFormatOptions {
     readonly calendar?: TmCalendar;
     readonly now: number;
-    readonly style?: 'long' | 'short' | 'narrow';
+    readonly style?: 'long' | 'narrow' | 'short';
     readonly timeZone: string;
 }
 

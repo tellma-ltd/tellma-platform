@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-059 (orchestrator, 2026-11-12): check_deps readiness masked ready checkpoints
+- Situation: tools/check_deps.py counted a gate as met only when its LEDGER status cell was exactly `done`. Since the 2026-11-11 status rows carry a note after the keyword (`done (CI … green; …)`), so every checkpoint gated on PC-023, PC-028, PC-029 and the like looked blocked, and `--ready` listed only T3 work. Eight T1 checkpoints (PC-026, PC-033, PC-034, PC-035, PC-051, PC-057, PC-073, PC-075) were in fact ready; slots sat idle for part of 2026-11-11/12 because of it.
+- Ruling: the tool now treats a status that is `done` or starts with `done ` as met. Status cells keep their notes.
+- Effect: PC-026 (pc-1), PC-033 (pc-3) and PC-034 (pc-f) launched at once (5 heavy agents with PC-F21 R2 and PC-F23). PC-051 still waits on PC-F21 (D-057); PC-035, PC-057, PC-073, PC-075 launch as slots free, in priority order.
+
 ### D-058 (orchestrator, 2026-11-12): PC-023 entry-point ceilings, and the shared core-ui primary
 - **Provisional ruling**, for Review 1 to confirm. Each new spec 0023 entry point takes its measured size plus about 0.1 KB, as in D-049:
 

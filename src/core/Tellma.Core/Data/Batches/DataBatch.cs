@@ -144,6 +144,9 @@ namespace Tellma.Core.Data.Batches
         } = TransactionMode.Auto;
 
         /// <inheritdoc />
+        public bool IsComposing => !_broken && _stage != Stage.Sealed;
+
+        /// <inheritdoc />
         public QueryexLimits Limits
         {
             get;

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
@@ -55,6 +56,21 @@ namespace Tellma.Core.Composition
         /// <summary>The value sets the features contributed, in realisation order; the platform's own four are not among them.</summary>
         public List<ContributedValueSet> ValueSets { get; } = [];
 
+        /// <summary>The notification types the features contributed, in realisation order.</summary>
+        public List<ContributedNotificationType> NotificationTypes { get; } = [];
+
+        /// <summary>The notification channels the features contributed, in realisation order: the platform's two first.</summary>
+        public List<ContributedNotificationChannel> NotificationChannels { get; } = [];
+
+        /// <summary>The client event names the features contributed, in realisation order.</summary>
+        public List<ContributedClientEvent> ClientEvents { get; } = [];
+
+        /// <summary>
+        ///     The services the features registered, in realisation order, including those a dependent
+        ///     feature's registration later replaced; the startup gate names a service's feature from it.
+        /// </summary>
+        public List<ContributedService> Services { get; } = [];
+
         /// <summary>What the distribution declared about languages: the offered codes and the added languages.</summary>
         public LanguageDeclaration Languages { get; private set; } = LanguageDeclaration.None;
 
@@ -99,6 +115,27 @@ namespace Tellma.Core.Composition
     /// <param name="Descriptor">The set as contributed.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedValueSet(ValueSetDescriptor Descriptor, ITellmaFeature Owner);
+
+    /// <summary>A notification type a feature contributed.</summary>
+    /// <param name="Descriptor">The type as contributed.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedNotificationType(NotificationTypeDescriptor Descriptor, ITellmaFeature Owner);
+
+    /// <summary>A notification channel a feature contributed.</summary>
+    /// <param name="Descriptor">The channel as contributed.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedNotificationChannel(NotificationChannelDescriptor Descriptor, ITellmaFeature Owner);
+
+    /// <summary>A client event a feature contributed.</summary>
+    /// <param name="Name">The event's name as contributed.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedClientEvent(string Name, ITellmaFeature Owner);
+
+    /// <summary>A service a feature registered.</summary>
+    /// <param name="ServiceType">The service type.</param>
+    /// <param name="ImplementationType">The implementation type, or <see langword="null" /> for a factory registration.</param>
+    /// <param name="Owner">The feature that registered it.</param>
+    internal sealed record ContributedService(Type ServiceType, Type? ImplementationType, ITellmaFeature Owner);
 
     /// <summary>An entity a feature contributed, with its stack's service and operations.</summary>
     /// <param name="EntityType">The entity, before leaf substitution.</param>

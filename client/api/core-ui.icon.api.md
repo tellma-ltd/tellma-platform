@@ -16,7 +16,7 @@ export class TmIcon {
     readonly label: _angular_core.InputSignal<string | undefined>;
     protected readonly mirrored: _angular_core.Signal<boolean>;
     readonly name: _angular_core.InputSignal<string | undefined>;
-    readonly size: _angular_core.InputSignal<"xs" | "sm" | "md" | "lg" | "xl" | undefined>;
+    readonly size: _angular_core.InputSignal<"lg" | "md" | "sm" | "xl" | "xs" | undefined>;
     readonly svg: _angular_core.InputSignal<TmIconSource | undefined>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmIcon, "tm-icon", never, { "name": { "alias": "name"; "required": false; "isSignal": true; }; "svg": { "alias": "svg"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "label": { "alias": "label"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmIcon, never>;
@@ -25,7 +25,7 @@ export class TmIcon {
 // @public
 export type TmIconNode = readonly (readonly [
 tag: string,
-attrs: Readonly<Record<string, string | number | undefined>>,
+attrs: Readonly<Record<string, number | string | undefined>>,
 children?: TmIconNode
 ])[];
 

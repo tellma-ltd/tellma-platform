@@ -308,6 +308,7 @@ namespace Tellma.Core.Tests.Data.Batches
             DataBatch prologue = _harness.Batch(BatchPurpose.Read, Throwing(DataBatchStage.Prologue));
             _ = Assert.Throws<InvalidDataException>(() => prologue.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1)));
             _ = Assert.Throws<InvalidOperationException>(() => prologue.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1)));
+            Assert.False(prologue.IsComposing);
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => prologue.ExecuteAsync(token));
 
             // --- An epilogue failure: the batch neither executes again nor takes more statements ---
@@ -575,8 +576,10 @@ namespace Tellma.Core.Tests.Data.Batches
         public async Task A_sealed_batch_takes_nothing_more()
         {
             DataBatch batch = _harness.Batch();
+            Assert.True(batch.IsComposing);
             _ = await BatchHarness.SealAsync(batch);
 
+            Assert.False(batch.IsComposing);
             _ = Assert.Throws<InvalidOperationException>(() => batch.Sql($"SELECT 1;", null));
             _ = Assert.Throws<InvalidOperationException>(() => batch.TransactionMode = TransactionMode.None);
             _ = Assert.Throws<InvalidOperationException>(() => batch.OnCommitted(static _ => { }));

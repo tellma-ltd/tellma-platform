@@ -16,15 +16,15 @@ export class TmAlert {
     protected readonly kindPrefix: _angular_core.Signal<string>;
     readonly live: _angular_core.InputSignal<TmAlertLive>;
     protected readonly revealed: _angular_core.WritableSignal<boolean>;
-    protected readonly role: _angular_core.Signal<"status" | "alert" | null>;
+    protected readonly role: _angular_core.Signal<"alert" | "status" | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmAlert, "tm-alert", never, { "kind": { "alias": "kind"; "required": true; "isSignal": true; }; "live": { "alias": "live"; "required": false; "isSignal": true; }; "heading": { "alias": "heading"; "required": false; "isSignal": true; }; }, {}, never, ["*"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmAlert, never>;
 }
 
 // @public
-export type TmAlertKind = 'info' | 'success' | 'warning' | 'error';
+export type TmAlertKind = 'error' | 'info' | 'success' | 'warning';
 
 // @public
-export type TmAlertLive = 'off' | 'polite' | 'assertive';
+export type TmAlertLive = 'assertive' | 'off' | 'polite';
 
 ```
