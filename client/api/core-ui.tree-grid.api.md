@@ -25,7 +25,7 @@ export class TmTreeGrid<T> extends TmGridBase<T> {
     readonly defaultExpandedDepth: _angular_core.InputSignal<number | undefined>;
     readonly hasChildren: _angular_core.InputSignal<((row: T) => boolean) | undefined>;
     readonly loadChildren: _angular_core.InputSignal<((row: T) => Promise<void>) | undefined>;
-    readonly parentId: _angular_core.InputSignal<(row: T) => string | number | null>;
+    readonly parentId: _angular_core.InputSignal<(row: T) => number | string | null>;
     readonly parentIdKey: _angular_core.InputSignal<string | undefined>;
     protected treeConfig(): ɵTmGridTreeConfig<T>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTreeGrid<any>, "tm-tree-grid", never, { "parentId": { "alias": "parentId"; "required": true; "isSignal": true; }; "parentIdKey": { "alias": "parentIdKey"; "required": false; "isSignal": true; }; "hasChildren": { "alias": "hasChildren"; "required": false; "isSignal": true; }; "loadChildren": { "alias": "loadChildren"; "required": false; "isSignal": true; }; "defaultExpandedDepth": { "alias": "defaultExpandedDepth"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;

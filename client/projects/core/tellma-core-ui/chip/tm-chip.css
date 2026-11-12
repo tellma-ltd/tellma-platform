@@ -1,0 +1,201 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-chip — a pill on the chip steps of the size ladder (20, 24, 28 px)
+   that sits in text and in chip sets, so its host is inline-flex. The
+   tones follow tm-badge: the status tones tint with the status roles and
+   keep body ink for the text; the tone's ink draws the icon and the remove
+   glyph; accent is the one solid chip. */
+
+:host {
+  /* The resolved size step and the tone, re-pointed by the rules below. */
+  --tm-chip-height: var(--chip-height);
+  --tm-chip-padding: var(--chip-padding-x);
+  --tm-chip-font-size: var(--chip-font-size);
+  --tm-chip-bg: var(--chip-neutral-bg);
+  --tm-chip-border: var(--chip-neutral-border);
+  --tm-chip-ink: var(--chip-neutral-ink);
+  --tm-chip-text: var(--chip-text);
+  --icon-size: var(--chip-icon-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  block-size: var(--tm-chip-height);
+  border: var(--border-width) solid var(--tm-chip-border);
+  border-radius: var(--chip-radius);
+  background: var(--tm-chip-bg);
+  color: var(--tm-chip-text);
+  font-family: var(--font-ui);
+  font-size: var(--tm-chip-font-size);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Size steps. */
+
+:host([data-size='sm']) {
+  --tm-chip-height: var(--chip-height-sm);
+  --tm-chip-padding: var(--chip-padding-xsm);
+  --tm-chip-font-size: var(--chip-font-size-sm);
+  --icon-size: var(--chip-icon-size-sm);
+}
+
+:host([data-size='lg']) {
+  --tm-chip-height: var(--chip-height-lg);
+  --tm-chip-padding: var(--chip-padding-xlg);
+  --tm-chip-font-size: var(--chip-font-size-lg);
+  --icon-size: var(--chip-icon-size-lg);
+}
+
+/* Tones. */
+
+:host([data-tone='accent']) {
+  --tm-chip-bg: var(--chip-accent-bg);
+  --tm-chip-border: var(--chip-accent-bg);
+  --tm-chip-ink: var(--chip-accent-text);
+  --tm-chip-text: var(--chip-accent-text);
+}
+
+:host([data-tone='info']) {
+  --tm-chip-bg: var(--info-bg);
+  --tm-chip-border: var(--info-border);
+  --tm-chip-ink: var(--info);
+}
+
+:host([data-tone='success']) {
+  --tm-chip-bg: var(--success-bg);
+  --tm-chip-border: var(--success-border);
+  --tm-chip-ink: var(--success);
+}
+
+:host([data-tone='warning']) {
+  --tm-chip-bg: var(--warning-bg);
+  --tm-chip-border: var(--warning-border);
+  --tm-chip-ink: var(--warning);
+}
+
+:host([data-tone='error']) {
+  --tm-chip-bg: var(--error-bg);
+  --tm-chip-border: var(--error-border);
+  --tm-chip-ink: var(--error);
+}
+
+/* In a collapsing set the one chip that shows when even it does not fit
+   shrinks and ellipsizes; the set never shows more than fit. */
+:host-context(.tm-chip-set[data-overflow='collapse']) {
+  flex-shrink: 1;
+}
+
+/* A collapsed chip (one a chip set's collapse mode hides) leaves the line
+   but keeps its natural width, so the set can measure it; a chip being
+   measured takes the same box for a moment without being hidden. */
+:host(.tm-chip--collapsed),
+:host(.tm-chip--measuring) {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}
+
+:host(.tm-chip--collapsed) {
+  visibility: hidden;
+}
+
+/* The label: a link, a button or plain text, filling the pill up to the
+   remove button. Buttons and links shed their native look. */
+.tm-chip__label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chip-gap);
+  box-sizing: border-box;
+  min-inline-size: 0;
+  block-size: 100%;
+  margin: 0;
+  padding-block: 0;
+  padding-inline: var(--tm-chip-padding);
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+}
+
+:host(.tm-chip--removable) .tm-chip__label {
+  padding-inline-end: var(--chip-gap);
+}
+
+.tm-chip__icon {
+  color: var(--tm-chip-ink);
+}
+
+/* The text ellipsizes in a narrow container. Its line box is the font's
+   own, so the clip never cuts a descender or an Arabic letter's dots. */
+.tm-chip__text {
+  display: block;
+  min-inline-size: 0;
+  overflow: hidden;
+  line-height: normal;
+  text-overflow: ellipsis;
+}
+
+/* The remove button: a round target inside the pill's end. */
+.tm-chip__remove {
+  --icon-size: var(--chip-remove-icon-size);
+
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  inline-size: calc(var(--tm-chip-height) - 2 * var(--chip-remove-inset));
+  block-size: calc(var(--tm-chip-height) - 2 * var(--chip-remove-inset));
+  margin: 0;
+  margin-inline-end: var(--chip-remove-end-gap);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--tm-chip-ink);
+}
+
+/* Every control is at least 24 px square to the pointer: a transparent
+   layer reaches past a smaller box on each side. */
+.tm-chip__label:is(a, button)::after,
+.tm-chip__remove::after {
+  position: absolute;
+  inset: min(0px, calc((100% - var(--chip-target-size)) / 2));
+  content: '';
+}
+
+.tm-chip__label:is(a, button),
+.tm-chip__remove {
+  cursor: pointer;
+}
+
+/* Hover: a wash of the ink over whatever the tone fills with. */
+.tm-chip__label:is(a, button):hover {
+  background-image: linear-gradient(color-mix(in srgb, currentColor 8%, transparent) 0 0);
+}
+
+.tm-chip__remove:hover {
+  background-image: linear-gradient(color-mix(in srgb, currentColor 14%, transparent) 0 0);
+}
+
+/* Focus: the token ring, over a transparent outline forced colours repaint. */
+.tm-chip__label:is(a, button):focus-visible,
+.tm-chip__remove:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}

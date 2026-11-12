@@ -22,6 +22,6 @@ export class TmSkeleton {
 }
 
 // @public
-export type TmSkeletonShape = 'line' | 'block' | 'circle' | 'table';
+export type TmSkeletonShape = 'block' | 'circle' | 'line' | 'table';
 
 ```

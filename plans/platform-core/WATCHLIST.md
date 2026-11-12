@@ -473,6 +473,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 
 - lucide (via 0023 §3.1); the 0023 chip and badge entry points
 - Playwright browsers and axe (existing)
+- PC-023 → the 0010-E multi-picker checkpoint: `tm-chip-set overflow="scroll"` is ready for §E.2. `exit` emits `'start'`/`'end'` for an arrow past either end, and `'end'` when the focused chip is removed with no neighbour left; `focusLast()` focuses the last visible chip (call it on Backspace in the empty input). Delete or Backspace on a focused removable chip emits that chip's `remove`; once the host drops the chip, the set focuses the next chip, else the previous. `TmChip.activate` is an `OutputRef` built with `outputFromObservable`, so the chip renders a label button only while something listens: bind `(activate)` or use `outputToObservable`, never `.emit()`. The focused chip scrolls into view with `focus({ preventScroll })` plus a manual `scrollBy`, so the page around the field never scrolls.
 
 ## 0010-F
 
@@ -1160,6 +1161,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Browser Navigation API (canGoBack/canGoForward); the fallback path is needed for Safari < 26.2
 - The Acme reference distribution with tenants 1 (en+ar) and 2 (sandbox of 1)
 - No new npm or NuGet packages
+- PC-023 → the 0027 shell checkpoints: toasts clear the top bar through `--toast-offset-block-start` (default 8 px), which the shell sets. TmToasts keeps its top-layer host above modals by watching the CDK OverlayContainer's children; a shell surface shown as a top-layer popover outside that container would cover the toasts. TmBusyOverlay holds every key at window capture while a run is in progress, so shell shortcuts (Mod+K) are swallowed while busy, by design. It re-inerts only new `<body>` children: a dialog opened inside an existing OverlayContainer during a run is drawn above the scrim but stays inert.
 
 ## 0028
 
@@ -1188,6 +1190,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Fake email sender (0007/0022) for the test-delivery e2e
 - Playwright multi-page contexts (three tabs) with focus and visibility control
 - No new npm or NuGet packages
+- PC-023 → the 0028 TmBanners/TmToasts checkpoint: `tm-banner-bar`'s previous and next buttons are always enabled (the host wraps around), and `position.index` counts from 1. The hidden tone prefix reuses the `alert.info|warning|error` keys. The default overflow pill says "N more" (key `toast.more`, added by PC-023); 0028's "open the bell" pill goes through `provideTellmaToasts({ overflow })`. `TmToastRef.update()` re-announces only when the title, detail or tone changes.
 
 ## 0029
 

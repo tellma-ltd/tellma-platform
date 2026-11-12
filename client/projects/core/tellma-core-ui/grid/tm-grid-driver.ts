@@ -16,11 +16,18 @@ import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
  * code.
  */
 export interface TmGridDriverTarget {
-  /** The active row's id, or `null` with no active row. */
+  /**
+   * The active row's id, or `null` with no active row. It may trail a move by
+   * a render (a grid writes its two-way model back then), so the driver's key
+   * handling never reads it.
+   */
   readonly activeRowId: Signal<TmRowId | null>;
   /** The id of the list's scroll container, which `aria-controls` names. */
   readonly controlsId: Signal<string>;
-  /** The active row element's id, which `aria-activedescendant` names; `null` with no active row. */
+  /**
+   * The active row element's id, which `aria-activedescendant` names; `null`
+   * with no active row. Current as soon as `moveActiveRow` returns.
+   */
   readonly activeDescendantId: Signal<string | null>;
   /** How many rows (lines, in a tiled list) a PageDown moves. */
   readonly pageStep: Signal<number>;
@@ -30,8 +37,8 @@ export interface TmGridDriverTarget {
    */
   moveActiveRow(by: number | 'first' | 'last'): void;
   /**
-   * Opens a row (the active one when no id is given), as a keyboard
-   * activation. Returns `false` when there is no such row.
+   * Opens a row (the active one when no id is given, as `moveActiveRow` left
+   * it), as a keyboard activation. Returns `false` when there is no such row.
    */
   activateRow(rowId?: TmRowId, options?: { newTab?: boolean }): boolean;
 }
@@ -98,10 +105,14 @@ export class TmGridDriver {
         break;
       case 'Enter':
         // With no active row, Enter stays the input's own (a search submit).
-        // A held Enter opens the row once: its repeats are consumed.
+        // A held Enter opens the row once: its repeats are consumed. Both
+        // checks read the list's own active row, never `activeRowId`: that
+        // two-way model is written back on the next render, and keys queued
+        // behind a busy page (an arrow, then Enter) arrive before it.
         if (
-          target.activeRowId() === null ||
-          (!event.repeat && !target.activateRow(undefined, { newTab: mod }))
+          event.repeat
+            ? target.activeDescendantId() === null
+            : !target.activateRow(undefined, { newTab: mod })
         ) {
           return;
         }

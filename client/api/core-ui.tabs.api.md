@@ -53,6 +53,6 @@ export class TmTabLabel {
 }
 
 // @public
-export type TmTabSelectionMode = 'follow' | 'explicit';
+export type TmTabSelectionMode = 'explicit' | 'follow';
 
 ```

@@ -14,7 +14,7 @@ export class TmEmptyState {
     readonly live: _angular_core.InputSignal<"off" | "polite">;
     protected readonly revealed: _angular_core.WritableSignal<boolean>;
     readonly size: _angular_core.InputSignal<"page" | "panel">;
-    readonly tone: _angular_core.InputSignal<"neutral" | "error">;
+    readonly tone: _angular_core.InputSignal<"error" | "neutral">;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEmptyState, "tm-empty-state", never, { "heading": { "alias": "heading"; "required": true; "isSignal": true; }; "icon": { "alias": "icon"; "required": false; "isSignal": true; }; "tone": { "alias": "tone"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "live": { "alias": "live"; "required": false; "isSignal": true; }; }, {}, never, ["*", "[tmEmptyStateActions]"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEmptyState, never>;
 }

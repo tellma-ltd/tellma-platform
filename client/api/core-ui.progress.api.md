@@ -33,6 +33,6 @@ export class TmProgressRing {
 }
 
 // @public
-export type TmProgressTone = 'accent' | 'success' | 'warning' | 'error';
+export type TmProgressTone = 'accent' | 'error' | 'success' | 'warning';
 
 ```

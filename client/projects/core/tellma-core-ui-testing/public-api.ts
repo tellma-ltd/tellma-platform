@@ -14,12 +14,15 @@
 // LICENSE file in the root directory of this source tree.
 export * from './alert-harness';
 export * from './avatar-harness';
+export * from './banner-bar-harness';
+export * from './busy-overlay-harness';
 export * from './button-harness';
 export * from './date-picker-harness';
 export * from './entity-picker-harness';
 export * from './input-harness';
 export * from './number-harness';
 export * from './checkbox-harness';
+export * from './chip-harness';
 export * from './copy-button-harness';
 export * from './counter-harness';
 export * from './empty-state-harness';
@@ -38,4 +41,5 @@ export * from './relative-time-harness';
 export * from './tooltip-harness';
 export * from './grid-harness';
 export * from './tabs-harness';
+export * from './toast-harness';
 export * from './tree-grid-harness';

@@ -45,6 +45,10 @@ disabled/readonly/required).
 | `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |
 | `@tellma/core-ui/copy` | `tm-copy-button` — one-click copy with a "Press Ctrl+C to copy" fallback; `tm-reference` — a trace id or version as a mono chip with that button |
 | `@tellma/core-ui/empty-state` | `tm-empty-state` — the one anatomy for "nothing to show" and inline failures: icon, heading, detail and actions |
+| `@tellma/core-ui/chip` | `tm-chip` — a compact label in a badge tone, as text, a link or a button, optionally removable (Delete/Backspace); `tm-chip-set` — a list of chips with one tab stop and arrow keys, that wraps, collapses behind a "+N" chip, or scrolls in one line |
+| `@tellma/core-ui/toast` | `TmToasts` + `provideTellmaToasts()` — transient messages in the block-start, inline-end corner: three on show behind an "N more" pill, six-second timers that pause on hover, focus and a hidden page, keyed replacement, `focus()` |
+| `@tellma/core-ui/banner` | `tm-banner-bar` — a 32 px page-wide message bar in a tone, with an action, previous/next paging and dismiss |
+| `@tellma/core-ui/busy-overlay` | `TmBusyOverlay` — `run(work)` holds the pointer and the keyboard from the calling task, shows a scrim, spinner and label after 200 ms (or at once), and returns focus when the work settles |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
@@ -121,8 +125,9 @@ the components ship no hardcoded sizes or colors.
   that sit inside a line of text or beside a name are atomic inline boxes
   (`inline-flex`) instead, which hit-test like blocks: the glyphs
   (`tm-icon`, `tm-kbd`), `tm-badge`, `tm-counter`, `tm-avatar`,
-  `tm-progress-ring`, `tm-copy-button` and `tm-reference`. `tm-relative-time`
-  is plain `inline` text, since it wraps only inline content.
+  `tm-progress-ring`, `tm-copy-button`, `tm-reference` and `tm-chip`.
+  `tm-relative-time` is plain `inline` text, since it wraps only inline
+  content.
 - `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
   point builds on, so they import no other `@tellma` entry point (lint
   enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
