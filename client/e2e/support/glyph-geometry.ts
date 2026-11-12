@@ -21,6 +21,8 @@ export interface GlyphMeasure {
   readonly container: { x: number; y: number; width: number; height: number };
   /** The container's inline-end border plus padding, in px. */
   readonly containerEndInset: number;
+  /** The container's inline-start border plus padding, in px. */
+  readonly containerStartInset: number;
   /** The token value the glyph is sized from, in px. */
   readonly tokenSize: number;
   /** Every shape: its tag, geometry attributes and computed stroke. */
@@ -60,9 +62,8 @@ export async function measure(
       const box = args.container as Element;
       const boxStyle = getComputedStyle(box);
       const rtl = boxStyle.direction === 'rtl';
-      const endInset = rtl
-        ? parseFloat(boxStyle.borderLeftWidth) + parseFloat(boxStyle.paddingLeft)
-        : parseFloat(boxStyle.borderRightWidth) + parseFloat(boxStyle.paddingRight);
+      const left = parseFloat(boxStyle.borderLeftWidth) + parseFloat(boxStyle.paddingLeft);
+      const right = parseFloat(boxStyle.borderRightWidth) + parseFloat(boxStyle.paddingRight);
       const geometryAttributes = ['d', 'cx', 'cy', 'r', 'x1', 'x2', 'y1', 'y2'];
       const shapes = [...svg.querySelectorAll('path, circle, line, polyline, rect')].map(
         (shape) => {
@@ -85,7 +86,8 @@ export async function measure(
       return {
         svg: rect(svg),
         container: rect(box),
-        containerEndInset: endInset,
+        containerEndInset: rtl ? left : right,
+        containerStartInset: rtl ? right : left,
         tokenSize: parseFloat(
           getComputedStyle(document.documentElement).getPropertyValue(args.token),
         ),
@@ -97,12 +99,19 @@ export async function measure(
   );
 }
 
-/** Asserts the Lucide drawing contract on every shape of a glyph. */
-export function expectLucideStroke(measured: GlyphMeasure, geometry: readonly string[]): void {
+/**
+ * Asserts the Lucide drawing contract on every shape of a glyph, at the
+ * default 1.75 stroke unless a host sets its own.
+ */
+export function expectLucideStroke(
+  measured: GlyphMeasure,
+  geometry: readonly string[],
+  strokeWidth = '1.75px',
+): void {
   expect(measured.viewBox).toBe('0 0 24 24');
   expect(measured.shapes.map((shape) => shape.geometry)).toEqual(geometry);
   for (const shape of measured.shapes) {
-    expect(shape.strokeWidth).toBe('1.75px');
+    expect(shape.strokeWidth).toBe(strokeWidth);
     expect(shape.lineCap).toBe('round');
     expect(shape.lineJoin).toBe('round');
     expect(shape.fill).toBe('none');
@@ -124,6 +133,37 @@ export function blockCentreOffset(measured: GlyphMeasure): number {
       measured.svg.height / 2 -
       (measured.container.y + measured.container.height / 2),
   );
+}
+
+/**
+ * The geometry strings {@link measure} reports for Lucide icon data, in
+ * drawing order: the same attributes, in the same order, so a test can
+ * compare a drawn glyph against the data it should have drawn.
+ */
+export function lucideGeometry(
+  node: readonly (readonly [string, Readonly<Record<string, string | number | undefined>>])[],
+): string[] {
+  const geometryAttributes = ['d', 'cx', 'cy', 'r', 'x1', 'x2', 'y1', 'y2'];
+  return node.map(([, attrs]) =>
+    geometryAttributes
+      .filter((name) => attrs[name] !== undefined)
+      .map((name) => `${name}=${attrs[name]}`)
+      .join(' '),
+  );
+}
+
+/** The inline centre offset between a glyph and its container. */
+export function inlineCentreOffset(measured: GlyphMeasure): number {
+  return Math.abs(
+    measured.svg.x + measured.svg.width / 2 - (measured.container.x + measured.container.width / 2),
+  );
+}
+
+/** The gap between the glyph and its container's inline-start edge. */
+export function inlineStartGap(measured: GlyphMeasure, dir: 'ltr' | 'rtl'): number {
+  return dir === 'rtl'
+    ? measured.container.x + measured.container.width - (measured.svg.x + measured.svg.width)
+    : measured.svg.x - measured.container.x;
 }
 
 /** The gap between the glyph and its container's inline-end edge. */

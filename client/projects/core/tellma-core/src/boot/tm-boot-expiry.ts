@@ -33,12 +33,10 @@ function deleteUserDocuments(indexedDB: IDBFactory, sub: string): Promise<void> 
   // An `open` that throws rejects this promise; the caller swallows it.
   return new Promise<void>((resolve) => {
     const request = indexedDB.open(TM_STORE_DATABASE);
-    request.onupgradeneeded = (event) => {
-      // No database yet: nothing to delete, and none to create.
-      if (event.oldVersion === 0 && request.transaction) {
-        request.transaction.abort();
-      }
-    };
+    // An open without a version upgrades only a database that does not
+    // exist yet: nothing to delete, and none to create. The upgrade always
+    // runs in a transaction of its own.
+    request.onupgradeneeded = () => request.transaction!.abort();
     // An open without a version never upgrades an existing database, so it
     // is never blocked; the aborted upgrade above ends in an error.
     request.onerror = () => resolve();
@@ -48,13 +46,16 @@ function deleteUserDocuments(indexedDB: IDBFactory, sub: string): Promise<void> 
         db.close();
         resolve();
       };
+      // Every opener of a tm-* database yields to a delete or an upgrade of
+      // it (spec 0010 §D.5), which would otherwise wait on this connection.
+      // Closing lets the running delete finish, and its end below settles.
+      db.onversionchange = () => db.close();
       try {
         const [lower, upper] = tmUserKeyBounds(sub);
         const transaction = db.transaction(TM_STORE_DOCS, 'readwrite');
         transaction.objectStore(TM_STORE_DOCS).delete(IDBKeyRange.bound(lower, upper));
         // A failed delete aborts the transaction, so these two end every run.
-        transaction.oncomplete = done;
-        transaction.onabort = done;
+        transaction.oncomplete = transaction.onabort = done;
       } catch {
         // No `docs` store, or a transaction the database refuses.
         done();

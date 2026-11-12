@@ -26,14 +26,16 @@ namespace Tellma.Core.Tests.Blobs
 
         /// <summary>Creates the store over a fresh directory under the system temporary directory.</summary>
         /// <param name="logger">The store's logger; a null logger when omitted.</param>
-        public FileSystemBlobStoreHarness(ILogger<FileSystemBlobStore>? logger = null)
+        /// <param name="partFileOpener">How the store opens its part files; the store's own create-only open when omitted.</param>
+        public FileSystemBlobStoreHarness(ILogger<FileSystemBlobStore>? logger = null, Func<string, FileStream>? partFileOpener = null)
         {
             RootPath = Path.Combine(Path.GetTempPath(), "tellma-blobs-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
             MeterFactory = _metricsProvider.GetRequiredService<IMeterFactory>();
             FileSystemStore = new FileSystemBlobStore(
                 Options.Create(new FileSystemBlobStoreOptions { RootPath = RootPath }),
                 new BlobStoreMetrics(MeterFactory),
-                logger ?? NullLogger<FileSystemBlobStore>.Instance);
+                logger ?? NullLogger<FileSystemBlobStore>.Instance,
+                partFileOpener ?? FileSystemBlobStore.OpenPart);
         }
 
         /// <summary>The store's root directory, which the store itself does not create.</summary>

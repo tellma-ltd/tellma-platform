@@ -19,9 +19,16 @@ namespace Tellma.Core.Data.Conventions
     ///     with no cascade, indexed by <c>IX_&lt;Table&gt;_&lt;Column&gt; (…) INCLUDE (Id)</c>.
     /// </summary>
     /// <remarks>
-    ///     A child collection is a <c>[NotMapped]</c> list property of a child type on a mapped parent;
-    ///     the model never sees it. A child type whose parent key is missing or declared twice is left
-    ///     unpaired for the metadata validation to report.
+    ///     <para>
+    ///         A child collection is a <c>[NotMapped]</c> list property of a child type on a mapped
+    ///         parent; the model never sees it. A child type whose parent key is missing or declared
+    ///         twice is left unpaired for the metadata validation to report.
+    ///     </para>
+    ///     <para>
+    ///         When a model configuration declares an unfiltered index that starts with the parent key,
+    ///         that index stands in for the convention's, which is then not added. A filtered index
+    ///         never stands in, since it does not hold every child of a parent.
+    ///     </para>
     /// </remarks>
     internal sealed class ChildConvention : IModelFinalizingConvention
     {
@@ -37,6 +44,17 @@ namespace Tellma.Core.Data.Conventions
 
                 string declaration = ConventionModel.Declaration("ParentKey", child, parentKey.Name);
                 _ = ConventionModel.AddForeignKey(child, parentKey, pairing.Parent, DeleteBehavior.NoAction, unique: false, declaration);
+
+                // An unfiltered index a model configuration declares with the parent key first serves
+                // the same seeks (the clustered key rides along in every nonclustered index), so a
+                // second one would only cost writes: the configuration's index stands in for the
+                // convention's. A filtered one holds only some of a parent's children, so it never does.
+                if (child.GetIndexes().Any(index => index.GetConfigurationSource() == ConfigurationSource.Explicit
+                    && index.Properties[0] == parentKey
+                    && index.GetFilter() is null))
+                {
+                    continue;
+                }
 
                 // The parent key's index carries the child's key, so the children of a set of parents
                 // are found without a lookup into the clustered index.

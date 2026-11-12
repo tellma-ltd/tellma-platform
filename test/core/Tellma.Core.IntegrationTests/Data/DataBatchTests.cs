@@ -69,7 +69,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- Every table but the platform's own and the history tables is change-tracked ---
             Assert.Equal(
-                ["core.Blobs", "core.Jobs", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
+                ["core.Blobs", "core.Jobs", "core.Permissions", "core.RoleMemberships", "core.Roles", "core.UserPreferences", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
                 await TrackedTablesAsync(tenant.ConnectionString));
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant.ConnectionString, "SELECT CAST([temporal_type] AS int) FROM sys.tables WHERE [object_id] = OBJECT_ID(N'fixture.WidgetsHistory');"));
 

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Testing;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
@@ -24,15 +25,18 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <param name="sql">The suite's server.</param>
     public sealed class DataBatchDatabase(SqlServerFixture sql) : IAsyncLifetime
     {
-        /// <summary>The caller <see cref="SeedCallerAsync" /> stores.</summary>
-        public const int CallerId = 1;
+        /// <summary>
+        ///     The caller <see cref="SeedCallerAsync" /> stores: the first id after the reserved band, so
+        ///     the seeded system user and its stamp are never the caller and survive every reset.
+        /// </summary>
+        public const int CallerId = WellKnownIds.ReservedIdBandEnd + 1;
 
-        /// <summary>The statements that return the database to its state after creation.</summary>
+        /// <summary>The statements that return the database to its state after creation, the seeded rows kept.</summary>
         private const string ResetText = """
             DELETE FROM [core].[Jobs];
             DELETE FROM [core].[VersionTags];
-            DELETE FROM [core].[UserStamps];
-            DELETE FROM [core].[Users];
+            DELETE FROM [core].[UserStamps] WHERE [UserId] > 999;
+            DELETE FROM [core].[Users] WHERE [Id] > 999;
             DELETE FROM [fixture].[WidgetExtras];
             DELETE FROM [dbo].[__TellmaSchema];
             """;
@@ -122,7 +126,10 @@ namespace Tellma.Core.IntegrationTests.Data
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) VALUES (N'{VersionTagNames.Settings}', '{SettingsTag}'), (N'{VersionTagNames.Permissions}', '{PermissionsTag}');"),
-                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[Users] ([Id], [Name], [IsActive]) VALUES ({CallerId}, N'fx-caller', 1);"),
+                // An individual who was invited and has joined, created by the system user, as the checks require.
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({CallerId}, '{UserKind.Individual}', 'fx-caller', N'fx-caller@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'fx-caller', 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId});"),
                 string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[UserStamps] ([UserId], [PermissionsTag]) VALUES ({CallerId}, '{UserPermissionsTag}');"));
         }
 

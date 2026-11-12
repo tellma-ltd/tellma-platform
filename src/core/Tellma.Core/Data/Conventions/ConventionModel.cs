@@ -76,7 +76,26 @@ namespace Tellma.Core.Data.Conventions
         /// <exception cref="InvalidOperationException">No mapped type, or more than one, is the target or derives from it.</exception>
         public static IConventionEntityType Leaf(IConventionModel model, Type target, string declaration)
         {
-            List<IConventionEntityType> candidates = [.. model.GetEntityTypes()
+            return (IConventionEntityType)Leaf((IReadOnlyModel)model, target, declaration);
+        }
+
+        /// <summary>
+        ///     The entity type of the leaf registered for <paramref name="target" /> in a model being
+        ///     built or already built: the one mapped type whose class is <paramref name="target" /> or
+        ///     derives from it. A model configuration resolves the leaf of another replaceable default
+        ///     through it, since it can be generic over its own entity only.
+        /// </summary>
+        /// <param name="model">The model.</param>
+        /// <param name="target">The declared target: a pack's default or any entity.</param>
+        /// <param name="declaration">The declaration that names the target, for the message.</param>
+        /// <returns>The leaf's entity type.</returns>
+        /// <exception cref="InvalidOperationException">No mapped type, or more than one, is the target or derives from it.</exception>
+        public static IReadOnlyEntityType Leaf(IReadOnlyModel model, Type target, string declaration)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            ArgumentNullException.ThrowIfNull(target);
+
+            List<IReadOnlyEntityType> candidates = [.. model.GetEntityTypes()
                 .Where(entityType => entityType.BaseType is null
                     && !entityType.IsOwned()
                     && !entityType.HasSharedClrType

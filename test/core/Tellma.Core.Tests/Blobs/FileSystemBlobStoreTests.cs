@@ -115,6 +115,39 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
+        public async Task A_write_whose_open_loses_a_race_to_another_writer_creating_the_directory_still_lands()
+        {
+            FakeLogger<FileSystemBlobStore> logger = new();
+            int opens = 0;
+
+            // The first open really fails for want of the tenant's .tmp; a concurrent write of the
+            // same tenant then creates it before the failure is reported, and the failure reads as
+            // "file not found": what the Unix runtime reports once the directory exists again.
+            FileStream RacingOpen(string partPath)
+            {
+                if (Interlocked.Increment(ref opens) > 1)
+                {
+                    return FileSystemBlobStore.OpenPart(partPath);
+                }
+
+                DirectoryNotFoundException missing = Assert.Throws<DirectoryNotFoundException>(() => FileSystemBlobStore.OpenPart(partPath));
+                Directory.CreateDirectory(Path.GetDirectoryName(partPath)!);
+                throw new FileNotFoundException($"Could not find file '{partPath}'.", partPath, missing);
+            }
+
+            await using FileSystemBlobStoreHarness harness = new(logger, RacingOpen);
+            string name = BlobStoreConformanceTests.NewName();
+            string temporary = harness.TemporaryDirectory(harness.TenantId);
+
+            await harness.Store.WriteAsync(harness.TenantId, [BlobStoreConformanceTests.Write(name, [1, 2, 3])], Token);
+
+            Assert.Equal(2, opens);
+            Assert.Equal([1, 2, 3], await File.ReadAllBytesAsync(harness.ObjectPath(harness.TenantId, name), Token));
+            Assert.Empty(Directory.GetFiles(temporary));
+            Assert.Single(logger.Collector.GetSnapshot(), static record => record.Id.Name == "BlobTenantMissingOnWrite");
+        }
+
+        [Fact]
         public async Task The_create_only_probe_passes_on_the_test_file_system_and_leaves_nothing()
         {
             await using FileSystemBlobStoreHarness harness = new();

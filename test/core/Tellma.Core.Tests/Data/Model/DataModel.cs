@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
 using Tellma.Core.Data;
@@ -35,7 +36,7 @@ namespace Tellma.Core.Tests.Data.Model
             IServiceCollection services = TestComposition.Compose(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: Contribute))
                 .UseEntity<Center, MyCenter>()
-                .UseEntity<TestUser, MyTestUser>());
+                .UseEntity<User, MyTestUser>());
 
             _provider = services.BuildServiceProvider(validateScopes: true);
             Factory = _provider.GetRequiredService<TellmaModelFactory>();
@@ -95,9 +96,7 @@ namespace Tellma.Core.Tests.Data.Model
         private static void Contribute(FeatureContribution contribution)
         {
             _ = contribution
-                .Entity<TestUser>()
                 .Entity<TestJob>()
-                .Entity<TestBlob>()
                 .Entity<Widget>()
                 .Entity<WidgetExtra>()
                 .Entity<Center>()
