@@ -5,11 +5,13 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import * as lucide from 'lucide';
 
 // @public
 export class TmAlert {
     constructor();
     readonly heading: _angular_core.InputSignal<string | undefined>;
+    protected readonly icon: _angular_core.Signal<lucide.IconNode>;
     readonly kind: _angular_core.InputSignal<TmAlertKind>;
     protected readonly kindPrefix: _angular_core.Signal<string>;
     readonly live: _angular_core.InputSignal<TmAlertLive>;

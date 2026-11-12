@@ -59,6 +59,7 @@ namespace Tellma.Identity.Controllers
                     UserCode = userCode,
                     ApplicationName = await GetApplicationNameAsync(result.Principal),
                     Scope = string.Join(' ', result.Principal!.GetScopes()),
+                    Targets = ConsentTargetCatalog.Describe(result.Principal!.GetResources()),
                 });
             }
 

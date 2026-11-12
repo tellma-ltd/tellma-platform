@@ -28,6 +28,12 @@ namespace Tellma.Core.Data.Batches
     ///         prologue stage runs and appends its statements in the <see cref="BatchSection.Prologue" />
     ///         section; the contributors that it absorbs then yield. Its reader reports the guard's
     ///         verdict (<see cref="ReportGuard" />), which decides whether the body's result sets exist.
+    ///         The premises it marks the batch with are what a writing persist batch re-checks inside
+    ///         its transaction.
+    ///     </para>
+    ///     <para>
+    ///         A persist batch that inserts root rows declares their ids (<see cref="DeclareInsertedRoots(TableName, IReadOnlyList{int})" />),
+    ///         so a round trip that lost its connection can be probed for whether it committed.
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
@@ -98,6 +104,7 @@ namespace Tellma.Core.Data.Batches
             _contributors = [.. services.GetServices<IDataBatchContributor>().OrderBy(static contributor => contributor.Order)];
 
             // --- The scope's counters, cancellation and test-mode audit ---
+            // The composed scope's counters belong to its recorder, which records them when the scope ends.
             Access = services.GetService<DataAccessScope>() ?? new DataAccessScope();
             ScopeCancellation = services.GetService<DataCancellation>()?.Token ?? CancellationToken.None;
             Audit = services.GetService<IDataBatchAudit>();
@@ -165,7 +172,13 @@ namespace Tellma.Core.Data.Batches
         internal IReadOnlyList<BatchStatement> Statements => _statements;
 
         /// <summary>Whether the batch carries the connect prologue, and so the guard wrapper.</summary>
-        internal bool CarriesConnectPrologue { get; private set; }
+        internal bool CarriesConnectPrologue => Premises is not null;
+
+        /// <summary>What the connect prologue confirmed, when the batch carries it.</summary>
+        internal GuardPremises? Premises { get; private set; }
+
+        /// <summary>The commit probe of the root rows the batch inserts, when it declared them.</summary>
+        internal CommitProbe? Probe { get; private set; }
 
         /// <summary>The guard's verdict, as the connect prologue's reader reported it.</summary>
         internal bool? GuardPassed { get; private set; }
@@ -302,8 +315,8 @@ namespace Tellma.Core.Data.Batches
                     text,
                     options.Writes,
                     options.Idempotent,
-                    async (cursor, cancellationToken) => result.Complete(
-                        await RawResultReader.ReadAsync(cursor, ordinal, resultSets, cancellationToken).ConfigureAwait(false)));
+                    async (cursor, cancellationToken) => cursor.Complete(
+                        result, await RawResultReader.ReadAsync(cursor, ordinal, resultSets, cancellationToken).ConfigureAwait(false)));
             }
             catch
             {
@@ -510,7 +523,7 @@ namespace Tellma.Core.Data.Batches
                 _shared.Clear();
             }
 
-            _statements.Add(new BatchStatement(draft.Ordinal, draft.Section, text, [.. draft.Parameters], written, idempotent, reader));
+            _statements.Add(new BatchStatement(draft.Ordinal, draft.Section, text, [.. draft.Parameters], written, idempotent, reader, draft.EntityType));
             _written.UnionWith(written);
             _parameterNames.UnionWith(draft.Parameters.Select(static parameter => parameter.Name));
             _declared.UnionWith(draft.Declared);
@@ -531,11 +544,16 @@ namespace Tellma.Core.Data.Batches
         ///     Marks the batch as carrying the connect prologue: its body is wrapped in the guard, and
         ///     the contributors the connect prologue absorbs yield. The mark precedes the prologue stage.
         /// </summary>
+        /// <param name="premises">
+        ///     What the connect prologue confirms: the tags a writing persist batch re-checks inside its
+        ///     transaction, and whether a user's re-check applies.
+        /// </param>
         /// <exception cref="InvalidOperationException">
         ///     The batch is a maintenance batch, or its prologue stage already ran.
         /// </exception>
-        internal void MarkConnectPrologue()
+        internal void MarkConnectPrologue(GuardPremises premises)
         {
+            ArgumentNullException.ThrowIfNull(premises);
             if (Purpose == BatchPurpose.Maintenance)
             {
                 throw new InvalidOperationException("A maintenance batch carries no connect prologue.");
@@ -546,7 +564,49 @@ namespace Tellma.Core.Data.Batches
                 throw new InvalidOperationException("The connect prologue marks the batch before its first statement is appended.");
             }
 
-            CarriesConnectPrologue = true;
+            Premises = premises;
+        }
+
+        /// <summary>
+        ///     The parameter binding the value the batch's tag bumps write, <c>@tm_tag</c>; every
+        ///     statement that writes a tag binds it, and binds the one value.
+        /// </summary>
+        /// <returns>The parameter, for <see cref="StatementDraft.Reserved" />.</returns>
+        internal BatchParameter TagParameter()
+        {
+            return new ScalarParameter(ReservedSqlNames.Tag, System.Data.SqlDbType.UniqueIdentifier, Tag);
+        }
+
+        /// <summary>
+        ///     Declares the <c>int</c> ids the batch inserts into a root table, which the commit probe
+        ///     looks for when a round trip loses its connection. The first declaration is the probe's;
+        ///     later ones, and an empty list, change nothing.
+        /// </summary>
+        /// <param name="table">The root table, whose primary key is <c>PK_&lt;table&gt;</c> on <c>[Id]</c>.</param>
+        /// <param name="ids">The ids inserted.</param>
+        internal void DeclareInsertedRoots(TableName table, IReadOnlyList<int> ids)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+            ArgumentNullException.ThrowIfNull(ids);
+            EnsureComposing();
+            if (Probe is null && ids.Count > 0)
+            {
+                Probe = CommitProbe.ForIds(table, ids, _executor.Binder);
+            }
+        }
+
+        /// <summary>Declares the <c>bigint</c> ids the batch inserts into a root table; see <see cref="DeclareInsertedRoots(TableName, IReadOnlyList{int})" />.</summary>
+        /// <param name="table">The root table, whose primary key is <c>PK_&lt;table&gt;</c> on <c>[Id]</c>.</param>
+        /// <param name="ids">The ids inserted.</param>
+        internal void DeclareInsertedRoots(TableName table, IReadOnlyList<long> ids)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+            ArgumentNullException.ThrowIfNull(ids);
+            EnsureComposing();
+            if (Probe is null && ids.Count > 0)
+            {
+                Probe = CommitProbe.ForIds(table, ids, _executor.Binder);
+            }
         }
 
         /// <summary>Reports the guard's verdict, from the connect prologue's reader.</summary>
@@ -586,15 +646,32 @@ namespace Tellma.Core.Data.Batches
             _userIdSources.Add(source);
         }
 
-        /// <summary>Assembles the batch into one framed command.</summary>
+        /// <summary>
+        ///     Assembles the batch into one framed command: a writing persist batch that carries the
+        ///     connect prologue opens its transaction with the re-checks of what the prologue confirmed.
+        /// </summary>
         /// <returns>The assembly.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     A transaction-head statement is appended to a batch that opens no transaction in its text.
+        /// </exception>
         internal BatchAssembly Assemble()
         {
-            return BatchAssembly.Create(
-                _statements,
-                _executor.Fingerprint,
-                CarriesConnectPrologue,
-                inTextTransaction: TransactionMode == TransactionMode.Auto && _written.Count > 0);
+            bool inTextTransaction = TransactionMode == TransactionMode.Auto && _written.Count > 0;
+
+            // A transaction head (an application lock) is held to the COMMIT of the transaction the text
+            // opens; an explicit transaction would hold it past the text, autocommit not at all.
+            if (!inTextTransaction && _statements.Any(static statement => statement.Section == BatchSection.TransactionHead))
+            {
+                throw new InvalidOperationException(
+                    $"A transaction-head statement needs the transaction the batch text opens, which only a batch in {nameof(TransactionMode.Auto)} mode that declares a write has.");
+            }
+
+            // --- The re-checks: on a writing persist batch that carries the connect prologue, whatever its transaction mode ---
+            PersistChecks? checks = Purpose == BatchPurpose.Persist && Premises is GuardPremises premises && _written.Count > 0
+                ? PersistChecks.Compose(premises, _dependencies, _bumps, _written, _executor.VersionTags, _executor.Binder)
+                : null;
+
+            return BatchAssembly.Create(_statements, _executor.Fingerprint, CarriesConnectPrologue, inTextTransaction, checks);
         }
 
         // ===================== Helpers =====================

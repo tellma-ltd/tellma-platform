@@ -65,12 +65,6 @@ export interface TmSendOptions {
   readonly background?: boolean;
 }
 
-/** Options of a blob fetch: `tm-image`'s, and the signal that aborts it. */
-export interface TmFetchBlobOptions extends TmBlobFetchOptions {
-  /** Aborts the fetch; the fetch then rejects with the signal's reason. */
-  readonly signal?: AbortSignal;
-}
-
 /** A downloaded file. */
 export interface TmDownload {
   /** The file's name, from the response's `Content-Disposition`. */
@@ -178,7 +172,7 @@ export abstract class TmApi {
    * @param options - The held ETag, and the signal that aborts the fetch.
    * @returns The status (`304` when the held copy is current), the bytes and the ETag.
    */
-  abstract fetchBlob(url: string, options?: TmFetchBlobOptions): Promise<TmBlobFetchResult>;
+  abstract fetchBlob(url: string, options?: TmBlobFetchOptions): Promise<TmBlobFetchResult>;
 
   /**
    * Sends a small body that outlives the page and whose answer is never read,

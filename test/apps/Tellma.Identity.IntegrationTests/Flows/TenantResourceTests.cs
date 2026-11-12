@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
+using OpenIddict.Abstractions;
 using System.Net;
 using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Services.AuthenticationPolicy;
 using Tellma.Identity.Services.Provisioning;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -19,7 +21,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
     ///     Per-tenant resources under a granted origin, end to end: a client granted a
     ///     distribution's origin obtains a token whose audience is one tenant's resource, through
     ///     the code exchange, the refresh and the device grant; a refresh may narrow its grant but
-    ///     never widen it; and every refusal is <c>invalid_target</c> with an audit row.
+    ///     never widen it; and every refusal is <c>invalid_target</c> with an audit row. No
+    ///     interactive grant may carry the management scope.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -179,10 +182,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Theory]
         [InlineData(Tenant17)]
         [InlineData(Origin)]
-        public async Task An_authorization_naming_a_distribution_cannot_also_ask_for_the_management_scope(string resource)
+        [InlineData(null)]
+        public async Task An_authorization_cannot_ask_for_the_management_scope(string? resource)
         {
-            // The CLI holds both, but one token carrying them would be a credential at the
-            // management API sitting in a distribution's host; it asks for two tokens instead.
+            // The management API is a machine-to-machine surface, so no interactive client is
+            // permitted its scope: a person's token is never a credential there, with a
+            // distribution's resource or without one.
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantmgmt");
             using OidcFlowClient flow = new(factory);
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
@@ -191,10 +196,59 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 new Uri(AuthorizeUrl(challenge, resource, "openid offline_access tellma_api tellma_identity"), UriKind.Relative),
                 TestContext.Current.CancellationToken);
 
+            // Refused before any interaction, for the scope, and never with a code.
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.Null(response.Headers.Location);
-            Assert.Contains("invalid_target", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
-            Assert.Equal([resource], await RefusedResourcesAsync(factory));
+            string html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("invalid_request", html, StringComparison.Ordinal);
+            Assert.Contains("not allowed to use the specified scope", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_device_authorization_cannot_ask_for_the_management_scope()
+        {
+            using StandaloneFactory factory = await CreateFactoryAsync("idtenantdevmgmt");
+
+            using JsonDocument device = await PostDeviceAuthorizationAsync(factory, resource: null, "openid tellma_identity");
+
+            Assert.Equal(HttpStatusCode.BadRequest, (HttpStatusCode)device.RootElement.GetProperty("status").GetInt32());
+            JsonElement body = device.RootElement.GetProperty("body");
+            Assert.Equal("invalid_request", body.GetProperty("error").GetString());
+            Assert.Contains("not allowed to use the specified scope", body.GetProperty("error_description").GetString(), StringComparison.Ordinal);
+            Assert.False(body.TryGetProperty("device_code", out _));
+        }
+
+        [Fact]
+        public async Task A_first_party_client_moves_between_tenants_without_consent_on_one_authorization()
+        {
+            // Consent is implicit for the platform's own clients, so binding remembered consent to
+            // its places changes nothing they see: the next tenant goes straight through, and is
+            // recorded on the authorization the session already holds for the client.
+            using StandaloneFactory factory = await CreateFactoryAsync("idtenantswitch");
+            using OidcFlowClient flow = new(factory);
+            await AuthorizeAsync(factory, flow, "sami@example.com", Tenant17);
+
+            (_, string challenge) = OidcFlowClient.CreatePkcePair();
+            using HttpResponseMessage response = await flow.Browser.GetAsync(
+                new Uri(AuthorizeUrl(challenge, Tenant18), UriKind.Relative), TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Contains("code=", response.Headers.Location!.ToString(), StringComparison.Ordinal);
+
+            using IServiceScope scope = factory.Services.CreateScope();
+            IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+            IOpenIddictAuthorizationManager authorizations = scope.ServiceProvider.GetRequiredService<IOpenIddictAuthorizationManager>();
+            object client = (await applications.FindByClientIdAsync(ClientId, TestContext.Current.CancellationToken))!;
+            List<object> rows = [];
+            await foreach (object row in authorizations.FindByApplicationIdAsync(
+                (await applications.GetIdAsync(client, TestContext.Current.CancellationToken))!, TestContext.Current.CancellationToken))
+            {
+                rows.Add(row);
+            }
+
+            object authorization = Assert.Single(rows);
+            Assert.Equal(
+                [Tenant17, Tenant18],
+                AuthorizationResources.Read(await authorizations.GetPropertiesAsync(authorization, TestContext.Current.CancellationToken)));
         }
 
         [Fact]
@@ -346,10 +400,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 TestContext.Current.CancellationToken);
         }
 
-        /// <summary>The CLI's authorization URL, naming one resource and the given scopes.</summary>
-        private static string AuthorizeUrl(string challenge, string resource, string scope = "openid offline_access tellma_api")
+        /// <summary>The CLI's authorization URL, naming at most one resource, and the given scopes.</summary>
+        private static string AuthorizeUrl(string challenge, string? resource, string scope = "openid offline_access tellma_api")
         {
-            return QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string, string?>
+            Dictionary<string, string?> parameters = new()
             {
                 ["client_id"] = ClientId,
                 ["redirect_uri"] = RedirectUri,
@@ -358,8 +412,13 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 ["code_challenge"] = challenge,
                 ["code_challenge_method"] = "S256",
                 ["state"] = "state-1",
-                ["resource"] = resource,
-            });
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
+            return QueryHelpers.AddQueryString("/connect/authorize", parameters);
         }
 
         /// <summary>Signs a new user in through the CLI's authorization request and returns the code.</summary>
@@ -420,20 +479,26 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>
-        ///     Posts a device authorization request for the CLI naming one resource, and returns the
-        ///     status and body as one document: <c>{ "status": …, "body": … }</c>.
+        ///     Posts a device authorization request for the CLI naming at most one resource, and
+        ///     returns the status and body as one document: <c>{ "status": …, "body": … }</c>.
         /// </summary>
-        private static async Task<JsonDocument> PostDeviceAuthorizationAsync(StandaloneFactory factory, string resource)
+        private static async Task<JsonDocument> PostDeviceAuthorizationAsync(
+            StandaloneFactory factory, string? resource, string scope = "openid offline_access tellma_api")
         {
+            Dictionary<string, string> parameters = new()
+            {
+                ["client_id"] = ClientId,
+                ["scope"] = scope,
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.PostAsync(
                 new Uri("/connect/device", UriKind.Relative),
-                new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["client_id"] = ClientId,
-                    ["scope"] = "openid offline_access tellma_api",
-                    ["resource"] = resource,
-                }),
+                new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
             string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);

@@ -58,6 +58,27 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The message of <see cref="SchemaBehind" />.</summary>
         public const string SchemaBehindCode = "SchemaBehind";
 
+        /// <summary>The message of <see cref="CallerInvalid" />.</summary>
+        public const string CallerInvalidCode = "CallerInvalid";
+
+        /// <summary>The message of <see cref="RowSecurity" />.</summary>
+        public const string RowSecurityCode = "RowSecurity";
+
+        /// <summary>The message of <see cref="NotFound" />.</summary>
+        public const string NotFoundCode = "Entity.NotFound";
+
+        /// <summary>The message of <see cref="StaleVersionTag" />.</summary>
+        public const string StaleVersionTagCode = "StaleVersionTag";
+
+        /// <summary>The <see cref="Invariant" /> code of a tree whose parent chain loops.</summary>
+        public const string TreeCycleCode = "Tree.Cycle";
+
+        /// <summary>
+        ///     The <see cref="Invariant" /> code of a version-tag bump whose tag has no row: a deployment
+        ///     defect, never a validation failure.
+        /// </summary>
+        public const string VersionTagMissingCode = "VersionTag.Missing";
+
         /// <summary>Whether a number is in the platform band.</summary>
         /// <param name="number">The error number.</param>
         /// <returns>True for 50400 to 50599.</returns>

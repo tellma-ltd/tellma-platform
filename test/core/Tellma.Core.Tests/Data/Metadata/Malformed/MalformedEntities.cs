@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
@@ -778,12 +779,12 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
     public class Supplier : Party;
 
     /// <summary>
-    ///     A closed configuration of the replaced default <see cref="MdUser" />, which re-adds it beside its
-    ///     leaf; the row image of the shared table cannot hold the leaf's column, so no model is built.
+    ///     A closed configuration of Core's replaced default <see cref="User" />, which re-adds it beside
+    ///     its leaf; the row image of the shared table cannot hold the leaf's column, so no model is built.
     /// </summary>
-    public sealed class DefaultUserConfiguration : IEntityTypeConfiguration<MdUser>
+    public sealed class DefaultUserConfiguration : IEntityTypeConfiguration<User>
     {
-        public void Configure(EntityTypeBuilder<MdUser> builder)
+        public void Configure(EntityTypeBuilder<User> builder)
         {
             _ = builder.HasIndex(static user => user.Name).HasDatabaseName("IX_Users_Name");
         }

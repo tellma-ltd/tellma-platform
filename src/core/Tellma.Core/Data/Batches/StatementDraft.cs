@@ -63,6 +63,12 @@ namespace Tellma.Core.Data.Batches
         public IReadOnlyList<string> Declared => _declared;
 
         /// <summary>
+        ///     The entity a tree statement maintains, which the executor names in a cycle or depth
+        ///     error the statement raises; null for any other statement.
+        /// </summary>
+        public Type? EntityType { get; set; }
+
+        /// <summary>
         ///     A batch-local name in the statement's namespace, <c>@tb{ordinal}_{word}</c>, declared
         ///     for later statements to name.
         /// </summary>

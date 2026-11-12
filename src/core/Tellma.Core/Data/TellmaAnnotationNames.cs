@@ -10,5 +10,12 @@ namespace Tellma.Core.Data
     {
         /// <summary>On a tree entity type: the tree's maximum depth, an <see cref="int" />.</summary>
         public const string TreeMaxDepth = "Tellma:Tree:MaxDepth";
+
+        /// <summary>
+        ///     On a platform table that is not an entity: the query language's name for it, a
+        ///     <see cref="string" /> such as <c>core.UserStamp</c>. The query schema exposes such a table
+        ///     read-only, with a navigation for each of its foreign keys, and no surface ever writes it.
+        /// </summary>
+        public const string QueryexReadOnlyEntity = "Tellma:Queryex:ReadOnlyEntity";
     }
 }

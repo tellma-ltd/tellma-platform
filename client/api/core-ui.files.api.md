@@ -5,6 +5,7 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import * as lucide from 'lucide';
 import { OnDestroy } from '@angular/core';
 
 // @public
@@ -22,6 +23,7 @@ export class TmDropzone {
     protected readonly picker: TmFilePicker;
     protected readonly sizeLine: _angular_core.Signal<string>;
     protected readonly typesLine: _angular_core.Signal<string | null>;
+    protected readonly uploadIcon: lucide.IconNode;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDropzone, "tm-dropzone", never, {}, {}, never, never, true, [{ directive: typeof TmFilePicker; inputs: { "accept": "accept"; "multiple": "multiple"; "maxFileSize": "maxFileSize"; "maxFiles": "maxFiles"; }; outputs: { "filesSelected": "filesSelected"; }; }]>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDropzone, never>;
 }

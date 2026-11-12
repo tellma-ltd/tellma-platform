@@ -10,7 +10,6 @@ import {
   type TmBlobDescriptor,
   type TmDownload,
   type TmDownloadOptions,
-  type TmFetchBlobOptions,
   type TmReadOptions,
   type TmSendOptions,
   type TmUploadOptions,
@@ -136,7 +135,7 @@ export class TmFakeApi extends TmApi {
   }
 
   /** Records the blob fetch and answers it from the script under its URL. */
-  override fetchBlob(url: string, options: TmFetchBlobOptions = {}): ReturnType<TmApi['fetchBlob']> {
+  override fetchBlob(url: string, options: Parameters<TmApi['fetchBlob']>[1] = {}): ReturnType<TmApi['fetchBlob']> {
     const signal = options.signal ?? null;
     return this.#answer({ kind: 'fetch-blob', route: url, body: undefined, options }, signal).catch((error: unknown) => {
       // As the real layer does, an aborted fetch rejects with its signal's reason.

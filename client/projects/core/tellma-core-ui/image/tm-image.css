@@ -63,11 +63,8 @@
   inline-size: 100%;
   block-size: 100%;
   color: var(--text-muted);
-}
-
-.tm-image__glyph svg {
-  inline-size: var(--image-glyph-size);
-  block-size: var(--image-glyph-size);
+  /* The glyph inside is a tm-icon, sized by this token. */
+  --icon-size: var(--image-glyph-size);
 }
 
 .tm-image__glyph--error {
@@ -106,11 +103,8 @@
   block-size: var(--image-chrome-button-size);
   padding: 0;
   cursor: pointer;
-}
-
-.tm-image__chrome-button > svg {
-  inline-size: var(--image-chrome-icon-size);
-  block-size: var(--image-chrome-icon-size);
+  /* Each action's glyph is a tm-icon at the chrome's icon size. */
+  --icon-size: var(--image-chrome-icon-size);
 }
 
 .tm-image__chrome-button:focus-visible {

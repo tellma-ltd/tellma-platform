@@ -5,7 +5,7 @@
 
 import { effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { TmBlobFetchResult } from '@tellma/core-ui/image';
+import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
 
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
@@ -21,7 +21,6 @@ import type {
   TmBlobDescriptor,
   TmDownload,
   TmDownloadOptions,
-  TmFetchBlobOptions,
   TmReadOptions,
   TmSendOptions,
   TmUploadOptions,
@@ -379,7 +378,7 @@ export class TmHttpApi implements TmApi {
   }
 
   /** {@inheritDoc TmApi.fetchBlob} */
-  async fetchBlob(url: string, options: TmFetchBlobOptions = {}): Promise<TmBlobFetchResult> {
+  async fetchBlob(url: string, options: TmBlobFetchOptions = {}): Promise<TmBlobFetchResult> {
     const signal = options.signal ?? null;
     try {
       return await this.#cancellableCall(signal, (cancel) => this.#fetchBlob(url, options.ifNoneMatch, cancel));

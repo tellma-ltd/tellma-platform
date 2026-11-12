@@ -58,6 +58,12 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The version tags a persist batch expects, checked by the tag guard.</summary>
         public const string ExpectedTags = "@tm_expectedTags";
 
+        /// <summary>
+        ///     The caller's permissions tag as the connect prologue expects it, bound by the connect
+        ///     prologue; the tag guard compares the caller's stamp row with it.
+        /// </summary>
+        public const string ExpectedUserPermissionsTag = "@tm_ExpectedUserPermissionsTag";
+
         /// <summary>The new version tag a batch's bumps write.</summary>
         public const string Tag = "@tm_tag";
 

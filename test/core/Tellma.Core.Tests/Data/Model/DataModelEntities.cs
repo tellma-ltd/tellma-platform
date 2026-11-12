@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using ExcludeFromTableTypeAttribute = Tellma.Core.Abstractions.Entities.ExcludeFromTableTypeAttribute;
@@ -17,8 +19,10 @@ namespace Tellma.Core.Tests.Data.Model
     // A test model shaped like the data layer's fixture schema: one entity per capability the
     // conventions shape, the platform tables the audit, job and blob columns reference, a pack
     // default with a distribution leaf, and a Core configuration open over a replaceable default.
+    // A composed model takes core.Users and core.Blobs from Core, with the distribution's user leaf
+    // below; a model built straight from a definition, without Core, maps the stand-ins instead.
 
-    /// <summary>A stand-in for <c>core.Users</c>, a replaceable default the audit columns reference.</summary>
+    /// <summary>A stand-in for <c>core.Users</c> in models built without Core, which the audit columns reference.</summary>
     [Table("Users", Schema = "core")]
     [TableType]
     public class TestUser : TopLevelEntity
@@ -36,8 +40,8 @@ namespace Tellma.Core.Tests.Data.Model
         public string? Email { get; set; }
     }
 
-    /// <summary>The distribution's leaf of <see cref="TestUser" />.</summary>
-    public sealed class MyTestUser : TestUser
+    /// <summary>The distribution's leaf of Core's <see cref="User" />.</summary>
+    public sealed class MyTestUser : User
     {
         [MaxLength(50)]
         public string? Nickname { get; set; }
@@ -46,7 +50,7 @@ namespace Tellma.Core.Tests.Data.Model
     /// <summary>A Core configuration open over the user leaf.</summary>
     /// <typeparam name="TUser">The registered leaf.</typeparam>
     public sealed class TestUserConfiguration<TUser> : IEntityTypeConfiguration<TUser>
-        where TUser : TestUser
+        where TUser : User
     {
         public void Configure(EntityTypeBuilder<TUser> builder)
         {
@@ -62,7 +66,7 @@ namespace Tellma.Core.Tests.Data.Model
         public string? HandlerKey { get; set; }
     }
 
-    /// <summary>A stand-in for <c>core.Blobs</c>.</summary>
+    /// <summary>A stand-in for <c>core.Blobs</c> in models built without Core.</summary>
     [Table("Blobs", Schema = "core")]
     public class TestBlob : Entity<int>
     {
@@ -86,7 +90,7 @@ namespace Tellma.Core.Tests.Data.Model
 
     /// <summary>A flags enum, whose widest value joins every flag.</summary>
     [Flags]
-    public enum Access
+    public enum AccessRights
     {
         None = 0,
         Read = 1,
@@ -112,7 +116,7 @@ namespace Tellma.Core.Tests.Data.Model
 
         public LongStatus Status { get; set; }
 
-        public Access Access { get; set; }
+        public AccessRights Access { get; set; }
 
         [MaxLength(20)]
         public WidgetKind SizedKind { get; set; }
@@ -313,7 +317,7 @@ namespace Tellma.Core.Tests.Data.Model
             _ = builder.Property(static configured => configured.Kind).HasConversion<int>();
             _ = builder.HasOne<TestJob>().WithMany().HasForeignKey(static configured => configured.JobId)
                 .HasConstraintName("FK_Configured_OwnJob").OnDelete(DeleteBehavior.Cascade);
-            _ = builder.HasOne<TestBlob>().WithMany().HasForeignKey(static configured => configured.AttachmentRef);
+            _ = builder.HasOne<Blob>().WithMany().HasForeignKey(static configured => configured.AttachmentRef);
             _ = builder.HasNoTableType();
         }
     }

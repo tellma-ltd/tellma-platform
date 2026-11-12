@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
 
@@ -37,6 +38,13 @@ namespace Tellma.Core.Tests.Data.Metadata
 
     /// <summary>The distribution's leaf of <see cref="MdUser" />.</summary>
     public sealed class MyMdUser : MdUser
+    {
+        [MaxLength(50)]
+        public string? Nickname { get; set; }
+    }
+
+    /// <summary>The distribution's leaf of Core's <see cref="User" />, in models composed with Core.</summary>
+    public sealed class MdMember : User
     {
         [MaxLength(50)]
         public string? Nickname { get; set; }

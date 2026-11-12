@@ -5,6 +5,7 @@
 
 using System.Data;
 using System.Runtime.CompilerServices;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
@@ -23,6 +24,11 @@ namespace Tellma.Core.Tests.Data.Batches
 
         /// <summary>A format whose hole names a second argument, kept out of a literal so the analyzers let it through.</summary>
         private static readonly string HoleWithoutArgument = "SELECT {" + 1.ToString(System.Globalization.CultureInfo.InvariantCulture) + "};";
+
+        /// <summary>What a user's connect prologue confirms, for the batches the tests mark.</summary>
+        private static readonly GuardPremises Premises = GuardPremises.ForUser(
+            new VersionTag(Guid.Parse("00000000-0000-0000-0000-00000000000a", System.Globalization.CultureInfo.InvariantCulture)),
+            new VersionTag(Guid.Parse("00000000-0000-0000-0000-00000000000b", System.Globalization.CultureInfo.InvariantCulture)));
 
         private readonly BatchHarness _harness = new();
 
@@ -120,14 +126,24 @@ namespace Tellma.Core.Tests.Data.Batches
         public async Task A_marked_batch_wraps_everything_after_its_prologue_in_the_guard()
         {
             DataBatch batch = _harness.Batch(BatchPurpose.Persist, new TextContributor(1, "DECLARE @tm_Guard bit = 1;", null));
-            batch.MarkConnectPrologue();
+            batch.MarkConnectPrologue(Premises);
             _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Widgets }));
 
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
+            // A writing persist batch opens its transaction with the re-checks.
             Assert.True(assembly.Guarded);
             Assert.EndsWith(
-                string.Join("\n", "DECLARE @tm_Guard bit = 1;", BatchAssembly.GuardOpen, BatchAssembly.TransactionOpen, "DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", BatchAssembly.TransactionCommit, BatchAssembly.GuardClose, string.Empty),
+                string.Join(
+                    "\n",
+                    "DECLARE @tm_Guard bit = 1;",
+                    BatchAssembly.GuardOpen,
+                    BatchAssembly.TransactionOpen,
+                    assembly.Checks!.Text,
+                    "DELETE FROM [fixture].[Widgets] WHERE 1 = 0;",
+                    BatchAssembly.TransactionCommit,
+                    BatchAssembly.GuardClose,
+                    string.Empty),
                 assembly.Text,
                 StringComparison.Ordinal);
         }
@@ -136,7 +152,7 @@ namespace Tellma.Core.Tests.Data.Batches
         public async Task A_marked_batch_with_no_body_text_carries_no_guard_wrapper()
         {
             DataBatch batch = _harness.Batch(BatchPurpose.Read, new TextContributor(1, "DECLARE @tm_Guard bit = 1;", null));
-            batch.MarkConnectPrologue();
+            batch.MarkConnectPrologue(Premises);
 
             // A table-valued parameter is a body statement without text: there is still nothing to wrap.
             IdList[] rows = [new() { Id = 1 }];
@@ -153,11 +169,11 @@ namespace Tellma.Core.Tests.Data.Batches
         [Fact]
         public void The_connect_prologue_mark_is_refused_on_a_maintenance_batch_and_after_the_first_statement()
         {
-            _ = Assert.Throws<InvalidOperationException>(() => _harness.Batch(BatchPurpose.Maintenance).MarkConnectPrologue());
+            _ = Assert.Throws<InvalidOperationException>(() => _harness.Batch(BatchPurpose.Maintenance).MarkConnectPrologue(Premises));
 
             DataBatch batch = _harness.Batch();
             _ = batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
-            _ = Assert.Throws<InvalidOperationException>(batch.MarkConnectPrologue);
+            _ = Assert.Throws<InvalidOperationException>(() => batch.MarkConnectPrologue(Premises));
             _ = Assert.Throws<InvalidOperationException>(() => batch.Begin(BatchSection.Prologue));
         }
 
@@ -165,7 +181,7 @@ namespace Tellma.Core.Tests.Data.Batches
         public async Task A_guarded_batch_whose_prologue_reports_no_verdict_is_a_defect()
         {
             DataBatch batch = _harness.Batch(BatchPurpose.Read);
-            batch.MarkConnectPrologue();
+            batch.MarkConnectPrologue(Premises);
             _ = batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
@@ -542,12 +558,16 @@ namespace Tellma.Core.Tests.Data.Batches
             BatchAssembly oneDeclared = await BatchHarness.SealAsync(leaving);
             using (DataTableReader two = new([Table("A", 1), Table("B", 2)]))
             {
+                ResultSetCursor cursor = new(two);
                 InvalidOperationException extra = await Assert.ThrowsAsync<InvalidOperationException>(
-                    async () => await oneDeclared.ReadAsync(new ResultSetCursor(two), static () => null, token));
+                    async () => await oneDeclared.ReadAsync(cursor, static () => null, token));
                 Assert.Contains("more result sets", extra.Message, StringComparison.Ordinal);
+
+                // The statement read and staged its own set before the surplus was found.
+                Assert.False(result.IsCompleted);
+                cursor.ApplyCompletions();
             }
 
-            // The statement read its own set before the surplus was found.
             Assert.Equal(1, ((int[])result.Value.ResultSets[0].GetBuffer(0))[0]);
         }
 

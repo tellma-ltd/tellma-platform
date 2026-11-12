@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
 using Tellma.Core.Data;
@@ -27,9 +28,12 @@ namespace Tellma.Core.Tests.Composition
             TellmaModelDefinition definition = provider.GetRequiredService<TellmaModelDefinition>();
             TellmaCompositionRecord record = provider.GetRequiredService<TellmaCompositionRecord>();
 
-            Assert.Equal([typeof(TestUser), typeof(MyCenter), typeof(TestJob)], definition.EntityTypes);
+            // Core's own entities come first, each followed by the children its collections carry.
+            Assert.Equal(
+                [typeof(User), typeof(RoleMembership), typeof(Role), typeof(Permission), typeof(TestUser), typeof(MyCenter), typeof(TestJob)],
+                definition.EntityTypes);
             Assert.Equal(typeof(object), record.Entities.Single(static entity => entity.EntityType == typeof(Center)).ServiceType);
-            Assert.Equal(["first", "first", "second", "second"], record.Entities.Select(static entity => entity.Owner.Name));
+            Assert.Equal(["core", "core", "first", "first", "second", "second"], record.Entities.Select(static entity => entity.Owner.Name));
         }
 
         [Fact]
@@ -40,7 +44,7 @@ namespace Tellma.Core.Tests.Composition
 
             using ServiceProvider provider = services.BuildServiceProvider();
 
-            Assert.Single(provider.GetRequiredService<TellmaCompositionRecord>().Entities);
+            Assert.Single(provider.GetRequiredService<TellmaCompositionRecord>().Entities, static entity => entity.Owner.Name == "first");
         }
 
         [Theory]

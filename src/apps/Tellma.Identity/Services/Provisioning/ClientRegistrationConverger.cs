@@ -69,7 +69,10 @@ namespace Tellma.Identity.Services.Provisioning
         ///     the distribution API's audiences, and the origin granted to the seeded platform
         ///     clients that call distribution APIs. Running it again with the same values writes
         ///     nothing; a changed secret, origin or redirect list is applied. It never deletes an
-        ///     application, and converges the two it names whoever created them.
+        ///     application, and converges the two it names whoever created them. A moved origin
+        ///     retires the old one, unless another registration still carries it: it leaves the
+        ///     distribution API's audiences — the list the control plane, document clients and the
+        ///     per-tenant pattern are evaluated against — and the platform clients' grants.
         /// </summary>
         /// <param name="registration">The registration values, secrets included.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
@@ -80,6 +83,13 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentNullException.ThrowIfNull(registration);
 
             string originValue = registration.Origin.GetLeftPart(UriPartial.Authority);
+
+            // The origin the distribution's BFF client carries now, read before its clients are
+            // rewritten: when this convergence moves it, the old one is retired below.
+            string? previousOrigin = await WithRetryAsync(
+                registration.Slug,
+                converger => converger.ReadClientOriginAsync(registration.Slug, cancellationToken),
+                cancellationToken);
 
             // Each write point converges, and retries, on its own (see the remarks), so a lost
             // write costs one re-read of that point and never a re-run of the points before it.
@@ -126,7 +136,12 @@ namespace Tellma.Identity.Services.Provisioning
                 }
             }
 
-            return new DistributionConvergence(client, serviceClient, audienceAdded, grantsAdded);
+            bool moved = previousOrigin is not null && !string.Equals(previousOrigin, originValue, StringComparison.Ordinal);
+            string? retiredOrigin = moved && await RetireOriginAsync(registration.Slug, previousOrigin!, originValue, cancellationToken)
+                ? previousOrigin
+                : null;
+
+            return new DistributionConvergence(client, serviceClient, audienceAdded, grantsAdded, retiredOrigin);
         }
 
         /// <summary>
@@ -256,6 +271,60 @@ namespace Tellma.Identity.Services.Provisioning
                     ClientRegistrationConvergerLog.LostConcurrentWrite(logger, subject, number, MaxAttemptsPerWrite, exception);
                 }
             }
+        }
+
+        /// <summary>
+        ///     Retires a moved distribution's old origin. The service accounts the distribution
+        ///     created move with it (their owner origin and their audience become the new origin),
+        ///     and the old origin leaves the distribution API's audiences and the grants of the
+        ///     platform clients that call distribution APIs, so no client can mint a new grant for
+        ///     it, nor for a tenant resource under it. An origin another distribution's clients
+        ///     still carry is that distribution's: it stays, with a warning, and so do the service
+        ///     accounts on it, whose owner cannot then be told apart.
+        /// </summary>
+        /// <returns>Whether the old origin was retired.</returns>
+        private async Task<bool> RetireOriginAsync(
+            string slug, string previousOrigin, string origin, CancellationToken cancellationToken)
+        {
+            List<(string ClientId, bool ServiceAccount)> carriers = await WithRetryAsync(
+                slug,
+                converger => converger.ListClientsWithOriginAsync(previousOrigin, cancellationToken),
+                cancellationToken);
+            int otherDistributions = carriers.Count(static carrier => !carrier.ServiceAccount);
+            if (otherDistributions > 0)
+            {
+                ClientRegistrationConvergerLog.MovedOriginStillCarried(logger, slug, previousOrigin, origin, otherDistributions);
+                return false;
+            }
+
+            // Ownership is recorded as the owner's origin, so an account left on the old one would
+            // be invisible to its own distribution and mint tokens for a place it no longer is.
+            foreach ((string clientId, _) in carriers)
+            {
+                await WithRetryAsync(
+                    clientId,
+                    converger => converger.MoveServiceAccountAsync(clientId, previousOrigin, origin, cancellationToken),
+                    cancellationToken);
+            }
+
+            await WithRetryAsync(
+                TellmaIdentityConstants.ApiScope,
+                converger => converger.RemoveScopeResourceAsync(TellmaIdentityConstants.ApiScope, previousOrigin, cancellationToken),
+                cancellationToken);
+
+            foreach (string clientId in await WithRetryAsync(
+                slug,
+                converger => converger.ListClientsCallingDistributionApisAsync(cancellationToken),
+                cancellationToken))
+            {
+                await WithRetryAsync(
+                    clientId,
+                    converger => converger.RevokeResourceAsync(clientId, previousOrigin, cancellationToken),
+                    cancellationToken);
+            }
+
+            ClientRegistrationConvergerLog.OriginRetired(logger, slug, previousOrigin, origin);
+            return true;
         }
 
         /// <summary>One attempt at converging a seeded platform client.</summary>
@@ -451,6 +520,123 @@ namespace Tellma.Identity.Services.Provisioning
             return true;
         }
 
+        /// <summary>The origin a client's stored registration carries.</summary>
+        /// <returns>The origin, or null when the client does not exist or carries none.</returns>
+        internal async Task<string?> ReadClientOriginAsync(string clientId, CancellationToken cancellationToken)
+        {
+            object? application = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+            return application is null
+                ? null
+                : TellmaClientProperties.Get(
+                    await applicationManager.GetPropertiesAsync(application, cancellationToken), TellmaClientProperties.Origin);
+        }
+
+        /// <summary>
+        ///     Every registration that carries an origin — a distribution's clients and the service
+        ///     accounts it created — with whether each is a service account.
+        /// </summary>
+        /// <returns>The client ids, each with its service-account marker.</returns>
+        internal async Task<List<(string ClientId, bool ServiceAccount)>> ListClientsWithOriginAsync(
+            string origin, CancellationToken cancellationToken)
+        {
+            // Read the whole list before reading any of its properties, for the reason given in
+            // ListClientsCallingDistributionApisAsync.
+            List<object> applications = [];
+            await foreach (object application in applicationManager.ListAsync(cancellationToken: cancellationToken))
+            {
+                applications.Add(application);
+            }
+
+            List<(string ClientId, bool ServiceAccount)> carriers = [];
+            foreach (object application in applications)
+            {
+                ImmutableDictionary<string, JsonElement> properties =
+                    await applicationManager.GetPropertiesAsync(application, cancellationToken);
+                if (string.Equals(TellmaClientProperties.Get(properties, TellmaClientProperties.Origin), origin, StringComparison.Ordinal)
+                    && await applicationManager.GetClientIdAsync(application, cancellationToken) is { } clientId)
+                {
+                    carriers.Add((clientId, TellmaClientProperties.IsSet(properties, TellmaClientProperties.ServiceAccount)));
+                }
+            }
+
+            return carriers;
+        }
+
+        /// <summary>
+        ///     Moves one service account from its owner's old origin to the new one: the recorded
+        ///     owner origin, and the old origin's grant replaced by the new one's.
+        /// </summary>
+        /// <returns>Whether anything was written.</returns>
+        internal async Task<bool> MoveServiceAccountAsync(
+            string clientId, string previousOrigin, string origin, CancellationToken cancellationToken)
+        {
+            object? application = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+            if (application is null)
+            {
+                return false;
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new();
+            await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
+            if (!TellmaClientProperties.IsSet(descriptor.Properties, TellmaClientProperties.ServiceAccount)
+                || !string.Equals(
+                    TellmaClientProperties.Get(descriptor.Properties, TellmaClientProperties.Origin), previousOrigin, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.Origin, origin);
+            if (descriptor.Permissions.Remove(Permissions.Prefixes.Resource + previousOrigin))
+            {
+                descriptor.Permissions.Add(Permissions.Prefixes.Resource + origin);
+            }
+
+            await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
+            return true;
+        }
+
+        /// <summary>Removes one resource from a scope entity's resource registry.</summary>
+        /// <returns>Whether the scope held the resource.</returns>
+        internal async Task<bool> RemoveScopeResourceAsync(string scopeName, string resource, CancellationToken cancellationToken)
+        {
+            object? scope = await scopeManager.FindByNameAsync(scopeName, cancellationToken);
+            if (scope is null)
+            {
+                return false;
+            }
+
+            OpenIddictScopeDescriptor descriptor = new();
+            await scopeManager.PopulateAsync(descriptor, scope, cancellationToken);
+            if (!descriptor.Resources.Remove(resource))
+            {
+                return false;
+            }
+
+            await scopeManager.UpdateAsync(scope, descriptor, cancellationToken);
+            return true;
+        }
+
+        /// <summary>Revokes one resource from one client, if it holds it.</summary>
+        /// <returns>Whether the client held the resource.</returns>
+        internal async Task<bool> RevokeResourceAsync(string clientId, string resource, CancellationToken cancellationToken)
+        {
+            object? application = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+            if (application is null)
+            {
+                return false;
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new();
+            await applicationManager.PopulateAsync(descriptor, application, cancellationToken);
+            if (!descriptor.Permissions.Remove(Permissions.Prefixes.Resource + resource))
+            {
+                return false;
+            }
+
+            await applicationManager.UpdateAsync(application, descriptor, cancellationToken);
+            return true;
+        }
+
         /// <summary>Creates a scope, reporting a name taken since the attempt looked as a lost race.</summary>
         private async Task CreateScopeAsync(OpenIddictScopeDescriptor descriptor, CancellationToken cancellationToken)
         {
@@ -512,5 +698,30 @@ namespace Tellma.Identity.Services.Provisioning
             Message = "Converging {Subject} lost a write to a concurrent writer on attempt {Attempt} of {MaxAttempts}; converging again.")]
         public static partial void LostConcurrentWrite(
             ILogger logger, string subject, int attempt, int maxAttempts, Exception exception);
+
+        /// <summary>A distribution moved, and its old origin was retired from the audiences and grants.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="slug">The distribution slug.</param>
+        /// <param name="previousOrigin">The retired origin.</param>
+        /// <param name="origin">The distribution's origin now.</param>
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Distribution {Slug} moved from {PreviousOrigin} to {Origin}; the old origin was retired from the distribution API's audiences and the platform clients' grants.")]
+        public static partial void OriginRetired(ILogger logger, string slug, string previousOrigin, string origin);
+
+        /// <summary>
+        ///     A distribution moved, but its old origin stays an audience because another
+        ///     distribution's clients carry it.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="slug">The distribution slug.</param>
+        /// <param name="previousOrigin">The old origin, still an audience.</param>
+        /// <param name="origin">The distribution's origin now.</param>
+        /// <param name="carriers">How many other distribution clients carry the old origin.</param>
+        [LoggerMessage(
+            Level = LogLevel.Warning,
+            Message = "Distribution {Slug} moved from {PreviousOrigin} to {Origin}, but {Carriers} clients of another distribution carry the old origin, so it remains a distribution audience, and the service accounts on it stay where they are.")]
+        public static partial void MovedOriginStillCarried(
+            ILogger logger, string slug, string previousOrigin, string origin, int carriers);
     }
 }

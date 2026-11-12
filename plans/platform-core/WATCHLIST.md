@@ -572,7 +572,11 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-032 → the spec 0016 MCP endpoint checkpoint: the web-host audit refuses a tenant endpoint without a guard marker except Hub and Mcp surfaces; `/{tenantId}/mcp` must stamp the internal TenantFrontDoorMetadata(Mcp) beside AddEndpointFilter<TenantAccessFilter> (Tellma.Core.Mcp has InternalsVisibleTo), or the audit fails startup.
 - PC-032 → PC-063: IStackRouteSource gained `Routes`; the stack registry must implement it (the audit checks stack segments against reserved route words).
 
+- PC-032 → the realtime/MCP checkpoints: the Hub route group requires SignalR's HubMetadata, so hubs are mapped with MapHub only; anything else on Hub fails the startup audit.
+
 ## 0012
+- (PC-028) PC-040 (distribution-text analyzer): refuse `RAISERROR` at severity 11 or above in batch text, and require `THROW`. Under `XACT_ABORT ON`, `RAISERROR` does not abort the batch: the text runs on to its `COMMIT` while the client receives the error. The executor now treats an out-of-band number in a batch that commits its own transaction as a defect (probe, else `DataAccessAmbiguousException(Unknown)`). A `RAISERROR` that raises a distribution-band number through `sys.messages` would still surface as `BatchAssertionFailedException` after its batch committed, so only the analyzer closes the gap.
+- (PC-028) Spec 0020 worker checkpoint: a job handler whose sent `Maintenance` write is cancelled at host stop gets `DataAccessAmbiguousException(Unknown)`, not `OperationCanceledException`, because the write may have committed (D-052). Map any exception thrown after the worker's stopping token fired to `Released`. Test the stopping token, not the exception or its inner exception: the inner exception can be SqlClient's cancelled-command `SqlException`. An `Explicit` batch cancelled before its commit still surfaces `OperationCanceledException`.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -610,10 +614,14 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-027 → PC-040 (TELLMA0003): refuse a bare `nameof(...)` hole in IDataBatch.Sql; a column or object name is written `SqlIdentifier(nameof(...))` (ruled at PC-027 review 1; the analyzer did not exist yet).
 - PC-027 → the 0012 error-taxonomy checkpoint: cancelling a batch on a client-side failure helps only while the server still runs it; a small writing batch can commit before the client sees the failing result set, so a defect raised after send must be classified as ambiguous (may have committed) for a writing batch.
 
-- PC-012 → spec 0012's batch composers (Count, Assert, key capture; PC-027 line): a CompiledQuery with `Recompile` set must get RECOMPILE merged into the composer's single OPTION clause (e.g. `OPTION (RECOMPILE, MAXRECURSION 32)`); Assert counts into a variable first, since IF takes no OPTION (D-050). The spec 0012 guards that embed Body under IF (spec text around lines 1700, 1717 and 1722 of docs/specs/0012) must assign the result to a variable under the hint and then test it, or a flagged filter runs on a cached plan.
+- PC-012 → spec 0012's batch composers (Count, Assert, key capture; still throwing after PC-028, so whichever checkpoint implements them): a CompiledQuery with `Recompile` set must get RECOMPILE merged into the composer's single OPTION clause (e.g. `OPTION (RECOMPILE, MAXRECURSION 32)`); Assert counts into a variable first, since IF takes no OPTION (D-050). The spec 0012 guards that embed Body under IF (spec text around lines 1700, 1717 and 1722 of docs/specs/0012) must assign the result to a variable under the hint and then test it, or a flagged filter runs on a cached plan.
 
 - PC-027 → the owner of TransactionMode.Explicit's callers: spec 0012 says Explicit exists so a decision is taken in C# before commit, but the executor commits straight after reading and exposes no hook; the contract for that hook is unspecified (PC-027 review 2, R2-4).
 - PC-027 → PC-028 (error mapping): StatementOrdinalAt maps SqlException.LineNumber alone; for an error raised in a trigger or called procedure (SqlError.Procedure set) the line counts within that module, so such errors must not be mapped to a batch statement.
+
+- PC-028 → PC-038: IVersionTagRegistry, VersionTagEffects and UserVersionTagRule are declared in Tellma.Core.Abstractions.Caching; PC-038 implements and registers them, never re-declares them. PC-028 already emits the version-tag guard text (PersistChecks): PC-038 reuses it rather than re-implementing it. DataBatch.TagParameter() binds @tm_tag for the bump epilogue.
+- PC-028 → PC-038/PC-050 (connect prologue): the executor emits the version-tag guard and the 50401 caller re-check from the GuardPremises passed to DataBatch.MarkConnectPrologue(GuardPremises); the prologue must declare @tm_UserId and, for a user, bind @tm_ExpectedUserPermissionsTag (ReservedSqlNames.ExpectedUserPermissionsTag).
+- PC-028 → PC-037 (save emitter): call DataBatch.DeclareInsertedRoots(table, ids) (int and long overloads; the first non-empty call wins) so the commit probe can verify; statements that throw 50409/50404 read their preceding set with cursor.NextIfAsync plus ReadConflictsAsync/ReadMissingIdsAsync; StatementDraft.EntityType names the entity of tree statements. Persist re-checks run in every transaction mode; a TransactionHead statement is refused when the text opens no transaction.
 
 ## 0013
 - (PC-025) `RequestContext.ApplyCultures()` sets CurrentCulture/CurrentUICulture from the bound context; front doors and the spec 0020 worker call it in their own method after EnsureAccessAsync / CreateScopeAsync returns. PC-049 must use it, not set cultures inside an initializer.
@@ -694,6 +702,9 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Spec 0003's fixed Development subject 00000000-0000-0000-0000-000000000001 for the bootstrap's in-proc path
 - (from PC-025) The guard and scope factory fail closed when no initializer bound UserId: every guard call fails until the user-connection initializer exists. A reflection test pins which Tellma.Core types take IRequestContextHolder; the runner that re-runs the negotiation initializer must be added to its allow-list knowingly.
 
+- PC-029 → PC-033 (Queryex schema provider): core.UserStamp is exposed read-only to Queryex only through the model annotation "Tellma:Queryex:ReadOnlyEntity" (UserStamp and UserPreference are internal non-entity classes); the provider must honour it (expose core.UserStamp read-only with its User navigation), keep core.UserPreferences out of the schema, and pin the 0014 §3.8 navigation names and the string-typed enum properties.
+- PC-029: a distribution leaf that adds a required column with no default breaks Core's seeds; the startup gate reports EF's message.
+
 ## 0015
 
 **Possible contradictions and gaps (unverified leads):**
@@ -771,6 +782,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - (from PC-025) The problem mapper must map TenantUnavailableException's new code tenant-not-found (a background scope refused for a Provisioning/Retired tenant) to 404, and map StepUpRequiredException.
 
 ## 0017
+- PC-029 → PC-083 (the 0017 blob entity and model): Blob, BlobState and BlobConfiguration (core.Blobs, §2.1 shape) already exist because the fixture's blob stand-in was removed; extend those files, never recreate them.
 
 **Possible contradictions and gaps (unverified leads):**
 
@@ -1044,7 +1056,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-071 → PC-096: TmCacheRefresher must provide the internal `TM_API_CACHE` seam (`observe(t, tags, 'header')`, `refresh(t, docs, 'header')`); the default does nothing. TmHttpApi already calls `observe` one task after the body and `refresh(t, ['tenant'], 'header')` on `read-only`.
 - PC-071 → PC-110: TmUpdates must provide the internal `TM_API_UPDATES` seam (`check(): Promise<'ready' | 'none' | 'failed' | 'unreachable' | 'disabled'>`); the default answers `disabled`. TmErrorPresenter reads the step-up challenge from `TmApiError.challenge`, a member PC-071 added to §10.1's shape.
 - PC-071 → PC-113: TmAppVersion.compare must reuse `tmCompareBuilds` (`src/api/tm-api-wire.ts`), so the §5.6 verdict and TmAppVersion order builds alike; TmHttpApi reads the UI version from `TM_CLIENT_METADATA` until then. Blob fetches are deliberately kept out of TmRequestLog.
-- PC-071 → PC-059: `TmApi.fetchBlob` takes `signal` through `TmFetchBlobOptions extends TmBlobFetchOptions`; once PC-059 adds `signal` to `TmBlobFetchOptions`, drop the extra member. `provideTellma` now points `TM_BLOB_FETCHER` at `TmApi.fetchBlob` (which rejects an abort with `signal.reason`, as §D.6 asks), and the HttpClient default now loads `@angular/common/http` by a dynamic import at its first fetch, so PC-059's unsubscribe-on-abort goes inside that lazy body.
+- PC-071 → PC-059 (done at PC-071's merge): `TmApi.fetchBlob` takes PC-059's `TmBlobFetchOptions`, signal included; the interim `TmFetchBlobOptions` is gone. `provideTellma` now points `TM_BLOB_FETCHER` at `TmApi.fetchBlob` (which rejects an abort with `signal.reason`, as §D.6 asks), and the HttpClient default now loads `@angular/common/http` by a dynamic import at its first fetch, so PC-059's unsubscribe-on-abort goes inside that lazy body.
 - PC-071 → PC-104, PC-110, PC-113 and the other 0024 own-services checkpoints: PC-071 raised the `@tellma/core` primary budget from 6.5 to 12.5 KB (gzip 12.42 KB measured after its fix round 1), which leaves about 1.6 KB of 0024's 14 KB own-services share for TmLocalization, TmUpdates, TmUrls and TmErrorPresenter. Measure each addition; a raise past 14 KB is a decision for the orchestrator, not a silent bump.
 ## 0025
 

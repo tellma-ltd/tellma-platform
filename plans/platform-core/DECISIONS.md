@@ -359,6 +359,43 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-056 (orchestrator, 2026-11-12): PC-028 fix-round-2 deviations accepted
+- **Out-of-band errors.** In an Auto batch that declares a write, a server error numbered outside both bands (for example RAISERROR at severity 11 to 18, which XACT_ABORT does not abort) is a Defect. With inserted roots the commit probe decides: Committed surfaces as ambiguous, NotCommitted as the translated error. Without inserted roots it surfaces as Ambiguous(Unknown). PC-040 must also refuse RAISERROR at severity 11 or above in batch text (WATCHLIST ## 0012).
+- **Probe re-runs.** The commit probe re-runs its own reported and lost-connection failures within the batch's delays and RetryAttempts, and re-runs a probe timeout at most once. Pool timeouts (InvalidOperationException) stay non-transient.
+- **No verdict.** Once an idempotent write has been re-run after a lost connection with no verdict, every exit surfaces Ambiguous(Unknown).
+- **Explicit cancel.** An Explicit batch cancelled before its commit surfaces OperationCanceledException. A cancelled sent non-Explicit write stays Ambiguous(Unknown). The spec 0020 worker maps any exception after its stopping token fires to Released, keying on the token (WATCHLIST).
+- **Unsent failures.** A non-SQL throw from ExecuteReaderAsync while the connection is still open (for example a TVP SetValue failure) is Unsent: no probe, no re-run.
+
+### D-055 (orchestrator, 2026-11-12): PC-B01 batch review rulings
+- **Consent granularity.** Remembered consent is per exact resource, which means per tenant. Spec 0010 §A.3/§A.4 is silent on this. Per-tenant is the narrower grant, so it stands until Ahmad rules otherwise. Per-distribution consent would let one approval cover tenants the user never saw.
+- **CLI audience.** The CLI no longer gets the tellma_identity audience. The management API is machine-to-machine only (tellma_kind=service), per spec 0003 §11.4.
+- **Moved origin.** After a distribution's origin moves, refresh tokens issued before the move keep the old audience until they lapse or are revoked. This is accepted and documented in the identity README. Revocation on move is a candidate follow-up, not MVP.
+- **ARCHITECTURE.md.** The PC-B01 fixer updated ARCHITECTURE.md's identity amendments: the machine-only management API, consent bound to places, and moved-origin retirement.
+- **Misalignments for Ahmad:**
+  - Spec 0003 §4 row 2a lists "server management" as a CLI audience, which conflicts with §11.4. The row needs correcting.
+  - Spec 0010 §A.3/§A.4 should say whether consent is per tenant or per distribution.
+
+### D-054 (orchestrator, 2026-11-12): PC-071 interim decisions, for Review 1 to test
+- Provisionally accepted:
+  - **Public `challenge` on TmApiError.** TmApiError gains a public `challenge` member (the parsed step-up challenge), which spec 0024 §10.1 does not list. The implementer needs it so the PC-069 → PC-071 hand-off can pass the challenge on a 401.
+  - **Internal seams.** TM_API_LOCALE, TM_API_CACHE and TM_API_UPDATES stand in for PC-104, PC-096 and PC-110. TmAppVersion (PC-113) is not created. A WATCHLIST line names each owner.
+  - **Blob fetcher.** provideTellma provides TM_BLOB_FETCHER over TmHttpApi in place of the HttpClient default, plus an internal TM_METADATA_LOADERS token.
+- **Size budget, open.** The @tellma/core primary entry's gzip budget rises from 6.5 KB to 12.5 KB (measured 6.34 → 12.27 KB). D-031 counts this as a raise. Review 1 must judge whether the growth is inherent or comes from avoidable imports. If it is avoidable, the ceiling falls back.
+- **Misalignment for Ahmad:** spec 0024 §10.1's TmApiError surface omits the challenge.
+
+### D-053 (orchestrator, 2026-11-12): PC-059 ceilings for ./image and ./alert
+- Ruling: ./image takes 11 KB gzip (measured 10.69 KB; the six spec'd Lucide glyphs alone cost 0.64 KB on a 9.95 KB start) and ./alert takes 2.25 KB (measured 2.14 KB; the implementer proposed 2.5). Each is measured + ≈0.1 KB as in D-049; D-031 counts both as raises.
+- Also accepted, for Review 1 to test: a date-picker live direction-flip fix beyond spec 0010 §D.11's text, since the CDK stamps the pane's dir only at attach; a throwing keep() goes to ErrorHandler and the name is deleted, since the spec says only "never throws"; boot-expiry IndexedDB handlers simplified to keep the boot script within D-048's 3,072 B after the §D.5 versionchange handler.
+- **Misalignment for Ahmad:** CHECKPOINTS PC-059's Done-when said ./image ≤ 10 KB.
+
+### D-052 (orchestrator, 2026-11-12): PC-028 retry and commit-probe rulings
+- Ruling: known transient error numbers (e.g. Azure throttling 40501, 10928, 10929) classify as transient before the severity-20 lost-connection rule.
+- Ruling: after a NotCommitted probe verdict, any final failure of the re-run triggers a second probe before an error reaches the caller. Spec 0012 §6.5 names only 2627 as proof of commit; but a first attempt that commits after the probe makes the re-run fail on its version-tag guard (50412, which would reconnect and write twice) or on a conflict (50409, a false conflict).
+- Ruling: the commit probe's key lookup is seek-only (FORCESEEK), so it cannot scan and block under READCOMMITTEDLOCK on large import chunks.
+- Ruling: a Read or Validate batch that hits the command timeout (-2) is re-run at most once, not three times as spec 0012 §6.4 says. Four 30 s timeouts would make the caller wait about 2 minutes and quadruple the load on a slow server. Other transient errors keep the spec's count.
+- Also: retry delays and reopens honour the request token (§6.1), but an unknown writing outcome is reported as ambiguous, never as a failure. Declaring IVersionTagRegistry ahead of PC-038 is accepted; PC-038 reuses PersistChecks' guard text.
+- **Misalignment for Ahmad:** spec 0012 §6.4 (timeout re-run count; classification order) and §6.5 (proof of commit; probe hint); recorded under LEDGER.md merge-time tasks.
+
 ### D-051 (orchestrator, 2026-11-11): a batch review may borrow an idle fix slot
 - Situation: Phase 1 closed (PC-012 green on CI 43103329956) with all four checkpoint slots in use and the fix slot pc-f idle.
 - Ruling: PC-B01 runs in pc-f rather than waiting for a checkpoint slot. A stop-the-line fix arriving meanwhile takes pc-f2 when free, else the next slot to free. The batch finders only read, so D-028's cap counts only the batch fixer.

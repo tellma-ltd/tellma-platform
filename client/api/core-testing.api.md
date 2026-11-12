@@ -15,7 +15,7 @@ export function provideTellmaTesting(): EnvironmentProviders;
 export class TmFakeApi extends TmApi {
     readonly calls: Signal<readonly TmFakeApiCall[]>;
     download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
-    fetchBlob(url: string, options?: TmFetchBlobOptions): ReturnType<TmApi['fetchBlob']>;
+    fetchBlob(url: string, options?: Parameters<TmApi['fetchBlob']>[1]): ReturnType<TmApi['fetchBlob']>;
     fingerprint(route: string): Promise<string | null>;
     readonly online: Signal<boolean>;
     read<T>(route: string, body: unknown, options: TmReadOptions): Promise<T>;
