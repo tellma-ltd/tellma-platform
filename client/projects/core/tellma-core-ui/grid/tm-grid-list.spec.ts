@@ -613,8 +613,9 @@ describe('tm-grid active row model and driver', () => {
     expect(input.getAttribute('aria-controls')).toBe(scroller.id);
     expect(input.hasAttribute('aria-activedescendant')).toBe(false);
 
-    // Enter with no active row stays the input's own.
+    // Enter with no active row stays the input's own, held or not.
     expect(keydown(input, 'Enter').defaultPrevented).toBe(false);
+    expect(keydown(input, 'Enter', { repeat: true }).defaultPrevented).toBe(false);
 
     expect(keydown(input, 'ArrowDown').defaultPrevented).toBe(true);
     await stable(fixture);

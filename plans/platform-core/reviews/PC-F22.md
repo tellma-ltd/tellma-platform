@@ -80,3 +80,104 @@
   - The union order in the d.ts depends on the build cache. That is worth knowing when a local
     api:check reports this one line as drift.
 - **No backend changes.**
+
+## Review 1
+
+### Findings
+
+Checked and found sound (no finding):
+- **The root cause is right, and the gate was the whole of it.** Before the fix, the Enter branch
+  gated on `activeRowId`, which only the effect at `grid/internal/grid-core.ts:4950-4988` writes,
+  during change detection. `moveActiveRow` (`grid-core.ts:1574-1601`) and `activateRow`
+  (`grid-core.ts:1609-1630`) both read `engine.nav.activeCell()` synchronously. So the old driver
+  always opened the engine's row: the model was only a gate, and a stale `null` gate is exactly the
+  CI signature ("none", nothing prevented).
+- **The fix changes one case only: model `null`, engine row present.** That case now activates, as
+  it should. Every other combination behaves as before:
+  - no engine row: `activateRow` returns `false`, so the key stays the input's own (§C.2);
+  - Mod: `newTab: mod`, unchanged;
+  - 400 ms guard: still returns `true`, so the key is consumed;
+  - IME: the 229 / `isComposing` early return is untouched.
+- **R1-4's repeat rule is kept.** `activeDescendantId` (`grid-core.ts:1157-1162`) is a `computed`
+  over `activeCell` and `rowAt`. That is the same null condition as the model's write-back
+  (`rowAt(...)?.id ?? null`), but read fresh. The grid's own repeat consumption
+  (`grid-core.ts:1785-1790`) is unchanged.
+- **No double activation.** The driver listens on its own input and the grid on its scroller, so
+  one keydown reaches only one of them. No caller places a driver input inside a grid.
+- **No other driver key reads the model.** ArrowUp/Down and PageUp/Down go through
+  `moveActiveRow`. `pageStep` is the core's `pageSize`, which does not depend on the model. Home and
+  End stay with the input. After the fix, the driver reads `activeRowId` nowhere.
+- **Event ordering is benign.** In the race, `rowActivate` reaches the consumer before
+  `activeRowIdChange` does. The payload carries `rowId` and `row`, and the only handler (the story)
+  uses the payload.
+- **Both new tests fail on the old driver.** No render runs between the synthetic keydowns, so the
+  old gate read `null`: the first Enter's `defaultPrevented` would be false in the unit test, and
+  `activated` stays "none" in the e2e test. The unit test also covers a repeat on a row reached
+  before the render.
+- **AGENTS.md is met.** TSDoc is on every touched declaration, and no spec, PC-id or `docs/`
+  reference appears in TSDoc or test names.
+- **A note, not a finding.** `TmGridDriverTarget.activeRowId` now has no reader through the
+  interface; its TSDoc says so. Spec 0010 §C.2 still lists it, and `tm-tiles` (spec 0023 §8) will
+  have to implement it. Removing it would be an API and spec change, outside a stop-the-line fix.
+
+Run by the reviewer (logs in `.tmp/r1-pcf22-*`):
+- The grid unit specs (`ng test core-ui --include "grid/**/*.spec.ts"`): 7 files, 386 of 386
+  passed.
+- `CI=1 node scripts/e2e.mjs e2e/specs/grid-search-page.spec.ts --project chromium --project touch
+  --repeat-each 10 --workers 2`: 420 of 420 passed in 6.9 min, with no retries and none flaky.
+  The touch project does not match this spec.
+- `api:check`: all 45 reports `ok`. There was no `rowActivation` drift, so moving the cache aside
+  was not needed.
+
+- **R1-1 (minor). No test pins the new repeat branch's "no active row" side.**
+  - **Where:** `grid/tm-grid-driver.ts:113-114`, and the gap at `grid/tm-grid-list.spec.ts:617`.
+  - **What is uncovered:** a repeating Enter with no active row must stay the input's own (§C.2:
+    "otherwise the input's own Enter"). Every existing repeat assertion (`tm-grid-list.spec.ts:443`,
+    `:445`, `:448`, `:675`) has a row active.
+  - **Failure scenario:** a mutation that consumes every repeat, such as
+    `event.repeat ? false : …`, passes the whole suite. A held Enter in an empty search field would
+    then lose its repeats to `preventDefault`.
+  - **Fix:** next to line 617, add
+    `expect(keydown(input, 'Enter', { repeat: true }).defaultPrevented).toBe(false);`.
+- **R1-2 (minor; pre-existing, a follow-up is acceptable). The mirror race: a consumer write trails
+  the engine too, so keys queued behind it act on the stale active row, and the effect then
+  discards the arrow.**
+  - **Where:** `grid/internal/grid-core.ts:4957-4975`, with `moveActiveRow` at `:1574` and
+    `activateRow` at `:1609`.
+  - **Failure scenario:** a consumer write lands, but the effect has not yet applied it.
+    1. In the story, Jump sets the model to 40. Spec 0030 does the same when it seeds the first row
+       as results land.
+    2. ArrowDown and Enter are queued before the next render.
+    3. ArrowDown moves the engine from its old active row (none, so row 0), and Enter opens row 0.
+    4. The render runs the effect. It sees `requested (40) !== synced` and treats the write as the
+       consumer's, so it moves the active cell to 40.
+    5. The user opened a row that is no longer highlighted, and the arrow is lost.
+  - **Not a regression:** the old gate passed here too (model non-null) and also opened the
+    engine's row.
+  - **Fix:** factor the consumer-write branch of the effect into a method, for example
+    `applyPendingActiveRowWrite()`. Call it from the effect, and also at the top of
+    `moveActiveRow` and `activateRow` whenever `untracked(deps.activeRowId) !== synced` (with
+    `synced` moved to a field). The driver then always starts from the row the consumer asked for.
+    A unit test: `host.active.set(5)`, then ArrowDown and Enter with no render in between, should
+    open row 6.
+
+### Responses
+
+**R1-1: fixed.**
+- "drives the active row from a search field, which keeps focus" in `tm-grid-list.spec.ts` now also
+  asserts that a repeating Enter with no active row is not prevented.
+- Mutation check: with the driver's repeat branch changed to consume every repeat
+  (`event.repeat ? false : …`), that test fails. With the real driver it passes (36 of 36).
+
+**R1-2: pushed back as a follow-up.**
+- It is pre-existing, as the finding says. The old gate opened the engine's stale row in this case
+  too.
+- The line is stopped on the flaky test only, and that test is fixed.
+- The suggested fix is not small enough to fold in here:
+  - it moves the consumer-write branch of the active-row effect into a shared method;
+  - it promotes `synced` to a field;
+  - it calls the method from `moveActiveRow` and `activateRow`.
+  That touches the core's two-way model logic. Its bytes would also land in `./grid`, which measures
+  exactly 42.00 against its ceiling of 42, so it needs a trim or a budget decision of its own.
+- To be tracked as a separate fix item, with the unit test the review proposes (`host.active.set(5)`,
+  then ArrowDown and Enter with no render in between, opens row 6).
