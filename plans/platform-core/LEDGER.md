@@ -88,15 +88,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-11 17:40 | 22 | 8 | 2026-11-17 20:00 | ΔU 10 since 12:03 over ~6 h (≈1.7/h) with 5 heavy agents; Opus-heavy (Fable +2). 29 done; in flight PC-012 fix1, PC-027 fix2+int, PC-069 fix2+int, PC-020 int, PC-032 r1 |
 | 2026-11-11 21:31 | | | 2026-11-17 20:00 | PC-012 (last Phase 1 checkpoint) integrated 7db93ca, CI 43103329956 pending → PC-B01 batch review on green, in the next free checkpoint slot (pc-3 after PC-020 lands). PC-028 launched in pc-2; ready T1: PC-029, PC-048, PC-071 |
 | 2026-11-12 01:24 | 35 | 16 | 2026-11-17 20:00 | ΔU 13 since 17:40 (≈1.6/h, 5 heavy agents + PC-B01 Fable finders). 34 done; in flight PC-059/PC-029 fix+int, PC-028 fix1, PC-071 impl, PC-F18, PC-B01 |
+| 2026-11-12 06:00 | 43 | 19 | 2026-11-17 20:00 | ΔU 8 since 01:24 (≈1.7/h). 37 done + PC-F15 done; PC-B01 done. In flight: PC-071 fix2+int, PC-101 fix1+int, PC-023 impl, PC-048 impl, PC-F18 |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-059 | pc-1 | pc/PC-059 | fix1 + integrate (resumed; R1 0/1/1: ./alert must be 2.25 KB per D-053; boot-expiry versionchange settles before the delete commits) | impl-PC-059 / abdf31b812d513607 (Opus inherit) | r1-PC-059 / ada13525e7699cb9b (Opus, high) | 2026-11-11 19:3x |
-| PC-101 | pc-2 | pc/PC-101 | impl | a8e70f25ff9352b95 |  | 2026-11-12 (after PC-028) |
-| PC-029 | pc-4 | pc/PC-029 | fix1 + integrate (resumed; R1 0/0/4: commit Tests line; ChildConvention skip only for unfiltered indexes; CHECK edge tests; Users history-row test) | impl-PC-029 / a62a156cdab6cb720 (Opus inherit) | r1-PC-029 / a6993725dd3948551 (Opus, high) | 2026-11-11 22:12 |
-| PC-071 | pc-3 | pc/PC-071 | fix1 (R1 1/0/7: blocking logout rejected unauthenticated after cookie clear; retry skips user check; tab-wide 'older' verdict; superseded-session 401; HttpClient leak into initial bundle; blob fetcher reason/TmFakeApi; upload watchdog; tests) — then R2 fable | impl-PC-071 / ae3f7284d121dcaf7 (Opus inherit) | r1 a46c24bf803e2ad2c done | 2026-11-11 23:12 |
+| PC-023 | pc-1 | pc/PC-023 | impl | afe1ea664d617075a (Opus inherit) |  | 2026-11-12 (after PC-059) |
+| PC-048 | pc-4 | pc/PC-048 | r1 (impl eb03017: 14 deviations; ./grid 41.92/42 KB; core-ui primary 8.61/9 KB; D-057) | af30be12085ec5cff (Opus inherit) | r1 (Opus, high) | 2026-11-12 (after PC-059 green) |
 
 ## Fix items
 
@@ -115,12 +114,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F12 | CI red on c9d40fc: identity-e2e AccessibilityTests.The_consent_screen_is_accessible times out waiting for "Authorize application" (PC-009 regression; E2E not run locally) | done f2b1591 (CI 42608310703 green), pc-f2 free, fix-PC-F12 = impl-PC-009 a584af71acfe37be7 (resumed); r1 a041cc926ee8db924 | b3a8f07, f2b1591 (pc) | | stop the line; PC-021/PC-060 integrations held |
 | PC-F13 | CI red on d554208 (build-test windows-latest, unit): ModelCompositionTests.One_definition_builds_one_model_and_another_composition_builds_its_own (Assert.Same on two RuntimeModels, PC-021) and TenantRegistryTests.A_reloaded_profile_that_breaks_the_connection_rules_carries_no_tenant (Assert.Empty, PC-024; also failed locally on Windows at 7f0462a per the PC-060 integrator) | done: integrated 3d019e6 (fast-forward; CI 42932109472: build-test windows+ubuntu, integration green; client red only on select.spec.ts:379, the PC-F14 flake, not yet integrated); R1-1..3 fixed, two new fake-clock tests fail on the old registry, fill-the-cache test fails on the old factory; cost fix ≈ 2.1M + r1 2.80M; R1 0/0/3 (null listener task faults the dispatch; two behaviour changes unpinned; commit-message test name), stability 57/57 under load; r1 ab502c409f6bf4ae2 (fable high); fix d8e214c pushed (3 causes: EF shared model cache eviction → factory pins its model via UseModel; fake reader counted reloads before the snapshot swap; listener bound started late); open: TenancyCompositionTests probes may advance the clock before the loop re-arms; commit message cites a wrong test name (real: The_host_loads_the_snapshot_at_start_and_the_loop_probes_every_interval); Windows only, Linux not run; pc-4, fix-PC-F13 = impl-PC-021 a71dae021826abce3 (resumed, Opus) | d8e214c (pc/PC-F13) | | stop the line; no integrations until green |
 | PC-F14 | CI red on 3d7aa7b (client, PR-tier e2e chromium): select.spec.ts:379 tm-multi-select Space/Enter toggle flaky (multi-value stayed "" after Home + Space; passed on retry) | done: integrated 8043295 (CI 42947124853 green); fix1 fc671dd (R1-1 setExpanded writes aria's model too; R1-2 keys before render queued and replayed; gates rerun; select.spec 320/320); R1 0/1/2 (tm-select expanded model stale after a relayed commit → double dispatch; keys before the panel renders still dropped; gates omitted), keyboard tests 80/80 under load; r1 a758ab4fefeabc8b0 (fable high); fix d24366d pushed (product bug: aria combobox keyboardEventRelay collapses two keys in one render window; tm-select-base relays open-panel keys synchronously; 2 new unit tests; e2e 20/20 under load), pc-2, fix-PC-F14 = impl-PC-060 a517313f6813eaf8a (resumed, Opus) | d24366d (pc/PC-F14) | | stop the line |
-| PC-F15 | CI red on 09ab023 (build-test ubuntu-latest, unit): FileSystemBlobStoreTests.Objects_land_under_the_tenant_kind_and_fan_out_directories — BlobStoreException wrapping FileNotFoundException on <root>/t7/.tmp/<guid>.part (the tenant's .tmp directory vanished between create and open?); not in PC-013's code; 88f13fa and 739d09c were green | todo (flaky, not stop-the-line: the failed job passed on rerun, CI 42957255864 attempt 2; branch pc/PC-F15 prepared in pc-f at 09ab023) | | | possible real race in FileSystemBlobStore temp handling; fix when a slot frees |
-| PC-F16 | identity path base: EmailCode.cshtml.cs falls back to literal /Identity/Account/Login and EndSessionController redirects to literal /Identity/Account/LoggedOut, both missing the in-proc /id path base (pre-existing, found by PC-014); plus the passkey E2E helper's unconditional click after a 5 s wait | todo (low; Opus) | | | from PC-014 impl |
+| PC-F15 | CI red on 09ab023 (build-test ubuntu-latest, unit): FileSystemBlobStoreTests.Objects_land_under_the_tenant_kind_and_fan_out_directories — BlobStoreException wrapping FileNotFoundException on <root>/t7/.tmp/<guid>.part (the tenant's .tmp directory vanished between create and open?); not in PC-013's code; 88f13fa and 739d09c were green | done (b5ba404, CI 43158463420 green); product bug, Linux only: a CreateNew open racing another writer's CreateDirectory raises ENOENT as FileNotFoundException, which skipped the ensure-and-retry; fixed, with a deterministic race test (opener injected at construction); R1 0/0/1 fixed | e4fc644, d4fb2ad, b5ba404 (pc) | 2.2M (fix 1.35, r1 ~0.85) | possible real race in FileSystemBlobStore temp handling; fix when a slot frees |
+| PC-F16 | identity path base: EmailCode.cshtml.cs falls back to literal /Identity/Account/Login and EndSessionController redirects to literal /Identity/Account/LoggedOut, both missing the in-proc /id path base (pre-existing, found by PC-014); plus the passkey E2E helper's unconditional click after a 5 s wait | done (86d077b, CI 43177399924 green); 3 redirect sites → Url.Page with the area; PathBaseRedirectTests; passkey helper probes conditional mediation (DOMContentLoaded on the button path); R1 0/0/2 fixed; follow-up: StepUpTests/SyncedPasskeyTierTests still wait-then-click | 794745d, 526c4b9, 86d077b (pc) | 4.99M (fix 3.96, r1 1.03) | from PC-014 impl |
 | PC-F17 | grid scroll budget: the nightly @perf scroll probe (no long task > 50 ms) fails on the flat grid (46-48 long tasks up to 94 ms) and on the 21,000-row tree (2-18 long tasks of 52-132 ms; tm-icon ≈ 10% of scroll CPU); lands @quarantine with PC-045 | todo (Opus; before GA) | | | from PC-045 R1 |
 | PC-F18 | client test infra under parallel slot load: (a) tm-grid-clipboard.spec.ts "menu Paste…" waits with a turn-capped `eventually` (20 turns ≈ 100 ms) that races a real Blob.text() on loaded CI (red on ef67f47) → make `eventually` deadline-based (≈ 2 s) or resolve the mock's text() at once; (b) the real-clipboard e2e lock lives in the OS temp dir shared by every slot and its wait counts against the 60 s test timeout → per-slot lock path or exclude the wait | impl (2026-11-11 18:1x), pc-f2, fix-PC-F18 / a91a89a49cb025f3e (Opus) |  |  | from PC-045 integrate |
 | PC-F19 | CI red on 9299989 (client-windows lint:test): tools/tests/no-platform-sniffing.spec.mts scope test "applies to the library and module packages, specs included" expected +0 to be 1 on Windows (rule added by PC-045); Linux jobs failed on an Ubuntu mirror DNS outage | done (d704d03; green at 67fa80d, CI 43056016205): code jobs green; Install Chromium (identity-e2e, client) red three times on a runner Ubuntu-mirror DNS outage (15:59); 3rd re-run red too; PC-F20 opened): the scope test, not the rule, was wrong; typescript-eslint under CI=true lints typed paths from disk, ignoring lintText → test opts out with disallowAutomaticSingleRunInference; helper fails on fatal parse messages | d704d03 |  | stop the line; PC-020 holds its push |
 | PC-F20 | CI red three times on d704d03 with every code job green: Install Chromium (identity-e2e, client; playwright --with-deps) fails when runners cannot resolve the Ubuntu apt mirrors | done (2b3377b, CI 43077273546 green; the sudo path ran on a hosted runner, mirror up): R1 0/1/1 fixed in e9f7c7a (per-attempt limit runs as root via sudo -n timeout; sudo -n preflight, no password hang). First version 67fa80d green on CI 43056016205 | 67fa80d, e9f7c7a, 2b3377b (pc) | 1.74M (impl+fix 1.11, r1 0.63) | stop the line (infra); may push to platform-core |
+| PC-F21 | ./grid budget (D-057): spec 0010 §C.11's 42 KB for §C.1–§C.14 is filled by §C.1–3/5–7 (41.92 KB after PC-048); measure where the bytes go and re-split (on-demand editable machinery, secondary entry points) or take honest savings until §C.4/§C.14 (PC-051) and §C.8/§C.9 (PC-054) fit | todo (gates PC-051/PC-054; after PC-048 integrates; Opus) | | | D-031 re-split clause (third raise) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -226,13 +226,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-020 | 0023-b | 1 | done | 184c8c2, 061247d, 5d9ccc2 (pc) | 22.60M + r1 (impl+fix+int Opus; D-049 budgets) | CI 43117918168 green; three merges of platform-core; e2e 705/705 on 2ca1d86 |
 | PC-021 | 0012-b | 1 | done | 81f3ea1, 5b20cd2, d554208 (pc) | 20.89M (impl 18.41, r1 2.48) | green at 8043295, CI 42947124853; 11 deviations; D-037 |
 | PC-022 | 0013-c | 1 | done | 897f7fc, 3f2b60c, ef67f47 (pc) | 9.10M (impl+fix+int 7.67, r1 1.43; Opus) | CI 43026874374 red (client unit: tm-grid-clipboard.spec.ts menu Paste, expected 'Alpha' to be 'MenuPasted'; no client change since green 63c64cc) → re-run green (attempt 2); 364bcc2 green; RequestContext.Localization (zone resolved once per process, UTC fallback); ApplyCultures applies LocalizationScope; added Queryex_QX4009 strings |
-| PC-023 | 0023-c | 1 | todo | | | |
+| PC-023 | 0023-c | 1 | impl |  |  |  |
 | PC-024 | 0011-b | 1 | done | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green; 16 deviations; D-036 |
 | PC-025 | 0011-c | 1 | done | ef6a61c, 3c46607, 3db32cd (pc) | 22.05M (impl+fix+int 20.60 fable, r1 1.45 Opus) | CI 43007537552 green |
 | PC-026 | 0023-d | 1 | todo | | | |
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
-| PC-029 | 0014-a | 1 | fix1 | c3bce14 | impl 8.28M (Opus), r1 2.15 |  |
+| PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
 | PC-030 | 0023-e | 1 | todo | | | |
 | PC-031 | 0023-f | 1 | todo | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
@@ -251,7 +251,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | todo | | | |
-| PC-048 | 0010-c3 | 1 | todo | | | |
+| PC-048 | 0010-c3 | 1 | r1 | eb03017 |  |  |
 | PC-049 | 0013-f | 1 | todo | | | |
 | PC-050 | 0014-d | 1 | todo | | | |
 | PC-051 | 0010-c4 | 1 | todo | | | |
@@ -262,7 +262,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | todo | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
-| PC-059 | 0010-d3 | 1 | fix1 | c60627e | impl 11.04M (Opus) |  |
+| PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | todo | | | |
@@ -274,7 +274,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-068 | 0015-d | 1 | todo | | | |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | todo | | | |
-| PC-071 | 0024-d | 1 | fix1 | 11c16b1 | impl 7.98 |  |
+| PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | todo | | | |
 | PC-073 | 0024-e | 1 | todo | | | |
 | PC-074 | 0015-g | 1 | todo | | | |
@@ -304,7 +304,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |
-| PC-101 | 0010-f4 | 1 | impl |  |  |  |
+| PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
 | PC-102 | 0029-f | 1 | todo | | | |
 | PC-103 | 0024-g | 1 | todo | | | |
 | PC-104 | 0024-h | 1 | todo | | | |
