@@ -83,9 +83,9 @@ providers: [
 
 The build pipeline fingerprints the font binaries like any other
 CSS-referenced asset (see the showcase's `angular.json` for the reference
-wiring, and the workspace's `scripts/inject-font-preloads.mjs` for the
-post-build step that injects `<link rel="preload">` tags for the emitted font
-URLs). Theming, sizing, and typography all flow from the token variables —
+wiring, and `@tellma/core-tools/fonts` for the post-build step that injects
+`<link rel="preload">` tags for the emitted font URLs, which a distribution's
+`tellma-client build` runs). Theming, sizing, and typography all flow from the token variables —
 the components ship no hardcoded sizes or colors.
 
 ## Layout, theme, strings and direction

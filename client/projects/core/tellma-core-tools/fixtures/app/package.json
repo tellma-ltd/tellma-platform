@@ -1,0 +1,10 @@
+{
+  "name": "tellma-client-fixture",
+  "version": "0.0.0",
+  "description": "A minimal distribution client that the tellma-client command's tests build.",
+  "private": true,
+  "type": "module",
+  "tellma": {
+    "migrator": "../migrator"
+  }
+}

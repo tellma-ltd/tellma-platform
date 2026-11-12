@@ -1,0 +1,9 @@
+{
+  "Boot_Cookies": "Turn on cookies for this site, then try again.",
+  "Boot_LoadFailed": "Check your connection and try again.",
+  "Boot_SignInFailed": "We couldn’t sign you in. Try again in a moment.",
+  "Boot_Title": "{displayName} couldn’t start",
+  "Boot_TryAgain": "Try again",
+  "Boot_Unsupported": "Update your browser to a current version of Chrome, Edge, Firefox or Safari.",
+  "Fixture_Review": "Review"
+}

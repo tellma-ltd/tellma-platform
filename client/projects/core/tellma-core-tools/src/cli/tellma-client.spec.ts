@@ -42,13 +42,36 @@ describe('tellma-client', () => {
     expect(unknown.err).toContain("unknown command 'deploy'");
   });
 
-  it('shows the help of each command, and reports that this version cannot run it', async () => {
-    for (const command of ['emit', 'serve', 'build']) {
-      expect((await run(command, '--help')).code).toBe(TM_CLI_EXIT.success);
-      const result = await run(command);
-      expect(result.code).toBe(TM_CLI_EXIT.failure);
-      expect(result.err).toContain(`'${command}' is not available`);
+  it('shows the help of each command, with its options', async () => {
+    const help = new Map((await Promise.all(['emit', 'serve', 'build'].map(async (command) => [command, await run(command, '--help')] as const))));
+    for (const [command, result] of help) {
+      expect(result.code, command).toBe(TM_CLI_EXIT.success);
+      expect(result.out, command).toContain(`Usage: tellma-client ${command} [options]`);
     }
+    expect(help.get('emit')!.out).toContain('--no-dotnet-build');
+    expect(help.get('build')!.out).toContain('--configuration, -c <c>');
+    expect(help.get('serve')!.out).toContain('--port <n>');
+  });
+
+  it('answers an unknown option or a missing value with a usage error, before running anything', async () => {
+    const runner = { run: () => Promise.reject(new Error('nothing may run')) };
+    const usage = async (...argv: string[]): Promise<string> => {
+      let err = '';
+      const code = await tmRunCli(argv, { out: () => undefined, err: (text) => (err += text) }, { runner });
+      expect(code, argv.join(' ')).toBe(TM_CLI_EXIT.usage);
+      return err;
+    };
+    expect(await usage('emit', '--prod')).toContain("tellma-client emit: unknown option '--prod'.");
+    expect(await usage('build', '--configuration')).toContain('--configuration needs a value.');
+    expect(await usage('serve', '--port', 'eighty')).toContain("--port needs a port number, not 'eighty'.");
+    expect(await usage('serve', '--no-dotnet-build')).toContain("unknown option '--no-dotnet-build'");
+  });
+
+  it('reports a step that cannot run as a build failure', async () => {
+    let err = '';
+    const code = await tmRunCli(['emit', '--configuration=Release'], { out: () => undefined, err: (text) => (err += text) }, { cwd: packageDir });
+    expect(code).toBe(TM_CLI_EXIT.failure);
+    expect(err).toMatch(/^tellma-client emit: .*angular\.json does not exist/);
   });
 
   // Starts two Node processes, which takes seconds on a busy or small machine.

@@ -35,6 +35,7 @@
     "@angular/forms": "catalog:",
     "@angular/platform-browser": "catalog:",
     "@angular/router": "catalog:",
+    "@angular/service-worker": "catalog:",
     "@internationalized/date": "catalog:",
     "@jsverse/transloco": "catalog:",
     "lucide": "catalog:",

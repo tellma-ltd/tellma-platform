@@ -1,0 +1,12 @@
+/*
+ * The fixture app's TypeScript configuration. It extends the client
+ * workspace's, whose path mappings resolve every @tellma package to its
+ * sources, so the fixture builds without the packages being built first.
+ */
+{
+  "extends": "../../../../../tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "files": ["src/main.ts"]
+}
