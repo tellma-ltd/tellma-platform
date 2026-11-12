@@ -88,7 +88,7 @@ export class TmCheckboxHarness extends ComponentHarness {
 export class TmChipHarness extends ComponentHarness {
     activate(): Promise<void>;
     getHref(): Promise<string | null>;
-    getKind(): Promise<'link' | 'button' | 'text'>;
+    getKind(): Promise<'button' | 'link' | 'text'>;
     getLabel(): Promise<string>;
     getRemoveLabel(): Promise<string | null>;
     getSize(): Promise<string | null>;

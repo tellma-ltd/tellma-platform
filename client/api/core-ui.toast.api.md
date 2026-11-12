@@ -17,7 +17,7 @@ export interface TmToast {
         readonly run: () => void;
     };
     readonly detail?: string;
-    readonly duration?: number | 'sticky';
+    readonly duration?: 'sticky' | number;
     readonly icon?: string;
     readonly key?: string;
     readonly title: string;
@@ -27,7 +27,7 @@ export interface TmToast {
 // @public
 export interface TmToastRef {
     close(): void;
-    readonly closed: Promise<'timeout' | 'dismiss' | 'action' | 'api' | 'replaced'>;
+    readonly closed: Promise<'action' | 'api' | 'dismiss' | 'replaced' | 'timeout'>;
     update(patch: Partial<TmToast>): void;
 }
 
@@ -53,6 +53,6 @@ export interface TmToastsOptions {
 }
 
 // @public
-export type TmToastTone = 'neutral' | 'accent' | 'success' | 'warning' | 'error';
+export type TmToastTone = 'accent' | 'error' | 'neutral' | 'success' | 'warning';
 
 ```
