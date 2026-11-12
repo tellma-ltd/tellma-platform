@@ -11,6 +11,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Tellma.Core.Testing.Email;
 using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Infrastructure
@@ -23,19 +24,43 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
     public sealed class OidcFlowClient : IDisposable
     {
         private readonly HttpClient _backchannel;
-        private readonly StandaloneFactory _factory;
+        private readonly CapturingEmailSender _emails;
 
-        /// <summary>Creates the protocol driver over a booted host.</summary>
+        /// <summary>The path base the engine's protocol endpoints are mounted at.</summary>
+        private readonly string _pathBase;
+
+        /// <summary>Creates the protocol driver over a booted standalone host.</summary>
         /// <param name="factory">The host under test.</param>
         public OidcFlowClient(StandaloneFactory factory)
+            : this(factory.CreateClient, factory.Emails, pathBase: string.Empty)
         {
-            _factory = factory;
-            Browser = factory.CreateClient(new WebApplicationFactoryClientOptions
+        }
+
+        /// <summary>
+        ///     Creates the protocol driver over a booted distribution host, whose engine is mounted
+        ///     at <see cref="InProcFactory.PathBase" />.
+        /// </summary>
+        /// <param name="factory">The host under test.</param>
+        public OidcFlowClient(InProcFactory factory)
+            : this(factory.CreateClient, factory.Emails, InProcFactory.PathBase)
+        {
+        }
+
+        /// <summary>Creates the protocol driver over the clients of a booted host.</summary>
+        /// <param name="createClient">Creates a client of the host under test.</param>
+        /// <param name="emails">The host's captured outbound email.</param>
+        /// <param name="pathBase">The path base the engine is mounted at, or empty at the root.</param>
+        private OidcFlowClient(
+            Func<WebApplicationFactoryClientOptions, HttpClient> createClient, CapturingEmailSender emails, string pathBase)
+        {
+            _emails = emails;
+            _pathBase = pathBase;
+            Browser = createClient(new WebApplicationFactoryClientOptions
             {
                 AllowAutoRedirect = false,
                 HandleCookies = true,
             });
-            _backchannel = factory.CreateClient(new WebApplicationFactoryClientOptions
+            _backchannel = createClient(new WebApplicationFactoryClientOptions
             {
                 AllowAutoRedirect = false,
                 HandleCookies = false,
@@ -60,7 +85,7 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         public async Task<string> PushAuthorizationRequestAsync(Dictionary<string, string> parameters)
         {
             using HttpResponseMessage response = await _backchannel.PostAsync(
-                new Uri("/connect/par", UriKind.Relative),
+                new Uri(_pathBase + "/connect/par", UriKind.Relative),
                 new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
@@ -87,7 +112,7 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
 
             // The baseline is taken before the code is requested: a test that signs one address
             // in twice would otherwise be handed the first, already redeemed code.
-            int delivered = _factory.Emails.CountFor(email);
+            int delivered = _emails.CountFor(email);
 
             (string action, Dictionary<string, string> fields) = await ParseFormAsync(loginPage);
             fields["Email"] = email;
@@ -103,7 +128,7 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
             // The code is delivered by the background mail worker, so the redirect above arrives
             // first. The capturing sender signals when the message lands rather than being polled,
             // and only a message past the baseline counts.
-            string code = await _factory.Emails.WaitForCodeAfterAsync(email, delivered);
+            string code = await _emails.WaitForCodeAfterAsync(email, delivered);
 
             (string verifyAction, Dictionary<string, string> verifyFields) = await ParseFormAsync(codePage);
             verifyFields["Code"] = code;
@@ -119,7 +144,7 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         public async Task<JsonDocument> ExchangeAsync(Dictionary<string, string> parameters)
         {
             using HttpResponseMessage response = await _backchannel.PostAsync(
-                new Uri("/connect/token", UriKind.Relative),
+                new Uri(_pathBase + "/connect/token", UriKind.Relative),
                 new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
@@ -134,7 +159,7 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         public async Task<string?> ExchangeExpectingErrorAsync(Dictionary<string, string> parameters)
         {
             using HttpResponseMessage response = await _backchannel.PostAsync(
-                new Uri("/connect/token", UriKind.Relative),
+                new Uri(_pathBase + "/connect/token", UriKind.Relative),
                 new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
