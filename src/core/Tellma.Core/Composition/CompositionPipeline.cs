@@ -14,6 +14,7 @@ using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Tenancy;
@@ -152,6 +153,9 @@ namespace Tellma.Core.Composition
 
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);
+
+            // --- Background jobs: the options (spec 0020 §12.1) ---
+            JobsComposition.Register(services, options);
 
             // --- Server-built links (spec 0011 §5.10) ---
             // TryAdd for the stack routes: the stack registry's composition replaces the empty source.

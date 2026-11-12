@@ -16,6 +16,9 @@
     <!-- The runtime completes the batch results it hands out (BatchResult<T>.Complete): a
          contract-shaped handle whose only writer is the executor. -->
     <InternalsVisibleTo Include="Tellma.Core" />
+    <!-- The contract tests read what a job handler marked on its items (JobItem's internal mark),
+         which only the worker consumes, so the last-call-wins rule is pinned where it is declared. -->
+    <InternalsVisibleTo Include="Tellma.Core.Abstractions.Tests" />
   </ItemGroup>
 
 </Project>

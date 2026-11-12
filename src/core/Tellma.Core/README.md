@@ -620,6 +620,14 @@ anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
 users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
 
+## Background jobs
+
+The job contracts live in `Tellma.Core.Abstractions.Jobs`. So far Core binds `JobsOptions` from
+`Tellma:Jobs` and validates it with `core.options`: the poll intervals between one and 30 seconds
+(the maximum at least the minimum), at most 256 parallel batches, a drain timeout of at least a
+second, a gap threshold of at least an hour and retention periods of at least a day. Handler keys
+share the notification type keys' grammar.
+
 ## Layout
 
 | Folder | Contents |
@@ -636,6 +644,7 @@ users and payload once), and logs a failed delivery as `ClientEventFailed` witho
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Jobs/` | Internally, the composition step that binds the jobs' options. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
