@@ -230,6 +230,20 @@ namespace Tellma.Core.Abstractions.Tests.Jobs
         }
 
         [Fact]
+        public void Arguments_and_state_read_with_the_platforms_converters()
+        {
+            // The platform writes longs and decimals as strings and enums by name; the tolerant
+            // reader must keep those converters, and with them the strict enum rule.
+            JobItem<Job> item = JobTestItems.Create(arguments: /*lang=json,strict*/ """{"amount":"12.50","big":"9007199254740993","status":"Held"}""");
+            item.StateJson = /*lang=json,strict*/ """{"amount":"0.1","big":"-9007199254740993","status":"PendingConfirmation"}""";
+
+            Assert.Equal(new TypedArguments(12.50m, 9_007_199_254_740_993L, JobStatus.Held), item.Arguments<TypedArguments>());
+            Assert.Equal(new TypedArguments(0.1m, -9_007_199_254_740_993L, JobStatus.PendingConfirmation), item.State<TypedArguments>());
+            _ = Assert.Throws<JsonException>(JobTestItems.Create(arguments: /*lang=json,strict*/ """{"status":"Paused"}""").Arguments<TypedArguments>);
+            _ = Assert.Throws<JsonException>(JobTestItems.Create(arguments: /*lang=json,strict*/ """{"status":5}""").Arguments<TypedArguments>);
+        }
+
+        [Fact]
         public void State_reads_the_current_checkpoint_tolerantly_and_defaults_without_one()
         {
             JobItem<Job> item = JobTestItems.Create();
@@ -254,6 +268,12 @@ namespace Tellma.Core.Abstractions.Tests.Jobs
         /// <param name="Name">The report's name.</param>
         /// <param name="Count">How many copies.</param>
         public sealed record PositionalArguments(string Name, int Count);
+
+        /// <summary>An argument type whose members the platform's own converters read.</summary>
+        /// <param name="Amount">A decimal, written as a string.</param>
+        /// <param name="Big">A long beyond a double's exact range, written as a string.</param>
+        /// <param name="Status">An enum, written by name.</param>
+        public sealed record TypedArguments(decimal Amount, long Big, JobStatus Status);
 
         /// <summary>A handler's checkpoint.</summary>
         /// <param name="LastId">The last id processed.</param>

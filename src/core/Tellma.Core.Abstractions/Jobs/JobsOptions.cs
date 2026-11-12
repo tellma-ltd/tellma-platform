@@ -18,8 +18,9 @@ namespace Tellma.Core.Abstractions.Jobs
     ///         The bounds: <see cref="MaxParallelBatches" /> from 1 to 256; one second at most
     ///         <see cref="MinPollInterval" />, at most <see cref="MaxPollInterval" />, at most 30 seconds,
     ///         the cron granularity; <see cref="DrainTimeout" /> at least a second; <see cref="GapThreshold" />
-    ///         at least an hour; each retention at least a day. The upper bounds of the last three are
-    ///         what the statements' 32-bit minutes and seconds can carry.
+    ///         at least an hour and at most 100 years, a span the gap check can subtract from any
+    ///         plausible now without leaving the date range; each retention at least a day and at most
+    ///         what the retention statements' 32-bit seconds can carry.
     ///     </para>
     ///     <para>
     ///         <see cref="DrainTimeout" /> must also stay below the host's shutdown timeout, which bounds
@@ -38,8 +39,11 @@ namespace Tellma.Core.Abstractions.Jobs
         /// <summary>The longest a poll interval may be: the cron granularity of the scheduler, which rides the poll.</summary>
         private static readonly TimeSpan PollCeiling = TimeSpan.FromSeconds(30);
 
-        /// <summary>The longest the gap threshold may be: the gap check binds it in whole minutes, as a 32-bit integer.</summary>
-        private static readonly TimeSpan MaxGapThreshold = TimeSpan.FromMinutes(int.MaxValue);
+        /// <summary>
+        ///     The longest the gap threshold may be, 100 years: the gap check subtracts it from the
+        ///     database's clock, and a span reaching before year 1 would fail every poll.
+        /// </summary>
+        private static readonly TimeSpan MaxGapThreshold = TimeSpan.FromDays(36_500);
 
         /// <summary>The longest a retention period may be: the retention statements bind it in seconds, as a 32-bit integer.</summary>
         private static readonly TimeSpan MaxRetention = TimeSpan.FromSeconds(int.MaxValue);
@@ -76,7 +80,7 @@ namespace Tellma.Core.Abstractions.Jobs
         /// <summary>
         ///     How long the worker may have been away before queued work it finds overdue by more than
         ///     this is held for an administrator rather than run, as after a restored backup; six hours
-        ///     by default, at least one hour.
+        ///     by default, at least one hour and at most 100 years.
         /// </summary>
         public TimeSpan GapThreshold { get; set; } = TimeSpan.FromHours(6);
 
@@ -116,13 +120,13 @@ namespace Tellma.Core.Abstractions.Jobs
                 yield return Problem(nameof(DrainTimeout), DrainTimeout, "at least one second");
             }
 
-            // --- The gap threshold: at least an hour, within the gap check's 32-bit minutes ---
+            // --- The gap threshold: at least an hour, at most a span the gap check can subtract ---
             if (GapThreshold < TimeSpan.FromHours(1) || GapThreshold > MaxGapThreshold)
             {
                 yield return Problem(
                     nameof(GapThreshold),
                     GapThreshold,
-                    string.Create(CultureInfo.InvariantCulture, $"at least one hour and at most {(long)MaxGapThreshold.TotalDays} days"));
+                    string.Create(CultureInfo.InvariantCulture, $"at least one hour and at most {MaxGapThreshold.Days} days"));
             }
 
             // --- The retention periods: at least a day, within the statements' 32-bit seconds ---

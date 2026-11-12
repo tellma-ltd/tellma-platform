@@ -63,12 +63,18 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
-        public void The_gap_threshold_is_at_least_an_hour_and_fits_the_gap_checks_minutes()
+        public void The_gap_threshold_is_at_least_an_hour_and_at_most_a_hundred_years()
         {
             Assert.Empty(Problems(new JobsOptions { GapThreshold = TimeSpan.FromHours(1) }));
-            Assert.Empty(Problems(new JobsOptions { GapThreshold = TimeSpan.FromMinutes(int.MaxValue) }));
+            Assert.Empty(Problems(new JobsOptions { GapThreshold = TimeSpan.FromDays(36_500) }));
             Assert.Equal([nameof(JobsOptions.GapThreshold)], MembersOf(new JobsOptions { GapThreshold = TimeSpan.FromMinutes(59) }));
-            Assert.Equal([nameof(JobsOptions.GapThreshold)], MembersOf(new JobsOptions { GapThreshold = TimeSpan.FromMinutes(int.MaxValue + 1L) }));
+            Assert.Equal([nameof(JobsOptions.GapThreshold)], MembersOf(new JobsOptions { GapThreshold = TimeSpan.FromDays(36_500) + TimeSpan.FromTicks(1) }));
+
+            // A huge value meant to turn the hold off is refused rather than failing every poll.
+            Assert.Contains(
+                "at most 36500 days",
+                Assert.Single(Problems(new JobsOptions { GapThreshold = TimeSpan.FromDays(1_000_000) })).ErrorMessage,
+                StringComparison.Ordinal);
         }
 
         [Fact]

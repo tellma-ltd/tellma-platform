@@ -625,7 +625,7 @@ users and payload once), and logs a failed delivery as `ClientEventFailed` witho
 The job contracts live in `Tellma.Core.Abstractions.Jobs`. So far Core binds `JobsOptions` from
 `Tellma:Jobs` and validates it with `core.options`: the poll intervals between one and 30 seconds
 (the maximum at least the minimum), at most 256 parallel batches, a drain timeout of at least a
-second, a gap threshold of at least an hour and retention periods of at least a day. Handler keys
+second, a gap threshold from an hour to 100 years and retention periods of at least a day. Handler keys
 share the notification type keys' grammar.
 
 ## Layout

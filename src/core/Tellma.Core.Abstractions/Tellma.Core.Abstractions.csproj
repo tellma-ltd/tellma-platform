@@ -19,6 +19,9 @@
     <!-- The contract tests read what a job handler marked on its items (JobItem's internal mark),
          which only the worker consumes, so the last-call-wins rule is pinned where it is declared. -->
     <InternalsVisibleTo Include="Tellma.Core.Abstractions.Tests" />
+    <!-- The shipped test package's job probe plays the worker's part for a handler's own unit
+         tests: it seeds checkpoints, sets cancellation reasons and reads the marks back. -->
+    <InternalsVisibleTo Include="Tellma.Core.Testing" />
   </ItemGroup>
 
 </Project>
