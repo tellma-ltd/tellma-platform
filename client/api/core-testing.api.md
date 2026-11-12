@@ -39,7 +39,7 @@ export interface TmFakeApiCall {
 }
 
 // @public
-export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'fetch-blob' | 'send';
+export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'upload' | 'write';
 
 // @public
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;

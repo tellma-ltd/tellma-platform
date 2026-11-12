@@ -8,12 +8,15 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Access;
 using Tellma.Core.Blobs;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
 using Tellma.Core.Localization;
+using Tellma.Core.Notifications;
 
 namespace Tellma.Core.Composition
 {
@@ -30,6 +33,12 @@ namespace Tellma.Core.Composition
     {
         /// <summary>The feature's name.</summary>
         public const string FeatureName = "core";
+
+        /// <summary>The key of the inbox channel: the notifier's own rows.</summary>
+        public const string InboxChannel = "inbox";
+
+        /// <summary>The key of the email channel.</summary>
+        public const string EmailChannel = "email";
 
         /// <inheritdoc />
         public string Name => FeatureName;
@@ -85,6 +94,21 @@ namespace Tellma.Core.Composition
 
             // --- Blobs: the table every blob reference resolves to; never a stack ---
             _ = contribution.Model<BlobConfiguration>();
+
+            // --- Notifications: the registries, the client metadata and the catalogue Core owns ---
+            // spec 0021 §11. Each type is declared by the feature code that raises it; core.user.added
+            // is the one this contribution declares for the users' invitation. The two baseline
+            // channels and the two client events the notifications and the hub publish come first.
+            _ = contribution
+                .Singleton<INotificationTypeRegistry, NotificationTypeRegistry>()
+                .Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()
+                .Singleton<IClientEventRegistry, ClientEventRegistry>()
+                .Singleton<IClientAssetContributor, NotificationsClientAssetContributor>()
+                .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
+                .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
+                .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
+                .ClientEvent("inbox.changed")
+                .ClientEvent("session.ended");
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

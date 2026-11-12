@@ -42,6 +42,6 @@ export class TmBannerBar {
 }
 
 // @public
-export type TmBannerTone = 'info' | 'warning' | 'error';
+export type TmBannerTone = 'error' | 'info' | 'warning';
 
 ```

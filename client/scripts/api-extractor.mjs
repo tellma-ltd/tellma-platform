@@ -13,10 +13,13 @@
  *   node scripts/api-extractor.mjs --approve   # regenerate the goldens
  *
  * Every public-API change is therefore an explicit, reviewed act
- * (`pnpm run api:approve` + commit).
+ * (`pnpm run api:approve` + commit). Both paths sort every union into one
+ * canonical order first, so the build path that produced the d.ts (clean,
+ * warm cache, single project) never shows up as drift.
  */
 import { createRequire } from 'node:module';
 
+import { normalizeUnionOrder } from '../tools/api/union-order.mjs';
 import { discoverLibraries, discoverNodePackages } from '../tools/workspace.mjs';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -214,8 +217,8 @@ for (const entryPoint of ENTRY_POINTS) {
         enabled: true,
         reportFileName: entryPoint.report,
         // The extractor always writes to the temp folder; the committed
-        // golden is written/compared AFTER the ɵ filter below, so both
-        // paths see the same filtered shape.
+        // golden is written/compared AFTER the ɵ filter and the union sort
+        // below, so both paths see the same shape.
         reportFolder: tempFolder,
         reportTempFolder: tempFolder,
       },
@@ -250,9 +253,13 @@ for (const entryPoint of ENTRY_POINTS) {
   }
 
   // The golden-shaped report: the generated surface minus the ɵ blocks
-  // (private-by-convention, excluded from the goldens by spec).
-  const report = stripPrivateByConvention(
-    readFileSync(join(tempFolder, entryPoint.report), 'utf8'),
+  // (private-by-convention, excluded from the goldens by spec), with every
+  // union in canonical order. The emitter prints an inferred union in the
+  // order the compiler first met its member types, which differs between a
+  // clean build, a warm .angular/cache and a single-project build; sorting
+  // makes the report a function of the public API alone.
+  const report = normalizeUnionOrder(
+    stripPrivateByConvention(readFileSync(join(tempFolder, entryPoint.report), 'utf8')),
   );
 
   // Documentation gate: every public member carries TSDoc and every entry

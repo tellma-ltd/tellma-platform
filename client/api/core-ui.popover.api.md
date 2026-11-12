@@ -41,7 +41,7 @@ export class TmPopover {
 }
 
 // @public
-export type TmPopoverAnchor = Element | DOMRect;
+export type TmPopoverAnchor = DOMRect | Element;
 
 // @public
 export class TmPopoverContent {
@@ -51,7 +51,7 @@ export class TmPopoverContent {
 }
 
 // @public
-export type TmPopoverSize = 'auto' | 'sm' | 'md' | 'lg';
+export type TmPopoverSize = 'auto' | 'lg' | 'md' | 'sm';
 
 // @public
 export class TmPopoverTrigger {

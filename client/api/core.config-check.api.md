@@ -22,6 +22,6 @@ export interface TmConfigProblem {
 }
 
 // @public
-export type TmConfigProblemCode = 'duplicate-key' | 'dangling-override' | 'dangling-hide' | 'unknown-section' | 'app-bar-overflow' | 'app-bar-reserved-id' | 'invalid-path' | 'reserved-path' | 'invalid-report-key' | 'coded-report-not-registered' | 'coded-report-redeclared' | 'coded-report-source' | 'feature-not-composed' | 'unknown-entity' | 'language-missing' | 'language-not-offered' | 'default-language-mismatch' | 'calendar-missing' | 'string-key-collision' | 'unknown-setting-category' | 'widget-missing' | 'widget-not-registered' | 'unknown-path' | 'unknown-action' | 'operation-missing' | 'entity-not-routable' | 'label-missing';
+export type TmConfigProblemCode = 'app-bar-overflow' | 'app-bar-reserved-id' | 'calendar-missing' | 'coded-report-not-registered' | 'coded-report-redeclared' | 'coded-report-source' | 'dangling-hide' | 'dangling-override' | 'default-language-mismatch' | 'duplicate-key' | 'entity-not-routable' | 'feature-not-composed' | 'invalid-path' | 'invalid-report-key' | 'label-missing' | 'language-missing' | 'language-not-offered' | 'operation-missing' | 'reserved-path' | 'string-key-collision' | 'unknown-action' | 'unknown-entity' | 'unknown-path' | 'unknown-section' | 'unknown-setting-category' | 'widget-missing' | 'widget-not-registered';
 
 ```

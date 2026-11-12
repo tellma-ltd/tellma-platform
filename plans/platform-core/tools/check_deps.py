@@ -35,6 +35,15 @@ def load_status():
     return status
 
 
+def is_done(status):
+    """True when a LEDGER.md status cell records a finished checkpoint.
+
+    Status cells carry a trailing note after the keyword, e.g. "done (CI 123 green; ...)",
+    so only the leading word counts.
+    """
+    return bool(status) and (status == "done" or status.startswith("done "))
+
+
 def validate(graph):
     """Return a list of problems: unknown gates, tier inversions and cycles."""
     problems = []
@@ -76,7 +85,7 @@ def main():
     if "--ready" in sys.argv:
         status = load_status()
         ready = [pc for pc, (tier, aid, gates) in graph.items()
-                 if status.get(pc, "todo") == "todo" and all(status.get(g) == "done" for g in gates)]
+                 if status.get(pc, "todo") == "todo" and all(is_done(status.get(g)) for g in gates)]
         for pc in ready:
             # The MVP gate also needs the Tier-1 batch reviews, which DEPS.md does not list.
             extra = " (also needs PC-B01…B07 integrated)" if graph[pc][1] == "MVP" else ""

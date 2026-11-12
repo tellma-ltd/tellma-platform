@@ -25,7 +25,7 @@ export class TmAvatar {
 }
 
 // @public
-export type TmAvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+export type TmAvatarSize = 'lg' | 'md' | 'sm' | 'xl' | 'xs';
 
 // @public
 export function tmAvatarTone(key: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;

@@ -25,7 +25,7 @@ export class TmChip {
     focus(): void;
     readonly href: _angular_core.InputSignal<string | null>;
     readonly icon: _angular_core.InputSignal<string | undefined>;
-    protected readonly kind: _angular_core.Signal<"link" | "button" | "text">;
+    protected readonly kind: _angular_core.Signal<"button" | "link" | "text">;
     readonly label: _angular_core.InputSignal<string>;
     protected onKeydown(event: KeyboardEvent): void;
     readonly removable: _angular_core.InputSignalWithTransform<boolean, unknown>;
@@ -50,7 +50,7 @@ export class TmChipSet implements TmChipSetRef {
     readonly ariaLabel: _angular_core.InputSignal<string | undefined>;
     // @internal
     chipDestroyed(chip: object): void;
-    readonly exit: _angular_core.OutputEmitterRef<"start" | "end">;
+    readonly exit: _angular_core.OutputEmitterRef<"end" | "start">;
     focusLast(): void;
     protected readonly hiddenCount: _angular_core.Signal<number>;
     protected readonly hiddenText: _angular_core.Signal<string>;
@@ -66,6 +66,6 @@ export class TmChipSet implements TmChipSetRef {
 }
 
 // @public
-export type TmChipSetOverflow = 'wrap' | 'collapse' | 'scroll';
+export type TmChipSetOverflow = 'collapse' | 'scroll' | 'wrap';
 
 ```

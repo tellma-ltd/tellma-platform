@@ -15,7 +15,7 @@ export const TM_MODAL_DATA: InjectionToken<unknown>;
 
 // @public
 export class TmModal {
-    open<R = void>(content: Type<unknown> | TemplateRef<unknown>, config?: TmModalConfig): TmModalRef<R>;
+    open<R = void>(content: TemplateRef<unknown> | Type<unknown>, config?: TmModalConfig): TmModalRef<R>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmModal, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmModal>;
 }
@@ -29,7 +29,7 @@ export interface TmModalConfig {
     escapeDismiss?: boolean;
     panelClass?: string;
     placement?: 'center' | 'end';
-    role?: 'dialog' | 'alertdialog';
+    role?: 'alertdialog' | 'dialog';
     showClose?: boolean;
     size?: TmModalSize;
     title?: string;
@@ -56,10 +56,10 @@ export type TmModalResult<R> = {
     via: 'api';
     value: R | undefined;
 } | {
-    via: 'close-button' | 'backdrop' | 'escape';
+    via: 'backdrop' | 'close-button' | 'escape';
 };
 
 // @public
-export type TmModalSize = 'sm' | 'md' | 'lg';
+export type TmModalSize = 'lg' | 'md' | 'sm';
 
 ```

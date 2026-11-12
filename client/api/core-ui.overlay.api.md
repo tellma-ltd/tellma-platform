@@ -29,13 +29,13 @@ export interface TmAnchoredOverlayConfig {
     readonly origin: () => TmAnchoredOverlayOrigin | null;
     readonly overlay?: () => CdkConnectedOverlay | undefined;
     readonly popoverHost?: FlexibleOverlayPopoverLocation | (() => FlexibleOverlayPopoverLocation);
-    readonly positions: readonly ConnectedPosition[] | (() => readonly ConnectedPosition[]);
-    readonly remeasure?: 'macrotask' | 'afterNextRender' | 'none';
+    readonly positions: (() => readonly ConnectedPosition[]) | readonly ConnectedPosition[];
+    readonly remeasure?: 'afterNextRender' | 'macrotask' | 'none';
     readonly viewportMargin?: number;
 }
 
 // @public
-export type TmAnchoredOverlayOrigin = Element | DOMRect | {
+export type TmAnchoredOverlayOrigin = DOMRect | Element | {
     readonly x: number;
     readonly y: number;
     readonly width?: number;
@@ -49,10 +49,10 @@ export function tmCreateAnchoredOverlay(config: TmAnchoredOverlayConfig): TmAnch
 export function tmLogicalPositions(side: TmOverlaySide, align: TmOverlayAlign): ConnectedPosition[];
 
 // @public
-export type TmOverlayAlign = 'start' | 'center' | 'end';
+export type TmOverlayAlign = 'center' | 'end' | 'start';
 
 // @public
-export type TmOverlaySide = 'block-end' | 'block-start' | 'inline-start' | 'inline-end';
+export type TmOverlaySide = 'block-end' | 'block-start' | 'inline-end' | 'inline-start';
 
 // @public
 export function tmPushEscapeDismissal(onEscape: () => void): () => void;
