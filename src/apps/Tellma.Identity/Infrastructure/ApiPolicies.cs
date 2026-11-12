@@ -6,28 +6,32 @@
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Validation.AspNetCore;
 using System.Security.Claims;
+using Tellma.Identity.Services.AuthenticationPolicy;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.Infrastructure
 {
     /// <summary>
     ///     Authorization policy names and their requirements for the management APIs. Each policy
-    ///     requires both its scope and its own audience: a token is a credential at one of the
-    ///     identity server's APIs only when it was minted for that API, so a token minted for a
-    ///     distribution — which sits in that distribution's host and logs — is refused here even
-    ///     when its scopes would match.
+    ///     requires its scope, its own audience and a machine principal. A token is a credential at
+    ///     one of the identity server's APIs only when it was minted for that API, so a token minted
+    ///     for a distribution — which sits in that distribution's host and logs — is refused here
+    ///     even when its scopes would match. And both APIs are machine-to-machine surfaces, so a
+    ///     token that speaks for a person is refused whatever it carries.
     /// </summary>
     public static class ApiPolicies
     {
         /// <summary>
         ///     The distribution-facing management surface (bulk invite, service accounts): the
-        ///     management scope, and the management audience among the token's audiences.
+        ///     management scope, the management audience among the token's audiences, and a
+        ///     machine principal.
         /// </summary>
         public const string IdentityScope = "TellmaIdentityScope";
 
         /// <summary>
         ///     The operator/control-plane surface (user admin, temporary access passes): the
-        ///     control-plane scope, and the control-plane audience among the token's audiences.
+        ///     control-plane scope, the control-plane audience among the token's audiences, and a
+        ///     machine principal.
         /// </summary>
         public const string ControlPlaneScope = "TellmaControlPlaneScope";
 
@@ -43,7 +47,8 @@ namespace Tellma.Identity.Infrastructure
                 policy.RequireAuthenticatedUser();
                 policy.RequireAssertion(static context =>
                     HasScope(context.User, TellmaIdentityConstants.IdentityScope)
-                    && HasAudience(context.User, TellmaIdentityConstants.IdentityAudience));
+                    && HasAudience(context.User, TellmaIdentityConstants.IdentityAudience)
+                    && IsService(context.User));
             });
 
             options.AddPolicy(ControlPlaneScope, policy =>
@@ -87,10 +92,28 @@ namespace Tellma.Identity.Infrastructure
         }
 
         /// <summary>
+        ///     Whether a principal is a machine: its token says so in the kind claim the server
+        ///     writes from the grant type at issuance. A token that speaks for a person — one that
+        ///     descends from an interactive sign-in — never is, and neither is a token without the
+        ///     claim.
+        /// </summary>
+        /// <param name="principal">The authenticated principal.</param>
+        /// <returns>Whether the principal is a machine.</returns>
+        public static bool IsService(ClaimsPrincipal principal)
+        {
+            ArgumentNullException.ThrowIfNull(principal);
+
+            // Exactly one kind claim, holding the machine value: a principal that somehow carried
+            // two would be ambiguous, and an ambiguous principal is refused.
+            Claim[] kinds = [.. principal.FindAll(TellmaClaims.Kind)];
+            return kinds is [{ Value: TellmaKinds.Service }];
+        }
+
+        /// <summary>
         ///     Whether a principal speaks for the control plane at the identity server: it holds the
-        ///     control-plane scope and its token was minted for the control-plane audience. A
-        ///     control-plane token minted for a distribution carries only that distribution's
-        ///     origin, so it never has this authority here.
+        ///     control-plane scope, its token was minted for the control-plane audience, and it is
+        ///     a machine. A control-plane token minted for a distribution carries only that
+        ///     distribution's origin, so it never has this authority here.
         /// </summary>
         /// <param name="principal">The authenticated principal.</param>
         /// <returns>Whether the principal has control-plane authority at the identity server.</returns>
@@ -99,7 +122,8 @@ namespace Tellma.Identity.Infrastructure
             ArgumentNullException.ThrowIfNull(principal);
 
             return HasScope(principal, TellmaIdentityConstants.ControlPlaneScope)
-                && HasAudience(principal, TellmaIdentityConstants.ControlPlaneAudience);
+                && HasAudience(principal, TellmaIdentityConstants.ControlPlaneAudience)
+                && IsService(principal);
         }
     }
 }

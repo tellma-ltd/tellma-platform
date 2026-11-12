@@ -48,6 +48,13 @@ Edit that store's `secrets.json` to:
           "DisplayName": "Local Control Plane",
           "Kind": "ControlPlane",
           "ClientSecret": "local-dev-secret"
+        },
+        {
+          "ClientId": "local",
+          "Kind": "Distribution",
+          "Origin": "https://localhost:7120",
+          "ClientSecret": "local-bff-secret",
+          "ServiceClientSecret": "local-svc-secret"
         }
       ]
     }
@@ -72,6 +79,7 @@ Why each piece:
 | `EnablePasswordSignIn=true` | `ForgotPassword` and `ResetPassword` — both return **404** otherwise |
 | `local-browser` (Cli archetype) | everything reached through `/connect/authorize` and the device grant |
 | `local-control-plane` | the Temporary Access Pass API behind the `Tap` page |
+| `local` (Distribution archetype) | its backend client `local-svc`, the machine caller the invitation API takes |
 
 `dotnet run` picks up `Properties/launchSettings.json`, which sets `ASPNETCORE_ENVIRONMENT=Development`
 — that is what loads `appsettings.Development.json` (LocalDB, self-signed dev keys, the seeded dev
@@ -256,17 +264,12 @@ https://localhost:7051/connect/authorize?client_id=local-browser&response_type=c
 
 ## Phase E — the token-gated pages
 
-**Invitation (valid).** Get a token with the management scope through the device grant, then invite
-someone:
+**Invitation (valid).** Get a token with the management scope from the local distribution's backend
+client (the management API is machine-to-machine: it refuses a person's token, and no interactive
+client may ask for its scope), then invite someone:
 
 ```bash
-curl -sk -X POST https://localhost:7051/connect/device -d "client_id=local-browser&scope=openid tellma_identity"
-```
-
-Approve the returned `user_code` in the browser, then redeem it:
-
-```bash
-curl -sk -X POST https://localhost:7051/connect/token -d "grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=local-browser&device_code=PASTE_DEVICE_CODE"
+curl -sk -X POST https://localhost:7051/connect/token -d "grant_type=client_credentials&client_id=local-svc&client_secret=local-svc-secret&scope=tellma_identity"
 ```
 
 Write the body to a file and post that — inline JSON quoting differs between cmd, PowerShell

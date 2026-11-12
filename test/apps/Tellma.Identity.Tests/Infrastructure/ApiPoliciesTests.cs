@@ -13,7 +13,8 @@ namespace Tellma.Identity.Tests.Infrastructure
     /// <summary>
     ///     The identity server's own APIs check their audience as well as their scope: the
     ///     management API needs the management audience, the operator API the control-plane audience,
-    ///     so a token minted for a distribution is refused at both whatever scopes it carries.
+    ///     so a token minted for a distribution is refused at both whatever scopes it carries. Both
+    ///     are machine-to-machine surfaces, so a token that speaks for a person is refused too.
     /// </summary>
     public sealed class ApiPoliciesTests : IDisposable
     {
@@ -114,16 +115,57 @@ namespace Tellma.Identity.Tests.Infrastructure
                 Principal("tellma_identity", TellmaIdentityConstants.ControlPlaneAudience)));
         }
 
+        [Theory]
+        [InlineData("individual")]
+        [InlineData(null)]
+        [InlineData("Service")]
+        [InlineData("service individual")]
+        public async Task Both_policies_refuse_a_principal_that_is_not_a_machine(string? kind)
+        {
+            // A person's token carrying the scope and the audience — what an interactive client
+            // permitted the scope would obtain — is refused, and so is a token without the claim.
+            ClaimsPrincipal management = WithKind(kind, "tellma_identity", ManagementAudience);
+            ClaimsPrincipal controlPlane = WithKind(kind, "tellma_control_plane", TellmaIdentityConstants.ControlPlaneAudience);
+
+            Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, management));
+            Assert.False(await AuthorizeAsync(ApiPolicies.ControlPlaneScope, controlPlane));
+            Assert.False(ApiPolicies.HasControlPlaneAuthority(controlPlane));
+        }
+
+        [Fact]
+        public async Task A_principal_with_two_kind_claims_is_refused_whatever_they_say()
+        {
+            ClaimsPrincipal principal = WithKind("service", "tellma_identity", ManagementAudience);
+            ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim("tellma_kind", "individual"));
+
+            Assert.False(ApiPolicies.IsService(principal));
+            Assert.False(await AuthorizeAsync(ApiPolicies.IdentityScope, principal));
+        }
+
         /// <inheritdoc />
         public void Dispose()
         {
             _services.Dispose();
         }
 
-        /// <summary>An authenticated bearer principal with one scope claim and one claim per audience.</summary>
+        /// <summary>
+        ///     An authenticated bearer machine principal with one scope claim and one claim per
+        ///     audience: what a client-credentials token validates to.
+        /// </summary>
         private static ClaimsPrincipal Principal(string scope, params string[] audiences)
         {
+            return WithKind("service", scope, audiences);
+        }
+
+        /// <summary>An authenticated bearer principal of a given kind (none when null), with one scope claim and one claim per audience.</summary>
+        private static ClaimsPrincipal WithKind(string? kind, string scope, params string[] audiences)
+        {
             List<Claim> claims = [new Claim("scope", scope), new Claim("sub", "client")];
+            if (kind is not null)
+            {
+                claims.Add(new Claim("tellma_kind", kind));
+            }
+
             claims.AddRange(audiences.Select(static audience => new Claim("aud", audience)));
             return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Bearer"));
         }

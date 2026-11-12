@@ -31,8 +31,7 @@ namespace Tellma.Identity.Controllers
     /// </summary>
     /// <param name="applicationManager">The OpenIddict application manager.</param>
     /// <param name="policyService">The authentication-policy engine.</param>
-    /// <param name="principalFactory">Protocol principal assembly.</param>
-    /// <param name="authorizationManager">The OpenIddict authorization manager.</param>
+    /// <param name="principalFactory">Protocol principal assembly, and the consent memory it records.</param>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="engineOptions">The engine options (route prefix).</param>
     /// <param name="auditLogger">Audit emission.</param>
@@ -42,7 +41,6 @@ namespace Tellma.Identity.Controllers
         IOpenIddictApplicationManager applicationManager,
         IAuthenticationPolicyService policyService,
         TellmaPrincipalFactory principalFactory,
-        IOpenIddictAuthorizationManager authorizationManager,
         UserManager<TellmaIdentityUser> userManager,
         IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger,
@@ -217,11 +215,14 @@ namespace Tellma.Identity.Controllers
             }
 
             // Consent: first-party clients are implicit; third-party clients need an explicit,
-            // remembered grant. A non-interactive client cannot be shown the consent form.
+            // remembered grant for these scopes and these resources, so a grant the user gave for
+            // one place never answers for another. A non-interactive client cannot be shown the
+            // consent form.
             string? consentType = await applicationManager.GetConsentTypeAsync(application);
             if (consentType == ConsentTypes.Explicit)
             {
-                bool hasConsent = await HasPermanentAuthorizationAsync(user, application, request);
+                bool hasConsent = await principalFactory.HasCoveringAuthorizationAsync(
+                    user.Id, application, [.. request.GetScopes()], [.. request.GetResources()], HttpContext.RequestAborted);
                 if (!hasConsent || request.HasPromptValue(PromptValues.Consent))
                 {
                     if (request.HasPromptValue(PromptValues.None))
@@ -242,6 +243,7 @@ namespace Tellma.Identity.Controllers
                     {
                         ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
                         Scope = request.Scope ?? string.Empty,
+                        Targets = ConsentTargetCatalog.Describe(request.GetResources()),
                     });
                 }
             }
@@ -373,24 +375,6 @@ namespace Tellma.Identity.Controllers
             return result.Identity is null
                 ? ForbidProtocol(result.Error!, result.ErrorDescription!)
                 : SignIn(new ClaimsPrincipal(result.Identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-        }
-
-        /// <summary>Whether a valid permanent authorization already covers the requested scopes.</summary>
-        private async Task<bool> HasPermanentAuthorizationAsync(
-            TellmaIdentityUser user, object application, OpenIddictRequest request)
-        {
-            string clientObjectId = (await applicationManager.GetIdAsync(application))!;
-            IAsyncEnumerator<object> authorizations = authorizationManager.FindAsync(
-                subject: user.Id,
-                client: clientObjectId,
-                status: Statuses.Valid,
-                type: AuthorizationTypes.Permanent,
-                scopes: request.GetScopes(),
-                HttpContext.RequestAborted).GetAsyncEnumerator(HttpContext.RequestAborted);
-            await using (authorizations)
-            {
-                return await authorizations.MoveNextAsync();
-            }
         }
 
         /// <summary>

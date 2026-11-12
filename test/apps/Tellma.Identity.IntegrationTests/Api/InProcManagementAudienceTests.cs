@@ -16,7 +16,7 @@ namespace Tellma.Identity.IntegrationTests.Api
     ///     In-proc, the issuer shares the distribution's origin, so the management API's audience
     ///     is a fixed URN rather than an origin: a token minted for the distribution is refused at
     ///     the management API even though both live on one origin, and a management token is
-    ///     accepted there.
+    ///     accepted there. No interactive client may ask for the management scope.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -34,10 +34,40 @@ namespace Tellma.Identity.IntegrationTests.Api
             ["TellmaIdentity:Seed:Clients:0:Origin"] = Origin,
             ["TellmaIdentity:Seed:Clients:0:ClientSecret"] = "acme-bff-secret-0123456789abcdef",
             ["TellmaIdentity:Seed:Clients:0:ServiceClientSecret"] = ServiceSecret,
+            ["TellmaIdentity:Seed:Clients:1:ClientId"] = "tellma-cli",
+            ["TellmaIdentity:Seed:Clients:1:DisplayName"] = "Tellma CLI",
+            ["TellmaIdentity:Seed:Clients:1:Kind"] = "Cli",
+            ["TellmaIdentity:Seed:Clients:1:RedirectUris:0"] = "http://127.0.0.1/callback",
         };
 
         /// <summary>A delivery-status body naming a subject nobody invited.</summary>
         private static readonly string[] UnknownSubject = ["unknown-sub"];
+
+        [Fact]
+        public async Task The_cli_cannot_ask_for_the_management_scope_in_proc()
+        {
+            // The management API is machine-to-machine: no interactive client is permitted its
+            // scope, so a person never holds a token it accepts, in-proc as standalone.
+            using InProcFactory factory = DatabaseBackedFactory.CreateInProc(fixture, "idipclimgmt", DistributionSeed);
+
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/id/connect/device", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = "tellma-cli",
+                    ["scope"] = "openid tellma_identity",
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_request", body.RootElement.GetProperty("error").GetString());
+            Assert.Contains(
+                "not allowed to use the specified scope",
+                body.RootElement.GetProperty("error_description").GetString(),
+                StringComparison.Ordinal);
+        }
 
         [Fact]
         public async Task A_distribution_token_is_refused_and_a_management_token_accepted_in_proc()

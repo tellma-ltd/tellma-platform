@@ -6,7 +6,7 @@
 import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
 
-import { TM_UI_TRANSLATE, TmL10n, ɵtmControlSize } from '@tellma/core-ui';
+import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TM_MODAL_DATA, TmModalFooter } from '@tellma/core-ui/modal';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -149,15 +149,15 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           </button>
         }
         @if (downloadUrl(); as url) {
-          <!-- An anchor, because the download attribute needs one, but
-               wearing the button classes rather than a hand-copied
-               reproduction of them: the classes come from tmButton's own
-               global stylesheet, and the SIZE class is resolved exactly as
-               the Print tmButton beside it resolves its own — so the two
-               actions stay the same height under any workspace size and at
-               any viewport width. -->
+          <!-- An anchor, because the download attribute needs one, hosting
+               tmButton itself: the directive gives a link the variant and
+               the size and nothing else, so it resolves its size exactly as
+               the Print button beside it does — the two actions stay the
+               same height under any workspace size and at any viewport
+               width — and the link keeps its native behaviour. -->
           <a
-            [class]="downloadClasses()"
+            tmButton
+            variant="primary"
             data-tm-preview-action="download"
             [href]="url"
             [download]="file.name"
@@ -177,21 +177,6 @@ export class ɵTmFilePreviewContent implements OnDestroy {
   private readonly l10n = inject(TmL10n);
 
   protected readonly file = inject<TmPreviewFile>(TM_MODAL_DATA);
-
-  /** The size step the footer's buttons resolve to — the anchor below must match it. */
-  private readonly buttonSize = ɵtmControlSize(signal(undefined));
-  /**
-   * The download anchor's button classes. An anchor cannot BE a tmButton
-   * (the directive's selector is button-only), so its size class is
-   * resolved exactly the way TmButton resolves its own — hard-coding a step
-   * here is how the two footer actions once drifted apart under a
-   * non-default size, and a phone-width viewport moves both to the touch
-   * size together.
-   */
-  protected readonly downloadClasses = computed(() => {
-    const size = this.buttonSize();
-    return 'tm-button tm-button--primary' + (size === 'md' ? '' : ` tm-button--${size}`);
-  });
 
   protected readonly loadErrorLabel = this.translate('preview.loadError');
   protected readonly unsupportedLabel = this.translate('preview.unsupported');
