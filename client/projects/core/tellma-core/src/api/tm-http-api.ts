@@ -30,7 +30,15 @@ import type {
 import { TmApiError, type TmApiErrorKind, type TmProblem } from './tm-api-error';
 import { TM_API_HOST } from './tm-api-host';
 import { TmApiOnline } from './tm-api-online';
-import { TM_API_CACHE, TM_API_LOCALE, TM_API_UPDATES, type TmApiUpdateCheck } from './tm-api-seams';
+import {
+  TM_API_CACHE,
+  TM_API_LOCALE,
+  TM_API_UPDATES,
+  type TmApiCache,
+  type TmApiLocale,
+  type TmApiUpdateCheck,
+  type TmApiUpdates,
+} from './tm-api-seams';
 import {
   TM_OUTDATED,
   tmCompareBuilds,
@@ -83,6 +91,16 @@ const SERVER_OUTDATED_WAIT_MS = 30_000;
 
 /** The route of the sign-out write, the one call a signing-out tab still sends. */
 const LOGOUT_ROUTE = '/bff/logout';
+
+/**
+ * A URL the layer sends: a path on this origin. One leading `/`, not followed
+ * by `/` or `\` (which would name another host), and no tab or line break
+ * (which the URL parser drops, so `/\t/host` would become `//host`).
+ */
+const LOCAL_PATH = /^\/(?![/\\])[^\t\n\r]*$/;
+
+/** A `.` or `..` path segment, plain or percent-encoded, which the URL parser resolves away. */
+const DOT_SEGMENT = /[/\\](?:\.|%2e){1,2}(?=[/\\]|$)/i;
 
 /** The routes every instance answers without a session, which skip the user check. */
 const ANONYMOUS_ROUTE = /^\/(?:api\/distribution-info(?:[/?#]|$)|health\/|\.well-known\/)/;
@@ -259,15 +277,8 @@ function contractKey(method: 'POST' | 'GET', route: string): string {
 export class TmHttpApi implements TmApi {
   readonly #host = inject(TM_API_HOST);
   readonly #connectivity = inject(TmApiOnline);
-  readonly #session = inject(TmSession);
-  readonly #paths = inject(TmSessionPaths);
-  readonly #launch = inject(TmLaunch);
   readonly #router = inject(Router);
   readonly #log = inject(TmRequestLog);
-  readonly #telemetry = inject(TmTelemetry);
-  readonly #locale = inject(TM_API_LOCALE);
-  readonly #cache = inject(TM_API_CACHE);
-  readonly #updates = inject(TM_API_UPDATES);
   readonly #loaders = inject(TM_METADATA_LOADERS, { optional: true });
   readonly #injector = inject(Injector);
   readonly #now = inject(TM_NOW);
@@ -282,6 +293,46 @@ export class TmHttpApi implements TmApi {
   #contracts: TmContractIndex | null = null;
   #contractsLoad: Promise<TmContractIndex> | null = null;
   #client: string | null = null;
+
+  // The services below are resolved at each use, never in a field
+  // initialiser: each may call TmApi itself (a sign-out, a telemetry flush, a
+  // cache sync, a locale save), and eager injection on both sides would be a
+  // circular dependency. The injector caches them, so a use costs a lookup.
+
+  /** The tab's session. */
+  get #session(): TmSession {
+    return this.#injector.get(TmSession);
+  }
+
+  /** The expiry and changed-user paths. */
+  get #paths(): TmSessionPaths {
+    return this.#injector.get(TmSessionPaths);
+  }
+
+  /** The launch mark a tenant's first 2xx settles. */
+  get #launch(): TmLaunch {
+    return this.#injector.get(TmLaunch);
+  }
+
+  /** The telemetry the layer reports to. */
+  get #telemetry(): TmTelemetry {
+    return this.#injector.get(TmTelemetry);
+  }
+
+  /** The language and calendar every call declares. */
+  get #locale(): TmApiLocale {
+    return this.#injector.get(TM_API_LOCALE);
+  }
+
+  /** The cache refresher the version tags go to. */
+  get #cache(): TmApiCache {
+    return this.#injector.get(TM_API_CACHE);
+  }
+
+  /** The worker's update check. */
+  get #updates(): TmApiUpdates {
+    return this.#injector.get(TM_API_UPDATES);
+  }
 
   /** Whether the server is reachable, as far as this tab knows. */
   readonly online: Signal<boolean> = this.#connectivity.online;
@@ -346,8 +397,10 @@ export class TmHttpApi implements TmApi {
     // A misuse throws in development; in production the send is dropped,
     // since nobody reads its outcome.
     let tenantId: number | null;
+    let url: string;
     try {
       tenantId = this.#tenantOf(route, undefined);
+      url = this.#urlOf(route, tenantId);
     } catch (error) {
       if (error instanceof TmApiError) {
         return;
@@ -358,7 +411,7 @@ export class TmHttpApi implements TmApi {
     const bytes = json === undefined ? 0 : new TextEncoder().encode(json).byteLength;
     if (bytes > SEND_LIMIT_BYTES) {
       if (this.#host.devMode()) {
-        throw new Error(`The send to '${route}' carries ${bytes} bytes, over the 16 KB a send may carry.`);
+        throw new Error(`The send to '${route}' is ${bytes} bytes, over the 16 KB limit.`);
       }
       return;
     }
@@ -389,7 +442,7 @@ export class TmHttpApi implements TmApi {
       headers['Tellma-Contract'] = fingerprint;
     }
     this.#host
-      .fetch(this.#urlOf(route, tenantId), { method: 'POST', headers, body: json, credentials: 'same-origin', keepalive: true })
+      .fetch(url, { method: 'POST', headers, body: json, credentials: 'same-origin', keepalive: true })
       .catch(() => undefined);
   }
 
@@ -453,15 +506,16 @@ export class TmHttpApi implements TmApi {
     const read = mode === 'read';
     const method = read && options.method === 'GET' ? 'GET' : 'POST';
     const tenantId = this.#tenantOf(route, options.tenantId);
+    const url = this.#urlOf(route, tenantId);
 
     // --- Development checks of the call's shape ---
     if (method === 'GET' && body !== undefined && body !== null && dev) {
-      throw new Error(`The GET read of '${route}' has a body; a GET sends none.`);
+      throw new Error(`The GET of '${route}' has a body.`);
     }
     const confirmations = options.confirmations ?? [];
     if (dev && (confirmations.length > MAX_CONFIRMATIONS || !confirmations.every((key) => CONFIRMATION_KEY.test(key)))) {
       throw new Error(
-        `The write to '${route}' confirms ${confirmations.length} keys; at most 16 keys of 1 to 100 visible ASCII characters, with no comma, are allowed.`,
+        `'${route}' confirms ${confirmations.length} keys: at most 16 keys of 1-100 visible ASCII characters, no comma.`,
       );
     }
 
@@ -471,7 +525,7 @@ export class TmHttpApi implements TmApi {
     const fingerprint = contracts.fingerprints.get(key);
     const idempotent = method === 'GET' || fingerprint === undefined || contracts.idempotent.has(key);
     if (read && !idempotent && dev) {
-      throw new Error(`'${route}' is not safe to retry, so it is not a read: call it with write().`);
+      throw new Error(`'${route}' is not safe to retry: call it with write().`);
     }
 
     // --- The gates: the session, the user check and the offline write ---
@@ -491,7 +545,7 @@ export class TmHttpApi implements TmApi {
     }
     const call: TmCall = {
       route,
-      url: this.#urlOf(route, tenantId),
+      url,
       tenantId,
       method,
       body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body),
@@ -527,11 +581,12 @@ export class TmHttpApi implements TmApi {
     const traceId = tmRandomHex(16, this.#random);
     const route = `blobs/${kind}`;
     const tenantId = this.#tenantOf(route, options.tenantId);
+    // Spec 0017 §8.1: the raw file, named in the query.
+    const url = this.#local(`/${tenantId}/blobs/${encodeURIComponent(kind)}?fileName=${encodeURIComponent(options.fileName)}`);
     const authenticated = this.#admit(route, 'upload', cancel, traceId);
     const call: TmCall = {
       route,
-      // Spec 0017 §8.1: the raw file, named in the query.
-      url: `/${tenantId}/blobs/${encodeURIComponent(kind)}?fileName=${encodeURIComponent(options.fileName)}`,
+      url,
       tenantId,
       method: 'POST',
       body: undefined,
@@ -561,6 +616,7 @@ export class TmHttpApi implements TmApi {
    * @returns The status, the bytes and the ETag.
    */
   async #fetchBlob(url: string, ifNoneMatch: string | undefined, cancel: AbortSignal): Promise<TmBlobFetchResult> {
+    this.#local(url);
     const traceId = tmRandomHex(16, this.#random);
     const authenticated = this.#admit(url, 'read', cancel, traceId);
     const call: TmCall = {
@@ -605,7 +661,7 @@ export class TmHttpApi implements TmApi {
       return tenant;
     }
     if (this.#host.devMode()) {
-      throw new Error(`The tenant route '${route}' was called with no tenant: pass tenantId, or call it under a tenant's route.`);
+      throw new Error(`'${route}' was called with no tenant: pass tenantId, or call it under a tenant's route.`);
     }
     throw new TmApiError({ kind: 'server', code: 'no-tenant' });
   }
@@ -704,14 +760,33 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
-   * The URL of a route.
+   * The URL of a route, checked to be a path on this origin.
    *
    * @param route - The route.
    * @param tenantId - Its tenant, or `null` for a tenantless route.
    * @returns The URL.
    */
   #urlOf(route: string, tenantId: number | null): string {
-    return tenantId === null ? route : `/${tenantId}/api/web/${route}`;
+    return this.#local(tenantId === null ? route : `/${tenantId}/api/web/${route}`);
+  }
+
+  /**
+   * Admits only a path on this origin, before anything is sent: a foreign
+   * server must never be judged as this one, and a dot segment must never
+   * slip a route past the anonymous-route rule.
+   *
+   * @param url - The URL.
+   * @returns The URL.
+   * @throws Error in development; `TmApiError` `server` (`invalid-url`) in production.
+   */
+  #local(url: string): string {
+    if (LOCAL_PATH.test(url) && !DOT_SEGMENT.test(url.split(/[?#]/, 1)[0])) {
+      return url;
+    }
+    if (this.#host.devMode()) {
+      throw new Error(`'${url}' is not a path on this origin.`);
+    }
+    throw new TmApiError({ kind: 'server', code: 'invalid-url' });
   }
 
   /**

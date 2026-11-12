@@ -43,8 +43,8 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
  * test runs a page or a service with no server. A route with no answer
  * rejects with an error naming it; an aborted read, download or upload
  * rejects as the real layer does, with a `cancelled` `TmApiError`, and an
- * aborted blob fetch with its signal's reason. With `provideTellma`, the
- * images `tm-image` fetches are scripted by URL, such as `/17/blobs/51`.
+ * aborted blob fetch with its signal's reason. Under `provideTellmaTesting()`,
+ * the images `tm-image` fetches are scripted by URL, such as `/17/blobs/51`.
  *
  * @example
  * ```ts

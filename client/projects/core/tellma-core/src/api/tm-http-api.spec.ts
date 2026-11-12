@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component } from '@angular/core';
+import { Component, inject, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { TM_BLOB_FETCHER } from '@tellma/core-ui/image';
@@ -17,6 +17,7 @@ import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-meta
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
 import { tmProfileCookies, tmProfileCookieValue } from '../session/tm-profile.testing.util';
+import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
 import { TmFakeSessionHost, tmSessionTestingProviders } from '../session/tm-session.testing.util';
 import { TmApi } from './tm-api';
@@ -78,7 +79,7 @@ interface TmRig {
 }
 
 /** Configures the layer over a faked browser, routed to a URL, and fakes the clock. */
-async function setUp(options: { url?: string } = {}): Promise<TmRig> {
+async function setUp(options: { url?: string; providers?: Provider[] } = {}): Promise<TmRig> {
   const host = new TmFakeApiHost();
   // A hidden page sends no reachability probe, which has a spec of its own.
   host.visibleNow = false;
@@ -111,8 +112,11 @@ async function setUp(options: { url?: string } = {}): Promise<TmRig> {
       { provide: TM_API_UPDATES, useValue: updates },
       { provide: TM_CLIENT_METADATA, useValue: tmTestMetadata() },
       { provide: TM_METADATA_LOADERS, useValue: loaders },
+      ...(options.providers ?? []),
     ],
   });
+  // The boot starts the session before any call, so it holds the tab's user.
+  TestBed.inject(TmSession);
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   vi.setSystemTime(NOW);
@@ -169,6 +173,30 @@ describe('TmHttpApi', () => {
   it('is the root default of TmApi', async () => {
     await setUp();
     expect(TestBed.inject(TmApi)).toBe(TestBed.inject(TmHttpApi));
+  });
+
+  it('lets the services it calls inject TmApi themselves', async () => {
+    const cache = new TmFakeApiCache();
+    const rig = await setUp({
+      providers: [
+        { provide: TM_API_CACHE, useFactory: () => (inject(TmApi), cache) },
+        { provide: TM_API_LOCALE, useFactory: () => (inject(TmApi), TM_TEST_API_LOCALE) },
+        { provide: TmTelemetry, useFactory: () => (inject(TmApi), new TmRecordingApiTelemetry()) },
+      ],
+    });
+    const read = track(rig.api.read('centers/query', {}, signal()));
+    await flush();
+    expect(rig.host.last().header('Accept-Language')).toBe('ar-SA');
+    rig.host.last().answer(tmProblemAnswer(429, 'rate-limited', { 'Retry-After': '1' }));
+    await flush();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flush();
+    expect(rig.host.requests).toHaveLength(2);
+    rig.host.last().answer(tmAnswer(200, { ok: true }, { 'Tellma-Version-Tags': 'settings=1.9f04' }));
+    await flush();
+    expect(read.value).toEqual({ ok: true });
+    expect(cache.observed).toHaveLength(1);
+    expect(retries(rig)).toEqual(['429']);
   });
 
   describe('routes and headers', () => {
@@ -276,6 +304,57 @@ describe('TmHttpApi', () => {
     });
   });
 
+  describe('a URL that is not a path on this origin', () => {
+    /** URLs a tenantless route or a blob fetch must never send. */
+    const FOREIGN = [
+      '//cdn.example/logo.png',
+      '/\\cdn.example/logo.png',
+      '/\t/cdn.example/logo.png',
+      '/health/../17/blobs/attachment/9',
+      '/health/%2E%2E/17/blobs/attachment/9',
+      '/17/blobs/./9',
+    ];
+
+    it.each(['https://cdn.example/logo.png', ...FOREIGN])('throws for the blob %j in development, unsent', async (url) => {
+      const rig = await setUp();
+      await expect(rig.api.fetchBlob(url)).rejects.toThrow(/is not a path on this origin/);
+      expect(rig.host.requests).toHaveLength(0);
+    });
+
+    it.each(FOREIGN)('rejects the route %j as server (invalid-url) in production, unsent, the server still reachable', async (url) => {
+      const rig = await setUp();
+      rig.host.dev = false;
+      const read = track(rig.api.read(url, undefined, { ...signal(), method: 'GET' }));
+      const blob = track(rig.api.fetchBlob(url));
+      rig.api.send(url, {});
+      await flush();
+      expect(read.error).toMatchObject({ kind: 'server', code: 'invalid-url' });
+      expect(blob.error).toMatchObject({ kind: 'server', code: 'invalid-url' });
+      expect(rig.host.requests).toHaveLength(0);
+      expect(rig.api.online()).toBe(true);
+      expect(rig.paths.state()).toBe('active');
+    });
+
+    it('rejects a tenant route or a blob kind with a dot segment', async () => {
+      const rig = await setUp();
+      rig.host.dev = false;
+      const write = track(rig.api.write('centers/../../../bff/user', {}));
+      const upload = track(rig.api.upload('..', new Blob(['1']), { ...signal(), fileName: 'a.txt' }));
+      await flush();
+      expect(write.error).toMatchObject({ kind: 'server', code: 'invalid-url' });
+      expect(upload.error).toMatchObject({ kind: 'server', code: 'invalid-url' });
+      expect(rig.host.requests).toHaveLength(0);
+      expect(rig.host.uploads).toHaveLength(0);
+    });
+
+    it('sends a local path with dots inside a segment or in the query', async () => {
+      const rig = await setUp();
+      track(rig.api.fetchBlob('/17/blobs/v1.2/9..png?name=a/../b'));
+      await flush();
+      expect(rig.host.last().url).toBe('/17/blobs/v1.2/9..png?name=a/../b');
+    });
+  });
+
   describe('read or write', () => {
     it('refuses a read of a mapped route that is not idempotent in development', async () => {
       const rig = await setUp();
@@ -347,6 +426,31 @@ describe('TmHttpApi', () => {
       expect(read.error).toMatchObject({ kind: 'cancelled' });
       expect(read.value).toBeUndefined();
       expect(rig.sessionHost.replaced).toEqual(['/']);
+    });
+
+    it("observes nothing of another user's answer", async () => {
+      const rig = await setUp();
+      const launch = TestBed.inject(TmLaunch);
+      launch.markAutomatic(17);
+      const write = track(rig.api.write('centers/save', {}));
+      await flush();
+      rig.sessionHost.cookieJar = tmProfileCookies(SARA);
+      rig.host.last().answer(tmAnswer(200, {}, { 'Tellma-Version-Tags': 'settings=1.9f04' }));
+      await flush();
+      expect(write.error).toMatchObject({ kind: 'cancelled' });
+      expect(rig.cache.observed).toEqual([]);
+      expect(launch.automatic()).toBe(17);
+    });
+
+    it('runs no expiry path for a 401 from an anonymous route', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('/api/distribution-info', undefined, { ...signal(), method: 'GET' }));
+      await flush();
+      rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
+      await flush();
+      expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
+      expect(rig.paths.state()).toBe('active');
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('runs again on the response: a session gone meanwhile rejects unauthenticated', async () => {
@@ -807,6 +911,16 @@ describe('TmHttpApi', () => {
       ]);
     });
 
+    it('still judges a verdict 29.999 s after the first one as the first', async () => {
+      const rig = await setUp();
+      rig.updates.answer = 'ready';
+      expect((await verdictOf(rig, '0.9.0')).error).toMatchObject({ code: 'server-outdated' });
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect((await verdictOf(rig, '0.9.0')).error).toMatchObject({ code: 'server-outdated' });
+      expect(rig.updates.checks).toBe(0);
+      expect(verdicts(rig)).toEqual(Array(2).fill({ verdict: 'server-outdated', source: 'build' }));
+    });
+
     it('judges the calls one slot swap answers at once as the same first verdict', async () => {
       const rig = await setUp();
       rig.updates.answer = 'ready';
@@ -1158,6 +1272,15 @@ describe('TmHttpApi', () => {
       expect(rig.log.entries[0].start).toMatchObject({ route: 'blobs/customer-image', tenantId: 17 });
     });
 
+    it('is not sent while the browser is offline', async () => {
+      const rig = await setUp();
+      rig.host.onLineNow = false;
+      const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
+      await flush();
+      expect(rig.host.uploads).toHaveLength(0);
+      expect(upload.error).toMatchObject({ kind: 'offline', code: 'not-sent' });
+    });
+
     it('declares a file with no type as octet-stream', async () => {
       const rig = await setUp();
       track(rig.api.upload('attachment', file(''), { ...signal(), fileName: 'notes' }));
@@ -1255,8 +1378,13 @@ describe('TmHttpApi', () => {
       const rig = await setUp();
       rig.sessionHost.cookieJar = '';
       rig.api.send('users/me/preferences', {});
+      rig.sessionHost.cookieJar = tmProfileCookies(SARA);
+      rig.api.send('users/me/preferences', {});
+      await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(rig.paths.state()).toBe('active');
+      expect(rig.sessionHost.replaced).toEqual([]);
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('carries the fingerprint once the chunk is loaded', async () => {
@@ -1346,6 +1474,13 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmProblemAnswer(404, 'not-found'));
       await flush();
       expect(missing.error).toMatchObject({ kind: 'not-found' });
+      const swapped = track(rig.api.fetchBlob('/17/blobs/53'));
+      await flush();
+      rig.sessionHost.cookieJar = tmProfileCookies(SARA);
+      rig.host.last().answer(new Response(new Blob(['png']), { status: 200 }));
+      await flush();
+      expect(swapped.error).toMatchObject({ kind: 'cancelled' });
+      expect(swapped.value).toBeUndefined();
     });
   });
 });

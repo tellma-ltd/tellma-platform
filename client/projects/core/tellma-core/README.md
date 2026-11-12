@@ -77,7 +77,9 @@ landing test links too.
 Every request the app makes goes through `TmApi`, over `fetch`; an upload, the one call that
 reports its progress, goes over `XMLHttpRequest`. A route such as `centers/query` goes to the
 routed tenant's API (`/17/api/web/centers/query`), or to the tenant a call names; a route with a
-leading `/` is tenantless and sent as is. A tenant route with no tenant throws in development.
+leading `/` is tenantless and sent as is. A tenant route with no tenant throws in development, and so
+does any URL that is not a path on this origin (`//host`, `/\host`, a `.` or `..` segment); in
+production both reject `server` unsent.
 
 - **Reads** take a signal and are retried: a network failure twice (1 s, then 3 s, ±25 %), a `429`
   and a `503` with `Retry-After` twice after the wait it asks for (capped at 10 s and 30 s), and a

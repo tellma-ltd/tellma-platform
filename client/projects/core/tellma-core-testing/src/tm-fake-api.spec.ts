@@ -5,6 +5,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { TmApi, TmApiError } from '@tellma/core';
+import { TM_BLOB_FETCHER } from '@tellma/core-ui/image';
 
 import { provideTellmaTesting } from './provide-tellma-testing';
 import { TmFakeApi } from './tm-fake-api';
@@ -74,6 +75,13 @@ describe('TmFakeApi', () => {
     const fetched = api.fetchBlob('/17/blobs/52', { signal: controller.signal });
     controller.abort();
     await expect(fetched).rejects.toBe(controller.signal.reason);
+  });
+
+  it("answers tm-image's blob fetcher in provideTellmaTesting alone", async () => {
+    const result = { status: 200, blob: new Blob(['png']), etag: '"v1"' };
+    api.respond('/17/blobs/51', result);
+    await expect(TestBed.inject(TM_BLOB_FETCHER)('/17/blobs/51')).resolves.toBe(result);
+    expect(api.calls()).toMatchObject([{ kind: 'fetch-blob', route: '/17/blobs/51' }]);
   });
 
   it('counts the pending writes', async () => {
