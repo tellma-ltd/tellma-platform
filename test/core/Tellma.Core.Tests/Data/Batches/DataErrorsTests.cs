@@ -87,6 +87,19 @@ namespace Tellma.Core.Tests.Data.Batches
             Assert.Equal(FailureKind.Final, DataErrors.Classify([Error(2627), Error(1205)]));
         }
 
+        [Theory]
+        [InlineData(50000, true)]
+        [InlineData(TellmaSqlErrors.PlatformMin - 1, true)]
+        [InlineData(TellmaSqlErrors.DistroMax + 1, true)]
+        [InlineData(TellmaSqlErrors.PlatformMin, false)]
+        [InlineData(TellmaSqlErrors.PlatformMax, false)]
+        [InlineData(TellmaSqlErrors.DistroMin, false)]
+        [InlineData(2627, false)]
+        public void Only_a_user_defined_number_outside_both_bands_is_out_of_band(int number, bool outOfBand)
+        {
+            Assert.Equal(outOfBand, DataErrors.IsOutOfBand(number));
+        }
+
         [Fact]
         public void The_primary_error_skips_informational_messages_and_the_statement_terminated_note()
         {

@@ -65,6 +65,19 @@ namespace Tellma.Core.Data.Batches
             Message = "The commit probe of {Operation} on tenant {TenantId} failed, so whether its round trip committed is unknown.")]
         public static partial void CommitProbeFailed(ILogger logger, Exception exception, string operation, int tenantId);
 
+        /// <summary>An attempt of the commit probe failed transiently or lost its connection; the probe runs again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The attempt's failure.</param>
+        /// <param name="operation">The scope's operation.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="attempt">The failed attempt, from 1.</param>
+        /// <param name="delayMs">The wait before the next attempt, in milliseconds.</param>
+        [LoggerMessage(
+            EventName = "DataBatch.CommitProbeRetrying",
+            Level = LogLevel.Information,
+            Message = "Attempt {Attempt} of the commit probe of {Operation} on tenant {TenantId} failed; it runs again in {DelayMs} ms.")]
+        public static partial void CommitProbeRetrying(ILogger logger, Exception exception, string operation, int tenantId, int attempt, double delayMs);
+
         /// <summary>A round trip failed and is sent again.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">The attempt's failure.</param>

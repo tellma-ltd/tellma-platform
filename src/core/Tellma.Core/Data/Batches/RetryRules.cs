@@ -121,8 +121,8 @@ namespace Tellma.Core.Data.Batches
                 // Whether the batch committed is unknown: re-run what may run twice, else probe.
                 FailureKind.Ambiguous => mayRunTwice ? RetryAction.Rerun : probe ? RetryAction.Probe : RetryAction.Unknown,
 
-                // A reader failed after the send: a write may have committed before the client saw
-                // the failing set, and a defect would fail again, so it is never re-run.
+                // A defect after the send: a write may have committed before the client saw the
+                // failure, and a defect would fail again, so it is never re-run.
                 FailureKind.Defect => !writes ? RetryAction.Surface : probe ? RetryAction.Probe : RetryAction.Unknown,
                 FailureKind.Final => RetryAction.Surface,
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a failure kind."),

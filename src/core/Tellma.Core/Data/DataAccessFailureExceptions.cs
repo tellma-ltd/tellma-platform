@@ -24,10 +24,12 @@ namespace Tellma.Core.Data
     }
 
     /// <summary>
-    ///     A persist round trip lost its connection, or its reading failed, where the batch may have
-    ///     committed, and it could not be re-run. <see cref="Verdict" /> says what the commit probe
-    ///     found: <see cref="CommitVerdict.Committed" /> when the write succeeded and only its results
-    ///     were lost, <see cref="CommitVerdict.Unknown" /> when nothing could tell.
+    ///     A writing round trip failed where its batch may have committed, and it could not be re-run:
+    ///     it lost its connection, its reading failed, it raised an error that need not have aborted
+    ///     it, it was cancelled once sent, or an earlier attempt re-run without a verdict may have
+    ///     committed. <see cref="Verdict" /> says what the commit probe found:
+    ///     <see cref="CommitVerdict.Committed" /> when the write succeeded and only its results were
+    ///     lost, <see cref="CommitVerdict.Unknown" /> when nothing could tell.
     /// </summary>
     /// <param name="innerException">The failure that made the outcome ambiguous.</param>
     /// <param name="verdict">The commit probe's verdict.</param>
@@ -49,7 +51,7 @@ namespace Tellma.Core.Data
         /// <summary>No row the attempt inserted exists: it rolled back, and the round trip may be re-run.</summary>
         NotCommitted,
 
-        /// <summary>Nothing could tell: the batch inserted no row to probe for, or the probe failed.</summary>
+        /// <summary>Nothing could tell: the batch inserted no row to probe for, the probe failed, or no probe ran.</summary>
         Unknown,
     }
 }

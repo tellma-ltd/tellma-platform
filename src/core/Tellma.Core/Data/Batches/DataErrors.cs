@@ -27,8 +27,9 @@ namespace Tellma.Core.Data.Batches
         Ambiguous,
 
         /// <summary>
-        ///     The client failed while reading, on an open connection: a defect of a statement's
-        ///     reader, which would fail again, while the server may have run the batch to its commit.
+        ///     A defect that would fail again, while the server may have run the batch to its commit:
+        ///     the client failed while reading on an open connection, or the server raised a number
+        ///     outside the platform and distribution bands in a batch that commits its own transaction.
         /// </summary>
         Defect,
     }
@@ -158,6 +159,17 @@ namespace Tellma.Core.Data.Batches
             }
 
             return FailureKind.Final;
+        }
+
+        /// <summary>
+        ///     Whether a number is one neither platform nor distribution SQL may raise: a user-defined
+        ///     number outside both bands, such as the 50000 of a <c>RAISERROR</c> with a message text.
+        /// </summary>
+        /// <param name="number">The error number.</param>
+        /// <returns>True when it is outside both bands.</returns>
+        public static bool IsOutOfBand(int number)
+        {
+            return number >= ThrowMin && !TellmaSqlErrors.IsPlatform(number) && !TellmaSqlErrors.IsDistribution(number);
         }
 
         /// <summary>

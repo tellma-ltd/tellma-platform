@@ -10,6 +10,7 @@ using System.Data.Common;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.TableTypes;
@@ -20,8 +21,9 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <summary>
     ///     The retry and commit-probe matrix under injected faults: a session killed while its batch
     ///     waits before its commit, a connection lost after the server committed, a probe that waits
-    ///     for a round trip still running, a deadlock, and the re-run that collides with the rows a
-    ///     not-committed verdict missed.
+    ///     for a round trip still running or loses its own connection, a deadlock, a reader's defect,
+    ///     an error that does not abort its batch, a request the client cannot encode, cancellation,
+    ///     and the re-runs that follow a verdict or its absence.
     /// </summary>
     /// <remarks>
     ///     A batch reaches a known point through a "ready" statement: it returns the session id and
@@ -432,6 +434,295 @@ namespace Tellma.Core.IntegrationTests.Data
             }
         }
 
+        [Fact]
+        public async Task A_re_run_that_runs_out_of_attempts_after_a_not_committed_verdict_is_probed_again_and_reports_the_commit()
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+
+            // --- After the not-committed verdict the first attempt commits after all ---
+            using MeterListener listener = OnNotCommitted(InsertProbedJob);
+
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            Ready(batch, async (attempt, spid) =>
+            {
+                if (attempt == 1)
+                {
+                    await KillAsync(spid);
+                }
+                else
+                {
+                    await gate.OpenAsync();
+                }
+            });
+            _ = batch.Sql(GateText, null);
+
+            // Every re-run then fails transiently short of its insert, so it never collides with the row.
+            _ = batch.Sql($"IF EXISTS (SELECT 1 FROM [core].[Jobs] WHERE [Id] = 1001)\n    THROW 50503, N'Fixture.Busy', 1;", null);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+
+            DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(Token));
+
+            // --- The probe after the last re-run finds the row: a committed write, never an exhausted one ---
+            Assert.Equal(CommitVerdict.Committed, ambiguous.Verdict);
+            Assert.Equal([DataMetrics.ProbeNotCommitted, DataMetrics.ProbeCommitted], instruments.Probes());
+            Assert.Equal([DataMetrics.AmbiguousClass, DataMetrics.ReportedClass, DataMetrics.ReportedClass], instruments.RetryClasses());
+            Assert.Equal(1, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task A_reader_defect_in_a_writing_batch_is_probed_and_surfaces_itself_when_nothing_committed()
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+
+            // --- The reader fails while the server waits before its commit, which the attention aborts ---
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            Ready(batch, (_, _) => throw new FormatException("The reader misread its set."));
+            _ = batch.Sql(GateText, null);
+
+            _ = await Assert.ThrowsAsync<FormatException>(() => batch.ExecuteAsync(Token));
+
+            // --- Nothing committed, so the defect surfaces as itself and is never re-run ---
+            Assert.Equal([DataMetrics.ProbeNotCommitted], instruments.Probes());
+            Assert.Equal(0, access.Retries);
+            Assert.Equal(0, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task An_out_of_band_raiserror_that_lets_its_batch_commit_is_probed_and_reports_the_commit()
+        {
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            // --- RAISERROR does not abort the batch under XACT_ABORT: the server runs on to its COMMIT ---
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            _ = batch.Sql($"RAISERROR(N'Ledger.Unbalanced', 16, 1);", null);
+
+            DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(Token));
+
+            // --- A committed write, never a failure ---
+            Assert.Equal(CommitVerdict.Committed, ambiguous.Verdict);
+            Assert.Equal(50000, Assert.IsType<SqlException>(ambiguous.InnerException).Number);
+            Assert.Equal([DataMetrics.ProbeCommitted], instruments.Probes());
+            Assert.Equal(1, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task An_out_of_band_throw_that_aborts_its_writing_batch_is_probed_and_surfaces_as_a_defect()
+        {
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            _ = batch.Sql($"THROW 50000, N'Out of band.', 1;", null);
+
+            InvalidOperationException defect = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(Token));
+
+            // --- Nothing committed: the defect surfaces translated, after one probe ---
+            Assert.Equal(50000, Assert.IsType<SqlException>(defect.InnerException).Number);
+            Assert.Equal([DataMetrics.ProbeNotCommitted], instruments.Probes());
+            Assert.Equal(0, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task A_request_whose_rows_the_client_cannot_encode_never_ran_so_its_error_surfaces_unprobed()
+        {
+            foreach (bool probed in new[] { true, false })
+            {
+                await fixture.ResetAsync();
+                using Instruments instruments = new(fixture);
+                await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+
+                // --- Rows enough for several packets, then one the driver cannot encode ---
+                int[] ids = [.. Enumerable.Range(1, 20_000)];
+                IdList[] rows = [.. ids.Select(static id => new IdList { Id = id }), null!];
+                DataBatch batch = Batch(scope, BatchPurpose.Persist);
+                _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) SELECT [Id] FROM {rows};", new SqlOptions(writes: Set(Jobs)));
+                if (probed)
+                {
+                    batch.DeclareInsertedRoots(Jobs, ids);
+                }
+
+                InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(Token));
+
+                // --- The binding's own refusal, as for any batch never sent: no probe, no re-run ---
+                Assert.Contains(" is null;", refused.Message, StringComparison.Ordinal);
+                Assert.Empty(instruments.Probes());
+                Assert.Equal(0, access.Retries);
+                Assert.Equal(0, await JobCountAsync());
+            }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task An_idempotent_write_re_run_after_a_lost_connection_never_reports_that_nothing_committed(bool transient)
+        {
+            await SeedTagsAsync(GateName, "fx-a");
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            // --- The first attempt dies after its write, its outcome unknown; every re-run then fails ---
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql(
+                $"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'fx-a';",
+                new SqlOptions(writes: Set(VersionTags), idempotent: true));
+            Ready(batch, async (attempt, spid) =>
+            {
+                if (attempt == 1)
+                {
+                    await KillAsync(spid);
+                }
+                else
+                {
+                    await gate.OpenAsync();
+                }
+            });
+            _ = batch.Sql(GateText, null);
+            _ = transient
+                ? batch.Sql($"THROW 50503, N'Fixture.Busy', 1;", null)
+                : batch.Sql($"THROW 50600, N'Fixture.Stop', 1;", null);
+
+            DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(Token));
+
+            // --- Neither exhaustion nor the re-run's own error: the last failure, its outcome unknown ---
+            Assert.Equal(CommitVerdict.Unknown, ambiguous.Verdict);
+            Assert.Equal(transient ? 50503 : 50600, Assert.IsType<SqlException>(ambiguous.InnerException).Number);
+            Assert.Equal([DataMetrics.ProbeUnknown], instruments.Probes());
+            Assert.Equal(transient ? 3 : 1, instruments.RetryClasses().Length);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_maintenance_write_cancelled_after_its_send_is_ambiguous_unless_its_explicit_transaction_rolled_back(bool explicitTransaction)
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            // --- A maintenance command is cancelled once sent, while the server waits before its commit ---
+            DataBatch batch = Batch(scope, BatchPurpose.Maintenance);
+            if (explicitTransaction)
+            {
+                batch.TransactionMode = TransactionMode.Explicit;
+            }
+
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            Ready(batch, (_, _) => cancel.CancelAsync());
+            _ = batch.Sql(GateText, null);
+
+            Exception thrown = await Assert.ThrowsAnyAsync<Exception>(() => batch.ExecuteAsync(cancel.Token));
+
+            // --- Nothing committed; only the explicit transaction, which the executor never committed, proves it ---
+            Assert.Equal(0, await JobCountAsync());
+            if (explicitTransaction)
+            {
+                _ = Assert.IsAssignableFrom<OperationCanceledException>(thrown);
+                Assert.Empty(instruments.Probes());
+            }
+            else
+            {
+                Assert.Equal(CommitVerdict.Unknown, Assert.IsType<DataAccessAmbiguousException>(thrown).Verdict);
+                Assert.Equal([DataMetrics.ProbeUnknown], instruments.Probes());
+            }
+        }
+
+        [Fact]
+        public async Task A_probe_that_loses_its_connection_runs_again_and_answers()
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            // --- The second connection opened is the probe's first, and closes before the probe runs ---
+            RecordingConnection connection = new(fixture.Tenant.ConnectionString, (opened, current) =>
+            {
+                if (opened == 2)
+                {
+                    current.Close();
+                }
+            });
+            DataBatch batch = Batch(scope, BatchPurpose.Persist, connection);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            Ready(batch, async (attempt, spid) =>
+            {
+                if (attempt == 1)
+                {
+                    await KillAsync(spid);
+                }
+                else
+                {
+                    await gate.OpenAsync();
+                }
+            });
+            _ = batch.Sql(GateText, null);
+
+            BatchOutcome outcome = await batch.ExecuteAsync(Token);
+
+            // --- One verdict, from the probe's second attempt; the attempt, two probes and the re-run ---
+            Assert.Equal(1, await JobCountAsync());
+            Assert.Equal([DataMetrics.ProbeNotCommitted], instruments.Probes());
+            Assert.Equal([DataMetrics.AmbiguousClass], instruments.RetryClasses());
+            Assert.Equal(4, outcome.RoundTrips);
+        }
+
+        [Fact]
+        public async Task A_re_run_on_a_database_handle_reopens_its_connection_after_its_session_was_killed()
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            ITenantDatabaseFactory factory = scope.ServiceProvider.GetRequiredService<ITenantDatabaseFactory>();
+            await using ITenantDatabaseHandle handle = await factory.OpenAsync(FixtureTenant.TenantId, scope.ServiceProvider, Token);
+
+            // --- The handle's one connection is killed under the first attempt ---
+            var batch = (DataBatch)handle.CreateBatch(BatchPurpose.Maintenance);
+            List<int> sessions = [];
+            Ready(batch, async (attempt, spid) =>
+            {
+                sessions.Add(spid);
+                if (attempt == 1)
+                {
+                    await KillAsync(spid);
+                }
+                else
+                {
+                    await gate.OpenAsync();
+                }
+            });
+            _ = batch.Sql(GateText, null);
+            BatchResult<RawResult> five = batch.Sql($"SELECT 5 AS [Five];", new SqlOptions(resultSets: 1));
+
+            _ = await batch.ExecuteAsync(Token);
+
+            // --- The re-run ran on a fresh session the handle opened ---
+            Assert.Equal(5, Int(five.Value));
+            Assert.Equal(2, sessions.Count);
+            Assert.NotEqual(sessions[0], sessions[1]);
+            Assert.Equal(1, access.Retries);
+        }
+
         /// <summary>A batch of the scope on a connection of the test's.</summary>
         /// <param name="scope">The scope, which supplies the contributors, the counters and the audit.</param>
         /// <param name="purpose">The purpose.</param>
@@ -654,8 +945,12 @@ namespace Tellma.Core.IntegrationTests.Data
 
         /// <summary>A batch connection that opens a fresh pooled connection per attempt and keeps the latest.</summary>
         /// <param name="connectionString">The fixture database.</param>
-        private sealed class RecordingConnection(string connectionString) : IBatchConnection
+        /// <param name="opened">Told of each connection it opens, from 1, before it is handed out.</param>
+        private sealed class RecordingConnection(string connectionString, Action<int, SqlConnection>? opened = null) : IBatchConnection
         {
+            /// <summary>The connections opened so far.</summary>
+            private int _opened;
+
             /// <summary>The connection handed out last.</summary>
             public SqlConnection? Current { get; private set; }
 
@@ -668,6 +963,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 SqlConnection connection = new(connectionString);
                 await connection.OpenAsync(cancellationToken);
                 Current = connection;
+                opened?.Invoke(++_opened, connection);
                 return connection;
             }
 

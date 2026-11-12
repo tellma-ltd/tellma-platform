@@ -93,8 +93,11 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Where a failed attempt was when it failed.</summary>
         private enum AttemptPhase
         {
-            /// <summary>Opening the connection or beginning an explicit transaction: nothing of the batch ran.</summary>
-            Connecting,
+            /// <summary>
+            ///     Nothing of the batch reached the server: opening the connection, beginning an explicit
+            ///     transaction, or writing a request the client failed to encode.
+            /// </summary>
+            Unsent,
 
             /// <summary>The command was sent: the batch may have run in part or in whole.</summary>
             Sent,
@@ -231,15 +234,19 @@ namespace Tellma.Core.Data.Batches
                 // --- Cancellation of the attempt: the open, or a sent command other than a persist ---
                 if ((result.Sent ? afterSend : beforeSend).IsCancellationRequested)
                 {
-                    // A writing command cancelled after its send may have committed before it stopped.
+                    // A writing command cancelled after its send may have committed before it stopped,
+                    // unless an explicit transaction holds it short of its commit: the executor never
+                    // commits that transaction, and rolls it back.
+                    bool mayHaveCommitted = result.Sent && writes
+                        && (batch.TransactionMode != TransactionMode.Explicit || result.Phase == AttemptPhase.Committing);
                     Settle(run, result, DataMetrics.Failed);
                     ExceptionDispatchInfo.Throw(
-                        await CancelledAsync(run, failure, result.Sent && writes ? failure : unresolved, notCommitted, beforeSend).ConfigureAwait(false));
+                        await CancelledAsync(run, failure, mayHaveCommitted ? failure : unresolved, notCommitted, beforeSend).ConfigureAwait(false));
                 }
 
                 // --- Classification ---
                 IReadOnlyList<SqlErrorInfo>? errors = failure is SqlException sql ? SqlErrorInfo.Of(sql) : null;
-                FailureKind kind = Classify(result, errors);
+                FailureKind kind = Classify(result.Sent, result.ConnectionLost, assembly.InTextTransaction, errors);
                 bool timedOut = errors is not null && errors.Any(static error => error.Number == DataErrors.CommandTimeout);
 
                 // A re-run after a not-committed verdict that collides with the probed rows: the first
@@ -260,14 +267,21 @@ namespace Tellma.Core.Data.Batches
                     case RetryAction.Surface:
                         // After a not-committed verdict the re-run's error may be the first attempt's
                         // commit seen from behind (a moved tag, a conflict), so the probe asks again.
-                        if (notCommitted is not null && await ReprobeAsync(run, notCommitted, failure).ConfigureAwait(false) is Exception answered)
+                        if (notCommitted is not null && await ReprobeAsync(run, notCommitted, failure, beforeSend).ConfigureAwait(false) is Exception answered)
                         {
                             Settle(run, result, DataMetrics.Failed);
                             throw answered;
                         }
 
+                        // After the re-run of a write whose outcome stayed unknown, no error of a later
+                        // attempt shows that nothing committed.
                         Settle(run, result, DataMetrics.Failed);
-                        if (errors is not null && kind == FailureKind.Final && result.Sent)
+                        if (unresolved is not null)
+                        {
+                            throw UnknownOutcome(failure);
+                        }
+
+                        if (errors is not null && kind is FailureKind.Final or FailureKind.Defect && result.Sent)
                         {
                             throw DataErrors.Translate(errors, failure, assembly, result.Cursor);
                         }
@@ -277,26 +291,30 @@ namespace Tellma.Core.Data.Batches
 
                     case RetryAction.GiveUp:
                         Settle(run, result, DataMetrics.Failed);
-                        throw new DataAccessRetryExhaustedException(failure, attempt);
+                        throw unresolved is null ? new DataAccessRetryExhaustedException(failure, attempt) : UnknownOutcome(failure);
 
                     case RetryAction.Unknown:
                         Settle(run, result, DataMetrics.Failed);
-                        _metrics.RecordProbe(CommitVerdict.Unknown);
-                        throw new DataAccessAmbiguousException(failure, CommitVerdict.Unknown);
+                        throw UnknownOutcome(failure);
 
                     case RetryAction.Probe:
-                        CommitVerdict verdict = await ProbeAsync(run, batch.Probe!).ConfigureAwait(false);
+                        CommitVerdict verdict = await ProbeAsync(run, batch.Probe!, beforeSend).ConfigureAwait(false);
                         if (verdict != CommitVerdict.NotCommitted)
                         {
                             Settle(run, result, DataMetrics.Failed);
                             throw new DataAccessAmbiguousException(failure, verdict);
                         }
 
-                        // Nothing was written. A defect would fail again, so it surfaces as itself;
-                        // a lost connection is re-run.
+                        // Nothing was written. A defect would fail again, so it surfaces as itself,
+                        // translated when the server raised it; a lost connection is re-run.
                         if (kind == FailureKind.Defect)
                         {
                             Settle(run, result, DataMetrics.Failed);
+                            if (errors is not null)
+                            {
+                                throw DataErrors.Translate(errors, failure, assembly, result.Cursor);
+                            }
+
                             ExceptionDispatchInfo.Throw(failure);
                         }
 
@@ -317,14 +335,15 @@ namespace Tellma.Core.Data.Batches
                 // --- The re-run: within the attempts allowed, and for a timed-out read within its own budget ---
                 if (attempt > run.Options.RetryAttempts || (timedOut && !RetryRules.MayRerunAfterTimeout(batch.Purpose, timeoutReruns)))
                 {
-                    if (notCommitted is not null && !probedNow && await ReprobeAsync(run, notCommitted, failure).ConfigureAwait(false) is Exception reprobed)
+                    if (notCommitted is not null && !probedNow && await ReprobeAsync(run, notCommitted, failure, beforeSend).ConfigureAwait(false) is Exception reprobed)
                     {
                         Settle(run, result, DataMetrics.Failed);
                         throw reprobed;
                     }
 
+                    // Exhaustion says nothing committed, which an earlier attempt of unknown outcome belies.
                     Settle(run, result, DataMetrics.Failed);
-                    throw new DataAccessRetryExhaustedException(failure, attempt);
+                    throw unresolved is null ? new DataAccessRetryExhaustedException(failure, attempt) : UnknownOutcome(failure);
                 }
 
                 TimeSpan delay = RetryRules.Delay(attempt, run.Options.RetryBaseDelay, Random.Shared.NextDouble());
@@ -364,18 +383,18 @@ namespace Tellma.Core.Data.Batches
         {
             OperationCanceledException cancelled = cancellation as OperationCanceledException
                 ?? new OperationCanceledException("The batch was cancelled while it ran.", cancellation, token);
-            if (notCommitted is not null && await ReprobeAsync(run, notCommitted, cancelled).ConfigureAwait(false) is Exception answered)
-            {
-                return answered;
-            }
+            return notCommitted is not null && await ReprobeAsync(run, notCommitted, cancelled, token).ConfigureAwait(false) is Exception answered ? answered
+                : unresolved is null ? cancelled
+                : UnknownOutcome(unresolved);
+        }
 
-            if (unresolved is not null)
-            {
-                _metrics.RecordProbe(CommitVerdict.Unknown);
-                return new DataAccessAmbiguousException(unresolved, CommitVerdict.Unknown);
-            }
-
-            return cancelled;
+        /// <summary>The ambiguity of a write whose outcome nothing can tell, metered as an unknown verdict.</summary>
+        /// <param name="failure">The failure the ambiguity carries.</param>
+        /// <returns>The exception to throw.</returns>
+        private DataAccessAmbiguousException UnknownOutcome(Exception failure)
+        {
+            _metrics.RecordProbe(CommitVerdict.Unknown);
+            return new DataAccessAmbiguousException(failure, CommitVerdict.Unknown);
         }
 
         /// <summary>
@@ -385,10 +404,11 @@ namespace Tellma.Core.Data.Batches
         /// <param name="run">The batch being run.</param>
         /// <param name="notCommitted">The failure the not-committed verdict answered.</param>
         /// <param name="failure">The error that would otherwise reach the caller.</param>
+        /// <param name="cancellationToken">The caller's token, which cancels the waits between the probe's attempts.</param>
         /// <returns>The ambiguity to surface instead, or null when the batch still did not commit.</returns>
-        private async Task<Exception?> ReprobeAsync(Run run, Exception notCommitted, Exception failure)
+        private async Task<Exception?> ReprobeAsync(Run run, Exception notCommitted, Exception failure, CancellationToken cancellationToken)
         {
-            return await ProbeAsync(run, run.Batch.Probe!).ConfigureAwait(false) switch
+            return await ProbeAsync(run, run.Batch.Probe!, cancellationToken).ConfigureAwait(false) switch
             {
                 CommitVerdict.Committed => new DataAccessAmbiguousException(notCommitted, CommitVerdict.Committed),
                 CommitVerdict.Unknown => new DataAccessAmbiguousException(failure, CommitVerdict.Unknown),
@@ -398,28 +418,36 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <summary>
-        ///     Classifies a failed attempt. Before the send, a server error that is transient or a lost
+        ///     Classifies a failed round trip. Before the send, a server error that is transient or a lost
         ///     connection is safe to repeat, and any other failure is final. After it, a final error on
-        ///     a connection that is no longer open is a lost connection, and a client failure is one
-        ///     too when the connection closed, else a reader's defect.
+        ///     a connection that is no longer open is a lost connection; a number outside the bands
+        ///     platform and distribution SQL throw is a defect when the text commits its own transaction;
+        ///     and a client failure is a lost connection when the connection closed, else a reader's defect.
         /// </summary>
-        /// <param name="attempt">The attempt.</param>
+        /// <param name="sent">Whether the command was sent.</param>
+        /// <param name="connectionLost">Whether the connection was no longer open after the failure.</param>
+        /// <param name="inTextTransaction">Whether the text begins and commits its own transaction.</param>
         /// <param name="errors">The server errors, when the provider raised the failure.</param>
         /// <returns>The kind.</returns>
-        private static FailureKind Classify(Attempt attempt, IReadOnlyList<SqlErrorInfo>? errors)
+        private static FailureKind Classify(bool sent, bool connectionLost, bool inTextTransaction, IReadOnlyList<SqlErrorInfo>? errors)
         {
-            if (!attempt.Sent)
+            if (!sent)
             {
                 return errors is null || DataErrors.Classify(errors) == FailureKind.Final ? FailureKind.Final : FailureKind.Reported;
             }
 
-            if (errors is not null)
+            if (errors is null)
             {
-                FailureKind kind = DataErrors.Classify(errors);
-                return kind == FailureKind.Final && attempt.ConnectionLost ? FailureKind.Ambiguous : kind;
+                return connectionLost ? FailureKind.Ambiguous : FailureKind.Defect;
             }
 
-            return attempt.ConnectionLost ? FailureKind.Ambiguous : FailureKind.Defect;
+            // An out-of-band number may come from a RAISERROR, which XACT_ABORT does not abort: the
+            // server may have run on to the text's COMMIT, so the failure proves nothing about it.
+            FailureKind kind = DataErrors.Classify(errors);
+            return kind != FailureKind.Final ? kind
+                : connectionLost ? FailureKind.Ambiguous
+                : inTextTransaction && DataErrors.IsOutOfBand(SqlErrorInfo.Primary(errors).Number) ? FailureKind.Defect
+                : FailureKind.Final;
         }
 
         /// <summary>Records an attempt whose outcome is known and, when it is the one that counts, completes what it read.</summary>
@@ -461,7 +489,7 @@ namespace Tellma.Core.Data.Batches
                 .SetTag(DataTelemetryNames.TenantIdAttribute, run.TenantId);
 
             long started = _time.GetTimestamp();
-            AttemptPhase phase = AttemptPhase.Connecting;
+            AttemptPhase phase = AttemptPhase.Unsent;
             SqlConnection? connection = null;
             SqlTransaction? transaction = null;
             ResultSetCursor? cursor = null;
@@ -492,7 +520,21 @@ namespace Tellma.Core.Data.Batches
 
                 phase = AttemptPhase.Sent;
                 batch.Access.RoundTrips++;
-                SqlDataReader reader = await command.ExecuteReaderAsync(afterSend).ConfigureAwait(false);
+                SqlDataReader reader;
+                try
+                {
+                    reader = await command.ExecuteReaderAsync(afterSend).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not (SqlException or OperationCanceledException) && connection.State == ConnectionState.Open)
+                {
+                    // The client failed to write the request, such as a table-valued parameter's row
+                    // it could not encode. The server runs no request it has not received whole, and
+                    // the driver abandons a partly written one with an attention on a connection it
+                    // keeps open, so nothing of the batch ran.
+                    phase = AttemptPhase.Unsent;
+                    throw;
+                }
+
                 await using (reader.ConfigureAwait(false))
                 {
                     cursor = new ResultSetCursor(reader);
@@ -568,13 +610,96 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <summary>
-        ///     Runs the commit probe on a fresh connection as one autocommit round trip. A probe that
-        ///     fails answers <see cref="CommitVerdict.Unknown" />.
+        ///     Runs the commit probe until it answers. A probe whose own round trip failed transiently or
+        ///     lost its connection runs again, within the attempts and with the waits of a batch's
+        ///     re-runs, and after a timeout once more at most, as a read does. Any other failure, the
+        ///     attempts running out, or the caller cancelling a wait leaves the verdict unknown.
+        /// </summary>
+        /// <param name="probeOnce">Runs one attempt, given the attempt from 1; a failure is returned, never thrown.</param>
+        /// <param name="options">The execution settings: the attempts allowed and the first wait.</param>
+        /// <param name="time">The clock that times the waits.</param>
+        /// <param name="unit">Picks each wait's jitter: a uniform value in [0, 1).</param>
+        /// <param name="retrying">Told of each failure that runs again: the failure, its attempt and the wait.</param>
+        /// <param name="cancellationToken">The caller's token, which cancels the waits.</param>
+        /// <returns>The attempt that answered, or the last that failed, whose verdict is <see cref="CommitVerdict.Unknown" />.</returns>
+        internal static async Task<ProbeAttempt> ProbeUntilAnsweredAsync(
+            Func<int, Task<ProbeAttempt>> probeOnce,
+            DataOptions options,
+            TimeProvider time,
+            Func<double> unit,
+            Action<Exception, int, TimeSpan> retrying,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(probeOnce);
+            ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(time);
+            ArgumentNullException.ThrowIfNull(unit);
+            ArgumentNullException.ThrowIfNull(retrying);
+
+            int timeoutReruns = 0;
+            for (int attempt = 1; ; attempt++)
+            {
+                ProbeAttempt result = await probeOnce(attempt).ConfigureAwait(false);
+                if (result.Failure is not Exception failure)
+                {
+                    return result;
+                }
+
+                // --- The probe is a read: it runs again when a re-run may cure its failure ---
+                if (result.Kind is not (FailureKind.Reported or FailureKind.Ambiguous)
+                    || attempt > options.RetryAttempts
+                    || (result.TimedOut && !RetryRules.MayRerunAfterTimeout(BatchPurpose.Read, timeoutReruns)))
+                {
+                    return result;
+                }
+
+                TimeSpan delay = RetryRules.Delay(attempt, options.RetryBaseDelay, unit());
+                retrying(failure, attempt, delay);
+                try
+                {
+                    await Task.Delay(delay, time, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return result;
+                }
+
+                timeoutReruns += result.TimedOut ? 1 : 0;
+            }
+        }
+
+        /// <summary>
+        ///     Runs the commit probe on a fresh connection, each attempt one autocommit round trip, until
+        ///     it answers or its failures leave the verdict <see cref="CommitVerdict.Unknown" />.
         /// </summary>
         /// <param name="run">The batch being run.</param>
         /// <param name="probe">The probe.</param>
+        /// <param name="cancellationToken">The caller's token, which cancels the waits between attempts.</param>
         /// <returns>The verdict, also metered.</returns>
-        private async Task<CommitVerdict> ProbeAsync(Run run, CommitProbe probe)
+        private async Task<CommitVerdict> ProbeAsync(Run run, CommitProbe probe, CancellationToken cancellationToken)
+        {
+            ProbeAttempt answer = await ProbeUntilAnsweredAsync(
+                attempt => ProbeOnceAsync(run, probe, attempt),
+                run.Options,
+                _time,
+                Random.Shared.NextDouble,
+                (failure, attempt, delay) => DataBatchLog.CommitProbeRetrying(_logger, failure, run.Operation, run.TenantId, attempt, delay.TotalMilliseconds),
+                cancellationToken).ConfigureAwait(false);
+            if (answer.Failure is Exception failure)
+            {
+                DataBatchLog.CommitProbeFailed(_logger, failure, run.Operation, run.TenantId);
+            }
+
+            _metrics.RecordProbe(answer.Verdict);
+            return answer.Verdict;
+        }
+
+        /// <summary>Runs one attempt of the commit probe on a fresh connection.</summary>
+        /// <param name="run">The batch being run.</param>
+        /// <param name="probe">The probe.</param>
+        /// <param name="attempt">The attempt, from 1.</param>
+        /// <returns>The attempt's verdict, or its failure classified; a failure is returned, never thrown.</returns>
+        private static async Task<ProbeAttempt> ProbeOnceAsync(Run run, CommitProbe probe, int attempt)
         {
             DataBatch batch = run.Batch;
             using Activity? activity = ActivitySource.StartActivity(
@@ -583,22 +708,27 @@ namespace Tellma.Core.Data.Batches
                 .SetTag(DataTelemetryNames.RoleTag, DataTelemetryNames.TenantRole)
                 .SetTag(DataTelemetryNames.PurposeAttribute, run.Purpose)
                 .SetTag(DataTelemetryNames.OperationAttribute, run.Operation)
+                .SetTag(DataTelemetryNames.AttemptAttribute, attempt)
                 .SetTag(DataTelemetryNames.TenantIdAttribute, run.TenantId);
 
-            CommitVerdict verdict;
             SqlConnection? connection = null;
             try
             {
                 // Never cancelled: the answer decides whether a write that may have committed is reported as one.
                 connection = await batch.Connection.AcquireAsync(CancellationToken.None).ConfigureAwait(false);
                 batch.Access.RoundTrips++;
-                verdict = await probe.RunAsync(connection, CommandTimeoutSeconds(batch.Purpose, run.Options)).ConfigureAwait(false);
+                CommitVerdict verdict = await probe.RunAsync(connection, CommandTimeoutSeconds(batch.Purpose, run.Options)).ConfigureAwait(false);
+                return new ProbeAttempt(verdict, Failure: null, FailureKind.Final, TimedOut: false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
+                // Classified as any round trip is: sent once the connection opened, reading nothing.
                 _ = activity?.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
-                DataBatchLog.CommitProbeFailed(_logger, exception, run.Operation, run.TenantId);
-                verdict = CommitVerdict.Unknown;
+                IReadOnlyList<SqlErrorInfo>? errors = exception is SqlException sql ? SqlErrorInfo.Of(sql) : null;
+                bool connectionLost = connection is not null && connection.State != ConnectionState.Open;
+                FailureKind kind = Classify(sent: connection is not null, connectionLost, inTextTransaction: false, errors);
+                bool timedOut = errors is not null && errors.Any(static error => error.Number == DataErrors.CommandTimeout);
+                return new ProbeAttempt(CommitVerdict.Unknown, exception, kind, timedOut);
             }
             finally
             {
@@ -607,9 +737,6 @@ namespace Tellma.Core.Data.Batches
                     await batch.Connection.ReleaseAsync(connection).ConfigureAwait(false);
                 }
             }
-
-            _metrics.RecordProbe(verdict);
-            return verdict;
         }
 
         /// <summary>Rolls an explicit transaction back after a failure, logging a rollback that fails too.</summary>
@@ -676,7 +803,14 @@ namespace Tellma.Core.Data.Batches
         private sealed record Attempt(bool BodyRan, Exception? Failure, AttemptPhase Phase, bool ConnectionLost, ResultSetCursor? Cursor, TimeSpan Elapsed)
         {
             /// <summary>Whether the batch's command was sent.</summary>
-            public bool Sent => Phase != AttemptPhase.Connecting;
+            public bool Sent => Phase != AttemptPhase.Unsent;
         }
+
+        /// <summary>One attempt of the commit probe.</summary>
+        /// <param name="Verdict">The verdict; <see cref="CommitVerdict.Unknown" /> when the attempt failed.</param>
+        /// <param name="Failure">The failure, or null when the probe answered.</param>
+        /// <param name="Kind">The failure's kind; not read when the probe answered.</param>
+        /// <param name="TimedOut">Whether the failure was the command timeout.</param>
+        internal readonly record struct ProbeAttempt(CommitVerdict Verdict, Exception? Failure, FailureKind Kind, bool TimedOut);
     }
 }

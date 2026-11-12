@@ -250,17 +250,24 @@ when every statement may run twice (reads, idempotent writes), except that a rea
 batch whose command timed out is re-run once only; a persist batch in its own transaction that
 declared the root rows it inserts (`DataBatch.DeclareInsertedRoots`) is probed on a fresh
 connection (a locking seek on those keys), and a not-committed verdict is re-run; anything else is
-`DataAccessAmbiguousException` with its verdict. After a not-committed verdict, any error that
-would reach the caller (the re-run's own, exhaustion, cancellation) is preceded by a second probe,
-because the first attempt may have committed late. An `Explicit` batch is never re-run once sent.
+`DataAccessAmbiguousException` with its verdict. The probe itself runs again, with the same waits
+and attempts, when its own round trip fails transiently or loses its connection. After a
+not-committed verdict, any error that would reach the caller (the re-run's own, exhaustion,
+cancellation) is preceded by a second probe, because the first attempt may have committed late;
+after a write re-run without a verdict, any such error surfaces as `DataAccessAmbiguousException`
+(unknown). An `Explicit` batch is never re-run once sent. A request the client fails to encode
+(a table-valued parameter's row it cannot convert) was never run, so its error surfaces as it is.
 The caller's token cancels the opens and the waits between attempts, and every command except a
 sent persist's; a cancellation that leaves a write's outcome unknown surfaces as
-`DataAccessAmbiguousException`, never as `OperationCanceledException`. A final error
+`DataAccessAmbiguousException`, never as `OperationCanceledException`, while an `Explicit` batch
+cancelled before its commit was rolled back and surfaces the cancellation. A final error
 becomes the data layer's exception for it, carrying the statement's ordinal: the
 `Tellma.Core.Data` exceptions for row security, conflicts, uniqueness, foreign keys, trees and
 arithmetic, `BatchAssertionFailedException` for any other assigned platform or distribution number,
 `InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
-for the rest. A statement's reader stages its results on the cursor, so only the attempt that
+for the rest. A number outside the bands in a batch that commits its own transaction may come from
+a `RAISERROR`, which does not abort the batch, so it is probed (or reported unknown) as a defect
+before it surfaces. A statement's reader stages its results on the cursor, so only the attempt that
 counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
 `DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
 `tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
