@@ -148,11 +148,9 @@ namespace Tellma.Core.Tests.Notifications
                     .ClientEvent("acme.document.changed"))))
                 .BuildServiceProvider(validateScopes: true);
 
+            // The notifications contributor alone: the core chunk also carries the distribution's own sections.
             ClientAssetContext context = new(provider);
-            foreach (IClientAssetContributor contributor in provider.GetServices<IClientAssetContributor>())
-            {
-                contributor.Contribute(context);
-            }
+            provider.GetServices<IClientAssetContributor>().OfType<NotificationsClientAssetContributor>().Single().Contribute(context);
 
             Assert.Equal(
                 [

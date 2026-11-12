@@ -183,13 +183,20 @@ namespace Tellma.Core.Tenancy
         ///     The startup load: verifies the catalog's migrations, then loads the first snapshot,
         ///     within the first-load bound. A catalog that is missing in Development, or that lacks the
         ///     platform's latest migration, fails startup with the migrator command that fixes it; an
-        ///     unreachable one lets the host start not ready while the loop keeps trying.
+        ///     unreachable one lets the host start not ready while the loop keeps trying. Nothing is
+        ///     loaded when <see cref="TenantRegistryStartupOptions.LoadOnStart" /> is off.
         /// </summary>
         /// <param name="cancellationToken">The host's start token.</param>
         /// <returns>A task that completes when the load succeeded or its failure was logged.</returns>
         /// <exception cref="TellmaCompositionException">The catalog is missing or behind.</exception>
         public async Task InitializeAsync(CancellationToken cancellationToken)
         {
+            // The migrator loads the snapshot itself, once the catalog exists.
+            if (!_startup.LoadOnStart)
+            {
+                return;
+            }
+
             using CancellationTokenSource timeout = new(_startup.FirstLoadTimeout, _time);
             using var bound = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
             try

@@ -93,6 +93,20 @@ namespace Tellma.Testing.Support.Sql
             return name;
         }
 
+        /// <summary>
+        ///     Tracks a database a host under test names and creates itself, such as a tenant database
+        ///     a migrator provisions, so the fixture drops it at the end like its own.
+        /// </summary>
+        /// <param name="database">The database's exact name.</param>
+        public void Track(string database)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(database);
+            lock (_databases)
+            {
+                _databases.Add(database);
+            }
+        }
+
         /// <summary>The connection string to a database of the server.</summary>
         /// <param name="database">The database.</param>
         /// <returns>The connection string.</returns>

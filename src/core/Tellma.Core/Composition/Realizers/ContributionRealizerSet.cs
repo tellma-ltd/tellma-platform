@@ -31,7 +31,8 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new NotificationTypeContributionRealizer())
                 .Add(new NotificationChannelContributionRealizer())
                 .Add(new ClientEventContributionRealizer())
-                .Add(new StackContributionRealizer());
+                .Add(new StackContributionRealizer())
+                .Add(new ProvisioningStepContributionRealizer());
         }
 
         /// <summary>Adds the realizer of <typeparamref name="TItem" />.</summary>

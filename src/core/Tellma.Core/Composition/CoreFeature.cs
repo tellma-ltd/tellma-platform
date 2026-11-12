@@ -71,6 +71,9 @@ namespace Tellma.Core.Composition
                 .Singleton<IValueSetRegistry, ValueSetRegistry>()
                 .Singleton<ILocalizationNegotiator, LocalizationNegotiator>();
 
+            // --- The client metadata's distribution, features and routing sections (spec 0024 §3.2) ---
+            _ = contribution.Singleton<IClientAssetContributor, CoreClientAssetContributor>();
+
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution
                 .Model<TellmaSchemaRowConfiguration>()
