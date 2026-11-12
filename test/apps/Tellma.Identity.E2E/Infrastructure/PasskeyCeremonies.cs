@@ -52,17 +52,22 @@ namespace Tellma.Identity.E2E.Infrastructure
             // Sign back in with the passkey, through whichever ceremony the login page runs. The
             // browser is asked which one that will be while it rests here, before the login page
             // loads: there the conditional ceremony may finish and navigate away at any moment,
-            // taking with it the document a question would be asked in. For the same reason the
-            // navigation waits only until it commits: the login document's load may never be
-            // observed once the ceremony has moved the browser on, and nothing below needs it.
+            // taking with it the document a question would be asked in.
             bool conditional = await OffersConditionalMediationAsync(page);
+
+            // How far the navigation waits depends on that answer. When the conditional ceremony
+            // runs, it waits only until it commits: the ceremony may move the browser on before
+            // the login document's events are observed, and nothing below needs them. When it
+            // does not, the button is pressed, and its only behaviour is a listener the page's
+            // script attaches. The button can be painted and actionable while the parser still
+            // waits on that script, so a press then would do nothing; DOMContentLoaded fires only
+            // once the script has run.
             await page.GotoAsync(
                 prefix + "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(passkeysPath),
-                new() { WaitUntil = WaitUntilState.Commit });
+                new() { WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded });
             if (!conditional)
             {
-                // No ceremony runs on its own, so the button is the only way in. The locator
-                // waits for the button to be actionable before pressing it.
+                // No ceremony runs on its own, so the button, now wired, is the only way in.
                 await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
             }
 

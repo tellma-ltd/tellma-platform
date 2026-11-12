@@ -116,3 +116,75 @@ names only this helper. Worth a follow-up if either flakes.
   passkey tests (standalone and in-proc) also passed three repeated runs in a row (2/2 each).
 - Containers: none started by hand. The Testcontainers reaper (ryuk) removes the suites' SQL
   containers when each test process exits. TELLMA_TEST_SQL was left unset.
+
+## Review 1
+
+### Findings
+
+Checked and found sound (no finding): the three `Url.Page` sites, in-proc (the route convention puts
+`id/` in the page template, and routing adds `Request.PathBase`) and standalone (empty prefix, so the
+output is `Request.PathBase` + `/Identity/...`). The same controller-context pattern is already in
+`AccountController` and `DeviceVerificationController`. Open-redirect protection is unchanged:
+end-session's `RedirectUri` and the authorize-to-login target are now server-generated and never
+take request input. Neither uses `X-Forwarded-Prefix`, so `PathBase` is configuration only.
+EmailCode still goes through `ReturnUrlValidator.Sanitize` + `LocalRedirect`. Removing
+`IOptions<TellmaIdentityOptions>` from `AuthorizationController` gives the same output in every
+configuration the options validator accepts. A host `Request.PathBase` is effectively ruled out
+(standalone issuer must be the bare origin, in-proc issuer path must equal `PathBase`). For a
+trailing-slash `PathBase` the new code is strictly better (`/id//Identity` before). Each item on the
+"left as is" list is correct: the cookie paths are request-path-base-relative, the emailed links
+are deliberately issuer-anchored, the partial/layout names are file paths, and the `IdentityPageLinks`
+folders are matched after both bases are stripped. A fresh sweep of `src/apps/Tellma.Identity`
+(`.cs`, `.cshtml`, `.js`) found no other literal `/Identity/...` or `/connect/...` URL. The new
+email-code and end-session tests assert exact `/id/...` Locations, so they fail against the old
+literals. The authorize test is coverage only, as the notes say. One side effect is a gain: the
+EmailCode fallback is now recognised by `IdentityPageLinks` in-proc, so `CarriedQueryRedirectFilter`
+carries the request's values onto it. No spec, PC-id or `plans/` references were added.
+
+Run by the reviewer: the Identity integration tests on Testcontainers, with TELLMA_TEST_SQL unset.
+The filter was `PathBaseRedirectTests|CompositionParityTests|AccountEntryTests|InProcManagementAudienceTests|ManagementApiRouteTests`,
+which covers the new tests and every other `InProcFactory` user, to check the harness change.
+Result: 23/23 passed. No container was left behind; ryuk removed it.
+
+- **R1-1 (minor). The explicit-button branch can click before the button has a handler.**
+  `test/apps/Tellma.Identity.E2E/Infrastructure/PasskeyCeremonies.cs:59-66`. The login navigation
+  now returns at `Commit`, and when `conditional` is false the helper clicks "Sign in with a
+  passkey" at once. That button is `type="button"` (`Login.cshtml:76`). Its only behaviour is the
+  click listener that `login.page.js` attaches. The script is an external, parser-blocking
+  `<script>` at the end of the body (`Login.cshtml:123-125`, rendered at `_AuthLayout.cshtml:50`).
+  While the parser waits on that fetch, the already-parsed button can be laid out and painted, and
+  Playwright's actionability checks (visible, stable over two frames, enabled, hit-testable) can
+  pass. The click is then a silent no-op, and the test fails after `WaitForPathAsync`'s 30 s. The
+  old code avoided this because `GotoAsync` waited for `load`. The suite's "locators wait for their
+  own element" rule does not cover this case: the element exists before its behaviour does. Today
+  the branch is not taken in the suite's Chromium (conditional mediation is available), so this is
+  latent. But it is exactly the path the helper offers as the deterministic fallback, and
+  `StepUpTests`/`SyncedPasskeyTierTests` are expected to reuse the probe. Fix: wait for the
+  document only when no ceremony can move the browser on. For example, use
+  `WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded`.
+  `DOMContentLoaded` fires only after the parser-blocking scripts have run. Update the comment at
+  lines 52-57 and 64-65 to match.
+- **R1-2 (minor). A renamed private field has no XML doc.**
+  `test/apps/Tellma.Identity.IntegrationTests/Infrastructure/OidcFlowClient.cs:27`. AGENTS.md
+  requires an XML doc comment on every C# member. The field `_factory` was replaced by `_emails`
+  with no `<summary>`, while its new sibling `_pathBase` (line 29-30) got one. `_backchannel`
+  (line 26), on the edited block, has none either. Fix: add one-line summaries to both. For
+  example: "The host's captured outbound email, where sign-in codes are read." and "The cookie-less
+  client the confidential client's back-channel calls go through."
+
+### Responses
+
+- **R1-1: fixed.** `PasskeyCeremonies.RegisterThenSignInAsync` now navigates with
+  `WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded`. When the
+  conditional ceremony runs, it still waits only for commit, so the ceremony can navigate away freely.
+  When the button will be pressed, it waits for `DOMContentLoaded`, which fires only after the
+  parser-blocking `login.page.js` has attached the button's listener. The comment above the
+  navigation now explains both cases. The comment in the button branch now says the button is wired,
+  not that actionability is enough.
+  Checked: the branch is not taken in the suite's Chromium, so I ran it on purpose. A temporary local
+  edit (never committed) forced `conditional` to false and stubbed the page's
+  `isConditionalMediationAvailable` to false through an init script. With it, both passkey E2E tests
+  (standalone and in-proc) took the button path and passed in two runs (2/2 each). The edit was then
+  reverted.
+- **R1-2: fixed.** `OidcFlowClient._backchannel` and `_emails` now have one-line `<summary>`
+  docs, using the wording the review suggested.

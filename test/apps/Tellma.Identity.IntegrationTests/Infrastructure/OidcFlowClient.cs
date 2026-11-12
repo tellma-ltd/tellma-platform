@@ -23,7 +23,10 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
     /// </summary>
     public sealed class OidcFlowClient : IDisposable
     {
+        /// <summary>The cookie-less client the confidential client's back-channel calls go through.</summary>
         private readonly HttpClient _backchannel;
+
+        /// <summary>The host's captured outbound email, where sign-in codes are read.</summary>
         private readonly CapturingEmailSender _emails;
 
         /// <summary>The path base the engine's protocol endpoints are mounted at.</summary>
