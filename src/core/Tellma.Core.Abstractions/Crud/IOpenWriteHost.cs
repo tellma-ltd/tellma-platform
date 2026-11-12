@@ -18,8 +18,9 @@ namespace Tellma.Core.Abstractions.Crud
     public interface IOpenWriteHost : IWriteHost
     {
         /// <summary>Validates and persists every write enlisted with the frame. A frame persists once.</summary>
+        /// <param name="cancellationToken">Cancels the validation and the persist together with the frame's own token, such as a job's lease.</param>
         /// <returns>The batch's stamp and the version tags after its bumps.</returns>
         /// <exception cref="InvalidOperationException">The frame already persisted.</exception>
-        Task<EnlistmentOutcome> PersistAsync();
+        Task<EnlistmentOutcome> PersistAsync(CancellationToken cancellationToken = default);
     }
 }

@@ -10,9 +10,9 @@ using Tellma.Core.Abstractions.Data;
 namespace Tellma.Core.Tests.Notifications
 {
     /// <summary>
-    ///     A fake <see cref="IDataBatch" /> that supports commit callbacks alone: it records them,
-    ///     refuses one registered after it executed, as a real batch does, and runs them when the test
-    ///     commits it. Every other member throws.
+    ///     A fake <see cref="IDataBatch" /> that supports commit callbacks and its composing state
+    ///     alone: it records the callbacks, refuses one registered after it executed, as a real batch
+    ///     does, and runs them when the test commits it. Every other member throws.
     /// </summary>
     /// <remarks>A dispatch proxy, so the fake does not restate the batch's many members; create it with <see cref="Create" />.</remarks>
     public class CommitOnlyBatch : DispatchProxy
@@ -51,9 +51,15 @@ namespace Tellma.Core.Tests.Notifications
         /// <inheritdoc />
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
+            // The composing state, read through its getter.
+            if (targetMethod?.Name == "get_" + nameof(IDataBatch.IsComposing))
+            {
+                return !_executed;
+            }
+
             if (targetMethod?.Name != nameof(IDataBatch.OnCommitted))
             {
-                throw new NotSupportedException($"The fake batch supports {nameof(IDataBatch.OnCommitted)} alone, not {targetMethod?.Name}.");
+                throw new NotSupportedException($"The fake batch supports {nameof(IDataBatch.IsComposing)} and {nameof(IDataBatch.OnCommitted)} alone, not {targetMethod?.Name}.");
             }
 
             // A real batch refuses a callback once it executed.

@@ -4,18 +4,20 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
+using Tellma.Core.Tests.Data.Metadata;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition.Checks
 {
     /// <summary>
     ///     <c>core.notification-types</c>: keys and categories follow their grammars, keys are unique,
-    ///     severities are defined, channel-only types follow their rule, and targets name a top-level
+    ///     severities are defined, channel-only types follow their rule, and targets name a stack
     ///     entity with an integer key.
     /// </summary>
     public class NotificationTypesCheckTests
@@ -129,7 +131,41 @@ namespace Tellma.Core.Tests.Composition.Checks
             CompositionProblem problem = Assert.Single((await CheckAsync(
                 new NotificationTypeDescriptor("fixture.export.ready", "files", false, "core.Export"))).From(Check));
 
-            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Export', which is not a top-level entity of the model.", problem.Problem);
+            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Export', which is not a stack resource of the composition.", problem.Problem);
+        }
+
+        [Fact]
+        public async Task A_target_naming_a_stack_that_is_not_a_top_level_entity_passes()
+        {
+            // A system-written stack derives from Entity<int>, not TopLevelEntity; it is still a
+            // routable resource.
+            static void Compose(TellmaBuilder tellma)
+            {
+                _ = tellma.AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Entity<MdJob>()));
+            }
+
+            await using ServiceProvider provider = TestComposition.Compose(Compose).BuildServiceProvider(validateScopes: true);
+            EntityMetadata job = provider.GetRequiredService<IEntityMetadataProvider>().Get(typeof(MdJob));
+            Assert.False(job.IsTopLevel);
+
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution => contribution
+                    .Entity<MdJob>()
+                    .NotificationType(new NotificationTypeDescriptor("fixture.job.failed", "jobs", false, job.Name)))));
+
+            Assert.Empty(problems.From(Check));
+        }
+
+        [Fact]
+        public async Task A_target_naming_an_entity_mapped_without_a_stack_is_refused()
+        {
+            // The blob table is in every model but is no stack, so the client has no route to it.
+            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            string blob = provider.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Blob)).Name;
+
+            CompositionProblem problem = Assert.Single((await CheckAsync(new NotificationTypeDescriptor("fixture.blob.stored", "files", false, blob))).From(Check));
+
+            Assert.Equal($"The notification type 'fixture.blob.stored' of the feature 'fixture' targets '{blob}', which is not a stack resource of the composition.", problem.Problem);
         }
 
         [Fact]
@@ -145,8 +181,8 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             Assert.Equal(
                 [
-                    $"The notification type 'fixture.child.changed' of the feature 'fixture' targets '{child}', which is not a top-level entity of the model.",
-                    "The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is not a top-level entity of the model.",
+                    $"The notification type 'fixture.child.changed' of the feature 'fixture' targets '{child}', which is not a stack resource of the composition.",
+                    "The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is not a stack resource of the composition.",
                 ],
                 problems.Select(static problem => problem.Problem));
         }
@@ -162,9 +198,17 @@ namespace Tellma.Core.Tests.Composition.Checks
             record.NotificationTypes.Add(new ContributedNotificationType(
                 new NotificationTypeDescriptor("fixture.counter.reset", "tokens", false, "fixture.Counter"), new TestFeature<Tag.A>("fixture")));
 
+            TestFeature<Tag.A> owner = new("fixture");
+            record.Entities.Add(new ContributedEntity(typeof(TokenRow), null, null, owner));
+            record.Entities.Add(new ContributedEntity(typeof(CounterRow), null, null, owner));
+
             List<CompositionProblem> problems = [];
             new NotificationTypesCheck(record).CheckTargets(
-                new HandBuiltMetadata([HandBuiltMetadata.Entity("fixture.Token", typeof(Guid)), HandBuiltMetadata.Entity("fixture.Counter", typeof(long))]),
+                new HandBuiltMetadata(
+                [
+                    HandBuiltMetadata.Entity(typeof(TokenRow), "fixture.Token", typeof(Guid)),
+                    HandBuiltMetadata.Entity(typeof(CounterRow), "fixture.Counter", typeof(long)),
+                ]),
                 problems);
 
             CompositionProblem problem = Assert.Single(problems);
@@ -204,17 +248,18 @@ namespace Tellma.Core.Tests.Composition.Checks
             }
 
             /// <summary>The metadata of a top-level entity with nothing but its key.</summary>
+            /// <param name="clrType">The entity's class.</param>
             /// <param name="name">The entity's name.</param>
             /// <param name="keyType">The key's type.</param>
             /// <returns>The metadata.</returns>
-            public static EntityMetadata Entity(string name, Type keyType)
+            public static EntityMetadata Entity(Type clrType, string name, Type keyType)
             {
                 PropertyMetadata key = new(
                     "Id", "Id", keyType, PropertyOwnership.ServerOwned, false, false, null, null, null, null, null, null, false, null, false, false,
                     static _ => null, static (_, _) => { });
 
                 return new EntityMetadata(
-                    typeof(object), name, new TableName("fixture", name), null, key, [key], [], [], [],
+                    clrType, name, new TableName("fixture", name), null, key, [key], [], [], [],
                     isTopLevel: true, isTemporal: false, isActivatable: false, isJobEntity: false, isCacheable: false, tree: null, blobReferences: [],
                     displayName: new DisplayNameMetadata(key, null, null),
                     static () => new object(),
@@ -223,5 +268,11 @@ namespace Tellma.Core.Tests.Composition.Checks
                     schemaFingerprint: static _ => "fingerprint");
             }
         }
+
+        /// <summary>The class of the hand-built Guid-keyed entity.</summary>
+        private sealed class TokenRow;
+
+        /// <summary>The class of the hand-built long-keyed entity.</summary>
+        private sealed class CounterRow;
     }
 }

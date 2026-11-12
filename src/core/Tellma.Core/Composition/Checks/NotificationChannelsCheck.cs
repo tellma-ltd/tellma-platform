@@ -141,23 +141,34 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>The features that registered a sender, quoted and joined, from the composition's service registrations.</summary>
         /// <param name="implementation">The sender's class, or <see langword="null" /> for every sender.</param>
-        /// <returns>The features, or a description that names none when only a factory registration matches.</returns>
+        /// <returns>The features, or a description that names none when no feature registered a sender that could be it.</returns>
         private string SenderOwners(Type? implementation)
         {
-            // A factory registration names no class, so it is matched only when every sender is asked
-            // for; a sender created by one is attributed to no feature.
-            List<string> owners = [.. record.Services
-                .Where(service => service.ServiceType == typeof(INotificationChannel)
-                    && (implementation is null || service.ImplementationType == implementation))
-                .Select(static service => $"'{service.Owner.Name}'")
-                .Distinct(StringComparer.Ordinal)];
+            List<ContributedService> senders = [.. record.Services.Where(static service => service.ServiceType == typeof(INotificationChannel))];
 
-            return owners.Count switch
+            // --- Registered by its class: those features exactly ---
+            List<string> owners = Owners(senders.Where(service => implementation is null || service.ImplementationType == implementation));
+            if (owners.Count > 0)
+            {
+                return owners.Count == 1 ? $"the feature {owners[0]}" : $"the features {string.Join(" and ", owners)}";
+            }
+
+            // --- Else created by a factory, which names no class: one of the features that registered one ---
+            List<string> factories = Owners(senders.Where(static service => service.ImplementationType is null));
+            return factories.Count switch
             {
                 0 => "a registration outside the features",
-                1 => $"the feature {owners[0]}",
-                _ => $"the features {string.Join(" and ", owners)}",
+                1 => $"the feature {factories[0]}",
+                _ => $"one of the features {string.Join(" or ", factories)}",
             };
+        }
+
+        /// <summary>The distinct features of some registrations, quoted, in registration order.</summary>
+        /// <param name="services">The registrations.</param>
+        /// <returns>The features' quoted names.</returns>
+        private static List<string> Owners(IEnumerable<ContributedService> services)
+        {
+            return [.. services.Select(static service => $"'{service.Owner.Name}'").Distinct(StringComparer.Ordinal)];
         }
     }
 }

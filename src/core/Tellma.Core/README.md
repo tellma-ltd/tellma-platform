@@ -607,7 +607,7 @@ registries into the Core chunk of the client metadata as the sections `notificat
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
-| `core.notification-types` | a key is not two or more dot-separated lower-case segments of at most 64 characters; a category is not one such segment of at most 32; a key is registered twice; a severity is undefined; a channel-only type (`Inbox = false`) is mutable or a toast; a target is not a top-level entity of the model, or names one whose key is neither `int` nor `long` | no |
+| `core.notification-types` | a key is not two or more dot-separated lower-case segments of at most 64 characters; a category is not one such segment of at most 32; a key is registered twice; a severity is undefined; a channel-only type (`Inbox = false`) is mutable or a toast; a target is not a stack resource (an entity a feature contributed with `Entity<T>()`, named by its leaf's metadata), or names one whose key is neither `int` nor `long` | no |
 | `core.notification-channels` | a key is not one lower-case segment of at most 16 characters; a key is registered twice; `inbox` or `email` is missing; an `INotificationChannel` sender cannot be created in the gate's tenantless scope, names an unregistered channel or `inbox`, or shares its channel with another sender | no |
 | `core.client-events` | a name breaks the type-key grammar, or is registered twice | no |
 
@@ -615,7 +615,8 @@ registries into the Core chunk of the client metadata as the sections `notificat
 `IClientEventPublisher` is registered, with `TryAdd`, as `NullClientEventPublisher`, and
 `IRealtimeStatus` as a status reporting `false`, so a host without the hub composes and runs; the web
 package replaces both. Every publisher derives from `ClientEventPublisher`, which refuses an
-unregistered name and a payload over 4,096 UTF-8 bytes before anything is registered or sent,
+unregistered name, a payload over 4,096 UTF-8 bytes and a batch that already executed before
+anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
 users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
 

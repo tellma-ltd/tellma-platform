@@ -15,7 +15,8 @@ namespace Tellma.Core.Composition.Checks
     /// <summary>
     ///     <c>core.notification-types</c>: every type's key and category match their grammars, keys
     ///     are unique, every severity is defined, a channel-only type is neither mutable nor a toast,
-    ///     and every target names a top-level entity of the model whose key a 64-bit target id holds.
+    ///     and every target names a stack resource (an entity a feature contributed, through its leaf)
+    ///     whose key a 64-bit target id holds.
     /// </summary>
     /// <remarks>
     ///     Reads the composition alone. The registry keeps the first type of a key, so that this check,
@@ -109,18 +110,29 @@ namespace Tellma.Core.Composition.Checks
             }
         }
 
-        /// <summary>Checks that every target names a top-level entity of the model with an integer key.</summary>
+        /// <summary>Checks that every target names a stack resource of the composition with an integer key.</summary>
         /// <param name="metadata">The model's entity metadata.</param>
         /// <param name="problems">Receives the problems.</param>
         internal void CheckTargets(IEntityMetadataProvider metadata, List<CompositionProblem> problems)
         {
-            // A target is the resource the client routes to. The stack resources are the top-level
-            // entities' names; when the securable registry lands (spec 0021 §11 also accepts a
-            // registered securable resource), its resources join these.
-            Dictionary<string, EntityMetadata> resources = new(StringComparer.Ordinal);
-            foreach (EntityMetadata entity in metadata.All.Where(static entity => entity.IsTopLevel))
+            // A target is the resource the client routes to. The stack resources are the entities the
+            // features contributed as stacks, named by their leaves' metadata; an entity mapped
+            // without a stack (a child, a platform table) has no route. When the securable registry
+            // lands (spec 0021 §11 also accepts a registered securable resource), its resources join
+            // these.
+            Dictionary<Type, EntityMetadata> byType = [];
+            foreach (EntityMetadata entity in metadata.All)
             {
-                _ = resources.TryAdd(entity.Name, entity);
+                _ = byType.TryAdd(entity.ClrType, entity);
+            }
+
+            Dictionary<string, EntityMetadata> resources = new(StringComparer.Ordinal);
+            foreach (ContributedEntity stack in record.Entities)
+            {
+                if (byType.TryGetValue(record.LeafOf(stack.EntityType), out EntityMetadata? entity))
+                {
+                    _ = resources.TryAdd(entity.Name, entity);
+                }
             }
 
             foreach (ContributedNotificationType contributed in record.NotificationTypes)
@@ -136,8 +148,8 @@ namespace Tellma.Core.Composition.Checks
                 {
                     problems.Add(new CompositionProblem(
                         Name,
-                        $"{described} targets '{target}', which is not a top-level entity of the model.",
-                        "Target a top-level entity by its name, such as 'core.User', so the client can route to it; set the target to null for a type that points at nothing."));
+                        $"{described} targets '{target}', which is not a stack resource of the composition.",
+                        "Target an entity a feature contributes as a stack (contribution.Entity<T>()) by its name, such as 'core.User', so the client can route to it; set the target to null for a type that points at nothing."));
                     continue;
                 }
 

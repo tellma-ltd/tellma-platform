@@ -178,19 +178,29 @@ namespace Tellma.Core.Tests.Notifications
         }
 
         [Fact]
-        public void Publishing_on_an_executed_batch_is_refused_by_the_batch()
+        public void Publishing_on_an_executed_batch_is_refused_whether_or_not_it_committed()
         {
-            (IDataBatch batch, CommitOnlyBatch fake) = CommitOnlyBatch.Create();
             RecordingPublisher publisher = new();
 
-            // Before any publish, and after the batch's own callback ran.
-            fake.Fail();
-            _ = Assert.Throws<InvalidOperationException>(() => publisher.Publish(batch, new ClientEvent("inbox.changed", [1], null)));
+            // A batch that failed before any publish on it.
+            (IDataBatch failedFirst, CommitOnlyBatch failedFirstFake) = CommitOnlyBatch.Create();
+            failedFirstFake.Fail();
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => publisher.Publish(failedFirst, new ClientEvent("inbox.changed", [1], null)));
+            Assert.StartsWith("The client event 'inbox.changed' was published on a batch that already executed", refused.Message, StringComparison.Ordinal);
 
+            // A batch that failed after an event joined it: the next publish is refused too.
+            (IDataBatch failed, CommitOnlyBatch failedFake) = CommitOnlyBatch.Create();
+            publisher.Publish(failed, new ClientEvent("inbox.changed", [1], null));
+            failedFake.Fail();
+            _ = Assert.Throws<InvalidOperationException>(() => publisher.Publish(failed, new ClientEvent("inbox.changed", [2], null)));
+
+            // A batch that committed.
             (IDataBatch committed, CommitOnlyBatch committedFake) = CommitOnlyBatch.Create();
             publisher.Publish(committed, new ClientEvent("inbox.changed", [1], null));
             committedFake.Commit();
             _ = Assert.Throws<InvalidOperationException>(() => publisher.Publish(committed, new ClientEvent("inbox.changed", [2], null)));
+
+            // Only the committed batch's one event was sent.
             Assert.Single(publisher.Delivered);
         }
 

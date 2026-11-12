@@ -66,12 +66,20 @@ namespace Tellma.Core.Notifications
             }
 
             // --- With a batch: join the batch's one commit callback ---
+            // Checked on every publish, not only the first: a batch that executed (committed or not)
+            // never runs a callback again, so an event joined to it would never be sent.
+            if (!batch.IsComposing)
+            {
+                throw new InvalidOperationException(
+                    $"The client event '{clientEvent.Name}' was published on a batch that already executed, so it could never be sent. Publish it on a batch before the batch executes, or without a batch.");
+            }
+
             lock (_gate)
             {
                 if (!_pending.TryGetValue(batch, out PendingEvents? pending))
                 {
-                    // The callback is registered before the batch is remembered: a batch that already
-                    // executed refuses it, and nothing is then left waiting on a commit that has passed.
+                    // The callback is registered before the batch is remembered, so a registration the
+                    // batch refuses leaves nothing waiting on it.
                     PendingEvents created = new();
                     batch.OnCommitted(_ => Flush(batch, created));
                     _pending.Add(batch, created);
@@ -150,8 +158,7 @@ namespace Tellma.Core.Notifications
             List<ClientEvent> events;
             lock (_gate)
             {
-                // Forgotten, so a later publish on the executed batch is refused by the batch rather
-                // than waiting on a commit that has passed.
+                // Forgotten: the batch executed, and a later publish on it is refused.
                 _ = _pending.Remove(batch);
                 events = pending.Drain();
             }

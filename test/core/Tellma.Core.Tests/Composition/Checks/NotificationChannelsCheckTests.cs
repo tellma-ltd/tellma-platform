@@ -101,6 +101,32 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public async Task A_sender_created_by_a_factory_is_attributed_to_the_features_that_registered_one()
+        {
+            static ServiceContributionItem Factory()
+            {
+                return new ServiceContributionItem(typeof(INotificationChannel), null, static _ => new SmsChannel(), ServiceLifetimeKind.Scoped);
+            }
+
+            IReadOnlyList<CompositionProblem> one = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Add(Factory()))));
+
+            Assert.Equal(
+                $"The notification channel sender {Display(typeof(SmsChannel))} registered by the feature 'fixture' delivers the channel 'sms', which is not registered.",
+                Assert.Single(one.From(Check)).Problem);
+
+            IReadOnlyList<CompositionProblem> two = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Add(Factory())))
+                .AddFeature(new TestFeature<Tag.B>("other", contribute: static contribution => contribution
+                    .NotificationChannel(new NotificationChannelDescriptor("push", false))
+                    .Add(new ServiceContributionItem(typeof(INotificationChannel), null, static _ => new PushChannel(), ServiceLifetimeKind.Scoped)))));
+
+            Assert.Equal(
+                $"The notification channel sender {Display(typeof(SmsChannel))} registered by one of the features 'fixture' or 'other' delivers the channel 'sms', which is not registered.",
+                Assert.Single(two.From(Check)).Problem);
+        }
+
+        [Fact]
         public async Task Two_senders_of_one_channel_are_refused()
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
@@ -170,6 +196,9 @@ namespace Tellma.Core.Tests.Composition.Checks
 
         /// <summary>A sender of the <c>sms</c> channel.</summary>
         public sealed class SmsChannel() : TestChannel("sms");
+
+        /// <summary>A sender of the <c>push</c> channel.</summary>
+        public sealed class PushChannel() : TestChannel("push");
 
         /// <summary>A sender of the <c>email</c> channel.</summary>
         public sealed class EmailChannel() : TestChannel("email");
