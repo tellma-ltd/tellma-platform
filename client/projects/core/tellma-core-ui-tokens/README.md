@@ -33,9 +33,12 @@ preset, a tokens→CSS emitter, and a shipped validation gate.
   in the stack notices.
 - **Component variables are internal**, except the few a consumer may set:
   `--icon-size` (a container sizing the icons inside it),
-  `--icon-stroke-width` (a host that needs a heavier glyph) and
+  `--icon-stroke-width` (a host that needs a heavier glyph),
   `--counter-halo` (the host of an overlay counter, set to the colour the
-  counter sits on).
+  counter sits on), `--toast-offset-block-start` (the app shell, to keep
+  toasts clear of its top bar) and `--busy-overlay-delay` (how long the busy
+  overlay blocks invisibly before its scrim shows). The `--chip-*` group is
+  the one group a consumer may read, for chip-shaped controls of its own.
 - **Emitter** — `tmEmitCss(tokens)` produces a static stylesheet; every sheet
   opens with `@layer tm.base, tm.theme;` so load order can never change
   which layer wins. A distribution themes by emitting its delta into

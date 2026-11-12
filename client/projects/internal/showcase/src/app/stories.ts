@@ -8,8 +8,11 @@ import { Component, Type } from '@angular/core';
 import { AlertStory } from './alert/alert-story';
 import { AvatarStory } from './avatar/avatar-story';
 import { BadgeStory } from './badge/badge-story';
+import { BannerStory } from './banner/banner-story';
+import { BusyOverlayStory } from './busy-overlay/busy-overlay-story';
 import { ButtonStory } from './button/button-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { ChipStory } from './chip/chip-story';
 import { CopyStory } from './copy/copy-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
 import { EmptyStateStory } from './empty-state/empty-state-story';
@@ -45,6 +48,7 @@ import { SelectStory } from './select/select-story';
 import { SkeletonStory } from './skeleton/skeleton-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
+import { ToastStory } from './toast/toast-story';
 
 /**
  * The showcase story registry.
@@ -89,6 +93,10 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'skeleton', title: 'Skeleton (tm-skeleton)', component: SkeletonStory },
   { id: 'relative-time', title: 'Relative time (tm-relative-time)', component: RelativeTimeStory },
   { id: 'empty-state', title: 'Empty state (tm-empty-state)', component: EmptyStateStory },
+  { id: 'chip', title: 'Chips (tm-chip + tm-chip-set)', component: ChipStory },
+  { id: 'toast', title: 'Toasts (TmToasts)', component: ToastStory },
+  { id: 'banner', title: 'Banner bar (tm-banner-bar)', component: BannerStory },
+  { id: 'busy-overlay', title: 'Busy overlay (TmBusyOverlay)', component: BusyOverlayStory },
   { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },

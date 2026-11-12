@@ -141,6 +141,31 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the chip ladder and the feedback surfaces’ geometry at the sizes they are drawn at', () => {
+    // The names tm-chip, tm-chip-set, the toast host, tm-banner-bar and the
+    // busy overlay read. The chip group is public to read, the toast offset
+    // and the busy delay are set by consumers, and the busy delay is read by
+    // script.
+    for (const declaration of [
+      '--chip-height: 24px;',
+      '--chip-height-sm: 20px;',
+      '--chip-height-lg: 28px;',
+      '--chip-padding-xsm: 8px;',
+      '--chip-padding-xlg: 12px;',
+      '--chip-radius: var(--radius-full);',
+      '--chip-target-size: 24px;',
+      '--toast-width: 360px;',
+      '--toast-offset-block-start: 8px;',
+      '--toast-close-size: 28px;',
+      '--banner-height: 32px;',
+      '--banner-button-size: 24px;',
+      '--busy-overlay-delay: 200ms;',
+      '--busy-overlay-scrim: rgba(4, 18, 24, 0.4);',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role

@@ -1,0 +1,131 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-banner-bar — one row exactly 32 px tall (border included), the height
+   of the shell's banner row. It fills with the tone's status tint, draws
+   the status border along its block-end edge, and keeps body ink for the
+   text; the tone's ink draws the icon. */
+
+:host {
+  --tm-banner-bg: var(--info-bg);
+  --tm-banner-border: var(--info-border);
+  --tm-banner-ink: var(--info);
+
+  display: flex;
+  align-items: center;
+  gap: var(--banner-gap);
+  box-sizing: border-box;
+  block-size: var(--banner-height);
+  padding-inline: var(--banner-padding-x);
+  border-block-end: var(--border-width) solid var(--tm-banner-border);
+  background: var(--tm-banner-bg);
+  color: var(--banner-text);
+  font-family: var(--font-ui);
+  font-size: var(--banner-font-size);
+  line-height: normal;
+  white-space: nowrap;
+}
+
+:host([data-tone='warning']) {
+  --tm-banner-bg: var(--warning-bg);
+  --tm-banner-border: var(--warning-border);
+  --tm-banner-ink: var(--warning);
+}
+
+:host([data-tone='error']) {
+  --tm-banner-bg: var(--error-bg);
+  --tm-banner-border: var(--error-border);
+  --tm-banner-ink: var(--error);
+}
+
+.tm-banner-bar__icon {
+  --icon-size: var(--banner-icon-size);
+
+  flex: none;
+  color: var(--tm-banner-ink);
+}
+
+/* The message takes the rest of the line and ellipsizes. */
+.tm-banner-bar__message {
+  position: relative;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The tone prefix is read, not drawn. */
+.tm-banner-bar__tone {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* The action: a text button the bar's height less 8 px. */
+.tm-banner-bar__action {
+  flex: none;
+  box-sizing: border-box;
+  block-size: var(--banner-button-size);
+  margin: 0;
+  padding-block: 0;
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid var(--tm-banner-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.tm-banner-bar__pager {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.tm-banner-bar__position {
+  padding-inline: var(--space-1);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Previous, next and dismiss: 24 px square icon buttons. */
+.tm-banner-bar__button {
+  --icon-size: var(--banner-button-icon-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--banner-button-size);
+  block-size: var(--banner-button-size);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* Hover: a wash of the ink over the tint. */
+.tm-banner-bar__action:hover,
+.tm-banner-bar__button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: var(--text-body);
+}
+
+/* Focus: the token ring, over a transparent outline forced colours repaint. */
+.tm-banner-bar__action:focus-visible,
+.tm-banner-bar__button:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}

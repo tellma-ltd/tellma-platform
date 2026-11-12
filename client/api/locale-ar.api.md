@@ -237,6 +237,24 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly counter: {
         readonly overflow: "{max}+";
     };
+    readonly chip: {
+        readonly remove: "إزالة {label}";
+        readonly more: "المزيد ({count, number}): {labels}";
+    };
+    readonly toast: {
+        readonly region: "الرسائل الأخيرة";
+        readonly close: "إغلاق";
+        readonly more: "المزيد ({count, number})";
+    };
+    readonly banner: {
+        readonly dismiss: "إخفاء";
+        readonly previous: "الرسالة السابقة";
+        readonly next: "الرسالة التالية";
+        readonly position: "{index, number} من {count, number}";
+    };
+    readonly busyOverlay: {
+        readonly label: "يرجى الانتظار";
+    };
 };
 
 ```
