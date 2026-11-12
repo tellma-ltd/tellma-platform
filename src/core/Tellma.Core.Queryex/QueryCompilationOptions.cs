@@ -374,4 +374,102 @@ namespace Tellma.Core.Queryex
             }
         } = QueryexLimits.Default;
     }
+
+    /// <summary>
+    ///     Options for printing a text with its parameters bound: the arguments that become literals
+    ///     and the parameters that fold away.
+    /// </summary>
+    /// <remarks>
+    ///     Binding parameters into text is syntactic, so no schema is involved. What it needs is
+    ///     each parameter's declared type, which is what an argument is checked against and what an
+    ///     absent value is printed as.
+    /// </remarks>
+    public sealed record ParameterBindingOptions
+    {
+        /// <summary>
+        ///     The position the text is written for, which decides where omitted parameters fold:
+        ///     along the skeleton of a predicate, and in the condition of an aggregation in every
+        ///     position.
+        /// </summary>
+        public required QueryexMode Mode { get; init; }
+
+        /// <summary>The Queryex version the text was validated under.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        ///     The version is one this engine does not compile.
+        /// </exception>
+        public required int QueryexVersion
+        {
+            get;
+            init
+            {
+                if (!QueryexLanguage.IsSupported(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value),
+                        value,
+                        "This engine does not compile that Queryex version.");
+                }
+
+                field = value;
+            }
+        }
+
+        /// <summary>The declared parameters.</summary>
+        public IReadOnlyList<QueryexParameterDeclaration> Parameters
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = [];
+
+        /// <summary>
+        ///     The arguments, by parameter name matched ignoring case, each printed as a literal in
+        ///     place of its parameter.
+        /// </summary>
+        /// <remarks>
+        ///     Each value is the CLR value of the parameter's declared type: <see cref="decimal" />,
+        ///     <see cref="int" /> or <see cref="long" /> for a number, <see cref="string" />,
+        ///     <see cref="bool" />, <see cref="DateOnly" /> for a date, <see cref="DateTime" />,
+        ///     <see cref="DateTimeOffset" /> or <see cref="Guid" />; or null for the absent value.
+        ///     Each name must be declared, at most once ignoring case, and none may also be
+        ///     omitted.
+        /// </remarks>
+        public IReadOnlyDictionary<string, object?> Values
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = new Dictionary<string, object?>();
+
+        /// <summary>
+        ///     The declared parameters left out, by name, matched ignoring case; they fold away
+        ///     exactly as when a query is compiled without them.
+        /// </summary>
+        public IReadOnlyCollection<string> Omitted
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = [];
+
+        /// <summary>The resource ceilings for this call site.</summary>
+        public QueryexLimits Limits
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                field = value;
+            }
+        } = QueryexLimits.Default;
+    }
 }
