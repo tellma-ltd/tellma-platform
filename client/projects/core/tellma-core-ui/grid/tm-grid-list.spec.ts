@@ -17,7 +17,7 @@ import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { TmGrid } from './tm-grid';
 import { TmGridColumn } from './tm-grid-column';
 import { TmGridDriver } from './tm-grid-driver';
-import { TmGridDisplayDef } from './tm-grid-templates';
+import { TmGridDisplayDef, TmGridHeaderDef } from './tm-grid-templates';
 import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
 
 // The list-page features of a readonly grid: row activation, the external
@@ -45,6 +45,7 @@ function makeRows(count: number, from = 0): readonly Row[] {
     <input class="search" type="search" [tmGridDriver]="grid" />
     <tm-grid
       #grid
+      class="paint-probe"
       gridId="list-grid"
       [data]="rows()"
       [rowId]="rowId"
@@ -69,6 +70,10 @@ function makeRows(count: number, from = 0): readonly Row[] {
   `,
   // A consumer row class, styled from outside the grid's view.
   styles: `
+    .paint-probe {
+      --grid-active-row-bg: rgb(7, 8, 9);
+      --surface-selected: rgb(10, 11, 12);
+    }
     .test-tint {
       --tm-grid-row-bg: rgb(1, 2, 3);
       --tm-grid-row-ink: rgb(4, 5, 6);
@@ -118,6 +123,57 @@ class EditableRowsHost {
   `,
 })
 class UnkeyedSortHost {
+  readonly rows = makeRows(2);
+  readonly rowId = (row: Row): number => row.id;
+  readonly nameOf = (row: Row): string => row.name;
+}
+
+/** An editable grid whose readonly column renders links. */
+@Component({
+  imports: [TmGrid, TmGridColumn, TmGridDisplayDef],
+  template: `
+    <tm-grid gridId="list-editable-link" [field]="f" [rowId]="rowId" style="block-size: 300px">
+      <tm-grid-column key="name" header="Name" [width]="140" />
+      <tm-grid-column key="qty" header="Item" [width]="140" readonly>
+        <a *tmGridDisplay="let value; rowId as id" class="link" [href]="'#/item/' + id">{{
+          value
+        }}</a>
+      </tm-grid-column>
+    </tm-grid>
+  `,
+})
+class EditableLinkHost {
+  readonly model = signal<Row[]>([...makeRows(5)]);
+  readonly f = form(this.model);
+  readonly rowId = (row: Row): number => row.id;
+}
+
+/** Sortable columns whose headers are templates, with no header text. */
+@Component({
+  imports: [TmGrid, TmGridColumn, TmGridHeaderDef],
+  template: `
+    <tm-grid gridId="list-template-header" [data]="rows" [rowId]="rowId" style="block-size: 200px">
+      <tm-grid-column key="qty" type="number" [width]="100" sortable>
+        <span *tmGridHeader>#</span>
+      </tm-grid-column>
+    </tm-grid>
+  `,
+})
+class TemplateHeaderHost {
+  readonly rows = makeRows(3);
+  readonly rowId = (row: Row): number => row.id;
+}
+
+/** A template-headed sortable column without a key. */
+@Component({
+  imports: [TmGrid, TmGridColumn, TmGridHeaderDef],
+  template: `
+    <tm-grid gridId="list-unkeyed-template" [data]="rows" [rowId]="rowId">
+      <tm-grid-column [value]="nameOf" sortable><span *tmGridHeader>N</span></tm-grid-column>
+    </tm-grid>
+  `,
+})
+class UnkeyedTemplateSortHost {
   readonly rows = makeRows(2);
   readonly rowId = (row: Row): number => row.id;
   readonly nameOf = (row: Row): string => row.name;
@@ -183,7 +239,11 @@ function press(target: Element, init: PointerEventInit = {}, travel = 0): Pointe
   const at = { clientX: rect.left + 8, clientY: rect.top + 8 };
   const down = pointer(target, 'pointerdown', { ...at, ...init });
   if (travel > 0) {
-    pointer(document.body, 'pointermove', { ...init, clientX: at.clientX + travel, clientY: at.clientY });
+    pointer(document.body, 'pointermove', {
+      ...init,
+      clientX: at.clientX + travel,
+      clientY: at.clientY,
+    });
   }
   pointer(target, 'pointerup', { ...init, clientX: at.clientX + travel, clientY: at.clientY });
   return down;
@@ -355,6 +415,61 @@ describe('tm-grid row activation', () => {
     expect(host.activations).toEqual([]);
   });
 
+  it('opens no row when a pen press is held into the long-press menu', async () => {
+    const { fixture, host, scroller } = await setup();
+    const cell = cellAt(scroller, 3, 1);
+    pointer(cell, 'pointerdown', { pointerType: 'pen', pointerId: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await stable(fixture);
+    expect(document.querySelector('.tm-menu__panel')).not.toBeNull();
+    // The release ends a press that asked for the menu: nothing opens.
+    pointer(cell, 'pointerup', { pointerType: 'pen', pointerId: 9 });
+    await stable(fixture);
+    expect(host.activations).toEqual([]);
+  });
+
+  it('opens the row once while Enter or Mod+Enter is held', async () => {
+    const { fixture, host, scroller, input } = await setup();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    try {
+      press(cellAt(scroller, 2, 1));
+      await stable(fixture);
+      host.activations.length = 0;
+      const cell = cellAt(scroller, 2, 1);
+      now.mockReturnValue(11_000);
+      keydown(cell, 'Enter');
+      // Repeats arrive past the 400 ms guard: each is consumed, none opens.
+      now.mockReturnValue(11_600);
+      expect(keydown(cell, 'Enter', { repeat: true }).defaultPrevented).toBe(true);
+      now.mockReturnValue(12_200);
+      expect(keydown(cell, 'Enter', { ...mod, repeat: true }).defaultPrevented).toBe(true);
+      // The same through the driver.
+      now.mockReturnValue(13_000);
+      expect(keydown(input, 'Enter', { repeat: true }).defaultPrevented).toBe(true);
+      now.mockReturnValue(14_000);
+      expect(keydown(input, 'Enter').defaultPrevented).toBe(true);
+      await stable(fixture);
+    } finally {
+      now.mockRestore();
+    }
+    expect(host.activations.map((a) => [a.rowId, a.via, a.newTab])).toEqual([
+      [2, 'keyboard', false],
+      [2, 'keyboard', false],
+    ]);
+  });
+
+  it('adds a range on Mod+click while opening the row in a new tab', async () => {
+    const { fixture, host, scroller } = await setup();
+    press(cellAt(scroller, 1, 1));
+    await stable(fixture);
+    press(cellAt(scroller, 4, 2), mod);
+    await stable(fixture);
+    expect(cellAt(scroller, 1, 1).getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 4, 2).getAttribute('aria-selected')).toBe('true');
+    expect(cellAt(scroller, 2, 1).getAttribute('aria-selected')).not.toBe('true');
+    expect(host.activations.at(-1)).toMatchObject({ rowId: 4, newTab: true, via: 'pointer' });
+  });
+
   it('throws in dev mode when row activation meets an editable grid', () => {
     TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
     const fixture = TestBed.createComponent(EditableRowsHost);
@@ -397,6 +512,34 @@ describe('tm-grid links keep the browser menu', () => {
       expect(document.querySelector('.tm-menu__panel'), mode).not.toBeNull();
     },
   );
+
+  it('settles an open editor before a right-click on a link moves the active cell', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(EditableLinkHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    press(cellAt(scroller, 0, 0));
+    await stable(fixture);
+    keydown(cellAt(scroller, 0, 0), 'F2');
+    await stable(fixture);
+    expect(scroller.querySelector('[data-tm-editor]')).not.toBeNull();
+
+    const link = cellAt(scroller, 3, 1).querySelector('a.link')!;
+    const rect = link.getBoundingClientRect();
+    const menu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + 2,
+      clientY: rect.top + 2,
+    });
+    link.dispatchEvent(menu);
+    await stable(fixture);
+    expect(menu.defaultPrevented).toBe(false);
+    expect(scroller.querySelector('[data-tm-editor]')).toBeNull();
+    expect(cellAt(scroller, 3, 1).getAttribute('tabindex')).toBe('0');
+  });
 
   it('starts no long-press timer on a cell link', async () => {
     const { fixture, scroller } = await setup();
@@ -623,6 +766,27 @@ describe('tm-grid sortable headers', () => {
     expect(slot.querySelector('.tm-grid__sort-glyph--next')).toBeNull();
   });
 
+  it('names a template-headed column by its key in the announcement', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TemplateHeaderHost);
+    await stable(fixture);
+    const announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce');
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    press(headerAt(scroller, 0));
+    await stable(fixture);
+    expect(announce.mock.calls.map((call) => String(call[0]))).toEqual([
+      'Sorted by qty, ascending',
+    ]);
+  });
+
+  it('names a template-headed unkeyed sortable column by position in the dev error', () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(UnkeyedTemplateSortHost);
+    expect(() => fixture.detectChanges()).toThrowError(/sortable column "#1" has no key/);
+  });
+
   it('throws in dev mode when a sortable column has no key', () => {
     TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
     const fixture = TestBed.createComponent(UnkeyedSortHost);
@@ -704,6 +868,20 @@ describe('tm-grid rowClass and rowHeaders', () => {
     host.rowClass.set(undefined);
     await stable(fixture);
     expect(rowAt(scroller, 1).classList).not.toContain('tm-grid__row--muted');
+  });
+
+  it('paints the active and checked tints over a row class', async () => {
+    const { fixture, host, scroller } = await setup((h) => {
+      h.selectable.set(true);
+      h.rowClass.set((row) => (row.id === 4 || row.id === 5 ? 'test-tint' : null));
+    });
+    press(cellAt(scroller, 4, 1));
+    host.selection.set(new Set([5]));
+    await stable(fixture);
+    const background = (row: number): string =>
+      getComputedStyle(cellAt(scroller, row, 2)).backgroundColor;
+    expect(background(4)).toBe('rgb(7, 8, 9)'); // active over the class
+    expect(background(5)).toBe('rgb(10, 11, 12)'); // checked over the class
   });
 
   it('drops the row-number column and the corner, shifting the column indexes', async () => {

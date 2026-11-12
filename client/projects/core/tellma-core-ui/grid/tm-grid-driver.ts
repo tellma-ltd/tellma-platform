@@ -98,7 +98,11 @@ export class TmGridDriver {
         break;
       case 'Enter':
         // With no active row, Enter stays the input's own (a search submit).
-        if (target.activeRowId() === null || !target.activateRow(undefined, { newTab: mod })) {
+        // A held Enter opens the row once: its repeats are consumed.
+        if (
+          target.activeRowId() === null ||
+          (!event.repeat && !target.activateRow(undefined, { newTab: mod }))
+        ) {
           return;
         }
         break;

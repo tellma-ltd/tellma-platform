@@ -128,9 +128,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * de-emphasized row and a totals row. Selection, checked and active
    * states paint over them.
    */
-  readonly rowClass = input<((row: T) => string | readonly string[] | null) | undefined>(
-    undefined,
-  );
+  readonly rowClass = input<((row: T) => string | readonly string[] | null) | undefined>(undefined);
   /**
    * Whether the row-number column (and the corner above it) renders. A
    * list without row numbers keeps the selections they offered by pointer
@@ -289,9 +287,12 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
       });
       // A sort names its column by key, so a sortable column needs one.
       effect(() => {
-        const unkeyed = this.columns().find((column) => column.sortable() && !column.key());
-        if (unkeyed !== undefined) {
-          throw new Error(`tm-grid: the sortable column "${unkeyed.header()}" has no key.`);
+        const columns = this.columns();
+        const unkeyed = columns.findIndex((column) => column.sortable() && !column.key());
+        if (unkeyed >= 0) {
+          // A template-drawn header has no text: name the column by position.
+          const name = columns[unkeyed].header() || `#${unkeyed + 1}`;
+          throw new Error(`tm-grid: the sortable column "${name}" has no key.`);
         }
       });
     }
@@ -343,8 +344,9 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * Opens a row — the active one when no id is given — emitting
    * `rowActivate` as a keyboard activation. Returns `false` when the grid
    * holds no such row. A second activation of the same row within 400 ms is
-   * ignored (still returning `true`), so a double-click or a repeated key
-   * opens once.
+   * ignored (still returning `true`), so a quick double activation opens
+   * once; a held Enter in the grid or a driver opens once however long it
+   * repeats.
    */
   activateRow(rowId?: TmRowId, options?: { newTab?: boolean }): boolean {
     return this.core.activateRow(rowId, 'keyboard', options?.newTab === true);

@@ -190,20 +190,13 @@ let nextScrollerId = 0;
 
 /**
  * A second activation of the same row within this window is ignored, in ms,
- * so a double-click (or a key repeat) opens the row once.
+ * so a double-click opens the row once. (A held key's repeats are consumed
+ * before they reach it.)
  */
 const ROW_ACTIVATION_GUARD_MS = 400;
 
 /** Pointer travel under which a press and release is a click, not a drag, in px. */
 const CLICK_SLOP_PX = 4;
-
-/** The header sort state of a column that is not sortable. */
-const UNSORTABLE: ɵTmGridHeaderSortVm = {
-  sortable: false,
-  direction: null,
-  next: null,
-  ariaSort: null,
-};
 
 function cellSelector(cell: TmRowCol): string {
   return `[data-tm-cell][data-row="${cell.row}"][data-col="${cell.col}"]`;
@@ -480,10 +473,11 @@ export interface ɵTmGridRowVm {
   readonly cells: readonly ɵTmGridCellVm[];
 }
 
-/** One column header's sort state. */
+/**
+ * A sortable column header's sort state (a sortable column with a key;
+ * other headers have none).
+ */
 export interface ɵTmGridHeaderSortVm {
-  /** Whether the header is a sort control (a sortable column with a key). */
-  readonly sortable: boolean;
   /** The column's current sort direction, or `null` when it is not the sorted column. */
   readonly direction: 'asc' | 'desc' | null;
   /** The direction a click moves to (`null`: the click clears the sort), for the hover preview. */
@@ -642,8 +636,8 @@ export interface ɵTmGridViewCore {
   readonly rowHintId: string;
   /** The localized row-activation hint. */
   readonly rowActivationHint: Signal<string>;
-  /** Per column, the header's sort state. */
-  readonly headerSort: Signal<readonly ɵTmGridHeaderSortVm[]>;
+  /** Per column, the header's sort state; `undefined` on a header that does not sort. */
+  readonly headerSort: Signal<readonly (ɵTmGridHeaderSortVm | undefined)[]>;
   /** The select-all checkbox's tri-state over the bound rows. */
   readonly checkAllState: Signal<'all' | 'none' | 'mixed'>;
   /** The select-all checkbox's accessible name. */
@@ -814,6 +808,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   private lastToggledRowId: TmRowId | null = null;
   /** The last emitted row activation: the double-activation guard. */
   private lastActivation: { readonly rowId: TmRowId; readonly at: number } | null = null;
+  /**
+   * Whether the pointer press in progress fired the long-press (a pen held
+   * still): its release then opens nothing, since the press asked for the
+   * menu.
+   */
+  private pressLongPressed = false;
   /** Debounces the checked-count announcement across toggle bursts. */
   private checkedAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Kills superseded find-scan chains (re-query, rows change, destroy). */
@@ -898,8 +898,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
   readonly rowHintId = `${this.scrollerId}-hint`;
   /** The localized row-activation hint. */
   readonly rowActivationHint: Signal<string>;
-  /** Per column, the header's sort state. */
-  readonly headerSort: Signal<readonly ɵTmGridHeaderSortVm[]>;
+  /** Per column, the header's sort state; `undefined` on a header that does not sort. */
+  readonly headerSort: Signal<readonly (ɵTmGridHeaderSortVm | undefined)[]>;
   /** The active row element's id, or `null` with no active row. */
   readonly activeDescendantId: Signal<string | null>;
   /** The select-all checkbox's tri-state over the bound rows. */
@@ -1137,14 +1137,13 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // header indicators only, never the body's columns.
     this.headerSort = computed(() => {
       const sort = deps.orderBy();
-      return deps.columns().map((column): ɵTmGridHeaderSortVm => {
+      return deps.columns().map((column): ɵTmGridHeaderSortVm | undefined => {
         const key = column.key();
         if (!column.sortable() || key === undefined) {
-          return UNSORTABLE;
+          return undefined;
         }
         const direction = sort?.key === key ? sort.direction : null;
         return {
-          sortable: true,
           direction,
           next: direction === null ? 'asc' : direction === 'asc' ? 'desc' : null,
           ariaSort: direction === null ? null : direction === 'asc' ? 'ascending' : 'descending',
@@ -1689,9 +1688,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     if (next === null) {
       this.announcements.announce('grid.announce.sortCleared');
     } else {
+      // A header drawn by a template has no header text: name it by key.
       const header = untracked(this.columnsInternal)[col]?.header;
       this.announcements.announce('grid.announce.sorted', {
-        column: header === undefined ? key : untracked(header),
+        column: (header === undefined ? '' : untracked(header)) || key,
         direction: next.direction,
       });
     }
@@ -1780,6 +1780,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
     // keymap still resolves Tab (it means commit-and-move mid-edit), so guard
     // it here rather than re-entering the grid at the next editable cell.
     if (intent?.kind === 'tab' && untracked(this.escapedSignal)) {
+      return;
+    }
+    // A held Enter or Mod+Enter opens the row once: key repeats outlast the
+    // double-activation guard, so they are consumed without opening again.
+    if (event.repeat && event.key === 'Enter' && !event.shiftKey && untracked(this.rowMode)) {
+      event.preventDefault();
       return;
     }
     if (intent !== null && this.executeIntent(intent)) {
@@ -2048,7 +2054,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       }
       event.preventDefault();
       this.escapedSignal.set(false);
-      if (!event.shiftKey && !mod && !event.altKey && untracked(this.headerSort)[col]?.sortable) {
+      if (!event.shiftKey && !mod && !event.altKey && untracked(this.headerSort)[col]) {
         // A sortable header (spec 0010 §C.3): a click sorts and leaves the
         // selection (and focus) alone; only a drag past the slop turns the
         // press into the column selection a plain header makes on press.
@@ -2199,7 +2205,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return;
       }
       this.escapedSignal.set(false);
-      if (untracked(this.headerSort)[col]?.sortable) {
+      if (untracked(this.headerSort)[col]) {
         this.cycleSort(col); // a tap on a sortable header sorts, like a click
         return;
       }
@@ -2260,6 +2266,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       const cellElement = link.closest('[data-tm-cell]');
       const cell = cellElement === null ? null : this.cellFromElement(cellElement);
       if (cell !== null) {
+        // Settle an open editor first (clickCell's contract); no refocus, so
+        // the browser's menu stays on the link.
+        if (untracked(() => this.engine.edit.session()) !== null) {
+          this.commitEditor({ refocus: false });
+        }
         this.escapedSignal.set(false);
         this.engine.clickCell(cell);
       }
@@ -2297,6 +2308,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
    * the trailing synthetic click/contextmenu burst itself.
    */
   private onLongPress(point: { x: number; y: number }): void {
+    this.pressLongPressed = true;
     const menu = this.menuRef;
     if (menu === null) {
       return;
@@ -4509,6 +4521,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
       return;
     }
     this.endDrag();
+    this.pressLongPressed = false;
     const pointerId = event.pointerId;
     // Capture on the SCROLLER (never the handle): a touch-handle drag whose
     // corner scrolls out of the virtual window unmounts the handle div, and
@@ -4603,7 +4616,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore {
         return;
       }
       this.endDrag();
-      if (!dragging && end.type === 'pointerup') {
+      // A press that fired the long-press (a pen held still) asked for the
+      // menu: its release is no click.
+      if (!dragging && end.type === 'pointerup' && !this.pressLongPressed) {
         click?.onClick();
       }
     };

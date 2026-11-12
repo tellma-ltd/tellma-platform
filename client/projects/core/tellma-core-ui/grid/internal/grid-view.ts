@@ -42,8 +42,9 @@ import { ɵTmGridTouchHandles } from './touch-handles';
 const EXPANDED_GLYPH: TmIconSource = ChevronDown;
 const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
 
-// The sort indicator's two glyphs: vertical arrows, which never mirror.
+/** The ascending sort indicator: a vertical arrow, which never mirrors. */
 const SORT_ASC_GLYPH: TmIconSource = ArrowUp;
+/** The descending sort indicator: a vertical arrow, which never mirrors. */
 const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 
 /**
@@ -131,7 +132,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
             [attr.aria-colindex]="col.ariaColIndex"
             [attr.aria-sort]="sort?.ariaSort ?? null"
             [class.tm-grid__colhdr--hit]="core().hitCols()[col.index]"
-            [class.tm-grid__colhdr--sortable]="sort?.sortable"
+            [class.tm-grid__colhdr--sortable]="!!sort"
             [style.text-align]="col.align"
           >
             @if (col.headerTemplate; as headerTemplate) {
@@ -142,17 +143,17 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
             } @else {
               <span class="tm-grid__colhdr-label">{{ col.header() }}</span>
             }
-            @if (sort?.sortable) {
+            @if (sort) {
               <!-- Sort slot: the current arrow, then the hover preview. -->
               <span class="tm-grid__sort" aria-hidden="true">
-                @if (sort?.direction; as direction) {
+                @if (sort.direction; as direction) {
                   <tm-icon
                     class="tm-grid__sort-glyph"
                     size="sm"
                     [svg]="direction === 'asc' ? sortAscGlyph : sortDescGlyph"
                   />
                 }
-                @if (sort?.next; as next) {
+                @if (sort.next; as next) {
                   <tm-icon
                     class="tm-grid__sort-glyph tm-grid__sort-glyph--next"
                     size="sm"
@@ -161,7 +162,11 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                 }
               </span>
             }
-            <div class="tm-grid__resize" data-tm-resize (pointerdown)="core().resize.start(col, $event)"></div>
+            <div
+              class="tm-grid__resize"
+              data-tm-resize
+              (pointerdown)="core().resize.start(col, $event)"
+            ></div>
           </div>
         }
       </div>
@@ -233,7 +238,11 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                   [attr.aria-selected]="cell.selected ? 'true' : null"
                   [attr.aria-invalid]="cell.invalid ? 'true' : null"
                   [attr.aria-readonly]="cell.readonly ? 'true' : null"
-                  [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing && showErrorBubble() ? core().errorMsgId : null"
+                  [attr.aria-describedby]="
+                    cell.active && cell.invalid && !cell.editing && showErrorBubble()
+                      ? core().errorMsgId
+                      : null
+                  "
                   [tabindex]="cell.active && !core().escaped() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
                   [class.tm-grid__cell--selected]="cell.fill"
@@ -316,7 +325,9 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 
     @if (core().rowMode()) {
       <!-- The scroller's row-activation hint. -->
-      <span class="tm-visually-hidden" [id]="core().rowHintId">{{ core().rowActivationHint() }}</span>
+      <span class="tm-visually-hidden" [id]="core().rowHintId">{{
+        core().rowActivationHint()
+      }}</span>
     }
 
     <!-- Loading / empty overlay: a sibling of the scroller (not inside its

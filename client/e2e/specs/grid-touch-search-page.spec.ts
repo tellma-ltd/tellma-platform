@@ -13,10 +13,8 @@ import { cell, centerOf, colHeader, gotoGrid } from '../support/grid';
  * header cycles the sort, and a cell link keeps the platform's own tap and
  * long-press, with no grid menu over it.
  *
- * The gestures target the Qty column, which a phone shows in either
- * direction without scrolling sideways: the showcase's header controls are
- * wider than a phone, so the page itself scrolls sideways, and in RTL a
- * cell near the inline start lies outside the visual viewport.
+ * The gestures target the first column, at the inline start in either
+ * direction (the right edge in RTL).
  */
 
 /** A point on the screen, in CSS pixels. */
@@ -55,19 +53,27 @@ for (const dir of ['ltr', 'rtl'] as const) {
       await gotoGrid(page, 'grid-search-page', { dir });
     });
 
+    test('the page fits the phone: nothing scrolls sideways', async ({ page }) => {
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+    });
+
     test('a tap opens the row', async ({ page }) => {
-      await cell(page, 2, 2).tap();
+      await cell(page, 2, 0).tap();
       await expect(page.getByTestId('activated')).toHaveText('2 via pointer');
       await expect(page.getByTestId('active-row')).toHaveText('2');
     });
 
     test('a tap on a sortable header cycles the sort', async ({ page }) => {
-      await colHeader(page, 2).tap();
-      await expect(page.getByTestId('order')).toHaveText('qty asc');
-      await expect(colHeader(page, 2)).toHaveAttribute('aria-sort', 'ascending');
+      await colHeader(page, 0).tap();
+      await expect(page.getByTestId('order')).toHaveText('code asc');
+      await expect(colHeader(page, 0)).toHaveAttribute('aria-sort', 'ascending');
       await page.waitForTimeout(450); // past the double-tap window: two single taps
-      await colHeader(page, 2).tap();
-      await expect(page.getByTestId('order')).toHaveText('qty desc');
+      await colHeader(page, 0).tap();
+      await expect(page.getByTestId('order')).toHaveText('code desc');
       await expect(page.getByTestId('activation-count')).toHaveText('0');
     });
 
@@ -86,7 +92,7 @@ for (const dir of ['ltr', 'rtl'] as const) {
       await expect(menuPanel(page)).toHaveCount(0);
 
       // The same hold elsewhere in a cell opens the grid's menu.
-      await touchHold(page, await centerOf(cell(page, 5, 2)), async () => {
+      await touchHold(page, await centerOf(cell(page, 5, 0)), async () => {
         await expect(menuPanel(page)).toBeVisible();
       });
       await expect(page.getByTestId('activation-count')).toHaveText('0');
