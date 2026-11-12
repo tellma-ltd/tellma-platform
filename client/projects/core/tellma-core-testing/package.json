@@ -6,7 +6,8 @@
   "peerDependencies": {
     "@angular/core": "^22.0.0",
     "@playwright/test": "^1.61.0",
-    "@tellma/core": "^0.1.0"
+    "@tellma/core": "^0.1.0",
+    "@tellma/core-ui": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@playwright/test": {

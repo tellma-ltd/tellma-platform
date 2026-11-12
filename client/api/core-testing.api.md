@@ -12,6 +12,39 @@ import { Signal } from '@angular/core';
 export function provideTellmaTesting(): EnvironmentProviders;
 
 // @public
+export class TmFakeApi extends TmApi {
+    readonly calls: Signal<readonly TmFakeApiCall[]>;
+    download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
+    fetchBlob(url: string, options?: Parameters<TmApi['fetchBlob']>[1]): ReturnType<TmApi['fetchBlob']>;
+    fingerprint(route: string): Promise<string | null>;
+    readonly online: Signal<boolean>;
+    read<T>(route: string, body: unknown, options: TmReadOptions): Promise<T>;
+    respond(route: string, answer: unknown): void;
+    send(route: string, body: unknown, options?: TmSendOptions): void;
+    setFingerprint(route: string, fingerprint: string | null): void;
+    setOnline(online: boolean): void;
+    upload(kind: string, file: Blob, options: TmUploadOptions): Promise<TmBlobDescriptor>;
+    write<T>(route: string, body: unknown, options?: TmWriteOptions): Promise<T>;
+    readonly writesInFlight: Signal<number>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeApi, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeApi>;
+}
+
+// @public
+export interface TmFakeApiCall {
+    readonly body: unknown;
+    readonly kind: TmFakeApiCallKind;
+    readonly options: object;
+    readonly route: string;
+}
+
+// @public
+export type TmFakeApiCallKind = 'read' | 'write' | 'download' | 'upload' | 'fetch-blob' | 'send';
+
+// @public
+export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
+
+// @public
 export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;

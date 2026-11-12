@@ -49,15 +49,55 @@ namespace Tellma.Identity.E2E.Infrastructure
             await page.GetByRole(AriaRole.Button, new() { Name = "Sign out" }).ClickAsync();
             await page.WaitForPathAsync(prefix + "/Identity/Account/LoggedOut");
 
-            // Sign back in with the passkey. On the login page the conditional-UI ceremony the
-            // virtual authenticator satisfies automatically completes the sign-in; if it does
-            // not fire, the explicit button drives the same ceremony.
-            await page.GotoAsync(prefix + "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(passkeysPath));
-            if (!await page.ReachedPathAsync(passkeysPath, 5000))
+            // Sign back in with the passkey, through whichever ceremony the login page runs. The
+            // browser is asked which one that will be while it rests here, before the login page
+            // loads: there the conditional ceremony may finish and navigate away at any moment,
+            // taking with it the document a question would be asked in.
+            bool conditional = await OffersConditionalMediationAsync(page);
+
+            // How far the navigation waits depends on that answer. When the conditional ceremony
+            // runs, it waits only until it commits: the ceremony may move the browser on before
+            // the login document's events are observed, and nothing below needs them. When it
+            // does not, the button is pressed, and its only behaviour is a listener the page's
+            // script attaches. The button can be painted and actionable while the parser still
+            // waits on that script, so a press then would do nothing; DOMContentLoaded fires only
+            // once the script has run.
+            await page.GotoAsync(
+                prefix + "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(passkeysPath),
+                new() { WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded });
+            if (!conditional)
             {
+                // No ceremony runs on its own, so the button, now wired, is the only way in.
                 await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
-                await page.WaitForPathAsync(passkeysPath, 15000);
             }
+
+            await page.WaitForPathAsync(passkeysPath);
+        }
+
+        /// <summary>
+        ///     Whether the browser offers conditional mediation, which decides the passkey ceremony
+        ///     the login page runs: the conditional one the page starts on load when it does, which a
+        ///     virtual authenticator answers with no prompt, and otherwise none until the explicit
+        ///     button is pressed.
+        ///     <para>
+        ///         The answer belongs to the browser, not to a document, so it is asked on a page
+        ///         that stays put. Deciding from the browser's answer, rather than from how long the
+        ///         sign-in has taken, is what keeps the two ceremonies from overlapping: a slow
+        ///         conditional ceremony still in flight when the button is pressed is aborted by the
+        ///         press, or submits while the explicit one starts, and the sign-in fails either way.
+        ///     </para>
+        /// </summary>
+        /// <param name="page">A settled page on the engine's origin.</param>
+        /// <returns>True when the login page will run the conditional ceremony on its own.</returns>
+        internal static Task<bool> OffersConditionalMediationAsync(IPage page)
+        {
+            // The same question, asked the same way, as the login page's script asks it on load.
+            return page.EvaluateAsync<bool>(
+                """
+                async () => !!(window.PublicKeyCredential
+                    && PublicKeyCredential.isConditionalMediationAvailable
+                    && await PublicKeyCredential.isConditionalMediationAvailable())
+                """);
         }
 
         /// <summary>Signs the user in through the email-code flow, landing on the passkey list.</summary>

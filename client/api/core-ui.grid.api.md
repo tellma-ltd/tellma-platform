@@ -65,7 +65,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     readonly pendingCount: Signal<number>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowActivate: _angular_core.OutputEmitterRef<TmGridRowActivation<T>>;
-    readonly rowActivation: _angular_core.InputSignal<"none" | "row">;
+    readonly rowActivation: _angular_core.InputSignal<"row" | "none">;
     readonly rowClass: _angular_core.InputSignal<((row: T) => string | readonly string[] | null) | undefined>;
     readonly rowHeaders: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowId: _angular_core.InputSignal<(row: T) => TmRowId>;

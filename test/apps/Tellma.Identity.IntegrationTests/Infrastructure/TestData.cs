@@ -82,9 +82,27 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         /// <param name="factory">The host under test.</param>
         /// <param name="email">The user's email.</param>
         /// <returns>The created user.</returns>
-        public static async Task<TellmaIdentityUser> CreateActiveUserAsync(StandaloneFactory factory, string email)
+        public static Task<TellmaIdentityUser> CreateActiveUserAsync(StandaloneFactory factory, string email)
         {
-            using IServiceScope scope = factory.Services.CreateScope();
+            return CreateActiveUserAsync(factory.Services, email);
+        }
+
+        /// <summary>Creates an active, email-confirmed user directly in a distribution host's store.</summary>
+        /// <param name="factory">The host under test.</param>
+        /// <param name="email">The user's email.</param>
+        /// <returns>The created user.</returns>
+        public static Task<TellmaIdentityUser> CreateActiveUserAsync(InProcFactory factory, string email)
+        {
+            return CreateActiveUserAsync(factory.Services, email);
+        }
+
+        /// <summary>Creates an active, email-confirmed user directly in the store of a host's services.</summary>
+        /// <param name="services">The services of the host under test.</param>
+        /// <param name="email">The user's email.</param>
+        /// <returns>The created user.</returns>
+        private static async Task<TellmaIdentityUser> CreateActiveUserAsync(IServiceProvider services, string email)
+        {
+            using IServiceScope scope = services.CreateScope();
             UserManager<TellmaIdentityUser> userManager =
                 scope.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>();
 

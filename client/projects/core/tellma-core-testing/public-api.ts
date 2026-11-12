@@ -12,5 +12,6 @@
 // LICENSE file in the root directory of this source tree.
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
+export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
 export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';
