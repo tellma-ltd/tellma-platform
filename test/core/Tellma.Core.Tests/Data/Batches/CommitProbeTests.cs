@@ -37,7 +37,7 @@ namespace Tellma.Core.Tests.Data.Batches
             var probe = CommitProbe.ForIds(Jobs, [5, 5, 7], _harness.Executor.Binder);
 
             Assert.Equal(2, probe.Count);
-            Assert.Equal("SELECT COUNT_BIG(*) FROM [core].[Jobs] WITH (READCOMMITTEDLOCK) WHERE [Id] IN (SELECT [Id] FROM @tb0_t0);", probe.Text);
+            Assert.Equal("SELECT COUNT_BIG(*) FROM [core].[Jobs] WITH (READCOMMITTEDLOCK, FORCESEEK) WHERE [Id] IN (SELECT [Id] FROM @tb0_t0);", probe.Text);
 
             SqlParameter parameter = probe.Parameter();
             Assert.Equal(("@tb0_t0", SqlDbType.Structured), (parameter.ParameterName, parameter.SqlDbType));

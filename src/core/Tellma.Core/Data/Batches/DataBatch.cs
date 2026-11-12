@@ -104,8 +104,8 @@ namespace Tellma.Core.Data.Batches
             _contributors = [.. services.GetServices<IDataBatchContributor>().OrderBy(static contributor => contributor.Order)];
 
             // --- The scope's counters, cancellation and test-mode audit ---
-            // The recorder comes with the scope's first batch and records its round trips when the scope ends.
-            Access = services.GetService<DataAccessRecorder>()?.Scope ?? services.GetService<DataAccessScope>() ?? new DataAccessScope();
+            // The composed scope's counters belong to its recorder, which records them when the scope ends.
+            Access = services.GetService<DataAccessScope>() ?? new DataAccessScope();
             ScopeCancellation = services.GetService<DataCancellation>()?.Token ?? CancellationToken.None;
             Audit = services.GetService<IDataBatchAudit>();
         }

@@ -12,14 +12,16 @@ using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Batches
 {
-    // The probe is spec 0012 §6.5's.
+    // The probe is spec 0012 §6.5's, with FORCESEEK added: a locking scan would wait on every row a
+    // concurrent writer holds, not only on the first attempt's keys.
     /// <summary>
     ///     Answers whether a persist round trip that lost its connection committed: the rows it
     ///     inserted into its first root table exist exactly when it did, because a batch commits as
     ///     one transaction. The probe reads them under <c>READCOMMITTEDLOCK</c>, so while the first
     ///     attempt still runs on the server, holding its inserted keys under exclusive locks, the
     ///     probe waits for it to commit or roll back instead of reading past it as read-committed
-    ///     snapshot would.
+    ///     snapshot would. It seeks the primary key (<c>FORCESEEK</c>), so it waits only on those
+    ///     keys and never on the rows other writers hold.
     /// </summary>
     internal sealed class CommitProbe
     {
@@ -35,7 +37,7 @@ namespace Tellma.Core.Data.Batches
             Table = table;
             Count = count;
             Parameter = parameter;
-            Text = $"SELECT COUNT_BIG(*) FROM {table.Delimited} WITH (READCOMMITTEDLOCK) WHERE [Id] IN (SELECT [Id] FROM {IdsName});";
+            Text = $"SELECT COUNT_BIG(*) FROM {table.Delimited} WITH (READCOMMITTEDLOCK, FORCESEEK) WHERE [Id] IN (SELECT [Id] FROM {IdsName});";
         }
 
         /// <summary>The root table the batch inserted into.</summary>

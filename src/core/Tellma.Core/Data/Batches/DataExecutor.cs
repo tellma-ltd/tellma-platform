@@ -196,26 +196,31 @@ namespace Tellma.Core.Data.Batches
         ///     is re-run, a lost connection is re-run or probed, everything else is final.
         /// </summary>
         /// <param name="run">The batch being run.</param>
-        /// <param name="beforeSend">The token until a command is sent, which also cancels the opens and the waits until then.</param>
-        /// <param name="afterSend">The token once it is sent.</param>
+        /// <param name="beforeSend">The caller's token, which cancels the opens, the waits between attempts and any command until it is sent.</param>
+        /// <param name="afterSend">The token of a sent command: never cancelled for a persist.</param>
         /// <returns>Whether the body ran.</returns>
         private async Task<bool> RunAsync(Run run, CancellationToken beforeSend, CancellationToken afterSend)
         {
             DataBatch batch = run.Batch;
             BatchAssembly assembly = run.Assembly;
             bool probeable = batch.Purpose == BatchPurpose.Persist && assembly.InTextTransaction && batch.Probe is not null;
+            bool writes = batch.WrittenTables.Count > 0;
 
-            // The failure a not-committed verdict answered, once one did: a re-run that then collides
-            // with the probed rows' primary key proves the first attempt committed after the probe.
+            // --- What earlier attempts leave open ---
+            // The failure a not-committed verdict answered: the server may still have been running that
+            // attempt, short of its insert, so before any error reaches the caller the probe asks again.
             Exception? notCommitted = null;
 
-            // Once a command was sent, a persist completes: the later opens and waits are no longer cancelled.
-            CancellationToken current = beforeSend;
+            // The failure of a sent writing attempt that was re-run without a verdict: whether it
+            // committed stays unknown, so a cancellation then is no failure the caller may act on.
+            Exception? unresolved = null;
+
+            // How many re-runs followed a command timeout, which a read or validation batch limits.
+            int timeoutReruns = 0;
 
             for (int attempt = 1; ; attempt++)
             {
-                Attempt result = await AttemptAsync(run, attempt, current, afterSend).ConfigureAwait(false);
-                current = result.Sent ? afterSend : current;
+                Attempt result = await AttemptAsync(run, attempt, beforeSend, afterSend).ConfigureAwait(false);
                 if (result.Failure is not Exception failure)
                 {
                     result.Cursor?.ApplyCompletions();
@@ -223,21 +228,19 @@ namespace Tellma.Core.Data.Batches
                     return result.BodyRan;
                 }
 
-                // --- Cancellation surfaces as itself ---
-                if (current.IsCancellationRequested)
+                // --- Cancellation of the attempt: the open, or a sent command other than a persist ---
+                if ((result.Sent ? afterSend : beforeSend).IsCancellationRequested)
                 {
+                    // A writing command cancelled after its send may have committed before it stopped.
                     Settle(run, result, DataMetrics.Failed);
-                    if (failure is OperationCanceledException)
-                    {
-                        ExceptionDispatchInfo.Throw(failure);
-                    }
-
-                    throw new OperationCanceledException("The batch was cancelled while it ran.", failure, current);
+                    ExceptionDispatchInfo.Throw(
+                        await CancelledAsync(run, failure, result.Sent && writes ? failure : unresolved, notCommitted, beforeSend).ConfigureAwait(false));
                 }
 
                 // --- Classification ---
                 IReadOnlyList<SqlErrorInfo>? errors = failure is SqlException sql ? SqlErrorInfo.Of(sql) : null;
                 FailureKind kind = Classify(result, errors);
+                bool timedOut = errors is not null && errors.Any(static error => error.Number == DataErrors.CommandTimeout);
 
                 // A re-run after a not-committed verdict that collides with the probed rows: the first
                 // attempt reached its insert after the probe and committed.
@@ -249,11 +252,20 @@ namespace Tellma.Core.Data.Batches
                 }
 
                 RetryAction action = RetryRules.Decide(
-                    kind, result.Sent, batch.TransactionMode, result.Phase == AttemptPhase.Committing, assembly.MayRunTwice, probeable, batch.WrittenTables.Count > 0);
+                    kind, result.Sent, batch.TransactionMode, result.Phase == AttemptPhase.Committing, assembly.MayRunTwice, probeable, writes);
                 string retryClass = kind == FailureKind.Reported ? DataMetrics.ReportedClass : DataMetrics.AmbiguousClass;
+                bool probedNow = false;
                 switch (action)
                 {
                     case RetryAction.Surface:
+                        // After a not-committed verdict the re-run's error may be the first attempt's
+                        // commit seen from behind (a moved tag, a conflict), so the probe asks again.
+                        if (notCommitted is not null && await ReprobeAsync(run, notCommitted, failure).ConfigureAwait(false) is Exception answered)
+                        {
+                            Settle(run, result, DataMetrics.Failed);
+                            throw answered;
+                        }
+
                         Settle(run, result, DataMetrics.Failed);
                         if (errors is not null && kind == FailureKind.Final && result.Sent)
                         {
@@ -289,30 +301,100 @@ namespace Tellma.Core.Data.Batches
                         }
 
                         notCommitted = failure;
+                        probedNow = true;
                         retryClass = DataMetrics.AmbiguousClass;
                         break;
 
                     case RetryAction.Rerun:
+                        // A sent writing batch re-run because it may run twice: its outcome stays unknown.
+                        unresolved = kind == FailureKind.Ambiguous && writes ? failure : unresolved;
                         break;
 
                     default:
                         throw new InvalidOperationException($"The retry action {action} is unknown.");
                 }
 
-                // --- The re-run: within the attempts allowed, after a jittered wait ---
-                if (attempt > run.Options.RetryAttempts)
+                // --- The re-run: within the attempts allowed, and for a timed-out read within its own budget ---
+                if (attempt > run.Options.RetryAttempts || (timedOut && !RetryRules.MayRerunAfterTimeout(batch.Purpose, timeoutReruns)))
                 {
+                    if (notCommitted is not null && !probedNow && await ReprobeAsync(run, notCommitted, failure).ConfigureAwait(false) is Exception reprobed)
+                    {
+                        Settle(run, result, DataMetrics.Failed);
+                        throw reprobed;
+                    }
+
                     Settle(run, result, DataMetrics.Failed);
                     throw new DataAccessRetryExhaustedException(failure, attempt);
                 }
 
+                TimeSpan delay = RetryRules.Delay(attempt, run.Options.RetryBaseDelay, Random.Shared.NextDouble());
+                DataBatchLog.Retrying(_logger, failure, run.Operation, run.TenantId, attempt, retryClass, delay.TotalMilliseconds);
+
+                // --- The wait: the caller's token cancels it, as it does the next attempt's open ---
+                try
+                {
+                    await Task.Delay(delay, _time, beforeSend).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException cancelled) when (beforeSend.IsCancellationRequested)
+                {
+                    Settle(run, result, DataMetrics.Failed);
+                    ExceptionDispatchInfo.Throw(await CancelledAsync(run, cancelled, unresolved, notCommitted, beforeSend).ConfigureAwait(false));
+                }
+
+                // --- The re-run starts: it is counted and metered ---
+                timeoutReruns += timedOut ? 1 : 0;
                 Settle(run, result, DataMetrics.Retried, applyCompletions: false);
                 batch.Access.Retries++;
                 _metrics.RecordRetry(retryClass, errors is null ? DataMetrics.ConnectionLost : SqlErrorInfo.Primary(errors).Number.ToString(CultureInfo.InvariantCulture));
-                TimeSpan delay = RetryRules.Delay(attempt, run.Options.RetryBaseDelay, Random.Shared.NextDouble());
-                DataBatchLog.Retrying(_logger, failure, run.Operation, run.TenantId, attempt, retryClass, delay.TotalMilliseconds);
-                await Task.Delay(delay, _time, current).ConfigureAwait(false);
             }
+        }
+
+        /// <summary>
+        ///     What a cancelled batch surfaces. Cancellation never turns a write whose outcome is unknown
+        ///     into a failure: after a not-committed verdict the probe asks again, and a writing attempt
+        ///     that may have committed is ambiguous. Otherwise the cancellation itself.
+        /// </summary>
+        /// <param name="run">The batch being run.</param>
+        /// <param name="cancellation">The failure the cancellation caused: an <see cref="OperationCanceledException" />, or the provider's error for a cancelled command.</param>
+        /// <param name="unresolved">The failure of a writing attempt that may have committed, if any.</param>
+        /// <param name="notCommitted">The failure a not-committed verdict answered, if any.</param>
+        /// <param name="token">The token that was cancelled.</param>
+        /// <returns>The exception to throw.</returns>
+        private async Task<Exception> CancelledAsync(Run run, Exception cancellation, Exception? unresolved, Exception? notCommitted, CancellationToken token)
+        {
+            OperationCanceledException cancelled = cancellation as OperationCanceledException
+                ?? new OperationCanceledException("The batch was cancelled while it ran.", cancellation, token);
+            if (notCommitted is not null && await ReprobeAsync(run, notCommitted, cancelled).ConfigureAwait(false) is Exception answered)
+            {
+                return answered;
+            }
+
+            if (unresolved is not null)
+            {
+                _metrics.RecordProbe(CommitVerdict.Unknown);
+                return new DataAccessAmbiguousException(unresolved, CommitVerdict.Unknown);
+            }
+
+            return cancelled;
+        }
+
+        /// <summary>
+        ///     Probes again, before an error reaches the caller, after a not-committed verdict: the first
+        ///     attempt may have committed since, when the server was still running it short of its insert.
+        /// </summary>
+        /// <param name="run">The batch being run.</param>
+        /// <param name="notCommitted">The failure the not-committed verdict answered.</param>
+        /// <param name="failure">The error that would otherwise reach the caller.</param>
+        /// <returns>The ambiguity to surface instead, or null when the batch still did not commit.</returns>
+        private async Task<Exception?> ReprobeAsync(Run run, Exception notCommitted, Exception failure)
+        {
+            return await ProbeAsync(run, run.Batch.Probe!).ConfigureAwait(false) switch
+            {
+                CommitVerdict.Committed => new DataAccessAmbiguousException(notCommitted, CommitVerdict.Committed),
+                CommitVerdict.Unknown => new DataAccessAmbiguousException(failure, CommitVerdict.Unknown),
+                CommitVerdict.NotCommitted => null,
+                _ => throw new InvalidOperationException("The commit verdict is unknown to the executor."),
+            };
         }
 
         /// <summary>

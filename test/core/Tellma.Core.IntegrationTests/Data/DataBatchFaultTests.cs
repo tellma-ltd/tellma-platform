@@ -177,28 +177,7 @@ namespace Tellma.Core.IntegrationTests.Data
             using Instruments instruments = new(fixture);
 
             // --- Between the not-committed verdict and the re-run, the probed row commits after all ---
-            IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
-            using MeterListener listener = new()
-            {
-                InstrumentPublished = (instrument, listening) =>
-                {
-                    if (ReferenceEquals(instrument.Meter.Scope, meters) && instrument.Name == DataTelemetryNames.CommitProbes)
-                    {
-                        listening.EnableMeasurementEvents(instrument);
-                    }
-                },
-            };
-            listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
-            {
-                foreach (KeyValuePair<string, object?> tag in tags)
-                {
-                    if (tag.Key == DataTelemetryNames.OutcomeTag && Equals(tag.Value, DataMetrics.ProbeNotCommitted))
-                    {
-                        InsertProbedJobNow();
-                    }
-                }
-            });
-            listener.Start();
+            using MeterListener listener = OnNotCommitted(InsertProbedJob);
 
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
@@ -214,6 +193,96 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.IsNotType<UniqueConstraintViolationException>(ambiguous.InnerException);
             Assert.Equal([DataMetrics.ProbeNotCommitted, DataMetrics.ProbeCommitted], instruments.Probes());
             Assert.Equal(1, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task A_re_run_that_fails_its_guard_after_a_not_committed_verdict_is_probed_again_and_reports_the_commit()
+        {
+            await fixture.SeedCallerAsync();
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+
+            // --- After the not-committed verdict the first attempt commits after all, bumping settings,
+            // so the re-run's guard fails before its insert can collide with the probed key ---
+            using MeterListener listener = OnNotCommitted(
+                InsertProbedJob + "\nUPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'settings';");
+
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            batch.MarkConnectPrologue(DataBatchDatabase.Premises);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            Ready(batch, (_, spid) => KillAsync(spid));
+            _ = batch.Sql(GateText, null);
+
+            DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(Token));
+
+            // --- The second probe finds the row: a committed write, never a stale-tag failure to recompose ---
+            Assert.Equal(CommitVerdict.Committed, ambiguous.Verdict);
+            Assert.IsNotType<BatchAssertionFailedException>(ambiguous.InnerException);
+            Assert.Equal([DataMetrics.ProbeNotCommitted, DataMetrics.ProbeCommitted], instruments.Probes());
+            Assert.Equal(1, await JobCountAsync());
+        }
+
+        [Fact]
+        public async Task A_persist_cancelled_after_a_not_committed_verdict_is_probed_again_before_it_reports_the_cancellation()
+        {
+            await SeedTagsAsync(GateName);
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            batch.DeclareInsertedRoots(Jobs, [ProbedId]);
+            Ready(batch, async (_, spid) =>
+            {
+                // The sent persist runs on regardless; the wait before its re-run does not.
+                await KillAsync(spid);
+                await cancel.CancelAsync();
+            });
+            _ = batch.Sql(GateText, null);
+
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => batch.ExecuteAsync(cancel.Token));
+
+            // --- Nothing committed, confirmed twice; the re-run never started ---
+            Assert.Equal(0, await JobCountAsync());
+            Assert.Equal([DataMetrics.ProbeNotCommitted, DataMetrics.ProbeNotCommitted], instruments.Probes());
+            Assert.Equal((0, 3), (access.Retries, access.RoundTrips));
+            Assert.Empty(instruments.RetryClasses());
+        }
+
+        [Fact]
+        public async Task A_writing_batch_cancelled_before_the_re_run_of_an_unknown_outcome_reports_the_commit_unknown()
+        {
+            await SeedTagsAsync(GateName, "fx-a");
+            await using Gate gate = await Gate.CloseAsync(fixture.Tenant.ConnectionString);
+            using Instruments instruments = new(fixture);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+
+            // --- An idempotent write, re-run after a lost connection without a verdict ---
+            DataBatch batch = Batch(scope, BatchPurpose.Persist);
+            _ = batch.Sql(
+                $"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'fx-a';",
+                new SqlOptions(writes: Set(VersionTags), idempotent: true));
+            Ready(batch, async (_, spid) =>
+            {
+                await KillAsync(spid);
+                await cancel.CancelAsync();
+            });
+            _ = batch.Sql(GateText, null);
+
+            DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(cancel.Token));
+
+            // --- Cancellation leaves the first attempt's outcome unknown, so it is not a failure ---
+            Assert.Equal(CommitVerdict.Unknown, ambiguous.Verdict);
+            Assert.IsNotAssignableFrom<OperationCanceledException>(ambiguous.InnerException);
+            Assert.Equal([DataMetrics.ProbeUnknown], instruments.Probes());
+            Assert.Empty(instruments.RetryClasses());
         }
 
         [Fact]
@@ -288,6 +357,35 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal((1, 2), (access.Retries, outcome.RoundTrips));
             Assert.Equal([DataMetrics.AmbiguousClass], instruments.RetryClasses());
             Assert.Empty(instruments.Probes());
+        }
+
+        [Fact]
+        public async Task A_read_whose_connection_closes_on_the_client_is_re_run_because_it_may_run_twice()
+        {
+            using Instruments instruments = new(fixture);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            RecordingConnection connection = new(fixture.Tenant.ConnectionString);
+
+            // --- The first attempt's connection closes on the client while its reader runs ---
+            DataBatch batch = Batch(scope, BatchPurpose.Read, connection);
+            Ready(batch, (attempt, _) =>
+            {
+                if (attempt == 1)
+                {
+                    connection.Current!.Close();
+                }
+
+                return Task.CompletedTask;
+            });
+            BatchResult<RawResult> five = batch.Sql($"SELECT 5 AS [Five];", new SqlOptions(resultSets: 1));
+
+            BatchOutcome outcome = await batch.ExecuteAsync(Token);
+
+            // --- A lost connection, not a reader's defect: re-run once, metered as ambiguous ---
+            Assert.Equal(5, Int(five.Value));
+            Assert.Equal((1, 2), (access.Retries, outcome.RoundTrips));
+            Assert.Equal([(DataMetrics.AmbiguousClass, DataMetrics.ConnectionLost)], instruments.Retries());
         }
 
         [Fact]
@@ -387,14 +485,45 @@ namespace Tellma.Core.IntegrationTests.Data
                 string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [blocking_session_id] = {session};")) > 0;
         }
 
-        /// <summary>Inserts the probed id at once, outside any batch, from a measurement callback.</summary>
-        private void InsertProbedJobNow()
+        /// <summary>Runs text at once, outside any batch, from a measurement callback.</summary>
+        /// <param name="text">The text.</param>
+        private void ExecuteNow(string text)
         {
             using SqlConnection side = new(fixture.Tenant.ConnectionString);
             side.Open();
-            using SqlCommand insert = side.CreateCommand();
-            insert.CommandText = InsertProbedJob;
-            _ = insert.ExecuteNonQuery();
+            using SqlCommand command = side.CreateCommand();
+            command.CommandText = text;
+            _ = command.ExecuteNonQuery();
+        }
+
+        /// <summary>Runs text at once whenever the class's host meters a not-committed verdict.</summary>
+        /// <param name="text">The text, which commits what the probe missed.</param>
+        /// <returns>The listener, which stops when disposed.</returns>
+        private MeterListener OnNotCommitted(string text)
+        {
+            IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
+            MeterListener listener = new()
+            {
+                InstrumentPublished = (instrument, listening) =>
+                {
+                    if (ReferenceEquals(instrument.Meter.Scope, meters) && instrument.Name == DataTelemetryNames.CommitProbes)
+                    {
+                        listening.EnableMeasurementEvents(instrument);
+                    }
+                },
+            };
+            listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+            {
+                foreach (KeyValuePair<string, object?> tag in tags)
+                {
+                    if (tag.Key == DataTelemetryNames.OutcomeTag && Equals(tag.Value, DataMetrics.ProbeNotCommitted))
+                    {
+                        ExecuteNow(text);
+                    }
+                }
+            });
+            listener.Start();
+            return listener;
         }
 
         /// <summary>Stores version-tag rows with fresh tags.</summary>

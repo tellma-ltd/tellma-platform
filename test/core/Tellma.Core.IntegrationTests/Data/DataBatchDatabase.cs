@@ -46,8 +46,20 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The caller's per-user permissions tag <see cref="SeedCallerAsync" /> stores and the prologue binds.</summary>
         public static readonly Guid UserPermissionsTag = new("5e771295-0000-0000-0000-000000000003");
 
+        /// <summary>The command timeout of a fixture that times commands out early; the default when null.</summary>
+        private readonly TimeSpan? _commandTimeout;
+
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;
+
+        /// <summary>Creates a fixture whose host times every command out after the given time.</summary>
+        /// <param name="sql">The suite's server.</param>
+        /// <param name="commandTimeout">The command timeout of every read, validation and persist.</param>
+        internal DataBatchDatabase(SqlServerFixture sql, TimeSpan commandTimeout)
+            : this(sql)
+        {
+            _commandTimeout = commandTimeout;
+        }
 
         /// <summary>The connect-prologue stand-in every batch of the host runs.</summary>
         public ConnectPrologue Prologue { get; } = new();
@@ -75,7 +87,11 @@ namespace Tellma.Core.IntegrationTests.Data
                 {
                     _ = services.AddSingleton<IDataBatchContributor>(Prologue);
                     _ = services.AddFakeLogging();
-                    _ = services.Configure<DataOptions>(static options => options.SlowRoundTripThreshold = TimeSpan.FromTicks(1));
+                    _ = services.Configure<DataOptions>(options =>
+                    {
+                        options.SlowRoundTripThreshold = TimeSpan.FromTicks(1);
+                        options.CommandTimeout = _commandTimeout ?? options.CommandTimeout;
+                    });
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
         }

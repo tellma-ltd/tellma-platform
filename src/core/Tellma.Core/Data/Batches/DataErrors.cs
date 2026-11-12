@@ -86,12 +86,15 @@ namespace Tellma.Core.Data.Batches
     /// </summary>
     internal static partial class DataErrors
     {
+        /// <summary>The client's command timeout: the server may still have run the batch.</summary>
+        public const int CommandTimeout = -2;
+
         /// <summary>The numbers the server reports for a failure that re-running the round trip may cure.</summary>
         public static readonly FrozenSet<int> ReportedTransientNumbers =
             new[] { 1205, 1222, 4060, 10928, 10929, 40197, 40501, 40613, 49918, 49919, 49920, TellmaSqlErrors.Transient }.ToFrozenSet();
 
         /// <summary>The numbers of a lost connection: a broken link, a dropped session, a timeout.</summary>
-        public static readonly FrozenSet<int> AmbiguousNumbers = new[] { 233, 64, -2, 10053, 10054 }.ToFrozenSet();
+        public static readonly FrozenSet<int> AmbiguousNumbers = new[] { 233, 64, CommandTimeout, 10053, 10054 }.ToFrozenSet();
 
         /// <summary>The severity from which an error ends the connection.</summary>
         private const byte FatalClass = 20;
@@ -128,13 +131,21 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Classifies a failure the server reported after the command was sent.</summary>
         /// <param name="errors">The errors, in order; at least one.</param>
         /// <returns>
+        ///     <see cref="FailureKind.Reported" /> when the primary error is transient, at any severity;
         ///     <see cref="FailureKind.Ambiguous" /> when any error is a lost connection;
-        ///     <see cref="FailureKind.Reported" /> when the primary error is transient;
         ///     <see cref="FailureKind.Final" /> otherwise.
         /// </returns>
         public static FailureKind Classify(IReadOnlyList<SqlErrorInfo> errors)
         {
             ArgumentNullException.ThrowIfNull(errors);
+
+            // A transient number is the server's own account of the failure, even when it ends the
+            // session: Azure SQL raises throttling (40501, 10928, 10929) at severity 20, and the
+            // server rolled the batch back, so it is re-run as reported rather than probed.
+            if (ReportedTransientNumbers.Contains(SqlErrorInfo.Primary(errors).Number))
+            {
+                return FailureKind.Reported;
+            }
 
             // A connection-level error anywhere in the list means the session is gone, whatever else the
             // server said before it went.
@@ -146,7 +157,7 @@ namespace Tellma.Core.Data.Batches
                 }
             }
 
-            return ReportedTransientNumbers.Contains(SqlErrorInfo.Primary(errors).Number) ? FailureKind.Reported : FailureKind.Final;
+            return FailureKind.Final;
         }
 
         /// <summary>

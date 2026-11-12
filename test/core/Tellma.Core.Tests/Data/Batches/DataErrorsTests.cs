@@ -39,21 +39,28 @@ namespace Tellma.Core.Tests.Data.Batches
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Theory]
-        [InlineData(1205)]
-        [InlineData(1222)]
-        [InlineData(4060)]
-        [InlineData(10928)]
-        [InlineData(10929)]
-        [InlineData(40197)]
-        [InlineData(40501)]
-        [InlineData(40613)]
-        [InlineData(49918)]
-        [InlineData(49919)]
-        [InlineData(49920)]
-        [InlineData(TellmaSqlErrors.Transient)]
-        public void A_transient_number_the_server_reports_is_reported(int number)
+        [InlineData(1205, 16)]
+        [InlineData(1222, 16)]
+        [InlineData(4060, 16)]
+        [InlineData(10928, 16)]
+        [InlineData(10929, 16)]
+        [InlineData(40197, 16)]
+        [InlineData(40501, 16)]
+        [InlineData(40613, 16)]
+        [InlineData(49918, 16)]
+        [InlineData(49919, 16)]
+        [InlineData(49920, 16)]
+        [InlineData(TellmaSqlErrors.Transient, 16)]
+        [InlineData(10928, 20)]
+        [InlineData(10929, 20)]
+        [InlineData(40197, 20)]
+        [InlineData(40501, 20)]
+        public void A_transient_number_the_server_reports_is_reported_at_any_severity(int number, int severity)
         {
-            Assert.Equal(FailureKind.Reported, DataErrors.Classify([Error(number)]));
+            Assert.Equal(FailureKind.Reported, DataErrors.Classify([Error(number, (byte)severity)]));
+
+            // The session-ending note the server may add after it does not hide the transient cause.
+            Assert.Equal(FailureKind.Reported, DataErrors.Classify([Error(number, (byte)severity), Error(0, @class: 20)]));
         }
 
         [Theory]

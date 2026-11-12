@@ -34,12 +34,13 @@ namespace Tellma.Core.Data.Batches
             _ = services.AddSingleton<DataMetrics>();
 
             // --- Per unit of work: the counters, the cancellation token and the tenant database ---
-            // TryAdd for the scope values: a host that opens scopes of its own may register them first.
-            services.TryAddScoped<DataAccessScope>();
-            services.TryAddScoped<DataCancellation>();
-
-            // Resolved by the scope's first batch, and disposed with the scope, when it records the round trips.
+            // The recorder owns the counters, so whichever resolves them first (the opener naming the
+            // operation, or a batch) creates it, and disposing the scope records the round trips, zero
+            // included. TryAdd for the cancellation token: a host that opens scopes of its own may
+            // register it first.
             services.TryAddScoped<DataAccessRecorder>();
+            services.TryAddScoped(static services => services.GetRequiredService<DataAccessRecorder>().Scope);
+            services.TryAddScoped<DataCancellation>();
             _ = services.AddScoped<ITenantDatabase, TenantDatabase>();
 
             // --- Outside any tenant scope: the factory of maintenance handles ---

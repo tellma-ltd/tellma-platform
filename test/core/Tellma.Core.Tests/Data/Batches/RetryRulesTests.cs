@@ -71,5 +71,18 @@ namespace Tellma.Core.Tests.Data.Batches
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => RetryRules.Delay(1, baseDelay, 1));
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => RetryRules.Delay(1, baseDelay, -0.1));
         }
+
+        [Theory]
+        [InlineData(BatchPurpose.Read, 0, true)]
+        [InlineData(BatchPurpose.Read, 1, false)]
+        [InlineData(BatchPurpose.Validate, 0, true)]
+        [InlineData(BatchPurpose.Validate, 1, false)]
+        [InlineData(BatchPurpose.Persist, 1, true)]
+        [InlineData(BatchPurpose.Persist, 2, true)]
+        [InlineData(BatchPurpose.Maintenance, 2, true)]
+        public void A_timed_out_read_or_validation_is_re_run_once_and_other_purposes_keep_their_attempts(BatchPurpose purpose, int timeoutReruns, bool expected)
+        {
+            Assert.Equal(expected, RetryRules.MayRerunAfterTimeout(purpose, timeoutReruns));
+        }
     }
 }

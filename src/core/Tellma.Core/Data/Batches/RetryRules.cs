@@ -30,6 +30,13 @@ namespace Tellma.Core.Data.Batches
     /// <summary>The executor's retry rules: what a failure leads to, and how long to wait before a re-run.</summary>
     internal static class RetryRules
     {
+        /// <summary>
+        ///     The re-runs a read or validation batch gets after its command timed out: one. A query that
+        ///     outran its timeout under load is likely to again, and each try holds the caller for the
+        ///     whole timeout while it adds load to a server that is already slow.
+        /// </summary>
+        public const int ReadTimeoutReruns = 1;
+
         /// <summary>Each re-run waits this many times longer than the one before.</summary>
         private const double Growth = 4;
 
@@ -53,6 +60,18 @@ namespace Tellma.Core.Data.Batches
                 // --- An explicit transaction is never re-run: the caller re-runs its whole unit of work ---
                 : mode == TransactionMode.Explicit ? ExplicitAfterSend(kind, committing)
                 : AfterSend(kind, mayRunTwice, probe, writes);
+        }
+
+        /// <summary>
+        ///     Whether a batch whose command timed out may be re-run once more: a read or validation
+        ///     batch within <see cref="ReadTimeoutReruns" />, any other within the attempts allowed.
+        /// </summary>
+        /// <param name="purpose">The batch's purpose.</param>
+        /// <param name="timeoutReruns">The re-runs that already followed a timeout.</param>
+        /// <returns>Whether the re-run is within the budget.</returns>
+        public static bool MayRerunAfterTimeout(BatchPurpose purpose, int timeoutReruns)
+        {
+            return purpose is not (BatchPurpose.Read or BatchPurpose.Validate) || timeoutReruns < ReadTimeoutReruns;
         }
 
         /// <summary>

@@ -10,6 +10,7 @@ using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Data.Batches
 {
@@ -76,13 +77,32 @@ namespace Tellma.Core.Tests.Data.Batches
             ActivitySource.AddActivityListener(listener);
 
             using Activity request = Assert.IsType<Activity>(source.StartActivity("request"));
-            DataAccessScope scope = new() { Operation = "documents.save", RoundTrips = 4 };
-            DataAccessRecorder recorder = new(scope, metrics);
+            DataAccessRecorder recorder = new(metrics);
+            recorder.Scope.Operation = "documents.save";
+            recorder.Scope.RoundTrips = 4;
             recorder.Dispose();
             recorder.Dispose();
 
             Assert.Equal((4, Tags((DataTelemetryNames.OperationTag, "documents.save"))), Single(roundTrips));
             Assert.Equal(4, request.GetTagItem(DataTelemetryNames.RoundTrips));
+        }
+
+        [Fact]
+        public async Task A_composed_scope_that_names_its_operation_records_its_round_trips_even_with_no_batch()
+        {
+            await using ServiceProvider root = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            using MetricCollector<int> roundTrips = new(
+                root.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, DataTelemetryNames.RoundTrips);
+
+            // --- A unit of work served without the database: its opener names it, and nothing else runs ---
+            await using (AsyncServiceScope scope = root.CreateAsyncScope())
+            {
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+                access.Operation = "settings:query";
+                Assert.Same(access, scope.ServiceProvider.GetRequiredService<DataAccessScope>());
+            }
+
+            Assert.Equal((0, Tags((DataTelemetryNames.OperationTag, "settings:query"))), Single(roundTrips));
         }
 
         /// <inheritdoc />
