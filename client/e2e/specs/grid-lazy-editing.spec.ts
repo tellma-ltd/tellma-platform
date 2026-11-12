@@ -131,6 +131,19 @@ test('a click on another cell while the code loads commits the draft and focuses
   await expect(model(page)).toContainText('"quantity": 4');
 });
 
+test('Tab from a draft in the last cell commits it and leaves the grid in one press', async ({
+  page,
+}) => {
+  // The last cell's draft: Tab commits it, and the browser's own Tab moves
+  // past the grid without stopping on the draft input it leaves behind.
+  await activateCell(page, 2, 2);
+  await page.keyboard.type('Bob Stone');
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('outside-button')).toBeFocused();
+  await expect(draftInput(page)).toHaveCount(0);
+  await expect(cell(page, 2, 2)).not.toHaveClass(/tm-grid__cell--editing/);
+});
+
 test("an entity draft committed before the code arrives resolves through the column's search", async ({
   page,
 }) => {

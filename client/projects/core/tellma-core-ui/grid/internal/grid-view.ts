@@ -296,10 +296,13 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                         <!-- The draft: a plain input that takes the typing
                              until the editing code arrives and the editor
                              mounts with its text. The core sets its value
-                             and focuses it. -->
+                             and focuses it. It is never in the tab order:
+                             a Tab that commits the draft and leaves the
+                             grid must not land on it before it unrenders. -->
                         <input
                           class="tm-grid__draft"
                           data-tm-draft
+                          tabindex="-1"
                           autocomplete="off"
                           [attr.dir]="cell.dir"
                           [attr.aria-label]="draft.label"

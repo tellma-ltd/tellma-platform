@@ -540,24 +540,16 @@
 }
 
 /* The draft input that takes the typing before the editing code arrives:
-   it matches the text editor's input, so nothing moves when that editor
-   takes over, and leaves room at the end for the pending spinner. */
+   unstyled text over the cell's editor background, padded as the text
+   editor's input is, so nothing moves when that editor takes over.
+   `all: unset` drops the browser's input chrome, focus ring included: the
+   cell already draws the active-cell ring, and `direction` (the bound
+   `dir`) is outside `all`. */
 .tm-grid__draft {
-  flex: 1 1 auto;
-  inline-size: 100%;
+  all: unset;
+  flex: 1;
   min-inline-size: 0;
-  box-sizing: border-box;
-  margin: 0;
-  border: none;
-  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     the input fills a cell that already draws the active-cell ring; a second
-     ring inside it would double-draw the same affordance. */
-  outline: none;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  padding-block: 0;
-  padding-inline: var(--space-2) calc(var(--space-2) * 2 + var(--spinner-size));
+  padding-inline: var(--space-2);
 }
 
 /* A hierarchy cell's editor keeps the tree indentation via padding (not an
@@ -644,7 +636,7 @@
 
 .tm-grid__status {
   box-sizing: border-box;
-  flex: 0 0 auto;
+  flex: none;
   block-size: var(--grid-status-height);
   border-block-start: var(--border-width) solid var(--grid-header-line);
   background: var(--grid-header-bg);

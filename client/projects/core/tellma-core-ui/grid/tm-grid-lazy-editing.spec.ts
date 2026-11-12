@@ -5,6 +5,7 @@
 
 import { Component, ErrorHandler, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { form } from '@angular/forms/signals';
 
 import type { TmLabelResolution } from '@tellma/core-ui/contracts';
@@ -154,7 +155,9 @@ class EditHost {
   readonly formatAgent = (id: unknown): string =>
     AGENTS.find((agent) => agent.id === id)?.label ?? '';
   /** Resolves typed or pasted labels to agent ids, counting its calls. */
-  readonly resolveAgents = (labels: string[]): Promise<ReadonlyMap<string, TmLabelResolution<number>>> => {
+  readonly resolveAgents = (
+    labels: string[],
+  ): Promise<ReadonlyMap<string, TmLabelResolution<number>>> => {
     this.resolverCalls += 1;
     return Promise.resolve(
       new Map(
@@ -241,7 +244,9 @@ function typeText(input: HTMLInputElement, text: string): void {
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? input.value.length;
   input.setRangeText(text, start, end, 'end');
-  input.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+  input.dispatchEvent(
+    new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }),
+  );
 }
 
 /** The cell element at a view row and column. */
@@ -311,7 +316,10 @@ function byId<E extends HTMLElement>(fixture: ComponentFixture<unknown>, id: str
 }
 
 /** Creates a host with the given loader in place of the grid's own. */
-function create<H>(host: new () => H, load: () => Promise<ɵTmGridEditingCode>): ComponentFixture<H> {
+function create<H>(
+  host: new () => H,
+  load: () => Promise<ɵTmGridEditingCode>,
+): ComponentFixture<H> {
   TestBed.configureTestingModule({
     providers: [provideTellmaUi(), { provide: ɵTM_GRID_EDITING_LOADER, useValue: load }],
   });
@@ -451,7 +459,16 @@ describe('tm-grid on-demand editing code', () => {
     const input = draftInput(scroller)!;
     // The keydowns a real keyboard sends around Shift, AltGr (Windows:
     // Control then AltGraph), CapsLock, a dead accent and an IME.
-    for (const key of ['Shift', 'Control', 'AltGraph', 'Alt', 'Meta', 'CapsLock', 'Dead', 'Process']) {
+    for (const key of [
+      'Shift',
+      'Control',
+      'AltGraph',
+      'Alt',
+      'Meta',
+      'CapsLock',
+      'Dead',
+      'Process',
+    ]) {
       const event = keydown(input, key, key === 'AltGraph' ? { ctrlKey: true, altKey: true } : {});
       expect(event.defaultPrevented).toBe(false);
     }
@@ -604,7 +621,11 @@ describe('tm-grid on-demand editing code', () => {
     const input = draftInput(scroller)!;
     const data = new DataTransfer();
     data.setData('text/plain', 'Pasted');
-    const paste = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
+    const paste = new ClipboardEvent('paste', {
+      clipboardData: data,
+      bubbles: true,
+      cancelable: true,
+    });
     input.dispatchEvent(paste);
     expect(paste.defaultPrevented).toBe(false);
     expect(fixture.componentInstance.model()[0].name).toBe('Alpha');
@@ -634,8 +655,10 @@ describe('tm-grid on-demand editing code', () => {
     expect(fixture.componentInstance.model()[0].name).toBe('か');
   });
 
-  it("an entity draft waits in its cell's pending state, then resolves through the column's search", async () => {
+  it("an entity draft waits in its cell's pending state, counted as pending, then resolves through the column's search", async () => {
     const { fixture, scroller, release } = await openWindow();
+    const grid = fixture.debugElement.query(By.directive(TmGrid))
+      .componentInstance as TmGrid<unknown>;
     await toColumn(fixture, 2); // Agent: search and resolver
     press('B');
     typeText(draftInput(scroller)!, 'ob');
@@ -643,10 +666,14 @@ describe('tm-grid on-demand editing code', () => {
     await settle(fixture);
     expect(cellAt(scroller, 0, 2).querySelector('.tm-grid__cell-spin')).not.toBeNull();
     expect(cellAt(scroller, 0, 2).classList.contains('tm-grid__cell--error')).toBe(false);
+    // A Save gated on the counts waits: the cell is pending, not in error.
+    expect(grid.pendingCount()).toBe(1);
+    expect(grid.errorCount()).toBe(0);
 
     release();
     await stable(fixture);
     expect(fixture.componentInstance.model()[0].agentId).toBe(12);
+    expect(grid.pendingCount()).toBe(0);
     expect(fixture.componentInstance.resolverCalls).toBe(0);
   });
 
@@ -809,7 +836,9 @@ describe('tm-grid on-demand editing code', () => {
       new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
     );
     await stable(fixture);
-    expect((fixture.nativeElement as HTMLElement).querySelector('tm-grid-status-bar')).not.toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('tm-grid-status-bar'),
+    ).not.toBeNull();
   });
 
   it('a grid destroyed while its code loads ends the load: no timer, no report', async () => {

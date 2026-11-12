@@ -703,7 +703,11 @@ export interface ɵTmGridViewCore {
   readonly resize: ɵTmGridColumnResize;
   /** Count of cells in error state (invalid inputs ∪ field-invalid cells). */
   readonly errorCount: Signal<number>;
-  /** Count of cells awaiting async paste resolutions. */
+  /**
+   * Count of cells awaiting an asynchronous resolution (pasted labels, typed
+   * entity commits, and entity drafts waiting on the editing code); a Save
+   * waits for it to reach 0.
+   */
   readonly pendingCount: Signal<number>;
   /** The context-menu entries (built-ins + consumer extras). */
   readonly menuItems: Signal<readonly TmMenuEntry[]>;
@@ -833,7 +837,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
    * Entity commits made before the editing code arrived, pending in their
    * cells until it resolves them as the editor would.
    */
-  private deferredLabels: { readonly request: TmGridResolutionRequest; readonly text: string }[] = [];
+  private deferredLabels: { readonly request: TmGridResolutionRequest; readonly text: string }[] =
+    [];
   /** The editing cell's editor outlet, or `null` while none renders. */
   editorOutlet: ViewContainerRef | null = null;
   /** The status-bar component, set when the editing code arrives. */
@@ -1036,7 +1041,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   readonly gridTemplate: Signal<string>;
   /** Count of cells in error state (invalid inputs ∪ field-invalid cells, distinct). */
   readonly errorCount: Signal<number>;
-  /** Count of cells awaiting async paste resolutions. */
+  /**
+   * Count of cells awaiting an asynchronous resolution (pasted labels, typed
+   * entity commits, and entity drafts waiting on the editing code); a Save
+   * waits for it to reach 0.
+   */
   readonly pendingCount: Signal<number>;
   /** The column-resize pointer controller. */
   readonly resize: ɵTmGridColumnResize;
