@@ -97,6 +97,13 @@ namespace Tellma.Core.Blobs
         /// <summary>The normalised root directory.</summary>
         public string RootPath { get; }
 
+        /// <summary>
+        ///     Opens a fresh part file, failing rather than reusing one: a create-only
+        ///     <see cref="FileStream" /> by default. Tests replace it to reproduce, deterministically,
+        ///     how a platform reports an open that raced another writer's creation of the directory.
+        /// </summary>
+        internal Func<string, FileStream> PartFileOpener { get; set; } = OpenPart;
+
         /// <inheritdoc />
         public Task EnsureTenantAsync(int tenantId, CancellationToken cancellationToken)
         {
@@ -474,6 +481,21 @@ namespace Tellma.Core.Blobs
             });
         }
 
+        /// <summary>Whether a failed create-only open of a part file means its directory is missing.</summary>
+        /// <remarks>
+        ///     A create-only open never fails because the file itself is absent, so "not found" can
+        ///     only blame a directory on the path. On Unix the runtime reports that as
+        ///     <see cref="FileNotFoundException" /> rather than <see cref="DirectoryNotFoundException" />
+        ///     when, by the time it inspects the failure, the directory exists: exactly what happens
+        ///     when a concurrent write of the same tenant creates it in between.
+        /// </remarks>
+        /// <param name="exception">The failure of the open.</param>
+        /// <returns>True when the directory is missing (or was missing when the open ran).</returns>
+        private static bool IsMissingDirectory(IOException exception)
+        {
+            return exception is DirectoryNotFoundException or FileNotFoundException;
+        }
+
         /// <summary>The directory of a tenant, after checking the tenant id.</summary>
         /// <param name="tenantId">The tenant; positive.</param>
         /// <returns><c>{RootPath}/t{tenantId}</c>.</returns>
@@ -624,9 +646,9 @@ namespace Tellma.Core.Blobs
                 FileStream part;
                 try
                 {
-                    part = OpenPart(partPath);
+                    part = PartFileOpener(partPath);
                 }
-                catch (DirectoryNotFoundException)
+                catch (IOException exception) when (IsMissingDirectory(exception))
                 {
                     // The tenant's directory (or its .tmp) is missing: it was never provisioned, or
                     // was removed out of band. Create it once and retry once; nothing has been read
@@ -635,12 +657,12 @@ namespace Tellma.Core.Blobs
                     EnsureTenantDirectory(tenantId, tenantRoot);
                     try
                     {
-                        part = OpenPart(partPath);
+                        part = PartFileOpener(partPath);
                     }
-                    catch (DirectoryNotFoundException exception)
+                    catch (IOException retryException) when (IsMissingDirectory(retryException))
                     {
                         throw new BlobStoreException(
-                            $"Writing the blob '{write.Name}' of tenant {tenantId} failed: its storage vanished again after being created.", exception);
+                            $"Writing the blob '{write.Name}' of tenant {tenantId} failed: its storage vanished again after being created.", retryException);
                     }
                 }
 
