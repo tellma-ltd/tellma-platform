@@ -7,6 +7,7 @@
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
 
@@ -44,9 +45,11 @@ export class TmModalFooter {
 // @public
 export class TmModalRef<R = void> {
     // @internal
-    constructor(policy: DismissalPolicy);
+    constructor(policy: DismissalPolicy, title?: string);
     close(value?: R): void;
     readonly closed: Promise<TmModalResult<R>>;
+    // @internal
+    // @internal
     // @internal
     // @internal
 }

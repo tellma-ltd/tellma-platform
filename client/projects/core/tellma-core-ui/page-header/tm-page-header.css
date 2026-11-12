@@ -1,0 +1,164 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-page-header — not encapsulated (the rules reach the projected title
+   and crumb link), so every selector is namespaced under .tm-page-header.
+   The host is the container the narrow padding queries; the inner column
+   holds the two rows and the band. */
+
+.tm-page-header {
+  display: block;
+  container-type: inline-size;
+}
+
+.tm-page-header__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-header-row-gap);
+  padding: var(--page-header-padding-y) var(--page-header-padding-x);
+}
+
+/* Narrower than sm: 10 px all round. */
+@container (width < 576px) {
+  .tm-page-header__inner {
+    padding: var(--page-header-padding-narrow);
+  }
+}
+
+/* Both rows: one line, at least the field height. */
+.tm-page-header__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--page-header-gap);
+  min-block-size: var(--field-height);
+  min-inline-size: 0;
+}
+
+/* Row 1. The crumb link and its separator; absent without a link. */
+.tm-page-header__back {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--page-header-gap);
+  min-inline-size: 0;
+}
+
+.tm-page-header__back:not(:has(> [tmPageBack])) {
+  display: none;
+}
+
+.tm-page-header [tmPageBack] {
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  color: var(--text-link);
+  font-size: var(--page-header-back-font-size);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-page-header [tmPageBack]:hover {
+  text-decoration: underline;
+}
+
+.tm-page-header [tmPageBack]:focus-visible {
+  /* A transparent real outline beneath the token ring: forced colors strip
+     box-shadows but repaint the outline. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-page-header__separator {
+  --icon-size: var(--page-header-separator-size);
+
+  flex: none;
+  color: var(--text-muted);
+}
+
+/* The h1: 16 px semibold on one line, ellipsized before anything else in
+   the row gives way. */
+.tm-page-header [tmPageTitle] {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--page-header-title-font-size);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-page-header__extra {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--page-header-gap);
+}
+
+/* The end slots: pushed to the row's end and packed against it, so hiding
+   a slot's first item shrinks the slot from its start and moves nothing
+   after it. */
+.tm-page-header__end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--page-header-gap);
+  margin-inline-start: auto;
+}
+
+.tm-page-header__extra:empty,
+.tm-page-header__end:empty {
+  display: none;
+}
+
+/* Row 2: one line whose overflow is clipped, never wrapped. The clip runs
+   along the line only, and the row reaches a focus ring's width past its
+   box, so a focused control at either end keeps its ring. */
+.tm-page-header__toolbar {
+  margin-inline: calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)));
+  padding-inline: calc(var(--focus-ring-width) + var(--focus-ring-offset));
+  overflow-x: clip;
+}
+
+.tm-page-header__toolbar-start {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--page-header-gap);
+  min-inline-size: 0;
+}
+
+/* Both toolbar slots empty: no row 2. */
+.tm-page-header__toolbar:has(> .tm-page-header__toolbar-start:empty):has(
+    > .tm-page-header__end:empty
+  ) {
+  display: none;
+}
+
+/* The band: full width below the rows, wrapping its items onto as many
+   lines as they need, so nothing in it is ever clipped. Absent while
+   empty. */
+.tm-page-header__band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--page-header-gap);
+  min-inline-size: 0;
+}
+
+.tm-page-header__band > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.tm-page-header__band:empty {
+  display: none;
+}

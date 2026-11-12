@@ -1,0 +1,215 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-card — not encapsulated (the rules reach projected slot content), so
+   every selector is namespaced under .tm-card. The card is a framed column:
+   the header band, then the region holding the body and the footer. */
+
+.tm-card {
+  display: block;
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--card-border);
+  border-radius: var(--card-radius);
+  /* Clips a flush body (a grid) to the rounded corners. */
+  overflow: hidden;
+}
+
+/* The header: 8x11 px padding around the heading row and the subtitle
+   line, with a divider below. A collapsed card has nothing below it, so
+   the divider would double the card's own edge. */
+.tm-card__header {
+  padding: var(--card-header-padding-y) var(--card-header-padding-x);
+  border-block-end: var(--border-width) solid var(--divider);
+}
+
+.tm-card--collapsed > .tm-card__header {
+  border-block-end: none;
+}
+
+/* No heading, no actions and no subtitle: no header at all. */
+.tm-card__header:not(:has(.tm-card__heading)):has(
+    > .tm-card__heading-row > .tm-card__actions:empty
+  ):has(> .tm-card__subtitle:empty) {
+  display: none;
+}
+
+/* The heading row: the heading shrinks (ellipsizing its title), the count
+   keeps its width, and the actions pack against the inline end. */
+.tm-card__heading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--card-header-gap);
+  min-block-size: var(--card-line-height);
+}
+
+.tm-card__heading {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--card-font-size);
+  font-weight: var(--weight-semibold);
+  line-height: var(--card-line-height);
+}
+
+.tm-card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The name a screen reader hears while the card holds errors; visually
+   hidden, since the dot already shows it. */
+.tm-card__error-name {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The error dot's reserved box: present whenever `invalid` is bound,
+   painted only while it is true, so the dot never moves the header. */
+.tm-card__dot {
+  flex: none;
+  inline-size: var(--card-dot-size);
+  block-size: var(--card-dot-size);
+  margin-inline-start: var(--card-dot-gap);
+  border-radius: var(--radius-full);
+  background: var(--error);
+  visibility: hidden;
+}
+
+.tm-card--invalid .tm-card__dot {
+  visibility: visible;
+}
+
+/* The disclosure button: the whole heading, with a leading chevron. It
+   takes the pointer 4 px beyond the line above and below, so the target is
+   at least 24 px tall. */
+.tm-card__toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.tm-card__toggle::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(-1 * var(--space-1));
+  inset-inline: 0;
+}
+
+.tm-card__toggle:focus-visible {
+  /* A transparent real outline beneath the token ring: forced colors strip
+     box-shadows but repaint the outline. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-card__chevron {
+  --icon-size: var(--card-chevron-size);
+
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.tm-card__count {
+  flex: none;
+}
+
+.tm-card__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+.tm-card__actions:empty {
+  display: none;
+}
+
+/* The subtitle: one 12 px secondary line. Its first child ellipsizes and
+   the rest keep their width, so a description gives way before the
+   "Updated 10:42" after it; a plain-text subtitle ellipsizes as one run. */
+.tm-card__subtitle {
+  color: var(--text-secondary);
+  font-size: var(--card-subtitle-font-size);
+  line-height: var(--card-subtitle-line-height);
+}
+
+.tm-card__subtitle:empty {
+  display: none;
+}
+
+.tm-card__subtitle > * {
+  display: flex;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tm-card__subtitle > :not(:has(> *)) {
+  display: block;
+  text-overflow: ellipsis;
+}
+
+.tm-card__subtitle > * > :first-child {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tm-card__subtitle > * > :not(:first-child) {
+  flex: none;
+}
+
+/* The body, padded unless flush (a grid fills the card). */
+.tm-card__body {
+  padding: var(--card-body-padding);
+}
+
+.tm-card--flush .tm-card__body {
+  padding: 0;
+}
+
+.tm-card__footer {
+  padding: var(--card-body-padding);
+  border-block-start: var(--border-width) solid var(--divider);
+}
+
+.tm-card__footer:empty {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  /* A background alone is repainted away: the dot keeps a system ink. */
+  .tm-card__dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}

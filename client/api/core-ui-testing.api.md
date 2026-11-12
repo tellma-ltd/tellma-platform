@@ -72,6 +72,23 @@ export class TmButtonHarness extends ComponentHarness {
 }
 
 // @public
+export class TmCardHarness extends ComponentHarness {
+    getCount(): Promise<string | null>;
+    getHeading(): Promise<string | null>;
+    getHeadingLevel(): Promise<number | null>;
+    getHeadingName(): Promise<string | null>;
+    getSubtitle(): Promise<string | null>;
+    static hostSelector: string;
+    isBodyInert(): Promise<boolean>;
+    isBodyRendered(): Promise<boolean>;
+    isCollapsible(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    reservesErrorDot(): Promise<boolean>;
+    toggle(): Promise<void>;
+}
+
+// @public
 export class TmCheckboxHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
@@ -118,6 +135,19 @@ export class TmChipSetHarness extends ComponentHarness {
     getTabStopCount(): Promise<number>;
     getVisibleChips(): Promise<TmChipHarness[]>;
     static hostSelector: string;
+}
+
+// @public
+export class TmConfirmHarness extends ComponentHarness {
+    choose(label: string): Promise<void>;
+    close(): Promise<void>;
+    getChoiceLabels(): Promise<string[]>;
+    getFocusedChoiceLabel(): Promise<string | null>;
+    getIcon(): Promise<string | null>;
+    getMessage(): Promise<string>;
+    getTitle(): Promise<string>;
+    static hostSelector: string;
+    pressEscape(): Promise<void>;
 }
 
 // @public
@@ -209,6 +239,38 @@ export class TmEntityPickerOptionHarness extends ComponentHarness {
     isAction(): Promise<boolean>;
     isActive(): Promise<boolean>;
     isSelected(): Promise<boolean>;
+}
+
+// @public
+export interface TmErrorDialogButtonState {
+    readonly ariaLabel: string | null;
+    readonly disabled: boolean;
+    readonly key: string;
+    readonly label: string;
+    readonly pending: boolean;
+}
+
+// @public
+export class TmErrorDialogHarness extends ComponentHarness {
+    clickButton(key: 'primary' | 'secondary' | 'close'): Promise<void>;
+    getActionLabels(): Promise<string[]>;
+    getButtons(): Promise<TmErrorDialogButtonState[]>;
+    getDetails(): Promise<{
+        label: string;
+        value: string;
+    }[]>;
+    getFocusedButtonKey(): Promise<string | null>;
+    getItems(): Promise<string[]>;
+    getMessage(): Promise<string>;
+    getMoreText(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasDetails(): Promise<boolean>;
+    hasReference(): Promise<boolean>;
+    static hostSelector: string;
+    isDetailsOpen(): Promise<boolean>;
+    pressEscape(): Promise<void>;
+    runAction(label: string): Promise<void>;
+    toggleDetails(): Promise<void>;
 }
 
 // @public
@@ -514,6 +576,24 @@ export class TmSelectHarness extends ComponentHarness {
     selectOption(text: string): Promise<void>;
     sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
 }
+
+// @public
+export class TmSplitterHarness extends ComponentHarness {
+    focus(): Promise<void>;
+    getControlledPaneId(): Promise<string | null>;
+    getLabel(): Promise<string | null>;
+    getMaxValue(): Promise<number | null>;
+    getMinValue(): Promise<number | null>;
+    getOrientation(): Promise<'horizontal' | 'vertical'>;
+    getPaneSize(side: 'start' | 'end'): Promise<number>;
+    getValue(): Promise<number | null>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+    press(key: TmSplitterKey, shift?: boolean): Promise<void>;
+}
+
+// @public
+export type TmSplitterKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown' | 'Home' | 'End';
 
 // @public
 export class TmTabGroupHarness extends ComponentHarness {

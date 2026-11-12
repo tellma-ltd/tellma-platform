@@ -38,6 +38,12 @@
       "./toast": 5.7,
       "./banner": 2.6,
       "./busy-overlay": 2.5,
+      "./confirm": 2.2,
+      "./error-dialog": 3.8,
+      "./card": 3.35,
+      "./page-header": 1.7,
+      "./description-list": 1,
+      "./splitter": 3.5,
       "./button": 2,
       "./calendar-ethiopic": 2,
       "./calendar-umalqura": 5,
@@ -92,6 +98,11 @@
       "./toast": "Raised from 5.4 to 5.7 by the review fixes: measured 5.58, up from 5.28 (+0.30), for focus that survives a render taking the focused control away (a toast crowded out, a replaced action, the pill going; Firefox and WebKit report no focus change then), Tab and Shift+Tab kept among the toasts and returning to where focus came from, and Escape on the pill. The new code is the host's focus bookkeeping, with nothing to fold. Raised from 4 to 5.4 at birth: measured 5.28. The service queues and caps the toasts behind a pill, and replaces keyed toasts in place. Its timers run only for toasts on show and pause on hover, focus and a hidden page, keeping the time left. It announces through two persistent live regions, and re-raises its top-layer host above any modal that opens after it. The host component draws the cards and the pill, returns focus where it came from, and joins the shared Escape stack. The stylesheet weighs 0.92 (4.36 without it); the duplicated decorator metadata weighs 0.23 (5.05 without it), the build's output, not a lever. Saving taken: one data-tone attribute binding per card in place of per-tone classes. No development diagnostics or duplicated templates were found to fold.",
       "./banner": "Raised from 2 to 2.6 at birth: measured 2.48, with about 0.1 of headroom. One component: three tones with their glyphs, the hidden tone prefix read before the message, the action, the previous and next pager with its position, and dismiss, all held to 32 px with one-line ellipsis. The stylesheet weighs 0.67 (1.81 without it); the duplicated decorator metadata weighs 0.24 (2.24 without it), the build's output, not a lever. Saving taken: one data-tone host binding in place of per-tone classes.",
       "./busy-overlay": "Re-measured after the review fixes at 2.39 (from 2.37; popovers and live regions stay out of the inert sweep), under the unchanged 2.5. Raised from 1 to 2.5 at birth: measured 2.37, with about 0.1 of headroom. The service blocks in the calling task. It makes the page inert, including content added while blocked, sets focus aside and holds every key at the window. It shows the scrim on a delay read from its token, or at once, with a live label, and restores focus. The host component is a top-layer popover with the spinner and a status region. The spec's 1 budgeted for the host alone. The stylesheet weighs 0.40 (1.97 without it); the duplicated decorator metadata weighs 0.17 (2.20 without it), the build's output, not a lever. No development diagnostics or duplicated code were found to fold.",
+      "./confirm": "Raised from 2 to 2.2 at birth: measured 2.09, with about 0.1 of headroom. The service builds the question (default glyph, default focus, the yes-or-no defaults read from confirm.ok and confirm.cancel) and opens the internal content component, which draws the tinted disc with its three Lucide glyphs, the message and one tmButton per answer, initial focus marked with cdkFocusInitial. The three glyphs' data is bundled with the entry point. The stylesheet weighs 0.33 (1.76 without it). No development diagnostics beyond the one empty-choices check.",
+      "./error-dialog": "Raised from 2 to 3.8 at birth: measured 3.66, with about 0.1 of headroom. One service and one internal content component: the message, the capped item list with its ICU count, the reference row, the Details disclosure (a description list and the actions), and the footer whose async runs keep a pending state per show generation, a reserved pending-label width, a disabled sibling, ErrorHandler reporting and focus restored by footer position after an in-place replacement. The stylesheet weighs 0.51 (3.15 without it); the two chevron glyphs are bundled. Saving taken: the disclosure region renders only while open, and the label reserve is one grid cell instead of a measured width.",
+      "./card": "Raised from 1 to 3.35 at birth: measured 3.21, with about 0.1 of headroom. One component: the native h2 to h6 heading through one shared template, the inline counter, the subtitle, actions, body and footer slots, the disclosure button with its two chevron glyphs (bundled), preserveContent's hidden and inert region, and the reserved error dot with its hidden accessible name. The stylesheet weighs 0.83 (2.38 without it). Saving taken: one heading template rendered into five heading elements rather than five copies of the heading content.",
+      "./page-header": "Raised from 1 to 1.7 at birth: measured 1.60, with about 0.1 of headroom. A view-only component with no inputs: seven slots in two one-line rows and a wrapping band, the crumb separator glyph (bundled), empty rows dropped by :empty and :has rules, and the narrow padding by container query. The stylesheet weighs 0.61 (0.99 without it). Saving taken: every empty-slot rule is CSS, so the class carries no content queries or signals.",
+      "./splitter": "Raised from 2 to 3.5 at birth: measured 3.39, with about 0.1 of headroom. Two classes: TmSplitter (the CSS clamp as the primary pane's flex basis, the clamp helper for keys, drag and the ARIA values, a ResizeObserver, pointer capture with the RTL-aware delta, Home and End, and a development check on the panes) and TmSplitterPane (id, flex). The stylesheet carries both orientations, the 24 px hit layer and forced-colors rules, and weighs 0.45 (2.93 without it). Saving taken: the clamp is applied in CSS, so no script runs on container resizes beyond reading the size for the ARIA values.",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
     },
     "apiGoldens": {
@@ -101,7 +112,8 @@
       "globalStyles": {
         "./button": "styles/tm-button.css",
         "./input": "styles/tm-input.css",
-        "./number": "styles/tm-number.css"
+        "./number": "styles/tm-number.css",
+        "./description-list": "styles/tm-description-list.css"
       }
     }
   }

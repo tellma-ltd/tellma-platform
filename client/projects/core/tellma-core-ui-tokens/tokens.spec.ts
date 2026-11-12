@@ -166,6 +166,34 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the dialog and layout pieces’ geometry at the sizes they are drawn at', () => {
+    // The names tm-card, tm-page-header, the description list, tm-splitter
+    // and the alert dialogs read: the card header is a 33px band (8px
+    // padding around a 17px line), the splitter bar 7px with a 24px target.
+    for (const declaration of [
+      '--card-header-padding-x: 11px;',
+      '--card-header-padding-y: 8px;',
+      '--card-line-height: 17px;',
+      '--card-subtitle-line-height: 18px;',
+      '--card-dot-size: 6px;',
+      '--page-header-padding-x: 14px;',
+      '--page-header-padding-y: 12px;',
+      '--page-header-padding-narrow: 10px;',
+      '--page-header-title-font-size: 16px;',
+      '--description-list-label-font-size: 12px;',
+      '--description-list-value-font-size: 13px;',
+      '--description-list-row-gap: 10px;',
+      '--description-list-column-gap: 18px;',
+      '--splitter-size: 7px;',
+      '--splitter-hit-size: 24px;',
+      '--splitter-grip-width: 3px;',
+      '--splitter-grip-length: 28px;',
+      '--modal-alert-icon-size: 26px;',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role

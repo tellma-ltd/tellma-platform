@@ -11,12 +11,16 @@ import { BadgeStory } from './badge/badge-story';
 import { BannerStory } from './banner/banner-story';
 import { BusyOverlayStory } from './busy-overlay/busy-overlay-story';
 import { ButtonStory } from './button/button-story';
+import { CardStory } from './card/card-story';
 import { CheckboxStory } from './checkbox/checkbox-story';
+import { ConfirmStory } from './confirm/confirm-story';
 import { ChipStory } from './chip/chip-story';
 import { CopyStory } from './copy/copy-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
+import { DescriptionListStory } from './description-list/description-list-story';
 import { EmptyStateStory } from './empty-state/empty-state-story';
 import { EntityPickerStory } from './entity-picker/entity-picker-story';
+import { ErrorDialogStory } from './error-dialog/error-dialog-story';
 import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridEntityStory } from './grid/grid-entity-story';
@@ -40,12 +44,14 @@ import { MenuRichStory } from './menu/menu-rich-story';
 import { MenuStory } from './menu/menu-story';
 import { ModalStory } from './modal/modal-story';
 import { NumberStory } from './number/number-story';
+import { PageHeaderStory } from './page-header/page-header-story';
 import { PopoverStory } from './popover/popover-story';
 import { ProgressStory } from './progress/progress-story';
 import { RelativeTimeStory } from './relative-time/relative-time-story';
 import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
 import { SkeletonStory } from './skeleton/skeleton-story';
+import { SplitterStory } from './splitter/splitter-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 import { ToastStory } from './toast/toast-story';
@@ -97,6 +103,16 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'toast', title: 'Toasts (TmToasts)', component: ToastStory },
   { id: 'banner', title: 'Banner bar (tm-banner-bar)', component: BannerStory },
   { id: 'busy-overlay', title: 'Busy overlay (TmBusyOverlay)', component: BusyOverlayStory },
+  { id: 'confirm', title: 'Confirm (TmConfirm)', component: ConfirmStory },
+  { id: 'error-dialog', title: 'Error dialog (TmErrorDialog)', component: ErrorDialogStory },
+  { id: 'card', title: 'Card (tm-card)', component: CardStory },
+  { id: 'page-header', title: 'Page header (tm-page-header)', component: PageHeaderStory, wide: true },
+  {
+    id: 'description-list',
+    title: 'Description list (dl[tmDescriptionList])',
+    component: DescriptionListStory,
+  },
+  { id: 'splitter', title: 'Splitter (tm-splitter)', component: SplitterStory, wide: true },
   { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },

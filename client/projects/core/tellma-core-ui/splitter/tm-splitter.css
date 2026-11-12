@@ -1,0 +1,99 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-splitter — the host is a flex line of three items: the start pane,
+   the bar, the end pane. The panes' sizes come from the pane directive's
+   flex binding; this sheet lays out the line and draws the bar. */
+
+:host {
+  display: flex;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+:host([data-orientation='vertical']) {
+  flex-direction: column;
+}
+
+/* The bar: 7 px across, the full length of the split, with a centred
+   3x28 px grip. A wider invisible hit area overlays the panes' edges, so
+   the target is 24 px across while the bar stays thin. */
+.tm-splitter__separator {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--splitter-size);
+  background: var(--splitter-bg);
+  cursor: col-resize;
+  /* The drag owns the pointer: no panning, zooming or text selection. */
+  touch-action: none;
+  user-select: none;
+}
+
+:host([data-orientation='vertical']) .tm-splitter__separator {
+  inline-size: auto;
+  block-size: var(--splitter-size);
+  cursor: row-resize;
+}
+
+.tm-splitter__separator::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-block: 0;
+  inset-inline: calc((var(--splitter-size) - var(--splitter-hit-size)) / 2);
+}
+
+:host([data-orientation='vertical']) .tm-splitter__separator::before {
+  inset-inline: 0;
+  inset-block: calc((var(--splitter-size) - var(--splitter-hit-size)) / 2);
+}
+
+.tm-splitter__grip {
+  inline-size: var(--splitter-grip-width);
+  block-size: var(--splitter-grip-length);
+  border-radius: var(--radius-full);
+  background: var(--splitter-grip);
+}
+
+:host([data-orientation='vertical']) .tm-splitter__grip {
+  inline-size: var(--splitter-grip-length);
+  block-size: var(--splitter-grip-width);
+}
+
+/* Hovered, dragged or focused: the bar takes the accent. */
+.tm-splitter__separator:hover,
+:host(.tm-splitter--dragging) .tm-splitter__separator {
+  background: var(--splitter-active-bg);
+}
+
+.tm-splitter__separator:focus-visible {
+  /* A transparent real outline beneath the token ring: forced colors strip
+     box-shadows but repaint the outline. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+@media (forced-colors: active) {
+  /* Backgrounds are repainted away: the bar and grip keep system inks. */
+  .tm-splitter__separator {
+    forced-color-adjust: none;
+    background: ButtonBorder;
+  }
+
+  .tm-splitter__grip {
+    background: ButtonText;
+  }
+
+  .tm-splitter__separator:hover,
+  :host(.tm-splitter--dragging) .tm-splitter__separator {
+    background: Highlight;
+  }
+}
