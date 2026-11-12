@@ -210,6 +210,79 @@ namespace Tellma.Identity.Tests.Provisioning
         }
 
         [Fact]
+        public async Task A_moved_origin_retires_the_old_one_from_the_audiences_and_the_grants()
+        {
+            const string NewOrigin = "https://acme.tellma.example";
+            await SeedPlatformClientsAsync(_services);
+            await ConvergeAsync(Entry());
+            TellmaIdentitySeedClientOptions moved = Entry();
+            moved.Origin = NewOrigin;
+
+            DistributionConvergence convergence = await ConvergeAsync(moved);
+
+            // The old origin is no longer on the list every origin-anchored grant is evaluated
+            // against, nor granted to the client that held it; the new one is both.
+            Assert.Equal(Origin, convergence.RetiredOrigin);
+            Assert.True(convergence.Changed);
+            Assert.Equal([NewOrigin], Scopes.Find(TellmaIdentityConstants.ApiScope)!.Resources);
+            Assert.DoesNotContain(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-cli")!.Permissions);
+            Assert.Contains(Permissions.Prefixes.Resource + NewOrigin, Applications.Find("tellma-cli")!.Permissions);
+
+            // Converging the moved entry again finds nothing left to retire.
+            DistributionConvergence again = await ConvergeAsync(moved);
+            Assert.Null(again.RetiredOrigin);
+            Assert.False(again.Changed);
+        }
+
+        [Fact]
+        public async Task A_moved_distribution_takes_its_service_accounts_with_it()
+        {
+            const string NewOrigin = "https://acme.tellma.example";
+            await SeedPlatformClientsAsync(_services);
+            await ConvergeAsync(Entry());
+            ServiceAccountCredentials account;
+            using (IServiceScope scope = _services.CreateScope())
+            {
+                account = await scope.ServiceProvider.GetRequiredService<IClientProvisioningService>().CreateServiceAccountAsync(
+                    "Nightly import", [Origin], "acme-svc", TestContext.Current.CancellationToken);
+            }
+
+            TellmaIdentitySeedClientOptions moved = Entry();
+            moved.Origin = NewOrigin;
+            DistributionConvergence convergence = await ConvergeAsync(moved);
+
+            // The account follows its owner: owned by, and granted, the new origin alone, so the
+            // moved distribution still sees it and it mints tokens only for where that distribution is.
+            Assert.Equal(Origin, convergence.RetiredOrigin);
+            InMemoryApplication serviceAccount = Applications.Find(account.ClientId)!;
+            Assert.Equal(NewOrigin, TellmaClientProperties.Get(serviceAccount.Properties, TellmaClientProperties.Origin));
+            Assert.Contains(Permissions.Prefixes.Resource + NewOrigin, serviceAccount.Permissions);
+            Assert.DoesNotContain(Permissions.Prefixes.Resource + Origin, serviceAccount.Permissions);
+            Assert.DoesNotContain(Origin, Scopes.Find(TellmaIdentityConstants.ApiScope)!.Resources);
+        }
+
+        [Fact]
+        public async Task An_old_origin_another_distribution_carries_is_kept()
+        {
+            const string NewOrigin = "https://acme.tellma.example";
+            await SeedPlatformClientsAsync(_services);
+            await ConvergeAsync(Entry());
+
+            // A second distribution on the same origin: the origin is still in use after acme moves.
+            TellmaIdentitySeedClientOptions twin = Entry();
+            twin.ClientId = "twin";
+            await ConvergeAsync(twin);
+
+            TellmaIdentitySeedClientOptions moved = Entry();
+            moved.Origin = NewOrigin;
+            DistributionConvergence convergence = await ConvergeAsync(moved);
+
+            Assert.Null(convergence.RetiredOrigin);
+            Assert.Contains(Origin, Scopes.Find(TellmaIdentityConstants.ApiScope)!.Resources);
+            Assert.Contains(Permissions.Prefixes.Resource + Origin, Applications.Find("tellma-cli")!.Permissions);
+        }
+
+        [Fact]
         public async Task A_drifted_registration_is_converged_back_whoever_created_it()
         {
             await ConvergeAsync(Entry());

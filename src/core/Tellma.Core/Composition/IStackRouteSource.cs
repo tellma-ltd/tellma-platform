@@ -18,6 +18,9 @@ namespace Tellma.Core.Composition
         /// <param name="resource">The resource, such as <c>acme.SalesInvoice</c>.</param>
         /// <returns>The stack's route, or null when the resource names no stack.</returns>
         StackRoute? Find(string resource);
+
+        /// <summary>Every stack's route, for the endpoint audit's check of the resource segments.</summary>
+        IReadOnlyCollection<StackRoute> Routes { get; }
     }
 
     /// <summary>The part of a stack a link is built from.</summary>
@@ -33,5 +36,8 @@ namespace Tellma.Core.Composition
         {
             return null;
         }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<StackRoute> Routes => [];
     }
 }

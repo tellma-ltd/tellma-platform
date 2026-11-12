@@ -117,12 +117,16 @@ segment. Version 1 is:
 
 Each policy in `ApiPolicies` requires its scope **and** its audience (`ApiPolicies.HasAudience`
 beside `HasScope`), so a token minted for a distribution — whose only audience is that
-distribution's origin — answers `403` at both APIs whatever its scopes. Both audiences are fixed
+distribution's origin — answers `403` at both APIs whatever its scopes. Both APIs are
+machine-to-machine, so each policy also requires a machine principal (`ApiPolicies.IsService`:
+exactly one `tellma_kind` claim, `service`): a token that speaks for a person answers `403`
+whatever it carries, and no interactive client — the CLI included — is permitted
+`tellma_identity` in the first place. Both audiences are fixed
 URNs, never an origin: in-proc the issuer shares the distribution's origin, and an origin-valued
 management audience would make one token valid at both. The two platform scopes converge on exactly
 their URN at every start. A caller reads and deletes
 every service account only with control-plane authority (`ApiPolicies.HasControlPlaneAuthority`:
-the control-plane scope and the control-plane audience).
+the control-plane scope, the control-plane audience and a machine principal).
 
 The version is the API's own integer, not the engine's release. An additive change — a new endpoint,
 response member or optional request member — stays inside a version, and callers ignore response
@@ -172,7 +176,11 @@ OpenIddict's own resource checks are turned off, and a refusal is always `invali
 | A control-plane client (one permitted `tellma_control_plane`) | its own permissions exactly, never the tenant pattern; with the control-plane scope on `client_credentials`, also any origin of the distribution-origin list, exactly |
 
 The distribution-origin list is the `tellma_api` scope's resources, which onboarding appends each
-distribution's origin to. A device request's resources are carried into its codes. A token request
+distribution's origin to. Converging a distribution at a new origin retires the old one: the
+service accounts it created move with it (owner origin and audience), and the old origin leaves the
+list and the grants of the clients that call distribution APIs, unless another distribution's clients
+still carry it, which is logged as a Warning. Refresh tokens issued before the move keep their
+grant's audience until they lapse or are revoked. A device request's resources are carried into its codes. A token request
 against a stored grant narrows the access token alone (`NarrowAccessTokenAudienceHandler`); the
 rotated refresh token keeps the grant, so every refresh is evaluated against the original
 authorization.
@@ -191,7 +199,13 @@ origin, and one without a resource for the identity server's own APIs.
 
 A `Native` seed entry with `ThirdParty` is third-party software, such as a coding agent: it carries
 no `tellma:first_party` marker, so no first-party treatment applies to it, and its consent is always
-explicit. `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
+explicit. Remembered consent is bound to places: every permanent authorization records the resources
+the user granted the client through it (`AuthorizationResources`, property `tellma:resources`), and
+an explicit-consent request naming a resource its authorization does not cover shows the consent
+page again (`consent_required` under `prompt=none`); accepting adds the resource to that same
+authorization, so a session keeps one authorization per client for global logout to revoke. The
+consent and device-approval pages name each place (`ConsentTargetCatalog`: a distribution's host
+in ASCII form, or its host and a tenant id). `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
 `Native` entry whose client id is its key); they seed beside `Seed:Clients`, and any entry of either
 with `Enabled=false` is neither validated nor seeded.
 

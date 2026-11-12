@@ -26,6 +26,7 @@
     <Project Path="src/apps/Tellma.Identity.Web/Tellma.Identity.Web.csproj" />
     <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
     <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+    <Project Path="src/core/Tellma.Core.AspNetCore/Tellma.Core.AspNetCore.csproj" />
     <Project Path="src/core/Tellma.Core.Email/Tellma.Core.Email.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
     <Project Path="src/core/Tellma.Core.Imaging.PdfWorker/Tellma.Core.Imaging.PdfWorker.csproj" />
@@ -51,6 +52,7 @@
     <Project Path="test/apps/Tellma.Identity.TestSupport/Tellma.Identity.TestSupport.csproj" />
     <Project Path="test/core/Tellma.Core.Abstractions.Tests/Tellma.Core.Abstractions.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Tests/Tellma.Core.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.AspNetCore.Tests/Tellma.Core.AspNetCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />

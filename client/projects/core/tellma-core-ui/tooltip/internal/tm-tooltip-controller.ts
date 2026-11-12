@@ -41,7 +41,8 @@ function parseCssTime(value: string, fallback: number): number {
  * needs a tooltip (a button while it has a reason) pays for none of it the
  * rest of the time.
  *
- * @internal Shared by `TmTooltip` and `TmButton`; never use directly.
+ * @internal Shared by `TmTooltip`, `TmButton` and `TmCopyButton`; never use
+ * directly.
  */
 export class ɵTmTooltipController {
   /** Whether a touch tap on the host shows the tooltip (long-press always does). */
@@ -104,6 +105,16 @@ export class ɵTmTooltipController {
     this.described = descriptions;
     this.text = text;
     this.panelRef?.instance.text.set(text);
+  }
+
+  /**
+   * Shows the tooltip now, as keyboard focus would, for a host that needs
+   * to point at something without waiting for a hover — the copy button's
+   * "Press Ctrl+C to copy" fallback. It hides as usual: on blur, Escape,
+   * or the pointer leaving.
+   */
+  show(): void {
+    this.showNow();
   }
 
   /** Tears down the surface, timers, listeners and the description. */

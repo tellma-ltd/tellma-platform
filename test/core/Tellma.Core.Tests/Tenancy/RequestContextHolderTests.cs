@@ -181,12 +181,16 @@ namespace Tellma.Core.Tests.Tenancy
         [Fact]
         public void Only_the_two_writers_take_the_write_side_of_the_context()
         {
+            // Named, not referenced: the web host's middleware is internal to it.
+            const string TenantMiddleware = "Tellma.Core.AspNetCore.Tenancy.TenantMiddleware";
+
             // The context has exactly two writers: the access guard (with the tenant middleware in
             // front of it) and the tenant scope factory. Any other runtime type that stores, receives,
             // returns, resolves or calls the write side is a third writer in the making, so each one
             // found here has to be one of those two, the holder itself, or the code that registers and
             // shares them. The write side is public, so every platform assembly this suite ships with
-            // is searched, not only the one that declares it.
+            // is searched, not only the one that declares it: the web host's included, whose tenant
+            // middleware binds the principal ahead of the guard.
             Type[] allowed =
             [
                 typeof(IRequestContextHolder),
@@ -208,7 +212,10 @@ namespace Tellma.Core.Tests.Tenancy
 
             Assert.Contains(typeof(TellmaComposition).Assembly, searched);
             Assert.Contains(typeof(IRequestContextAccessor).Assembly, searched);
-            Assert.Equal([.. allowed.Select(static type => type.FullName!).Order(StringComparer.Ordinal)], holders);
+            Assert.Contains(searched, static assembly => assembly.GetName().Name == "Tellma.Core.AspNetCore");
+            Assert.Equal(
+                [.. allowed.Select(static type => type.FullName!).Append(TenantMiddleware).Order(StringComparer.Ordinal)],
+                holders);
         }
 
         [Fact]

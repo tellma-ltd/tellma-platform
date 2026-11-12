@@ -12,7 +12,9 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  CircleX,
   HandCoins,
+  Inbox,
   LogIn,
   LogOut,
   PanelLeftClose,
@@ -20,6 +22,7 @@ import {
   Plus,
   Redo,
   Search,
+  SearchX,
   Undo,
   X,
 } from 'lucide';
@@ -39,6 +42,9 @@ export const SHOWCASE_ICONS: Readonly<Record<string, TmIconSource>> = {
   check: Check,
   search: Search,
   'circle-alert': CircleAlert,
+  'circle-x': CircleX,
+  inbox: Inbox,
+  'search-x': SearchX,
   'hand-coins': HandCoins,
   // Directional glyphs: they point along the reading direction, so they flip
   // in right-to-left text.

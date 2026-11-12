@@ -27,6 +27,23 @@
     }
 </ul>
 
+@* Where the access applies: the distribution, or the tenant of it, each token will be for. A
+   remembered grant covers these places and no other, so the user is asked again for a new one.
+   Each place is an address, so it is isolated left-to-right inside a right-to-left page. *@
+@if (Model.Targets.Count > 0)
+{
+    <p class="tmi-lead">@L["ConsentTargets"]</p>
+    <ul class="tmi-scopes">
+        @foreach (string target in Model.Targets)
+        {
+            <li>
+                <tmi-icon name="globe" />
+                <div class="tmi-scope-title"><bdi dir="ltr">@target</bdi></div>
+            </li>
+        }
+    </ul>
+}
+
 <form method="post">
     @* Round-trip the protocol parameters so OpenIddict resolves the same request on POST. *@
     @foreach (KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues> parameter in
