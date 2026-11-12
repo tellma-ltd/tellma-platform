@@ -113,9 +113,9 @@
   color: var(--text-secondary);
 }
 
-/* The download action wears tmButton's own classes (see the template), so
-   every button rule reaches it from the global sheet and nothing here has
-   to be kept in step by hand. */
+/* The download action is a tmButton host (see the template), so every
+   button rule reaches it from the global sheet and nothing here has to be
+   kept in step by hand. */
 
 /* The permanent live region: present for announcements, never seen — the
    same message is already rendered visibly by the state it belongs to. */

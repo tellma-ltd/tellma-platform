@@ -104,6 +104,34 @@ namespace Tellma.Core.Tenancy
         }
 
         /// <summary>
+        ///     Lists one tenant's membership hints in subject order, in one catalog query: the admin
+        ///     surface's view of who the tenant's users are. Like every hint, a navigation aid, never an
+        ///     authorization source.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The hints; empty for a tenant with none, or one the catalog does not hold.</returns>
+        public async Task<IReadOnlyList<TenantMemberHint>> ListMembersAsync(int tenantId, CancellationToken cancellationToken)
+        {
+            SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
+            List<TenantMemberHint> members = [];
+            await using (connection.ConfigureAwait(false))
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.CommandText = CatalogStatements.MembersOf;
+                _ = command.Parameters.Add(new SqlParameter("@tenantId", SqlDbType.Int) { Value = tenantId });
+
+                await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    members.Add(new TenantMemberHint(reader.GetString(0), reader.GetBoolean(1), reader.GetDateTimeOffset(2)));
+                }
+            }
+
+            return members.AsReadOnly();
+        }
+
+        /// <summary>
         ///     Rebuilds one tenant's hints from its users: the upsert of <paramref name="records" />, and
         ///     the delete of the tenant's hints they do not hold, in one catalog transaction. Unlike the
         ///     writers' upsert, a failure is thrown, so the reconciliation can log the tenant and go on.

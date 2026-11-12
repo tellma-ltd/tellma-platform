@@ -92,14 +92,23 @@ namespace Tellma.Identity.Services.Provisioning
     /// <param name="ServiceClient">The backend machine client's outcome.</param>
     /// <param name="AudienceAdded">Whether the origin was newly added to the distribution API's audiences.</param>
     /// <param name="GrantsAdded">How many seeded platform clients were newly granted the origin.</param>
+    /// <param name="RetiredOrigin">
+    ///     The distribution's previous origin when the convergence moved it and retired the old one
+    ///     from the distribution API's audiences and the platform clients' grants; null otherwise.
+    /// </param>
     public sealed record DistributionConvergence(
-        ClientConvergence Client, ClientConvergence ServiceClient, bool AudienceAdded, int GrantsAdded)
+        ClientConvergence Client,
+        ClientConvergence ServiceClient,
+        bool AudienceAdded,
+        int GrantsAdded,
+        string? RetiredOrigin = null)
     {
         /// <summary>Whether the convergence wrote anything at all.</summary>
         public bool Changed =>
             Client != ClientConvergence.Unchanged
             || ServiceClient != ClientConvergence.Unchanged
             || AudienceAdded
-            || GrantsAdded > 0;
+            || GrantsAdded > 0
+            || RetiredOrigin is not null;
     }
 }

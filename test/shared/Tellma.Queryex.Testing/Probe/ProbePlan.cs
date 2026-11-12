@@ -39,9 +39,10 @@ namespace Tellma.Queryex.Testing.Probe
         ///     <para>
         ///         Counted per fragment. A grouping key appears in both the select list and the
         ///         grouping clause, and that is what the backend requires rather than a duplication
-        ///         anyone chose. Aggregations are excused too: at group grain there is no lateral
-        ///         binding to refer to, and the backend computes identical aggregations once however
-        ///         many times they are written.
+        ///         anyone chose. A bare aggregation is excused too: the backend computes identical
+        ///         aggregations once however many times they are written, and writing one again costs
+        ///         only its own text. Anything built over one is not, since copies of it multiply with
+        ///         every call nested around it.
         ///     </para>
         /// </remarks>
         public static IReadOnlyList<string> Duplicated(
@@ -88,9 +89,14 @@ namespace Tellma.Queryex.Testing.Probe
             RelationalPlan plan = clauses.Lower();
             List<string> findings = [];
 
-            foreach (ValueBinding binding in plan.Bindings)
+            foreach (LateralSource lateral in plan.Laterals)
             {
-                Inspect(binding.Value, "binding " + binding.Index.ToString(Culture), findings);
+                InspectLateral(lateral, string.Empty, findings);
+            }
+
+            foreach (HoistedVariable variable in plan.Variables)
+            {
+                Inspect(variable.Reads, "variable " + variable.Name, findings);
             }
 
             foreach (PlanSelectItem item in plan.Select)
@@ -102,12 +108,13 @@ namespace Tellma.Queryex.Testing.Probe
             {
                 Inspect(plan.Where, "filter", findings);
 
-                // A semi-join's bindings sit in its subquery's own source, each a fragment of its own.
+                // A semi-join's one-row sources sit in its subquery's own source, each a fragment of
+                // its own.
                 foreach (PlanSubquery subquery in Subqueries(plan.Where))
                 {
-                    foreach (ValueBinding binding in subquery.Bindings)
+                    foreach (LateralSource lateral in subquery.Laterals)
                     {
-                        Inspect(binding.Value, "subquery binding " + binding.Alias, findings);
+                        InspectLateral(lateral, "subquery ", findings);
                     }
                 }
             }
@@ -132,6 +139,19 @@ namespace Tellma.Queryex.Testing.Probe
         private static System.Globalization.CultureInfo Culture =>
             System.Globalization.CultureInfo.InvariantCulture;
 
+        /// <summary>Counts what one one-row source writes more than once.</summary>
+        /// <param name="lateral">The source.</param>
+        /// <param name="scope">What the source belongs to, for the finding, ending in a space when not empty.</param>
+        /// <param name="findings">The findings so far.</param>
+        private static void InspectLateral(LateralSource lateral, string scope, List<string> findings)
+        {
+            string where = (lateral is ValueBinding ? "binding " : "lookup ") + lateral.Alias;
+            foreach (PlanNode read in lateral.Reads)
+            {
+                Inspect(read, scope + where, findings);
+            }
+        }
+
         /// <summary>Counts what one fragment writes more than once.</summary>
         /// <param name="fragment">The fragment.</param>
         /// <param name="where">Which fragment it is, for the finding.</param>
@@ -143,7 +163,7 @@ namespace Tellma.Queryex.Testing.Probe
 
             foreach ((PlanValue value, int occurrences) in counts)
             {
-                if (occurrences > 1 && !value.IsAtomic && !Aggregates(value))
+                if (occurrences > 1 && !value.IsAtomic && value is not PlanAggregate)
                 {
                     findings.Add(where + ": a " + value.GetType().Name
                         + " is written " + occurrences.ToString(Culture) + " times");
@@ -184,14 +204,6 @@ namespace Tellma.Queryex.Testing.Probe
                     yield return nested;
                 }
             }
-        }
-
-        /// <summary>Whether a value contains an aggregation anywhere.</summary>
-        /// <param name="node">The value.</param>
-        /// <returns>True when it does.</returns>
-        private static bool Aggregates(PlanNode node)
-        {
-            return node is PlanAggregate || Children(node).Any(Aggregates);
         }
 
         /// <summary>What sits directly under one plan node.</summary>

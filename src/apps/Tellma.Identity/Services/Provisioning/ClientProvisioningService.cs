@@ -43,15 +43,20 @@ namespace Tellma.Identity.Services.Provisioning
             // Onboarding always rotates: fresh secrets make every run a create or an update.
             DistributionClientRegistration registration = new(
                 slug, origin, backchannelLogoutUri, GenerateSecret(), GenerateSecret(), allowTokenExchange);
-            await converger.ConvergeDistributionAsync(registration, cancellationToken);
+            DistributionConvergence convergence = await converger.ConvergeDistributionAsync(registration, cancellationToken);
 
+            // A re-onboarding that moved the distribution names the origin it retired.
             await auditLogger.LogAsync(
                 new AuditEventEntry
                 {
                     Action = AuditActions.ClientCreated,
                     ClientId = slug,
-                    DetailsJson = JsonSerializer.Serialize(
-                        new { origin = origin.GetLeftPart(UriPartial.Authority), kind = "distribution" }),
+                    DetailsJson = JsonSerializer.Serialize(new
+                    {
+                        origin = origin.GetLeftPart(UriPartial.Authority),
+                        kind = "distribution",
+                        retiredOrigin = convergence.RetiredOrigin,
+                    }),
                 },
                 cancellationToken);
 

@@ -8,14 +8,18 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
-import { Check, ChevronRight, CircleAlert, Plus, Search } from 'lucide';
+import { Check, ChevronRight, CircleAlert, CircleX, Inbox, Plus, Search, SearchX } from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
+import { TmAvatar } from '@tellma/core-ui/avatar';
+import { TmBadge, TmCounter } from '@tellma/core-ui/badge';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
+import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
+import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
@@ -38,17 +42,26 @@ import {
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
+import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
+import { TmRelativeTime } from '@tellma/core-ui/relative-time';
 import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import * as alertExamples from './alert/tm-alert.examples';
+import * as avatarExamples from './avatar/tm-avatar.examples';
+import * as badgeExamples from './badge/tm-badge.examples';
+import * as counterExamples from './badge/tm-counter.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
+import * as copyButtonExamples from './copy/tm-copy-button.examples';
+import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
+import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
 import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
@@ -61,8 +74,12 @@ import * as menuTriggerExamples from './menu/tm-menu-trigger.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
+import * as progressBarExamples from './progress/tm-progress-bar.examples';
+import * as progressRingExamples from './progress/tm-progress-ring.examples';
+import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
 import * as multiSelectExamples from './select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
+import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
@@ -115,11 +132,16 @@ class ExamplePage {}
 @Component({
   imports: [
     TmAlert,
+    TmAvatar,
+    TmBadge,
     TmButton,
     TmCheckbox,
     TmContextMenuTrigger,
+    TmCopyButton,
+    TmCounter,
     TmDatePicker,
     TmDropzone,
+    TmEmptyState,
     TmEntityPicker,
     TmFilePicker,
     TmFormField,
@@ -144,7 +166,12 @@ class ExamplePage {}
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
+    TmProgressBar,
+    TmProgressRing,
+    TmReference,
+    TmRelativeTime,
     TmSelect,
+    TmSkeleton,
     TmSpinner,
     TmTab,
     TmTabContent,
@@ -177,6 +204,16 @@ class ExamplePage {}
       <tm-option-group label="placeholder"><tm-option [value]="0">placeholder</tm-option></tm-option-group>
     </tm-multi-select>
     <tm-spinner />
+    <tm-badge>placeholder</tm-badge>
+    <tm-counter [value]="1" />
+    <tm-avatar name="placeholder" />
+    <tm-progress-bar label="placeholder" />
+    <tm-progress-ring />
+    <tm-skeleton />
+    <tm-relative-time value="2026-01-01T00:00:00Z" />
+    <tm-copy-button text="placeholder" />
+    <tm-reference value="placeholder" />
+    <tm-empty-state heading="placeholder" />
     <tm-icon name="plus" />
     <tm-kbd keys="Mod+K" />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
@@ -472,6 +509,16 @@ const SUITES = [
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
   { source: 'select/tm-multi-select.examples.ts', examples: multiSelectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'badge/tm-badge.examples.ts', examples: badgeExamples },
+  { source: 'badge/tm-counter.examples.ts', examples: counterExamples },
+  { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
+  { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
+  { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },
+  { source: 'skeleton/tm-skeleton.examples.ts', examples: skeletonExamples },
+  { source: 'relative-time/tm-relative-time.examples.ts', examples: relativeTimeExamples },
+  { source: 'copy/tm-copy-button.examples.ts', examples: copyButtonExamples },
+  { source: 'copy/tm-reference.examples.ts', examples: referenceExamples },
+  { source: 'empty-state/tm-empty-state.examples.ts', examples: emptyStateExamples },
   { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
   { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },
   { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
@@ -491,13 +538,16 @@ describe('co-located docs examples compile against the live API (§11)', () => {
         it(`'${title}' compiles, renders, and instantiates what it names`, async () => {
           TestBed.configureTestingModule({
             // provideHttpClient backs tm-image's default TM_BLOB_FETCHER; the
-            // icons are the registry names the icon examples draw.
+            // icons are the registry names the examples draw.
             providers: [
               provideTellmaUi(),
               provideHttpClient(),
               provideTellmaIcons({
                 plus: Plus,
                 'circle-alert': CircleAlert,
+                'circle-x': CircleX,
+                inbox: Inbox,
+                'search-x': SearchX,
                 'chevron-right': { node: ChevronRight, mirrorInRtl: true },
               }),
             ],

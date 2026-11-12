@@ -185,8 +185,7 @@ namespace Tellma.Identity.Services.Provisioning
 
             OpenIddictApplicationDescriptor descriptor = seed.Kind switch
             {
-                TellmaIdentitySeedClientKind.Cli => PublicNativeClient(seed, includeIdentityScope: true),
-                TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed, includeIdentityScope: false),
+                TellmaIdentitySeedClientKind.Cli or TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed),
                 TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed),
                 TellmaIdentitySeedClientKind.Distribution => throw new ArgumentException(
                     $"Seed client '{seed.ClientId}' is a Distribution entry, which registers two clients; build it with SeededDistribution.",
@@ -265,10 +264,11 @@ namespace Tellma.Identity.Services.Provisioning
         ///     A public native client (CLI / native app): Authorization Code + PKCE via the system
         ///     browser and the Device Authorization Grant. The native application type relaxes
         ///     loopback redirect matching, so a portless <c>http://127.0.0.1/...</c> registration
-        ///     accepts any ephemeral port at runtime.
+        ///     accepts any ephemeral port at runtime. It is never permitted the management scope:
+        ///     the management API is a machine-to-machine surface that refuses a person's token, so
+        ///     an interactive client asking for it is refused at the authorization request.
         /// </summary>
-        private static OpenIddictApplicationDescriptor PublicNativeClient(
-            TellmaIdentitySeedClientOptions seed, bool includeIdentityScope)
+        private static OpenIddictApplicationDescriptor PublicNativeClient(TellmaIdentitySeedClientOptions seed)
         {
             OpenIddictApplicationDescriptor descriptor = new()
             {
@@ -297,11 +297,6 @@ namespace Tellma.Identity.Services.Provisioning
                     Requirements.Features.ProofKeyForCodeExchange,
                 },
             };
-
-            if (includeIdentityScope)
-            {
-                descriptor.Permissions.Add(Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope);
-            }
 
             foreach (string redirectUri in seed.RedirectUris)
             {

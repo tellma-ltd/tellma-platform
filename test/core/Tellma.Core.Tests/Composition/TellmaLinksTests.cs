@@ -198,6 +198,9 @@ namespace Tellma.Core.Tests.Composition
             {
                 return _stacks.TryGetValue(resource, out StackRoute route) ? route : null;
             }
+
+            /// <inheritdoc />
+            public IReadOnlyCollection<StackRoute> Routes => _stacks.Values;
         }
     }
 }

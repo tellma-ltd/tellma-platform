@@ -28,8 +28,15 @@ namespace Tellma.Core.Queryex.Emit
     /// </remarks>
     internal sealed class PlanEmitter
     {
-        /// <summary>The alias the lookup inside a hoisted declaration uses.</summary>
+        /// <summary>The alias the lookup inside a hoisted hierarchy declaration uses.</summary>
         private const string LookupAlias = "x";
+
+        /// <summary>The alias of the month table inside a lateral calendar lookup.</summary>
+        private const string MonthAlias = "M";
+
+        /// <summary>The month table's columns, in the order a lookup selects them.</summary>
+        private static readonly CalendarColumn[] MonthColumnOrder =
+            [CalendarColumn.Year, CalendarColumn.Month, CalendarColumn.StartDate, CalendarColumn.EndDate];
 
         /// <summary>The column name a value binding is written under.</summary>
         internal const string BindingColumn = "v";
@@ -39,6 +46,13 @@ namespace Tellma.Core.Queryex.Emit
 
         /// <summary>Where the SQL is collected.</summary>
         private readonly SqlWriter _sql;
+
+        /// <summary>How many subqueries of a value's own the writer is inside, outermost first.</summary>
+        /// <remarks>
+        ///     Above zero, an aggregation that reads no column is written against the root's key, so
+        ///     the backend still aggregates it over the statement's rows.
+        /// </remarks>
+        private int _subqueries;
 
         /// <summary>Initializes an emitter.</summary>
         /// <param name="sql">Where the SQL is collected.</param>
@@ -77,6 +91,26 @@ namespace Tellma.Core.Queryex.Emit
                     _sql.Quoted(binding.Binding.Alias);
                     _sql.Write('.');
                     _sql.Quoted(BindingColumn);
+                    return;
+
+                case PlanLookupColumn column:
+                    _sql.Quoted(column.Lookup.Alias);
+                    _sql.Write('.');
+                    _sql.Quoted(ColumnName(column.Column));
+                    return;
+
+                case PlanScalarLookup scalar:
+                    _subqueries++;
+                    _sql.Write('(');
+                    WriteLevel(scalar, 0);
+                    _sql.Write(')');
+                    _subqueries--;
+                    return;
+
+                case PlanNamedScalar named:
+                    _subqueries++;
+                    WriteNamedScalar(named);
+                    _subqueries--;
                     return;
 
                 case PlanNullValue absent:
@@ -213,13 +247,32 @@ namespace Tellma.Core.Queryex.Emit
             _sql.Quoted(join.Navigation!.ForeignKey.Column);
         }
 
+        /// <summary>Writes one one-row source, without the line break that ends it.</summary>
+        /// <param name="lateral">The source, already named.</param>
+        internal void Lateral(LateralSource lateral)
+        {
+            switch (lateral)
+            {
+                case ValueBinding binding:
+                    Binding(binding);
+                    return;
+
+                case CalendarLookup lookup:
+                    WriteLateralLookup(lookup);
+                    return;
+
+                default:
+                    return;
+            }
+        }
+
         /// <summary>Writes one value binding, without the line break that ends it.</summary>
         /// <param name="binding">The binding, already named.</param>
         /// <remarks>
         ///     A one-row lateral source: it names a value the guards can mention as often as they need
         ///     to without the expression behind it being written more than once.
         /// </remarks>
-        internal void Binding(ValueBinding binding)
+        private void Binding(ValueBinding binding)
         {
             _sql.Write("CROSS APPLY (VALUES (");
             Value(binding.Value);
@@ -230,11 +283,236 @@ namespace Tellma.Core.Queryex.Emit
             _sql.Write(')');
         }
 
+        /// <summary>Writes one calendar lookup as a lateral source, without the line break that ends it.</summary>
+        /// <param name="lookup">The lookup, already named.</param>
+        /// <remarks>
+        ///     An outer apply, so a row whose date the month table does not cover is kept and reads
+        ///     every column of the lookup as absent. All four columns are selected, whichever the
+        ///     statement reads: the backend reads only the ones referenced, and a fixed list keeps the
+        ///     text the same however the lookup is used.
+        /// </remarks>
+        private void WriteLateralLookup(CalendarLookup lookup)
+        {
+            _sql.Write("OUTER APPLY (SELECT ");
+            MonthColumns(MonthAlias);
+            _sql.Write(" FROM ");
+            if (lookup.Date is null)
+            {
+                WriteMonthByNumber(lookup, MonthAlias);
+            }
+            else
+            {
+                WriteMonthByDate(lookup, MonthAlias);
+            }
+
+            _sql.Write(") AS ");
+            _sql.Quoted(lookup.Alias);
+        }
+
+        /// <summary>Writes one level of a scalar calendar lookup and everything nested in it.</summary>
+        /// <param name="scalar">The scalar lookup.</param>
+        /// <param name="index">The level, outermost first.</param>
+        /// <remarks>
+        ///     Each level selects the next one, and the innermost selects the result, so every level
+        ///     and the result read the rows of all the levels around them. A level's bindings sit in
+        ///     its own source, where the levels inside it can read them too.
+        /// </remarks>
+        private void WriteLevel(PlanScalarLookup scalar, int index)
+        {
+            CalendarLookup level = scalar.Levels[index];
+            _sql.Write("SELECT ");
+            if (index + 1 < scalar.Levels.Length)
+            {
+                _sql.Write('(');
+                WriteLevel(scalar, index + 1);
+                _sql.Write(')');
+            }
+            else
+            {
+                Value(scalar.Result);
+            }
+
+            _sql.Write(" FROM ");
+            if (level.Date is null)
+            {
+                WriteMonthByNumber(level, level.Alias);
+                return;
+            }
+
+            // The values the date is computed from come first, so the month sought from it can read
+            // them: the first as a source of its own, the rest and the month applied to it.
+            for (int binding = 0; binding < level.Bindings.Count; binding++)
+            {
+                if (binding == 0)
+                {
+                    BindingSource(level.Bindings[binding]);
+                }
+                else
+                {
+                    _sql.Write(' ');
+                    Binding(level.Bindings[binding]);
+                }
+            }
+
+            if (level.Bindings.Count > 0)
+            {
+                _sql.Write(" CROSS APPLY ");
+            }
+
+            WriteMonthByDate(level, level.Alias);
+        }
+
+        /// <summary>
+        ///     Writes the month a date falls in as a source, and the condition that keeps it, starting
+        ///     with the source.
+        /// </summary>
+        /// <param name="lookup">The lookup by date.</param>
+        /// <param name="alias">The alias the month is read under.</param>
+        /// <remarks>
+        ///     The last month that began on or before the date, kept only when the date falls before
+        ///     that month's end. The ordering and the first row are what let the host's unique index
+        ///     on the calendar and first day answer with one seek, and the end is checked on the one
+        ///     row found rather than inside the seek: checked inside, a date past the table's last
+        ///     month would read every month backward looking for one that ends after it.
+        /// </remarks>
+        private void WriteMonthByDate(CalendarLookup lookup, string alias)
+        {
+            PlanValue date = lookup.Date!;
+            _sql.Write("(SELECT TOP (1) ");
+            MonthColumns(alias);
+            _sql.Write(" FROM ");
+            _sql.Write(lookup.Source);
+            _sql.Write(" AS ");
+            _sql.Quoted(alias);
+            _sql.Write(" WHERE ");
+            MonthColumn(alias, "Calendar");
+            _sql.Write(" = ");
+            Value(lookup.Calendar);
+            _sql.Write(" AND ");
+            MonthColumn(alias, ColumnName(CalendarColumn.StartDate));
+            _sql.Write(" <= ");
+            Value(date);
+            _sql.Write(" ORDER BY ");
+            MonthColumn(alias, ColumnName(CalendarColumn.StartDate));
+            _sql.Write(" DESC) AS ");
+            _sql.Quoted(alias);
+            _sql.Write(" WHERE ");
+            Value(date);
+            _sql.Write(" < ");
+            MonthColumn(alias, ColumnName(CalendarColumn.EndDate));
+        }
+
+        /// <summary>
+        ///     Writes the month a year and a month number name, with the lookup's bindings, starting
+        ///     with the source.
+        /// </summary>
+        /// <param name="lookup">The lookup by year and month.</param>
+        /// <param name="alias">The alias the month table is read under.</param>
+        /// <remarks>An equality on the table's key, which holds at most one row.</remarks>
+        private void WriteMonthByNumber(CalendarLookup lookup, string alias)
+        {
+            _sql.Write(lookup.Source);
+            _sql.Write(" AS ");
+            _sql.Quoted(alias);
+            foreach (ValueBinding binding in lookup.Bindings)
+            {
+                _sql.Write(' ');
+                Binding(binding);
+            }
+
+            _sql.Write(" WHERE ");
+            MonthColumn(alias, "Calendar");
+            _sql.Write(" = ");
+            Value(lookup.Calendar);
+            _sql.Write(" AND ");
+            MonthColumn(alias, ColumnName(CalendarColumn.Year));
+            _sql.Write(" = ");
+            Value(lookup.Year!);
+            _sql.Write(" AND ");
+            MonthColumn(alias, ColumnName(CalendarColumn.Month));
+            _sql.Write(" = ");
+            Value(lookup.Month!);
+        }
+
+        /// <summary>Writes the month table's four columns under an alias, separated by commas.</summary>
+        /// <param name="alias">The alias.</param>
+        private void MonthColumns(string alias)
+        {
+            for (int index = 0; index < MonthColumnOrder.Length; index++)
+            {
+                if (index > 0)
+                {
+                    _sql.Write(", ");
+                }
+
+                MonthColumn(alias, ColumnName(MonthColumnOrder[index]));
+            }
+        }
+
+        /// <summary>Writes a value binding as the first source of a FROM clause.</summary>
+        /// <param name="binding">The binding, already named.</param>
+        private void BindingSource(ValueBinding binding)
+        {
+            _sql.Write("(VALUES (");
+            Value(binding.Value);
+            _sql.Write(")) AS ");
+            _sql.Quoted(binding.Alias);
+            _sql.Write(" (");
+            _sql.Quoted(BindingColumn);
+            _sql.Write(')');
+        }
+
+        /// <summary>Writes a value computed over operands named once, as a scalar subquery.</summary>
+        /// <param name="named">The value, its operands already named.</param>
+        /// <remarks>
+        ///     The first operand is the subquery's source and each further one is applied to it, so
+        ///     every operand is written exactly once and the pattern reads each by name.
+        /// </remarks>
+        private void WriteNamedScalar(PlanNamedScalar named)
+        {
+            _sql.Write("(SELECT ");
+            Value(named.Result);
+            _sql.Write(" FROM ");
+            BindingSource(named.Bindings[0]);
+            for (int index = 1; index < named.Bindings.Length; index++)
+            {
+                _sql.Write(' ');
+                Binding(named.Bindings[index]);
+            }
+
+            _sql.Write(')');
+        }
+
+        /// <summary>Writes one column of the month table under an alias.</summary>
+        /// <param name="alias">The alias.</param>
+        /// <param name="name">The column's name.</param>
+        private void MonthColumn(string alias, string name)
+        {
+            _sql.Quoted(alias);
+            _sql.Write('.');
+            _sql.Quoted(name);
+        }
+
+        /// <summary>The name of a month table column a lookup reads.</summary>
+        /// <param name="column">The column.</param>
+        /// <returns>The name, as the host's table declares it.</returns>
+        private static string ColumnName(CalendarColumn column)
+        {
+            return column switch
+            {
+                CalendarColumn.Year => "Year",
+                CalendarColumn.Month => "Month",
+                CalendarColumn.StartDate => "StartDate",
+                CalendarColumn.EndDate => "EndDate",
+                _ => throw new ArgumentOutOfRangeException(nameof(column)),
+            };
+        }
+
         /// <summary>Writes a semi-join's subquery inside its existence test.</summary>
         /// <param name="subquery">The subquery, already named.</param>
         /// <remarks>
-        ///     On one line, like every other predicate, with its source, joins and bindings in the
-        ///     order the statement writes its own. It selects a constant: an existence test reads no
+        ///     On one line, like every other predicate, with its source, joins and one-row sources in
+        ///     the order the statement writes its own. It selects a constant: an existence test reads no
         ///     column of the row it finds.
         /// </remarks>
         private void WriteExists(PlanSubquery subquery)
@@ -250,10 +528,10 @@ namespace Tellma.Core.Queryex.Emit
                 Join(join);
             }
 
-            foreach (ValueBinding binding in subquery.Bindings)
+            foreach (LateralSource lateral in subquery.Laterals)
             {
                 _sql.Write(' ');
-                Binding(binding);
+                Lateral(lateral);
             }
 
             _sql.Write(" WHERE ");
@@ -278,14 +556,26 @@ namespace Tellma.Core.Queryex.Emit
             _sql.Write("))");
         }
 
-        /// <summary>Writes the declaration of one hoisted lookup.</summary>
+        /// <summary>Writes the declaration of one hoisted value.</summary>
         /// <param name="variable">The variable.</param>
         internal void Declaration(HoistedVariable variable)
         {
             _sql.Write("DECLARE ");
             _sql.Write(variable.Name);
             _sql.Write(' ');
-            _sql.Type(StoreTypes.Default(variable.Type, null, 0, 0));
+            _sql.Type(variable.StoreType);
+
+            if (variable is ComputedVariable computed)
+            {
+                // The initializer is a scalar subquery already, and brings its own parentheses.
+                _sql.Write(" = ");
+                Value(computed.Value);
+                _sql.Write(';');
+                _sql.Line();
+                return;
+            }
+
+            var lookup = (NodeLookupVariable)variable;
 
             // A scalar subquery rather than an assignment: where the uniqueness the schema promised
             // does not hold, this fails loudly instead of silently picking one of the matching rows
@@ -293,17 +583,17 @@ namespace Tellma.Core.Queryex.Emit
             _sql.Write(" = (SELECT ");
             _sql.Quoted(LookupAlias);
             _sql.Write('.');
-            _sql.Quoted(variable.NodeProperty.Column);
+            _sql.Quoted(lookup.NodeProperty.Column);
             _sql.Write(" FROM ");
-            _sql.Write(variable.LookupEntity.Source);
+            _sql.Write(lookup.LookupEntity.Source);
             _sql.Write(" AS ");
             _sql.Quoted(LookupAlias);
             _sql.Write(" WHERE ");
             _sql.Quoted(LookupAlias);
             _sql.Write('.');
-            _sql.Quoted(variable.LookupProperty.Column);
+            _sql.Quoted(lookup.LookupProperty.Column);
             _sql.Write(" = ");
-            Value(variable.Key);
+            Value(lookup.Key);
             _sql.Write(");");
             _sql.Line();
         }
@@ -493,7 +783,8 @@ namespace Tellma.Core.Queryex.Emit
         /// <param name="aggregate">The node.</param>
         private void WriteConditioned(PlanAggregate aggregate)
         {
-            if (aggregate.Condition is null)
+            PlanColumn? anchor = AnchorOf(aggregate);
+            if (aggregate.Condition is null && anchor is null)
             {
                 Value(aggregate.Argument!);
                 return;
@@ -502,10 +793,45 @@ namespace Tellma.Core.Queryex.Emit
             // Rows the condition excludes contribute no value at all rather than a zero, which is
             // what makes a filtered aggregate over a group that matched nothing yield nothing.
             _sql.Write("CASE WHEN ");
-            Predicate(aggregate.Condition);
+            WriteCondition(aggregate.Condition, anchor);
             _sql.Write(" THEN ");
             Value(aggregate.Argument!);
             _sql.Write(" END");
+        }
+
+        /// <summary>The root's key an aggregation is written against here, or null when it needs none.</summary>
+        /// <param name="aggregate">The node.</param>
+        /// <returns>The key, inside a value's own subquery and only for an aggregation reading no column.</returns>
+        private PlanColumn? AnchorOf(PlanAggregate aggregate)
+        {
+            return _subqueries > 0 ? aggregate.Anchor : null;
+        }
+
+        /// <summary>Writes an aggregation's per-row condition, with the root's key first when there is one.</summary>
+        /// <param name="condition">The condition, or null.</param>
+        /// <param name="anchor">The root's key, or null.</param>
+        /// <remarks>
+        ///     The key is never absent on a row, so testing it keeps every row the condition keeps; it
+        ///     is there only so that the aggregation reads the statement's rows.
+        /// </remarks>
+        private void WriteCondition(PlanPredicate? condition, PlanColumn? anchor)
+        {
+            if (anchor is not null)
+            {
+                Value(anchor);
+                _sql.Write(" IS NOT NULL");
+                if (condition is null)
+                {
+                    return;
+                }
+
+                _sql.Write(" AND (");
+                Predicate(condition);
+                _sql.Write(')');
+                return;
+            }
+
+            Predicate(condition!);
         }
 
         /// <summary>Writes a count that reads no value of its own.</summary>
@@ -515,14 +841,26 @@ namespace Tellma.Core.Queryex.Emit
             // The wide form: the narrow one stops at a little over two billion rows and raises
             // rather than returning a number, which is a limit a ledger reaches.
             _sql.Write("COUNT_BIG(");
+            PlanColumn? anchor = AnchorOf(aggregate);
             if (aggregate.Condition is null)
             {
-                _sql.Write("*)");
+                // Inside a value's own subquery, every row's key rather than every row: the same
+                // count, read off the statement's rows.
+                if (anchor is null)
+                {
+                    _sql.Write('*');
+                }
+                else
+                {
+                    Value(anchor);
+                }
+
+                _sql.Write(')');
                 return;
             }
 
             _sql.Write("CASE WHEN ");
-            Predicate(aggregate.Condition);
+            WriteCondition(aggregate.Condition, anchor);
             _sql.Write(" THEN 1 END)");
         }
 

@@ -32,8 +32,10 @@ preset, a tokens→CSS emitter, and a shipped validation gate.
   stylesheet and fails on any `var(--…)` no token emits, because nothing else
   in the stack notices.
 - **Component variables are internal**, except the few a consumer may set:
-  `--icon-size` (a container sizing the icons inside it) and
-  `--icon-stroke-width` (a host that needs a heavier glyph).
+  `--icon-size` (a container sizing the icons inside it),
+  `--icon-stroke-width` (a host that needs a heavier glyph) and
+  `--counter-halo` (the host of an overlay counter, set to the colour the
+  counter sits on).
 - **Emitter** — `tmEmitCss(tokens)` produces a static stylesheet; every sheet
   opens with `@layer tm.base, tm.theme;` so load order can never change
   which layer wins. A distribution themes by emitting its delta into

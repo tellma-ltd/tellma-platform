@@ -57,6 +57,9 @@ namespace Tellma.Core.Tenancy
             _ = services.AddSingleton<TenantMembershipDirectory>();
             _ = services.AddSingleton<ITenantMembershipDirectory>(static provider => provider.GetRequiredService<TenantMembershipDirectory>());
 
+            // --- Provisioning of tenants registered at run time: none until a deployment registers one ---
+            services.TryAddSingleton<ITenantProvisioningTrigger, NotConfiguredProvisioningTrigger>();
+
             // --- The request context: one holder per scope, read through the accessor (spec 0011 §4.2) ---
             _ = services.AddSingleton<RequestContextDefaults>();
             _ = services.AddScoped<RequestContextHolder>();

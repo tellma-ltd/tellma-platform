@@ -65,6 +65,34 @@ namespace Tellma.Core.Queryex.IntegrationTests
         }
 
         /// <summary>
+        ///     A statement planned afresh runs on its own with its hint, and counts as a derived table
+        ///     once the host writes the hint into its own statement's one clause, beside its own hint.
+        /// </summary>
+        /// <param name="hint">The clause the host's statement carries.</param>
+        /// <returns>A task that completes when both runs have been compared.</returns>
+        [Theory]
+        [InlineData("OPTION (RECOMPILE)")]
+        [InlineData("OPTION (RECOMPILE, MAXRECURSION 32)")]
+        public async Task ABodyPlannedAfresh_CountsWithTheHostsHint(string hint)
+        {
+            QuerySpec spec = new()
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.Leaf("PostingDate >= startOfYear(today(), 'uq')"),
+            };
+
+            CompiledQuery query = Compile(spec, batchOrdinal: 0);
+            Assert.True(query.Recompile);
+
+            IReadOnlyList<IReadOnlyList<QxValue>> alone =
+                await DifferentialTests.ExecuteOn(_server, query, InterpreterContext.Fixed);
+            Assert.Equal(ReferenceQuery.Run(spec, InterpreterContext.Fixed).Count, alone.Count);
+
+            await AssertCountMatches(spec, hint);
+        }
+
+        /// <summary>
         ///     Keys captured into a table by one compiled statement restrict a second compiled
         ///     statement in the same batch, each written prologue first.
         /// </summary>
@@ -134,14 +162,15 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
         /// <summary>Counts a compiled statement's rows from outside it and compares the count.</summary>
         /// <param name="spec">The query.</param>
+        /// <param name="hint">The clause the counting statement carries, or nothing.</param>
         /// <returns>A task that completes when the comparison is done.</returns>
-        private async Task AssertCountMatches(QuerySpec spec)
+        private async Task AssertCountMatches(QuerySpec spec, string hint = "")
         {
             CompiledQuery query = Compile(spec, batchOrdinal: 0);
 
             await using SqlConnection connection = await _server.OpenAsync();
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = query.Prologue + "SELECT COUNT_BIG(*) FROM (\n" + query.Body + ") AS [q];\n";
+            command.CommandText = query.Prologue + "SELECT COUNT_BIG(*) FROM (\n" + query.Body + ") AS [q]\n" + hint + ";\n";
             SqlBinding.Bind(command, query, InterpreterContext.Fixed);
 
             long counted = (long)await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);

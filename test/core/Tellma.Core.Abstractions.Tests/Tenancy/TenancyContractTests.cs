@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Reflection;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Hosting;
@@ -147,6 +148,32 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
             Assert.Equal(
                 ["outcome", "category", "state", "kind", "source"],
                 [TenancyTelemetryNames.OutcomeTag, TenancyTelemetryNames.CategoryTag, TenancyTelemetryNames.StateTag, TenancyTelemetryNames.KindTag, TenancyTelemetryNames.SourceTag]);
+        }
+
+        [Fact]
+        public void The_host_telemetry_names_are_pinned()
+        {
+            // The web host's meter is shared with the API instruments, and alert queries name these.
+            Assert.Equal("Tellma.Core.AspNetCore", HostTelemetryNames.MeterName);
+            Assert.Equal(ApiTelemetryNames.MeterName, HostTelemetryNames.MeterName);
+            Assert.Equal(
+                [
+                    "tellma.session.operations",
+                    "tellma.session.refreshes",
+                    "tellma.auth.backchannel_logouts",
+                    "tellma.auth.csrf_rejections",
+                    "tellma.auth.stepup_challenges",
+                ],
+                [
+                    HostTelemetryNames.SessionOperations,
+                    HostTelemetryNames.SessionRefreshes,
+                    HostTelemetryNames.BackchannelLogouts,
+                    HostTelemetryNames.CsrfRejections,
+                    HostTelemetryNames.StepUpChallenges,
+                ]);
+            Assert.Equal(
+                ["operation", "source", "outcome", "rule"],
+                [HostTelemetryNames.OperationTag, HostTelemetryNames.SourceTag, HostTelemetryNames.OutcomeTag, HostTelemetryNames.RuleTag]);
         }
 
         [Fact]

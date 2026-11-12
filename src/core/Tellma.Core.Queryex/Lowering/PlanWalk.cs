@@ -41,6 +41,13 @@ namespace Tellma.Core.Queryex.Lowering
                 // A subquery's own predicate is what it reads; its bindings are reached through the
                 // references to them, exactly as the statement's are.
                 PlanExists exists => exists.Subquery.Where is PlanPredicate where ? [where] : [],
+
+                // What each level is sought by, outermost first, then what the innermost selects. A
+                // lateral lookup, like a binding, is reached through the columns read off it.
+                PlanScalarLookup scalar => [.. scalar.Levels.SelectMany(static level => level.Reads), scalar.Result],
+
+                // The named operands, each once, then what is computed over the names.
+                PlanNamedScalar named => [.. named.Bindings.Select(static binding => binding.Value), named.Result],
                 _ => [],
             };
         }
@@ -49,8 +56,9 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="node">The node.</param>
         /// <returns>True when something does.</returns>
         /// <remarks>
-        ///     Looks through a binding to what the binding computes, because a value that merely
-        ///     names a binding still reads whatever that binding reads.
+        ///     Looks through a binding to what the binding computes, and through a calendar lookup's
+        ///     column to what the lookup is sought by, because a value that merely names either still
+        ///     reads whatever that one reads.
         /// </remarks>
         internal static bool ReadsAColumn(PlanNode node)
         {
@@ -58,7 +66,46 @@ namespace Tellma.Core.Queryex.Lowering
             {
                 PlanColumn or PlanUndeclaredColumn => true,
                 PlanBindingRef binding => ReadsAColumn(binding.Binding.Value),
+                PlanLookupColumn column => column.Lookup.Reads.Any(ReadsAColumn),
                 _ => Children(node).Any(ReadsAColumn),
+            };
+        }
+
+        /// <summary>Whether a statement's predicates read a value computed ahead of it.</summary>
+        /// <param name="plan">The plan, after everything unread has been removed.</param>
+        /// <returns>True when the row filter or the group filter reads one.</returns>
+        /// <remarks>
+        ///     <para>
+        ///         Only a computed value counts: a hierarchy node's key is looked up ahead of the
+        ///         statement too, but it bounds a range the optimizer estimates well enough without it.
+        ///     </para>
+        ///     <para>
+        ///         Only a predicate counts, a semi-join's included, since a value read only in the
+        ///         select list, a grouping key or an ordering changes no estimate. Join conditions are
+        ///         not looked at because they compare keys alone.
+        ///     </para>
+        /// </remarks>
+        internal static bool PredicatesReadAComputedVariable(RelationalPlan plan)
+        {
+            return (plan.Where is not null && ReadsAComputedVariable(plan.Where))
+                || (plan.Having is not null && ReadsAComputedVariable(plan.Having));
+        }
+
+        /// <summary>Whether anything under a node reads a value computed ahead of the statement.</summary>
+        /// <param name="node">The node.</param>
+        /// <returns>True when something does.</returns>
+        /// <remarks>
+        ///     Looks through a binding and a calendar lookup's column, as <see cref="ReadsAColumn" />
+        ///     does, but not into a variable's own initializer: a variable is read where it is named.
+        /// </remarks>
+        private static bool ReadsAComputedVariable(PlanNode node)
+        {
+            return node switch
+            {
+                PlanVariableRef variable => variable.Variable is ComputedVariable,
+                PlanBindingRef binding => ReadsAComputedVariable(binding.Binding.Value),
+                PlanLookupColumn column => column.Lookup.Reads.Any(ReadsAComputedVariable),
+                _ => Children(node).Any(ReadsAComputedVariable),
             };
         }
 
@@ -71,6 +118,7 @@ namespace Tellma.Core.Queryex.Lowering
             {
                 PlanAggregate => true,
                 PlanBindingRef binding => Aggregates(binding.Binding.Value),
+                PlanLookupColumn column => column.Lookup.Reads.Any(Aggregates),
                 _ => Children(node).Any(Aggregates),
             };
         }

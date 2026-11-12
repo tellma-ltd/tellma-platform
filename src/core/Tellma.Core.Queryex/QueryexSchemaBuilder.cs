@@ -27,6 +27,9 @@ namespace Tellma.Core.Queryex
         private readonly Dictionary<string, EntityBuilder> _entitiesByName =
             new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>The calendar maps, in the order they were declared.</summary>
+        private readonly List<(string Calendar, string Source)> _calendarMaps = [];
+
         /// <summary>Whether <see cref="Build" /> has already run.</summary>
         private bool _built;
 
@@ -62,17 +65,62 @@ namespace Tellma.Core.Queryex
             return builder;
         }
 
+        /// <summary>Names the table a table calendar reads its months from.</summary>
+        /// <param name="calendar">The calendar's code; <c>uq</c>, Umm al-Qura, is the one table calendar.</param>
+        /// <param name="source">
+        ///     The month table: a bracket-quoted table or view name, optionally schema- and
+        ///     database-qualified, such as <c>[core].[CalendarMonths]</c>.
+        /// </param>
+        /// <returns>This builder.</returns>
+        /// <remarks>
+        ///     <para>
+        ///         Until a schema maps it, <c>uq</c> is refused like any unknown calendar code. The
+        ///         table has the columns <c>[Calendar]</c> (<c>varchar</c>), <c>[Year]</c> and
+        ///         <c>[Month]</c> (<c>int</c>), and <c>[StartDate]</c> and <c>[EndDate]</c>
+        ///         (<c>date</c>, the end exclusive), one row per month.
+        ///     </para>
+        ///     <para>
+        ///         The engine trusts the host's word on the table, as it does on uniqueness: per
+        ///         calendar the months are contiguous and never overlap, and unique indexes cover
+        ///         (<c>Calendar</c>, <c>StartDate</c>) and (<c>Calendar</c>, <c>Year</c>,
+        ///         <c>Month</c>). A date outside the table's months has no value in the calendar.
+        ///     </para>
+        ///     <para>
+        ///         The calendar is checked by <see cref="Build" />, which refuses a code other than
+        ///         <c>uq</c> — the other calendars are arithmetic and read no table — and a second
+        ///         map for one calendar.
+        ///     </para>
+        /// </remarks>
+        /// <exception cref="ArgumentException">The source is empty or malformed.</exception>
+        /// <exception cref="InvalidOperationException">The schema has already been built.</exception>
+        public QueryexSchemaBuilder CalendarMap(string calendar, string source)
+        {
+            ThrowIfBuilt();
+            ArgumentException.ThrowIfNullOrWhiteSpace(calendar);
+            ArgumentException.ThrowIfNullOrWhiteSpace(source);
+
+            // The month table reaches emitted SQL verbatim, exactly as an entity's source does, so
+            // it is held to the same shape.
+            ValidateSource(source);
+
+            _calendarMaps.Add((calendar, source));
+            return this;
+        }
+
         /// <summary>Links every declared name to its descriptor, validates, and freezes the schema.</summary>
         /// <returns>The immutable schema.</returns>
         /// <exception cref="InvalidOperationException">
         ///     The declared model is not coherent: an entity has no key, a navigation names an
         ///     entity or a foreign key that does not exist, a foreign key does not agree in type
-        ///     with the key it references, or a hierarchy node is not a hierarchy-node column.
+        ///     with the key it references, a hierarchy node is not a hierarchy-node column, or a
+        ///     calendar map names a calendar that reads no table or one already mapped.
         /// </exception>
         public QueryexSchema Build()
         {
             ThrowIfBuilt();
             _built = true;
+
+            Dictionary<string, string> calendarSources = LinkCalendarMaps();
 
             foreach (EntityBuilder entity in _entities)
             {
@@ -93,7 +141,34 @@ namespace Tellma.Core.Queryex
                 descriptors.Add(entity.Descriptor);
             }
 
-            return new QueryexSchema(descriptors);
+            return new QueryexSchema(descriptors, calendarSources);
+        }
+
+        /// <summary>Checks the calendar maps and indexes them by calendar.</summary>
+        /// <returns>The month table of each mapped calendar, keyed by its canonical code.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     A map names a calendar that reads no table, or a calendar already mapped.
+        /// </exception>
+        private Dictionary<string, string> LinkCalendarMaps()
+        {
+            Dictionary<string, string> sources = new(StringComparer.Ordinal);
+            foreach ((string calendar, string source) in _calendarMaps)
+            {
+                // Matched as a calendar argument is, ignoring case, and kept under the canonical
+                // spelling the engine compares and binds.
+                string code = Functions.CalendarCodes.Tabular.FirstOrDefault(
+                    tabular => string.Equals(tabular, calendar, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException(
+                        Invariant($"The calendar '{calendar}' cannot be mapped to a month table; only 'uq' reads its months from one, and the other calendars are computed."));
+
+                if (!sources.TryAdd(code, source))
+                {
+                    throw new InvalidOperationException(
+                        Invariant($"The calendar '{code}' is mapped to a month table more than once."));
+                }
+            }
+
+            return sources;
         }
 
         /// <summary>Formats a message with the invariant culture.</summary>

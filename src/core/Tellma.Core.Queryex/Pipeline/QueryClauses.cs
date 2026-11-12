@@ -157,7 +157,7 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <returns>The plan.</returns>
         internal RelationalPlan Lower()
         {
-            Lowerer lowerer = new(_spec.Root, _options.BatchOrdinal, _budget, _sink);
+            Lowerer lowerer = new(_spec.Root, _options.Schema, _options.BatchOrdinal, _budget, _sink);
             _root = lowerer.Root;
 
             PlanPredicate? filter = LowerFilter(lowerer);
@@ -227,7 +227,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Root = lowerer.Root,
                 Joins = joins,
                 Variables = [.. lowerer.Variables],
-                Bindings = [.. lowerer.Bindings],
+                Laterals = [.. lowerer.Laterals],
 
                 // The paging slots last, skip before take, so a page change moves nothing else.
                 Parameters = [.. lowerer.Slots, .. paging],

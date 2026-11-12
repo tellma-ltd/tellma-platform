@@ -205,6 +205,7 @@ namespace Tellma.Identity.Services.Seeding
                         serviceClient = ConvergenceName(convergence.ServiceClient),
                         audienceAdded = convergence.AudienceAdded,
                         grantsAdded = convergence.GrantsAdded,
+                        retiredOrigin = convergence.RetiredOrigin,
                     }),
                 },
                 cancellationToken);
