@@ -14,6 +14,9 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>The registered deployment identity names this distribution, and a sandbox context resolves.</summary>
         public const string DeploymentIdentity = "core.deployment-identity";
 
+        /// <summary>Every provisioning step can be created and has a valid, unique name, an order and a version.</summary>
+        public const string ProvisioningSteps = "core.provisioning-steps";
+
         /// <summary>The process runs ICU globalization.</summary>
         public const string Globalization = "core.globalization";
 

@@ -5,6 +5,7 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';

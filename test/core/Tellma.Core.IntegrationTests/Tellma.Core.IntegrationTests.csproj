@@ -9,6 +9,9 @@
     <!-- The platform-owned catalog migrations, applied to every fresh catalog the suite creates,
          and their design-time factory. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- A distribution's migrator project in miniature: the composition and tenant migrations the
+         migrator's commands are driven with. -->
+    <ProjectReference Include="..\assets\Tellma.Core.Migrator.TestDistribution\Tellma.Core.Migrator.TestDistribution.csproj" />
     <!-- The web host's tracing configuration, run against a real SQL Server. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
     <!-- The data layer's shared SQL fixture: the fixture schema, its migrations, and the host that

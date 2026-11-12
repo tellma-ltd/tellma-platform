@@ -9,6 +9,7 @@ import {
   activeCell,
   cell,
   centerOf,
+  draftInput,
   editor,
   editorInput,
   gotoGrid,
@@ -16,6 +17,7 @@ import {
   scrollTopOf,
   selectedCells,
 } from '../support/grid';
+import { gotoLazyEditing, releaseEditingCode } from '../support/lazy-editing';
 import { appStable } from '../support/settle';
 
 /**
@@ -335,5 +337,27 @@ test.describe('touch editing (grid-editable)', () => {
 
     await page.keyboard.press('Escape');
     await expect(menuPanel(page)).toHaveCount(0);
+  });
+});
+
+test.describe('touch editing while the editing code loads (grid-lazy-editing)', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoLazyEditing(page);
+  });
+
+  test('a double-tap focuses the draft input inside the gesture, so typing lands', async ({
+    page,
+  }) => {
+    await tapTwice(page, cell(page, 1, 0), DOUBLE_TAP_GAP_S);
+    // A real input took focus within the tap, which is what raises a
+    // phone's keyboard.
+    await expect(draftInput(page)).toBeFocused();
+    await expect(draftInput(page)).toHaveValue('Hardware');
+    await page.keyboard.type(' kit');
+    await expect(draftInput(page)).toHaveValue('Hardware kit');
+
+    await releaseEditingCode(page);
+    await expect(editorInput(page)).toHaveValue('Hardware kit');
+    await expect(editorInput(page)).toBeFocused();
   });
 });

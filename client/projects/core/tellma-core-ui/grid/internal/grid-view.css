@@ -539,6 +539,19 @@
   background: var(--field-bg);
 }
 
+/* The draft input that takes the typing before the editing code arrives:
+   unstyled text over the cell's editor background, padded as the text
+   editor's input is, so nothing moves when that editor takes over.
+   `all: unset` drops the browser's input chrome, focus ring included: the
+   cell already draws the active-cell ring, and `direction` (the bound
+   `dir`) is outside `all`. */
+.tm-grid__draft {
+  all: unset;
+  flex: 1;
+  min-inline-size: 0;
+  padding-inline: var(--space-2);
+}
+
 /* A hierarchy cell's editor keeps the tree indentation via padding (not an
    inset), so its field background still covers the WHOLE cell — otherwise the
    active-cell highlight bleeds through the uncovered indent strip. */
@@ -616,6 +629,17 @@
 
 .tm-grid-bool--readonly.tm-grid-bool--on::after {
   background-color: var(--text-strong);
+}
+
+/* ---- the editable grid's status-bar slot: the bar's fixed band, drawn
+        before the bar's code loads so its arrival shifts nothing ---- */
+
+.tm-grid__status {
+  box-sizing: border-box;
+  flex: none;
+  block-size: var(--grid-status-height);
+  border-block-start: var(--border-width) solid var(--grid-header-line);
+  background: var(--grid-header-bg);
 }
 
 /* ---- transient clipboard-failure notice (readonly grids only; editable
@@ -698,7 +722,8 @@
   .tm-grid__corner,
   .tm-grid__colhdr,
   .tm-grid__rowhdr,
-  .tm-grid__cell {
+  .tm-grid__cell,
+  .tm-grid__status {
     border-color: CanvasText;
   }
 

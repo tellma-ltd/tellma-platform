@@ -7,7 +7,7 @@ namespace Tellma.Core.Tenancy
 {
     /// <summary>
     ///     How the registry loads at startup and bounds its listeners. Not configuration: the web host keeps the
-    ///     defaults, the migrator turns the catalog verification off, and the suites shorten the bound.
+    ///     defaults, the migrator turns the catalog verification and the first load off, and the suites shorten the bound.
     /// </summary>
     internal sealed class TenantRegistryStartupOptions
     {
@@ -20,6 +20,13 @@ namespace Tellma.Core.Tenancy
         ///     it off, since it creates and migrates the catalog itself.
         /// </summary>
         public bool VerifyCatalog { get; set; } = true;
+
+        /// <summary>
+        ///     Whether the registry loads its first snapshot when the host starts. The migrator turns it
+        ///     off: its commands create the catalog when it is missing and load the snapshot themselves,
+        ///     so a missing catalog never costs it the first load's bound.
+        /// </summary>
+        public bool LoadOnStart { get; set; } = true;
 
         /// <summary>How long startup waits for the first load before the host starts without it.</summary>
         public TimeSpan FirstLoadTimeout { get; set; } = DefaultFirstLoadTimeout;

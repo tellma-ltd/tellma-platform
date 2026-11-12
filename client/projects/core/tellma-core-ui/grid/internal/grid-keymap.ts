@@ -406,28 +406,35 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
   }
 
   // Section: type-to-edit. Any typed character replaces the cell content,
-  // and only a typed one: a chord the table does not list must reach the
-  // page's own shortcuts (spec 0027 §4.3's Alt+Shift+<letter> family among
-  // them), so it is never mistaken for text.
-  // - No Ctrl, Alt or Meta: plain typing (Shift picks the capital or symbol).
-  // - Off Apple, AltGraph: Windows reports AltGr as Ctrl+Alt WITH AltGraph
-  //   and Linux as AltGraph alone, so `@ € [ { \` on German, French and
-  //   Nordic layouts still open the editor; a bare Alt or Ctrl+Alt chord
-  //   types nothing there and stays unhandled.
-  // - On Apple, Option without Cmd or Ctrl: Option types characters (é, ≠),
-  //   while Ctrl+letter is the emacs caret family and never types.
-  const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
-  const typed = ctx.apple
-    ? !event.ctrlKey && !event.metaKey
-    : plain || event.getModifierState('AltGraph');
-  const printable = key.length === 1 && typed;
-  if (printable && ctx.editable) {
+  // and only a typed one (see tmIsTypedText).
+  if (tmIsTypedText(event, ctx.apple) && ctx.editable) {
     if (ctx.activeIsBoolean) {
       return null; // boolean cells toggle via Enter/Space only
     }
     return { kind: 'edit', mode: 'enter', seed: key };
   }
   return null;
+}
+
+/**
+ * Whether a keydown types a character: a single-character key with no
+ * modifier that makes it a chord. Plain typing (Shift picks the capital or
+ * symbol) types; off Apple so does AltGraph, which Windows reports as
+ * Ctrl+Alt with AltGraph and Linux as AltGraph alone, so `@ € [ { \` on
+ * German, French and Nordic layouts type; on Apple, Option without Cmd or
+ * Ctrl types (é, ≠). A bare Alt or Ctrl+Alt chord, and Ctrl+letter on
+ * Apple (the emacs caret family), never type, so they reach the page's own
+ * shortcuts.
+ */
+export function tmIsTypedText(event: KeyboardEvent, apple: boolean): boolean {
+  // A chord the table does not list must reach the page's own shortcuts
+  // (spec 0027 §4.3's Alt+Shift+<letter> family among them), so it is never
+  // mistaken for text.
+  const plain = !event.ctrlKey && !event.altKey && !event.metaKey;
+  const typed = apple
+    ? !event.ctrlKey && !event.metaKey
+    : plain || event.getModifierState('AltGraph');
+  return event.key.length === 1 && typed;
 }
 
 /** What the editing-key resolver needs to know about the open session. */

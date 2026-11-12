@@ -359,6 +359,44 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-063 (orchestrator, 2026-11-12): PC-073 ahead of PC-057 while PC-F21 integrates
+- Situation: when pc-2 freed, the ready T1 queue was PC-051 (held on PC-F21, D-057), PC-057, PC-073, PC-075. PC-057 adds grid cell options and spends ./grid bytes. PC-F21, which re-splits ./grid and lowers its ceiling to 39.25 KB, was mid-integration.
+- Ruling: launch PC-073 (CLI, no grid code) first. PC-057 and PC-051 start on the first free slot after PC-F21 lands, so they build on the re-split grid rather than merge into it.
+
+### D-062 (PC-033, 2026-11-12): Queryex host — collation, captured keys, child FK targets
+- Spec: 0012 §5.2, §11.1, §13.2; 0015 §5.3; 0016 DetailsExpand.
+- Situation and rulings:
+  - Msg 468: a StringList restriction on a column with an explicit collation (core.User.Subject, BIN2) now applies COLLATE to the list's side, which keeps the column's index seekable. The engine (Tellma.Core.Queryex) gained PropertyDescriptor.Collation. EF's runtime model drops collation, so the provider reads [Collation] off the CLR property; a collation set only through the fluent API would be missed.
+  - KeysOf (the captured key table) stays internal. Spec 0015's runtime lives in Tellma.Core and can reach it.
+  - Child FK targets: spec 0012's EntityQuery has no per-child select, so the details round trip cannot load what children point at (e.g. Lines.Account). Provisional ruling: 0012 is unchanged; 0015 loads children's FK targets through a captured FK set (WATCHLIST lead under 0015).
+  - Grouped Rows with CountCap counts groups (capped at cap+1), because 0016 allows Aggregate with IncludeCount.
+- For Ahmad:
+  - (1) Spec 0012 §5.2 has no public contract that can name a captured key table. Add one, or confirm it stays internal to Tellma.Core.
+  - (2) Child FK targets in the details round trip: should 0012 gain a ChildSelect, or should 0015 load them via a captured FK set (the provisional ruling)?
+  - (3) Fluent-API-only collations are invisible to Queryex. Should composition refuse them?
+
+### D-061 (PC-035, 2026-11-12): seeded write-frame contracts and planner notes
+- Spec: 0015 §7.5, §13.3; 0021 §2.3, §11; 0018; 0022.
+- Situation: INotificationChannel.DeliverAsync needs IOpenWriteHost, which 0015 (PC-062) owns. PC-035 seeded contract-only versions of IWriteHost, WriteHostKind, IOpenWriteHost, EnlistmentOutcome and IConfirmations, shaped member for member as 0015 sketches them. Notification channel senders are created in the startup gate's tenantless scope to read their keys.
+- Ruling, recorded as planner notes:
+  - PC-062: extend the seeded write-frame types in Tellma.Core.Abstractions; do not re-declare them.
+  - PC-062: IOpenWriteHost.PersistAsync takes a CancellationToken (added in PC-035 fix 1).
+  - 0018-f and 0022-a: EmailNotificationChannel (and any INotificationChannel) must have a constructor that needs no tenant, because the gate resolves senders tenantless.
+  - 0021-b: add the TableType<…>() contributions for the three notification table types together with the statements that bind them.
+  - The future securable registry (PC-039/PC-063): NotificationTypesCheck.CheckTargets accepts composed entities; extend it to securable resources when that registry lands.
+
+### D-060 (PC-F21, 2026-11-12): lazy grid editing — the draft window, budgets and Save
+- Spec: 0010 §C.11, §C.15; 0004 §8.4, §11; 0006 §7.4.
+- Situation: ./grid exceeded its 42 KB ceiling (D-057). PC-F21 moves the editors and the editing key resolver into a lazy ./grid-editing chunk, preloaded when the browser is idle once an editable grid renders. Two designs failed review (hold-and-replay keys in R1; a keyed draft in R2: modifiers, dead keys and IME broke it).
+- Ruling: during the load window the cell shows a real bare <input> draft. The browser owns its text, and the user's own gestures commit it (Enter, Tab, blur, press on another cell); Escape cancels it. When the editor arrives it takes over the text, caret and selection. A failed or stalled load never commits; it reports once per grid. Entity drafts stay pending until the editor's own search resolves them. Ceilings: ./grid 39.25 KB (measured 38.99; 3 KB under the spec's 42 left for the list-page work), ./grid-editing 6.5 KB (6.44).
+- Escalation: one §4.4 verification confirmed the R2 blocking and major findings fixed in a real browser with trusted input. Minor V-1 (Tab from the last cell's draft) is fixed at integration.
+- For Ahmad:
+  - (1) V-2: an entity typed in the window and saved before the editor arrives leaves the cell pending (value null). A screen that gates Save on errorCount alone saves null. The TSDoc now says Save must also wait for pendingCount. Should the grid also retry the load while a request is pending?
+  - (2) Spec 0010 §C.11 needs a ./grid-editing row and the lowered ./grid ceiling.
+  - (3) Spec 0010 §C.15 puts the popup editors' +1 KB on ./grid, and its "always edit mode" rule needs a window clause.
+  - (4) Specs 0004 §8.4 (type-to-edit, caret, IME), 0004 §11 (undo stays with the draft input) and 0006 §7.4 (entity text resolves after the editor arrives) each need a load-window clause.
+  - (5) Integration raised the showcase's `anyComponentStyle` error budget in client/angular.json from 13 to 13.5 kB (warning stays 12 kB). The draft rule pushed grid-view.css to 13.25 kB; it was trimmed to 13.07 kB. ./grid now measures 39.01 KB, 2.99 KB under the spec's 42.
+
 ### D-059 (orchestrator, 2026-11-12): check_deps readiness masked ready checkpoints
 - Situation: tools/check_deps.py counted a gate as met only when its LEDGER status cell was exactly `done`. Since the 2026-11-11 status rows carry a note after the keyword (`done (CI … green; …)`), so every checkpoint gated on PC-023, PC-028, PC-029 and the like looked blocked, and `--ready` listed only T3 work. Eight T1 checkpoints (PC-026, PC-033, PC-034, PC-035, PC-051, PC-057, PC-073, PC-075) were in fact ready; slots sat idle for part of 2026-11-11/12 because of it.
 - Ruling: the tool now treats a status that is `done` or starts with `done ` as met. Status cells keep their notes.

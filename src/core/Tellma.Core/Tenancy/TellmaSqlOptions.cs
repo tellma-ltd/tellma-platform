@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.ComponentModel.DataAnnotations;
+using Tellma.Core.Abstractions.Hosting;
 
 namespace Tellma.Core.Tenancy
 {
@@ -33,6 +34,9 @@ namespace Tellma.Core.Tenancy
 
         /// <summary>The longest database prefix accepted, so <c>&lt;prefix&gt;.&lt;id&gt;</c> fits a database name.</summary>
         public const int MaxDatabasePrefixLength = 100;
+
+        /// <summary>The longest application principal: a database user's name is a <c>sysname</c>.</summary>
+        public const int MaxPrincipalLength = 128;
 
         /// <summary>
         ///     The credential profiles by name, compared without regard to case: SqlClient
@@ -116,6 +120,24 @@ namespace Tellma.Core.Tenancy
                 yield return new ValidationResult(
                     $"{SectionPath}:{nameof(CreateDatabaseOptions)} holds ';' or a comment; it must be a single clause such as '(SERVICE_OBJECTIVE = ELASTIC_POOL(name = pool1))'.",
                     [nameof(CreateDatabaseOptions)]);
+            }
+
+            // The principal names a database user the migrator creates and adds to the application
+            // role, so it can be neither the role itself nor a name a bracketed identifier cannot hold.
+            if (ApplicationPrincipal is { Length: > 0 } principal)
+            {
+                if (string.Equals(principal, DatabaseRoles.Application, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return new ValidationResult(
+                        $"{SectionPath}:{nameof(ApplicationPrincipal)} is '{principal}', the application role's own name; it names the web application's login or managed identity, which the role gets as a member.",
+                        [nameof(ApplicationPrincipal)]);
+                }
+                else if (principal.Length > MaxPrincipalLength || string.IsNullOrWhiteSpace(principal) || principal.Any(char.IsControl))
+                {
+                    yield return new ValidationResult(
+                        $"{SectionPath}:{nameof(ApplicationPrincipal)} must be 1 to {MaxPrincipalLength} characters without a control character.",
+                        [nameof(ApplicationPrincipal)]);
+                }
             }
         }
     }

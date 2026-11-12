@@ -5,25 +5,23 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/* tm-grid-status-bar — fixed height by design (errors never shift the
-   layout); tallies ride the grid tokens. Figures are tabular throughout: a
-   tally that reflows its own width as the count crosses 9 draws the eye to
-   the wrong thing. */
+/* tm-grid-status-bar — fills the fixed-height slot the grid's view draws
+   (the band, its rule and its background are the slot's, so they are in
+   place before this code loads, and errors never shift the layout); tallies
+   ride the grid tokens. Figures are tabular throughout: a tally that
+   reflows its own width as the count crosses 9 draws the eye to the wrong
+   thing. */
 
 :host {
   display: flex;
   align-items: center;
-  box-sizing: border-box;
-  flex: 0 0 auto;
   gap: var(--space-1);
-  block-size: var(--grid-status-height);
-  border-block-start: var(--border-width) solid var(--grid-header-line);
+  block-size: 100%;
   padding-inline: var(--space-2);
   font-family: var(--font-ui);
   font-size: var(--grid-status-font-size);
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
-  background: var(--grid-header-bg);
 }
 
 .tm-grid__status-live {
@@ -87,10 +85,6 @@
 }
 
 @media (forced-colors: active) {
-  :host {
-    border-block-start-color: CanvasText;
-  }
-
   .tm-grid__status-chip,
   .tm-grid__status-nav {
     border-color: ButtonText;
