@@ -366,6 +366,9 @@
   <data name="ConsentPromptApp" xml:space="preserve">
     <value>{0} wants to access your account.</value>
   </data>
+  <data name="ConsentTargets" xml:space="preserve">
+    <value>This access is limited to:</value>
+  </data>
   <data name="LastSeen" xml:space="preserve">
     <value>Last seen</value>
   </data>

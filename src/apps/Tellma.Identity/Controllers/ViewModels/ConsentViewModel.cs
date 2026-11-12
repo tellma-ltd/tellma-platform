@@ -13,6 +13,12 @@ namespace Tellma.Identity.Controllers.ViewModels
 
         /// <summary>The requested scopes, space-delimited.</summary>
         public string Scope { get; set; } = string.Empty;
+
+        /// <summary>
+        ///     The places the grant is for, described for a person (a distribution's host, or its
+        ///     host and a tenant id); empty when the request names no resource.
+        /// </summary>
+        public IReadOnlyList<string> Targets { get; set; } = [];
     }
 
     /// <summary>The error page's display data.</summary>
