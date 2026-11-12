@@ -32,6 +32,31 @@ export class TmAvatarHarness extends ComponentHarness {
 }
 
 // @public
+export class TmBannerBarHarness extends ComponentHarness {
+    clickAction(): Promise<void>;
+    dismiss(): Promise<void>;
+    getActionLabel(): Promise<string | null>;
+    getButtonLabels(): Promise<Array<string | null>>;
+    getMessage(): Promise<string>;
+    getPosition(): Promise<string | null>;
+    getTone(): Promise<string | null>;
+    getTonePrefix(): Promise<string>;
+    static hostSelector: string;
+    isDismissible(): Promise<boolean>;
+    next(): Promise<void>;
+    previous(): Promise<void>;
+}
+
+// @public
+export class TmBusyOverlayHarness extends ComponentHarness {
+    getLabel(): Promise<string>;
+    hasSpinner(): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isScrimShown(): Promise<boolean>;
+}
+
+// @public
 export class TmButtonHarness extends ComponentHarness {
     click(): Promise<void>;
     focus(): Promise<void>;
@@ -57,6 +82,42 @@ export class TmCheckboxHarness extends ComponentHarness {
     isIndeterminate(): Promise<boolean>;
     isRequired(): Promise<boolean>;
     toggle(): Promise<void>;
+}
+
+// @public
+export class TmChipHarness extends ComponentHarness {
+    activate(): Promise<void>;
+    getHref(): Promise<string | null>;
+    getKind(): Promise<'link' | 'button' | 'text'>;
+    getLabel(): Promise<string>;
+    getRemoveLabel(): Promise<string | null>;
+    getSize(): Promise<string | null>;
+    getText(): Promise<string>;
+    getTone(): Promise<string | null>;
+    static hostSelector: string;
+    isCollapsed(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isRemovable(): Promise<boolean>;
+    pressDelete(): Promise<void>;
+    remove(): Promise<void>;
+    static with(filters?: TmChipHarnessFilters): HarnessPredicate<TmChipHarness>;
+}
+
+// @public
+export interface TmChipHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string;
+}
+
+// @public
+export class TmChipSetHarness extends ComponentHarness {
+    getAriaLabel(): Promise<string | null>;
+    getChips(filters?: TmChipHarnessFilters): Promise<TmChipHarness[]>;
+    getMoreLabel(): Promise<string | null>;
+    getMoreText(): Promise<string | null>;
+    getOverflow(): Promise<string | null>;
+    getTabStopCount(): Promise<number>;
+    getVisibleChips(): Promise<TmChipHarness[]>;
+    static hostSelector: string;
 }
 
 // @public
@@ -461,6 +522,32 @@ export class TmTabHarness extends ComponentHarness {
     isDisabled(): Promise<boolean>;
     isSelected(): Promise<boolean>;
     select(): Promise<void>;
+}
+
+// @public
+export class TmToastHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getActionLabel(): Promise<string | null>;
+    getCloseLabel(): Promise<string | null>;
+    getDetail(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    getTone(): Promise<string | null>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+    pressEscape(): Promise<void>;
+    runAction(): Promise<void>;
+}
+
+// @public
+export class TmToastStackHarness extends ComponentHarness {
+    clickPill(): Promise<void>;
+    getAssertiveAnnouncement(): Promise<string>;
+    getPillText(): Promise<string | null>;
+    getPoliteAnnouncement(): Promise<string>;
+    getToasts(): Promise<TmToastHarness[]>;
+    static hostSelector: string;
+    hover(): Promise<void>;
+    unhover(): Promise<void>;
 }
 
 // @public

@@ -271,4 +271,22 @@ export const TM_LOCALE_AR_STRINGS = {
   counter: {
     overflow: '{max}+',
   },
+  chip: {
+    remove: 'إزالة {label}',
+    more: 'المزيد ({count, number}): {labels}',
+  },
+  toast: {
+    region: 'الرسائل الأخيرة',
+    close: 'إغلاق',
+    more: 'المزيد ({count, number})',
+  },
+  banner: {
+    dismiss: 'إخفاء',
+    previous: 'الرسالة السابقة',
+    next: 'الرسالة التالية',
+    position: '{index, number} من {count, number}',
+  },
+  busyOverlay: {
+    label: 'يرجى الانتظار',
+  },
 } as const;

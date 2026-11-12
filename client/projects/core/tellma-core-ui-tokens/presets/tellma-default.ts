@@ -403,6 +403,93 @@ export const tmTokensDefault: TmTokens = {
       attentionBg: '{status.error.fg}',
       attentionText: '{action.onPrimary}',
     },
+    // tm-chip and tm-chip-set: a value, filter or link in a pill on the
+    // size ladder's chip steps (20, 24, 28 px). The tones follow tm-badge:
+    // the status tones tint with the status roles in the component CSS and
+    // keep body ink for the text; accent is the one solid chip. Unlike the
+    // rest of the component tier, this group is public to read: the
+    // launcher's chip-shaped options draw on it.
+    chip: {
+      height: '24px',
+      heightSm: '20px',
+      heightLg: '28px',
+      paddingX: '10px',
+      paddingXsm: '8px',
+      paddingXlg: '12px',
+      fontSize: '12px',
+      fontSizeSm: '11px',
+      fontSizeLg: '13px',
+      iconSize: '14px',
+      iconSizeSm: '12px',
+      iconSizeLg: '16px',
+      removeIconSize: '12px',
+      // The remove button is a circle inset this far inside the pill, with
+      // a little more room at the pill's end.
+      removeInset: '3px',
+      removeEndGap: '2px',
+      // Every chip control takes the pointer at least this square (WCAG 2.2
+      // target minimum), whatever its drawn size.
+      targetSize: '24px',
+      gap: '4px',
+      setGap: '4px',
+      radius: '{radius.full}',
+      text: '{text.body}',
+      neutralBg: '{surface.sunken}',
+      neutralBorder: '{border.default}',
+      neutralInk: '{text.secondary}',
+      accentBg: '{action.primary}',
+      accentText: '{action.onPrimary}',
+    },
+    // TmToasts: short timed messages stacked in the block-start, inline-end
+    // corner, above everything. `offsetBlockStart` is the one variable a
+    // consumer sets (the shell, to clear its top bar). Below the sm
+    // breakpoint a toast takes the full width less a gutter on each side.
+    toast: {
+      width: '360px',
+      gutter: '8px',
+      offsetBlockStart: '8px',
+      gap: '8px',
+      padding: '12px',
+      radius: '{radius.md}',
+      bg: '{surface.card}',
+      border: '{border.default}',
+      iconSize: '16px',
+      titleFontSize: '13px',
+      detailFontSize: '12px',
+      closeSize: '28px',
+      closeIconSize: '14px',
+      pillFontSize: '12px',
+    },
+    // tm-banner-bar: one 32px row, the height of the shell's banner row. It
+    // fills with the tone's status tint and draws the status border on its
+    // block-end edge; the text keeps body ink.
+    banner: {
+      height: '32px',
+      paddingX: '12px',
+      gap: '8px',
+      fontSize: '12px',
+      iconSize: '16px',
+      buttonSize: '24px',
+      buttonIconSize: '14px',
+      text: '{text.body}',
+    },
+    // TmBusyOverlay: a transparent blocker at once, then after `delay` a
+    // scrim with a card holding a spinner and the label. `delay` is the one
+    // variable a consumer may set; the scrim is a translucent ink veil that
+    // reads the same over both schemes, lighter than the modal's because
+    // nothing sits on it but the card.
+    busyOverlay: {
+      delay: '200ms',
+      scrim: 'rgba(4, 18, 24, 0.4)',
+      paddingX: '16px',
+      paddingY: '12px',
+      gap: '10px',
+      radius: '{radius.md}',
+      bg: '{surface.card}',
+      fontSize: '13px',
+      text: '{text.strong}',
+      spinnerSize: '20px',
+    },
     // tmButton: heights ride the shared field-height scale (buttons align
     // with form fields in toolbars); per-variant colors resolve per scheme
     // through the semantic action/field/status roles.

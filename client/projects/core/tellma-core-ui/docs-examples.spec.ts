@@ -14,8 +14,10 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
 import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmBadge, TmCounter } from '@tellma/core-ui/badge';
+import { TmBannerBar } from '@tellma/core-ui/banner';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
+import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
@@ -55,8 +57,11 @@ import * as alertExamples from './alert/tm-alert.examples';
 import * as avatarExamples from './avatar/tm-avatar.examples';
 import * as badgeExamples from './badge/tm-badge.examples';
 import * as counterExamples from './badge/tm-counter.examples';
+import * as bannerBarExamples from './banner/tm-banner-bar.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
+import * as chipExamples from './chip/tm-chip.examples';
+import * as chipSetExamples from './chip/tm-chip-set.examples';
 import * as copyButtonExamples from './copy/tm-copy-button.examples';
 import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
@@ -134,8 +139,11 @@ class ExamplePage {}
     TmAlert,
     TmAvatar,
     TmBadge,
+    TmBannerBar,
     TmButton,
     TmCheckbox,
+    TmChip,
+    TmChipSet,
     TmContextMenuTrigger,
     TmCopyButton,
     TmCounter,
@@ -205,6 +213,8 @@ class ExamplePage {}
     </tm-multi-select>
     <tm-spinner />
     <tm-badge>placeholder</tm-badge>
+    <tm-chip-set><tm-chip label="placeholder" /></tm-chip-set>
+    <tm-banner-bar message="placeholder" />
     <tm-counter [value]="1" />
     <tm-avatar name="placeholder" />
     <tm-progress-bar label="placeholder" />
@@ -275,6 +285,13 @@ class ExampleHost {
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+  // The chip and banner examples' event handlers.
+  protected readonly onRemove = (label: string): void => void label;
+  protected readonly onActivate = (key: string): void => void key;
+  protected readonly onReload = (): void => undefined;
+  protected readonly onPrevious = (): void => undefined;
+  protected readonly onNext = (): void => undefined;
+  protected readonly onDismiss = (): void => undefined;
 
   // The entity-picker examples' members: an in-memory directory search plus
   // the accessor closures and a trivial modal page.
@@ -511,6 +528,9 @@ const SUITES = [
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'badge/tm-badge.examples.ts', examples: badgeExamples },
   { source: 'badge/tm-counter.examples.ts', examples: counterExamples },
+  { source: 'chip/tm-chip.examples.ts', examples: chipExamples },
+  { source: 'chip/tm-chip-set.examples.ts', examples: chipSetExamples },
+  { source: 'banner/tm-banner-bar.examples.ts', examples: bannerBarExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
   { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },

@@ -247,4 +247,24 @@ export const TM_UI_STRINGS_EN = {
     // {max} arrives formatted in the active locale's digits.
     overflow: '{max}+',
   },
+  chip: {
+    remove: 'Remove {label}',
+    // {labels} is the hidden chips' labels, already joined as a list.
+    more: '{count, number} more: {labels}',
+  },
+  toast: {
+    region: 'Recent messages',
+    close: 'Close',
+    // The default overflow pill, when the app supplies none.
+    more: '{count, number} more',
+  },
+  banner: {
+    dismiss: 'Dismiss',
+    previous: 'Previous message',
+    next: 'Next message',
+    position: '{index, number} of {count, number}',
+  },
+  busyOverlay: {
+    label: 'Please wait',
+  },
 } as const;

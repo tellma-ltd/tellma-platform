@@ -282,6 +282,24 @@ export const TM_UI_STRINGS_EN: {
     readonly counter: {
         readonly overflow: "{max}+";
     };
+    readonly chip: {
+        readonly remove: "Remove {label}";
+        readonly more: "{count, number} more: {labels}";
+    };
+    readonly toast: {
+        readonly region: "Recent messages";
+        readonly close: "Close";
+        readonly more: "{count, number} more";
+    };
+    readonly banner: {
+        readonly dismiss: "Dismiss";
+        readonly previous: "Previous message";
+        readonly next: "Next message";
+        readonly position: "{index, number} of {count, number}";
+    };
+    readonly busyOverlay: {
+        readonly label: "Please wait";
+    };
 };
 
 // @public
