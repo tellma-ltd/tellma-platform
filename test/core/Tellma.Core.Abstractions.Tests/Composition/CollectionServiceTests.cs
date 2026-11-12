@@ -6,6 +6,7 @@
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Notifications;
 
 namespace Tellma.Core.Abstractions.Tests.Composition
 {
@@ -16,6 +17,7 @@ namespace Tellma.Core.Abstractions.Tests.Composition
         [InlineData(typeof(IStartupCheck))]
         [InlineData(typeof(IClientAssetContributor))]
         [InlineData(typeof(ICalendarSystem))]
+        [InlineData(typeof(INotificationChannel))]
         public void The_contract_marks_its_collection_extension_points(Type serviceType)
         {
             Assert.True(serviceType.IsDefined(typeof(CollectionServiceAttribute), inherit: false));

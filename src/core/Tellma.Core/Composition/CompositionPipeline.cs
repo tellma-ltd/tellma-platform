@@ -15,6 +15,7 @@ using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Localization;
+using Tellma.Core.Notifications;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Composition
@@ -148,6 +149,9 @@ namespace Tellma.Core.Composition
 
             // --- The data layer: the batch executor, the scoped tenant database and the handle factory ---
             DataComposition.Register(services, options);
+
+            // --- Notifications: the options, and the hub-less client event publisher and status ---
+            NotificationsComposition.Register(services, options);
 
             // --- Server-built links (spec 0011 §5.10) ---
             // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
@@ -480,6 +484,9 @@ namespace Tellma.Core.Composition
                 new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),
+                new NotificationTypesCheck(_record),
+                new NotificationChannelsCheck(_record),
+                new ClientEventsCheck(_record),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
             ]);
 

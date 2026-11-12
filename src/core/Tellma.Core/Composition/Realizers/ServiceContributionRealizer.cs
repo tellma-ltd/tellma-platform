@@ -40,6 +40,10 @@ namespace Tellma.Core.Composition.Realizers
                 return;
             }
 
+            // Recorded with its feature, replaced or not, so the startup gate can name who
+            // registered a service it refuses.
+            context.Record.Services.Add(new ContributedService(item.ServiceType, item.ImplementationType, owner));
+
             if (CollectionServices.Contains(item.ServiceType))
             {
                 context.Services.Add(descriptor);

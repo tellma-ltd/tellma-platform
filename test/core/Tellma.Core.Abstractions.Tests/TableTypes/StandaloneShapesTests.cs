@@ -47,6 +47,31 @@ namespace Tellma.Core.Abstractions.Tests.TableTypes
             Assert.NotNull(typeof(VersionTagList).GetCustomAttribute<TableTypeAttribute>());
         }
 
+        [Theory]
+        [InlineData(typeof(NotificationRowList), new[] { "Ordinal" }, new[] { "Ordinal", "UserId" })]
+        [InlineData(typeof(NotificationSliceList), new[] { "SliceOrdinal" }, new[] { "SliceOrdinal", "FirstOrdinal", "LastOrdinal", "ArgumentsJson" })]
+        [InlineData(typeof(NotificationPreferenceList), new[] { "Type", "Channel" }, new[] { "Type", "Channel", "Enabled" })]
+        public void Each_notification_list_is_a_table_type_class_with_its_columns_and_key(Type list, string[] key, string[] columns)
+        {
+            PropertyInfo[] properties = list.GetProperties();
+
+            Assert.NotNull(list.GetCustomAttribute<TableTypeAttribute>());
+            Assert.Equal(columns, properties.Select(static property => property.Name));
+            Assert.Equal(key, properties.Where(static property => property.GetCustomAttribute<KeyAttribute>() is not null).Select(static property => property.Name));
+        }
+
+        [Fact]
+        public void The_notification_lists_size_their_text_columns_as_the_tables_do()
+        {
+            Assert.Equal(64, typeof(NotificationPreferenceList).GetProperty(nameof(NotificationPreferenceList.Type))!.GetCustomAttribute<MaxLengthAttribute>()!.Length);
+            Assert.Equal("varchar(16)", typeof(NotificationPreferenceList).GetProperty(nameof(NotificationPreferenceList.Channel))!.GetCustomAttribute<ColumnAttribute>()!.TypeName);
+
+            // The slice's arguments are unbounded: an unannotated string maps to nvarchar(max).
+            PropertyInfo arguments = typeof(NotificationSliceList).GetProperty(nameof(NotificationSliceList.ArgumentsJson))!;
+            Assert.Null(arguments.GetCustomAttribute<MaxLengthAttribute>());
+            Assert.Null(arguments.GetCustomAttribute<ColumnAttribute>());
+        }
+
         [Fact]
         public void The_application_role_is_a_platform_constant()
         {

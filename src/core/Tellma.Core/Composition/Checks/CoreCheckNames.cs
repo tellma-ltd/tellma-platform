@@ -47,6 +47,21 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>Value sets are well formed and uniquely named, and every property that draws from one names a composed set.</summary>
         public const string ValueSets = "core.value-sets";
 
+        /// <summary>
+        ///     Notification type keys and categories are well formed, keys are unique, every target
+        ///     names a routable entity with an integer key, and channel-only types follow their rule.
+        /// </summary>
+        public const string NotificationTypes = "core.notification-types";
+
+        /// <summary>
+        ///     Channel keys are well formed and unique, the two baseline channels are composed, and every
+        ///     channel sender names a registered channel other than the inbox, at most one per channel.
+        /// </summary>
+        public const string NotificationChannels = "core.notification-channels";
+
+        /// <summary>Client event names are well formed and unique.</summary>
+        public const string ClientEvents = "core.client-events";
+
         /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
         public const string TimeZones = "core.time-zones";
     }

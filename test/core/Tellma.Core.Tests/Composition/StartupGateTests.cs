@@ -186,6 +186,9 @@ namespace Tellma.Core.Tests.Composition
                 ["core.languages"] = false,
                 ["core.calendars"] = false,
                 ["core.value-sets"] = false,
+                ["core.notification-types"] = false,
+                ["core.notification-channels"] = false,
+                ["core.client-events"] = false,
                 ["core.time-zones"] = true,
             };
 
