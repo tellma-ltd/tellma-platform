@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
@@ -27,9 +28,16 @@ namespace Tellma.Core.Tests.Data.Batches
 
         /// <summary>Composes the default composition.</summary>
         /// <param name="owners">Which stack owns each table; none when null.</param>
-        public BatchHarness(IStackTableOwners? owners = null)
+        /// <param name="registry">Which tags written tables bump; none composed when null.</param>
+        public BatchHarness(IStackTableOwners? owners = null, IVersionTagRegistry? registry = null)
         {
-            _root = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            IServiceCollection services = TestComposition.Compose(static _ => { });
+            if (registry is not null)
+            {
+                _ = services.AddSingleton(registry);
+            }
+
+            _root = services.BuildServiceProvider(validateScopes: true);
             Executor = new DataExecutor(
                 _root.GetRequiredService<IOptions<DataOptions>>(),
                 _root.GetRequiredService<IEntityMetadataProvider>(),
@@ -37,6 +45,7 @@ namespace Tellma.Core.Tests.Data.Batches
                 owners ?? new NoStackTableOwners(),
                 TimeProvider.System,
                 _root.GetRequiredService<ILogger<DataBatch>>(),
+                _root.GetRequiredService<DataMetrics>(),
                 _root);
         }
 

@@ -232,9 +232,16 @@ order, and a statement's local names carry its ordinal (`@tb3_p0`, `@tb1_ids`). 
 framed as follows: `SET NOCOUNT ON; SET XACT_ABORT ON;`, the schema guard (`THROW 50501` unless
 `dbo.__TellmaSchema` lists the running model's fingerprint, bound as `@tm_schema`), the prologue
 statements, `IF @tm_Guard = 1 BEGIN` on a batch marked as carrying the connect prologue,
-`BEGIN TRANSACTION;` on an `Auto` batch that declares a write, then the body and the epilogue
-statements, and the closing `COMMIT TRANSACTION;` and `END;`. An `Explicit` batch runs in a
-`SqlTransaction` instead, and a `None` batch autocommits.
+`BEGIN TRANSACTION;` on an `Auto` batch that declares a write, the transaction-head statements
+(refused on a batch whose text opens no transaction), the persist re-checks, then the body and the
+epilogue statements, and the closing `COMMIT TRANSACTION;` and `END;`. An `Explicit` batch runs in
+a `SqlTransaction` instead, and a `None` batch autocommits. The persist re-checks open a writing
+persist batch that carries the connect prologue: the version-tag guard compares the tags the batch
+composed under (`settings`, the caller's `permissions`, its declared dependencies; bound as
+`@tm_expectedTags`, each marked when the batch bumps it, through the optional
+`IVersionTagRegistry`) and the caller's per-user permissions tag under locks held to `COMMIT`
+(`THROW 50412`), then a user's batch re-checks that its caller is still active (`THROW 50401`).
+The platform's own batches (`GuardPremises.ForSystem`) re-check the tags alone.
 
 The scope's `IDataBatchContributor`s run their prologue stage, in ascending `Order`, before the
 first statement that is not a prologue (or at execution, for a batch with none). They run their
@@ -245,9 +252,39 @@ collapses into an identical earlier statement when it declares no write or is id
 executor counts the result sets against what each statement declares, skips the body's sets when
 the guard failed, and maps a server error's line number to the ordinal of the statement that
 raised it. It traces each round trip as a span of `Tellma.Core`, logs a slow round trip with its
-text, and runs the commit callbacks once the body ran. The statement compilers (queries, saves,
-updates, deletes, the version-tag cache) join the batch in later releases; until then those
-members throw `NotSupportedException`.
+text, and runs the commit callbacks once the body ran.
+
+A failed round trip is classified. A transient error the server reported (a deadlock, a lock
+timeout, throttling, `THROW 50503`), at any severity, rolled the batch back under `XACT_ABORT`, so
+the whole round trip is sent again, up to `Tellma:Data:RetryAttempts` re-runs after waits of 50,
+200 and 800 ms (jittered); then `DataAccessRetryExhaustedException`. A lost connection is re-run
+when every statement may run twice (reads, idempotent writes), except that a read or validation
+batch whose command timed out is re-run once only; a persist batch in its own transaction that
+declared the root rows it inserts (`DataBatch.DeclareInsertedRoots`) is probed on a fresh
+connection (a locking seek on those keys), and a not-committed verdict is re-run; anything else is
+`DataAccessAmbiguousException` with its verdict. The probe itself runs again, with the same waits
+and attempts, when its own round trip fails transiently or loses its connection. After a
+not-committed verdict, any error that would reach the caller (the re-run's own, exhaustion,
+cancellation) is preceded by a second probe, because the first attempt may have committed late;
+after a write re-run without a verdict, any such error surfaces as `DataAccessAmbiguousException`
+(unknown). An `Explicit` batch is never re-run once sent. A request the client fails to encode
+(a table-valued parameter's row it cannot convert) was never run, so its error surfaces as it is.
+The caller's token cancels the opens and the waits between attempts, and every command except a
+sent persist's; a cancellation that leaves a write's outcome unknown surfaces as
+`DataAccessAmbiguousException`, never as `OperationCanceledException`, while an `Explicit` batch
+cancelled before its commit was rolled back and surfaces the cancellation. A final error
+becomes the data layer's exception for it, carrying the statement's ordinal: the
+`Tellma.Core.Data` exceptions for row security, conflicts, uniqueness, foreign keys, trees and
+arithmetic, `BatchAssertionFailedException` for any other assigned platform or distribution number,
+`InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
+for the rest. A number outside the bands in a batch that commits its own transaction may come from
+a `RAISERROR`, which does not abort the batch, so it is probed (or reported unknown) as a defect
+before it surfaces. A statement's reader stages its results on the cursor, so only the attempt that
+counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
+`DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
+`tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
+statement compilers (queries, saves, updates, deletes, the version-tag cache) join the batch in
+later releases; until then those members throw `NotSupportedException`.
 
 ## Tenancy
 

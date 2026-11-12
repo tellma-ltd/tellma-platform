@@ -45,10 +45,14 @@ namespace Tellma.Core.Abstractions.Tests.Data
         public void The_once_per_batch_names_are_spelled_as_the_statements_use_them()
         {
             Assert.Equal(
-                ["@tm_schema", "@tm_UserId", "@tm_Guard", "@tm_expectedTags", "@tm_tag", "@tm_tagNames", "@tm_callerIds", "@tm_userIds_", "@tm_visible"],
+                [
+                    "@tm_schema", "@tm_UserId", "@tm_Guard", "@tm_expectedTags", "@tm_ExpectedUserPermissionsTag", "@tm_tag", "@tm_tagNames", "@tm_callerIds",
+                    "@tm_userIds_", "@tm_visible",
+                ],
                 [
                     ReservedSqlNames.SchemaFingerprint, ReservedSqlNames.UserId, ReservedSqlNames.Guard, ReservedSqlNames.ExpectedTags,
-                    ReservedSqlNames.Tag, ReservedSqlNames.TagNames, ReservedSqlNames.CallerIds, ReservedSqlNames.UserIdsPrefix, ReservedSqlNames.Visible,
+                    ReservedSqlNames.ExpectedUserPermissionsTag, ReservedSqlNames.Tag, ReservedSqlNames.TagNames, ReservedSqlNames.CallerIds,
+                    ReservedSqlNames.UserIdsPrefix, ReservedSqlNames.Visible,
                 ]);
             Assert.All(
                 [ReservedSqlNames.SchemaFingerprint, ReservedSqlNames.Guard, ReservedSqlNames.Visible],

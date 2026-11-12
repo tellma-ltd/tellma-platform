@@ -573,6 +573,8 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - PC-032 → PC-063: IStackRouteSource gained `Routes`; the stack registry must implement it (the audit checks stack segments against reserved route words).
 
 ## 0012
+- (PC-028) PC-040 (distribution-text analyzer): refuse `RAISERROR` at severity 11 or above in batch text, and require `THROW`. Under `XACT_ABORT ON`, `RAISERROR` does not abort the batch: the text runs on to its `COMMIT` while the client receives the error. The executor now treats an out-of-band number in a batch that commits its own transaction as a defect (probe, else `DataAccessAmbiguousException(Unknown)`). A `RAISERROR` that raises a distribution-band number through `sys.messages` would still surface as `BatchAssertionFailedException` after its batch committed, so only the analyzer closes the gap.
+- (PC-028) Spec 0020 worker checkpoint: a job handler whose sent `Maintenance` write is cancelled at host stop gets `DataAccessAmbiguousException(Unknown)`, not `OperationCanceledException`, because the write may have committed (D-052). Map any exception thrown after the worker's stopping token fired to `Released`. Test the stopping token, not the exception or its inner exception: the inner exception can be SqlClient's cancelled-command `SqlException`. An `Explicit` batch cancelled before its commit still surfaces `OperationCanceledException`.
 
 **Possible contradictions and gaps (unverified leads):**
 

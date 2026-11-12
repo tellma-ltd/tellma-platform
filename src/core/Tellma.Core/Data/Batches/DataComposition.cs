@@ -10,7 +10,7 @@ using Tellma.Core.Composition;
 
 namespace Tellma.Core.Data.Batches
 {
-    /// <summary>Registers the data layer's runtime: the options, the executor, the tenant database and its factory.</summary>
+    /// <summary>Registers the data layer's runtime: the options, the executor and its instruments, the tenant database and its factory.</summary>
     internal static class DataComposition
     {
         /// <summary>Registers the data layer.</summary>
@@ -29,9 +29,17 @@ namespace Tellma.Core.Data.Batches
             services.TryAddSingleton<IStackTableOwners, NoStackTableOwners>();
             _ = services.AddSingleton<DataExecutor>();
 
+            // AddMetrics is idempotent and supplies the IMeterFactory the executor's instruments are created from.
+            _ = services.AddMetrics();
+            _ = services.AddSingleton<DataMetrics>();
+
             // --- Per unit of work: the counters, the cancellation token and the tenant database ---
-            // TryAdd for the scope values: a host that opens scopes of its own may register them first.
-            services.TryAddScoped<DataAccessScope>();
+            // The recorder owns the counters, so whichever resolves them first (the opener naming the
+            // operation, or a batch) creates it, and disposing the scope records the round trips, zero
+            // included. TryAdd for the cancellation token: a host that opens scopes of its own may
+            // register it first.
+            services.TryAddScoped<DataAccessRecorder>();
+            services.TryAddScoped(static services => services.GetRequiredService<DataAccessRecorder>().Scope);
             services.TryAddScoped<DataCancellation>();
             _ = services.AddScoped<ITenantDatabase, TenantDatabase>();
 
