@@ -173,5 +173,17 @@ namespace Tellma.Core.Queryex
 
         /// <summary>The ordering list, when present.</summary>
         public string? OrderBy { get; init; }
+
+        /// <summary>
+        ///     True to have the row-level predicate's top-level restrictions reported, each as a
+        ///     compared path or expression, an operator and a literal value.
+        /// </summary>
+        /// <remarks>
+        ///     Off by default, and with it off discovery answers exactly as it would without it. With
+        ///     it on, <see cref="DiscoveryResult.Conjuncts" /> holds what was found, which is how a
+        ///     list opened from a bare link can describe the filter it runs from that filter's own
+        ///     parse rather than from text carried beside it.
+        /// </remarks>
+        public bool Conjuncts { get; init; }
     }
 }

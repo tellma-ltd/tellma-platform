@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { InjectionToken } from '@angular/core';
+
 import type { TmClientMetadata, TmContracts, TmEntitiesChunk } from './tm-client-metadata';
 
 // The loaders of the client metadata (spec 0024 §3.2, §3.3). The emit writes a
@@ -25,6 +27,13 @@ export interface TmMetadataLoaders {
   /** Loads each offered language's string pack, by language code. */
   readonly strings: Readonly<Record<string, () => Promise<TmStringPack>>>;
 }
+
+/**
+ * The app's metadata loaders, as `provideTellma` received them. Services that
+ * load a chunk on demand, such as the HTTP layer with the Contracts chunk,
+ * inject it optionally: an injector without `provideTellma` has none.
+ */
+export const TM_METADATA_LOADERS = new InjectionToken<TmMetadataLoaders>('TM_METADATA_LOADERS');
 
 /** The paths of the client metadata's files, relative to the app's base URL. */
 export interface TmMetadataPaths {

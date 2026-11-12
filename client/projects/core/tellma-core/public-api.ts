@@ -6,9 +6,9 @@
  *
  * It holds the distribution API (`provideTellma`, `tmFeature` and the
  * declaration functions), the client metadata's types and loaders, the
- * plain-JSON value types of the HTTP layer and the exact decimal helpers, and
- * the seams through which telemetry, the request log and page scopes are
- * provided.
+ * HTTP layer with its error and plain-JSON value types, the exact decimal
+ * helpers, and the seams through which telemetry, the request log and page
+ * scopes are provided.
  *
  * @packageDocumentation
  */
@@ -29,6 +29,25 @@ export {
   type TmTelemetryOptions,
   type TmTelemetryProps,
 } from './src/observe/tm-telemetry';
+
+// The HTTP layer.
+export {
+  TmApi,
+  type TmBlobDescriptor,
+  type TmDownload,
+  type TmDownloadOptions,
+  type TmReadOptions,
+  type TmSendOptions,
+  type TmUploadOptions,
+  type TmWriteOptions,
+} from './src/api/tm-api';
+export {
+  TmApiError,
+  type TmApiErrorInit,
+  type TmApiErrorKind,
+  type TmProblem,
+  type TmProblemError,
+} from './src/api/tm-api-error';
 
 // The request log.
 export {

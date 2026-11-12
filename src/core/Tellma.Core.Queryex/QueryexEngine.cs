@@ -293,6 +293,97 @@ namespace Tellma.Core.Queryex
             return result;
         }
 
+        /// <summary>
+        ///     Prints a text with its arguments written in as literals and its omitted parameters
+        ///     folded away.
+        /// </summary>
+        /// <param name="text">The text.</param>
+        /// <param name="options">The arguments, the omitted parameters and what they are declared as.</param>
+        /// <returns>
+        ///     The canonical text; or the diagnostics that stopped it parsing, or the ceilings the
+        ///     printed text would pass.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">
+        ///     The declarations are not usable, a valued or omitted name is not declared, a name is
+        ///     given more than one value or is both given a value and omitted, or a value is not one
+        ///     of its parameter's declared type — null included, for a parameter declared never
+        ///     absent.
+        /// </exception>
+        /// <remarks>
+        ///     <para>
+        ///         What a host hands to something that runs a text on its own, such as a list of the
+        ///         rows behind a number: parsing the answer gives the text's own parse with each
+        ///         valued parameter replaced by a literal, and with the omitted ones folded exactly as
+        ///         a compilation folds them — along the skeleton of a predicate, and in the condition
+        ///         of every aggregation. A parameter that is neither stays as written. A text that
+        ///         folds away entirely prints as <c>true</c> or <c>false</c>.
+        ///     </para>
+        ///     <para>
+        ///         A number prints as its digits, negative ones behind a unary minus; text quoted;
+        ///         a truth value as its keyword; a date, a date and time, an instant and an
+        ///         identifier as a conversion of their canonical text; and the absent value, or an
+        ///         omitted parameter where a value is read, as the conversion of <c>null</c> to the
+        ///         declared type. Syntactic only: no schema is consulted, and only lexical and
+        ///         syntax errors are reported.
+        ///     </para>
+        ///     <para>
+        ///         A literal is longer than the parameter it replaces, so the printed text is read
+        ///         again under the same <see cref="ParameterBindingOptions.Limits" />, and a ceiling
+        ///         it passes — its length, its tokens, its nesting — is reported here, over the whole
+        ///         of <paramref name="text" />. The ceiling on bound nodes needs a schema, and is
+        ///         applied when the printed text is compiled.
+        ///     </para>
+        /// </remarks>
+        public QueryexResult<string> BindParameters(string text, ParameterBindingOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(text);
+            ArgumentNullException.ThrowIfNull(options);
+
+            return ParameterBinder.Bind(_compiler, text, options);
+        }
+
+        /// <summary>
+        ///     Works out which rows a measure aggregates, as a self-contained row-level predicate.
+        /// </summary>
+        /// <param name="measure">The measure.</param>
+        /// <param name="options">
+        ///     The arguments, the omitted parameters and what they are declared as; the mode is not
+        ///     consulted, since an aggregation's condition folds in every position.
+        /// </param>
+        /// <returns>
+        ///     The rows the measure aggregates; or the diagnostics that stopped it parsing, or the
+        ///     ceilings the printed condition would pass.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">
+        ///     Whatever <see cref="BindParameters" /> refuses of the options.
+        /// </exception>
+        /// <remarks>
+        ///     <para>
+        ///         What a list opened from a measure's number runs, so that it lists exactly the
+        ///         rows the number aggregates. Each aggregation's condition, its second argument, is
+        ///         printed as <see cref="BindParameters" /> prints a text. The answer is every row —
+        ///         a null condition — when any aggregation has no condition or one that folds to
+        ///         true, and when the measure has no aggregation at all. Otherwise it is the distinct
+        ///         conditions, compared as the text they print as, each parenthesized and joined
+        ///         with <c>or</c> in the order they first appear; a condition that folds to false
+        ///         drops out, and when every one does the answer is <c>false</c>.
+        ///     </para>
+        ///     <para>
+        ///         Syntactic only, like <see cref="BindParameters" />: no schema is consulted, and
+        ///         only lexical and syntax errors are reported. The printed condition is held to the
+        ///         ceilings as <see cref="BindParameters" /> holds its text.
+        ///     </para>
+        /// </remarks>
+        public QueryexResult<MeasureRows> MeasureCondition(string measure, ParameterBindingOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(measure);
+            ArgumentNullException.ThrowIfNull(options);
+
+            return ParameterBinder.MeasureCondition(_compiler, measure, options);
+        }
+
         /// <summary>Checks the parts of a constant statement the caller is responsible for.</summary>
         /// <param name="items">The items.</param>
         /// <param name="options">The compilation options.</param>

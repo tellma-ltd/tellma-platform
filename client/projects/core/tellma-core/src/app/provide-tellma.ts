@@ -4,9 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 import { type ApplicationConfig, type EnvironmentProviders, inject, makeEnvironmentProviders } from '@angular/core';
+import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
 
+import { TmApi } from '../api/tm-api';
 import { ɵtmMergeAppDeclarations } from '../declarations/tm-merge';
 import { TM_CLIENT_METADATA } from '../metadata/tm-client-metadata';
+import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
 import type { TmAppConfig } from './tm-app-config';
 import { TM_APP_DECLARATIONS } from './tm-app-declarations';
 
@@ -21,7 +24,9 @@ const configs = new WeakMap<object, TmAppConfig>();
 
 /**
  * The providers of a Tellma app: the merged declarations of its features,
- * built once from the loaded client metadata.
+ * built once from the loaded client metadata, the metadata loaders the HTTP
+ * layer loads the Contracts chunk through, and `tm-image`'s blob fetcher over
+ * `TmApi.fetchBlob`.
  *
  * @param config - The distribution's app configuration.
  * @returns The providers, for the app's `ApplicationConfig`.
@@ -44,6 +49,16 @@ export function provideTellma(config: TmAppConfig): EnvironmentProviders {
     {
       provide: TM_APP_DECLARATIONS,
       useFactory: () => ɵtmMergeAppDeclarations(config.features, inject(TM_CLIENT_METADATA)).declarations,
+    },
+    { provide: TM_METADATA_LOADERS, useValue: config.metadata },
+    // Images ride the HTTP layer: the user check, the session and the client's
+    // headers apply, and a test's fake TmApi answers them too.
+    {
+      provide: TM_BLOB_FETCHER,
+      useFactory: (): TmBlobFetcher => {
+        const api = inject(TmApi);
+        return (url, options) => api.fetchBlob(url, options);
+      },
     },
   ]);
   configs.set(providers, config);

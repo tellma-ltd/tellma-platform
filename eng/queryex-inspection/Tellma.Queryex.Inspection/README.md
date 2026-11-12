@@ -42,6 +42,17 @@ One input replaces the query altogether:
 A malformed entry in any of them is a caller error, shown the way the engine's own caller errors
 are.
 
+Two more readings sit beside the compilation:
+
+- **conjuncts** — tick the box to list the composed filter's top-level restrictions as discovery
+  reads them: each atom reached through `and` alone that compares a path or an expression with a
+  literal, with its leaf, its span, the operator and the value. Restrictions under `or`, `not`, a
+  rebase or a semi-join are not listed.
+- **measure** — a measure such as `sum(Amount, CustomerId = @Customer)`, whose row condition the
+  page prints: the rows a list opened from that measure would show. It reads the declared and
+  omitted parameters above; the page gives no parameter a value, so one that is not left out stays
+  in the condition as written.
+
 ```bash
 dotnet run --project eng/queryex-inspection/Tellma.Queryex.Inspection
 ```

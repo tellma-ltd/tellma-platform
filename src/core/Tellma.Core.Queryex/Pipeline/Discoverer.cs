@@ -39,7 +39,7 @@ namespace Tellma.Core.Queryex.Pipeline
             string text,
             DiscoveryOptions options)
         {
-            DiscoveryState state = new(compiler, options);
+            DiscoveryState state = new(compiler, options, conjuncts: false);
             state.Read(text, options.Mode ?? QueryexMode.Value, directions: false, DiagnosticLocation.None);
             return state.Result();
         }
@@ -60,15 +60,18 @@ namespace Tellma.Core.Queryex.Pipeline
             QueryDiscoverySpec spec,
             DiscoveryOptions options)
         {
-            DiscoveryState state = new(compiler, options);
+            DiscoveryState state = new(compiler, options, spec.Conjuncts);
             QueryexMode value = spec.Aggregate ? QueryexMode.Aggregate : QueryexMode.Value;
 
             if (spec.Filter is not null)
             {
+                // Only the row-level predicate's top-level atoms are read as conjuncts, and only
+                // when they were asked for.
                 state.ReadFilter(
                     spec.Filter,
-                    spec.Aggregate ? QueryexMode.Filter : QueryexMode.Filter,
-                    DiagnosticLocation.Clause(QueryexClause.Filter));
+                    QueryexMode.Filter,
+                    DiagnosticLocation.Clause(QueryexClause.Filter),
+                    conjunctive: spec.Conjuncts);
             }
 
             if (spec.Select is not null)
@@ -81,7 +84,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 state.ReadFilter(
                     spec.Having,
                     QueryexMode.AggregateFilter,
-                    DiagnosticLocation.Clause(QueryexClause.Having));
+                    DiagnosticLocation.Clause(QueryexClause.Having),
+                    conjunctive: false);
             }
 
             if (spec.OrderBy is not null)
@@ -137,6 +141,16 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <summary>Which input each location text names, so a conflict can be attributed.</summary>
             private readonly Dictionary<string, DiagnosticLocation> _locations = new(StringComparer.Ordinal);
 
+            /// <summary>
+            ///     The path each parameter is compared with, by name ignoring case: null once it has
+            ///     met two paths that differ.
+            /// </summary>
+            private readonly Dictionary<string, IReadOnlyList<string>?> _comparedWith =
+                new(StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>The row-level predicate's top-level restrictions, when they were asked for.</summary>
+            private readonly List<FilterConjunct>? _conjuncts;
+
             /// <summary>Whether any clause aggregates.</summary>
             private bool _aggregates;
 
@@ -152,11 +166,13 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <summary>Initializes a run.</summary>
             /// <param name="compiler">The stage runner.</param>
             /// <param name="options">The discovery options.</param>
-            internal DiscoveryState(ExpressionCompiler compiler, DiscoveryOptions options)
+            /// <param name="conjuncts">Whether the row-level predicate's top-level restrictions are asked for.</param>
+            internal DiscoveryState(ExpressionCompiler compiler, DiscoveryOptions options, bool conjuncts)
             {
                 _compiler = compiler;
                 _options = options;
                 _budget = new CompilationBudget(options.Limits);
+                _conjuncts = conjuncts ? [] : null;
             }
 
             /// <summary>Reads one expression list.</summary>
@@ -175,7 +191,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 DiagnosticLocation location,
                 int? queryexVersion = null)
             {
-                Read(text, mode, directions, location, queryexVersion, Top());
+                Read(text, mode, directions, location, queryexVersion, Top(), conjunctive: false);
             }
 
             /// <summary>Reads one expression list, resolving its paths from a given scope.</summary>
@@ -185,13 +201,18 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="location">Which input this text is.</param>
             /// <param name="queryexVersion">The version stamped on the text, when it has one.</param>
             /// <param name="scope">What its paths resolve from, and how they are reported.</param>
+            /// <param name="conjunctive">
+            ///     Whether the text is a filter leaf reached through conjunctions alone, whose
+            ///     top-level restrictions are to be read.
+            /// </param>
             private void Read(
                 string text,
                 QueryexMode mode,
                 bool directions,
                 DiagnosticLocation location,
                 int? queryexVersion,
-                PathScope scope)
+                PathScope scope,
+                bool conjunctive)
             {
                 if (_budget.Exceeded)
                 {
@@ -250,15 +271,23 @@ namespace Tellma.Core.Queryex.Pipeline
                 {
                     ReadBound(item.Expression, location, scope);
                 }
+
+                // A predicate is one item; a leaf that is a list is a mistake binding has already
+                // reported, and describes no restriction.
+                if (conjunctive && _conjuncts is not null && bound.Items.Length == 1)
+                {
+                    ConjunctReader.Read(bound.Items[0].Expression, syntax, location.Text, _conjuncts);
+                }
             }
 
             /// <summary>Reads a whole filter tree.</summary>
             /// <param name="tree">The tree.</param>
             /// <param name="mode">The position its leaves are written for.</param>
             /// <param name="location">Which clause the tree belongs to.</param>
-            internal void ReadFilter(FilterTree tree, QueryexMode mode, DiagnosticLocation location)
+            /// <param name="conjunctive">Whether the top-level restrictions of its leaves are to be read.</param>
+            internal void ReadFilter(FilterTree tree, QueryexMode mode, DiagnosticLocation location, bool conjunctive)
             {
-                ReadFilter(tree, mode, location, Top());
+                ReadFilter(tree, mode, location, Top(), conjunctive);
             }
 
             /// <summary>Reads one node of a filter tree, resolving its paths from a given scope.</summary>
@@ -266,32 +295,54 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="mode">The position its leaves are written for.</param>
             /// <param name="location">Which input the node is.</param>
             /// <param name="scope">What its paths resolve from, and how they are reported.</param>
-            private void ReadFilter(FilterTree tree, QueryexMode mode, DiagnosticLocation location, PathScope scope)
+            /// <param name="conjunctive">
+            ///     Whether the node is reached through conjunctions alone, and its leaves' top-level
+            ///     restrictions are to be read.
+            /// </param>
+            private void ReadFilter(
+                FilterTree tree,
+                QueryexMode mode,
+                DiagnosticLocation location,
+                PathScope scope,
+                bool conjunctive)
             {
+                // Only a conjunction passes the reading of restrictions down: below a negation or a
+                // disjunction an atom no longer restricts every row, and below a rebase or a
+                // semi-join it restricts other rows than the query's.
                 switch (tree)
                 {
                     case FilterTree.LeafNode leaf:
-                        Read(leaf.Text, mode, false, location, leaf.QueryexVersion, scope);
+                        Read(leaf.Text, mode, false, location, leaf.QueryexVersion, scope, conjunctive);
                         return;
 
                     case FilterTree.NotNode negation:
-                        ReadFilter(negation.Operand, mode, location.Child(FilterConnective.Not, 0), scope);
+                        ReadFilter(negation.Operand, mode, location.Child(FilterConnective.Not, 0), scope, false);
                         return;
 
                     case FilterTree.AndNode conjunction:
-                        ReadChildren(conjunction.Children, mode, location, FilterConnective.And, scope);
+                        ReadChildren(conjunction.Children, mode, location, FilterConnective.And, scope, conjunctive);
                         return;
 
                     case FilterTree.OrNode disjunction:
-                        ReadChildren(disjunction.Children, mode, location, FilterConnective.Or, scope);
+                        ReadChildren(disjunction.Children, mode, location, FilterConnective.Or, scope, false);
                         return;
 
                     case FilterTree.ViaNode via:
-                        ReadFilter(via.Inner, mode, location.Via(via.Navigation), Rebased(via, location, scope));
+                        ReadFilter(
+                            via.Inner,
+                            mode,
+                            location.Via(via.Navigation),
+                            Rebased(via, location, scope),
+                            false);
                         return;
 
                     case FilterTree.ExistsNode exists:
-                        ReadFilter(exists.Inner, mode, location.Exists(exists.Entity), Searched(exists, location, scope));
+                        ReadFilter(
+                            exists.Inner,
+                            mode,
+                            location.Exists(exists.Entity),
+                            Searched(exists, location, scope),
+                            false);
                         return;
 
                     default:
@@ -361,12 +412,24 @@ namespace Tellma.Core.Queryex.Pipeline
                 List<ParameterUse> parameters = [.. _inference.Solve()];
                 ReportConflicts(parameters);
 
+                // The one path each parameter met, where it met exactly one.
+                for (int index = 0; index < parameters.Count; index++)
+                {
+                    if (_comparedWith.GetValueOrDefault(parameters[index].Name) is IReadOnlyList<string> path)
+                    {
+                        parameters[index] = parameters[index] with { ComparedWith = path };
+                    }
+                }
+
                 return new DiscoveryResult(
                     parameters,
                     _paths,
                     _functions,
                     _aggregates,
-                    _sink.Drain());
+                    _sink.Drain())
+                {
+                    Conjuncts = _conjuncts,
+                };
             }
 
             /// <summary>Reports every parameter whose uses cannot all be satisfied at once.</summary>
@@ -405,16 +468,18 @@ namespace Tellma.Core.Queryex.Pipeline
             /// <param name="location">Which clause the tree belongs to.</param>
             /// <param name="connective">The connective, as a location component.</param>
             /// <param name="scope">What their paths resolve from, and how they are reported.</param>
+            /// <param name="conjunctive">Whether their leaves' top-level restrictions are to be read.</param>
             private void ReadChildren(
                 IReadOnlyList<FilterTree> children,
                 QueryexMode mode,
                 DiagnosticLocation location,
                 FilterConnective connective,
-                PathScope scope)
+                PathScope scope,
+                bool conjunctive)
             {
                 for (int index = 0; index < children.Count; index++)
                 {
-                    ReadFilter(children[index], mode, location.Child(connective, index), scope);
+                    ReadFilter(children[index], mode, location.Child(connective, index), scope, conjunctive);
                 }
             }
 
@@ -464,17 +529,109 @@ namespace Tellma.Core.Queryex.Pipeline
             {
                 if (node is TypedPath path && scope.Reports)
                 {
-                    IReadOnlyList<string> segments = scope.Prefix.IsEmpty
-                        ? path.Segments
-                        : [.. scope.Prefix, .. path.Segments];
+                    _paths.Add(new PathUse(Rooted(path, scope), new QueryexTextSite(location.Text, path.Span)));
+                }
 
-                    _paths.Add(new PathUse(segments, new QueryexTextSite(location.Text, path.Span)));
+                if (scope.Reports)
+                {
+                    ReadComparedWith(node, scope);
                 }
 
                 foreach (TypedExpr child in node.Children)
                 {
                     ReadBound(child, location, scope);
                 }
+            }
+
+            /// <summary>Notes the path a bare parameter meets in one node, when it meets one.</summary>
+            /// <param name="node">The bound node.</param>
+            /// <param name="scope">What the text's paths resolve from.</param>
+            /// <remarks>
+            ///     A parameter meets a path when, bare, it is compared with a bare path, is an element
+            ///     of a membership list whose tested value is a bare path, or is a key of a hierarchy
+            ///     predicate, whose first argument is the path.
+            /// </remarks>
+            private void ReadComparedWith(TypedExpr node, PathScope scope)
+            {
+                switch (node)
+                {
+                    case TypedComparison { Left: TypedParameter parameter, Right: TypedPath path }:
+                        Meet(parameter, path, scope);
+                        return;
+
+                    case TypedComparison { Left: TypedPath path, Right: TypedParameter parameter }:
+                        Meet(parameter, path, scope);
+                        return;
+
+                    case TypedIn { Value: TypedPath path } membership:
+                        foreach (TypedExpr element in membership.Elements)
+                        {
+                            if (element is TypedParameter parameter)
+                            {
+                                Meet(parameter, path, scope);
+                            }
+                        }
+
+                        return;
+
+                    case TypedCall call when IsHierarchyPredicate(call) && call.Arguments[0] is TypedPath path:
+                        for (int index = 1; index < call.Arguments.Length; index++)
+                        {
+                            if (call.Arguments[index] is TypedParameter parameter)
+                            {
+                                Meet(parameter, path, scope);
+                            }
+                        }
+
+                        return;
+
+                    default:
+                        return;
+                }
+            }
+
+            /// <summary>Records that a parameter meets a path.</summary>
+            /// <param name="parameter">The parameter.</param>
+            /// <param name="path">The path.</param>
+            /// <param name="scope">What the path resolves from.</param>
+            /// <remarks>
+            ///     A parameter that meets two paths whose segments differ, ignoring case, is compared
+            ///     with no one path, and stays that way whatever else it meets.
+            /// </remarks>
+            private void Meet(TypedParameter parameter, TypedPath path, PathScope scope)
+            {
+                IReadOnlyList<string> segments = Rooted(path, scope);
+                if (!_comparedWith.TryGetValue(parameter.Symbol.Name, out IReadOnlyList<string>? met))
+                {
+                    _comparedWith[parameter.Symbol.Name] = segments;
+                    return;
+                }
+
+                if (met is not null && !met.SequenceEqual(segments, StringComparer.OrdinalIgnoreCase))
+                {
+                    _comparedWith[parameter.Symbol.Name] = null;
+                }
+            }
+
+            /// <summary>A path's segments, read from the query's root.</summary>
+            /// <param name="path">The path.</param>
+            /// <param name="scope">What the path resolves from.</param>
+            /// <returns>The segments, behind those of the rebases the text sits under.</returns>
+            private static ImmutableArray<string> Rooted(TypedPath path, PathScope scope)
+            {
+                return scope.Prefix.IsEmpty
+                    ? path.Segments
+                    : [.. scope.Prefix, .. path.Segments];
+            }
+
+            /// <summary>Whether a call is one of the two hierarchy predicates, with a key path and keys.</summary>
+            /// <param name="call">The bound call.</param>
+            /// <returns>True when it is.</returns>
+            private static bool IsHierarchyPredicate(TypedCall call)
+            {
+                return call.Arguments.Length > 1
+                    && (call.Definition.Name.Equals("descendantOf", StringComparison.OrdinalIgnoreCase)
+                        || call.Definition.Name.Equals("ancestorOf", StringComparison.OrdinalIgnoreCase));
             }
         }
     }

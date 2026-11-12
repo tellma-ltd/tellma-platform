@@ -359,6 +359,17 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-057 (orchestrator, 2026-11-12): PC-048 budgets, and the ./grid re-split
+- **Situation.** PC-048 (spec 0010 §C.1–§C.3, §C.5–§C.7) took ./grid from 38.73 KB to 41.92 KB gzip, after 0.10 KB of savings. Spec 0010 §C.11 gives ./grid 42 KB for all of §C.1–§C.14. That leaves 0.08 KB for §C.4 and §C.14 (PC-051) and for §C.8 and §C.9 (PC-054). This is the third ./grid raise, which trips D-031's re-split clause.
+- **Ruling.**
+  1. **The 42 KB ceiling stands for PC-048.** It is the spec's ceiling of record, so it is not a raise beyond the spec. Review 1 must check the measurement and the per-feature attribution, and look for accidental bloat.
+  2. **No further ./grid raise without a re-split or real savings.** Fix item PC-F21 measures where ./grid's bytes go (source-map explorer or similar) and does one of two things: moves features to on-demand or secondary entry points, or takes honest savings, until §C.4, §C.8, §C.9 and §C.14 fit inside 42 KB. Spec §C.11 itself names loading the editable-only machinery on demand as the obvious cut. PC-051 and PC-054 do not start until PC-F21 is done.
+  3. **The @tellma/core-ui primary entry goes from 8.5 KB to 9 KB** under D-031: 8.48 KB → 8.61 KB, all new spec'd strings.
+  4. **Mod+Enter in TM_GRID_KEYS** (§C.1/§C.12) conflicts with spec 0027 §4.3, whose registry refuses modifier entries. The 0027 checkpoint rules on it; WATCHLIST ## 0027 has the lead.
+- **Misalignments for Ahmad:**
+  - Spec 0010 §C.11 budgets ./grid at 42 KB for §C.1–§C.14, but §C.1–§C.3 and §C.5–§C.7 alone fill it.
+  - Mod+Enter appears in both spec 0010 §C.1/§C.12 and spec 0027 §4.3's refusal rule.
+
 ### D-056 (orchestrator, 2026-11-12): PC-028 fix-round-2 deviations accepted
 - **Out-of-band errors.** In an Auto batch that declares a write, a server error numbered outside both bands (for example RAISERROR at severity 11 to 18, which XACT_ABORT does not abort) is a Defect. With inserted roots the commit probe decides: Committed surfaces as ambiguous, NotCommitted as the translated error. Without inserted roots it surfaces as Ambiguous(Unknown). PC-040 must also refuse RAISERROR at severity 11 or above in batch text (WATCHLIST ## 0012).
 - **Probe re-runs.** The commit probe re-runs its own reported and lost-connection failures within the batch's delays and RetryAttempts, and re-runs a probe timeout at most once. Pool timeouts (InvalidOperationException) stay non-transient.
@@ -381,7 +392,19 @@ Format, one entry per ruling:
   - **Internal seams.** TM_API_LOCALE, TM_API_CACHE and TM_API_UPDATES stand in for PC-104, PC-096 and PC-110. TmAppVersion (PC-113) is not created. A WATCHLIST line names each owner.
   - **Blob fetcher.** provideTellma provides TM_BLOB_FETCHER over TmHttpApi in place of the HttpClient default, plus an internal TM_METADATA_LOADERS token.
 - **Size budget, open.** The @tellma/core primary entry's gzip budget rises from 6.5 KB to 12.5 KB (measured 6.34 → 12.27 KB). D-031 counts this as a raise. Review 1 must judge whether the growth is inherent or comes from avoidable imports. If it is avoidable, the ceiling falls back.
-- **Misalignment for Ahmad:** spec 0024 §10.1's TmApiError surface omits the challenge.
+- After fix 1 (9af3158), Review 1 confirmed the raise is inherent: the primary entry stands at 12.42 of 12.5 KB, and about 1.6 KB of spec 0024's 14 KB own-services share remains (WATCHLIST ## 0024).
+- **Also provisionally accepted after fix 1:**
+  - **fetchBlob:** a public `TmApi.fetchBlob` with `TmFetchBlobOptions`, so that TM_BLOB_FETCHER goes through TmApi and TmFakeApi can answer it.
+  - **Sign-out:** the sign-out answer skips the response user check.
+  - **Stale-session 401:** a 401 from a replaced session rejects `cancelled`.
+  - **Older-build verdicts:** a 30 s window for older-build verdicts.
+  - **Lazy import:** the core-ui TM_BLOB_FETCHER default imports `@angular/common/http` lazily.
+- **After fix 2 (8d54380, integrated 279ef75), also accepted:**
+  - **Same-origin paths only:** TmApi admits only paths on its own origin: one leading `/`, no protocol-relative or backslash forms, no control characters, and no `.`, `..` or `%2e` segments. Anything else is refused as `invalid-url` before sending; it throws in dev and leaves connectivity untouched.
+  - **Blob fetch options:** fetchBlob takes PC-059's `TmBlobFetchOptions`, and `TmFetchBlobOptions` is gone.
+  - **Testing package:** `@tellma/core-testing` now peers `@tellma/core-ui`, so `provideTellmaTesting` can route TM_BLOB_FETCHER to TmFakeApi.
+  - **Size:** no raise was needed. The primary entry stands at 12.47 of 12.5 KB; the 0.03 KB of headroom left is a WATCHLIST risk for PC-104/110.
+- **Misalignment for Ahmad:** spec 0024 §10.1's TmApi/TmApiError surface omits the challenge and fetchBlob.
 
 ### D-053 (orchestrator, 2026-11-12): PC-059 ceilings for ./image and ./alert
 - Ruling: ./image takes 11 KB gzip (measured 10.69 KB; the six spec'd Lucide glyphs alone cost 0.64 KB on a 9.95 KB start) and ./alert takes 2.25 KB (measured 2.14 KB; the implementer proposed 2.5). Each is measured + ≈0.1 KB as in D-049; D-031 counts both as raises.

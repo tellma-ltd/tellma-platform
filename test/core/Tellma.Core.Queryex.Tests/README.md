@@ -5,8 +5,8 @@ and cross-platform.
 
 | Folder | What it proves |
 |---|---|
-| `Syntax/` | Scanning and parsing: what the grammar accepts, what it refuses, and where it says the problem is. |
-| `Binding/` | Type checking, coercion, overload resolution, the mode rules, and what discovery reports to an authoring tool. |
+| `Syntax/` | Scanning and parsing: what the grammar accepts, what it refuses, and where it says the problem is. Also what the printer writes back: arguments written into a text as literals of every type, wherever precedence puts them, with the omitted parameters folded first, and the rows a measure's conditions admit. |
+| `Binding/` | Type checking, coercion, overload resolution, the mode rules, and what discovery reports to an authoring tool — the path each parameter is compared with and the filter's top-level restrictions included. |
 | `Functions/` | The registry's own consistency: no two overloads can tie, every pattern uses only the arguments its signature declares, every result that promises presence comes from an emission that tolerates absence. Also the caller errors of mapping a calendar's month table. |
 | `Corpus/` | The conformance corpus: every case binds to the type and nullity it must, or produces the diagnostic it must — and every whole query and every constant statement emits the SQL its snapshot holds. |
 | `Emit/` | Whole-query compilation, clause by clause, with the emitted SQL asserted directly; and what a host composes beside the text — restrictions to key sets, rebases onto a navigation's target and semi-joins over another entity's rows, the paging slots and the cache hits across pages, the undeclared columns, and the prologue and body it embeds, with the hint that has a statement planned afresh. Calendar calls nested in each other grow the statement by the same amount per level wherever no binding can name an operand. Also the parameters a compilation leaves out — the folding rule pinned as text before anything binds, what is never bound, and what a compilation is remembered under — and constant statements: the statement a host is promised, the caller errors, and the cache. |
@@ -14,7 +14,7 @@ and cross-platform.
 | `Coverage/` | That the suites cover what they claim: every diagnostic code is provoked somewhere, every location form a filter tree adds and every problem a constant statement reports about an item is pinned by a case with its span and arguments, every function has a reading in the reference implementation and a case that exercises it, and every fixture string stays inside the collation's repertoire. |
 | `Versioning/` | The Queryex-version stamp: that the engine asks for it, refuses one it cannot honour, already tells two versions apart in the caches, and binds each stamped filter leaf under its own. |
 | `Time/` | The embedded zone table: current ids only, checked against a copy of the time-zone database's location ids kept beside the test, and the aliases browsers report. |
-| `Properties/` | Round-trip, determinism, no-duplication, and robustness, over generated input. |
+| `Properties/` | Round-trip, determinism, no-duplication, and robustness, over generated input. Writing the arguments into a text admits the rows that compiling with them does, and a measure aggregated over the rows its condition admits is the measure over every row. |
 | `Goldens/` | The recorded SQL of every query the corpus compiles, and under `Constants/` of every constant statement. |
 
 ## Golden SQL snapshots

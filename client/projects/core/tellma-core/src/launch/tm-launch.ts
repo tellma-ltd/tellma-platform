@@ -7,6 +7,7 @@ import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/co
 import { NavigationEnd, Router } from '@angular/router';
 
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import { tmRoutedTenant } from './tm-routed-tenant';
 
 // The launch mark (spec 0024 §9.3): the tenant this document entered without
 // the user choosing it. The boot script seeds it (`__tmBoot.auto`), and the
@@ -14,19 +15,6 @@ import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 // first 2xx from that tenant, at a route into another tenant, or when a
 // `404 tenant-not-found` takes it, so a tenant that no longer exists leads to
 // the picker silently only on an entry the user did not choose.
-
-/** The tenant segment that opens an app path, such as `17` in `/17/centers`. */
-const TENANT_PATH = /^\/([1-9]\d*)(?:[/?#]|$)/;
-
-/**
- * The tenant an app URL routes into, or `null` for a tenantless one.
- *
- * @param url - The router's URL, such as `/17/centers?x=1`.
- */
-function routedTenant(url: string): number | null {
-  const match = TENANT_PATH.exec(url);
-  return match ? Number(match[1]) : null;
-}
 
 /**
  * The launch mark: the tenant this document entered without the user
@@ -98,7 +86,7 @@ export class TmLaunch {
 
   /** Ends the mark when a route went into a tenant other than the marked one. */
   #leaveOthers(url: string): void {
-    const tenant = routedTenant(url);
+    const tenant = tmRoutedTenant(url);
     if (tenant !== null && tenant !== this.#automatic()) {
       this.#automatic.set(null);
     }

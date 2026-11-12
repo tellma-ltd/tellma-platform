@@ -79,6 +79,14 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>What folds these parameters out of a parse tree.</summary>
         internal OmittedParameterFolder Folder { get; }
 
+        /// <summary>Whether a parameter is one of those left out.</summary>
+        /// <param name="name">The parameter's name, matched ignoring case.</param>
+        /// <returns>True when it is left out.</returns>
+        internal bool Contains(string name)
+        {
+            return _symbols.ContainsKey(name);
+        }
+
         /// <summary>Resolves the parameters a compilation leaves out against its declarations.</summary>
         /// <param name="options">The compilation options.</param>
         /// <param name="parameterName">The caller's parameter name, for the exception.</param>
