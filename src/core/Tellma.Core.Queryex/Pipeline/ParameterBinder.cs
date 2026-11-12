@@ -49,9 +49,13 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             FoldedPredicateList bound = arguments.Apply(syntax, options.Mode);
-            return new QueryexResult<string>(bound.Constant is bool constant
+            string printed = bound.Constant is bool constant
                 ? Truth(constant)
-                : SyntaxPrinter.Print(bound.List!));
+                : SyntaxPrinter.Print(bound.List!);
+
+            return Fits(compiler, text, printed, options.Limits, out IReadOnlyList<QueryexDiagnostic> exceeded)
+                ? new QueryexResult<string>(printed)
+                : new QueryexResult<string>(exceeded);
         }
 
         /// <summary>
@@ -130,7 +134,43 @@ namespace Tellma.Core.Queryex.Pipeline
                 ? Truth(false)
                 : string.Join(Disjunction, conditions.Select(static printed => "(" + printed + ")"));
 
-            return new QueryexResult<MeasureRows>(new MeasureRows(condition));
+            return Fits(compiler, measure, condition, options.Limits, out IReadOnlyList<QueryexDiagnostic> exceeded)
+                ? new QueryexResult<MeasureRows>(new MeasureRows(condition))
+                : new QueryexResult<MeasureRows>(exceeded);
+        }
+
+        /// <summary>Whether a printed text stays within the ceilings its source was read under.</summary>
+        /// <param name="compiler">The stage runner, whose parse cache the printed text joins.</param>
+        /// <param name="source">The text the caller gave.</param>
+        /// <param name="printed">The text printed from it.</param>
+        /// <param name="limits">The ceilings.</param>
+        /// <param name="exceeded">The ceilings the printed text passes, over the whole source text.</param>
+        /// <returns>True when it stays within them.</returns>
+        /// <remarks>
+        ///     A literal is longer than the parameter it replaces, so a source within its ceilings
+        ///     can print as a text beyond them. Reading the printed text under the same ceilings
+        ///     reports that here, rather than when something later runs the text. The positions of a
+        ///     printed text mean nothing to the caller, so each problem is placed over the whole
+        ///     source text. A parse that succeeds is remembered, ready for the compilation that is
+        ///     likely to follow.
+        /// </remarks>
+        private static bool Fits(
+            ExpressionCompiler compiler,
+            string source,
+            string printed,
+            QueryexLimits limits,
+            out IReadOnlyList<QueryexDiagnostic> exceeded)
+        {
+            DiagnosticSink sink = new();
+            if (compiler.TryParse(printed, limits, sink, DiagnosticLocation.None, out _))
+            {
+                exceeded = [];
+                return true;
+            }
+
+            QueryexSpan whole = new(0, source.Length);
+            exceeded = [.. sink.Drain().Select(diagnostic => diagnostic with { Span = whole })];
+            return false;
         }
 
         /// <summary>Collects every aggregation in a tree, outermost and leftmost first.</summary>

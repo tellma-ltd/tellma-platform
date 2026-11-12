@@ -73,6 +73,11 @@ namespace Tellma.Core.Queryex.Tests.Binding
         [InlineData("CustomerId = null", "CustomerId", QueryexType.QxNumeric, "null")]
         [InlineData("PostingDate != cast(null, 'date')", "PostingDate", QueryexType.QxDate, "null")]
         [InlineData("Customer.Name = 'Acme'", "Customer.Name", QueryexType.QxString, "Acme")]
+
+        // The widest numbers a decimal holds: every digit of its 96-bit magnitude, at the least
+        // and the most scale.
+        [InlineData("Amount = 79228162514264337593543950335", "Amount", QueryexType.QxNumeric, "decimal-max")]
+        [InlineData("Amount = -7.9228162514264337593543950335", "Amount", QueryexType.QxNumeric, "decimal-max-scaled")]
         public void EachLiteralForm_ReadsAsItsValue(string text, string path, QueryexType type, string expected)
         {
             FilterConjunct conjunct = Assert.Single(Conjuncts(FilterTree.Leaf(text)));
@@ -176,6 +181,20 @@ namespace Tellma.Core.Queryex.Tests.Binding
         [InlineData("PostingDate >= cast(Notes, 'date')")]
         [InlineData("Amount > cast('12', 'numeric')")]
         [InlineData("Nonesuch = 1")]
+
+        // Numbers a decimal cannot hold exactly: a scale above 28, and magnitudes wider than 96
+        // bits, whether or not the value itself is within a decimal's range.
+        [InlineData("Amount = 0.00000000000000000000000000001")]
+        [InlineData("Amount = 99.999999999999999999999999999")]
+        [InlineData("Amount = 12345678901234567890.1234567890")]
+        [InlineData("Amount = 79228162514264337593543950336")]
+        [InlineData("Amount = -12345678901234567890123456789012345678")]
+
+        // An ordering or a subtree measured against the absent value admits no row.
+        [InlineData("Amount < null")]
+        [InlineData("Amount >= cast(null, 'numeric')")]
+        [InlineData("null > Amount")]
+        [InlineData("descendantOf(Account.Concept, null)")]
         public void AnAtomThatIsNotARestriction_YieldsNone(string text)
         {
             Assert.Empty(Conjuncts(FilterTree.Leaf(text)));
@@ -306,6 +325,8 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 "1012" => 1012m,
                 "-12.50" => -12.50m,
                 "-12.5" => -12.5m,
+                "decimal-max" => decimal.MaxValue,
+                "decimal-max-scaled" => -7.9228162514264337593543950335m,
                 "true" => true,
                 "false" => false,
                 "date" => new DateOnly(2026, 7, 1),

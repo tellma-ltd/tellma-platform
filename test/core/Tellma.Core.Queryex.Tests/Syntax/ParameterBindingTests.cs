@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
 using Tellma.Queryex.Testing.Probe;
 
 namespace Tellma.Core.Queryex.Tests.Syntax
@@ -30,7 +31,8 @@ namespace Tellma.Core.Queryex.Tests.Syntax
             new QueryexParameterDeclaration("Main", QueryexType.QxNumeric, IsNotNull: false),
             new QueryexParameterDeclaration("Other", QueryexType.QxNumeric, IsNotNull: false),
             new QueryexParameterDeclaration("Name", QueryexType.QxString, IsNotNull: false),
-            new QueryexParameterDeclaration("Posted", QueryexType.QxBool, IsNotNull: true),
+            new QueryexParameterDeclaration("Posted", QueryexType.QxBool, IsNotNull: false),
+            new QueryexParameterDeclaration("Settled", QueryexType.QxBool, IsNotNull: true),
             new QueryexParameterDeclaration("From", QueryexType.QxDate, IsNotNull: false),
             new QueryexParameterDeclaration("To", QueryexType.QxDate, IsNotNull: false),
             new QueryexParameterDeclaration("AsOf", QueryexType.QxDate, IsNotNull: false),
@@ -90,6 +92,56 @@ namespace Tellma.Core.Queryex.Tests.Syntax
 
             Assert.True(result.Succeeded);
             Assert.Equal(expected, result.Value);
+        }
+
+        /// <summary>
+        ///     Literals print the same whatever culture the host runs under: no other calendar's
+        ///     years, no other digits, no decimal comma.
+        /// </summary>
+        /// <param name="culture">The culture the host runs under.</param>
+        [Theory]
+        [InlineData("th-TH")]
+        [InlineData("ar-SA")]
+        [InlineData("de-DE")]
+        public void ALiteral_PrintsAlikeUnderEveryCulture(string culture)
+        {
+            (string Name, string Kind, string Expected)[] vectors =
+            [
+                ("Amount", "decimal", "1250.75"),
+                ("Amount", "decimal-negative", "-12.5"),
+                ("From", "date", "cast('2026-01-01', 'date')"),
+                ("Since", "datetime-fraction", "cast('2026-01-01T10:30:00.12', 'datetime')"),
+                ("At", "datetimeoffset-west", "cast('2026-01-01T10:30:00.5-05:30', 'datetimeoffset')"),
+                ("Key", "guid", "cast('0f8fad5b-d9cb-469f-a165-70867728950e', 'guid')"),
+            ];
+
+            CultureInfo culturePrevious = CultureInfo.CurrentCulture;
+            CultureInfo uiCulturePrevious = CultureInfo.CurrentUICulture;
+            try
+            {
+                CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = new CultureInfo(culture);
+
+                // The culture has to bite for the check to mean anything: each of these writes a
+                // date or a number differently from the invariant culture.
+                Assert.NotEqual(
+                    string.Format(CultureInfo.InvariantCulture, "{0:yyyy-MM-dd} {1}", new DateTime(2026, 1, 1), 1250.75m),
+                    string.Format(CultureInfo.CurrentCulture, "{0:yyyy-MM-dd} {1}", new DateTime(2026, 1, 1), 1250.75m));
+
+                foreach ((string name, string kind, string expected) in vectors)
+                {
+                    QueryexResult<string> result = Engine.BindParameters(
+                        "@" + name,
+                        Options(QueryexMode.Value, values: new() { [name] = Value(kind) }));
+
+                    Assert.True(result.Succeeded, kind);
+                    Assert.Equal(expected, result.Value);
+                }
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = culturePrevious;
+                CultureInfo.CurrentUICulture = uiCulturePrevious;
+            }
         }
 
         /// <summary>
@@ -262,6 +314,7 @@ namespace Tellma.Core.Queryex.Tests.Syntax
         [InlineData("guid-as-string")]
         [InlineData("string-as-number")]
         [InlineData("bool-as-number")]
+        [InlineData("null-for-never-absent")]
         [InlineData("undeclarable")]
         public void ACallerMistake_IsRefused(string problem)
         {
@@ -283,6 +336,7 @@ namespace Tellma.Core.Queryex.Tests.Syntax
                     values: new() { ["Key"] = "0f8fad5b-d9cb-469f-a165-70867728950e" }),
                 "string-as-number" => Options(QueryexMode.Filter, values: new() { ["Name"] = 5 }),
                 "bool-as-number" => Options(QueryexMode.Filter, values: new() { ["Posted"] = 1 }),
+                "null-for-never-absent" => Options(QueryexMode.Filter, values: new() { ["Settled"] = null }),
                 _ => new ParameterBindingOptions
                 {
                     Mode = QueryexMode.Filter,
@@ -293,6 +347,56 @@ namespace Tellma.Core.Queryex.Tests.Syntax
 
             Assert.Throws<ArgumentException>(() => Engine.BindParameters("Amount > ", options));
             Assert.Throws<ArgumentException>(() => Engine.MeasureCondition("sum(Amount)", options));
+        }
+
+        /// <summary>
+        ///     A text within its ceilings whose literals take it beyond them is refused at binding,
+        ///     each problem placed over the whole of the text the caller gave.
+        /// </summary>
+        /// <param name="ceiling">Which ceiling, by a name the switch below reads.</param>
+        /// <param name="code">The diagnostic it reports.</param>
+        [Theory]
+        [InlineData("length", "QX5001")]
+        [InlineData("tokens", "QX5002")]
+        public void ATextThatOutgrowsItsCeilings_IsReported(string ceiling, string code)
+        {
+            const string Text = "ExternalId = @Key";
+            ParameterBindingOptions options = Options(
+                QueryexMode.Filter,
+                values: new() { ["Key"] = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e") }) with
+            {
+                Limits = ceiling == "length"
+                    ? new QueryexLimits { MaxInputLength = 40 }
+                    : new QueryexLimits { MaxTokens = 6 },
+            };
+
+            QueryexResult<string> result = Engine.BindParameters(Text, options);
+
+            Assert.False(result.Succeeded);
+            QueryexDiagnostic problem = Assert.Single(result.Diagnostics);
+            Assert.Equal((code, new QueryexSpan(0, Text.Length)), (problem.Code, problem.Span));
+
+            // The same text with its parameter left as written is within them.
+            Assert.True(Engine.BindParameters(Text, options with { Values = new Dictionary<string, object?>() }).Succeeded);
+        }
+
+        /// <summary>A measure whose printed condition outgrows its ceilings is refused the same way.</summary>
+        [Fact]
+        public void AMeasureWhoseConditionOutgrowsItsCeilings_IsReported()
+        {
+            const string Measure = "sum(Amount, ExternalId = @Key)";
+            ParameterBindingOptions options = Options(
+                QueryexMode.Aggregate,
+                values: new() { ["Key"] = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e") }) with
+            {
+                Limits = new QueryexLimits { MaxInputLength = 40 },
+            };
+
+            QueryexResult<MeasureRows> result = Engine.MeasureCondition(Measure, options);
+
+            Assert.False(result.Succeeded);
+            QueryexDiagnostic problem = Assert.Single(result.Diagnostics);
+            Assert.Equal(("QX5001", new QueryexSpan(0, Measure.Length)), (problem.Code, problem.Span));
         }
 
         /// <summary>Null arguments and an unsupported version are refused too.</summary>

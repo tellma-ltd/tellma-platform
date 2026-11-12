@@ -504,6 +504,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - The .NET BCL UmAlQuraCalendar (range 1900-04-30..2077-11-16) and System.Data.SqlTypes.SqlDecimal. No new NuGet packages are allowed ('no new package reference').
 
 - PC-012 → a later Queryex checkpoint (or a fix item): the null-safe comparison forms in Lowerer.Comparisons still repeat a non-atomic operand at group grain; a constant factor per comparison, not the exponential growth PC-012 fixed for calendar calls. Reuse PlanNamedScalar.
+- PC-101 → the first checkpoint whose corpus or differential casts a datetimeoffset to a datetime: the reference interpreter (test/shared/Tellma.Queryex.Testing/Semantics/Interpreter.Functions.cs, AsMoment/Converted) converts an offset through UtcDateTime, while SQL `CAST(dto AS datetime2)` keeps the wall time and drops the offset. Nothing reaches that path today. Fix the interpreter to use DateTimeOffset.DateTime before such a vector lands, or the differential will disagree with the server.
 ## 0010-G
 
 **Possible contradictions and gaps (unverified leads):**

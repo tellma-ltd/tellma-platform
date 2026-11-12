@@ -39,8 +39,11 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The largest scale a <see cref="decimal" /> holds.</summary>
         private const int MaxDecimalScale = 28;
 
-        /// <summary>The largest magnitude a <see cref="decimal" /> holds, as an exact value.</summary>
-        private static readonly SqlDecimal MaxDecimal = new(decimal.MaxValue);
+        /// <summary>
+        ///     The 32-bit word of an exact number's 128-bit magnitude that a <see cref="decimal" />,
+        ///     with its 96-bit magnitude, has no room for.
+        /// </summary>
+        private const int BeyondDecimalWord = 3;
 
         /// <summary>Reads the top-level restrictions of one bound filter leaf.</summary>
         /// <param name="predicate">The leaf's bound predicate.</param>
@@ -137,7 +140,10 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="syntax">The leaf's parse, which an expression is printed from.</param>
         /// <param name="op">How it is compared.</param>
         /// <param name="value">The literal's value.</param>
-        /// <returns>The restriction, or null when the expression cannot be found in the parse.</returns>
+        /// <returns>
+        ///     The restriction; or null when the expression cannot be found in the parse, or when an
+        ///     operator other than equality or inequality is compared with the absent value.
+        /// </returns>
         private static FilterConjunct? Conjunct(
             QueryexTextSite site,
             TypedExpr compared,
@@ -145,6 +151,14 @@ namespace Tellma.Core.Queryex.Pipeline
             FilterConjunctOperator op,
             object? value)
         {
+            // Equality with the absent value tests for absence and inequality for presence, but an
+            // ordering or a subtree measured against it admits no row at all: that is not a
+            // restriction to report as a value.
+            if (value is null && op is not (FilterConjunctOperator.Equal or FilterConjunctOperator.NotEqual))
+            {
+                return null;
+            }
+
             QueryexType type = BoundTypes.ToPublic(compared.Type);
             if (compared is TypedPath path)
             {
@@ -255,11 +269,13 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <remarks>
         ///     The language's numbers reach 38 digits and a <see cref="decimal" /> fewer, so a literal
         ///     beyond it is passed over rather than rounded into a value the filter does not use.
+        ///     Beyond it means a scale above 28 or a magnitude wider than 96 bits as written: a value
+        ///     within range can still carry more digits than a <see cref="decimal" /> holds.
         /// </remarks>
         private static bool TryNumber(SqlDecimal number, bool negate, out object? value)
         {
             value = null;
-            if (number.Scale > MaxDecimalScale || SqlDecimal.Abs(number).CompareTo(MaxDecimal) > 0)
+            if (number.Scale > MaxDecimalScale || number.Data[BeyondDecimalWord] != 0)
             {
                 return false;
             }

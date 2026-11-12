@@ -86,6 +86,16 @@ namespace Tellma.Core.Queryex.Pipeline
                         parameterName);
                 }
 
+                // The compilation leaves out the guards for absence on a parameter promised never to
+                // be absent, so a printed absent value would mean something the compiled query does
+                // not.
+                if (value is null && symbol.Nullity == QueryexNullity.NotNull)
+                {
+                    throw new ArgumentException(
+                        "The parameter '" + symbol.Name + "' is declared never absent, so it cannot be given null.",
+                        parameterName);
+                }
+
                 if (!LiteralSyntax.TryWrite(symbol.Type, value, default, out _))
                 {
                     throw new ArgumentException(

@@ -299,12 +299,16 @@ namespace Tellma.Core.Queryex
         /// </summary>
         /// <param name="text">The text.</param>
         /// <param name="options">The arguments, the omitted parameters and what they are declared as.</param>
-        /// <returns>The canonical text, or the diagnostics that stopped it parsing.</returns>
+        /// <returns>
+        ///     The canonical text; or the diagnostics that stopped it parsing, or the ceilings the
+        ///     printed text would pass.
+        /// </returns>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         /// <exception cref="ArgumentException">
         ///     The declarations are not usable, a valued or omitted name is not declared, a name is
         ///     given more than one value or is both given a value and omitted, or a value is not one
-        ///     of its parameter's declared type.
+        ///     of its parameter's declared type — null included, for a parameter declared never
+        ///     absent.
         /// </exception>
         /// <remarks>
         ///     <para>
@@ -323,6 +327,13 @@ namespace Tellma.Core.Queryex
         ///         declared type. Syntactic only: no schema is consulted, and only lexical and
         ///         syntax errors are reported.
         ///     </para>
+        ///     <para>
+        ///         A literal is longer than the parameter it replaces, so the printed text is read
+        ///         again under the same <see cref="ParameterBindingOptions.Limits" />, and a ceiling
+        ///         it passes — its length, its tokens, its nesting — is reported here, over the whole
+        ///         of <paramref name="text" />. The ceiling on bound nodes needs a schema, and is
+        ///         applied when the printed text is compiled.
+        ///     </para>
         /// </remarks>
         public QueryexResult<string> BindParameters(string text, ParameterBindingOptions options)
         {
@@ -340,7 +351,10 @@ namespace Tellma.Core.Queryex
         ///     The arguments, the omitted parameters and what they are declared as; the mode is not
         ///     consulted, since an aggregation's condition folds in every position.
         /// </param>
-        /// <returns>The rows the measure aggregates, or the diagnostics that stopped it parsing.</returns>
+        /// <returns>
+        ///     The rows the measure aggregates; or the diagnostics that stopped it parsing, or the
+        ///     ceilings the printed condition would pass.
+        /// </returns>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         /// <exception cref="ArgumentException">
         ///     Whatever <see cref="BindParameters" /> refuses of the options.
@@ -358,7 +372,8 @@ namespace Tellma.Core.Queryex
         ///     </para>
         ///     <para>
         ///         Syntactic only, like <see cref="BindParameters" />: no schema is consulted, and
-        ///         only lexical and syntax errors are reported.
+        ///         only lexical and syntax errors are reported. The printed condition is held to the
+        ///         ceilings as <see cref="BindParameters" /> holds its text.
         ///     </para>
         /// </remarks>
         public QueryexResult<MeasureRows> MeasureCondition(string measure, ParameterBindingOptions options)
