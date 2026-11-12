@@ -118,26 +118,26 @@ namespace Tellma.Core.Tests.Blobs
         public async Task A_write_whose_open_loses_a_race_to_another_writer_creating_the_directory_still_lands()
         {
             FakeLogger<FileSystemBlobStore> logger = new();
-            await using FileSystemBlobStoreHarness harness = new(logger);
-            string name = BlobStoreConformanceTests.NewName();
-            string temporary = harness.TemporaryDirectory(harness.TenantId);
-            Func<string, FileStream> open = harness.FileSystemStore.PartFileOpener;
             int opens = 0;
 
             // The first open really fails for want of the tenant's .tmp; a concurrent write of the
             // same tenant then creates it before the failure is reported, and the failure reads as
             // "file not found": what the Unix runtime reports once the directory exists again.
-            harness.FileSystemStore.PartFileOpener = partPath =>
+            FileStream RacingOpen(string partPath)
             {
                 if (Interlocked.Increment(ref opens) > 1)
                 {
-                    return open(partPath);
+                    return FileSystemBlobStore.OpenPart(partPath);
                 }
 
-                DirectoryNotFoundException missing = Assert.Throws<DirectoryNotFoundException>(() => open(partPath));
-                Directory.CreateDirectory(temporary);
+                DirectoryNotFoundException missing = Assert.Throws<DirectoryNotFoundException>(() => FileSystemBlobStore.OpenPart(partPath));
+                Directory.CreateDirectory(Path.GetDirectoryName(partPath)!);
                 throw new FileNotFoundException($"Could not find file '{partPath}'.", partPath, missing);
-            };
+            }
+
+            await using FileSystemBlobStoreHarness harness = new(logger, RacingOpen);
+            string name = BlobStoreConformanceTests.NewName();
+            string temporary = harness.TemporaryDirectory(harness.TenantId);
 
             await harness.Store.WriteAsync(harness.TenantId, [BlobStoreConformanceTests.Write(name, [1, 2, 3])], Token);
 

@@ -61,6 +61,10 @@ namespace Tellma.Core.Blobs
         private readonly BlobStoreMetrics _metrics;
         private readonly ILogger<FileSystemBlobStore> _logger;
 
+        // Opens a part file create-only; OpenPart outside tests, and fixed at construction so a live
+        // store can never be re-pointed while writes are in flight.
+        private readonly Func<string, FileStream> _partFileOpener;
+
         // Set once the root has been shown to support the create-only publish; only a success is
         // remembered, so a transient failure is probed again by the next call.
         private volatile bool _publishVerified;
@@ -72,10 +76,30 @@ namespace Tellma.Core.Blobs
         /// <exception cref="InvalidOperationException">The root is unset, relative or too long.</exception>
         public FileSystemBlobStore(
             IOptions<FileSystemBlobStoreOptions> options, BlobStoreMetrics metrics, ILogger<FileSystemBlobStore> logger)
+            : this(options, metrics, logger, OpenPart)
+        {
+        }
+
+        /// <summary>
+        ///     Creates the store over the configured root with a given way of opening part files.
+        ///     Tests pass one to reproduce, deterministically, how a platform reports an open that
+        ///     raced another writer's creation of the directory; it is fixed for the store's lifetime.
+        /// </summary>
+        /// <param name="options">The store's options; the root must be set, absolute and, on Windows, short enough.</param>
+        /// <param name="metrics">The store instruments.</param>
+        /// <param name="logger">The store's logger.</param>
+        /// <param name="partFileOpener">Opens a fresh part file create-only, failing rather than reusing one.</param>
+        /// <exception cref="InvalidOperationException">The root is unset, relative or too long.</exception>
+        internal FileSystemBlobStore(
+            IOptions<FileSystemBlobStoreOptions> options,
+            BlobStoreMetrics metrics,
+            ILogger<FileSystemBlobStore> logger,
+            Func<string, FileStream> partFileOpener)
         {
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(logger);
+            ArgumentNullException.ThrowIfNull(partFileOpener);
 
             // The same rules the options validator applies, for a store constructed without one.
             string? rootPath = options.Value.RootPath;
@@ -90,19 +114,13 @@ namespace Tellma.Core.Blobs
             RootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath!));
             _metrics = metrics;
             _logger = logger;
+            _partFileOpener = partFileOpener;
 
             BlobStoreLog.Root(logger, RootPath);
         }
 
         /// <summary>The normalised root directory.</summary>
         public string RootPath { get; }
-
-        /// <summary>
-        ///     Opens a fresh part file, failing rather than reusing one: a create-only
-        ///     <see cref="FileStream" /> by default. Tests replace it to reproduce, deterministically,
-        ///     how a platform reports an open that raced another writer's creation of the directory.
-        /// </summary>
-        internal Func<string, FileStream> PartFileOpener { get; set; } = OpenPart;
 
         /// <inheritdoc />
         public Task EnsureTenantAsync(int tenantId, CancellationToken cancellationToken)
@@ -394,6 +412,23 @@ namespace Tellma.Core.Blobs
             }
         }
 
+        /// <summary>
+        ///     Opens a fresh part file, failing rather than reusing one: the store's own opener, and
+        ///     the real open a test's opener delegates to.
+        /// </summary>
+        /// <param name="partPath">The part file.</param>
+        /// <returns>The open part file.</returns>
+        internal static FileStream OpenPart(string partPath)
+        {
+            return new FileStream(partPath, new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                Options = FileOptions.Asynchronous,
+            });
+        }
+
         /// <summary>Seconds elapsed since a <see cref="Stopwatch.GetTimestamp" /> reading.</summary>
         /// <param name="started">The reading.</param>
         /// <returns>The elapsed seconds.</returns>
@@ -465,20 +500,6 @@ namespace Tellma.Core.Blobs
             {
                 ArrayPool<byte>.Shared.Return(buffer);
             }
-        }
-
-        /// <summary>Opens a fresh part file, failing rather than reusing one.</summary>
-        /// <param name="partPath">The part file.</param>
-        /// <returns>The open part file.</returns>
-        private static FileStream OpenPart(string partPath)
-        {
-            return new FileStream(partPath, new FileStreamOptions
-            {
-                Mode = FileMode.CreateNew,
-                Access = FileAccess.Write,
-                Share = FileShare.None,
-                Options = FileOptions.Asynchronous,
-            });
         }
 
         /// <summary>Whether a failed create-only open of a part file means its directory is missing.</summary>
@@ -646,7 +667,7 @@ namespace Tellma.Core.Blobs
                 FileStream part;
                 try
                 {
-                    part = PartFileOpener(partPath);
+                    part = _partFileOpener(partPath);
                 }
                 catch (IOException exception) when (IsMissingDirectory(exception))
                 {
@@ -657,7 +678,7 @@ namespace Tellma.Core.Blobs
                     EnsureTenantDirectory(tenantId, tenantRoot);
                     try
                     {
-                        part = PartFileOpener(partPath);
+                        part = _partFileOpener(partPath);
                     }
                     catch (IOException retryException) when (IsMissingDirectory(retryException))
                     {
