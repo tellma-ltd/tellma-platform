@@ -249,6 +249,36 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
+        public async Task Text_of_two_collations_in_one_comparison_is_refused_before_the_server_sees_it()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+
+            // The subject is binary-collated and the email takes the database's collation.
+            ArgumentException refusal = Assert.Throws<ArgumentException>(() => batch.Rows(
+                new QuerySpec { Root = Entity(scope, "core.User"), Select = "Id", Filter = FilterTree.Leaf("Subject = Email") }, null, null));
+
+            Assert.Contains("QX3203", refusal.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_user_stamp_is_read_with_its_users_name()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+
+            BatchResult<RowPage> stamps = batch.Rows(
+                new QuerySpec { Root = Entity(scope, "core.UserStamp"), Select = "UserId, User.Name, InboxVersion", Filter = FilterTree.Leaf("UserId >= 2"), OrderBy = "UserId" },
+                null,
+                null);
+            _ = await batch.ExecuteAsync(Token);
+
+            Assert.Equal([2, 3], Ints(stamps.Value.Rows, 0));
+            Assert.Equal(["Upper", "Lower"], Strings(stamps.Value.Rows, 1));
+            Assert.Equal([4L, 0L], Longs(stamps.Value.Rows, 2));
+        }
+
+        [Fact]
         public async Task An_omitted_parameter_drops_its_criterion_and_a_null_one_matches_nothing()
         {
             QueryexParameterDeclaration minimum = new("Min", QueryexType.QxNumeric, IsNotNull: false);

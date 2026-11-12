@@ -85,6 +85,7 @@ namespace Tellma.Core.Tests.Data.Queries
                 FROM [qx].[Gadgets] AS [T]
                 WHERE ([T].[Id] IN (SELECT [Id] FROM @tb0_keys))
                 ORDER BY [c0] ASC, [T].[Id] ASC
+                OFFSET @qx1_skip ROWS
                 ;
 
                 """,
@@ -106,8 +107,8 @@ namespace Tellma.Core.Tests.Data.Queries
                 batch.Statements[2].Text,
                 ignoreLineEndingDifferences: true);
 
-            // The page binds nothing; the twin and the count bind today() from the batch's context.
-            Assert.Empty(batch.Statements[1].Parameters);
+            // The page binds only its zero skip; the twin and the count bind today() from the batch's context.
+            Assert.Equal(0, Assert.IsType<ScalarParameter>(Assert.Single(batch.Statements[1].Parameters)).Value);
             Assert.Equal(_harness.Context.Today.ToDateTime(TimeOnly.MinValue), Scalar(batch.Statements[0], "@qx0_p1").Value);
             Assert.Equal(101, Scalar(batch.Statements[2], "@qx2_take").Value);
             Assert.Equal(new SqlIdentifier("@tb0_keys"), batch.KeysOf(page));
@@ -172,28 +173,102 @@ namespace Tellma.Core.Tests.Data.Queries
                 FROM [qx].[Zones] AS [T]
                 WHERE (([T].[IsActive] = 1) AND ([T].[Id] IN (SELECT [Id] FROM @tb2_anc)))
                 ORDER BY [c0] ASC, [T].[Id] ASC
+                OFFSET @qx2_skip ROWS
                 ;
 
                 """,
                 batch.Statements[2].Text,
                 ignoreLineEndingDifferences: true);
 
-            // The user's filter narrows the page, never the ancestors.
+            // The user's filter narrows the page, never the ancestors, which bind only their zero skip.
             Assert.Contains("@qx0_p0", batch.Statements[0].Text, StringComparison.Ordinal);
-            Assert.Empty(batch.Statements[2].Parameters);
+            Assert.Equal("@qx2_skip", Assert.Single(batch.Statements[2].Parameters).Name);
         }
 
         [Fact]
-        public void A_captured_page_ordered_by_its_key_or_unordered_gets_no_second_tiebreak()
+        public void An_ordering_that_holds_the_key_anywhere_keeps_it_once_on_every_unpaged_read()
         {
             DataBatch batch = _harness.Batch();
 
-            _ = batch.Rows(new QuerySpec { Root = Entity("qx.Gadget"), Select = "Name", OrderBy = "Name, id desc", Take = 5 }, null, new RowQueryOptions { CaptureKeys = true });
+            // The key first, then another column: the capture's page, a tree's ancestors and an
+            // entity query's root page each compile with the key ordered once, as the paged spec.
+            _ = batch.Rows(
+                new QuerySpec { Root = Entity("qx.Gadget"), Select = "Name", OrderBy = "Id desc, Name", Take = 5 }, null, new RowQueryOptions { CaptureKeys = true });
+            _ = batch.Rows(
+                new QuerySpec { Root = Entity("qx.Zone"), Select = "Code", OrderBy = "Id, Code", Take = 5 }, null, new RowQueryOptions { IncludeAncestors = true });
+            _ = batch.Query(new EntityQuery<Gadget> { Select = "Name", OrderBy = "Name, Id\tdesc", Take = 5, Children = ["Parts"] });
             _ = batch.Rows(new QuerySpec { Root = Entity("qx.Gadget"), Select = "Price" }, null, new RowQueryOptions { CaptureKeys = true });
 
-            // An ordering that ends in the key keeps it; an unordered spec, never paged, stays unordered.
-            Assert.Contains("ORDER BY [c0] ASC, [T].[Id] DESC\n;", batch.Statements[1].Text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
-            Assert.DoesNotContain("ORDER BY", batch.Statements[3].Text, StringComparison.Ordinal);
+            Assert.Equal(10, batch.Statements.Count);
+
+            // The capture: the twin keeps "Id desc" where the author put it and breaks no tie
+            // after it, and so does the page that reads the captured keys.
+            Assert.Contains("ORDER BY [c0] DESC, [T].[Name] ASC\nOFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY\n", Text(batch, 0), StringComparison.Ordinal);
+            Assert.Equal(
+                """
+                SELECT
+                    [T].[Name] AS [c0]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE ([T].[Id] IN (SELECT [Id] FROM @tb0_keys))
+                ORDER BY [T].[Id] DESC, [c0] ASC
+                OFFSET @qx1_skip ROWS
+                ;
+
+                """,
+                Text(batch, 1));
+
+            // The ancestors of a page ordered "Id, Code" are read in that order, the key once.
+            Assert.Contains("ORDER BY [c0] ASC, [T].[Code] ASC\nOFFSET 0 ROWS FETCH NEXT @qx2_take ROWS ONLY\n", Text(batch, 2), StringComparison.Ordinal);
+            Assert.Contains("ORDER BY [T].[Id] ASC, [c0] ASC\nOFFSET @qx3_skip ROWS\n", Text(batch, 3), StringComparison.Ordinal);
+            Assert.EndsWith(
+                """
+                SELECT
+                    [T].[Code] AS [c0]
+                FROM [qx].[Zones] AS [T]
+                WHERE ([T].[Id] IN (SELECT [Id] FROM @tb4_anc))
+                ORDER BY [T].[Id] ASC, [c0] ASC
+                OFFSET @qx4_skip ROWS
+                ;
+
+                """,
+                Text(batch, 4),
+                StringComparison.Ordinal);
+
+            // The entity query: the key last, descending and spelled with a tab, still counts as
+            // the key; the root page and the children it loads are each ordered once.
+            Assert.Contains("ORDER BY [T].[Name] ASC, [c0] DESC\nOFFSET 0 ROWS FETCH NEXT @qx5_take ROWS ONLY\n", Text(batch, 5), StringComparison.Ordinal);
+            Assert.EndsWith(
+                """
+                WHERE ([T].[Id] IN (SELECT [Id] FROM @tb5_keys))
+                ORDER BY [c0] ASC, [c1] DESC
+                OFFSET @qx6_skip ROWS
+                ;
+
+                """,
+                Text(batch, 6),
+                StringComparison.Ordinal);
+            Assert.EndsWith(
+                """
+                WHERE ([T].[GadgetId] IN (SELECT [Id] FROM @tb5_keys))
+                ORDER BY [c0] ASC
+                ;
+
+                """,
+                Text(batch, 7),
+                StringComparison.Ordinal);
+
+            // An unordered capture has no paged order to keep: neither its twin nor its page sorts.
+            Assert.DoesNotContain("ORDER BY", Text(batch, 8), StringComparison.Ordinal);
+            Assert.Equal(
+                """
+                SELECT
+                    [T].[Price] AS [c0]
+                FROM [qx].[Gadgets] AS [T]
+                WHERE ([T].[Id] IN (SELECT [Id] FROM @tb8_keys))
+                ;
+
+                """,
+                Text(batch, 9));
         }
 
         [Fact]
@@ -480,6 +555,7 @@ namespace Tellma.Core.Tests.Data.Queries
                     FROM [qx].[GadgetParts] AS [T]
                     WHERE ([T].[Id] IN (SELECT [Id] FROM @tb2_keys))
                     ORDER BY [c0] ASC
+                    OFFSET @qx3_skip ROWS
                     ;
 
                     """,
@@ -667,6 +743,15 @@ namespace Tellma.Core.Tests.Data.Queries
         private static ScalarParameter Scalar(BatchStatement statement, string name)
         {
             return Assert.IsType<ScalarParameter>(statement.Parameters.Single(parameter => parameter.Name == name));
+        }
+
+        /// <summary>A statement's text, with LF line endings.</summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="index">The statement's position.</param>
+        /// <returns>The text.</returns>
+        private static string Text(DataBatch batch, int index)
+        {
+            return batch.Statements[index].Text.ReplaceLineEndings("\n");
         }
 
         /// <summary>An entity of the primary shape's schema.</summary>

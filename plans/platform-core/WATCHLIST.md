@@ -747,6 +747,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - A C# public-API golden mechanism for §17 does not exist in the repo: either a new pin (e.g. PublicApiGenerator) or a hand-rolled reflection dump
 - Optional property-testing library (FsCheck/CsCheck) for the §18.1 scheduler property test, or a hand-rolled randomized harness (Queryex's suites set the precedent)
 - PC-033 → the 0015 read-pipeline checkpoints: `DataBatch.KeysOf(handle)` is the seam that names the statement-local key table a `Rows` or `Query` handle captured, so a later statement can restrict on it; it is `internal` (0015's runtime is in `Tellma.Core`), and spec 0012 §5.2's `RowPage` carries no capture table, so no public contract can name one. 0015's per-participant batch views (§5.2 write authority) must see through to the underlying `DataBatch` or forward `KeysOf`, or a child restriction on a captured page cannot be composed.
+- PC-033 → the 0015 details round trip (review R2-3 ruling): `EntityQuery` has no per-collection select, so a child collection reads its own columns and its FK targets are not loaded alongside it. The details round trip loads the children's FK targets through a captured FK set: a keys twin over the child's FK column (`Rows` with `CaptureKeys` on the child, or a raw statement over its captured keys) restricting a `Rows` or `Query` read of the target. Whether spec 0012 gains a per-collection select is an open question for Ahmad.
 
 ## 0016
 

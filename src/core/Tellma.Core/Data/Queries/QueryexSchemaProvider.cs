@@ -49,6 +49,10 @@ namespace Tellma.Core.Data.Queries
             ("core.Blob", "Sha256"),
             ("core.Job", "StateJson"),
             ("core.Job", "LeaseToken"),
+
+            // The user's cache tags are validators of the platform's caches, never data a report shows.
+            ("core.UserStamp", "PermissionsTag"),
+            ("core.UserStamp", "PreferencesTag"),
         ];
 
         /// <summary>The shape-independent plan of every entity, and the fingerprint over it.</summary>
@@ -121,11 +125,11 @@ namespace Tellma.Core.Data.Queries
         private static QueryexSchemaMap Build(Plan plan, MultilingualShape shape)
         {
             QueryexSchemaBuilder builder = new();
-            List<(EntityMetadata Metadata, QueryexSchemaBuilder.EntityBuilder Builder, IReadOnlyList<PropertyMetadata> Json, IReadOnlyList<PropertyMetadata> Declared)> built = [];
+            List<(EntityPlan Plan, QueryexSchemaBuilder.EntityBuilder Builder, IReadOnlyList<PropertyMetadata> Declared)> built = [];
             foreach (EntityPlan entity in plan.Entities)
             {
                 // --- The entity, its key and the properties the shape admits ---
-                QueryexSchemaBuilder.EntityBuilder declared = builder.Entity(entity.Metadata.Name, entity.Source);
+                QueryexSchemaBuilder.EntityBuilder declared = builder.Entity(entity.Name, entity.Source);
                 ColumnPlan key = entity.Key;
                 _ = declared.Key(key.Name, key.Type, key.Column, key.Store);
                 HashSet<PropertyMetadata> admitted = new(ReferenceEqualityComparer.Instance);
@@ -148,24 +152,28 @@ namespace Tellma.Core.Data.Queries
                     _ = declared.TreeNode(node);
                 }
 
-                built.Add((entity.Metadata, declared, entity.JsonColumns, [.. entity.Metadata.Properties.Where(admitted.Contains)]));
+                built.Add((entity, declared, entity.Metadata is EntityMetadata metadata ? [.. metadata.Properties.Where(admitted.Contains)] : []));
             }
 
             // --- The navigations, once every entity is declared ---
             for (int index = 0; index < built.Count; index++)
             {
-                foreach (NavigationPlan navigation in plan.Entities[index].Navigations)
+                foreach (NavigationPlan navigation in built[index].Plan.Navigations)
                 {
                     _ = built[index].Builder.Navigation(navigation.Name, navigation.Target, navigation.ForeignKey, navigation.IsOptional);
                 }
             }
 
             _ = builder.CalendarMap(UmAlQura, UmAlQuraMonths);
+            // --- The map: an entity of the model by its metadata, a read-only root by its descriptor alone ---
             QueryexSchema schema = builder.Build();
             return new QueryexSchemaMap(
                 shape,
                 schema,
-                [.. built.Select(entity => (entity.Metadata, schema.FindEntity(entity.Metadata.Name)!, entity.Json, entity.Declared))]);
+                [.. built
+                    .Where(static entity => entity.Plan.Metadata is not null)
+                    .Select(entity => (entity.Plan.Metadata!, schema.FindEntity(entity.Plan.Name)!, entity.Plan.JsonColumns, entity.Declared))],
+                [.. built.Where(static entity => entity.Plan.Metadata is null).Select(entity => schema.FindEntity(entity.Plan.Name)!)]);
         }
 
         /// <summary>The shape-independent plan of the model's schemas.</summary>
@@ -173,7 +181,10 @@ namespace Tellma.Core.Data.Queries
         /// <param name="Fingerprint">The fingerprint over the plan of the widest shape.</param>
         private sealed record Plan(IReadOnlyList<EntityPlan> Entities, string Fingerprint)
         {
-            /// <summary>Plans every entity of the model.</summary>
+            /// <summary>
+            ///     Plans every entity of the model, then every table the model marks as a read-only
+            ///     root of the query language.
+            /// </summary>
             /// <param name="model">The runtime model.</param>
             /// <param name="metadata">The model's entity metadata.</param>
             /// <returns>The plan.</returns>
@@ -197,6 +208,16 @@ namespace Tellma.Core.Data.Queries
                 }
 
                 List<EntityPlan> entities = [.. metadata.All.Select(entity => EntityPlan.Create(model, entity, siblings.GetValueOrDefault(entity) ?? []))];
+
+                // --- The read-only roots: tables that are no entity, read under the name the model gives them ---
+                foreach (IEntityType entityType in model.GetEntityTypes())
+                {
+                    if (entityType.FindAnnotation(TellmaAnnotationNames.QueryexReadOnlyEntity)?.Value is string name)
+                    {
+                        entities.Add(EntityPlan.CreateReadOnly(entityType, name, metadata));
+                    }
+                }
+
                 return new Plan(entities, Fingerprinted(entities));
             }
 
@@ -211,7 +232,7 @@ namespace Tellma.Core.Data.Queries
                 using FingerprintWriter writer = new();
                 foreach (EntityPlan entity in entities)
                 {
-                    _ = writer.Add("entity").Add(entity.Metadata.Name).Add(entity.Source).Add(entity.Key.Name);
+                    _ = writer.Add("entity").Add(entity.Name).Add(entity.Source).Add(entity.Key.Name).Add(entity.Metadata is null);
                     foreach (ColumnPlan column in (ColumnPlan[])[entity.Key, .. entity.Columns])
                     {
                         _ = writer.Add("property").Add(column.Name).Add(column.Column).Add(column.Type.ToString())
@@ -233,7 +254,8 @@ namespace Tellma.Core.Data.Queries
         }
 
         /// <summary>One entity's place in every shape's schema.</summary>
-        /// <param name="Metadata">The entity's metadata.</param>
+        /// <param name="Name">The entity's name in the schema.</param>
+        /// <param name="Metadata">The entity's metadata; null for a read-only root, which is no entity.</param>
         /// <param name="Source">The bracket-quoted table.</param>
         /// <param name="Key">The key column.</param>
         /// <param name="Columns">Every other column, in declaration order, the shadow ones last.</param>
@@ -241,7 +263,8 @@ namespace Tellma.Core.Data.Queries
         /// <param name="Navigations">The navigations: the references, then the siblings'.</param>
         /// <param name="JsonColumns">The JSON columns the schema omits.</param>
         private sealed record EntityPlan(
-            EntityMetadata Metadata,
+            string Name,
+            EntityMetadata? Metadata,
             string Source,
             ColumnPlan Key,
             IReadOnlyList<ColumnPlan> Columns,
@@ -333,6 +356,7 @@ namespace Tellma.Core.Data.Queries
                 navigations.AddRange(siblings);
 
                 return new EntityPlan(
+                    metadata.Name,
                     metadata,
                     $"[{metadata.Table.Schema}].[{metadata.Table.Name}]",
                     key ?? throw new InvalidOperationException($"The key of the entity {metadata.Name}, {metadata.Key.Name}, has a store type the query language cannot read."),
@@ -340,6 +364,86 @@ namespace Tellma.Core.Data.Queries
                     node,
                     navigations,
                     json);
+            }
+
+            /// <summary>
+            ///     Plans a read-only root: a table of the model that is no entity, read but never
+            ///     written, with its key, its columns and a navigation for each foreign key.
+            /// </summary>
+            /// <param name="entityType">The table's type in the runtime model.</param>
+            /// <param name="name">The name the model gives it in the query language.</param>
+            /// <param name="metadata">The model's entity metadata, which names each foreign key's target.</param>
+            /// <returns>The plan.</returns>
+            /// <exception cref="InvalidOperationException">
+            ///     The table has no single-column key the language can read, or a foreign key to a
+            ///     type that is no entity of the schema.
+            /// </exception>
+            public static EntityPlan CreateReadOnly(IEntityType entityType, string name, IEntityMetadataProvider metadata)
+            {
+                IKey primary = entityType.FindPrimaryKey() is { Properties.Count: 1 } single
+                    ? single
+                    : throw new InvalidOperationException($"The read-only entity {name} needs a key of one column.");
+
+                // --- The columns unique on their own, as for an entity ---
+                HashSet<IReadOnlyProperty> unique = [.. entityType.GetKeys().Where(static key => key.Properties.Count == 1).Select(static key => (IReadOnlyProperty)key.Properties[0])];
+                unique.UnionWith(entityType.GetIndexes().Where(static index => index.IsUnique && index.Properties.Count == 1).Select(static index => (IReadOnlyProperty)index.Properties[0]));
+
+                // --- The mapped scalars in declaration order; a store type the language has no type for is left out ---
+                ColumnPlan? key = null;
+                List<ColumnPlan> columns = [];
+                IEnumerable<IProperty> properties = entityType.GetProperties()
+                    .OrderBy(static property => property.PropertyInfo?.MetadataToken ?? int.MaxValue)
+                    .ThenBy(static property => property.Name, StringComparer.Ordinal);
+                foreach (IProperty property in properties)
+                {
+                    if (IsWithheld(name, property.Name) || QueryexStoreTypes.Of(property.GetColumnType()) is not { } typed)
+                    {
+                        continue;
+                    }
+
+                    ColumnPlan column = new(
+                        property.Name,
+                        property.GetColumnName(),
+                        typed.Type,
+                        typed.Store,
+                        !property.IsNullable,
+                        unique.Contains(property),
+                        MultilingualShape.Primary,
+                        Metadata: null,
+                        Collation(property));
+                    if (property == primary.Properties[0])
+                    {
+                        key = column;
+                    }
+                    else
+                    {
+                        columns.Add(column);
+                    }
+                }
+
+                // --- A navigation per foreign key, named by its navigation or by the key less its Id ---
+                List<NavigationPlan> navigations = [];
+                foreach (IForeignKey foreignKey in entityType.GetForeignKeys().Where(static foreignKey => foreignKey.Properties.Count == 1))
+                {
+                    Type principal = foreignKey.PrincipalEntityType.ClrType;
+                    EntityMetadata target = metadata.All.FirstOrDefault(entity => entity.ClrType == principal)
+                        ?? throw new InvalidOperationException(
+                            $"The read-only entity {name} has a foreign key to {principal.Name}, which is no entity of the query schema.");
+                    string property = foreignKey.Properties[0].Name;
+                    string navigation = foreignKey.DependentToPrincipal?.Name
+                        ?? (property.EndsWith("Id", StringComparison.Ordinal) && property.Length > 2 ? property[..^2] : property);
+                    navigations.Add(new NavigationPlan(navigation, target.Name, property, IsOptional: false));
+                }
+
+                return new EntityPlan(
+                    name,
+                    Metadata: null,
+                    $"[{entityType.GetSchema()}].[{entityType.GetTableName()}]",
+                    key ?? throw new InvalidOperationException($"The key of the read-only entity {name} has a store type the query language cannot read."),
+                    columns,
+                    TreeNode: null,
+                    navigations,
+                    JsonColumns: []);
             }
         }
 

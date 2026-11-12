@@ -129,6 +129,44 @@ namespace Tellma.Core.Tests.Data.Queries
         }
 
         [Fact]
+        public void The_access_entities_carry_their_documented_navigations_and_string_typed_enums()
+        {
+            EntityDescriptor user = Entity(MultilingualShape.Primary, "core.User");
+            EntityDescriptor membership = Entity(MultilingualShape.Primary, "core.RoleMembership");
+            EntityDescriptor permission = Entity(MultilingualShape.Primary, "core.Permission");
+
+            Assert.Equal("core.User", Navigation(user, "CreatedBy").Target.Name);
+            Assert.Equal("core.User", Navigation(user, "ModifiedBy").Target.Name);
+            Assert.Equal("core.Blob", Navigation(user, "Image").Target.Name);
+            Assert.Equal("core.User", Navigation(membership, "User").Target.Name);
+            Assert.Equal("core.Role", Navigation(membership, "Role").Target.Name);
+            Assert.Equal("core.Role", Navigation(permission, "Role").Target.Name);
+            Assert.All(
+                (string[])["Kind", "State", "InviteStatus", "Gender", "PreferredDigits"],
+                name => Assert.Equal(QueryexType.QxString, Property(user, name).Type));
+        }
+
+        [Fact]
+        public void The_user_stamp_is_a_read_only_root_with_its_user_and_the_preferences_are_no_entity()
+        {
+            QueryexSchemaMap map = Provider.Map(MultilingualShape.Primary);
+            EntityDescriptor stamp = Entity(MultilingualShape.Primary, "core.UserStamp");
+
+            Assert.Equal("[core].[UserStamps]", stamp.Source);
+            Assert.Equal("UserId", stamp.Key.Name);
+            Assert.Equal(("core.User", "UserId", false), (Navigation(stamp, "User").Target.Name, Navigation(stamp, "User").ForeignKey.Name, Navigation(stamp, "User").IsOptional));
+            Assert.Equal(
+                ["LastActiveAt", "InboxSeenAt", "InboxVersion", "AssignmentsSeenAt"],
+                stamp.Properties.Where(static property => property.Name != "UserId").Select(static property => property.Name));
+            _ = Assert.Single(stamp.Navigations);
+
+            // No class stands behind it: its rows are read, never materialized.
+            Assert.Null(map.ClrType(stamp));
+            _ = Assert.Throws<ArgumentException>(() => map.Metadata(stamp));
+            Assert.DoesNotContain(map.Schema.Entities, static entity => entity.Name.StartsWith("core.UserPreference", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void Columns_the_language_cannot_read_are_absent_and_a_filtered_unique_index_counts_as_unique()
         {
             EntityDescriptor gadget = Entity(MultilingualShape.All, "qx.Gadget");

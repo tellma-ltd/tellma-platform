@@ -295,11 +295,17 @@ model: every entity under its metadata name, each mapped scalar with its store t
 and parent keys as navigations, a sibling as an optional navigation on the owner's id (a left
 join), and a tree's node; JSON, period and platform-secret columns are withheld, and only the
 group twins the shape admits are properties. A column's own `[Collation]` rides on its property,
-so a key-set restriction converts the table's keys to it. Its fingerprint digests the model.
+so a key-set restriction converts the table's keys to it, and the language refuses text of two
+collations in one operation; the attribute is the only source, since the runtime model keeps no
+collation, so `CollationConvention` refuses a fluent `UseCollation` on a tenant column. A table
+annotated `Tellma:Queryex:ReadOnlyEntity` with a query name joins the schema as a read-only root
+with no entity metadata: `core.UserStamp`, keyed by `UserId`, with its `User` navigation and its
+activity and inbox columns (its two cache tags are withheld). Rows and counts read it; entity
+queries and writes have no class for it. Its fingerprint digests the model.
 
 | Member | Statements |
 |---|---|
-| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order with the key as its last tiebreak; a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
 | `Count` | A capped count: a result of cap + 1 means more than the cap. |
 | `EvaluateConstant` | One row of path-free expressions. |
 | `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |

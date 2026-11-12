@@ -65,7 +65,7 @@ namespace Tellma.Core.Data.Batches
             }
 
             int? countTake = options.CountCap is int cap ? CountTake(cap, nameof(options)) : null;
-            Type entityType = Map.Metadata(spec.Root).ClrType;
+            Type? entityType = Map.ClrType(spec.Root);
 
             // --- The plan: [keys twin], page, [count], [ancestors] ---
             QueryPlan plan = new(this);
@@ -116,7 +116,7 @@ namespace Tellma.Core.Data.Batches
 
             QueryPlan plan = new(this);
             int counted = 0;
-            PlanCount(plan, spec, arguments, take, Map.Metadata(spec.Root).ClrType, count => counted = count);
+            PlanCount(plan, spec, arguments, take, Map.ClrType(spec.Root), count => counted = count);
             BatchResult<int> result = new();
             plan.Append(cursor => cursor.Complete(result, counted));
 
@@ -196,7 +196,7 @@ namespace Tellma.Core.Data.Batches
                     .Append("IF (SELECT COUNT(*) FROM (\n").Append(compiled.Body).Append(") AS [q]) <> ").Append(expectedName).Append(' ').Append(thrown);
             }
 
-            plan.Add(new PlannedStatement(ordinal, text.ToString(), Slots(compiled, arguments), words, [expected], Map.Metadata(countSpec.Root).ClrType));
+            plan.Add(new PlannedStatement(ordinal, text.ToString(), Slots(compiled, arguments), words, [expected], Map.ClrType(countSpec.Root)));
             plan.Append(complete: null);
         }
 
@@ -339,43 +339,28 @@ namespace Tellma.Core.Data.Batches
         /// <summary>A spec narrowed to the keys a twin captured: its filter, restrictions and paging are the twin's already.</summary>
         /// <param name="spec">The spec.</param>
         /// <param name="keys">The captured keys.</param>
-        /// <returns>The narrowed spec, its ordering kept with the twin's tie order.</returns>
+        /// <returns>The narrowed spec, in the twin's order, ties included.</returns>
         private static QuerySpec Restricted(QuerySpec spec, SqlIdentifier keys)
         {
-            return spec with
-            {
-                Filter = null,
-                Restrictions = [new KeySetRestriction(spec.Root.Key.Name, keys.Name)],
-                OrderBy = TieBroken(spec),
-                Skip = null,
-                Take = null,
-            };
+            return Unpaged(spec) with { Filter = null, Restrictions = [new KeySetRestriction(spec.Root.Key.Name, keys.Name)] };
         }
 
         /// <summary>
-        ///     A spec's ordering with the root key as its last item, so a statement that drops the
-        ///     spec's paging still orders rows that tie as the paged spec did.
+        ///     A spec whose paging is dropped and whose paged order is kept: an ordered spec keeps a
+        ///     skip of zero, the language's mark of a paged read, so the engine breaks its ties on the
+        ///     root key exactly as it does for the paged spec.
         /// </summary>
         /// <param name="spec">The spec.</param>
-        /// <returns>
-        ///     The ordering, the key appended unless it is already the last item; null for a spec with
-        ///     none, which the language refuses to page, so it has no paged order to keep.
-        /// </returns>
-        private static string? TieBroken(QuerySpec spec)
+        /// <returns>The spec, with no take and a zero skip when it has an ordering.</returns>
+        /// <remarks>
+        ///     The engine decides whether the ordering already holds the key on the bound ordering,
+        ///     in any position and direction, never on its text, and the zero skip costs one
+        ///     parameter and an <c>OFFSET</c> that skips nothing. An unordered spec, which the
+        ///     language refuses to page, has no paged order to keep and stays unordered.
+        /// </remarks>
+        private static QuerySpec Unpaged(QuerySpec spec)
         {
-            string key = spec.Root.Key.Name;
-            if (string.IsNullOrWhiteSpace(spec.OrderBy))
-            {
-                return null;
-            }
-
-            // The last item, read off after the last comma: an item that is not the bare key, with or
-            // without a direction, gets the key after it.
-            string[] last = spec.OrderBy[(spec.OrderBy.LastIndexOf(',') + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            bool endsInKey = last.Length is 1 or 2
-                && string.Equals(last[0], key, StringComparison.OrdinalIgnoreCase)
-                && (last.Length == 1 || last[1].Equals("asc", StringComparison.OrdinalIgnoreCase) || last[1].Equals("desc", StringComparison.OrdinalIgnoreCase));
-            return endsInKey ? spec.OrderBy : $"{spec.OrderBy}, {key}";
+            return spec with { Skip = string.IsNullOrWhiteSpace(spec.OrderBy) ? null : 0, Take = null };
         }
 
         /// <summary>The <c>OPTION</c> clause a statement that embeds a compiled body carries.</summary>
@@ -594,9 +579,9 @@ namespace Tellma.Core.Data.Batches
         /// <param name="plan">The plan.</param>
         /// <param name="spec">The spec.</param>
         /// <param name="arguments">The declared parameters, or null.</param>
-        /// <param name="entityType">The root's class, for error mapping.</param>
+        /// <param name="entityType">The root's class, for error mapping; null for a read-only root.</param>
         /// <returns>The table.</returns>
-        private SqlIdentifier PlanKeys(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, Type entityType)
+        private SqlIdentifier PlanKeys(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, Type? entityType)
         {
             int ordinal = plan.NextOrdinal;
             string key = spec.Root.Key.Name;
@@ -616,10 +601,10 @@ namespace Tellma.Core.Data.Batches
         /// <param name="plan">The plan.</param>
         /// <param name="spec">The spec.</param>
         /// <param name="arguments">The declared parameters, or null.</param>
-        /// <param name="entityType">The root's class, for error mapping.</param>
+        /// <param name="entityType">The root's class, for error mapping; null for a read-only root.</param>
         /// <param name="store">Takes the rows.</param>
         /// <param name="inspect">Inspects the compiled query before it is planned, or null.</param>
-        private void PlanRead(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, Type entityType, Action<QueryRowSet> store, Action<CompiledQuery>? inspect = null)
+        private void PlanRead(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, Type? entityType, Action<QueryRowSet> store, Action<CompiledQuery>? inspect = null)
         {
             int ordinal = plan.NextOrdinal;
             CompiledQuery compiled = Compile(spec, arguments, ordinal);
@@ -635,9 +620,9 @@ namespace Tellma.Core.Data.Batches
         /// <param name="spec">The spec.</param>
         /// <param name="arguments">The declared parameters, or null.</param>
         /// <param name="take">The cap plus one.</param>
-        /// <param name="entityType">The root's class, for error mapping.</param>
+        /// <param name="entityType">The root's class, for error mapping; null for a read-only root.</param>
         /// <param name="store">Takes the count.</param>
-        private void PlanCount(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, int take, Type entityType, Action<int> store)
+        private void PlanCount(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, int take, Type? entityType, Action<int> store)
         {
             int ordinal = plan.NextOrdinal;
             string key = spec.Root.Key.Name;
@@ -669,15 +654,16 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>
         ///     Plans a tree page's ancestors: the nodes above the captured keys that are not among
-        ///     them, then the spec's rows restricted to those nodes, ordering kept, no paging.
+        ///     them, then the spec's rows restricted to those nodes, in the page's order, ties
+        ///     included, and unlimited.
         /// </summary>
         /// <param name="plan">The plan.</param>
         /// <param name="spec">The spec, its filter the ancestors' own.</param>
         /// <param name="arguments">The declared parameters, or null.</param>
         /// <param name="keys">The page's captured keys.</param>
-        /// <param name="entityType">The root's class, for error mapping.</param>
+        /// <param name="entityType">The root's class, for error mapping; null for a read-only root.</param>
         /// <param name="store">Takes the rows.</param>
-        private void PlanAncestors(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, SqlIdentifier keys, Type entityType, Action<QueryRowSet> store)
+        private void PlanAncestors(QueryPlan plan, QuerySpec spec, QueryArguments? arguments, SqlIdentifier keys, Type? entityType, Action<QueryRowSet> store)
         {
             EntityDescriptor root = spec.Root;
             PropertyDescriptor node = root.TreeNode
@@ -687,7 +673,7 @@ namespace Tellma.Core.Data.Batches
             const string Word = ReservedSqlNames.StatementNames.Ancestors;
             string table = ReservedSqlNames.Statement(ordinal, Word);
             CompiledQuery compiled = Compile(
-                spec with { Restrictions = [new KeySetRestriction(root.Key.Name, table)], OrderBy = TieBroken(spec), Skip = null, Take = null }, arguments, ordinal);
+                Unpaged(spec) with { Restrictions = [new KeySetRestriction(root.Key.Name, table)] }, arguments, ordinal);
 
             string id = SqlNames.QuoteObjectName(root.Key.Column);
             string path = SqlNames.QuoteObjectName(node.Column);

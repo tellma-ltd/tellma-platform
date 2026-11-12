@@ -70,6 +70,9 @@ namespace Tellma.Core.IntegrationTests.Data
                 "[Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive]",
                 "(2, 'Individual', 'Sub-A', N'a@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'Upper', 1)",
                 "(3, 'Individual', 'sub-a', N'b@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'Lower', 1)"),
+
+            // The stamps the platform inserts beside every user, the tags taking their defaults.
+            "INSERT INTO [core].[UserStamps] ([UserId], [InboxVersion]) VALUES (2, 4), (3, 0);",
         ];
 
         /// <summary>The round trips of every connection closed since the last <see cref="ResetRoundTrips" />.</summary>

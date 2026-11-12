@@ -30,17 +30,23 @@ namespace Tellma.Core.Data.Queries
         /// <summary>Each entity's properties the schema declares, by its metadata.</summary>
         private readonly FrozenDictionary<EntityMetadata, IReadOnlyList<PropertyMetadata>> _declared;
 
+        /// <summary>The read-only roots: tables the schema reads that are no entity of the model.</summary>
+        private readonly FrozenSet<EntityDescriptor> _readOnlyRoots;
+
         /// <summary>Creates the map.</summary>
         /// <param name="shape">The multilingual shape.</param>
         /// <param name="schema">The shape's schema.</param>
         /// <param name="entities">Every entity: its metadata, its descriptor, its JSON columns and the properties the schema declares.</param>
+        /// <param name="readOnlyRoots">The read-only roots, which have no metadata; none when null.</param>
         public QueryexSchemaMap(
             MultilingualShape shape,
             QueryexSchema schema,
-            IReadOnlyList<(EntityMetadata Metadata, EntityDescriptor Descriptor, IReadOnlyList<PropertyMetadata> JsonColumns, IReadOnlyList<PropertyMetadata> Declared)> entities)
+            IReadOnlyList<(EntityMetadata Metadata, EntityDescriptor Descriptor, IReadOnlyList<PropertyMetadata> JsonColumns, IReadOnlyList<PropertyMetadata> Declared)> entities,
+            IReadOnlyList<EntityDescriptor>? readOnlyRoots = null)
         {
             ArgumentNullException.ThrowIfNull(schema);
             ArgumentNullException.ThrowIfNull(entities);
+            _readOnlyRoots = (readOnlyRoots ?? []).ToFrozenSet();
             Shape = shape;
             Schema = schema;
             _descriptors = entities.ToFrozenDictionary(static entity => entity.Metadata, static entity => entity.Descriptor);
@@ -79,6 +85,16 @@ namespace Tellma.Core.Data.Queries
                 : throw new ArgumentException(
                     $"The entity {descriptor.Name} is not one of the batch's query schema; take the root from the schema of the tenant's shape.",
                     nameof(descriptor));
+        }
+
+        /// <summary>The class a statement over an entity of the schema maps its errors to.</summary>
+        /// <param name="descriptor">The entity's descriptor.</param>
+        /// <returns>The entity's class; null for a read-only root, which has none.</returns>
+        /// <exception cref="ArgumentException">The descriptor is not one of this schema's.</exception>
+        public Type? ClrType(EntityDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+            return _readOnlyRoots.Contains(descriptor) ? null : Metadata(descriptor).ClrType;
         }
 
         /// <summary>
