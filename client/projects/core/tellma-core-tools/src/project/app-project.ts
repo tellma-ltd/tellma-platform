@@ -18,9 +18,13 @@ import { TmBuildFailure } from '../common/problems.js';
 
 /** The application's build options the commands read from angular.json. */
 interface AngularBuildOptions {
+  /** The output folder, or its base and browser subfolder. */
   readonly outputPath?: string | { readonly base?: string; readonly browser?: string };
+  /** The source `index.html`, or an object naming it as `input`. */
   readonly index?: string | { readonly input?: string };
+  /** The application's tsconfig. */
   readonly tsConfig?: string;
+  /** The asset entries, strings or objects with a glob, input and output. */
   readonly assets?: readonly unknown[];
 }
 
@@ -118,6 +122,11 @@ export function tmReadAppProject(dir: string): TmAppProject {
   const outputPath = options.outputPath;
   const base = typeof outputPath === 'string' ? outputPath : (outputPath?.base ?? `dist/${name}`);
   const browser = typeof outputPath === 'object' ? (outputPath.browser ?? 'browser') : 'browser';
+  // The source maps, the metafile and the worker configuration go beside the
+  // deployable output, so it must be a folder of its own.
+  if (browser === '') {
+    throw new TmBuildFailure(`angular.json: the application '${name}' must keep its browser output in a subfolder; "outputPath.browser" cannot be empty.`);
+  }
   const outputDir = resolve(appDir, base);
   const index = typeof options.index === 'string' ? options.index : (options.index?.input ?? 'src/index.html');
   const generatedDir = join(appDir, 'generated');
@@ -145,7 +154,7 @@ export function tmReadAppProject(dir: string): TmAppProject {
     angularProject: name,
     hasServeTarget: member(architect, 'serve') !== undefined,
     outputDir,
-    browserDir: browser === '' ? outputDir : join(outputDir, browser),
+    browserDir: join(outputDir, browser),
     sourceMapsDir: join(outputDir, 'sourcemaps'),
     statsFile: join(outputDir, 'stats.json'),
     indexHtml: resolve(appDir, index),

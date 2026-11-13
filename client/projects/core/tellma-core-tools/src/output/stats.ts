@@ -30,16 +30,18 @@ export interface TmBuildOutput {
 
 /** The metafile's shape, as far as the build reads it. */
 interface Metafile {
-  readonly outputs?: Readonly<
-    Record<
-      string,
-      {
-        readonly imports?: readonly { readonly path: string; readonly kind: string; readonly external?: boolean }[];
-        readonly inputs?: Readonly<Record<string, unknown>>;
-        readonly entryPoint?: string;
-      }
-    >
-  >;
+  /** Every output file by its path, with what it imports, the modules it holds and the module it starts at. */
+  readonly outputs?: Readonly<Record<string, MetafileOutput>>;
+}
+
+/** One output file in the metafile. */
+interface MetafileOutput {
+  /** The files and modules it imports, with how and whether they are outside the build. */
+  readonly imports?: readonly { readonly path: string; readonly kind: string; readonly external?: boolean }[];
+  /** The modules it holds, by path relative to the project folder. */
+  readonly inputs?: Readonly<Record<string, unknown>>;
+  /** The module it starts at, when it is an entry point or a dynamic import's chunk. */
+  readonly entryPoint?: string;
 }
 
 /** A build's chunk graph. */

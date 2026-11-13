@@ -27,6 +27,14 @@ function isClassicBlocking(script: TmHtmlElement): boolean {
 
 /** Each rule's test, by the rule's id: true when the document passes. */
 const TESTS: Readonly<Record<string, (head: TmHtmlElement, body: TmHtmlElement, all: readonly TmHtmlElement[]) => boolean>> = {
+  'base-href': (head, _body, all) => {
+    const base = all.find((element) => element.tagName === 'base' && tmAttribute(element, 'href') !== null);
+    if (base === undefined || tmAttribute(base, 'href') !== '/' || !tmElements(head).includes(base)) {
+      return false;
+    }
+    // No element before it may carry a URL, which would resolve against the page's own path.
+    return all.slice(0, all.indexOf(base)).every((element) => tmAttribute(element, 'src') === null && tmAttribute(element, 'href') === null);
+  },
   'boot-script-first': (head) => {
     const first = tmElements(head).find((element) => element.tagName === 'script');
     return first !== undefined && tmAttribute(first, 'src') === TM_BOOT_SCRIPT_FILE && isClassicBlocking(first);

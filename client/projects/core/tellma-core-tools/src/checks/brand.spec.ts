@@ -33,6 +33,27 @@ describe('a brand SVG', () => {
       tmBrandSvgFaults(SVG.replace('<rect', '<a xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href=" javascript:go()"><rect').replace('</svg>', '</a></svg>')),
     ).toEqual(["Its 'href' is a javascript: URL."]);
   });
+
+  it('reads them as an XML parser does when the file opens on its own', () => {
+    // A script element under a namespace prefix.
+    expect(tmBrandSvgFaults(SVG.replace('<rect', '<s:script xmlns:s="http://www.w3.org/2000/svg">alert(1)</s:script><rect'))).toEqual([
+      'It holds a <script> element.',
+    ]);
+    // A javascript: URL with a tab inside, which the URL parser removes.
+    expect(tmBrandSvgFaults(SVG.replace('<rect', '<a href="java&#9;script:go()"><rect').replace('</svg>', '</a></svg>'))).toEqual([
+      "Its 'href' is a javascript: URL.",
+    ]);
+    expect(tmBrandSvgFaults(SVG.replace('<rect', '<a href="&#1;javascript:go()"><rect').replace('</svg>', '</a></svg>'))).toEqual([
+      "Its 'href' is a javascript: URL.",
+    ]);
+    // Animations that set a link's href, which no href attribute shows.
+    const link = (animation: string): string => SVG.replace('<rect', `<a href="#">${animation}<rect`).replace('</svg>', '</a></svg>');
+    expect(tmBrandSvgFaults(link('<set attributeName="href" to="javascript:go()"/>'))).toEqual(["Its <set> element animates a link's href."]);
+    expect(tmBrandSvgFaults(link('<animate attributeName="xlink:href" values="javascript:go()"/>'))).toEqual([
+      "Its <animate> element animates a link's href.",
+    ]);
+    expect(tmBrandSvgFaults(link('<animate attributeName="opacity" values="0;1"/>'))).toEqual([]);
+  });
 });
 
 describe('the brand files', () => {

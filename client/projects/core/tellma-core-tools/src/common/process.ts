@@ -39,17 +39,21 @@ const WINDOWS_SHIMS: ReadonlySet<string> = new Set(['pnpm', 'npm', 'npx']);
 
 /**
  * The runner of real processes. Arguments never pass through a shell, except
- * that Windows needs one to start a package manager's `.cmd` shim; those
- * calls take only fixed arguments.
+ * that Windows needs `cmd.exe` to start a package manager's `.cmd` shim;
+ * those calls take only fixed arguments.
  */
 export const tmNodeProcessRunner: TmProcessRunner = {
   run(command, args, options) {
+    // A shim starts through cmd.exe named as the program, rather than through
+    // spawn's shell option, which Node deprecates when given an argument list.
+    const shim = process.platform === 'win32' && WINDOWS_SHIMS.has(command);
+    const program = shim ? (process.env['ComSpec'] ?? 'cmd.exe') : command;
+    const programArgs = shim ? ['/d', '/s', '/c', command, ...args] : [...args];
     return new Promise<number>((resolve, reject) => {
-      const child = spawn(command, [...args], {
+      const child = spawn(program, programArgs, {
         cwd: options.cwd,
         env: { ...process.env, ...options.env },
         stdio: 'inherit',
-        shell: process.platform === 'win32' && WINDOWS_SHIMS.has(command),
       });
       // A program that cannot start, such as one missing from the PATH, fails the step.
       child.once('error', (error) => reject(new TmBuildFailure(`${command} could not be started: ${error.message}`, { cause: error })));

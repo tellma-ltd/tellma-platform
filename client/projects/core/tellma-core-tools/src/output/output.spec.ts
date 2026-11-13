@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -169,6 +169,14 @@ describe('the worker config', () => {
     });
     expect(config).not.toHaveProperty('dataGroups');
   });
+
+  it("escapes the regular expression's own characters in a file name, which ngsw-config passes through", () => {
+    const core = fakeEmitData().core as unknown as TmEmittedCore;
+    const config = tmWorkerConfig(core, { shell: ['legal/terms [2026] (v1).pdf', 'a{b}^$|.js'], onDemand: [] }) as {
+      assetGroups: { resources: { files: string[] } }[];
+    };
+    expect(config.assetGroups[0]!.resources.files).toEqual(['/legal/terms \\[2026\\] \\(v1\\).pdf', '/a\\{b\\}\\^\\$\\|.js']);
+  });
 });
 
 describe('the preloads', () => {
@@ -285,6 +293,14 @@ describe('the root files', () => {
     expect(readFileSync(join(generated, 'brand', 'mark-on-dark.svg'), 'utf8')).toBe('default');
     expect(existsSync(join(generated, 'brand', 'mark-on-light.svg'))).toBe(false);
     expect(existsSync(join(generated, 'tm-boot.js'))).toBe(true);
+
+    // In place: unchanged bytes are not rewritten, under a dev server watching the folder.
+    const past = new Date('2020-01-01T00:00:00Z');
+    utimesSync(join(generated, 'tm-boot.js'), past, past);
+    tmRefreshRootFiles(generated, 'boot();', brand);
+    expect(statSync(join(generated, 'tm-boot.js')).mtimeMs).toBe(past.getTime());
+    tmRefreshRootFiles(generated, 'boot2();', brand);
+    expect(readFileSync(join(generated, 'tm-boot.js'), 'utf8')).toBe('boot2();');
   });
 });
 

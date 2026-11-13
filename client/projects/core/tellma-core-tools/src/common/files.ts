@@ -4,13 +4,31 @@
 // LICENSE file in the root directory of this source tree.
 
 import { createHash } from 'node:crypto';
-import { readdirSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
 // File helpers the build shares: output-relative paths in URL form on every
 // OS, a recursive listing, the emitted files' content hash, and the two
 // compressed sizes the budgets report.
+
+/**
+ * Finds the nearest folder at or above a folder that holds an entry.
+ *
+ * @param start - The folder to start at.
+ * @param name - The entry's name, such as `pnpm-workspace.yaml`.
+ * @returns The folder, or null when none above holds it.
+ */
+export function tmFindAbove(start: string, name: string): string | null {
+  for (let current = start; ; current = dirname(current)) {
+    if (existsSync(join(current, name))) {
+      return current;
+    }
+    if (dirname(current) === current) {
+      return null;
+    }
+  }
+}
 
 /** A path relative to `from`, with forward slashes on every OS. */
 export function tmRelativePosix(from: string, to: string): string {

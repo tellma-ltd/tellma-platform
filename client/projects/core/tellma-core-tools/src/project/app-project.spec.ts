@@ -78,6 +78,22 @@ describe('a client project', () => {
     expect(() => tmReadAppProject(join(app, 'src'))).toThrow(/package\.json does not exist/);
   });
 
+  it('refuses a browser output that is the output folder itself, which would deploy the source maps', () => {
+    const file = join(app, 'angular.json');
+    const original = readFileSync(file, 'utf8');
+    try {
+      const workspace = JSON.parse(original) as { projects: { fixture: { architect: { build: { options: Record<string, unknown> } } } } };
+      workspace.projects.fixture.architect.build.options['outputPath'] = { base: 'dist/fixture', browser: '' };
+      writeFileSync(file, JSON.stringify(workspace));
+      expect(() => tmReadAppProject(app)).toThrow(/"outputPath\.browser" cannot be empty/);
+      workspace.projects.fixture.architect.build.options['outputPath'] = { base: 'dist/fixture', browser: 'web' };
+      writeFileSync(file, JSON.stringify(workspace));
+      expect(tmReadAppProject(app).browserDir).toBe(join(app, 'dist', 'fixture', 'web'));
+    } finally {
+      writeFileSync(file, original);
+    }
+  });
+
   it('finds a package in node_modules, or at the sources the tsconfig paths name', () => {
     const project = tmReadAppProject(app);
     expect(tmFindPackageDir(project, '@angular/cli')).toBe(join(clientDir, 'node_modules', '@angular', 'cli'));

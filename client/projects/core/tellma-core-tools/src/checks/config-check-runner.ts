@@ -38,11 +38,13 @@ interface ConfigCheckRequest {
 
 /** The members of @tellma/core this process calls. */
 interface TellmaCore {
+  /** The Tellma configuration a `provideTellma` call recorded in an application configuration. */
   readonly tmAppConfigOf: (appConfig: unknown) => unknown;
 }
 
 /** The members of @tellma/core/config-check this process calls. */
 interface TellmaConfigCheck {
+  /** Checks the Tellma configuration against the emitted metadata and string packs. */
   readonly tmCheckAppConfig: (config: unknown, metadata: unknown, entities: unknown, strings: unknown) => readonly unknown[];
 }
 
@@ -51,7 +53,9 @@ function readJson(file: string): unknown {
   return JSON.parse(readFileSync(file, 'utf8')) as unknown;
 }
 
+/** The request the build wrote, named by the first argument. */
 const request = readJson(process.argv[2]!) as ConfigCheckRequest;
+/** Writes the answer where the request asks. */
 const answer = (value: unknown): void => writeFileSync(request.result, JSON.stringify(value));
 
 try {

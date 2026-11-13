@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { tmCompressedSize, tmContentHash, tmListFiles, tmRelativePosix } from './files.js';
+import { tmNodeProcessRunner } from './process.js';
 import { tmFormatProblem, tmHasErrors, type TmBuildProblem } from './problems.js';
 
 const problem: TmBuildProblem = {
@@ -65,5 +66,23 @@ describe('file helpers', () => {
     expect(size.gzip).toBeGreaterThan(0);
     expect(size.gzip).toBeLessThan(100);
     expect(size.brotli).toBeLessThan(size.gzip);
+  });
+});
+
+describe('the process runner', () => {
+  it("starts a package manager's shim with no deprecated shell option, and fails a missing program", async () => {
+    const warnings: string[] = [];
+    const listener = (warning: Error & { code?: string }): void => {
+      warnings.push(warning.code ?? warning.name);
+    };
+    process.on('warning', listener);
+    try {
+      expect(await tmNodeProcessRunner.run('pnpm', ['--version'], { cwd: process.cwd() })).toBe(0);
+      expect(await tmNodeProcessRunner.run(process.execPath, ['-e', 'process.exit(3)'], { cwd: process.cwd() })).toBe(3);
+    } finally {
+      process.off('warning', listener);
+    }
+    expect(warnings).not.toContain('DEP0190');
+    await expect(tmNodeProcessRunner.run('tellma-no-such-program', [], { cwd: process.cwd() })).rejects.toThrow(/could not be started/);
   });
 });

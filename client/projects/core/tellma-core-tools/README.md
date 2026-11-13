@@ -49,14 +49,16 @@ The commands run in a distribution's client project, the folder holding its `pac
 application on `@angular/build:application`, with `serviceWorker: false`, `outputHashing: all`, the
 hidden source maps, `public/**` as assets, `generated/assets/**` copied to `tm-metadata/`, and
 `generated/root/**` copied to the output root, the asset
-`{ "glob": "**/*", "input": "generated/root", "output": "/" }`) and `src/app.config.ts`, which
-exports `appConfig`.
+`{ "glob": "**/*", "input": "generated/root", "output": "/" }`; the browser output is a subfolder of
+the output folder, never the folder itself), its `src/index.html` (`<base href="/">` before any
+element that loads a URL, so a deep link loads every file from the root, then `tm-boot.js` as the
+first script) and `src/app.config.ts`, which exports `appConfig`.
 
 | Command | Does |
 |---|---|
 | `emit [--configuration c] [--no-dotnet-build]` | Runs `dotnet run --project <Migrator> -- emit-client-assets <project>/generated`, which writes the client metadata, the string packs and the loaders module. |
 | `serve [--port n]` | Runs the emit, exports the ASP.NET Core development certificate (once, as `<slug>.pem` and `<slug>.key` where ASP.NET Core's SPA templates keep it), then `ng serve` over HTTPS on `--port`, else `<SLUG>_CLIENT` from the worktree's `.dev-ports.local`, else 4200. Every path the server owns (the Core chunk's routing words, and its words under a tenant id) is proxied to `https://localhost:<SLUG>_WEB`, else 7052, websockets included. It first writes `tm-boot.js` and the default brand files to `generated/root/`, so the dev server serves them as the built app does (the overrides come from `public/brand/`). No CSP and no service worker. Inside the platform's repository it first runs `assets:generate` (the token stylesheets and `@tellma/core`'s boot script template). The application needs a `serve` target on `@angular/build:dev-server`. |
-| `build [--configuration c] [--no-dotnet-build]` | The production build and its checks, in the six steps below. |
+| `build [--configuration c] [--no-dotnet-build]` | The production build and its checks, in the six steps below. Inside the platform's repository it first runs `assets:generate`, as `serve` does. |
 
 `build` runs:
 

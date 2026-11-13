@@ -97,6 +97,19 @@ export function tmWorkerGroups(
 }
 
 /**
+ * A file's path as an ngsw-config glob that matches the file alone.
+ * ngsw-config turns each glob into a regular expression, escaping `.` and
+ * `+` itself and reading `*` and `?` as wildcards, but passing every other
+ * character through, so the regular expression's own specials are escaped
+ * here. A literal `*` or `?`, which no Windows file name holds, stays a
+ * wildcard that still matches the file. The leading `/` keeps a name from
+ * reading as a `!` negation.
+ */
+function escapeGlob(path: string): string {
+  return path.replace(/[()[\]{}^$|\\]/g, '\\$&');
+}
+
+/**
  * The worker's configuration, `ngsw-config.json`.
  *
  * @param core - The Core chunk, for the versions and the routing words.
@@ -104,7 +117,7 @@ export function tmWorkerGroups(
  * @returns The configuration, ready to serialize.
  */
 export function tmWorkerConfig(core: TmEmittedCore, groups: TmWorkerGroups): Record<string, unknown> {
-  const urls = (files: readonly string[]): string[] => files.map((file) => `/${file}`);
+  const urls = (files: readonly string[]): string[] => files.map((file) => `/${escapeGlob(file)}`);
   return {
     index: '/index.html',
     appData: { version: core.distribution.version, platformVersion: core.distribution.platformVersion },

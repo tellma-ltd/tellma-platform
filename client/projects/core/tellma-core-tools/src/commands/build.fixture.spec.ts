@@ -13,6 +13,7 @@ import { copyFixtureApp, fakeRunner, FIXTURES_DIR } from '../../fixtures/fake-em
 import { TM_CLI_EXIT, tmRunCli } from '../cli/tellma-client.js';
 import { tmNodeProcessRunner, type TmProcessOptions } from '../common/process.js';
 import { tmListFiles } from '../common/files.js';
+import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
 
 // The real build of the fixture app: one `ng build`, then the build's later
 // steps on its output. The output checks then run again on copies of that
@@ -121,6 +122,25 @@ describe('tellma-client build on the fixture app', () => {
     expect(html).not.toMatch(/href="media\/noto-sans-latin-ext-/);
   });
 
+  it('loads every URL of the built index.html from the root on a deep-link reload', () => {
+    const elements = tmElements(tmParseDocument(read('index.html')));
+    const base = elements.find((element) => element.tagName === 'base')!;
+    // A reload of a tenant's page: the server answers it with this index.html.
+    const page = new URL('https://acme.example/17/centers/5');
+    const root = new URL(tmAttribute(base, 'href')!, page);
+    const urls = elements
+      .filter((element) => element !== base)
+      .flatMap((element) => [tmAttribute(element, 'src'), tmAttribute(element, 'href')])
+      .filter((url): url is string => url !== null);
+    expect(urls).toContain('tm-boot.js');
+    expect(urls.some((url) => /^main-[A-Z0-9]{8}\.js$/.test(url))).toBe(true);
+    for (const url of urls) {
+      const resolved = new URL(url, root);
+      expect(resolved.origin, url).toBe(page.origin);
+      expect(existsSync(join(browser(), ...decodeURIComponent(resolved.pathname).slice(1).split('/'))), url).toBe(true);
+    }
+  });
+
   it('copies the worker scripts, and ngsw.json hashes every file it caches as it is', () => {
     expect(existsSync(join(browser(), 'ngsw-worker.js'))).toBe(true);
     expect(existsSync(join(browser(), 'safety-worker.js'))).toBe(true);
@@ -171,6 +191,16 @@ describe('the output checks on the fixture app', () => {
     expect(run.err).toBe(
       'index-html-invalid dist/fixture/browser/index.html fixture - No element may carry an event handler attribute (on*), which the Content Security Policy refuses.\n',
     );
+  });
+
+  it('cache a file whose name holds regular expression characters', { timeout: 300_000 }, async () => {
+    const name = 'icon(1) [2026].png';
+    const run = await rebuild((dir) => cpSync(join(dir, 'icons', 'icon-192.png'), join(dir, 'icons', name)));
+    expect(run.err).toBe('');
+    expect(run.code).toBe(TM_CLI_EXIT.success);
+    const ngsw = JSON.parse(read('ngsw.json')) as { hashTable: Record<string, string>; assetGroups: { name: string; urls: string[] }[] };
+    expect(ngsw.assetGroups[1]!.urls).toContain(`/icons/${name}`);
+    expect(ngsw.hashTable).toHaveProperty([`/icons/${name}`]);
   });
 
   it('fail a script without a hashed name', { timeout: 300_000 }, async () => {

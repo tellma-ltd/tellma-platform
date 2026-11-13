@@ -25,6 +25,7 @@ import { TmBuildGraph } from '../output/stats.js';
 import { tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups, TM_WORKER_FILES } from '../output/worker-config.js';
 import { tmReadAppProject, tmRequirePackageDir, type TmAppProject } from '../project/app-project.js';
 import { tmLogStep, tmReportProblems, type TmCommandContext } from './context.js';
+import { tmWritePlatformAssets } from './platform-assets.js';
 
 // `tellma-client build` (spec 0024 §2.6): the production build and its
 // checks, in six steps.
@@ -38,6 +39,9 @@ import { tmLogStep, tmReportProblems, type TmCommandContext } from './context.js
 //  4. The service worker's scripts and configuration, through ngsw-config.
 //  5. The hidden source maps, moved out of the deployable output.
 //  6. The output checks: budgets, hashed names and the built index.html.
+//
+// Inside the platform's own repository it first writes the platform's
+// generated assets, as `serve` does.
 
 /** The outcome of a build: the exit code's meaning, and every problem found. */
 export interface TmBuildResult {
@@ -49,12 +53,19 @@ export interface TmBuildResult {
 
 /** What the source step hands the later steps. */
 interface SourceStep {
+  /** The emitted metadata, read back from generated/. */
   readonly metadata: TmEmittedMetadata;
+  /** The distribution's slug, which owns its problems. */
   readonly slug: string;
+  /** The `@tellma/core` package's folder. */
   readonly coreDir: string;
+  /** The resolved brand files. */
   readonly brand: readonly TmBrandFile[];
+  /** The manifest's localized names. */
   readonly names: TmLocalizedNames;
+  /** The budget levels by name, with the distribution's raises. */
   readonly levels: ReadonlyMap<string, TmBudgetLevels>;
+  /** The rendered `tm-boot.js`. */
   readonly bootScript: string;
 }
 
@@ -159,6 +170,7 @@ function assetStep(project: TmAppProject, source: SourceStep): void {
 export async function tmBuild(context: TmCommandContext, options: TmEmitOptions): Promise<TmBuildResult> {
   const project = tmReadAppProject(context.cwd);
   const problems: TmBuildProblem[] = [];
+  await tmWritePlatformAssets(context, project);
 
   // --- Step 1: the emit, the source checks and ng build ---
   const source = await sourceStep(context, project, options, problems);

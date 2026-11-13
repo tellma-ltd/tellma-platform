@@ -73,22 +73,51 @@ export function tmBrandSvgFaults(svg: string): string[] {
   if (viewBox === null || Number(viewBox[3]) <= 0 || Number(viewBox[4]) <= 0) {
     faults.push('Its <svg> element has no valid viewBox, so it cannot scale.');
   }
-  // Every element counts, including any outside the root, since the file renders inline.
-  if (elements.some((element) => element.tagName === 'script')) {
+  // Every element counts, including any outside the root, since the file
+  // renders inline. Names are compared without their prefix: opened on its
+  // own, the file is parsed as XML, where <s:script> in the SVG namespace is
+  // a script, and the HTML parser reports it as 's:script'.
+  if (elements.some((element) => localName(element.tagName) === 'script')) {
     faults.push('It holds a <script> element.');
   }
-  const handler = elements.flatMap((element) => element.attrs).find((attribute) => /^on/i.test(attribute.name));
+  const handler = elements.flatMap((element) => element.attrs).find((attribute) => localName(attribute.name).startsWith('on'));
   if (handler !== undefined) {
     faults.push(`It carries the event-handler attribute '${handler.name}'.`);
   }
-  // A javascript: URL is a script by another door.
+  // A javascript: URL is a script by another door: on a link itself, or set
+  // on one by an animation, which no href attribute shows.
   const scriptUrl = elements
     .flatMap((element) => element.attrs)
-    .find((attribute) => /href$/i.test(attribute.name) && /^\s*javascript:/i.test(attribute.value));
+    .find((attribute) => localName(attribute.name) === 'href' && isScriptUrl(attribute.value));
   if (scriptUrl !== undefined) {
     faults.push(`Its '${scriptUrl.name}' is a javascript: URL.`);
   }
+  const animation = elements.find(
+    (element) =>
+      ANIMATIONS.has(localName(element.tagName)) &&
+      element.attrs.some((attribute) => localName(attribute.name) === 'attributename' && localName(attribute.value.trim()) === 'href'),
+  );
+  if (animation !== undefined) {
+    faults.push(`Its <${animation.tagName}> element animates a link's href.`);
+  }
   return faults;
+}
+
+/** The animation elements that can set another element's attribute. */
+const ANIMATIONS: ReadonlySet<string> = new Set(['set', 'animate']);
+
+/** A name without its namespace prefix, in lower case. */
+function localName(name: string): string {
+  return name.slice(name.lastIndexOf(':') + 1).toLowerCase();
+}
+
+/**
+ * Whether a URL is a javascript: URL as the URL parser reads it, which drops
+ * leading C0 controls and spaces, and every tab and line break.
+ */
+function isScriptUrl(url: string): boolean {
+  // eslint-disable-next-line no-control-regex -- the URL parser's own character classes
+  return /^javascript:/i.test(url.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+/, ''));
 }
 
 /**

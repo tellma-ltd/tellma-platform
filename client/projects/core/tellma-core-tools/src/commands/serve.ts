@@ -5,17 +5,19 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 
 import { tmResolveBrandFiles } from '../checks/brand.js';
+import { tmFindAbove } from '../common/files.js';
 import { TmBuildFailure } from '../common/problems.js';
 import { tmRunEmit } from '../emit/emit.js';
 import { tmReadEmittedMetadata, type TmEmittedRouting } from '../emit/emitted-metadata.js';
 import { tmBootConfig, tmBuildBootScript } from '../output/boot.js';
 import { tmRefreshRootFiles } from '../output/root-files.js';
-import { tmReadAppProject, tmRequirePackageDir, type TmAppProject } from '../project/app-project.js';
+import { tmReadAppProject, tmRequirePackageDir } from '../project/app-project.js';
 import { tmLogStep, type TmCommandContext } from './context.js';
+import { tmWritePlatformAssets } from './platform-assets.js';
 
 // `tellma-client serve` (spec 0024 §2.6): the development loop. It runs the
 // emit, writes tm-boot.js and the brand files to generated/root/ (which
@@ -51,18 +53,6 @@ export const TM_DEFAULT_WEB_PORT = 7052;
 /** The file of worktree-local ports, KEY=port lines, at the worktree's root. */
 const PORTS_FILE = '.dev-ports.local';
 
-/** The nearest folder at or above `start` holding `name`, or null. */
-function findAbove(start: string, name: string): string | null {
-  for (let current = start; ; current = dirname(current)) {
-    if (existsSync(join(current, name))) {
-      return current;
-    }
-    if (dirname(current) === current) {
-      return null;
-    }
-  }
-}
-
 /**
  * Reads a port from the worktree's `.dev-ports.local`.
  *
@@ -71,7 +61,7 @@ function findAbove(start: string, name: string): string | null {
  * @returns The port, or null when the file or key is absent.
  */
 export function tmDevPort(projectDir: string, key: string): number | null {
-  const root = findAbove(projectDir, PORTS_FILE);
+  const root = tmFindAbove(projectDir, PORTS_FILE);
   if (root === null) {
     return null;
   }
@@ -108,7 +98,9 @@ export function tmProxyConfig(routing: TmEmittedRouting, webPort: number): Recor
 
 /** The ASP.NET Core development certificate, exported as PEM. */
 interface DevCertificate {
+  /** The certificate's PEM file, absolute. */
   readonly cert: string;
+  /** Its private key's PEM file, absolute. */
   readonly key: string;
 }
 
@@ -128,26 +120,6 @@ async function exportDevCertificate(context: TmCommandContext, folder: string, s
     }
   }
   return { cert, key };
-}
-
-/** The platform repository's script that writes the generated assets its packages ship. */
-const PLATFORM_ASSETS_SCRIPT = 'assets:generate';
-
-/** Inside the platform's repository, writes the generated assets a published package holds. */
-async function platformAssets(context: TmCommandContext, project: TmAppProject): Promise<void> {
-  const root = findAbove(project.dir, 'pnpm-workspace.yaml');
-  if (root === null || !existsSync(join(root, 'package.json'))) {
-    return;
-  }
-  const scripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { readonly scripts?: Record<string, string> }).scripts;
-  if (scripts?.[PLATFORM_ASSETS_SCRIPT] === undefined) {
-    return;
-  }
-  tmLogStep(context, "Writing the platform's generated assets");
-  const code = await context.runner.run('pnpm', ['run', PLATFORM_ASSETS_SCRIPT], { cwd: root });
-  if (code !== 0) {
-    throw new TmBuildFailure(`pnpm run ${PLATFORM_ASSETS_SCRIPT} exited with code ${code}.`);
-  }
 }
 
 /**
@@ -170,7 +142,7 @@ export async function tmServe(context: TmCommandContext, options: TmServeOptions
         'where serve writes tm-boot.js and the brand files: add the asset { "glob": "**/*", "input": "generated/root", "output": "/" }.',
     );
   }
-  await platformAssets(context, project);
+  await tmWritePlatformAssets(context, project);
 
   // --- The emit, the boot script and brand files, the certificate and the ports ---
   tmLogStep(context, 'Emitting the client metadata');

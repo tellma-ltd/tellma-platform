@@ -13,6 +13,7 @@ const SOURCE = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <base href="/" />
     <meta name="color-scheme" content="light dark" />
     <title>Acme</title>
     <link rel="manifest" href="manifest.webmanifest" />
@@ -47,6 +48,16 @@ describe('the index.html check', () => {
     expect(failures(SOURCE.replace('src="tm-boot.js"', 'src="tm-boot.js" type="module"'))).toEqual(['boot-script-first']);
   });
 
+  it('requires <base href="/"> in the head before any element that loads a URL', () => {
+    expect(failures(SOURCE.replace('<base href="/" />', ''))).toEqual(['base-href']);
+    expect(failures(SOURCE.replace('<base href="/" />', '<base href="/app/" />'))).toEqual(['base-href']);
+    // Too late: the manifest and the boot script already resolved against the page's path.
+    expect(failures(SOURCE.replace('<base href="/" />', '').replace('</head>', '<base href="/"></head>'))).toEqual(['base-href']);
+    expect(failures(SOURCE.replace('<meta charset="utf-8" />', '<link rel="icon" href="favicon.svg" /><meta charset="utf-8" />'))).toEqual(['base-href']);
+    // A base with only a target sets no URL; the first one with an href counts.
+    expect(failures(SOURCE.replace('<base href="/" />', '<base target="_self" /><base href="/" />'))).toEqual([]);
+  });
+
   it('requires the app element, the manifest link and the color-scheme meta', () => {
     expect(failures(SOURCE.replace('<tm-app></tm-app>', '<acme-app></acme-app>'))).toEqual(['app-element']);
     expect(failures(SOURCE.replace('rel="manifest"', 'rel="icon"'))).toEqual(['manifest-link']);
@@ -71,6 +82,7 @@ describe('the index.html check', () => {
 
   it('reports every failed rule, in the rules\' order', () => {
     expect(failures('<!doctype html><html><head><script>1</script></head><body></body></html>')).toEqual([
+      'base-href',
       'boot-script-first',
       'app-element',
       'manifest-link',

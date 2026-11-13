@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
@@ -49,7 +49,12 @@ interface Run {
 async function build(
   name: string,
   change: (app: string) => void = () => undefined,
-  options: { readonly data?: () => FakeEmitData; readonly realConfigCheck?: boolean; readonly args?: readonly string[] } = {},
+  options: {
+    readonly data?: () => FakeEmitData;
+    readonly realConfigCheck?: boolean;
+    readonly configProblems?: readonly unknown[];
+    readonly args?: readonly string[];
+  } = {},
 ): Promise<Run> {
   const app = copyFixtureApp(`build-${name}`);
   copies.push(app);
@@ -64,7 +69,7 @@ async function build(
       }
       if (/config-check-runner\.js$/.test(args[0] ?? '') && options.realConfigCheck !== true) {
         const request = JSON.parse(readFileSync(args[1]!, 'utf8')) as { readonly result: string };
-        writeFileSync(request.result, JSON.stringify({ problems: [] }));
+        writeFileSync(request.result, JSON.stringify({ problems: options.configProblems ?? [] }));
         return 0;
       }
       return undefined;
@@ -173,13 +178,23 @@ describe('tellma-client build, before ng build', () => {
     expect(run.ngBuilt).toBe(false);
   });
 
+  it("prints the config check's warnings and still reaches ng build", async () => {
+    const warning = { code: 'label-missing', severity: 'warning', key: 'entry:fixture.Review', feature: 'fixture', message: 'It has no label.' };
+    const run = await build('warning', undefined, { configProblems: [warning] });
+    expect(lines(run)[0]).toBe('label-missing entry:fixture.Review fixture - It has no label.');
+    expect(run.ngBuilt).toBe(true);
+    expect(run.err).toContain('ng build exited with code 1.');
+  });
+
   it('reaches ng build when the sources pass, and exits 2 when it fails', async () => {
     const run = await build('passes', undefined, { args: ['-c', 'Release', '--no-dotnet-build'] });
     expect(run.ngBuilt).toBe(true);
     expect(run.code).toBe(TM_CLI_EXIT.failure);
     expect(run.err).toContain('ng build exited with code 1.');
     // The emit's options reach the Migrator's run.
-    expect(run.calls[0]).toEqual([
+    // Inside this repository the platform's generated assets come first.
+    expect(run.calls[0]).toEqual(['pnpm', 'run', 'assets:generate']);
+    expect(run.calls[1]).toEqual([
       'dotnet',
       'run',
       '--project',
@@ -194,7 +209,7 @@ describe('tellma-client build, before ng build', () => {
     ]);
     // generated/root/ is fresh before ng build: the boot script, and no override of public/brand/.
     expect(readFileSync(join(run.app, 'generated', 'root', 'tm-boot.js'), 'utf8')).toContain('"defaultLanguage":"en"');
-    expect(readdirSync(join(run.app, 'generated', 'root', 'brand'))).toEqual([]);
+    expect(existsSync(join(run.app, 'generated', 'root', 'brand'))).toBe(false);
   });
 });
 
@@ -224,7 +239,7 @@ describe('tellma-client build, failures', () => {
     );
     expect(run.code).toBe(TM_CLI_EXIT.failure);
     expect(run.err).toMatch(/nowhere, named by "tellma\.migrator" in package\.json, does not exist/);
-    expect(run.started).toEqual([]);
+    expect(run.started).toEqual(['pnpm run']);
   });
 
   it('exits 1 on an unknown option', async () => {

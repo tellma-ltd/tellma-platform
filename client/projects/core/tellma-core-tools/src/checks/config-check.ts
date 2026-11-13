@@ -24,10 +24,15 @@ const RUNNER = fileURLToPath(new URL('../../dist/checks/config-check-runner.js',
 
 /** A problem as tmCheckAppConfig reports it. */
 interface ConfigProblem {
+  /** The problem's code, such as `feature-not-composed`. */
   readonly code: string;
+  /** Whether it fails the build. */
   readonly severity: 'error' | 'warning';
+  /** The declaration concerned. */
   readonly key: string;
+  /** The feature that owns the declaration. */
   readonly feature: string;
+  /** What is wrong. */
   readonly message: string;
 }
 
