@@ -11,7 +11,12 @@ no behaviour a harness would add to a locator. Chips have `TmChipHarness` and
 `TmChipSetHarness`, and the feedback surfaces `TmBannerBarHarness`, plus
 `TmToastHarness` (one toast), `TmToastStackHarness` (the overflow pill and the
 live regions) and `TmBusyOverlayHarness`, which render on `<body>` and are
-located with a document-root loader.
+located with a document-root loader. The dialogs `TmConfirmHarness` and
+`TmErrorDialogHarness` render in the overlay container and are located the
+same way. The layout pieces have `TmCardHarness` (the disclosure, the error
+dot and its name) and `TmSplitterHarness` (the bar's value, range and keys);
+`tm-page-header` and `dl[tmDescriptionList]` impose no behaviour of their
+own.
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that
