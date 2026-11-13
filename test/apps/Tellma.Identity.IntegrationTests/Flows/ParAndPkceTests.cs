@@ -6,6 +6,7 @@
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -23,7 +24,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpar");
             await TestData.ProvisionDistributionAsync(factory);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // Plain front-channel parameters, tamperable in the browser URL — exactly what the
@@ -177,7 +178,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                     ["TellmaIdentity:Seed:Clients:0:Kind"] = "Cli",
                     ["TellmaIdentity:Seed:Clients:0:RedirectUris:0"] = "http://127.0.0.1/callback",
                 });
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string authorizeUrl = "/connect/authorize?client_id=tellma-cli"

@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -30,7 +31,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "synced@example.com");
             await AddPasskeyAsync(factory, user, deviceBound: false);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "synced@example.com");
 
             using HttpResponseMessage response = await AuthorizeWithAal3Async(flow, distribution);
@@ -51,7 +52,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "bound@example.com");
             await AddPasskeyAsync(factory, user, deviceBound: true);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "bound@example.com");
 
             using HttpResponseMessage response = await AuthorizeWithAal3Async(flow, distribution);
@@ -75,7 +76,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpromptnone");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
             {
@@ -109,7 +110,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "ivan@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "ivan@example.com");
 
             // max_age=0 (OIDC: equivalent to prompt=login) with an existing session: one forced

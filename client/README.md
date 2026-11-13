@@ -37,7 +37,7 @@ pnpm run tokens:check   # token schema + missing-ref gate (contrast is axe's job
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run api:approve    # accept an INTENDED public-API change (commit the diff)
 pnpm run docs:build     # components.json (schema-validated) + llms.txt for the MCP package
-pnpm run size:check     # gzipped self-weight vs each package's "tellma".budgetsInKb ceilings
+pnpm run size:check     # linked, gzipped production self-weight vs "tellma".budgetsInKb ceilings
 pnpm start              # showcase dev server (the component showcase + e2e target)
 ```
 

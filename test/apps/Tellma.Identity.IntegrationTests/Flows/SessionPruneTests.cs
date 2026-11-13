@@ -11,6 +11,7 @@ using Tellma.Identity.Data.Entities;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.Services.Sessions;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -122,7 +123,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune4@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("prune4@example.com", "/Identity/Account/Login");
 
             string sid = await SingleSidAsync(factory, user.Id);

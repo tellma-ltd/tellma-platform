@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <Description>The Acme reference distribution's web host: a three-call Program.cs over AcmeComposition and AcmeWebComposition, the Development configuration that runs the in-proc identity engine against a local catalog, and the Development provisioning trigger that runs the distribution's own migrator.</Description>
+    <!-- Framework-dependent, never single-file or self-contained: the PDF thumbnail worker runs
+         through dotnet exec on this host's runtimeconfig and deps.json, and the imaging startup
+         check refuses any other publish. -->
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Distro.Acme\Tellma.Distro.Acme.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
+    <!-- The in-proc identity engine, selected by Tellma:Identity:Mode. Never its migrations: the
+         engine's store check reads a constant, and the migrator migrates the store. -->
+    <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites drive the provisioning trigger's command line without starting a process. -->
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.Web.Tests" />
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

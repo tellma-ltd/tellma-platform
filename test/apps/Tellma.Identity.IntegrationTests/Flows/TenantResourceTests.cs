@@ -14,6 +14,7 @@ using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -47,7 +48,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_tenant_resource_flows_through_the_code_exchange_and_the_refresh_and_never_widens()
         {
             using StandaloneFactory factory = await CreateFactoryAsync("idtenant");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The authorization names one tenant's resource; the code exchange names it again.
             (string code, string verifier) = await AuthorizeAsync(factory, flow, "tina@example.com", Tenant17);
@@ -93,7 +94,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_refresh_narrows_an_origin_grant_to_one_tenant_and_keeps_the_grant()
         {
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantnarrow");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             (string code, string verifier) = await AuthorizeAsync(factory, flow, "nora@example.com", Origin);
             using JsonDocument tokens = await flow.ExchangeAsync(new Dictionary<string, string>
@@ -137,7 +138,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_code_exchange_cannot_widen_the_authorized_resource()
         {
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantcode");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             (string code, string verifier) = await AuthorizeAsync(factory, flow, "cody@example.com", Tenant17);
             Assert.Equal(
@@ -162,7 +163,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task An_authorization_request_for_an_ungranted_resource_is_refused_with_invalid_target(string resource)
         {
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantauth");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // Refused before any interaction: the request never reaches the sign-in page and never
@@ -189,7 +190,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // permitted its scope: a person's token is never a credential there, with a
             // distribution's resource or without one.
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantmgmt");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
 
             using HttpResponseMessage response = await flow.Browser.GetAsync(
@@ -225,7 +226,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // its places changes nothing they see: the next tenant goes straight through, and is
             // recorded on the authorization the session already holds for the client.
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantswitch");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await AuthorizeAsync(factory, flow, "sami@example.com", Tenant17);
 
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
@@ -258,7 +259,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // would carry acme's grant into globex, so the request is refused before any interaction.
             using StandaloneFactory factory = await CreateFactoryAsync("idtenanttwo");
             await TestData.ProvisionDistributionAsync(factory, "globex");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string url = AuthorizeUrl(challenge, Origin) + "&resource=" + Uri.EscapeDataString("https://globex.app.tellma.com");
@@ -278,7 +279,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // resource they name: the request is invalid_grant whatever it asks for, and nothing is
             // audited as a refused resource under the client's name.
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantprobe");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string code, string verifier) = await AuthorizeAsync(factory, flow, "pete@example.com", Tenant17);
             (string wrongVerifier, _) = OidcFlowClient.CreatePkcePair();
 
@@ -325,7 +326,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using StandaloneFactory factory = await CreateFactoryAsync("idtenantdev");
             await TestData.CreateActiveUserAsync(factory, "devi@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             using JsonDocument device = await PostDeviceAuthorizationAsync(factory, Tenant17);
             Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)device.RootElement.GetProperty("status").GetInt32());

@@ -46,6 +46,23 @@ namespace Tellma.Core.IntegrationTests.Migrator
         }
 
         [Fact]
+        public async Task Migrate_turns_on_read_committed_snapshot_in_a_fresh_catalog_another_connection_holds_open()
+        {
+            MigratorHarness migrator = new(sql, "mig_held");
+            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{migrator.CatalogName}] COLLATE {DatabaseCollations.Platform};");
+
+            // A web host started before the catalog existed: its connection stays open in the database.
+            SqlConnectionStringBuilder unpooled = new(migrator.CatalogConnectionString) { Pooling = false };
+            await using SqlConnection held = new(unpooled.ConnectionString);
+            await held.OpenAsync(Token);
+
+            MigratorResult result = await migrator.RunAsync("migrate", "--catalog-only");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.True(await SqlServerFixture.ScalarAsync<bool>(sql.MasterConnectionString, $"SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = N'{migrator.CatalogName}';"));
+        }
+
+        [Fact]
         public async Task Migrate_refuses_an_existing_catalog_in_another_collation()
         {
             MigratorHarness migrator = new(sql, "mig_collation");

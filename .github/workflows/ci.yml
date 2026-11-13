@@ -76,6 +76,61 @@ jobs:
           global-json-file: global.json
       - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true"
 
+  # The distribution host's two integration suites on Windows, against LocalDB rather than a
+  # container (the Windows runners have no Linux containers): the platform's catalog and migrator
+  # suite and the reference distribution's. LocalDB is installed when the image lacks it. The other
+  # integration suites need nothing Windows-specific and run in the job above.
+  integration-windows:
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 45
+    runs-on: windows-latest
+    env:
+      TELLMA_TEST_SQL: 'Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Start LocalDB
+        shell: pwsh
+        run: |
+          # The installer's PATH change does not reach this shell, and its folder names the SQL
+          # Server version, so the tool is located rather than assumed and its folder is added for
+          # this step and the later ones.
+          if (-not (Get-Command sqllocaldb -ErrorAction SilentlyContinue)) {
+            choco install sqllocaldb --no-progress -y
+            $tool = Get-ChildItem "$env:ProgramFiles\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe" | Select-Object -First 1
+            if (-not $tool) { throw 'SqlLocalDB.exe was not found after its install.' }
+            $env:PATH += ";$($tool.DirectoryName)"
+            Add-Content -Path $env:GITHUB_PATH -Value $tool.DirectoryName
+          }
+          if (-not (sqllocaldb info | Where-Object { $_.Trim() -eq 'MSSQLLocalDB' })) {
+            sqllocaldb create MSSQLLocalDB
+          }
+          sqllocaldb start MSSQLLocalDB
+      - run: dotnet build test/core/Tellma.Core.IntegrationTests -c Release
+      - run: dotnet build distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release
+      # The instance's first logins can fail while it warms up, and a suite's first catalog load
+      # would then classify that error instead of the one under test. A query against master,
+      # retried until it answers, leaves the instance warm. The instance's pipe name serves either
+      # sqlcmd (the ODBC one or the Go one).
+      - name: Warm LocalDB
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
+            choco install sqlcmd --no-progress -y
+          }
+          sqllocaldb start MSSQLLocalDB
+          $pipe = (sqllocaldb info MSSQLLocalDB | Select-String 'np:\S+').Matches[0].Value
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            sqlcmd -S $pipe -E -d master -l 30 -b -Q 'SELECT 1'
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds 5
+          }
+          throw 'LocalDB did not answer a query against master.'
+      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
+      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
+
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
   #      assert table-type operations scaffold, script and bundle.
@@ -245,6 +300,8 @@ jobs:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
+    # `integration-windows` runs with the other jobs but does not gate yet: it joins this list
+    # once it has run green on platform-core.
     needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e]
     timeout-minutes: 5
     runs-on: ubuntu-latest

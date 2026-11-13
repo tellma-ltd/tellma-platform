@@ -8,6 +8,7 @@ using OpenIddict.Abstractions;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -239,7 +240,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         private static async Task<string> SignInAndGetAccessTokenAsync(
             StandaloneFactory factory, DistributionClientCredentials distribution, string email)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>

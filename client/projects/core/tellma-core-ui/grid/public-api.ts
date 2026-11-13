@@ -3,10 +3,10 @@
  * thin Angular component layer (rendering, virtualization, focus, DOM
  * events, clipboard transport, state memory) composed over the headless
  * grid engine, plus the column-definition directive, the cell/header/state
- * template directives, the search-field driver directive, and the grid
- * state store. The ɵ-prefixed exports
- * are the private-by-convention internals the tree-grid entry point builds
- * on; they carry no compatibility promise.
+ * template directives, the header action button, the search-field driver
+ * directive, and the grid state store. The ɵ-prefixed exports are the
+ * private-by-convention internals the tree-grid entry point builds on; they
+ * carry no compatibility promise.
  *
  * @packageDocumentation
  */
@@ -20,6 +20,7 @@ export * from './tm-grid-base';
 export * from './tm-grid-column';
 export * from './tm-grid-context';
 export * from './tm-grid-driver';
+export * from './tm-grid-header-action';
 export * from './tm-grid-keys';
 export * from './tm-grid-templates';
 export * from './tm-grid-state-store';

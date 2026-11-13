@@ -106,9 +106,20 @@ namespace Tellma.Core.Migrator.Commands
         /// <param name="line">The command line, with a name and a category.</param>
         /// <param name="cancellationToken">Cancels the work.</param>
         /// <returns>The tenant's id, and whether this run registered it rather than finding it.</returns>
+        /// <exception cref="TenantStateException">The requested id lies outside 1-999, where only the sequence allocates.</exception>
         /// <exception cref="MigratorFailureException">The requested id is held by a row registered otherwise.</exception>
         private async Task<(int TenantId, bool Registered)> RegisterAsync(ITenantCatalog catalog, ProvisionCommandLine line, CancellationToken cancellationToken)
         {
+            // --- A requested id lies in 1-999 (spec 0011 §6.1), whatever the catalog holds above ---
+            // Checked first, so an id of the sequence's band is refused for what it is, not as a
+            // registration that happens to exist.
+            if (line.Tenant is int banded && banded is < 1 or > TenantCatalog.MaxRequestedId)
+            {
+                throw new TenantStateException(
+                    TenantProblemCodes.RegistrationRefused,
+                    string.Create(CultureInfo.InvariantCulture, $"The registration of tenant {banded} was refused: a requested id lies in 1-{TenantCatalog.MaxRequestedId}, below the sequence."));
+            }
+
             CatalogConnection catalogConnection = context.Services.GetRequiredService<CatalogConnection>();
 
             // A database named alone lives on the catalog's server, under the default profile; the

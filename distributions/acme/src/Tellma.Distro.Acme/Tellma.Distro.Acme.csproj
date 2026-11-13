@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Acme reference distribution's composition library: AcmeComposition (the slug and the composition method both hosts run), and the distribution's entities and services as they arrive. Referenced by the Web and Migrator projects; never references an ASP.NET Core package, a Design package or the client.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The Azure deployment's common composition: email now, blobs and imaging with spec 0017. -->
+    <ProjectReference Include="..\..\..\..\src\defaults\Tellma.Defaults.Azure\Tellma.Defaults.Azure.csproj" />
+  </ItemGroup>
+
+</Project>
