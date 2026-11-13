@@ -353,6 +353,7 @@ export class TmGridHarness extends ComponentHarness {
     getEditorText(): Promise<string>;
     getEmptyText(): Promise<string | null>;
     getErrorCount(): Promise<number>;
+    getFocusedHeader(): Promise<string | null>;
     getHeaderTexts(): Promise<string[]>;
     getPendingCount(): Promise<number>;
     getRenderedRowCount(): Promise<number>;
@@ -363,9 +364,12 @@ export class TmGridHarness extends ComponentHarness {
     static hostSelector: string;
     isEditorOpen(): Promise<boolean>;
     isLoading(): Promise<boolean>;
+    isRowEndActive(): Promise<boolean>;
     modClickCell(rowIndex: number, colIndex: number): Promise<void>;
     openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness>;
     openEditor(rowIndex: number, colIndex: number, via?: TmGridEditorOpenVia, seed?: string): Promise<void>;
+    openHeaderAction(key: string): Promise<void>;
+    openRowEndAction(): Promise<void>;
     pressKeys(...keys: (string | TestKey)[]): Promise<void>;
     selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
     shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;

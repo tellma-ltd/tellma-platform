@@ -115,6 +115,10 @@ namespace Tellma.Testing.Entities
         [JsonColumn]
         public string? Settings { get; set; }
 
+        /// <summary>The part's drawing: a child table's blob reference.</summary>
+        [BlobReference("fixture-drawing", BlobPreset.Attachment)]
+        public int? DrawingId { get; set; }
+
         /// <summary>The part's notes, saved with it.</summary>
         [NotMapped]
         public List<WidgetPartNote>? PartNotes { get; set; }

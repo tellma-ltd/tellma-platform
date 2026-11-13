@@ -11,15 +11,18 @@ using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
+using Tellma.Core.Composition.Checks;
 
 namespace Tellma.Core.AspNetCore.Routing
 {
     /// <summary>
     ///     The endpoint audit: a walk over every endpoint the host maps that fails startup, naming the
     ///     route and method, for an endpoint a tenant could be reached through without the platform's
-    ///     controls, or one that takes a route word the platform or the SPA owns. <c>MapTellma</c> runs
-    ///     it over the platform's endpoints, and the realised gate again over every endpoint.
+    ///     controls, that requires a securable no feature registers, or that takes a route word the
+    ///     platform or the SPA owns. <c>MapTellma</c> runs it over the platform's endpoints, and the
+    ///     realised gate again over every endpoint, against the securable registry.
     /// </summary>
     /// <param name="mapped">The application's endpoint sources.</param>
     /// <param name="policies">The authorization policy provider.</param>
@@ -47,21 +50,42 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <inheritdoc />
         public async Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
         {
-            return !mapped.IsMapped
-                ? [new CompositionProblem(
+            if (!mapped.IsMapped)
+            {
+                return [new CompositionProblem(
                     CheckName,
                     "MapTellma was not called, so the platform's endpoints and route groups are not mapped.",
-                    "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")]
-                : await AuditAsync(mapped.Endpoints(), policies, stacks.Routes).ConfigureAwait(false);
+                    "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")];
+            }
+
+            // --- Every rule; the securables only against a registry that composed ---
+            IReadOnlyList<Endpoint> endpoints = mapped.Endpoints();
+            (ISecurableRegistry? securables, bool failed) = SecurableRegistry.ForChecks(services);
+            IReadOnlyList<CompositionProblem> problems = await AuditAsync(endpoints, policies, stacks.Routes, securables).ConfigureAwait(false);
+            if (!failed || !endpoints.Any(static endpoint => endpoint.Metadata.GetMetadata<SecurableEndpointMetadata>() is not null))
+            {
+                return problems;
+            }
+
+            // --- One pointer for the securables left unaudited: the securables check says why ---
+            return
+            [
+                .. problems,
+                new CompositionProblem(
+                    CheckName,
+                    "The securables the endpoints require could not be audited, because the securable registry did not compose.",
+                    $"Fix the problems {CoreCheckNames.Securables} reports; the endpoints' securables are audited on the next start."),
+            ];
         }
 
         /// <summary>Audits endpoints.</summary>
         /// <param name="endpoints">The endpoints.</param>
         /// <param name="provider">The authorization policy provider.</param>
         /// <param name="stacks">The stacks' routes; none when no stack registry is composed.</param>
+        /// <param name="securables">The securable registry each required securable must be registered in; null to leave the pairs unjudged.</param>
         /// <returns>One problem per violation, each naming the route and method.</returns>
         public static async Task<IReadOnlyList<CompositionProblem>> AuditAsync(
-            IEnumerable<Endpoint> endpoints, IAuthorizationPolicyProvider provider, IEnumerable<StackRoute>? stacks = null)
+            IEnumerable<Endpoint> endpoints, IAuthorizationPolicyProvider provider, IEnumerable<StackRoute>? stacks = null, ISecurableRegistry? securables = null)
         {
             ArgumentNullException.ThrowIfNull(endpoints);
             ArgumentNullException.ThrowIfNull(provider);
@@ -168,6 +192,12 @@ namespace Tellma.Core.AspNetCore.Routing
                 {
                     AuditRouteWords(endpoint.RoutePattern, where, group, problems);
                 }
+
+                // --- Every securable an endpoint requires is registered, whatever the route ---
+                if (securables is not null)
+                {
+                    AuditSecurables(metadata, where, securables, problems);
+                }
             }
 
             return problems;
@@ -251,6 +281,37 @@ namespace Tellma.Core.AspNetCore.Routing
             {
                 string found = grants == 0 ? "neither SecurableEndpointMetadata nor MemberEndpointMetadata" : $"{grants} of SecurableEndpointMetadata and MemberEndpointMetadata";
                 problems.Add(Problem(where, $"carries {found}; a tenant endpoint carries exactly one.", "Call exactly one of RequireSecurable(resource, action) and AllowMember() on the endpoint."));
+            }
+        }
+
+        /// <summary>
+        ///     Audits the securables an endpoint requires: each names a registered pair by its
+        ///     registered resource, since an alias resolves a renamed resource's stored permissions for
+        ///     one release only.
+        /// </summary>
+        /// <param name="metadata">The endpoint's metadata.</param>
+        /// <param name="where">Its description.</param>
+        /// <param name="securables">The securable registry.</param>
+        /// <param name="problems">The problems found so far.</param>
+        private static void AuditSecurables(EndpointMetadataCollection metadata, string where, ISecurableRegistry securables, List<CompositionProblem> problems)
+        {
+            foreach (SecurableEndpointMetadata required in metadata.GetOrderedMetadata<SecurableEndpointMetadata>())
+            {
+                SecurableDescriptor? found = securables.Find(required.Resource, required.Action);
+                if (found is null)
+                {
+                    problems.Add(Problem(
+                        where,
+                        $"requires the securable '{required.Resource}:{required.Action}', which no feature registers.",
+                        "Register the pair (contribution.Securables(builder => builder.Add(resource, action, filterRoot))), or require a registered securable, spelled as registered."));
+                }
+                else if (!string.Equals(found.Resource, required.Resource, StringComparison.OrdinalIgnoreCase))
+                {
+                    problems.Add(Problem(
+                        where,
+                        $"requires the securable '{required.Resource}:{required.Action}', a former name of '{found}'.",
+                        $"Require '{found}', the registered securable."));
+                }
             }
         }
 

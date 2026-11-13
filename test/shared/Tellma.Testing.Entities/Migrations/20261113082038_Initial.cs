@@ -654,6 +654,7 @@ namespace Tellma.Testing.Entities.Migrations
                     Ordinal = table.Column<int>(type: "int", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                     Settings = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    DrawingId = table.Column<int>(type: "int", nullable: true),
                     ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
                         .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
                     ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
@@ -663,6 +664,12 @@ namespace Tellma.Testing.Entities.Migrations
                 {
                     table.PrimaryKey("PK_WidgetParts", x => x.Id);
                     table.CheckConstraint("CK_WidgetParts_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_WidgetParts_DrawingId",
+                        column: x => x.DrawingId,
+                        principalSchema: "core",
+                        principalTable: "Blobs",
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_WidgetParts_WidgetId",
                         column: x => x.WidgetId,
@@ -917,6 +924,14 @@ namespace Tellma.Testing.Entities.Migrations
                 table: "WidgetParts",
                 column: "WidgetId")
                 .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_WidgetParts_DrawingId",
+                schema: "fixture",
+                table: "WidgetParts",
+                column: "DrawingId",
+                unique: true,
+                filter: "[DrawingId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "UX_WidgetParts_WidgetId_Ordinal",
@@ -1258,10 +1273,10 @@ namespace Tellma.Testing.Entities.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "WidgetPartsList",
-                physicalName: "WidgetPartsList_7aefe66b",
+                physicalName: "WidgetPartsList_60abe0b4",
                 schema: "fixture",
                 scope: "tellma.fixture",
-                definitionHash: "7aefe66b5a376b9dbe7014846a4fb4fae428d609dfab3960cb7df17ae3052cfd",
+                definitionHash: "60abe0b474d13f37277791e1843c43d775db0096e40cb1b149f057dea581f46a",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
@@ -1269,6 +1284,7 @@ namespace Tellma.Testing.Entities.Migrations
                     new TableTypeColumnDefinition { Name = "Ordinal", StoreType = "int" },
                     new TableTypeColumnDefinition { Name = "Notes", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
                     new TableTypeColumnDefinition { Name = "Settings", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "DrawingId", StoreType = "int", IsNullable = true },
                 },
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
@@ -1302,7 +1318,7 @@ namespace Tellma.Testing.Entities.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_7aefe66b", "WidgetsList_32217e51" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_60abe0b4", "WidgetsList_32217e51" });
         }
 
         /// <inheritdoc />

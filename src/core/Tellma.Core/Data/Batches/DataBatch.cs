@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Caching;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.TableTypes;
 using Tellma.Core.Queryex;
 
@@ -37,12 +38,20 @@ namespace Tellma.Core.Data.Batches
     ///         A persist batch that inserts root rows declares their ids (<see cref="DeclareInsertedRoots(TableName, IReadOnlyList{int})" />),
     ///         so a round trip that lost its connection can be probed for whether it committed.
     ///     </para>
+    ///     <para>
+    ///         Before its epilogue the batch carries the allocator's refills of the tables it writes. Once
+    ///         it ran, and before its commit callbacks, the platform's own completion steps run
+    ///         (<see cref="OnExecuted" />): settling id reservations, stamping saved entities.
+    ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
     internal sealed partial class DataBatch : IDataBatch
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
+
+        /// <summary>The scope the batch runs in, which a sibling batch shares.</summary>
+        private readonly IServiceProvider _services;
 
         /// <summary>The contributors, in prologue order.</summary>
         private readonly IReadOnlyList<IDataBatchContributor> _contributors;
@@ -74,6 +83,12 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The commit callbacks, in registration order.</summary>
         private readonly List<Action<BatchOutcome>> _committed = [];
 
+        /// <summary>The platform's completion steps, in registration order.</summary>
+        private readonly List<Func<CancellationToken, Task>> _executed = [];
+
+        /// <summary>The id reservations whose rows a save of the batch inserts.</summary>
+        private readonly HashSet<ReservationHold> _holds = [];
+
         /// <summary>The ordinals of the connect prologue's own statements, whose writes are bookkeeping that bumps nothing.</summary>
         private readonly HashSet<int> _connectStatements = [];
 
@@ -88,6 +103,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Whether a contributor failed during a stage, which leaves the batch unusable.</summary>
         private bool _broken;
+
+        /// <summary>Whether a statement needs the batch's statements in one transaction, as a save does.</summary>
+        private bool _needsTransaction;
 
         /// <summary>Creates a batch.</summary>
         /// <param name="executor">The executor that runs it.</param>
@@ -105,6 +123,7 @@ namespace Tellma.Core.Data.Batches
             }
 
             _executor = executor;
+            _services = services;
             Connection = connection;
             Purpose = purpose;
 
@@ -206,6 +225,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The commit callbacks, in registration order.</summary>
         internal IReadOnlyList<Action<BatchOutcome>> CommittedCallbacks => _committed;
 
+        /// <summary>The platform's completion steps, in registration order.</summary>
+        internal IReadOnlyList<Func<CancellationToken, Task>> ExecutedSteps => _executed;
+
         /// <summary>The value the batch's tag bumps write, generated once per batch.</summary>
         internal Guid Tag { get; } = Guid.NewGuid();
 
@@ -236,14 +258,6 @@ namespace Tellma.Core.Data.Batches
         }
 
         // ===================== The caller channel =====================
-
-        /// <inheritdoc />
-        public SaveHandle Save<TEntity>(IReadOnlyList<TEntity> rows, ConcurrencyMode concurrency = ConcurrencyMode.Check)
-            where TEntity : class
-        {
-            ArgumentNullException.ThrowIfNull(rows);
-            throw NotAvailable(nameof(Save));
-        }
 
         /// <inheritdoc />
         public BatchResult<UpdateReceipt> Update<TEntity>(UpdateSpec<TEntity> spec)
@@ -448,9 +462,21 @@ namespace Tellma.Core.Data.Batches
                 throw new InvalidOperationException("A statement of the batch is still being composed.");
             }
 
+            // A save whose reservation was disposed after the save was composed would insert ids the
+            // buffer already took back, and may have handed to another reservation.
+            foreach (ReservationHold hold in _holds)
+            {
+                if (hold.IsReturned)
+                {
+                    throw ReturnedReservation();
+                }
+            }
+
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
-            // The bumps are fixed first, from the writes the caller declared.
+            // The allocator's refills ride the body, after the caller's statements; they declare no
+            // writes, so the bumps, fixed next from the writes the caller declared, are unchanged.
             EnsurePrologue();
+            _executor.Allocator.AppendRefills(this);
             VersionTagBumpPlan plan = ResolveBumps();
 
             // An autocommit batch commits each write on its own, so a failure after one would leave it
@@ -487,6 +513,19 @@ namespace Tellma.Core.Data.Batches
             }
 
             _stage = Stage.Sealed;
+
+            // A persist is attempted from here: whatever its outcome, the ids its saves insert may be
+            // in the database, so their reservations never return them. The mark is refused for a
+            // reservation disposed since the check above; the batch then never runs, and a hold
+            // marked before it only leaves a gap in its sequence.
+            foreach (ReservationHold hold in _holds)
+            {
+                if (!hold.TryMarkPersistAttempted())
+                {
+                    throw ReturnedReservation();
+                }
+            }
+
             return _executor.ExecuteAsync(this, cancellationToken);
         }
 
@@ -593,6 +632,30 @@ namespace Tellma.Core.Data.Batches
                 _ = _connectStatements.Remove(draft.Ordinal);
                 _open = null;
             }
+        }
+
+        /// <summary>
+        ///     Registers a completion step of the platform's own: it runs once the batch executed and its
+        ///     body ran, before the commit callbacks, and may run round trips of its own. A step never
+        ///     throws: the batch may have committed.
+        /// </summary>
+        /// <param name="step">The step, given the caller's cancellation token.</param>
+        internal void OnExecuted(Func<CancellationToken, Task> step)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+            EnsureComposing();
+            _executed.Add(step);
+        }
+
+        /// <summary>
+        ///     Creates a batch in the same scope and on the same connection, for a completion step's own
+        ///     round trip.
+        /// </summary>
+        /// <param name="purpose">The sibling's purpose.</param>
+        /// <returns>The sibling.</returns>
+        internal DataBatch CreateSibling(BatchPurpose purpose)
+        {
+            return new DataBatch(_executor, Connection, _services, purpose);
         }
 
         /// <summary>
@@ -751,6 +814,13 @@ namespace Tellma.Core.Data.Batches
         {
             bool inTextTransaction = TransactionMode == TransactionMode.Auto && _written.Count > 0;
 
+            // A save's guard holds its locks to the commit and its statements stand or fall together.
+            if (_needsTransaction && TransactionMode == TransactionMode.None)
+            {
+                throw new InvalidOperationException(
+                    $"The batch carries a save, whose statements run in one transaction; a batch in {nameof(TransactionMode.None)} mode runs them in autocommit. Leave the batch in {nameof(TransactionMode.Auto)} mode.");
+            }
+
             // A transaction head (an application lock) is held to the COMMIT of the transaction the text
             // opens; an explicit transaction would hold it past the text, autocommit not at all.
             if (!inTextTransaction && _statements.Any(static statement => statement.Section == BatchSection.TransactionHead))
@@ -830,6 +900,14 @@ namespace Tellma.Core.Data.Batches
                 throw new InvalidOperationException(
                     "A contributor failed while the batch ran its prologue or epilogue stage, so the batch is incomplete and can neither take more statements nor execute. Create a new batch.");
             }
+        }
+
+        /// <summary>The refusal of a batch carrying a save whose reservation already gave its ids back.</summary>
+        /// <returns>The exception.</returns>
+        private static InvalidOperationException ReturnedReservation()
+        {
+            return new InvalidOperationException(
+                "A save of the batch holds ids whose reservation was disposed before the batch executed, so the ids went back to the buffer. Keep the reservation until the batch that saves its rows executes.");
         }
 
         /// <summary>Refuses an append once the batch is sealed or broken.</summary>

@@ -28,7 +28,9 @@ import {
  * list without row numbers — in both directions, with axe in both themes.
  *
  * Story shape: 5 data columns (0 code, 1 name — a real link, 2 qty,
- * 3 region, 4 manager), the first four sortable; 230 rows in pages of 50,
+ * 3 region, 4 manager), the first four sortable, region and manager with a
+ * filter action in their headers, and a row-end column whose header holds
+ * the column editor; 230 rows in pages of 50,
  * unsorted row i having id i; `selectable`, `rowActivation="row"`,
  * `[rowHeaders]="false"`. Readouts: `activated` ("<id> via <pointer|
  * keyboard>[ in a new tab]"), `activation-count`, `active-row`, `order`
@@ -477,8 +479,8 @@ for (const dir of ['ltr', 'rtl'] as const) {
       }) => {
         await expect(page.locator('[data-tm-corner]')).toHaveCount(0);
         await expect(page.locator('[data-tm-rowhdr]')).toHaveCount(0);
-        // 5 data columns + the checkbox column.
-        await expect(gridScroller(page)).toHaveAttribute('aria-colcount', '6');
+        // 5 data columns + the checkbox column + the row-end column.
+        await expect(gridScroller(page)).toHaveAttribute('aria-colcount', '7');
         await expect(page.locator('[data-tm-checkhdr]')).toHaveAttribute('aria-colindex', '1');
         await expect(colHeader(page, 0)).toHaveAttribute('aria-colindex', '2');
         const check = (await page.locator('[data-tm-checkhdr]').boundingBox())!;

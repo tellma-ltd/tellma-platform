@@ -18,7 +18,12 @@ import type {
 } from '@tellma/core-ui/entity-picker';
 import type { TmGridColumnType } from '@tellma/core-ui/grid-engine';
 
-import { TmGridDisplayDef, TmGridEditorDef, TmGridHeaderDef } from './tm-grid-templates';
+import {
+  TmGridDisplayDef,
+  TmGridEditorDef,
+  TmGridHeaderDef,
+  TmGridHeaderEndDef,
+} from './tm-grid-templates';
 
 let nextColumnId = 0;
 
@@ -197,4 +202,6 @@ export class TmGridColumn<T = unknown, V = unknown> {
   readonly editorDef = contentChild(TmGridEditorDef<T, V>);
   /** Custom header template. */
   readonly headerDef = contentChild(TmGridHeaderDef);
+  /** Content at the header's end, after the label and the sort slot (a header action). */
+  readonly headerEndDef = contentChild(TmGridHeaderEndDef);
 }
