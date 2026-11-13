@@ -116,10 +116,8 @@ export class TmSessionPaths {
     const store = this.#injector.get(TmClientStore);
     let box: ReturnType<typeof setTimeout> | undefined;
     const swept = await Promise.race([
-      store.sweep('session-ended').then(
-        () => true,
-        () => false,
-      ),
+      // A sweep that could not reach the disk counts as cut short.
+      store.sweep('session-ended').catch(() => false),
       new Promise<false>((resolve) => (box = setTimeout(() => resolve(false), EXPIRY_SWEEP_BOX_MS))),
     ]);
     clearTimeout(box);

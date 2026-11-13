@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { inject, makeEnvironmentProviders, type EnvironmentProviders } from '@angular/core';
-import { TM_CLIENT_METADATA, TmApi, TmTelemetry } from '@tellma/core';
+import { TmApi, TmTelemetry, ɵTmClientMetadataStore } from '@tellma/core';
 import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
 
 import { tmMemoryStoreProvider } from './provide-tellma-state-testing';
@@ -41,7 +41,16 @@ export function provideTellmaTesting(): EnvironmentProviders {
     },
     TmFakeTelemetry,
     { provide: TmTelemetry, useExisting: TmFakeTelemetry },
-    { provide: TM_CLIENT_METADATA, useValue: tmTestMetadata() },
+    // Loaded as the boot sequence loads it, so TM_CLIENT_METADATA and every
+    // service that waits for the chunk see it from the start.
+    {
+      provide: ɵTmClientMetadataStore,
+      useFactory: (): ɵTmClientMetadataStore => {
+        const store = new ɵTmClientMetadataStore();
+        store.set(tmTestMetadata());
+        return store;
+      },
+    },
     tmMemoryStoreProvider(),
   ]);
 }

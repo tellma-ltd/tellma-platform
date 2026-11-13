@@ -280,7 +280,7 @@ export class TmClientStore {
     patch<T>(partition: TmPartition, name: string, update: (current: T | undefined) => T | undefined): Promise<void>;
     put<T>(partition: TmPartition, name: string, doc: TmStoredDoc<T>): Promise<void>;
     readAll(...partitions: TmPartition[]): Promise<void>;
-    sweep(rule: TmSweepRule): Promise<void>;
+    sweep(rule: TmSweepRule): Promise<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmClientStore, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmClientStore>;
 }

@@ -12,7 +12,7 @@ import { provideTellmaTesting, TmFakeApi, tmTestMetadata } from '@tellma/core-te
 import { provideTellma } from '../app/provide-tellma';
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
-import { TM_CLIENT_METADATA, type TmContracts } from '../metadata/tm-client-metadata';
+import { TmClientMetadataStore, type TmContracts } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
@@ -110,12 +110,12 @@ async function setUp(options: { url?: string; providers?: Provider[] } = {}): Pr
       { provide: TM_API_LOCALE, useValue: TM_TEST_API_LOCALE },
       { provide: TM_API_CACHE, useValue: cache },
       { provide: TM_API_UPDATES, useValue: updates },
-      { provide: TM_CLIENT_METADATA, useValue: tmTestMetadata() },
       { provide: TM_METADATA_LOADERS, useValue: loaders },
       ...(options.providers ?? []),
     ],
   });
-  // The boot starts the session before any call, so it holds the tab's user.
+  // The boot loads the Core chunk, and starts the session, before any call.
+  TestBed.inject(TmClientMetadataStore).set(tmTestMetadata());
   TestBed.inject(TmSession);
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });

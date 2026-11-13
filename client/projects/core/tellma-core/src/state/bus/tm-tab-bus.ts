@@ -6,7 +6,7 @@
 import { DestroyRef, DOCUMENT, effect, inject, Injectable, Injector, untracked } from '@angular/core';
 import { Subject, type Observable } from 'rxjs';
 
-import { TM_CLIENT_METADATA, TmClientMetadataStore } from '../../metadata/tm-client-metadata';
+import { TmClientMetadataStore } from '../../metadata/tm-client-metadata';
 import { TmSession } from '../../session/tm-session';
 import { TM_BUS_MESSAGE_TYPES, type TmBusEnvelope, type TmBusMessage } from './tm-bus-messages';
 
@@ -150,11 +150,11 @@ export class TmBroadcastTabBus extends TmTabBus {
 
   /** The distribution's slug, now when the Core chunk is loaded, else once it is. */
   #slugOf(): Promise<string> {
-    try {
-      return Promise.resolve(this.#injector.get(TM_CLIENT_METADATA).distribution.slug);
-    } catch {
-      return this.#injector.get(TmClientMetadataStore).loaded.then((core) => core.distribution.slug);
-    }
+    // Never through TM_CLIENT_METADATA: injecting it before the chunk loads
+    // throws, and a failed injection leaves the token failing for good.
+    const store = this.#injector.get(TmClientMetadataStore);
+    const core = store.peek();
+    return core !== null ? Promise.resolve(core.distribution.slug) : store.loaded.then((loaded) => loaded.distribution.slug);
   }
 
   /** Opens the channels for the first time, then follows the signed-in user. */

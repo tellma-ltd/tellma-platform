@@ -16,6 +16,11 @@ import type { TmStorageLike } from '../tm-storage-json';
 
 /** The browser facts the client store uses. */
 export interface TmStoreHost {
+  /**
+   * Whether the store runs in memory by design, as under the testing
+   * providers: it opens no database and reports no unavailability.
+   */
+  readonly memory: boolean;
   /** IndexedDB, or `null` when the browser refuses it; the store then runs in memory. */
   readonly indexedDB: IDBFactory | null;
   /** The device's local storage, which holds the boot record, or `null` when the browser refuses it. */
@@ -56,6 +61,7 @@ export const TM_STORE_HOST = new InjectionToken<TmStoreHost>('TM_STORE_HOST', {
     };
     const navigator = window?.navigator;
     return {
+      memory: false,
       indexedDB: read(() => window?.indexedDB),
       localStorage: read(() => window?.localStorage),
       caches: read(() => window?.caches),

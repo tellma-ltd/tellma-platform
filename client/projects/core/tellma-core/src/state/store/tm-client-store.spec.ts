@@ -78,6 +78,7 @@ function setUp(options: { cookies?: string; host?: Partial<TmStoreHost>; extraFo
   const cacheDeletes: string[] = [];
   const persists = { count: 0 };
   const host: TmStoreHost = {
+    memory: false,
     indexedDB,
     localStorage: local,
     caches: { delete: (name) => Promise.resolve(cacheDeletes.push(name) > 0) },
@@ -112,6 +113,76 @@ function setUp(options: { cookies?: string; host?: Partial<TmStoreHost>; extraFo
 function spyTransactions(): () => IDBTransactionMode[] {
   const spy = vi.spyOn(IDBDatabase.prototype, 'transaction');
   return () => spy.mock.calls.map((call) => call[1] ?? 'readonly');
+}
+
+/** A fake request of the quota transaction: its handlers, result and error. */
+interface FakeRequest {
+  /** Called when the request succeeds. */
+  onsuccess: (() => void) | null;
+  /** Called when the request fails. */
+  onerror: (() => void) | null;
+  /** The request's result. */
+  readonly result: unknown;
+  /** The request's error, once it failed. */
+  error: DOMException | null;
+}
+
+/**
+ * A readwrite transaction that fails as a full disk does: the read succeeds,
+ * then the write's request errs and the transaction aborts with
+ * `QuotaExceededError` as its error, after the work returned.
+ */
+function quotaTransaction(): IDBTransaction {
+  const quota = new DOMException('The quota is exceeded.', 'QuotaExceededError');
+  const transaction = {
+    error: null as DOMException | null,
+    oncomplete: null as (() => void) | null,
+    onabort: null as (() => void) | null,
+    abort: (): void => undefined,
+  };
+  const request = (): FakeRequest => ({ onsuccess: null, onerror: null, result: undefined, error: null });
+  const store = {
+    get: (): FakeRequest => {
+      const read = request();
+      setTimeout(() => read.onsuccess?.());
+      return read;
+    },
+    put: (): FakeRequest => {
+      const write = request();
+      setTimeout(() => {
+        write.error = quota;
+        write.onerror?.();
+        transaction.error = quota;
+        transaction.onabort?.();
+      });
+      return write;
+    },
+  };
+  return Object.assign(transaction, { objectStore: () => store }) as unknown as IDBTransaction;
+}
+
+/** Makes every later readwrite transaction fail as a full disk does. */
+function fillTheDisk(): void {
+  const original = IDBDatabase.prototype.transaction;
+  vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
+    this: IDBDatabase,
+    ...args: Parameters<IDBDatabase['transaction']>
+  ) {
+    return args[1] === 'readwrite' ? quotaTransaction() : original.apply(this, args);
+  });
+}
+
+/** Makes every later transaction abort once its work is queued, as a lost connection does. */
+function loseTheConnection(): void {
+  const original = IDBDatabase.prototype.transaction;
+  vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
+    this: IDBDatabase,
+    ...args: Parameters<IDBDatabase['transaction']>
+  ) {
+    const transaction = original.apply(this, args);
+    queueMicrotask(() => transaction.abort());
+    return transaction;
+  });
 }
 
 /** The events of one name the telemetry recorded, as their properties. */
@@ -175,7 +246,7 @@ describe('TmClientStore', () => {
         const { store, bus, telemetry } = setUp({ cookies: tmProfileCookies(vector.sub) });
         const timing = vi.spyOn(telemetry, 'timing');
         await tmWriteRawRecords(vectorRecords());
-        await store.sweep(vector.rule as TmSweepRule);
+        expect(await store.sweep(vector.rule as TmSweepRule)).toBe(true);
         expect(await tmReadRawKeys()).toEqual(vector.remaining);
         // Every tab hears the deleted prefix, with no names.
         expect(bus.posted).toEqual([{ type: 'store.changed', partition: vector.prefix, names: null }]);
@@ -475,16 +546,58 @@ describe('TmClientStore', () => {
   describe('fallbacks', () => {
     it('drops a write the quota refuses, keeping it in the mirror', async () => {
       const { store, bus, telemetry } = setUp();
-      vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
-        throw new DOMException('The quota is exceeded.', 'QuotaExceededError');
-      });
+      await store.readAll(USER);
+      fillTheDisk();
       await store.put(USER, 'tenants', docOf(['acme']));
-      await store.patch(T17, 'me', () => ({}));
+      await store.patch(USER, 'distribution', () => ({ session: { idleDays: 9 } }));
       expect(store.doc(USER, 'tenants')()?.data).toEqual(['acme']);
+      expect(store.doc(USER, 'distribution')()?.data).toEqual({ session: { idleDays: 9 } });
       expect(eventsNamed(telemetry, 'tm.store.quota')).toEqual([{ reason: 'put' }, { reason: 'patch' }]);
       expect(bus.posted).toEqual([]);
       vi.restoreAllMocks();
       expect(await tmReadRawKeys()).toEqual([]);
+    });
+
+    it('starts cold in memory, and never rejects, when a transaction fails after the open', async () => {
+      const { store, telemetry } = setUp();
+      await tmWriteRawRecords(vectorRecords());
+      await store.readAll(DEVICE);
+      const errors = vi.spyOn(telemetry, 'error');
+      loseTheConnection();
+      await expect(store.ɵstart(17)).resolves.toBeUndefined();
+      vi.restoreAllMocks();
+      expect(store.mode).toBe('memory');
+      expect(errors).toHaveBeenCalledOnce();
+      expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
+      // Nothing was swept, so the record names no user and the next launch sweeps again.
+      expect(store.boot.read().sub).toBeNull();
+      expect(await tmReadRawKeys()).toEqual(vectors.documents);
+      // The tab goes on in memory.
+      await store.put(USER, 'tenants', docOf(['acme']));
+      expect(store.doc(USER, 'tenants')()?.data).toEqual(['acme']);
+    });
+
+    it('says a sweep deleted nothing while the database it could not reach holds data, and the boot step records no user', async () => {
+      (await tmSettle(indexedDB.open(TM_STORE_DATABASE, 2))).close();
+      const { store } = setUp();
+      await expect(store.sweep('session-ended')).resolves.toBe(false);
+      await store.ɵstart(null);
+      expect(store.boot.read().sub).toBeNull();
+    });
+
+    it('records the user in memory when the browser has no IndexedDB, since nothing is on disk', async () => {
+      const { store } = setUp({ host: { indexedDB: null } });
+      await expect(store.sweep('session-ended')).resolves.toBe(true);
+      await store.ɵstart(null);
+      expect(store.boot.read().sub).toBe(FARAH);
+    });
+
+    it('reports nothing when it runs in memory by design', async () => {
+      const { store, telemetry } = setUp({ host: { memory: true } });
+      await store.readAll(DEVICE);
+      expect(store.mode).toBe('memory');
+      await expect(store.sweep('session-ended')).resolves.toBe(true);
+      expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([]);
     });
 
     it('runs in memory without IndexedDB: the mirror serves this tab, and no other tab hears of it', async () => {

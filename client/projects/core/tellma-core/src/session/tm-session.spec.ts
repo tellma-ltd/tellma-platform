@@ -222,7 +222,7 @@ describe('TmSessionPaths', () => {
     paths.expired('401');
     paths.expired('cookie');
     expect(session().state()).toBe('expired');
-    expect(telemetry.eventsUnder('tm.session.')).toEqual([{ name: 'tm.session.expired', props: { source: '401' } }]);
+    expect(telemetry.events).toEqual([{ name: 'tm.session.expired', props: { source: '401' } }]);
     expect(telemetry.flushes).toEqual([1]);
   });
 
@@ -245,7 +245,7 @@ describe('TmSessionPaths', () => {
     // The sign-in reports nothing again when the tab comes back: the mark
     // says no expiry, and names the user whose session ended.
     expect(host.sessionStorage.json(TM_LOGIN_MARK_KEY)).toMatchObject({ expired: false, sub: FARAH, returnUrl: '/17/centers?x=1' });
-    expect(telemetry.eventsUnder('tm.session.').map((event) => event.name)).toEqual(['tm.session.expired']);
+    expect(telemetry.events.map((event) => event.name)).toEqual(['tm.session.expired']);
     // The expiry keeps the boot record's user and last tenant (spec 0024 §8.6).
     expect(store.boot.read()).toMatchObject({ sub: FARAH, lastTenantId: 17 });
   });
@@ -256,7 +256,7 @@ describe('TmSessionPaths', () => {
       const { host } = setUp();
       const store = TestBed.inject(TmClientStore);
       store.boot.patch({ sub: FARAH, lastTenantId: 17 });
-      vi.spyOn(store, 'sweep').mockReturnValue(new Promise<void>(() => undefined));
+      vi.spyOn(store, 'sweep').mockReturnValue(new Promise<boolean>(() => undefined));
       TestBed.inject(TmSessionPaths).expired('cookie');
       await vi.advanceTimersByTimeAsync(999);
       expect(host.assigned).toEqual([]);
@@ -266,6 +266,26 @@ describe('TmSessionPaths', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('lets the next launch sweep when the expiry sweep could not reach the stored data', async () => {
+    const { host } = setUp();
+    const store = TestBed.inject(TmClientStore);
+    store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+    vi.spyOn(store, 'sweep').mockResolvedValue(false);
+    TestBed.inject(TmSessionPaths).expired('cookie');
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
+  });
+
+  it('lets the next launch sweep when the expiry sweep fails', async () => {
+    const { host } = setUp();
+    const store = TestBed.inject(TmClientStore);
+    store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+    vi.spyOn(store, 'sweep').mockRejectedValue(new DOMException('The write was aborted.', 'AbortError'));
+    TestBed.inject(TmSessionPaths).expired('cookie');
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
   });
 
   it('shows the sign-in-failed page instead of signing in again within a minute of coming back from a sign-in', async () => {

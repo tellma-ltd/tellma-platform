@@ -96,18 +96,6 @@ export class TmRecordingTelemetry extends TmTelemetry {
   /** Ignores an error. */
   override error(): void {}
 
-  /**
-   * The events whose names start with a prefix, in order: a spec of one
-   * service leaves out what the services it reaches report, such as the
-   * in-memory store's unavailability.
-   *
-   * @param prefix - The prefix, such as `tm.session.`.
-   * @returns The events.
-   */
-  eventsUnder(prefix: string): TmRecordedEvent[] {
-    return this.events.filter((event) => event.name.startsWith(prefix));
-  }
-
   /** The number of events recorded at each flush, in order. */
   readonly flushes: number[] = [];
 

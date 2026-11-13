@@ -38,7 +38,7 @@ describe('tmSessionGuard', () => {
     host.cookieJar = '';
     expect(guard()).toBe(false);
     expect(TestBed.inject(TmSession).state()).toBe('expired');
-    expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).eventsUnder('tm.session.')).toEqual([
+    expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).events).toEqual([
       { name: 'tm.session.expired', props: { source: 'cookie' } },
     ]);
     await vi.waitFor(() => expect(host.assigned).toHaveLength(1));

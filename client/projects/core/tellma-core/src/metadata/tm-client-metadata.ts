@@ -165,6 +165,18 @@ export class TmClientMetadataStore {
   }
 
   /**
+   * The loaded Core chunk, or `null` before the boot sequence loads it. A
+   * service that may run before then reads the chunk here, never through
+   * `TM_CLIENT_METADATA`: a failed injection of that token leaves it failing
+   * for the rest of the app, even once the chunk is loaded.
+   *
+   * @returns The chunk, or `null`.
+   */
+  peek(): TmClientMetadata | null {
+    return this.#core;
+  }
+
+  /**
    * The loaded Core chunk.
    *
    * @returns The chunk.

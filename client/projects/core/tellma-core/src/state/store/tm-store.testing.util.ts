@@ -12,13 +12,15 @@ import { TM_STORE_DATABASE, TM_STORE_DOCS, TM_STORE_KEY_PATH, TM_STORE_VERSION }
 // without going through the store under test.
 
 /**
- * A store host with no browser storage.
+ * A store host with no browser storage: the store runs in memory by design,
+ * reporting nothing.
  *
  * @param localStorage - The local storage the boot record lives in.
  * @returns The host.
  */
 export function tmMemoryStoreHost(localStorage: TmFakeStorage = new TmFakeStorage()): TmStoreHost {
   return {
+    memory: true,
     indexedDB: null,
     localStorage,
     caches: null,

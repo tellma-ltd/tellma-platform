@@ -174,7 +174,9 @@ export type {
 } from './src/state/bus/tm-bus-messages';
 export type { TmClientEvent, TmHubState } from './src/state/leader/tm-hub-types';
 
-// The client store's browser, which @tellma/core-testing replaces; not for app code.
+// The client metadata's holder, which @tellma/core-testing loads, and the
+// client store's browser, which it replaces; not for app code.
+export { TmClientMetadataStore as ɵTmClientMetadataStore } from './src/metadata/tm-client-metadata';
 export { TM_STORE_HOST as ɵTM_STORE_HOST, type TmStoreHost as ɵTmStoreHost } from './src/state/store/tm-store-host';
 
 // The launch: the single-membership rule and the automatic-entry mark.

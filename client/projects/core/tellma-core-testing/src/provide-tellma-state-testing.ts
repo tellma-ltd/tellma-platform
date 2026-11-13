@@ -36,6 +36,8 @@ class TmMapStorage {
 /** The client store's browser in a test: no IndexedDB, CacheStorage or page events, and a fresh local storage. */
 function memoryStoreHost(): ɵTmStoreHost {
   return {
+    // In memory by design: the store opens nothing and reports nothing.
+    memory: true,
     indexedDB: null,
     localStorage: new TmMapStorage(),
     caches: null,

@@ -49,7 +49,7 @@ export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'u
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
-export class TmFakeSession implements Pick<TmSession, 'check' | 'profile' | 'signIn' | 'state'> {
+export class TmFakeSession implements TmSessionSurface {
     check(): TmSessionCheck;
     readonly profile: Signal<TmProfile | null>;
     setCheck(check: TmSessionCheck | null): void;

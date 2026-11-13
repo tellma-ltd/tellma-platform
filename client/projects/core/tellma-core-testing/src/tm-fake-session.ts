@@ -25,6 +25,13 @@ export function tmTestProfile(patch: Partial<Omit<TmProfile, 'v'>> = {}): TmProf
 }
 
 /**
+ * Every public member of `TmSession`. The fake implements all of them, so a
+ * member added to the session breaks the build here instead of failing at
+ * run time in a test that calls it.
+ */
+type TmSessionSurface = { [K in keyof TmSession]: TmSession[K] };
+
+/**
  * A {@link TmSession} the test drives: signed in as {@link tmTestProfile}'s
  * user and active from the start, it changes only when the test says so, and
  * records sign-ins instead of leaving the page.
@@ -37,7 +44,7 @@ export function tmTestProfile(patch: Partial<Omit<TmProfile, 'v'>> = {}): TmProf
  * ```
  */
 @Injectable()
-export class TmFakeSession implements Pick<TmSession, 'profile' | 'state' | 'check' | 'signIn'> {
+export class TmFakeSession implements TmSessionSurface {
   readonly #profile = signal<TmProfile | null>(tmTestProfile());
   readonly #state = signal<TmSessionState>('active');
   readonly #signIns = signal<readonly TmSignInOptions[]>([]);

@@ -3,10 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
+import { TmApi } from '../../api/tm-api';
 import { TM_CLIENT_METADATA, TmClientMetadataStore, type TmClientMetadata } from '../../metadata/tm-client-metadata';
+import { tmParseProfileCookie, type TmProfile } from '../../session/tm-profile';
 import { tmProfileCookies } from '../../session/tm-profile.testing.util';
+import { TmSession } from '../../session/tm-session';
 import { TmFakeSessionHost, tmSessionTestingProviders } from '../../session/tm-session.testing.util';
 import type { TmBusMessage } from './tm-bus-messages';
 import { TmBroadcastTabBus, TmTabBus } from './tm-tab-bus';
@@ -15,6 +19,7 @@ import { TmBroadcastTabBus, TmTabBus } from './tm-tab-bus';
 // played by channels the spec opens on the same names.
 
 const FARAH = '0b4f';
+const SARA = '7c1e';
 const CORE = { distribution: { slug: 'acme' } } as unknown as TmClientMetadata;
 const STORE_CHANGED: TmBusMessage = { type: 'store.changed', partition: 'u:0b4f/', names: ['tenants@1'] };
 const SESSION_STARTED: TmBusMessage = { type: 'session.started', sub: FARAH };
@@ -26,18 +31,30 @@ function settle(): Promise<void> {
 
 /** Another tab's end of one channel: what it heard, and a way to post. */
 class OtherTab {
+  /** Every value the channel delivered to this tab, oldest first. */
   readonly heard: unknown[] = [];
   readonly #channel: BroadcastChannel;
 
+  /**
+   * Opens the channel.
+   *
+   * @param name - The channel's name.
+   */
   constructor(name: string) {
     this.#channel = new BroadcastChannel(name);
     this.#channel.onmessage = (event: MessageEvent<unknown>) => this.heard.push(event.data);
   }
 
+  /**
+   * Posts a value on the channel, as another tab would.
+   *
+   * @param envelope - The value.
+   */
   post(envelope: unknown): void {
     this.#channel.postMessage(envelope);
   }
 
+  /** Closes the channel. */
   close(): void {
     this.#channel.close();
   }
@@ -59,15 +76,22 @@ describe('TmTabBus', () => {
   });
 
   /** Configures the bus, signed in as Farah unless the cookies say otherwise, with the Core chunk loaded or not. */
-  function setUp(options: { cookies?: string; loaded?: boolean } = {}): { bus: TmTabBus; received: TmBusMessage[] } {
+  function setUp(options: { cookies?: string; loaded?: boolean; session?: Partial<TmSession> } = {}): {
+    bus: TmTabBus;
+    received: TmBusMessage[];
+  } {
     const host = new TmFakeSessionHost();
     host.cookieJar = options.cookies ?? tmProfileCookies(FARAH);
     TestBed.configureTestingModule({
       providers: [
         ...tmSessionTestingProviders(host, null, 0),
-        ...(options.loaded === false ? [] : [{ provide: TM_CLIENT_METADATA, useValue: CORE }]),
+        ...(options.session ? [{ provide: TmSession, useValue: options.session }] : []),
       ],
     });
+    if (options.loaded !== false) {
+      // The boot sequence loads the Core chunk.
+      TestBed.inject(TmClientMetadataStore).set(CORE);
+    }
     const bus = TestBed.inject(TmTabBus);
     const received: TmBusMessage[] = [];
     bus.messages.subscribe((message) => received.push(message));
@@ -138,6 +162,43 @@ describe('TmTabBus', () => {
     await settle();
     expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
     expect(user.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+  });
+
+  it('leaves TM_CLIENT_METADATA working when it starts before the Core chunk loads', async () => {
+    const { bus } = setUp({ loaded: false });
+    TestBed.inject(TmClientMetadataStore).set(CORE);
+    await bus.ɵopened;
+    expect(TestBed.inject(TM_CLIENT_METADATA)).toBe(CORE);
+    expect(TestBed.inject(TmApi)).toBeDefined();
+  });
+
+  it("replaces the user channel when the user changes, so no tab hears the previous user's messages", async () => {
+    const profile = signal<TmProfile | null>(tmParseProfileCookie(tmProfileCookies(FARAH)));
+    const { bus, received } = setUp({ session: { profile } });
+    await bus.ɵopened;
+    const sara = new OtherTab(`tm:acme:${SARA}`);
+    try {
+      profile.set(tmParseProfileCookie(tmProfileCookies(SARA)));
+      TestBed.tick();
+      user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
+      sara.post({ v: 1, from: 'tab-c', message: STORE_CHANGED });
+      bus.post(STORE_CHANGED);
+      await settle();
+      expect(received).toEqual([STORE_CHANGED]);
+      expect(user.heard).toEqual([]);
+      expect(sara.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+
+      // Signed out: no user channel at all.
+      profile.set(null);
+      TestBed.tick();
+      sara.post({ v: 1, from: 'tab-c', message: STORE_CHANGED });
+      bus.post(STORE_CHANGED);
+      await settle();
+      expect(received).toHaveLength(1);
+      expect(sara.heard).toHaveLength(1);
+    } finally {
+      sara.close();
+    }
   });
 
   it('closes its channels while the page sits in the back-forward cache, and opens them when it comes back', async () => {

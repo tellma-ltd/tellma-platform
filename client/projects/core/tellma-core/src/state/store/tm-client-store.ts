@@ -110,18 +110,27 @@ export interface TmBootRecordAccess {
 
 /** The value of one record in the `docs` store. */
 interface TmDocRecord {
+  /** The partition's key. */
   readonly p: string;
+  /** The stored name, `<name>@<format>`. */
   readonly n: string;
+  /** The wire tag the document was fetched under, or `null`. */
   readonly tag: string | null;
+  /** When the writer stored it, in epoch milliseconds. */
   readonly savedAt: number;
+  /** The document's value. */
   readonly data: unknown;
 }
 
 /** One mirrored document: its stored copy, and the view `doc()` hands out. */
 interface TmMirrorEntry {
+  /** The partition's key. */
   readonly p: string;
+  /** The stored name. */
   readonly n: string;
+  /** The stored copy this tab knows, or `undefined` when there is none. */
   readonly stored: WritableSignal<TmStoredDoc<unknown> | undefined>;
+  /** The view `doc()` hands out, made at its first call. */
   view?: Signal<TmStoredDoc<unknown> | undefined>;
 }
 
@@ -188,6 +197,12 @@ export class TmClientStore {
   /** The documents this tab is writing, whose own commit settles their mirror. */
   readonly #pending = new Map<string, number>();
   #mode: 'indexeddb' | 'memory' = 'indexeddb';
+  /**
+   * Whether the browser's database may still hold documents this tab cannot
+   * reach: memory mode after a failed or timed-out open, or a fault after it.
+   * A sweep then deletes nothing on disk.
+   */
+  #diskUnreached = false;
   /** The open (or opening) connection; `null` before the first access and after a `versionchange` closed it. */
   #connection: Promise<IDBDatabase | null> | null = null;
   #persistAsked = false;
@@ -401,9 +416,12 @@ export class TmClientStore {
    * session's end also deletes the image cache.
    *
    * @param rule - What to delete.
-   * @returns A promise that resolves once the delete commits.
+   * @returns A promise that resolves once the delete commits: with `true`
+   *   when no document of the rule is left on disk, and `false` when the store
+   *   runs in memory while the browser's database, which it could not reach,
+   *   may still hold them.
    */
-  async sweep(rule: TmSweepRule): Promise<void> {
+  async sweep(rule: TmSweepRule): Promise<boolean> {
     const started = performance.now();
     const profile = untracked(() => this.#injector.get(TmSession).profile());
     let prefix: string;
@@ -418,7 +436,7 @@ export class TmClientStore {
       deletes = (p) => p.startsWith(prefix);
     } else if (profile === null) {
       // The other rules are the signed-in user's; with no user, nothing is theirs.
-      return;
+      return true;
     } else if ('sessionOtherThan' in rule) {
       // The two ranges on either side of the current session's partition.
       name = 'session-other-than';
@@ -453,6 +471,7 @@ export class TmClientStore {
       this.#bus.post({ type: 'store.changed', partition: prefix, names: null });
     }
     this.#telemetry.timing('tm.store.sweep', performance.now() - started, { rule: name });
+    return committed !== null || !this.#diskUnreached;
   }
 
   /**
@@ -463,41 +482,50 @@ export class TmClientStore {
    * launch's only store access. A boot record that names no user, or another
    * user, sweeps every user's data first. Then it records the user in the
    * boot record, and once the app has rendered, at idle, sweeps the user's
-   * other sessions. Internal.
+   * other sessions. A storage fault never stops the app: the tab runs in
+   * memory instead, cold. Internal.
    *
    * @param tenantId - The tenant of the path the app starts on, or `null`.
-   * @returns A promise that resolves once the documents are mirrored.
+   * @returns A promise that resolves once the documents are mirrored; it never rejects.
    */
   async ɵstart(tenantId: number | null): Promise<void> {
     const profile = untracked(() => this.#injector.get(TmSession).profile());
     await Promise.all([this.#database(), this.#bus.ɵopened]);
+    try {
+      // Spec 0025 §2.6, step 1: the boot script resets the record whenever
+      // its user differs from the profile's, so a record naming no user is a
+      // cold path. It backs up the boot script's time-boxed expiry delete,
+      // and deliberately takes every user's leftovers too.
+      const recorded = this.boot.read().sub;
+      const backstop = recorded === null || recorded !== profile?.sub;
+      const swept = backstop ? await this.sweep('session-ended') : true;
 
-    // Spec 0025 §2.6, step 1: the boot script resets the record whenever its
-    // user differs from the profile's, so a record naming no user is a cold
-    // path. It backs up the boot script's time-boxed expiry delete, and
-    // deliberately takes every user's leftovers too.
-    const recorded = this.boot.read().sub;
-    if (recorded === null || recorded !== profile?.sub) {
-      await this.sweep('session-ended');
-    }
-
-    // Step 2: one readAll.
-    const partitions: TmPartition[] = [{ kind: 'device' }];
-    if (profile !== null) {
-      partitions.push({ kind: 'user', sub: profile.sub });
-      if (tenantId !== null) {
-        partitions.push({ kind: 'tenant', sub: profile.sub, tenantId });
+      // Step 2: one readAll.
+      const partitions: TmPartition[] = [{ kind: 'device' }];
+      if (profile !== null) {
+        partitions.push({ kind: 'user', sub: profile.sub });
+        if (tenantId !== null) {
+          partitions.push({ kind: 'tenant', sub: profile.sub, tenantId });
+        }
       }
-    }
-    await this.readAll(...partitions);
-    if (profile === null) {
-      return;
-    }
+      await this.readAll(...partitions);
+      if (profile === null) {
+        return;
+      }
 
-    // The session's write of its user (spec 0024 §8.1), only after the sweep
-    // and the read: until then the record names no user whose data is kept.
-    if (recorded !== profile.sub) {
-      this.boot.patch({ sub: profile.sub });
+      // The session's write of its user (spec 0024 §8.1), only after the
+      // sweep and the read: until then the record names no user whose data
+      // is kept. A backstop that could not reach the disk writes nothing, so
+      // the next launch sweeps again.
+      if (backstop && swept) {
+        this.boot.patch({ sub: profile.sub });
+      }
+    } catch (error) {
+      // A fault after the open (a lost connection, a corrupt backing store):
+      // the store is only a cache, so the tab runs in memory and starts cold.
+      this.#telemetry.error(error, { source: 'tm-client-store' });
+      this.#toMemory('failed');
+      return;
     }
 
     // At idle after the first render, the user's other sessions go.
@@ -742,14 +770,21 @@ export class TmClientStore {
         if (!settled) {
           settled = true;
           clearTimeout(timer);
-          this.#mode = 'memory';
-          this.#telemetry.event('tm.store.unavailable', { reason });
+          this.#toMemory(reason);
           resolve(null);
         }
       };
       // A database that never opens (a browser bug, a blocked upgrade) must
       // not hold the app's start: the tab runs in memory instead.
       const timer = setTimeout(() => fallback('timeout'), OPEN_TIMEOUT_MS);
+      if (this.#host.memory) {
+        // A store kept in memory by design, as in tests: nothing to report.
+        settled = true;
+        clearTimeout(timer);
+        this.#mode = 'memory';
+        resolve(null);
+        return;
+      }
       if (factory === null) {
         fallback('missing');
         return;
@@ -792,6 +827,22 @@ export class TmClientStore {
       };
     });
     return opening;
+  }
+
+  /**
+   * Runs the tab in memory from now on, and reports why. Only a browser with
+   * no IndexedDB at all leaves nothing on disk the store cannot reach.
+   */
+  #toMemory(reason: string): void {
+    if (this.#mode === 'memory') {
+      return;
+    }
+    this.#mode = 'memory';
+    this.#diskUnreached = reason !== 'missing';
+    this.#telemetry.event('tm.store.unavailable', { reason });
+    const connection = this.#connection;
+    this.#connection = null;
+    void connection?.then((db) => db?.close());
   }
 
   /** Deletes the image cache; a browser without CacheStorage, or refusing it, has none. */

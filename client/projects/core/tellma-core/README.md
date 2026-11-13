@@ -62,8 +62,8 @@ the sign-in mark and leaves for `/bff/login` in the document's language; a step-
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
 reports an expiry that led there and drops a previous user's drafts. Until the drafts and the
 session-ended dialog arrive, the paths beyond the tab's own state are tab-local: an expiry sweeps
-every user's stored data (in a 1 s box; a sweep cut short clears the boot record's user, so the
-next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
+every user's stored data (in a 1 s box; a sweep cut short, failed or unable to reach the disk
+clears the boot record's user, so the next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
 same page, so the user's data leaves the disk and the screen and the expiry is reported once. An
 expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page instead, so
 a server that keeps refusing fresh sessions cannot loop the tab through sign-ins.
@@ -96,15 +96,18 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
 - **Sweeps.** `session-ended` deletes every user's partitions and the image cache;
   `{ sessionOtherThan }` the user's other sessions; `{ tenant }` one tenant. The device partition,
   which holds only `zone`, survives every sweep. A sweep posts its key prefix, and every tab
-  re-reads its mirror under it.
+  re-reads its mirror under it. A sweep resolves `true` once no document of its rule is left on
+  disk, and `false` when the store runs in memory while a database it could not reach may hold them.
 - **The boot step**, `ɵstart(tenantId)`, an initializer of the app's start: it waits for the tab
   bus, sweeps every user when the boot record names none or another user, reads the device, user
   and routed tenant partitions in one readonly transaction (a warm launch's only store access),
-  records the user in the boot record, and sweeps the user's other sessions at idle after the first
-  render.
+  records the user in the boot record (unless its sweep could not reach the disk, so the next launch
+  sweeps again), and sweeps the user's other sessions at idle after the first render. It never
+  rejects: a storage fault after the open puts the tab in memory, cold.
 - **Fallbacks.** A quota refusal drops the write and keeps it in the mirror. When IndexedDB fails to
   open within 3 s the store runs in memory (`mode` is `memory`), and when local storage refuses, the
-  boot record lives in memory. A `versionchange` closes the connection, which reopens on next use.
+  boot record lives in memory; each reports `tm.store.unavailable` once. A store host marked
+  `memory`, as in tests, runs in memory by design and reports nothing. A `versionchange` closes the connection, which reopens on next use.
 
 `TmTabBus` (`src/state/bus/`) carries every cross-tab message over two `BroadcastChannel`s: the
 device channel `tm:<slug>` carries the `session.*` messages, which every user of the browser hears,
