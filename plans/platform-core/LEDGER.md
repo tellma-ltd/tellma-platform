@@ -100,11 +100,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-044 | pc-3 | pc/PC-044 | impl (high; complex → R2 inherit xhigh) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
+| PC-044 | pc-3 | pc/PC-044 | r1 (impl 0855b68: 7 deviations — CacheLoad, single flight per (key, tag), FromCache miss declares no dependency, FromCache refused after own-table write, closed CacheKinds, load.duration on GetAsync only, eviction metering; no migration reported) | impl (Opus, launched 2026-11-13) | r1 (launched) | 2026-11-13 |
 | PC-058 | pc-f2 | pc/PC-058 | impl (high; R1) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
 | PC-030 | pc-1 | pc/PC-030 | fix1 + integrate (R1 0/2/6: zone-label width shifts the date/time parts; zone not exposed to screen readers; minute-floored compare rewrites repeated hours (→ wall-time); required on the filled part; parseErrors → internal; budgets above 0023 §1 caps (D-072); Identity IT not run; time field width) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 done | 2026-11-13 |
 | PC-043 | pc-4 | pc/PC-043 | fix2 + integrate (R2 0/0/2: RoleAccessGrant refuses a filtered '*' resource; tests for the memo cap, interner reset and drift-memory reset) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done; r2 a54564c7ccc874ef0 (fable) done | 2026-11-13 |
-| PC-054 | pc-2 | pc/PC-054 | r1 (impl 12871ed: 5 deviations; ./grid 41.84 KB linked, ceiling 40.77→41.94, 0.06 under the 42 hard cap → next ./grid growth needs the D-057(2) re-split; removed a stale 0-byte pc-2 index.lock) | aede283b100436c0c (Opus inherit) | r1 (launched) | 2026-11-13 |
+| PC-054 | pc-2 | pc/PC-054 | fix1 + integrate (R1 0/1/7: remembered-scroll restore overwrites scrollToRow; stale flush swallows a bind batch; re-flash; headroom wording; tree expansion → ./tree-grid (D-075, about −0.8 KB on ./grid); tests; TSDoc; loadChildren for outgoing rows) | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
 
 ## Fix items
 
@@ -276,7 +276,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | fix2 + integrate | 1ee46fa, 0af47f3 |  |  |
-| PC-044 | 0013-e | 1 | impl |  |  |  |
+| PC-044 | 0013-e | 1 | r1 | 0855b68 |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
@@ -286,7 +286,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
-| PC-054 | 0010-c5 | 1 | r1 | 12871ed |  |  |
+| PC-054 | 0010-c5 | 1 | fix1 + integrate | 12871ed |  |  |
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
