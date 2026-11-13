@@ -25,8 +25,10 @@ namespace Tellma.Core.Jobs
     ///     and wakes this instance's poller for the tenant.
     /// </summary>
     /// <remarks>
-    ///     Every refusal is a programming error, thrown before anything is appended, so a refused call
-    ///     leaves the batch as it found it.
+    ///     Every refusal here is a programming error, thrown before anything is appended, so a refused
+    ///     call leaves the batch as it found it. Whether a named row exists and has no active job is
+    ///     the statement's check, made on the stored row under the update's lock, never on the
+    ///     in-memory member (<see cref="JobEnqueueCodes.OwnerUnavailable" />).
     /// </remarks>
     internal sealed class JobQueue : IJobQueue
     {
@@ -94,6 +96,16 @@ namespace Tellma.Core.Jobs
             {
                 throw new ArgumentException(
                     $"A {data.Purpose} batch does not write; enqueue on a Persist batch, or a Maintenance batch outside any caller.",
+                    nameof(batch));
+            }
+
+            // The jobs and their rows' stamps commit together, so a batch whose statements autocommit
+            // is refused (spec 0020 §1.4); the statement itself also refuses to run outside a
+            // transaction, in case the mode changes after this call.
+            if (data.TransactionMode == TransactionMode.None)
+            {
+                throw new ArgumentException(
+                    $"The batch runs in {nameof(TransactionMode.None)} mode, where each statement commits on its own, so the jobs and their rows' stamps could not commit together. Enqueue on a batch in {nameof(TransactionMode.Auto)} or {nameof(TransactionMode.Explicit)} mode.",
                     nameof(batch));
             }
 
@@ -217,7 +229,7 @@ namespace Tellma.Core.Jobs
 
             owner = metadata;
 
-            // --- A saved row with no active job, named once ---
+            // --- A saved row, named once; whether its stored job has ended is the statement's check ---
             long id = Convert.ToInt64(metadata.Key.Getter(entity), CultureInfo.InvariantCulture);
             if (id <= 0)
             {
@@ -226,16 +238,8 @@ namespace Tellma.Core.Jobs
                     $"The {metadata.Name} row {id} has a temporary id. Enqueue a new row's job from the save pipeline's contribution step, once the save assigned its id."));
             }
 
-            if (entity.JobId is int jobId)
-            {
-                // The member is all the queue sees of the row's job: a row whose job ended is
-                // enqueued again with the member cleared, so a row is never enqueued twice by mistake.
-                throw new InvalidOperationException(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The {metadata.Name} row {id} already has the job {jobId}. A row has one job at a time; clear its JobId only once that job has ended."));
-            }
-
-            return ownerIds.Add(id)
+            bool first = ownerIds.Add(id);
+            return first
                 ? id
                 : throw new InvalidOperationException(string.Create(
                     CultureInfo.InvariantCulture,

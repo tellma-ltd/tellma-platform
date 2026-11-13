@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using Tellma.Core.Jobs;
 using Tellma.Testing.Entities;
 
@@ -19,14 +20,15 @@ namespace Tellma.Core.IntegrationTests.Jobs
     public sealed class JobsDatabase(SqlServerFixture sql) : IAsyncLifetime
     {
         /// <summary>The statements that return the database to its state after creation, the seeded rows kept.</summary>
-        private const string ResetText = """
+        /// <remarks>The fixture's built-in schedule and its state are seeded by the migrations, so they stay.</remarks>
+        private static readonly string ResetText = string.Create(CultureInfo.InvariantCulture, $"""
             DELETE FROM [fixture].[Shipments];
             DELETE FROM [fixture].[Exports];
-            DELETE FROM [core].[ScheduleStates];
+            DELETE FROM [core].[ScheduleStates] WHERE [ScheduleId] <> {FixtureFeature.ProbeScheduleId};
             DELETE FROM [core].[Jobs];
-            DELETE FROM [core].[Schedules];
+            DELETE FROM [core].[Schedules] WHERE [Id] <> {FixtureFeature.ProbeScheduleId};
             DELETE FROM [dbo].[__TellmaSchema];
-            """;
+            """);
 
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;

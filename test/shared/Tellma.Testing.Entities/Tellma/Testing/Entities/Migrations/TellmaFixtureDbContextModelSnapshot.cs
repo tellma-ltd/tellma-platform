@@ -939,6 +939,25 @@ namespace Tellma.Testing.Entities.Migrations
                             }))
                         .HasAnnotation("Tellma:TableType:Enabled", true)
                         .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 500,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "fixture.probe",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 1 * * *",
+                            HandlerKey = "fixture.probe",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "fixture.probe",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Core.Access.UserPreference", b =>
@@ -1152,6 +1171,12 @@ namespace Tellma.Testing.Entities.Migrations
                         .HasFilter("[NextDueAt] IS NOT NULL");
 
                     b.ToTable("ScheduleStates", "core");
+
+                    b.HasData(
+                        new
+                        {
+                            ScheduleId = 500
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Testing.Entities.Export", b =>

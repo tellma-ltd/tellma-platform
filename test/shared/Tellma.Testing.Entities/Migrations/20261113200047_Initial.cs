@@ -945,6 +945,12 @@ namespace Tellma.Testing.Entities.Migrations
 
             migrationBuilder.InsertData(
                 schema: "core",
+                table: "Schedules",
+                columns: new[] { "Id", "ArgumentsJson", "CatchUpWindowMinutes", "Code", "CreatedAt", "CreatedById", "CronExpression", "HandlerKey", "IsActive", "ModifiedAt", "ModifiedById", "Name", "Name2", "Name3", "PausedReason", "RunAsUserId", "TimeZoneId" },
+                values: new object[] { 500, null, 1440, "fixture.probe", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * *", "fixture.probe", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "fixture.probe", null, null, null, 1, null });
+
+            migrationBuilder.InsertData(
+                schema: "core",
                 table: "UserStamps",
                 columns: new[] { "UserId", "AssignmentsSeenAt", "InboxSeenAt", "LastActiveAt", "PermissionsTag", "PreferencesTag" },
                 values: new object[] { 1, null, null, null, new Guid("00000000-0000-0000-0000-000000000001"), new Guid("00000000-0000-0000-0000-000000000002") });
@@ -960,6 +966,12 @@ namespace Tellma.Testing.Entities.Migrations
                 table: "RoleMemberships",
                 columns: new[] { "Id", "EndsAt", "Notes", "RoleId", "StartsAt", "UserId" },
                 values: new object[] { 1, null, null, 1, null, 1 });
+
+            migrationBuilder.InsertData(
+                schema: "core",
+                table: "ScheduleStates",
+                columns: new[] { "ScheduleId", "LastFiredAt", "LastJobId", "LastScheduledFor", "LastSkippedAt", "LeaseExpiresAt", "LeaseToken", "NextDueAt" },
+                values: new object[] { 500, null, null, null, null, null, null, null });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Blobs_Expiry",

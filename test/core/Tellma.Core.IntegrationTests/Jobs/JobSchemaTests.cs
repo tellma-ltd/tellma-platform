@@ -67,12 +67,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
         {
             await SqlServerFixture.ExecuteAsync(
                 fixture.ConnectionString,
-                "INSERT INTO [core].[Schedules] ([Id], [Name], [HandlerKey], [CronExpression], [RunAsUserId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (500, N'Nightly', N'fixture.probe', N'0 1 * * *', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);",
-                $"INSERT INTO [core].[Jobs] ({JobColumns}, [Status], [ScheduleId]) VALUES ({JobValues}, 'Pending', 500);",
-                "INSERT INTO [core].[ScheduleStates] ([ScheduleId], [LastJobId]) VALUES (500, 1);",
-                "DELETE FROM [core].[Schedules] WHERE [Id] = 500;");
+                "INSERT INTO [core].[Schedules] ([Id], [Name], [HandlerKey], [CronExpression], [RunAsUserId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (501, N'Nightly', N'fixture.probe', N'0 1 * * *', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);",
+                $"INSERT INTO [core].[Jobs] ({JobColumns}, [Status], [ScheduleId]) VALUES ({JobValues}, 'Pending', 501);",
+                "INSERT INTO [core].[ScheduleStates] ([ScheduleId], [LastJobId]) VALUES (501, 1);",
+                "DELETE FROM [core].[Schedules] WHERE [Id] = 501;");
 
-            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[ScheduleStates];"));
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[ScheduleStates] WHERE [ScheduleId] = 501;"));
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs] WHERE [Id] = 1 AND [ScheduleId] IS NULL;"));
         }
 
@@ -81,13 +81,13 @@ namespace Tellma.Core.IntegrationTests.Jobs
         {
             await SqlServerFixture.ExecuteAsync(
                 fixture.ConnectionString,
-                "INSERT INTO [core].[Schedules] ([Id], [Name], [HandlerKey], [CronExpression], [RunAsUserId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (500, N'Nightly', N'fixture.probe', N'0 1 * * *', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);",
+                "INSERT INTO [core].[Schedules] ([Id], [Name], [HandlerKey], [CronExpression], [RunAsUserId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (501, N'Nightly', N'fixture.probe', N'0 1 * * *', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);",
                 $"INSERT INTO [core].[Jobs] ({JobColumns}, [Status]) VALUES ({JobValues}, 'Pending');",
-                "INSERT INTO [core].[ScheduleStates] ([ScheduleId], [LastJobId]) VALUES (500, 1);",
+                "INSERT INTO [core].[ScheduleStates] ([ScheduleId], [LastJobId]) VALUES (501, 1);",
                 "INSERT INTO [fixture].[Shipments] ([Id], [State], [JobId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (9, 'Pending', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);",
                 "DELETE FROM [core].[Jobs] WHERE [Id] = 1;");
 
-            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[ScheduleStates] WHERE [ScheduleId] = 500 AND [LastJobId] IS NULL;"));
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[ScheduleStates] WHERE [ScheduleId] = 501 AND [LastJobId] IS NULL;"));
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [fixture].[Shipments] WHERE [Id] = 9 AND [JobId] IS NULL;"));
         }
 
@@ -124,6 +124,39 @@ namespace Tellma.Core.IntegrationTests.Jobs
         {
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[JobWorkerState] WHERE [Id] = 1 AND [LastTickAt] IS NULL;"));
             await AssertRefusedAsync("CK_JobWorkerState_SingleRow", "INSERT INTO [core].[JobWorkerState] ([Id]) VALUES (2);");
+        }
+
+        [Fact]
+        public async Task A_built_in_schedule_is_seeded_running_as_the_system_user_with_a_state_not_yet_due()
+        {
+            await using SqlConnection connection = new(fixture.ConnectionString);
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT [s].[HandlerKey], [s].[Code], [s].[Name], [s].[CronExpression], [s].[ArgumentsJson], [s].[TimeZoneId],
+                    [s].[RunAsUserId], [s].[CreatedById], [s].[ModifiedById], [s].[IsActive], [s].[PausedReason],
+                    [s].[MissedPolicy], [s].[OverlapPolicy], [s].[CatchUpWindowMinutes],
+                    [t].[ScheduleId], [t].[NextDueAt], [t].[LastJobId], [t].[LeaseToken]
+                FROM [core].[Schedules] AS [s]
+                LEFT JOIN [core].[ScheduleStates] AS [t] ON [t].[ScheduleId] = [s].[Id]
+                WHERE [s].[Id] = @id;
+                """;
+            _ = command.Parameters.AddWithValue("@id", FixtureFeature.ProbeScheduleId);
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            Assert.True(await reader.ReadAsync(Token));
+
+            // --- The schedule row: the handler key is its code and name, and the system user runs and authored it ---
+            Assert.Equal((FixtureJobKeys.Probe, FixtureJobKeys.Probe, FixtureJobKeys.Probe, "0 1 * * *"), (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            Assert.True(reader.IsDBNull(4) && reader.IsDBNull(5));
+            Assert.Equal((1, 1, 1), (reader.GetInt32(6), reader.GetInt32(7), reader.GetInt32(8)));
+            Assert.True(reader.GetBoolean(9));
+            Assert.True(reader.IsDBNull(10));
+            Assert.Equal(("Coalesce", "Skip", 1440), (reader.GetString(11), reader.GetString(12), reader.GetInt32(13)));
+
+            // --- Its state row: present, with no due time until the scheduler first computes one ---
+            Assert.False(reader.IsDBNull(14));
+            Assert.True(reader.IsDBNull(15) && reader.IsDBNull(16) && reader.IsDBNull(17));
+            Assert.False(await reader.ReadAsync(Token));
         }
 
         /// <summary>

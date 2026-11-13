@@ -18,7 +18,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
     /// <summary>
     ///     The job queue against a fixture database: the enqueue statement riding a caller's batch,
     ///     the columns it stores, the owners it stamps in one statement and in request order, the
-    ///     wake after the commit, and a failed batch that leaves no trace.
+    ///     owners it refuses while their stored job has not ended or when they are missing, the wake
+    ///     after the commit, and a failed batch that leaves no trace.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -26,6 +27,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
     {
         /// <summary>The first shipment id the tests store, past the range of an <see cref="int" />.</summary>
         private const long FirstShipmentId = 5_000_000_001;
+
+        /// <summary>The id of a job a test stores directly, far past the ids the sequence hands out.</summary>
+        private const int StoredJobId = 2_000_000_001;
 
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -170,6 +174,98 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(0, fixture.Wakes);
         }
 
+        [Theory]
+        [InlineData(nameof(JobStatus.Pending))]
+        [InlineData(nameof(JobStatus.Running))]
+        [InlineData(nameof(JobStatus.Held))]
+        [InlineData(nameof(JobStatus.PendingConfirmation))]
+        public async Task An_owner_whose_stored_job_has_not_ended_is_refused_whatever_its_member_says(string status)
+        {
+            await SeedShipmentsAsync(1);
+            await StoreJobAsync(StoredJobId, status, FirstShipmentId);
+
+            // The member in memory says the row has no job; the stored row decides.
+            Shipment shipment = new() { Id = FirstShipmentId };
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            IDataBatch batch = Database(scope).CreateBatch(BatchPurpose.Persist);
+            _ = Queue(scope).Enqueue(batch, [new JobRequest(FixtureJobKeys.Ship, null, null, null, null, shipment)]);
+
+            BatchAssertionFailedException exception = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
+
+            // --- Refused as a whole: no job stored, the stored stamp and the member unchanged, nothing woken ---
+            Assert.Equal((TellmaSqlErrors.Invariant, JobEnqueueCodes.OwnerUnavailable), (exception.Number, exception.Code));
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+            Assert.Equal(StoredJobId, (await ShipmentJobsAsync())[FirstShipmentId]);
+            Assert.Null(shipment.JobId);
+            Assert.Equal(0, fixture.Wakes);
+        }
+
+        [Theory]
+        [InlineData(nameof(JobStatus.Succeeded))]
+        [InlineData(nameof(JobStatus.Failed))]
+        [InlineData(nameof(JobStatus.Cancelled))]
+        public async Task An_owner_whose_stored_job_ended_is_enqueued_again(string status)
+        {
+            await SeedShipmentsAsync(2);
+            await StoreJobAsync(StoredJobId, status, FirstShipmentId);
+
+            // One row's job ended and the other never had one; the member still names the ended job.
+            Shipment ended = new() { Id = FirstShipmentId, JobId = StoredJobId };
+            Shipment fresh = new() { Id = FirstShipmentId + 1 };
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            IReadOnlyList<int> ids = await Queue(scope).EnqueueAsync(
+                [new JobRequest(FixtureJobKeys.Ship, null, null, null, null, ended), new JobRequest(FixtureJobKeys.Ship, null, null, null, null, fresh)],
+                Token);
+
+            // --- Both rows are stamped with their new jobs, the ended job is kept, and the tenant is woken ---
+            Dictionary<long, int?> stored = await ShipmentJobsAsync();
+            Assert.Equal((ids[0], ids[1]), (stored[FirstShipmentId], stored[FirstShipmentId + 1]));
+            Assert.Equal((ids[0], ids[1]), (ended.JobId, fresh.JobId));
+            Assert.Equal(3, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+            Assert.Equal(1, fixture.Wakes);
+        }
+
+        [Fact]
+        public async Task A_missing_owner_is_refused_and_takes_the_other_owners_jobs_with_it()
+        {
+            await SeedShipmentsAsync(1);
+            Shipment present = new() { Id = FirstShipmentId };
+            Shipment missing = new() { Id = FirstShipmentId + 1 };
+
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            IDataBatch batch = Database(scope).CreateBatch(BatchPurpose.Persist);
+            _ = Queue(scope).Enqueue(batch, [new JobRequest(FixtureJobKeys.Ship, null, null, null, null, present), new JobRequest(FixtureJobKeys.Ship, null, null, null, null, missing)]);
+
+            BatchAssertionFailedException exception = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
+
+            // --- Refused as a whole: the present row is not stamped either ---
+            Assert.Equal((TellmaSqlErrors.Invariant, JobEnqueueCodes.OwnerUnavailable), (exception.Number, exception.Code));
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+            Assert.Null((await ShipmentJobsAsync())[FirstShipmentId]);
+            Assert.Equal((null, null), (present.JobId, missing.JobId));
+            Assert.Equal(0, fixture.Wakes);
+        }
+
+        [Fact]
+        public async Task An_enqueue_whose_batch_was_switched_to_autocommit_refuses_to_run()
+        {
+            await SeedShipmentsAsync(1);
+            Shipment shipment = new() { Id = FirstShipmentId };
+
+            // The queue refuses an autocommit batch; switching the mode afterwards meets the statement's own guard.
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            IDataBatch batch = Database(scope).CreateBatch(BatchPurpose.Persist);
+            _ = Queue(scope).Enqueue(batch, [new JobRequest(FixtureJobKeys.Ship, null, null, null, null, shipment)]);
+            batch.TransactionMode = TransactionMode.None;
+
+            BatchAssertionFailedException exception = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
+
+            Assert.Equal((TellmaSqlErrors.Invariant, JobEnqueueCodes.OutsideTransaction), (exception.Number, exception.Code));
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+            Assert.Null((await ShipmentJobsAsync())[FirstShipmentId]);
+            Assert.Equal(0, fixture.Wakes);
+        }
+
         [Fact]
         public async Task Rows_of_two_entity_types_are_refused_before_anything_is_appended()
         {
@@ -215,6 +311,27 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     SELECT CAST({FirstShipmentId - 1} AS bigint) + [n].[N], 'Pending', SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1
                     FROM (SELECT TOP ({count}) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [N] FROM sys.all_columns AS [a] CROSS JOIN sys.all_columns AS [b]) AS [n];
                     """));
+        }
+
+        /// <summary>Stores a job of the ship handler in a status and stamps a shipment with it.</summary>
+        /// <param name="id">The job's id.</param>
+        /// <param name="status">The job's status; a running job holds a lease and one waiting for confirmation what it waits for.</param>
+        /// <param name="shipmentId">The shipment that owns the job.</param>
+        /// <returns>A task that completes when the job is stored.</returns>
+        private async Task StoreJobAsync(int id, string status, long shipmentId)
+        {
+            // The CHECK constraints tie a lease to a running job and the awaited confirmations to a waiting one.
+            (string columns, string values) = status switch
+            {
+                nameof(JobStatus.Running) => (", [LeaseToken], [LeaseExpiresAt]", ", NEWID(), SYSUTCDATETIME()"),
+                nameof(JobStatus.PendingConfirmation) => (", [PendingConfirmationsJson]", """, N'[{"key":"Sales.Backdated"}]'"""),
+                _ => (string.Empty, string.Empty),
+            };
+
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]{columns}) VALUES ({id}, N'{FixtureJobKeys.Ship}', '{status}', SYSUTCDATETIME(), 1, SYSUTCDATETIME(){values});"),
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [fixture].[Shipments] SET [JobId] = {id} WHERE [Id] = {shipmentId};"));
         }
 
         /// <summary>Every shipment's job.</summary>

@@ -61,7 +61,8 @@ namespace Tellma.Core.Tests.Jobs
             BatchStatement statement = Assert.Single(batch.Statements);
             Assert.Equal(
                 """
-                DECLARE @tb0_first sql_variant, @tb0_n int = (SELECT COUNT(*) FROM @tb0_t0);
+                IF @@TRANCOUNT = 0 THROW 50422, N'Jobs.EnqueueOutsideTransaction', 1;
+                DECLARE @tb0_first sql_variant, @tb0_n int = (SELECT COUNT(*) FROM @tb0_t0), @tb0_aff int;
                 DECLARE @tb0_jobIds TABLE ([Ordinal] int NOT NULL PRIMARY KEY, [JobId] int NOT NULL);
                 IF @tb0_n > 0 EXEC sys.sp_sequence_get_range @sequence_name = N'core.sq_Jobs', @range_size = @tb0_n, @range_first_value = @tb0_first OUTPUT;
                 INSERT INTO @tb0_jobIds ([Ordinal], [JobId]) SELECT [r].[Ordinal], CAST(@tb0_first AS int) + [r].[Ordinal] FROM @tb0_t0 AS [r];
@@ -91,7 +92,10 @@ namespace Tellma.Core.Tests.Jobs
                 UPDATE [o] SET [JobId] = [i].[JobId]
                 FROM [jobs].[Shipments] AS [o]
                 INNER JOIN @tb0_t0 AS [r] ON [r].[OwnerId] = [o].[Id]
-                INNER JOIN @tb0_jobIds AS [i] ON [i].[Ordinal] = [r].[Ordinal];
+                INNER JOIN @tb0_jobIds AS [i] ON [i].[Ordinal] = [r].[Ordinal]
+                WHERE [o].[JobId] IS NULL OR NOT EXISTS (SELECT 1 FROM [core].[Jobs] AS [a] WITH (READCOMMITTEDLOCK) WHERE [a].[Id] = [o].[JobId] AND [a].[Status] IN ('Pending', 'Running', 'Held', 'PendingConfirmation'));
+                SET @tb0_aff = @@ROWCOUNT;
+                IF @tb0_aff <> (SELECT COUNT(*) FROM @tb0_t0 WHERE [OwnerId] IS NOT NULL) THROW 50422, N'Jobs.OwnerUnavailable', 1;
                 SELECT [Ordinal], [JobId] FROM @tb0_jobIds ORDER BY [Ordinal];
                 """.ReplaceLineEndings("\n"),
                 statement.Text.ReplaceLineEndings("\n"),
@@ -226,11 +230,16 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
-        public void A_row_that_already_has_a_job_is_refused()
+        public void A_row_whose_member_names_a_job_is_left_to_the_statement()
         {
+            // The member may name the row's ended job, as a retry's row does; the stored row decides.
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
             Shipment shipment = new() { Id = 42, JobId = 1001 };
 
-            AssertRefused<InvalidOperationException>(UserScope, [new JobRequest("acme.ship", null, null, null, null, shipment)], "already has the job 1001");
+            _ = Queue(UserScope).Enqueue(batch, [new JobRequest("acme.ship", null, null, null, null, shipment)]);
+
+            Assert.Equal([42L], Rows(Assert.Single(batch.Statements)).Select(static row => row["OwnerId"]));
+            Assert.Equal(1001, shipment.JobId);
         }
 
         [Fact]
@@ -312,6 +321,33 @@ namespace Tellma.Core.Tests.Jobs
             DataBatch batch = _harness.Batch(BatchPurpose.Maintenance);
 
             _ = Queue(SystemScope).Enqueue(batch, [Recompute()]);
+
+            Assert.Single(batch.Statements);
+        }
+
+        [Theory]
+        [InlineData(BatchPurpose.Persist)]
+        [InlineData(BatchPurpose.Maintenance)]
+        public void A_batch_whose_statements_autocommit_is_refused(BatchPurpose purpose)
+        {
+            DataBatch batch = _harness.Batch(purpose);
+            batch.TransactionMode = TransactionMode.None;
+
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => Queue(SystemScope).Enqueue(batch, [Recompute()]));
+
+            Assert.Equal("batch", exception.ParamName);
+            Assert.Contains("runs in None mode", exception.Message, StringComparison.Ordinal);
+            Assert.Empty(batch.Statements);
+            Assert.Empty(batch.CommittedCallbacks);
+        }
+
+        [Fact]
+        public void A_batch_in_an_explicit_transaction_may_enqueue()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            batch.TransactionMode = TransactionMode.Explicit;
+
+            _ = Queue(UserScope).Enqueue(batch, [Recompute()]);
 
             Assert.Single(batch.Statements);
         }

@@ -837,17 +837,24 @@ the queue and the later worker read: each key's handler type, options, entity le
 
 ### Enqueueing
 
-`IJobQueue` (scoped) appends one statement to a caller's `Persist` or `Maintenance` batch: it takes a
-contiguous id range from `core.sq_Jobs`, inserts every job in request order and, for an entity-backed
-handler, stamps each named row's `JobId` in one `UPDATE` of the owner table; the statement returns
-the ids in request order. Before anything is appended every request is checked: its key is
-registered here, its `Entity` matches the handler's shape, every row is of one entity type, saved
-(a positive id), named once and without a job in memory. `RunAsUserId` defaults to the request's,
-else the system user in a system scope, else the scope's user. The scope's confirmed keys, the
-current W3C trace parent, the label and the arguments (at most 64 KB of JSON) are stored with each
-job. Once the batch commits, the in-memory rows take their job ids and this host's pollers for the
-tenant are woken (`TenantPollerWake`); a batch that fails stores nothing and wakes nothing.
-`EnqueueAsync` does the same in a `Persist` batch of its own.
+`IJobQueue` (scoped) appends one statement to a caller's `Persist` or `Maintenance` batch, in `Auto`
+or `Explicit` transaction mode (an autocommit batch is refused, so the jobs and the stamps commit
+together): it takes a contiguous id range from `core.sq_Jobs`, inserts every job in request order
+and, for an entity-backed handler, stamps each named row's `JobId` in one `UPDATE` of the owner
+table; the statement returns the ids in request order. Before anything is appended every request is
+checked: its key is registered here, its `Entity` matches the handler's shape, every row is of one
+entity type, saved (a positive id) and named once. Whether a row may take a job is the database's
+call, not the in-memory member's: the `UPDATE` skips a row whose stored `JobId` names a job that has
+not ended (`Pending`, `Running`, `Held`, `PendingConfirmation`, read with `READCOMMITTEDLOCK` so a
+concurrent enqueue's committed job is seen), and when it stamps fewer rows than the requests name, a
+row being missing or held, the statement throws `50422` with `JobEnqueueCodes.OwnerUnavailable` and
+the batch rolls back; a statement that finds no open transaction throws
+`JobEnqueueCodes.OutsideTransaction`. `RunAsUserId` defaults to the request's, else the system user
+in a system scope, else the scope's user. The scope's confirmed keys, the current W3C trace parent,
+the label and the arguments (at most 64 KB of JSON) are stored with each job. Once the batch
+commits, the in-memory rows take their job ids and this host's pollers for the tenant are woken
+(`TenantPollerWake`); a batch that fails stores nothing and wakes nothing. `EnqueueAsync` does the
+same in a `Persist` batch of its own.
 
 ## Layout
 
