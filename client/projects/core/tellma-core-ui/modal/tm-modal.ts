@@ -178,15 +178,18 @@ export class TmModal {
       }
     }
     const titleId = `tm-modal-title-${nextTitleId++}`;
-    const ref = new TmModalRef<R>({
-      escapeDismiss: config.escapeDismiss ?? true,
-      backdropDismiss: config.backdropDismiss ?? true,
-      canDismiss: config.canDismiss,
-    });
+    const ref = new TmModalRef<R>(
+      {
+        escapeDismiss: config.escapeDismiss ?? true,
+        backdropDismiss: config.backdropDismiss ?? true,
+        canDismiss: config.canDismiss,
+      },
+      title,
+    );
     const payload: ɵTmModalShellPayload = {
       component: content instanceof TemplateRef ? null : content,
       template: content instanceof TemplateRef ? content : null,
-      title,
+      title: ref.ɵtitle,
       titleId,
       placement: config.placement ?? 'center',
       showClose: config.showClose ?? true,

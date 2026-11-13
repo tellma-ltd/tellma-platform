@@ -296,4 +296,19 @@ export const TM_LOCALE_AR_STRINGS = {
   busyOverlay: {
     label: 'يرجى الانتظار',
   },
+  confirm: {
+    ok: 'موافق',
+    cancel: 'إلغاء',
+  },
+  errorDialog: {
+    close: 'إغلاق',
+    details: 'التفاصيل',
+    more: 'و{count, number} أخرى',
+  },
+  card: {
+    hasErrors: '{heading}، يحتوي على أخطاء',
+  },
+  splitter: {
+    label: 'تغيير حجم اللوحتين',
+  },
 } as const;

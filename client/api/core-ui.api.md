@@ -305,6 +305,21 @@ export const TM_UI_STRINGS_EN: {
     readonly busyOverlay: {
         readonly label: "Please wait";
     };
+    readonly confirm: {
+        readonly ok: "OK";
+        readonly cancel: "Cancel";
+    };
+    readonly errorDialog: {
+        readonly close: "Close";
+        readonly details: "Details";
+        readonly more: "and {count, number} more";
+    };
+    readonly card: {
+        readonly hasErrors: "{heading}, has errors";
+    };
+    readonly splitter: {
+        readonly label: "Resize panels";
+    };
 };
 
 // @public

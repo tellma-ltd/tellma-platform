@@ -727,9 +727,16 @@
     border-color: CanvasText;
   }
 
-  .tm-grid__cell.tm-grid__cell--selected {
-    background: Highlight;
-    color: HighlightText;
+  /* Find matches never rely on tint alone: a dotted outline (distinct
+     from the error dashes). Declared first of the cell outlines: an error's
+     dashes and the active ring both win over the dots, and the active
+     match (--find-active, below) keeps its solid outline. */
+  .tm-grid__cell.tm-grid__cell--find {
+    background: Canvas;
+    /* The cell's ink, so the dots contrast with whatever background a row
+       state or the range fill paints under them. */
+    outline: var(--border-width) dotted currentColor;
+    outline-offset: calc(-2 * var(--border-width));
   }
 
   /* Error state never relies on tint alone: a dashed system-color outline
@@ -737,19 +744,23 @@
   .tm-grid__cell.tm-grid__cell--error {
     background: Canvas;
     box-shadow: none;
-    outline: var(--border-width) dashed CanvasText;
+    outline: var(--border-width) dashed currentColor; /* the ink, as on finds */
     outline-offset: calc(-2 * var(--border-width));
   }
 
+  /* The active ring, the active find match and the marquee draw in
+     --tm-grid-overlay-ink: Highlight on a plain cell, the paired ink where
+     a checked row or the range fill paints a highlight color under them
+     (set below), so the active cell of a range stays distinguishable. */
   .tm-grid__cell.tm-grid__cell--active {
     box-shadow: none;
-    outline: var(--focus-ring-width) solid Highlight;
+    outline: var(--focus-ring-width) solid var(--tm-grid-overlay-ink, Highlight);
     outline-offset: calc(-1 * var(--focus-ring-width));
   }
 
   /* The cut marquee stays a dashed perimeter border; force its color. */
   [data-tm-cut]::after {
-    border-color: Highlight;
+    border-color: var(--tm-grid-overlay-ink, Highlight);
   }
 
   .tm-grid__notice {
@@ -774,6 +785,7 @@
   .tm-grid__row--checked > .tm-grid__checkcell {
     background: SelectedItem;
     color: SelectedItemText;
+    --tm-grid-overlay-ink: SelectedItemText;
   }
 
   .tm-grid__checkhdr,
@@ -781,17 +793,33 @@
     border-color: CanvasText;
   }
 
-  /* Find matches never rely on tint alone: a dotted outline (distinct
-     from the error dashes), the active match keeps its solid outline. */
-  .tm-grid__cell.tm-grid__cell--find {
-    background: Canvas;
-    outline: var(--border-width) dotted CanvasText;
-    outline-offset: calc(-2 * var(--border-width));
+  /* After --active: the active match keeps its solid outline. */
+  .tm-grid__cell.tm-grid__cell--find-active {
+    outline: var(--focus-ring-width) solid var(--tm-grid-overlay-ink, Highlight);
+    outline-offset: calc(-1 * var(--focus-ring-width));
   }
 
-  .tm-grid__cell.tm-grid__cell--find-active {
-    outline: var(--focus-ring-width) solid Highlight;
-    outline-offset: calc(-1 * var(--focus-ring-width));
+  /* The range fill wins every other cell background, as the translucent
+     fill layers over every base tint outside forced colors. Forced colors
+     replace any other background with a system color but keep the cascade,
+     so the fill must outrank every cell background rule. The heaviest is
+     the editable grid's readonly tint: three classes plus the attribute
+     view encapsulation adds to each of its two compounds. This selector
+     weighs three classes and three attributes, so it wins wherever the
+     rules sit; a single-compound selector lost even to the zebra
+     stripe. */
+  .tm-grid__scroller .tm-grid__row > .tm-grid__cell--selected {
+    background: Highlight;
+    color: HighlightText;
+    --tm-grid-overlay-ink: HighlightText;
+  }
+
+  /* The open editor is a field, not part of the range fill: without its
+     own ink the input would inherit the fill's HighlightText over the
+     forced Canvas editor background. */
+  .tm-grid__editor {
+    background: Field;
+    color: FieldText;
   }
 
   .tm-grid-bool,
