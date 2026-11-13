@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Test doubles and assertion helpers for the Tellma.Core.Abstractions contracts — the capturing email sender, its DI registrations, delivery-event builders, the sender conformance suite every email transport must pass, the store conformance suite every blob store must pass, and the collation and latest-migration pins every migrations assembly is held to. Referenced by test projects only.</Description>
+    <Description>Test doubles and assertion helpers for the Tellma.Core.Abstractions contracts — the capturing email sender, its DI registrations, delivery-event builders, the sender conformance suite every email transport must pass, the store conformance suite every blob store must pass, the job item probe a handler's tests play the worker with, and the collation and latest-migration pins every migrations assembly is held to. Referenced by test projects only.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- The conformance suite is xUnit test code that happens to ship in a library, so its members
          follow the repo's sentence_case_with_underscores test naming rather than the API-surface

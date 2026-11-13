@@ -125,6 +125,34 @@ describe('TmModal', () => {
     expect(await ref.closed).toEqual({ via: 'api', value: undefined });
   });
 
+  it('retitles an open modal in place, keeping its name; never names an untitled one', async () => {
+    const { fixture, modal } = await setup();
+    const ref = modal.open(ContentProbe, { title: 'First' });
+    await fixture.whenStable();
+    const title = document.querySelector('.tm-modal__title') as HTMLElement;
+    ref.ɵsetTitle('Second');
+    ref.ɵsetTitle('');
+    await fixture.whenStable();
+    // The same element, so aria-labelledby still points at it.
+    expect(document.querySelector('.tm-modal__title')).toBe(title);
+    expect(title.textContent).toBe('Second');
+    expect(container().getAttribute('aria-labelledby')).toBe(title.id);
+    ref.close();
+
+    // An untitled modal warns in dev mode; that warning is covered elsewhere.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const untitled = modal.open(ContentProbe, {});
+      await fixture.whenStable();
+      untitled.ɵsetTitle('Late');
+      await fixture.whenStable();
+      expect(document.querySelector('.tm-modal__title')).toBeNull();
+      untitled.close();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('the X button dismisses with {via: close-button}; showClose: false removes it', async () => {
     const { fixture, modal } = await setup();
     const ref = modal.open(ContentProbe, { title: 'Closable' });

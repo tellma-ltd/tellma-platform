@@ -13,6 +13,7 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Batches
@@ -58,6 +59,7 @@ namespace Tellma.Core.Data.Batches
         /// <param name="time">The clock.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="metrics">The executor's instruments.</param>
+        /// <param name="queries">What query statements compile and materialise with.</param>
         /// <param name="services">The root provider, for the optional caching services.</param>
         public DataExecutor(
             IOptions<DataOptions> options,
@@ -67,6 +69,7 @@ namespace Tellma.Core.Data.Batches
             TimeProvider time,
             ILogger<DataBatch> logger,
             DataMetrics metrics,
+            QueryServices queries,
             IServiceProvider services)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -76,6 +79,7 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(time);
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(metrics);
+            ArgumentNullException.ThrowIfNull(queries);
             ArgumentNullException.ThrowIfNull(services);
 
             _options = options;
@@ -85,6 +89,7 @@ namespace Tellma.Core.Data.Batches
             _time = time;
             _logger = logger;
             _metrics = metrics;
+            Queries = queries;
             _snapshots = services.GetService<IVersionTagSnapshots>();
             _userSnapshots = services.GetService<IUserVersionTagSnapshots>();
             VersionTags = services.GetService<IVersionTagRegistry>();
@@ -114,6 +119,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Which version tags a batch's writes bump, when the caching feature is composed.</summary>
         public IVersionTagRegistry? VersionTags { get; }
+
+        /// <summary>What query statements compile and materialise with.</summary>
+        public QueryServices Queries { get; }
 
         /// <summary>The running model's storage fingerprint.</summary>
         public string Fingerprint => _metadata.StorageFingerprint;

@@ -9,8 +9,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Composition;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.TableTypes;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -29,9 +32,10 @@ namespace Tellma.Core.Tests.Data.Batches
         /// <summary>Composes the default composition.</summary>
         /// <param name="owners">Which stack owns each table; none when null.</param>
         /// <param name="registry">Which tags written tables bump; none composed when null.</param>
-        public BatchHarness(IStackTableOwners? owners = null, IVersionTagRegistry? registry = null)
+        /// <param name="compose">Composes the model's features; the default composition when null.</param>
+        public BatchHarness(IStackTableOwners? owners = null, IVersionTagRegistry? registry = null, Action<TellmaBuilder>? compose = null)
         {
-            IServiceCollection services = TestComposition.Compose(static _ => { });
+            IServiceCollection services = TestComposition.Compose(compose ?? (static _ => { }));
             if (registry is not null)
             {
                 _ = services.AddSingleton(registry);
@@ -46,11 +50,22 @@ namespace Tellma.Core.Tests.Data.Batches
                 TimeProvider.System,
                 _root.GetRequiredService<ILogger<DataBatch>>(),
                 _root.GetRequiredService<DataMetrics>(),
+                _root.GetRequiredService<QueryServices>(),
                 _root);
         }
 
         /// <summary>The executor.</summary>
         public DataExecutor Executor { get; }
+
+        /// <summary>The multilingual shape the batches' connection reports; one language by default.</summary>
+        public MultilingualShape Shape { get; set; } = MultilingualShape.Primary;
+
+        /// <summary>The context values the batches' connection reports.</summary>
+        public QueryexContextValues Context { get; set; } = new(
+            new DateOnly(2026, 3, 14), new DateTimeOffset(2026, 3, 14, 9, 30, 0, TimeSpan.FromHours(3)), 7, "Arab Standard Time");
+
+        /// <summary>The composed root, for the services a test resolves.</summary>
+        public IServiceProvider Services => _root;
 
         /// <summary>Creates a batch whose scope holds the contributors.</summary>
         /// <param name="purpose">The purpose.</param>
@@ -64,7 +79,7 @@ namespace Tellma.Core.Tests.Data.Batches
                 _ = scope.AddSingleton(contributor);
             }
 
-            return new DataBatch(Executor, new RefusedConnection(), scope.BuildServiceProvider(), purpose);
+            return new DataBatch(Executor, new RefusedConnection(Shape, Context), scope.BuildServiceProvider(), purpose);
         }
 
         /// <summary>Executes a batch up to the send, which the connection refuses.</summary>
@@ -83,10 +98,18 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         /// <summary>A connection that is never opened.</summary>
-        private sealed class RefusedConnection : IBatchConnection
+        /// <param name="shape">The multilingual shape it reports.</param>
+        /// <param name="context">The context values it reports.</param>
+        private sealed class RefusedConnection(MultilingualShape shape, QueryexContextValues context) : IBatchConnection
         {
             /// <inheritdoc />
             public int TenantId => 1;
+
+            /// <inheritdoc />
+            public MultilingualShape Shape => shape;
+
+            /// <inheritdoc />
+            public QueryexContextValues Context => context;
 
             /// <inheritdoc />
             public ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)

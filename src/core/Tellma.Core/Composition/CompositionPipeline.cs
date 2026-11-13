@@ -14,6 +14,7 @@ using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Provisioning;
@@ -153,6 +154,9 @@ namespace Tellma.Core.Composition
 
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);
+
+            // --- Background jobs: the options (spec 0020 §12.1) ---
+            JobsComposition.Register(services, options);
 
             // --- The provisioning step runner, which the migrator drives (spec 0011 §6.2) ---
             services.TryAddSingleton<ProvisioningStepRunner>();

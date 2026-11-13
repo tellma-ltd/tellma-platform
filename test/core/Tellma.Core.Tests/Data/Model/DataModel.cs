@@ -33,10 +33,7 @@ namespace Tellma.Core.Tests.Data.Model
         /// <summary>Composes the test model.</summary>
         public DataModel()
         {
-            IServiceCollection services = TestComposition.Compose(static tellma => tellma
-                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: Contribute))
-                .UseEntity<Center, MyCenter>()
-                .UseEntity<User, MyTestUser>());
+            IServiceCollection services = TestComposition.Compose(Compose);
 
             _provider = services.BuildServiceProvider(validateScopes: true);
             Factory = _provider.GetRequiredService<TellmaModelFactory>();
@@ -89,6 +86,16 @@ namespace Tellma.Core.Tests.Data.Model
         public void Dispose()
         {
             _provider.Dispose();
+        }
+
+        /// <summary>Composes the test model's feature and leaf substitutions, for any composition that needs the test model.</summary>
+        /// <param name="tellma">The composition's builder.</param>
+        internal static void Compose(TellmaBuilder tellma)
+        {
+            _ = tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: Contribute))
+                .UseEntity<Center, MyCenter>()
+                .UseEntity<User, MyTestUser>();
         }
 
         /// <summary>The test feature's contribution.</summary>

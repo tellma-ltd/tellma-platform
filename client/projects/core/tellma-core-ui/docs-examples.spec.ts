@@ -27,10 +27,12 @@ import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmBadge, TmCounter } from '@tellma/core-ui/badge';
 import { TmBannerBar } from '@tellma/core-ui/banner';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmCard } from '@tellma/core-ui/card';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import { TmDescriptionList } from '@tellma/core-ui/description-list';
 import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
@@ -55,12 +57,14 @@ import { TmKbd } from '@tellma/core-ui/kbd';
 import { TmContextMenuTrigger, TmMenu, TmMenuHeaderDef, TmMenuTrigger } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
+import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
 import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
@@ -71,12 +75,14 @@ import * as badgeExamples from './badge/tm-badge.examples';
 import * as counterExamples from './badge/tm-counter.examples';
 import * as bannerBarExamples from './banner/tm-banner-bar.examples';
 import * as buttonExamples from './button/tm-button.examples';
+import * as cardExamples from './card/tm-card.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as chipExamples from './chip/tm-chip.examples';
 import * as chipSetExamples from './chip/tm-chip-set.examples';
 import * as copyButtonExamples from './copy/tm-copy-button.examples';
 import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as descriptionListExamples from './description-list/tm-description-list.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
 import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
@@ -90,6 +96,7 @@ import * as menuExamples from './menu/tm-menu.examples';
 import * as menuTriggerExamples from './menu/tm-menu-trigger.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
+import * as pageHeaderExamples from './page-header/tm-page-header.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
 import * as progressRingExamples from './progress/tm-progress-ring.examples';
@@ -98,6 +105,7 @@ import * as multiSelectExamples from './select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
+import * as splitterExamples from './splitter/tm-splitter.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -153,6 +161,7 @@ class ExamplePage {}
     TmBadge,
     TmBannerBar,
     TmButton,
+    TmCard,
     TmCheckbox,
     TmChip,
     TmChipSet,
@@ -160,6 +169,7 @@ class ExamplePage {}
     TmCopyButton,
     TmCounter,
     TmDatePicker,
+    TmDescriptionList,
     TmDropzone,
     TmEmptyState,
     TmEntityPicker,
@@ -187,6 +197,7 @@ class ExamplePage {}
     TmNumber,
     TmOption,
     TmOptionGroup,
+    TmPageHeader,
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
@@ -197,6 +208,8 @@ class ExamplePage {}
     TmSelect,
     TmSkeleton,
     TmSpinner,
+    TmSplitter,
+    TmSplitterPane,
     TmTab,
     TmTabContent,
     TmTabGroup,
@@ -250,6 +263,13 @@ class ExamplePage {}
       <ng-template tmMenuHeader>placeholder</ng-template>
     </tm-menu>
     <div tmModalFooter>placeholder</div>
+    <tm-card heading="placeholder">placeholder</tm-card>
+    <tm-page-header><h1 tmPageTitle>placeholder</h1></tm-page-header>
+    <dl tmDescriptionList><div><dt>placeholder</dt><dd>placeholder</dd></div></dl>
+    <tm-splitter [defaultSize]="100">
+      <div tmSplitterPane="start">placeholder</div>
+      <div tmSplitterPane="end">placeholder</div>
+    </tm-splitter>
     <tm-image src="" alt="" [width]="24" [height]="24">
       <ng-template tmImagePlaceholder>placeholder</ng-template>
     </tm-image>
@@ -321,6 +341,11 @@ class ExampleHost {
   protected readonly onPrevious = (): void => undefined;
   protected readonly onNext = (): void => undefined;
   protected readonly onDismiss = (): void => undefined;
+  // The card examples' two-way disclosure and error state, and the splitter
+  // example's two-way size.
+  protected readonly addressOpen = signal(true);
+  protected readonly addressInvalid = false;
+  protected readonly listWidth = signal<number | null>(null);
 
   // The entity-picker examples' members: an in-memory directory search plus
   // the accessor closures and a trivial modal page.
@@ -464,6 +489,18 @@ const MARKERS: {
     pattern: /\btmModalFooter\b/,
     instantiated: (fixture) =>
       fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
+  },
+  {
+    name: 'TmDescriptionList',
+    pattern: /\btmDescriptionList\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmDescriptionList)).length > 0,
+  },
+  {
+    name: 'TmSplitterPane',
+    pattern: /\btmSplitterPane\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmSplitterPane)).length > 0,
   },
   {
     name: 'TmFilePicker',
@@ -611,6 +648,13 @@ const SUITES = [
   { source: 'chip/tm-chip.examples.ts', examples: chipExamples },
   { source: 'chip/tm-chip-set.examples.ts', examples: chipSetExamples },
   { source: 'banner/tm-banner-bar.examples.ts', examples: bannerBarExamples },
+  { source: 'card/tm-card.examples.ts', examples: cardExamples },
+  { source: 'page-header/tm-page-header.examples.ts', examples: pageHeaderExamples },
+  {
+    source: 'description-list/tm-description-list.examples.ts',
+    examples: descriptionListExamples,
+  },
+  { source: 'splitter/tm-splitter.examples.ts', examples: splitterExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
   { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },

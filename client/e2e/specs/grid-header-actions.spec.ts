@@ -129,8 +129,13 @@ for (const dir of ['ltr', 'rtl'] as const) {
       await page.keyboard.press('ArrowDown');
       await expect(cell(page, 0, 0)).toBeFocused();
 
-      // The grid stays one tab stop: Tab from a header leaves the grid.
+      // The grid stays one tab stop: Tab from a header leaves the grid. The
+      // roving tab stop moves on the next render, so wait for it to leave the
+      // cell before pressing Tab.
       await page.keyboard.press('ArrowUp');
+      await expect(colHeader(page, 0)).toBeFocused();
+      await expect(colHeader(page, 0)).toHaveAttribute('tabindex', '0');
+      await expect(cell(page, 0, 0)).toHaveAttribute('tabindex', '-1');
       await page.keyboard.press('Tab');
       expect(
         await gridScroller(page).evaluate((scroller) => scroller.contains(document.activeElement)),

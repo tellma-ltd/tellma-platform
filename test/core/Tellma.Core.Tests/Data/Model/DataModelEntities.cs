@@ -179,6 +179,10 @@ namespace Tellma.Core.Tests.Data.Model
         [BlobReference("fixture-attachment")]
         public int? AttachmentId { get; set; }
 
+        /// <summary>A child's own JSON column, which an every-property read reads on the child's statement.</summary>
+        [JsonColumn]
+        public string? Settings { get; set; }
+
         [NotMapped]
         public List<WidgetPartNote>? PartNotes { get; set; }
     }

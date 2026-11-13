@@ -108,6 +108,9 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>The expression has no determinable type, as with a bare absent value.</summary>
         internal const string NoDeterminableType = "QX3202";
 
+        /// <summary>An operation combines text from columns of different collations.</summary>
+        internal const string CollationConflict = "QX3203";
+
         /// <summary>A hierarchy predicate's first argument is not a bare path.</summary>
         internal const string HierarchyKeyMustBePath = "QX3300";
 

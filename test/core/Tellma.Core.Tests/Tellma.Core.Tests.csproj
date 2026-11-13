@@ -37,6 +37,8 @@
   <ItemGroup>
     <!-- The launch-landing vectors the client's launch redirect reads too: one rule, one file. -->
     <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Tenancy\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The display-name golden the client's renderer reads too: one rule, one file. -->
+    <None Include="../../../client/projects/core/tellma-core/src/entity/display-name-golden.json" Link="Data\Queries\display-name-golden.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

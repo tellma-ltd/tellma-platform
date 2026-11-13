@@ -259,6 +259,21 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly busyOverlay: {
         readonly label: "يرجى الانتظار";
     };
+    readonly confirm: {
+        readonly ok: "موافق";
+        readonly cancel: "إلغاء";
+    };
+    readonly errorDialog: {
+        readonly close: "إغلاق";
+        readonly details: "التفاصيل";
+        readonly more: "و{count, number} أخرى";
+    };
+    readonly card: {
+        readonly hasErrors: "{heading}، يحتوي على أخطاء";
+    };
+    readonly splitter: {
+        readonly label: "تغيير حجم اللوحتين";
+    };
 };
 
 ```

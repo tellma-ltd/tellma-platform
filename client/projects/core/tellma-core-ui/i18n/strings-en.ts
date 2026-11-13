@@ -282,4 +282,22 @@ export const TM_UI_STRINGS_EN = {
   busyOverlay: {
     label: 'Please wait',
   },
+  confirm: {
+    // The confirm button's label when a caller passes none.
+    ok: 'OK',
+    cancel: 'Cancel',
+  },
+  errorDialog: {
+    close: 'Close',
+    details: 'Details',
+    // After the first ten listed items: how many more there are.
+    more: 'and {count, number} more',
+  },
+  card: {
+    // The name of a card heading (or its disclosure button) while the card holds errors.
+    hasErrors: '{heading}, has errors',
+  },
+  splitter: {
+    label: 'Resize panels',
+  },
 } as const;

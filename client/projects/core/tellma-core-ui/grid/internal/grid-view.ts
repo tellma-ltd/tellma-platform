@@ -468,7 +468,9 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
       />
     </ng-template>
   `,
-  styleUrl: './grid-view.css',
+  // The header row's rules load first, in a sheet of their own: together
+  // with the body's they outgrow one component stylesheet's budget.
+  styleUrls: ['./grid-header.css', './grid-view.css'],
   host: { class: 'tm-grid-view' },
 })
 export class ɵTmGridView {

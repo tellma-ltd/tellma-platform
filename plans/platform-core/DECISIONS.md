@@ -359,6 +359,48 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-067 (PC-051, 2026-11-13): the size gate measures what ships; ./grid stays under 42 KB
+- Situation. PC-051 (spec 0010 §C.4, §C.14) raised ./grid from 39.25 to 43.5 KB (measured 43.27). Review 1 traced the reported duplicate: ng-packagr's partial compilation writes each component's template and styles twice (ɵɵngDeclareComponent and ɵɵngDeclareClassMetadata); an app's linker guards the second copy behind dev mode and production drops it. Measured ./grid (KB gzip, parent → PC-051): gate 39.01 → 43.27; gate without class metadata 37.29 → 41.23; linked production output 35.58 → 39.98.
+- Ruling.
+  1. The bundle-size gate measures linked production output for every entry point. All ceilings are re-baselined in PC-051's fix round: new ceiling = new measure at the parent + the entry's old headroom, never above a spec ceiling of record.
+  2. Spec 0010 §C.11's 42 KB is the hard cap for ./grid on the linked measure; PC-051's ceiling is its linked measure + at most 0.1 KB, leaving about 2 KB for PC-054 (§C.8, §C.9). D-057(2) still holds: no raise beyond 42 KB without a re-split or real savings.
+  3. Workarounds shaped only by the artifact (the separate row-end cell component, the moved template) are undone unless they earn their place; the split grid-view-header-nav.css merges back unless loaded separately, with no raise of the 13.5 kB anyComponentStyle error.
+  4. PC-051 escalates to Review 2 (§4.4) on R1-1.
+- For Ahmad: (1) the size gate now measures linked production output; every published ceiling changes number (not headroom); (2) §C.4's key table has no answer for interactive header content that is not a header action; (3) §C.4's sketch makes TmGridHeaderAction a directive, but it must be a component to carry its styles.
+
+### D-066 (PC-047, 2026-11-13): sessions and BFF — implementer rulings (pending reviews)
+- Spec: 0011 §5.5, §3.8, §5.7; 0018/0022 sandbox context.
+- Rulings (provisional until Review 1 and Review 2 judge them):
+  - The default authorization policy is the framework default (names no scheme); only the fallback is the session policy, so the in-proc engine's [Authorize] endpoints keep the engine's scheme. The endpoint audit refuses any non-platform endpoint under a policy that names no scheme: distributions must not use bare RequireAuthorization().
+  - Signing in over an existing session rotates it (fresh key, old row deleted, listeners notified), closing a fixation path through RenewAsync.
+  - Refresh is single-flight per instance; across instances the TokensVersion compare-and-set picks one writer and the loser adopts its ticket, relying on the authority's 30 s reuse leeway (0011 §5.5).
+  - The in-proc engine is bound by reflection (no compile-time reference from Tellma.Core.AspNetCore to Tellma.Identity); host.identity requires an IEmailSender in in-proc mode.
+- Review 1 (R1-2) showed the risk is a certain failure (EmailRouter reads TenantSandboxContext.IsSandbox, which throws with no tenant). Orchestrator ruling: fix it in PC-047 rather than gate on a later checkpoint; the implementer gives tenantless engine mail an explicit sandbox/audience answer consistent with 0007/0018/0022 and tests it end to end. Former open risk, owner: the email pipeline (0018/0022 checkpoints). In-proc, the engine sends mail outside any tenant (invitations, sign-in codes), but a distribution's ISandboxContext is TenantSandboxContext, which throws with no tenant bound. The tenantless sandbox answer must be decided there (WATCHLIST lead).
+- Fix 1 outcome: in-proc engine mail is platform mail and is never sandboxed (0007 §3.1's answer for a host without tenants). The engine resolves its sender by key; in-proc the host keys a sender that wraps the composed ISandboxContext so it answers false only while that sender sends in a tenantless scope. Every other tenantless send still throws. Sandbox tenants cannot reach it (their invitations are ExistingOnly, 0018 §3.3). Tested end to end through the engine queue and the real router. The login policy now bounds the caller (policy acr replaces the caller's, shorter max_age wins); new timings: 20 s refresh backoff after a deferral, 10 s redemption deadline.
+- For Ahmad: (1) confirm identity mail is never sandboxed; (2) spec 0011 §3.9's "engine registers its own ISandboxContext" cannot hold in a shared container and needs a correction; (3) confirm that distributions may not use scheme-less RequireAuthorization(); (4) the refresh backoff and redemption deadline are not in the spec.
+
+### D-065 (PC-073, 2026-11-13): tellma-client build/serve rulings and a new PC-094 gate
+- Spec: 0024 §2.1, §2.6, §4.2, §6, §12.
+- Rulings:
+  - ng build runs with NG_BUILD_OPTIMIZE_CHUNKS=false: Angular 22's chunk optimizer renames chunks with mixed-case base64url hashes that fail §6's hashed-name rule and leaves stats.json out of step with the output (verified by Review 1 against @angular/build 22.0.5).
+  - Budgets gain a bootScript row (3 KB + 0.4 KB per extra string table, per D-048). -ext font subsets and fonts of scripts a distribution does not offer belong to no worker group (network, browser-cached).
+  - PC-094 is now also gated on PC-049 (DEPS.md, CHECKPOINTS.md): a real Migrator's emitted metadata has no languages until PC-049 emits that section, so tellma-client build stops on "offers no languages".
+  - PC-073 escalated to Review 2 (§4.4) on R1-1 (blocking: lint:test depends on a gitignored build output).
+- For Ahmad:
+  - (1) Spec 0024 §2.6/§2.1 do not say how tellma-client serve delivers tm-boot.js and the brand files; without them the boot script 404s under serve. PC-073 adds it; the spec needs a clause.
+  - (2) Until PC-094 lands the @tellma/core/brand defaults, every distribution must override all four brand SVGs.
+  - (3) Spec 0024 §4.1's index.html sketch has no <base href="/">: deep-link reloads under /<tenant>/ resolve scripts relative to the path and 404. PC-073 makes it part of the build contract (review 2); the spec needs it.
+
+### D-064 (PC-026, 2026-11-12): error-dialog budget and confirm label
+- Spec: 0023 §5.5, §5.6, §10, §1 budgets.
+- Rulings:
+  - The error-dialog entry point's budget is raised from 3.8 to 4.2 KB (measured 4.07). Almost all of the +0.41 KB is the description-list stylesheet, now scoped to the dialog content's view so the dialog does not depend on an app-level global style. The zero-cost alternative (a globalStyles entry plus a TSDoc note) leaves a hidden dependency on the app; rejected.
+  - TmConfirm.confirm()'s confirmLabel is optional and defaults to confirm.ok ("OK"). §5.5 makes it required, which left §10's confirm.ok string with no consumer.
+  - Stop the line on CI 43325841371 (ddb8259, flaky grid-a11y forced-colors e2e): PC-026's merge 9d14e67 waits on pc/PC-026 until PC-F25 turns platform-core green; PC-F25 took the next heavy slot under the D-028 cap.
+- For Ahmad:
+  - (1) Confirm the 4.2 KB error-dialog budget, or say so and the stylesheet moves to globalStyles.
+  - (2) Spec 0023 §5.5: make confirmLabel optional (default confirm.ok), or drop confirm.ok from §10.
+
 ### D-063 (orchestrator, 2026-11-12): PC-073 ahead of PC-057 while PC-F21 integrates
 - Situation: when pc-2 freed, the ready T1 queue was PC-051 (held on PC-F21, D-057), PC-057, PC-073, PC-075. PC-057 adds grid cell options and spends ./grid bytes. PC-F21, which re-splits ./grid and lowers its ceiling to 39.25 KB, was mid-integration.
 - Ruling: launch PC-073 (CLI, no grid code) first. PC-057 and PC-051 start on the first free slot after PC-F21 lands, so they build on the re-split grid rather than merge into it.
@@ -373,7 +415,10 @@ Format, one entry per ruling:
 - For Ahmad:
   - (1) Spec 0012 §5.2 has no public contract that can name a captured key table. Add one, or confirm it stays internal to Tellma.Core.
   - (2) Child FK targets in the details round trip: should 0012 gain a ChildSelect, or should 0015 load them via a captured FK set (the provisional ruling)?
-  - (3) Fluent-API-only collations are invisible to Queryex. Should composition refuse them?
+  - (3) Fluent-API-only collations are invisible to Queryex. Settled by review 2: CollationConvention now throws on a fluent UseCollation on a tenant column, so [Collation] is the only source. Confirm.
+  - (4) Review 2 added engine diagnostic QX3203 (comparing or combining text of different collations is refused), an addition to spec 0008's diagnostic table.
+  - (5) core.UserStamp is a read-only Queryex root (no CLR type: Rows, Count and Assert only). Its PermissionsTag and PreferencesTag are withheld from the schema as cache validators; the spec is silent.
+  - (6) TieBroken was removed: unpaged ordered reads (captures, ancestors, child pages) now compile with Skip = 0, so each ends in OFFSET @qx{n}_skip ROWS bound to 0, and the engine appends the key only when the ordering lacks it.
 
 ### D-061 (PC-035, 2026-11-12): seeded write-frame contracts and planner notes
 - Spec: 0015 §7.5, §13.3; 0021 §2.3, §11; 0018; 0022.

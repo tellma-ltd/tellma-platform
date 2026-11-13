@@ -1,6 +1,6 @@
 # Tellma.Core.Testing
 
-Test doubles and executable conformance suites (email senders, blob stores) for the
+Test doubles, executable conformance suites (email senders, blob stores) and the job item probe for the
 `Tellma.Core.Abstractions` contracts — the
 C# sibling of `@tellma/core-ui-testing` — and the pins every EF migrations assembly is held to.
 Referenced by test projects, so distribution and platform suites stop hand-rolling their own email
@@ -107,6 +107,14 @@ design-time factory builds one.
 migrations assembly's last migration — the row a host's startup check requires in its store's
 history, read so that the host need not carry the migrations — equal to that assembly's last
 migration.
+
+**[JobItemProbe](Jobs/JobItemProbe.cs)** plays the worker's part in a job handler's unit test:
+it builds the items a claim would hand the handler (`ForJob`, `ForItem`), seeds the checkpoint a
+resume reads (`SetCheckpoint`, stored under the platform's JSON rules), records why an item is being
+cancelled (`SetCancellationReason`, with the worker's escalation rule), and reads back what the
+handler marked (`OutcomeOf`, a [JobItemOutcome](Jobs/JobItemOutcome.cs)) and the notifications it
+queued for success. It reads and writes what the worker does and nothing more: an unmarked item
+stays unmarked, where the worker would settle it from how the handler ended.
 
 These two read EF Core's relational model and migration operations, which is why the package
 references `Microsoft.EntityFrameworkCore.Relational` (never a provider).
