@@ -72,6 +72,45 @@ namespace Tellma.Core.Abstractions.Tests.TableTypes
             Assert.Null(arguments.GetCustomAttribute<ColumnAttribute>());
         }
 
+        [Theory]
+        [InlineData(typeof(JobRequestList), new[] { "Ordinal" }, new[] { "Ordinal", "HandlerKey", "LabelKey", "LabelArgumentsJson", "DueAt", "ArgumentsJson", "TraceParent", "ConfirmedKeys", "RunAsUserId", "RequestedById", "OwnerId" })]
+        [InlineData(typeof(JobOutcomeList), new[] { "Id" }, new[] { "Id", "Status", "Released", "RetryAfterSeconds", "ErrorCode", "ErrorArgumentsJson", "ErrorTraceId", "StateJson", "PendingConfirmationsJson" })]
+        [InlineData(typeof(JobProgressList), new[] { "Id" }, new[] { "Id", "ProgressPercent", "ProgressKey", "ProgressArgumentsJson", "StateJson" })]
+        [InlineData(typeof(JobLeaseList), new[] { "Id" }, new[] { "Id", "LeaseSeconds" })]
+        [InlineData(typeof(ScheduleNextList), new[] { "ScheduleId" }, new[] { "ScheduleId", "NextDueAt", "LastScheduledFor" })]
+        public void Each_job_list_is_a_table_type_class_with_its_columns_and_key(Type list, string[] key, string[] columns)
+        {
+            PropertyInfo[] properties = list.GetProperties();
+
+            Assert.NotNull(list.GetCustomAttribute<TableTypeAttribute>());
+            Assert.Equal(columns, properties.Select(static property => property.Name));
+            Assert.Equal(key, properties.Where(static property => property.GetCustomAttribute<KeyAttribute>() is not null).Select(static property => property.Name));
+        }
+
+        [Theory]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.HandlerKey), 64, null)]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.LabelKey), 64, null)]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.LabelArgumentsJson), 4000, null)]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.TraceParent), 55, null)]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.ConfirmedKeys), null, "varchar(2000)")]
+        [InlineData(typeof(JobRequestList), nameof(JobRequestList.ArgumentsJson), null, null)]
+        [InlineData(typeof(JobOutcomeList), nameof(JobOutcomeList.ErrorCode), 64, null)]
+        [InlineData(typeof(JobOutcomeList), nameof(JobOutcomeList.ErrorArgumentsJson), 4000, null)]
+        [InlineData(typeof(JobOutcomeList), nameof(JobOutcomeList.ErrorTraceId), null, "varchar(32)")]
+        [InlineData(typeof(JobOutcomeList), nameof(JobOutcomeList.StateJson), null, null)]
+        [InlineData(typeof(JobOutcomeList), nameof(JobOutcomeList.PendingConfirmationsJson), null, null)]
+        [InlineData(typeof(JobProgressList), nameof(JobProgressList.ProgressKey), 64, null)]
+        [InlineData(typeof(JobProgressList), nameof(JobProgressList.ProgressArgumentsJson), 4000, null)]
+        [InlineData(typeof(JobProgressList), nameof(JobProgressList.StateJson), null, null)]
+        public void The_job_lists_size_their_text_columns_as_the_job_table_does(Type list, string column, int? maxLength, string? storeType)
+        {
+            // An unannotated string maps to nvarchar(max).
+            PropertyInfo property = list.GetProperty(column)!;
+
+            Assert.Equal(maxLength, property.GetCustomAttribute<MaxLengthAttribute>()?.Length);
+            Assert.Equal(storeType, property.GetCustomAttribute<ColumnAttribute>()?.TypeName);
+        }
+
         [Fact]
         public void The_application_role_is_a_platform_constant()
         {
