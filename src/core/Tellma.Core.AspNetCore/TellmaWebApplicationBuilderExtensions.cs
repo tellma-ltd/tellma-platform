@@ -15,11 +15,14 @@ using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.AspNetCore.Authentication;
+using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
+using Tellma.Core.AspNetCore.Tenancy;
 using Tellma.Core.Composition;
 
 namespace Tellma.Core.AspNetCore
@@ -107,7 +110,38 @@ namespace Tellma.Core.AspNetCore
             });
 
             // --- Authentication and authorization ---
-            TellmaAuthenticationComposition.Register(services);
+            TellmaAuthenticationComposition.Register(services, slug);
+
+            // --- Sessions: the catalog-backed store, refresh, the sweep, and the termination listeners ---
+            var secrets = IdentityClientSecrets.From(configuration, environment);
+            _ = services.AddSingleton(secrets);
+            _ = services.AddSingleton(SessionCookieSecurity.From(configuration));
+            _ = services.AddSingleton<ISessionRows, SqlSessionRows>();
+            _ = services.AddSingleton<SessionTerminationNotifier>();
+            _ = services.AddSingleton<CatalogSessionStore>();
+            _ = services.AddSingleton<ICatalogSessionStore>(static provider => provider.GetRequiredService<CatalogSessionStore>());
+            _ = services.AddSingleton<ITokenRedeemer, OidcTokenRedeemer>();
+            _ = services.AddSingleton<SessionRefresher>();
+            _ = services.AddScoped<TellmaSessionEvents>();
+            _ = services.AddHostedService<SessionSweepService>();
+            _ = services.AddSingleton<IStartupCheck, IdentityCheck>();
+
+            // --- The BFF: sign-in events, the back-channel logout's validation, the login policy seam ---
+            _ = services.AddScoped<BffOidcEvents>();
+            _ = services.AddSingleton<BackchannelLogoutValidator>();
+            services.TryAddSingleton<IAuthenticationPolicyProvider, DefaultAuthenticationPolicyProvider>();
+
+            // --- Tenancy: the membership hints' reconciliation ---
+            _ = HostOptionsBinding.Bind<TenancyHostOptions>(services, TenancyHostOptions.SectionPath, OptionsOwner);
+            _ = services.AddSingleton<IMembershipReconcileStore, SqlMembershipReconcileStore>();
+            _ = services.AddHostedService<MembershipReconcileService>();
+
+            // --- The in-process identity server, when the distribution hosts its own ---
+            if (InProcIdentity.IsInProc(configuration))
+            {
+                InProcIdentity.Register(services, slug, configuration, environment, secrets);
+                InProcIdentity.AddPageConvention(services);
+            }
 
             // --- Forwarded headers: the configured proxies alone, and only the client address and scheme ---
             _ = services.AddOptions<ForwardedHeadersOptions>().Configure<IOptions<ForwardedHeadersHostOptions>>(ConfigureForwardedHeaders);

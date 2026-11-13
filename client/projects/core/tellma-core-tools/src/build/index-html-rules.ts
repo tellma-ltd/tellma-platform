@@ -8,7 +8,11 @@
 // (spec 0024 §2.6); every failure is the build problem `index-html-invalid`.
 // The boot script must run first and alone: it decides the language, the
 // theme and the session before the first paint, and the Content Security
-// Policy (`script-src 'self'`) admits no inline script.
+// Policy (`script-src 'self'`) admits no inline script. Every URL the page
+// loads is relative, so `<base href="/">` must come before the first of them:
+// a reload or deep link to /17/centers then still loads tm-boot.js and the
+// bundle from the root, and a base element added later re-resolves nothing
+// already fetched.
 
 /** The build problem code of every failed `index.html` rule. */
 export const TM_INDEX_HTML_PROBLEM = 'index-html-invalid';
@@ -31,6 +35,11 @@ export const TM_BOOT_SCRIPT_FILE = 'tm-boot.js';
 
 /** The rules of a distribution's `index.html`, in the order the build reports them. */
 export const TM_INDEX_HTML_RULES: readonly TmIndexHtmlRule[] = Object.freeze([
+  {
+    id: 'base-href',
+    scope: 'both',
+    message: 'The head must hold <base href="/"> before any element that loads a URL, so every relative URL resolves from the root on a deep link.',
+  },
   {
     id: 'boot-script-first',
     scope: 'both',

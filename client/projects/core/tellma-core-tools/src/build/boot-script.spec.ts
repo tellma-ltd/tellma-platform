@@ -85,6 +85,7 @@ describe('the index.html rules', () => {
   it('report one problem code, and check the event handler attributes in the built file only', () => {
     expect(TM_INDEX_HTML_PROBLEM).toBe('index-html-invalid');
     expect(TM_INDEX_HTML_RULES.map((rule) => [rule.id, rule.scope])).toEqual([
+      ['base-href', 'both'],
       ['boot-script-first', 'both'],
       ['app-element', 'both'],
       ['manifest-link', 'both'],

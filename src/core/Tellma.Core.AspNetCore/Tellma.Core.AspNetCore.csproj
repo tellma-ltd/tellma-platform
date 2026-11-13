@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>The ASP.NET Core adapter of Tellma's runtime: AddTellma, UseTellma and MapTellma for a distribution's web host. The fixed request pipeline, the route groups and their conventions, the endpoint audit, the CSRF control, the tenant middleware and access filter, the authentication schemes and policies, the tenantless surfaces (the information document, health, the admin surface, the protected-resource metadata and the SPA), Data Protection, forwarded headers, Serilog and OpenTelemetry.</Description>
+    <Description>The ASP.NET Core adapter of Tellma's runtime: AddTellma, UseTellma and MapTellma for a distribution's web host. The fixed request pipeline, the route groups and their conventions, the endpoint audit, the CSRF control, the tenant middleware and access filter, the authentication schemes and policies, the BFF and its catalog session store, back-channel logout, the session sweep and membership reconciliation timers, the in-proc identity engine's wiring, the tenantless surfaces (the information document, health, the admin surface, the protected-resource metadata and the SPA), Data Protection, forwarded headers, Serilog and OpenTelemetry.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +14,9 @@
   <ItemGroup>
     <!-- The Tellma.Bearer scheme of the bearer surfaces (MCP, the public API, the control plane). -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- The Tellma.OpenIdConnect scheme that signs a user in to the BFF session, and the
+         configuration manager the back-channel logout receiver and the token refresh share. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <!-- Structured logging from the Serilog section, request logging and the version enrichers. -->
     <PackageReference Include="Serilog.AspNetCore" />
     <!-- Traces and metrics: the platform's meters and activity sources and the framework's
