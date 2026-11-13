@@ -5,12 +5,13 @@
 
 /**
  * Per-entry-point bundle budget (spec §8): measures each surface's
- * SELF-weight as an app ships it — its built FESM linked by the Angular
- * linker and bundled with esbuild under the production flags, while the
- * assumed app baseline (@angular/* incl. cdk+aria, rxjs, tslib, @jsverse/*)
- * AND the other @tellma entry points stay external (tools/bundle-measure.mjs
- * says why it links first) — then gzips and compares to the ceilings each
- * library declares in its package.json "tellma".budgetsInKb.
+ * SELF-weight as an app ships it — its built FESM and every chunk it loads
+ * (`@defer` chunks included) linked by the Angular linker and bundled with
+ * esbuild under the production options, while the assumed app baseline
+ * (@angular/* incl. cdk+aria, rxjs, tslib, @jsverse/*) AND the other @tellma
+ * entry points stay external (tools/bundle-measure.mjs says why it links
+ * first, and fails on anything left unlinked) — then gzips and compares to
+ * the ceilings each library declares in its package.json "tellma".budgetsInKb.
  * The ceilings are RATCHETS: set just above measured reality to catch
  * regressions, inspected and tightened as real builds land, never loosened
  * silently.

@@ -196,12 +196,29 @@ class PlainHost {
       <tm-grid-column key="id" [width]="140">
         <input *tmGridHeader class="header-input" aria-label="Filter id" />
       </tm-grid-column>
+      <tm-grid-column key="unit" [value]="blank" [width]="100">
+        <div
+          *tmGridHeader
+          class="header-widget"
+          role="combobox"
+          tabindex="0"
+          aria-label="Unit"
+          (click)="widgetClicks.set(widgetClicks() + 1)"
+        >
+          kg
+        </div>
+      </tm-grid-column>
+      <tm-grid-column key="label" [value]="blank" [width]="100">
+        <span *tmGridHeader class="header-text" contenteditable="true">Label</span>
+      </tm-grid-column>
     </tm-grid>
   `,
 })
 class ContentHost {
   readonly rows = makeRows(3);
   readonly clicks = signal(0);
+  readonly widgetClicks = signal(0);
+  readonly blank = (): string => '';
   readonly rowId = (row: Row): number => row.id;
 }
 
@@ -329,6 +346,13 @@ async function longPress(fixture: ComponentFixture<unknown>, target: Element): P
 /** Whether the grid's context menu is open. */
 function menuOpen(): boolean {
   return document.querySelector('.tm-menu__panel') !== null;
+}
+
+/** Whether the open context menu's item with this label is disabled. */
+function menuItemDisabled(label: string): boolean {
+  const labels = document.querySelectorAll<HTMLElement>('.tm-menu__panel .tm-menu__label');
+  const match = [...labels].find((element) => element.textContent?.trim() === label);
+  return match?.closest('.tm-menu__item')?.getAttribute('aria-disabled') === 'true';
 }
 
 function dispatchClipboard(scroller: HTMLElement, kind: 'copy' | 'cut'): DataTransfer {
@@ -509,6 +533,47 @@ describe('tm-grid header navigation', () => {
     expect(document.activeElement).toBe(input);
     expect((await key(fixture, 'Escape')).defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(headerAt(scroller, 2));
+
+    // Other focusable content (a select's trigger) takes focus without a click.
+    await key(fixture, 'ArrowRight');
+    await key(fixture, 'Enter');
+    expect(document.activeElement).toBe(root.querySelector('.header-widget'));
+    expect(fixture.componentInstance.widgetClicks()).toBe(0);
+
+    // The arrows go on from it, and editable text takes focus too, keeping
+    // its keys like a form field.
+    await key(fixture, 'ArrowRight');
+    expect(document.activeElement).toBe(headerAt(scroller, 4));
+    await key(fixture, 'Enter');
+    const text = root.querySelector<HTMLElement>('.header-text')!;
+    expect(document.activeElement).toBe(text);
+    expect((await key(fixture, 'ArrowLeft')).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(text);
+  });
+
+  it('leaves an Escape that ends an IME composition in a header field', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(ContentHost);
+    await stable(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLElement>('.header-input')!;
+    input.focus();
+    await stable(fixture);
+
+    expect((await key(fixture, 'Escape', { isComposing: true })).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+    // The first keydown of a composition carries only the 229 sentinel.
+    const first = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    Object.defineProperty(first, 'keyCode', { value: 229 });
+    input.dispatchEvent(first);
+    await stable(fixture);
+    expect(first.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+
+    // Once the composition ends, Escape returns to the header.
+    const scroller = root.querySelector<HTMLElement>('.tm-grid__scroller')!;
+    expect((await key(fixture, 'Escape')).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(headerAt(scroller, 2));
   });
 
   it("counts focus on a header's action as that header's focus", async () => {
@@ -579,6 +644,29 @@ describe('TmGridHeaderAction', () => {
     host.qtyActive.set(false);
     await stable(fixture);
     expect(action.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('describes the header holding it as active, where header navigation puts focus', async () => {
+    const { fixture, host, scroller } = await setup();
+    const texts = (element: HTMLElement): string[] =>
+      (element.getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent?.trim() ?? '');
+    expect(texts(headerAt(scroller, 1))).not.toContain('Active');
+
+    host.qtyActive.set(true);
+    await stable(fixture);
+    const header = texts(headerAt(scroller, 1));
+    expect(header.length).toBe(2);
+    expect(header[0]).not.toBe('');
+    expect(header[1]).toBe('Active');
+    // Only the header holding the active action.
+    expect(texts(headerAt(scroller, 2))).not.toContain('Active');
+    expect(texts(endHeader(scroller))).not.toContain('Active');
+
+    host.qtyActive.set(false);
+    await stable(fixture);
+    expect(texts(headerAt(scroller, 1))).toEqual([header[0]]);
   });
 
   it('opens on a press without sorting or selecting the column', async () => {
@@ -796,6 +884,73 @@ describe('tm-grid row-end column', () => {
     // On the row-end cell the paste is left to the page.
     await key(fixture, 'End');
     expect(paste().defaultPrevented).toBe(false);
+  });
+
+  it('hands copy and cut to a selection grown from the row-end cell by Mod+A or Shift+Space', async () => {
+    const { fixture, scroller } = await setup();
+    const harness = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmGridHarness);
+    await activate(fixture, scroller, 0, 0);
+    await key(fixture, 'End');
+    await key(fixture, 'a', mod);
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(document.activeElement).toBe(cellAt(scroller, 0, 2));
+    const all = dispatchClipboard(scroller, 'copy').getData('text/plain');
+    expect(all.split('\r\n').filter((line) => line !== '').length).toBe(20);
+    // The Note column's value is computed, so it copies empty.
+    expect(all.startsWith('Item 0\t100\t\r\n')).toBe(true);
+
+    await activate(fixture, scroller, 1, 0);
+    await key(fixture, 'End');
+    await key(fixture, ' ', { shiftKey: true });
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(dispatchClipboard(scroller, 'copy').getData('text/plain')).toBe('Item 1\t101\t\r\n');
+    expect(dispatchClipboard(scroller, 'cut').getData('text/plain')).toBe('Item 1\t101\t\r\n');
+  });
+
+  it('hands copy to the range a drag from the row-end cell selects', async () => {
+    const { fixture, scroller } = await setup();
+    const harness = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmGridHarness);
+    await activate(fixture, scroller, 4, 0);
+    pointer(endCellAt(scroller, 0), 'pointerdown');
+    // Within the row-end cell the press keeps the ring.
+    pointer(document.body, 'pointermove', {
+      clientX: endCellAt(scroller, 0).getBoundingClientRect().left + 6,
+      clientY: endCellAt(scroller, 0).getBoundingClientRect().top + 4,
+    });
+    await stable(fixture);
+    expect(await harness.isRowEndActive()).toBe(true);
+
+    const target = cellAt(scroller, 2, 1).getBoundingClientRect();
+    pointer(document.body, 'pointermove', {
+      clientX: target.left + 4,
+      clientY: target.top + 4,
+    });
+    pointer(cellAt(scroller, 2, 1), 'pointerup');
+    await stable(fixture);
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(dispatchClipboard(scroller, 'copy').getData('text/plain')).toBe(
+      '100\t\r\n101\t\r\n102\t\r\n',
+    );
+  });
+
+  it("disables the context menu's clipboard items exactly where the keys do nothing", async () => {
+    const { fixture, scroller } = await setup();
+    await activate(fixture, scroller, 0, 0);
+    contextMenu(endCellAt(scroller, 2));
+    await stable(fixture);
+    expect(menuOpen()).toBe(true);
+    expect(menuItemDisabled('Copy')).toBe(true);
+    expect(menuItemDisabled('Copy with headers')).toBe(true);
+    keydown(document.activeElement!, 'Escape');
+    await stable(fixture);
+
+    // A grown selection returns the ring to the data cell, and the items act on it.
+    await key(fixture, ' ', { shiftKey: true });
+    contextMenu(cellAt(scroller, 2, 1));
+    await stable(fixture);
+    expect(menuOpen()).toBe(true);
+    expect(menuItemDisabled('Copy')).toBe(false);
+    expect(menuItemDisabled('Copy with headers')).toBe(false);
   });
 
   it('is never a find match, and a match leaves the row-end cell', async () => {

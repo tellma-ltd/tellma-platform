@@ -19,12 +19,15 @@ import { AriaDescriber } from '@angular/cdk/a11y';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 
+import { ɵTM_GRID_HEADER_ACTIVITY } from './internal/header-activity';
+
 /**
  * A column header's action button — a filter or a column editor — placed in
  * a `tmGridHeaderEnd` or `tmGridRowEndHeader` template: a 24 × 24 px icon
  * target inside the header height. `active` marks the state the action
  * controls as on (a filter applied, a popover open) with the accent color
- * and a hidden "Active" description.
+ * and a hidden "Active" description, which the header holding the button
+ * carries as well, since keyboard focus rests on the header.
  *
  * The button never takes a tab stop of its own: the grid's header navigation
  * reaches it, where Enter, Space or Alt+ArrowDown click it, and focus on it
@@ -43,7 +46,8 @@ import { TM_UI_TRANSLATE } from '@tellma/core-ui';
  * @tmA11yNotes An icon-only native button: give it an `aria-label` (a
  *   dev-mode warning fires otherwise). While `active`, its accessible
  *   description is "Active"; the description is merged into
- *   `aria-describedby`, so bind none of your own on the button.
+ *   `aria-describedby`, so bind none of your own on the button. The header
+ *   cell, where keyboard focus rests, is described as "Active" too.
  */
 @Component({
   // An attribute on a native button, so the button keeps its own semantics;
@@ -96,6 +100,15 @@ export class TmGridHeaderAction {
       });
     });
     inject(DestroyRef).onDestroy(clear);
+
+    // The header holding the button is described too: header navigation
+    // focuses the header cell, never the button, and a screen reader reads
+    // only the focused element's description.
+    const activity = inject(ɵTM_GRID_HEADER_ACTIVITY, { optional: true });
+    if (activity !== null) {
+      effect(() => activity.setHeaderActionActive(this.element, this.active()));
+      inject(DestroyRef).onDestroy(() => activity.setHeaderActionActive(this.element, false));
+    }
 
     if (isDevMode()) {
       // An icon-only button needs a name of its own.

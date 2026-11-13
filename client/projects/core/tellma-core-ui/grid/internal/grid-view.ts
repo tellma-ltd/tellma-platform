@@ -147,6 +147,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
               <ng-container
                 [ngTemplateOutlet]="headerTemplate"
                 [ngTemplateOutletContext]="{ $implicit: col.header() }"
+                [ngTemplateOutletInjector]="core().headerTemplateInjector"
               />
             } @else {
               <span class="tm-grid__colhdr-label">{{ col.header() }}</span>
@@ -180,6 +181,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                     key: col.key ?? undefined,
                     sort: sort?.direction ?? null,
                   }"
+                  [ngTemplateOutletInjector]="core().headerTemplateInjector"
                 />
               </span>
             }

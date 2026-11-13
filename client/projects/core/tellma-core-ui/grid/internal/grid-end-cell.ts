@@ -30,7 +30,10 @@ import type { ɵTmGridRowVm, ɵTmGridViewCore } from './grid-core';
         <ng-container [ngTemplateOutlet]="core().rowEndDef()!.template" [ngTemplateOutletContext]="ctx" />
       }
     } @else if (core().rowEndHeaderDef(); as def) {
-      <ng-container [ngTemplateOutlet]="def.template" />
+      <ng-container
+        [ngTemplateOutlet]="def.template"
+        [ngTemplateOutletInjector]="core().headerTemplateInjector"
+      />
     }`,
   styleUrl: './grid-end-cell.css',
   host: {
@@ -45,7 +48,7 @@ import type { ɵTmGridRowVm, ɵTmGridViewCore } from './grid-core';
     '[attr.aria-hidden]': 'live() ? null : "true"',
     '[attr.aria-colindex]': 'live() ? core().rowEndColIndex() : null',
     '[attr.data-tm-hslot]': 'live() && !row() ? core().columnModel().length : null',
-    '[attr.aria-describedby]': 'live() && !row() ? core().headerActionHintId : null',
+    '[attr.aria-describedby]': 'live() && !row() ? core().rowEndHeaderHintIds() : null',
     '[attr.tabindex]': 'tabIndex()',
   },
 })

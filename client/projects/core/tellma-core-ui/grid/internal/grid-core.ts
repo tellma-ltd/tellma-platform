@@ -11,12 +11,12 @@ import {
   effect,
   ErrorHandler,
   InjectionToken,
+  Injector,
   isDevMode,
   PendingTasks,
   signal,
   untracked,
   type DestroyRef,
-  type Injector,
   type Signal,
   type TemplateRef,
   type Type,
@@ -114,6 +114,7 @@ import {
   type TmGridHeaderMotion,
   type TmGridIntent,
 } from './grid-keymap';
+import { ɵTM_GRID_HEADER_ACTIVITY, type ɵTmGridHeaderActivity } from './header-activity';
 
 /** What the grid takes from its on-demand editing code. */
 export interface ɵTmGridEditingCode {
@@ -207,6 +208,9 @@ const GRID_MENU_ICONS = {
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
+
+/** What Enter or Space on a header can reach in its template: the above, and editable text. */
+const HEADER_CONTENT_SELECTOR = `${INTERACTIVE_CONTENT_SELECTOR}, [contenteditable]:not([contenteditable="false"])`;
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -701,10 +705,18 @@ export interface ɵTmGridViewCore {
   /** The header slot holding the grid's tab stop, or `null` when no header does. */
   readonly headerTabStop: Signal<number | null>;
   /**
-   * Per column, the id of the hidden hint its header is described by, or
-   * `null` on a header with nothing to do from the keyboard.
+   * Per column, the ids of the hidden hints its header is described by — its
+   * keys, and "Active" while an action in it is active — or `null` on a
+   * header with nothing to do from the keyboard.
    */
   readonly headerHintIds: Signal<readonly (string | null)[]>;
+  /** The ids of the hidden hints the row-end header is described by, as for a column header. */
+  readonly rowEndHeaderHintIds: Signal<string | null>;
+  /**
+   * The injector the header templates render with: it carries the grid's
+   * header-activity record to the header actions inside them.
+   */
+  readonly headerTemplateInjector: Injector;
   /**
    * A header slot's roving tabindex: 0 on the slot holding the tab stop, -1
    * on the other slots, and `null` while the header row does not navigate
@@ -719,8 +731,8 @@ export interface ɵTmGridViewCore {
   readonly headerActionHintId: string;
   /**
    * The hidden hints the navigable headers are described by — sortable,
-   * sortable with an action, action-only — as element id and localized
-   * text; none while the header row does not navigate.
+   * sortable with an action, action-only, and "Active" — as element id and
+   * localized text; none while the header row does not navigate.
    */
   readonly headerHints: Signal<readonly { readonly id: string; readonly text: string }[]>;
   /** Whether the row-end column renders (either row-end template declared). */
@@ -870,7 +882,9 @@ export interface ɵTmGridViewCore {
  * works through (`ɵTmGridEditingHost`), whose members are public for that
  * reason only.
  */
-export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T> {
+export class ɵTmGridCore<T>
+  implements ɵTmGridViewCore, ɵTmGridEditingHost<T>, ɵTmGridHeaderActivity
+{
   private readonly deps: ɵTmGridCoreDeps<T>;
   private readonly announcements: ɵTmGridAnnouncements;
   private readonly clipboardDom: ɵTmGridClipboardDom;
@@ -1085,8 +1099,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   readonly headerNav: Signal<boolean>;
   /** The header slot holding the grid's tab stop, or `null`. */
   readonly headerTabStop: Signal<number | null>;
-  /** Per column, the id of its header's hidden hint, or `null`. */
+  /** Per column, the ids of its header's hidden hints, or `null`. */
   readonly headerHintIds: Signal<readonly (string | null)[]>;
+  /** The ids of the row-end header's hidden hints, or `null`. */
+  readonly rowEndHeaderHintIds: Signal<string | null>;
+  /** The injector the header templates render with (it provides this core's header activity). */
+  readonly headerTemplateInjector = Injector.create({
+    providers: [{ provide: ɵTM_GRID_HEADER_ACTIVITY, useValue: this }],
+  });
+  /** The header actions whose controlled state is on, by element. */
+  private readonly activeHeaderActions = signal<readonly Element[]>([]);
   /** The navigable headers' hidden hints, as element id and localized text. */
   readonly headerHints: Signal<readonly { readonly id: string; readonly text: string }[]>;
   /** Whether the row-end column renders. */
@@ -1119,6 +1141,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   readonly headerFilterHintId = `${this.scrollerId}-hf`;
   /** The action-only header hint's element id. */
   readonly headerActionHintId = `${this.scrollerId}-ha`;
+  /** The "Active" hint's element id: a header holding an active action. */
+  readonly headerActiveHintId = `${this.scrollerId}-hx`;
   /** The localized row-activation hint. */
   readonly rowActivationHint: Signal<string>;
   /** Per column, the header's sort state; `undefined` on a header that does not sort. */
@@ -1306,13 +1330,22 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     );
     // Only a row-end TEMPLATE makes its cells reachable, and the position
     // lives on the active row's last data column, so a column change by any
-    // other path (a click, find, an error jump) leaves it on its own.
+    // other path (a click, find, an error jump) leaves it on its own. The
+    // ring stands for a lone cell, so a selection grown by any path (Mod+A,
+    // Shift+Space, a drag, a programmatic select) returns it to the data
+    // cell, where copy, cut, paste and Delete act on that selection.
     this.rowEndActive = computed(() => {
       if (!this.rowEndFocusSignal() || deps.rowEndDef() === undefined) {
         return false;
       }
       const active = this.engine.nav.activeCell();
-      return active !== null && active.col === this.columnsInternal().length - 1;
+      // Read the ranges first: the single-cell check reads them untracked.
+      this.engine.selection.ranges();
+      return (
+        active !== null &&
+        active.col === this.columnsInternal().length - 1 &&
+        this.engine.selection.isSingleCellSelection()
+      );
     });
 
     // ---- header navigation (spec 0010 §C.4) ----
@@ -1369,29 +1402,52 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     const sortHint = deps.translate('grid.headerNavHint', { filter: false, filterKeys });
     const filterHint = deps.translate('grid.headerNavHint', { filter: true, filterKeys });
     const actionHint = deps.translate('grid.headerActionHint');
+    const activeHint = deps.translate('grid.headerActionActive');
     this.headerHints = computed(() =>
       this.headerNav()
         ? [
             { id: this.headerSortHintId, text: sortHint() },
             { id: this.headerFilterHintId, text: filterHint() },
             { id: this.headerActionHintId, text: actionHint() },
+            { id: this.headerActiveHintId, text: activeHint() },
           ]
         : [],
     );
+    // The header slots holding an active action. Focus rests on the header
+    // cell, never on the action, so the action's own "Active" description
+    // would go unheard: the header carries it too (spec 0010 §C.4).
+    const activeSlots = computed(() => {
+      const slots = new Set<number>();
+      for (const element of this.activeHeaderActions()) {
+        const slot = Number(element.closest('[data-tm-hslot]')?.getAttribute('data-tm-hslot'));
+        if (Number.isInteger(slot)) {
+          slots.add(slot);
+        }
+      }
+      return slots;
+    });
+    const withActive = (slot: number, keys: string | null): string | null =>
+      keys !== null && activeSlots().has(slot) ? `${keys} ${this.headerActiveHintId}` : keys;
     // The hint names the header's keys: Enter sorts, Alt+ArrowDown (or
     // Enter, on a header without a sort) opens its action.
     this.headerHintIds = computed(() =>
       this.headerNav()
         ? this.columnModel().map((col, index) =>
-            this.headerSort()[index] !== undefined
-              ? col.headerEndTemplate
-                ? this.headerFilterHintId
-                : this.headerSortHintId
-              : col.headerEndTemplate
-                ? this.headerActionHintId
-                : null,
+            withActive(
+              index,
+              this.headerSort()[index] !== undefined
+                ? col.headerEndTemplate
+                  ? this.headerFilterHintId
+                  : this.headerSortHintId
+                : col.headerEndTemplate
+                  ? this.headerActionHintId
+                  : null,
+            ),
           )
         : [],
+    );
+    this.rowEndHeaderHintIds = computed(() =>
+      this.headerNav() ? withActive(this.columnModel().length, this.headerActionHintId) : null,
     );
 
     this.ariaRowCount = computed(() => this.engine.model.viewRowCount() + 1);
@@ -2201,7 +2257,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       // A form field in a header keeps every key but a bare Escape, which
       // returns to its header.
       const bare = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-      if (event.key === 'Escape' && bare) {
+      // An Escape that cancels an IME composition belongs to the field (the
+      // 229 sentinel as in the body keydown, read the same way).
+      const imeKeyCode = (event as { readonly keyCode: number }).keyCode;
+      const composing = event.isComposing || imeKeyCode === 229;
+      if (event.key === 'Escape' && bare && !composing) {
         this.focusHeaderSlot(slot);
         event.preventDefault();
       }
@@ -2351,18 +2411,34 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   }
 
   /**
-   * Reaches a header's first interactive content outside any overlay — a
-   * link or button in a header template, which the header row takes out of
-   * the tab order: a form field takes focus, and anything else is clicked.
+   * Records a header action's `active` state, which describes the header
+   * holding it (see {@link headerHintIds}).
+   */
+  setHeaderActionActive(element: Element, active: boolean): void {
+    const current = untracked(this.activeHeaderActions);
+    const listed = current.includes(element);
+    if (active && !listed) {
+      this.activeHeaderActions.set([...current, element]);
+    } else if (!active && listed) {
+      this.activeHeaderActions.set(current.filter((entry) => entry !== element));
+    }
+  }
+
+  /**
+   * Reaches a header's first interactive content outside any overlay —
+   * content in a header template, which the header row takes out of the tab
+   * order: a link or button is clicked, and anything else (a form field, a
+   * focusable widget such as a select's trigger, editable text) takes focus,
+   * as Enter does on a cell's content.
    */
   private activateHeaderContent(slot: number): void {
     const element = untracked(this.scrollerSignal)?.querySelector(headerSlotSelector(slot));
-    const candidates = element?.querySelectorAll<HTMLElement>(INTERACTIVE_CONTENT_SELECTOR) ?? [];
+    const candidates = element?.querySelectorAll<HTMLElement>(HEADER_CONTENT_SELECTOR) ?? [];
     const content = [...candidates].find((candidate) => !this.inOverlay(candidate));
-    if (content?.matches('input, select, textarea')) {
-      content.focus();
+    if (content?.matches('a[href], button')) {
+      content.click();
     } else {
-      content?.click();
+      content?.focus();
     }
   }
 
@@ -2479,6 +2555,11 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       case 'edit':
         // F2 reaches the cell's button or link; typing and the dropdown key do nothing.
         return intent.seed === undefined && intent.dropdown !== true && this.activateCellLink();
+      case 'selectAll':
+      case 'selectRows':
+        // A grown selection starts from the data cell, as a range does.
+        this.rowEndFocusSignal.set(false);
+        return null;
       case 'toggleBoolean':
       case 'clear':
       case 'fillDown':
@@ -4899,13 +4980,16 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     // shortcut hint instead (§8.5, the Sheets-established fallback).
     const canReadClipboard =
       typeof navigator.clipboard?.read === 'function' && !this.pasteReadDenied();
+    // The row-end column never takes part in the clipboard (spec 0010
+    // §C.14): with its cell active the keys do nothing, and so do the items.
+    const onEnd = this.rowEndActive();
     const items: TmMenuEntry[] = [
       {
         id: 'cut',
         label: translate('grid.menu.cut')(),
         icon: GRID_MENU_ICONS.cut,
         shortcut: GRID_MENU_SHORTCUTS.cut,
-        disabled: !editable,
+        disabled: !editable || onEnd,
         action: () => this.clipboardDom.cutAsync(),
       },
       {
@@ -4913,12 +4997,14 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
         label: translate('grid.menu.copy')(),
         icon: GRID_MENU_ICONS.copy,
         shortcut: GRID_MENU_SHORTCUTS.copy,
+        disabled: onEnd,
         action: () => this.clipboardDom.copyAsync(),
       },
       {
         id: 'copyWithHeaders',
         label: translate('grid.menu.copyWithHeaders')(),
         icon: GRID_MENU_ICONS.copyWithHeaders,
+        disabled: onEnd,
         action: () => this.clipboardDom.copyAsync({ withHeaders: true }),
       },
       canReadClipboard
@@ -4927,7 +5013,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
             label: translate('grid.menu.paste')(),
             icon: GRID_MENU_ICONS.paste,
             shortcut: GRID_MENU_SHORTCUTS.paste,
-            disabled: !editable,
+            disabled: !editable || onEnd,
             action: () => void this.pasteFromAsyncClipboard(),
           }
         : {
@@ -5240,6 +5326,9 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       const colAttribute = cellElement.getAttribute('data-col');
       const col = colAttribute === null ? 0 : Number(colAttribute);
       if (Number.isInteger(col)) {
+        // A drag that reaches a data cell (the row-end cells are no drag
+        // target) leaves a press's row-end ring for the range it grows.
+        this.rowEndFocusSignal.set(false);
         this.engine.dragTo({ row, col });
       }
     };

@@ -17,15 +17,25 @@
  * so the measure would jump by kilobytes whenever a template and stylesheet
  * grew past that distance, with nothing a user downloads changing.
  *
- * So the measure links the FESM first, as an app build does, then bundles it
- * with esbuild with `ngDevMode` and the other build-time flags set to false,
- * minifies and gzips it. The app baseline (@angular/* including cdk and aria,
- * rxjs, tslib, @jsverse/*) and the sibling @tellma entry points stay
- * external, so each entry point is measured on its own weight.
+ * So the measure bundles the FESM with esbuild, linking every module it
+ * loads as an app build does (the entry and its `@defer` chunks alike), with
+ * an app build's production options: `ngDevMode` and the other build-time
+ * flags false, `forwardRef` pure and license comments dropped. It then
+ * minifies and gzips the bundle. The app baseline (@angular/* including cdk
+ * and aria, rxjs, tslib, @jsverse/*) and the sibling @tellma entry points
+ * stay external, so each entry point is measured on its own weight. A
+ * declaration left unlinked in the output fails the measure, so a module the
+ * linker missed can never be counted with its metadata copy.
+ *
+ * The measure approximates an Angular production build rather than running
+ * one: it leaves out `@angular/build`'s own Babel optimizations (pure
+ * annotations, metadata elision, enum and static-member wrapping), which are
+ * not a public API. Against a build that runs them, it reads up to about
+ * 0.1 KB lower per entry point, the most on the largest.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
@@ -40,7 +50,16 @@ export const BUNDLE_EXTERNALS = [
 ];
 
 /** The build-time flags an Angular production build sets, which strip dev-only code. */
-const PRODUCTION_DEFINES = { ngDevMode: 'false', ngJitMode: 'false', ngI18nClosureMode: 'false' };
+const PRODUCTION_DEFINES = {
+  ngDevMode: 'false',
+  ngJitMode: 'false',
+  ngServerMode: 'false',
+  ngHmrMode: 'false',
+  ngI18nClosureMode: 'false',
+};
+
+// A partial declaration's name, plain or with its `ɵ` prefix escaped.
+const UNLINKED = /ngDeclare/;
 
 /**
  * Creates the measurer for a client workspace: it resolves esbuild from the
@@ -49,7 +68,8 @@ const PRODUCTION_DEFINES = { ngDevMode: 'false', ngJitMode: 'false', ngI18nClosu
  *
  * @param {string} clientDir absolute path of the client workspace
  * @returns {Promise<(fesm: string) => Promise<number>>} gzipped bytes of one
- *   FESM, given its absolute path
+ *   FESM, given its absolute path; rejects when the bundle still holds an
+ *   unlinked declaration
  */
 export async function createBundleMeasurer(clientDir) {
   const require = createRequire(join(clientDir, 'package.json'));
@@ -60,29 +80,52 @@ export async function createBundleMeasurer(clientDir) {
     pathToFileURL(require.resolve('@angular/compiler-cli/linker/babel')).href
   );
 
+  // Links every module esbuild loads that holds a partial declaration: the
+  // entry FESM and the chunks it imports, `@defer` chunks included.
+  const link = {
+    name: 'tellma-link',
+    setup(build) {
+      build.onLoad({ filter: /\.m?js$/ }, async (args) => {
+        const source = readFileSync(args.path, 'utf8');
+        if (!source.includes('ɵɵngDeclare')) {
+          return { contents: source, loader: 'js' };
+        }
+        const linked = await babel.transformAsync(source, {
+          filename: args.path,
+          configFile: false,
+          babelrc: false,
+          compact: false,
+          sourceMaps: false,
+          plugins: [linkerPlugin],
+        });
+        return { contents: linked.code, loader: 'js' };
+      });
+    },
+  };
+
   return async (fesm) => {
-    // Link the partial declarations, as an app's build does.
-    const source = readFileSync(fesm, 'utf8');
-    const linked = await babel.transformAsync(source, {
-      filename: fesm,
-      configFile: false,
-      babelrc: false,
-      compact: false,
-      sourceMaps: false,
-      plugins: [linkerPlugin],
-    });
-    // Bundle and minify with the production flags, so dev-mode branches
+    // Bundle and minify with the production options, so dev-mode branches
     // (the class metadata among them) fall away.
     const result = await esbuild.build({
-      stdin: { contents: linked.code, resolveDir: dirname(fesm), loader: 'js' },
+      entryPoints: [fesm],
       bundle: true,
       minify: true,
       format: 'esm',
       write: false,
       logLevel: 'silent',
+      legalComments: 'none',
+      pure: ['forwardRef'],
       define: PRODUCTION_DEFINES,
       external: BUNDLE_EXTERNALS,
+      plugins: [link],
     });
-    return gzipSync(result.outputFiles[0].contents).length;
+    const output = result.outputFiles[0];
+    // Fail loudly rather than count a metadata copy the linker never saw.
+    if (UNLINKED.test(output.text)) {
+      throw new Error(
+        `bundle-measure: ${fesm} still holds an unlinked Angular declaration after linking.`,
+      );
+    }
+    return gzipSync(output.contents).length;
   };
 }
