@@ -3,9 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { fontsLoaded } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -13,6 +14,17 @@ import { storyUrl } from '../support/story-map';
  * and directions, one and two columns, `auto` switching on its own width,
  * the inline layout, and the label and value type.
  */
+
+/**
+ * Opens the story and waits until its lists are rendered and their text is
+ * in its final face, so geometry reads neither count an empty list nor
+ * measure a wrap point in the fallback font.
+ */
+async function openStory(page: Page): Promise<void> {
+  await page.goto(storyUrl('description-list'));
+  await expect(page.getByTestId('dl-one').locator(':scope > div')).toHaveCount(5);
+  await fontsLoaded(page);
+}
 
 /** The distinct rows the list's pairs sit on. */
 async function rowsOf(list: Locator): Promise<number> {
@@ -35,7 +47,7 @@ test.describe('axe floor', () => {
 });
 
 test('lays the pairs out in one or two columns, auto by its own width', async ({ page }) => {
-  await page.goto(storyUrl('description-list'));
+  await openStory(page);
   // Five pairs: five rows in one column, three in two.
   expect(await rowsOf(page.getByTestId('dl-one'))).toBe(5);
   expect(await rowsOf(page.getByTestId('dl-two'))).toBe(3);
@@ -44,7 +56,7 @@ test('lays the pairs out in one or two columns, auto by its own width', async ({
 });
 
 test('puts the label beside the value inline, above it stacked', async ({ page }) => {
-  await page.goto(storyUrl('description-list'));
+  await openStory(page);
   const sameLine = (id: string) =>
     page
       .getByTestId(id)
@@ -61,7 +73,7 @@ test('puts the label beside the value inline, above it stacked', async ({ page }
 });
 
 test('labels are 12 px secondary text, values 13 px', async ({ page }) => {
-  await page.goto(storyUrl('description-list'));
+  await openStory(page);
   const sizes = await page
     .getByTestId('dl-one')
     .locator(':scope > div')
