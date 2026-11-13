@@ -100,7 +100,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-075 | pc-3 | pc/PC-075 | fix2 + integrate (stop-the-line lifted at 9a1754d) (R2 0/1/5: post-boot storage faults reject put/patch/readAll and a memory-fallback patch is lost; sweep vs in-flight write ordering; sign-in-failed defers the sweep; linked-measure restatement (~16.44); stale PC-113 lead; fixed 50 ms waits) | a079c6e696d8bf4b1 (Opus inherit) | r1 abcee4d6b2b554a69 done, r2 a5a1ec716eb481414 done | 2026-11-13 |
+| PC-044 | pc-3 | pc/PC-044 | impl (high; complex → R2 inherit xhigh) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
 | PC-097 | pc-f2 | pc/PC-097 | fix1 + integrate (R1 0/1/3: D-8 rejected → null-or-terminal JobId enforced in SQL with a rowcount check; refuse TransactionMode.None; TenantPollerWake failure tests; built-in schedule seed test) | a342737a128172612 (Opus inherit) | r1 a3e9738a114d4e98a done | 2026-11-13 |
 | PC-030 | pc-1 | pc/PC-030 | fix1 + integrate (R1 0/2/6: zone-label width shifts the date/time parts; zone not exposed to screen readers; minute-floored compare rewrites repeated hours (→ wall-time); required on the filled part; parseErrors → internal; budgets above 0023 §1 caps (D-072); Identity IT not run; time field width) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 done | 2026-11-13 |
 | PC-043 | pc-4 | pc/PC-043 | fix1 (R1 0/1/3: (*, A') implied Read narrowed to resources registering A' (D-073); one filter root per resource rechecked in Classify; engine-exception test; inactive-role test deferred to PC-050) → then R2 (fable) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done | 2026-11-13 |
@@ -178,6 +178,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client core-ui tm-grid-header-nav.spec.ts "tm-grid row-end column takes a right-click or a long-press …" (both variants; expected false to be true; CI 43491332443 on 3077eb7, green on the next two runs) | 2026-11-13 | watch; a fix item if it recurs |
 | dotnet Tellma.Core.IntegrationTests RegistryCatalogTests missing-catalog test (failed once under load on LocalDB, PC-085 impl) | 2026-11-13 | watch; root-cause per D-018 if it recurs |
 | client lint:test tellma-core-tools build.fixture.spec.ts (one cold ng build; 1200 s beforeAll timeout hit while dotnet build and client gates ran in parallel; 11/11 in 299 s alone; PC-057 fix1) | 2026-11-13 | watch on CI |
 | CI client-e2e-quarantine/client-e2e: playwright OS deps install failed (apt mirror), webkit failed to launch (run 43403796974 at 5c3674f) | 2026-11-13 | infra; watch |
@@ -274,7 +275,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | fix1 | 1ee46fa |  |  |
-| PC-044 | 0013-e | 1 | todo | | | |
+| PC-044 | 0013-e | 1 | impl |  |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
@@ -305,7 +306,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-072 | 0015-f | 1 | todo | | | |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
-| PC-075 | 0025-a | 1 | fix2 + integrate | 61c750f, 8f00d42 |  |  |
+| PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
 | PC-077 | 0015-i | 1 | todo | | | |
 | PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073 |
