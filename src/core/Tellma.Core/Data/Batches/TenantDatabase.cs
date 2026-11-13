@@ -33,7 +33,7 @@ namespace Tellma.Core.Data.Batches
             {
                 IQueryexSchemaProvider provider = services.GetService<IQueryexSchemaProvider>()
                     ?? throw new InvalidOperationException("No query schema provider is composed, so the tenant database has no schema.");
-                return provider.GetSchema(Settings().Shape);
+                return provider.GetSchema(Shape);
             }
         }
 
@@ -48,6 +48,9 @@ namespace Tellma.Core.Data.Batches
                     context.Today, TimeZoneInfo.ConvertTime(context.Now, settings.TimeZone), context.UserId, settings.SqlServerTimeZoneName);
             }
         }
+
+        /// <inheritdoc />
+        public MultilingualShape Shape => Settings().Shape;
 
         /// <inheritdoc />
         public int TenantId => accessor.Current.RequireTenant().Id;

@@ -582,6 +582,9 @@
   <data name="Queryex_QX3202" xml:space="preserve">
     <value>The expression has no type; cast the null.</value>
   </data>
+  <data name="Queryex_QX3203" xml:space="preserve">
+    <value>These columns hold text of different collations, so they can’t be compared or combined.</value>
+  </data>
   <data name="Queryex_QX3300" xml:space="preserve">
     <value>The first argument of {function} must be a path.</value>
   </data>

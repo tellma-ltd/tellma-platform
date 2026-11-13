@@ -37,7 +37,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed class DataBatch : IDataBatch
+    internal sealed partial class DataBatch : IDataBatch
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -210,35 +210,6 @@ namespace Tellma.Core.Data.Batches
         // ===================== The caller channel =====================
 
         /// <inheritdoc />
-        public BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query)
-            where TEntity : class
-        {
-            ArgumentNullException.ThrowIfNull(query);
-            throw NotAvailable(nameof(Query));
-        }
-
-        /// <inheritdoc />
-        public BatchResult<RowPage> Rows(QuerySpec spec, QueryArguments? arguments, RowQueryOptions? options)
-        {
-            ArgumentNullException.ThrowIfNull(spec);
-            throw NotAvailable(nameof(Rows));
-        }
-
-        /// <inheritdoc />
-        public BatchResult<int> Count(QuerySpec spec, QueryArguments? arguments, int cap = 10000)
-        {
-            ArgumentNullException.ThrowIfNull(spec);
-            throw NotAvailable(nameof(Count));
-        }
-
-        /// <inheritdoc />
-        public BatchResult<QueryRowSet> EvaluateConstant(IReadOnlyList<ConstantItem> items, int queryexVersion)
-        {
-            ArgumentNullException.ThrowIfNull(items);
-            throw NotAvailable(nameof(EvaluateConstant));
-        }
-
-        /// <inheritdoc />
         public SaveHandle Save<TEntity>(IReadOnlyList<TEntity> rows, ConcurrencyMode concurrency = ConcurrencyMode.Check)
             where TEntity : class
         {
@@ -260,13 +231,6 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(spec);
             throw NotAvailable(nameof(Delete));
-        }
-
-        /// <inheritdoc />
-        public void Assert(QuerySpec countSpec, QueryArguments? arguments, int expected, int errorNumber, string code)
-        {
-            ArgumentNullException.ThrowIfNull(countSpec);
-            throw NotAvailable(nameof(Assert));
         }
 
         /// <inheritdoc />
@@ -524,6 +488,7 @@ namespace Tellma.Core.Data.Batches
             if (written.Count > 0)
             {
                 _shared.Clear();
+                _sharedQueries.Clear();
             }
 
             _statements.Add(new BatchStatement(draft.Ordinal, draft.Section, text, [.. draft.Parameters], written, idempotent, reader, draft.EntityType));

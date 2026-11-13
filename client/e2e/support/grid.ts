@@ -196,6 +196,40 @@ export async function centerOf(locator: Locator): Promise<{ x: number; y: number
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/** A grid cell's computed paint: what a forced-colors assertion compares. */
+export interface CellPaint {
+  /** The computed background color. */
+  readonly background: string;
+  /** The computed ink (text) color. */
+  readonly ink: string;
+  /** The computed outline style (`none` when the cell draws no outline). */
+  readonly outline: string;
+  /** The computed outline color. */
+  readonly outlineColor: string;
+  /** The computed border color of the cell's clipboard-marquee pseudo-element. */
+  readonly marquee: string;
+}
+
+/**
+ * Reads a cell's computed paint once the app is stable. A gesture updates
+ * the grid's state at once but repaints its cells only on the following
+ * render, so an immediate read can see the paint from before the gesture;
+ * settling first makes the read reflect the state the test just set up.
+ */
+export async function cellPaint(page: Page, row: number, col: number): Promise<CellPaint> {
+  await appStable(page);
+  return cell(page, row, col).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      background: style.backgroundColor,
+      ink: style.color,
+      outline: style.outlineStyle,
+      outlineColor: style.outlineColor,
+      marquee: getComputedStyle(el, '::after').borderTopColor,
+    };
+  });
+}
+
 /** Drags with real pointer events from one locator's center to another's. */
 export async function dragBetween(page: Page, from: Locator, to: Locator): Promise<void> {
   const start = await centerOf(from);

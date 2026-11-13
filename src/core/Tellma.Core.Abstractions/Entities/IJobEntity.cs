@@ -12,9 +12,10 @@ namespace Tellma.Core.Abstractions.Entities
     /// <remarks>
     ///     <see cref="JobId" /> is server-owned by derivation. The enqueue statement sets it in the same
     ///     transaction without touching the row's modification stamp, and a handler that inserts its
-    ///     own row supplies it explicitly. The column is a foreign key to <c>core.Jobs</c> that is set
-    ///     to null when the job is deleted, and it is unique wherever it is not null: one job processes
-    ///     at most one row.
+    ///     own row supplies it explicitly. The column is a foreign key to <c>core.Jobs</c> (the
+    ///     <see cref="Jobs.Job" /> entity) that is set to null when the job is deleted, and it is unique
+    ///     wherever it is not null: one job processes at most one row. An
+    ///     <see cref="Jobs.IEntityJobHandler{TEntity}" /> processes such rows.
     /// </remarks>
     public interface IJobEntity
     {

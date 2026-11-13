@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Text.RegularExpressions;
+using Tellma.Core.Abstractions.Internal;
 
 namespace Tellma.Core.Notifications
 {
@@ -11,9 +11,10 @@ namespace Tellma.Core.Notifications
     ///     The grammars of notification type keys, categories, channel keys and client event names.
     ///     A dotted name (a type key or a client event name) is two or more segments separated by dots;
     ///     a plain name (a category or a channel key) is one segment. A segment is lowercase ASCII
-    ///     letters, digits and hyphens, starting with a letter.
+    ///     letters, digits and hyphens, starting with a letter: the grammar job handler keys follow
+    ///     too, so both read it from one place.
     /// </summary>
-    internal static partial class NotificationNames
+    internal static class NotificationNames
     {
         /// <summary>The most characters a notification type key may have: the width of the rows' type column.</summary>
         public const int MaxTypeKeyLength = 64;
@@ -32,7 +33,7 @@ namespace Tellma.Core.Notifications
         /// <returns>True when it is.</returns>
         public static bool IsTypeKey(string? key)
         {
-            return key is { Length: > 0 and <= MaxTypeKeyLength } && DottedName().IsMatch(key);
+            return KeyGrammar.IsDottedKey(key, MaxTypeKeyLength);
         }
 
         /// <summary>Whether <paramref name="category" /> is a well-formed notification category.</summary>
@@ -40,7 +41,7 @@ namespace Tellma.Core.Notifications
         /// <returns>True when it is.</returns>
         public static bool IsCategory(string? category)
         {
-            return category is { Length: > 0 and <= MaxCategoryLength } && PlainName().IsMatch(category);
+            return KeyGrammar.IsPlainKey(category, MaxCategoryLength);
         }
 
         /// <summary>Whether <paramref name="key" /> is a well-formed notification channel key.</summary>
@@ -48,7 +49,7 @@ namespace Tellma.Core.Notifications
         /// <returns>True when it is.</returns>
         public static bool IsChannelKey(string? key)
         {
-            return key is { Length: > 0 and <= MaxChannelKeyLength } && PlainName().IsMatch(key);
+            return KeyGrammar.IsPlainKey(key, MaxChannelKeyLength);
         }
 
         /// <summary>Whether <paramref name="name" /> is a well-formed client event name.</summary>
@@ -56,17 +57,7 @@ namespace Tellma.Core.Notifications
         /// <returns>True when it is.</returns>
         public static bool IsClientEventName(string? name)
         {
-            return name is { Length: > 0 and <= MaxClientEventNameLength } && DottedName().IsMatch(name);
+            return KeyGrammar.IsDottedKey(name, MaxClientEventNameLength);
         }
-
-        /// <summary>Two or more dot-separated segments.</summary>
-        /// <returns>The expression.</returns>
-        [GeneratedRegex(@"^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+\z", RegexOptions.CultureInvariant, 1000)]
-        private static partial Regex DottedName();
-
-        /// <summary>One segment.</summary>
-        /// <returns>The expression.</returns>
-        [GeneratedRegex(@"^[a-z][a-z0-9-]*\z", RegexOptions.CultureInvariant, 1000)]
-        private static partial Regex PlainName();
     }
 }
