@@ -7,8 +7,8 @@
  * It holds the distribution API (`provideTellma`, `tmFeature` and the
  * declaration functions), the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
- * helpers, and the seams through which telemetry, the request log and page
- * scopes are provided.
+ * helpers, the client store and the tab bus, and the seams through which
+ * telemetry, the request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -146,6 +146,36 @@ export {
 } from './src/session/tm-session';
 export type { TmSessionState } from './src/session/tm-session-paths';
 export { tmSessionGuard } from './src/session/tm-session-guard';
+
+// The client state: the store of cached documents and the boot record, and
+// the tab bus with its message catalogue.
+export {
+  TmClientStore,
+  TmStoreRefusedError,
+  type TmBootRecordAccess,
+  type TmStoredDoc,
+  type TmStoreRefusedReason,
+  type TmSweepRule,
+} from './src/state/store/tm-client-store';
+export type { TmPartition } from './src/state/store/tm-store-layout';
+export { TM_DOC_FORMATS } from './src/state/store/tm-doc-formats';
+export { TmTabBus } from './src/state/bus/tm-tab-bus';
+export type {
+  TmBusEnvelope,
+  TmBusMessage,
+  TmDraftsQueryMessage,
+  TmDraftsReplyMessage,
+  TmHubEventMessage,
+  TmHubStatusMessage,
+  TmLeaderProbeMessage,
+  TmPrefsChangedMessage,
+  TmSessionMessage,
+  TmStoreChangedMessage,
+} from './src/state/bus/tm-bus-messages';
+export type { TmClientEvent, TmHubState } from './src/state/leader/tm-hub-types';
+
+// The client store's browser, which @tellma/core-testing replaces; not for app code.
+export { TM_STORE_HOST as ɵTM_STORE_HOST, type TmStoreHost as ɵTmStoreHost } from './src/state/store/tm-store-host';
 
 // The launch: the single-membership rule and the automatic-entry mark.
 export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';

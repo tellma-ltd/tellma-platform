@@ -403,7 +403,9 @@ describe('TmHttpApi', () => {
       expect(rig.host.requests).toHaveLength(0);
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       expect(rig.paths.state()).toBe('expired');
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('runs the changed-user path and rejects cancelled, unsent, under another user', async () => {
@@ -461,7 +463,9 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmAnswer(200, {}));
       await flush();
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
@@ -482,7 +486,9 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
       await flush();
       expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {
