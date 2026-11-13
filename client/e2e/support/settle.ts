@@ -89,3 +89,16 @@ export async function animationsSettled(locator: Locator): Promise<void> {
     await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
   });
 }
+
+/**
+ * Waits until the web fonts the page has asked for have loaded, so a
+ * geometry read measures text in its final face rather than in the fallback
+ * that `font-display: swap` shows first (a heading's width, a wrap point).
+ * Call it once the text to measure is rendered: a face that no rendered
+ * text has requested yet is not waited on.
+ */
+export async function fontsLoaded(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+}
