@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-071 (PC-075, 2026-11-13): the interim session expiry signs in instead of reloading (amends D-048)
+
+- Ruling: until PC-110's expiry dialog lands, TmSession's interim `expired()` sweeps the user's stored partitions, clears `sub` and navigates to sign-in. This replaces D-048's reload. D-048's intent holds: an expired tab never keeps showing the user's data. The reload's only advantage was simplicity, and the sign-in avoids a pointless round trip to the boot page.
+- Also from PC-075 review 1: the store's boot step writes `sub` itself, but only when the store opened on disk. A store that fell back to memory (3 s open timeout or a transaction failure) never writes `sub`, and its sweeps report "not applied", so the next launch's backstop sweep still runs. `ɵstart` never rejects (spec 0025 Decision 13).
+- For Ahmad: spec 0025 §2.6 says a receiving tab empties the mirror entries under a sweep's prefix, but it re-reads them. Spec 0025 §2.1/§2.6 and 0024 §8.1 need text saying who writes `sub`. The user sees no explanation on expiry until PC-110.
+
 ### D-070 (PC-057, 2026-11-13): unbound entity labels are bidi-isolated in both the picker and the grid
 
 - Context: spec 0010 §E.1 says both "One-line rows do the same" (wrap the label in <bdi>) and "unbound, rows render as today"; §E.4 repeats the contradiction for the grid display cell. PC-057 commit 1 resolved the picker one way (<bdi>, dir=auto) and the grid the other (plain span), so in RTL an unbound column drew code-first in the cell and name-first in its own dropdown (Review 1, R1-2).
