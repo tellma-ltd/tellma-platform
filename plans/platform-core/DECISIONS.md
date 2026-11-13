@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-073 (PC-043, 2026-11-13): a wildcard-resource grant implies Read only where its action is registered
+
+- Ruling: `(*, A')` with A' ≠ Read matches `(R, Read)` only when R registers A'. `(R, A')` is unchanged. UserAccess keeps a per-action resource set built from the registry. This is narrower than spec 0014 §5.2 step 2 and fails closed. Spec §8's delegation coverage of `(R, Read)` by `(*, A')` should follow the same rule (PC-078 carry). PC-043 D5 stays: `(*, A)` with an action no resource registers is UnknownAction drift, and PC-078's §3.7 rule 1 save check must refuse it.
+- Why: read literally, step 2 lets an odd grant such as `(*, Invite)` give unrestricted Read on every resource, including core.Role and settings. Write-implies-read exists so a user can see what they act on, and a resource without A' offers nothing to act on.
+- For Ahmad: (1) spec 0014 §5.2 step 2 and the delegation rule's `(*, A')` clause need the "where R registers A'" qualifier; (2) §3.7 rule 1 should refuse `(*, A)` for an action no resource registers.
+
 ### D-072 (PC-030, 2026-11-13): form-control entry points above their spec 0023 §1 caps
 
 - Ruling: the six new entry points (radio, segmented, switch, search-field, date-range, date-time) may ship above spec 0023 §1's caps of record (2, 2, 1, 2, 2 and 3 KB). These are recorded raises, as in D-058. At integration each ceiling is its linked size (D-067) + 0.1 KB. ./private and "." are re-derived as the parent's linked ceiling plus the checkpoint's measured growth. Each budgetNotes entry states the spec cap, the measured linked size, the savings tried, and why. TmDatePicker/TmTimeField `parseErrors` stays internal (ɵ or @internal), since only the composites read it. The no-write rule compares wall times, not minute-floored instants.
@@ -370,6 +376,7 @@ Format, one entry per ruling:
 - Ruling: until PC-110's expiry dialog lands, TmSession's interim `expired()` sweeps the user's stored partitions and navigates to sign-in; it clears `sub` only when that sweep did not apply (cut short, rejected or resolved false), and otherwise keeps it per spec 0024 §8.6. This replaces D-048's reload. D-048's intent holds: an expired tab never keeps showing the user's data. The reload's only advantage was simplicity, and the sign-in avoids a pointless round trip to the boot page.
 - Also from PC-075 review 1: the store's boot step writes `sub` itself, but only when the store opened on disk. A store that could not reach an existing IndexedDB (3 s open timeout or a transaction failure) never writes `sub` (it does write it when IndexedDB is absent or under a memory host, which is harmless), and its sweeps report "not applied", so the next launch's backstop sweep still runs. `ɵstart` never rejects (spec 0025 Decision 13).
 - For Ahmad: spec 0025 §2.6 says a receiving tab empties the mirror entries under a sweep's prefix, but it re-reads them. Spec 0025 §2.1/§2.6 and 0024 §8.1 need text saying who writes `sub`; spec 0025 §2.1's contract needs `sweep(): Promise<boolean>`. The user sees no explanation on expiry until PC-110.
+- Addendum (PC-075 R2-1): a storage fault after the store opens (an abort other than quota, a request refused at once, or a failed reopen) moves the store to memory and resolves put/patch/readAll, beyond spec 0025 §2.7's open-and-quota cases. For Ahmad: §2.7 should cover faults after open.
 
 ### D-070 (PC-057, 2026-11-13): unbound entity labels are bidi-isolated in both the picker and the grid
 

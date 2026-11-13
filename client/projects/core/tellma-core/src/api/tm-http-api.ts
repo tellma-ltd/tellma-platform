@@ -10,7 +10,7 @@ import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/imag
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
-import { TM_CLIENT_METADATA } from '../metadata/tm-client-metadata';
+import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog, type TmRequestEnd } from '../requests/tm-request-log';
@@ -754,7 +754,9 @@ export class TmHttpApi implements TmApi {
    * @throws Error when the client metadata is not loaded yet.
    */
   #clientId(): string {
-    this.#client ??= `web/${this.#injector.get(TM_CLIENT_METADATA).distribution.version}`;
+    // Through the store, not TM_CLIENT_METADATA: a call made before the chunk
+    // loads fails alone, without leaving the token failing for the app.
+    this.#client ??= `web/${this.#injector.get(TmClientMetadataStore).get().distribution.version}`;
     return this.#client;
   }
 
