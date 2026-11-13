@@ -384,6 +384,13 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
           }),
   });
 
+  /**
+   * The parse errors of the typed text (the `parse` kind), whether or not
+   * the picker is bound: a composite that hosts the picker (a date range, a
+   * date-time field) reads them to report them as its own.
+   */
+  readonly parseErrors: Signal<readonly ValidationError.WithoutFieldTree[]> = this.rawText.parseErrors;
+
   constructor() {
     this.cellHost?.register(this);
 

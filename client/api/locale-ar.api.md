@@ -24,6 +24,9 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
         readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
         readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
+        readonly parseTime: "{gender, select, female {أدخلي} other {أدخل}} وقتا مثل {example}";
+        readonly dateRangeOrder: "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده";
+        readonly dateTimeIncomplete: "{gender, select, female {أدخلي} other {أدخل}} التاريخ والوقت معا";
     };
     readonly datePicker: {
         readonly chooseDate: "اختيار التاريخ";
@@ -269,6 +272,18 @@ export const TM_LOCALE_AR_STRINGS: {
     };
     readonly splitter: {
         readonly label: "تغيير حجم اللوحتين";
+    };
+    readonly searchField: {
+        readonly placeholder: "بحث";
+        readonly clear: "مسح البحث";
+    };
+    readonly dateRange: {
+        readonly from: "من";
+        readonly to: "إلى";
+    };
+    readonly dateTime: {
+        readonly date: "التاريخ";
+        readonly time: "الوقت";
     };
 };
 

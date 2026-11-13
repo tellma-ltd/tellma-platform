@@ -1,0 +1,65 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-date-time-field — a labelled group: the date field, the time field
+   and the zone label in one row, the label at the inline end so a change
+   of its text moves nothing before it. */
+
+:host {
+  /* The size ladder's field height, which the zone label matches so it
+     sits level with the input boxes. */
+  --tm-date-time-box-height: var(--field-height);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-label-gap);
+  font-family: var(--font-ui);
+}
+
+:host(.tm-date-time-field--sm) {
+  --tm-date-time-box-height: var(--field-height-sm);
+}
+
+:host(.tm-date-time-field--lg) {
+  --tm-date-time-box-height: var(--field-height-lg);
+}
+
+.tm-date-time-field__label {
+  font-size: var(--field-label-font-size);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+/* Bottom-aligned: the parts' own labels sit above their boxes, and the
+   zone label lines up with the boxes. */
+.tm-date-time-field__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--date-time-gap);
+}
+
+.tm-date-time-field__date {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* The time field's box holds the widest locale's time text. */
+.tm-date-time-field__time {
+  flex: none;
+  inline-size: var(--date-time-time-width);
+}
+
+.tm-date-time-field__zone {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  block-size: var(--tm-date-time-box-height);
+  font-size: var(--field-hint-font-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}

@@ -48,7 +48,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /grid-touch|tooltip-touch|splitter-touch/,
+      testIgnore: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
@@ -86,7 +86,7 @@ export default defineConfig({
     // testIgnore keeps the same specs out of the desktop run.
     {
       name: 'touch',
-      testMatch: /grid-touch|tooltip-touch|splitter-touch/,
+      testMatch: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
       use: { ...devices['Pixel 7'] },
     },
   ],

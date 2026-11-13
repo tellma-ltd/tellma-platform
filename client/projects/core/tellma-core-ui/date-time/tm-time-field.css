@@ -1,0 +1,32 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-time-field — a bare input; the bordered box, focus ring and labels
+   belong to the enclosing tm-form-field (ownsChrome: false). */
+
+:host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-inline-size: 0;
+}
+
+/* Outside a field, the text takes the size step itself. */
+:host(.tm-time-field--sm) {
+  --tm-field-font-size: var(--field-font-size-sm);
+}
+
+:host(.tm-time-field--lg) {
+  --tm-field-font-size: var(--field-font-size-lg);
+}
+
+.tm-time-field__input {
+  flex: 1;
+  min-inline-size: 0;
+  /* A time's digits keep their width as they change. */
+  font-variant-numeric: tabular-nums;
+}

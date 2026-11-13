@@ -17,6 +17,8 @@ import { ConfirmStory } from './confirm/confirm-story';
 import { ChipStory } from './chip/chip-story';
 import { CopyStory } from './copy/copy-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
+import { DateRangeStory } from './date-range/date-range-story';
+import { DateTimeStory } from './date-time/date-time-story';
 import { DescriptionListStory } from './description-list/description-list-story';
 import { EmptyStateStory } from './empty-state/empty-state-story';
 import { EntityPickerStory } from './entity-picker/entity-picker-story';
@@ -48,11 +50,15 @@ import { NumberStory } from './number/number-story';
 import { PageHeaderStory } from './page-header/page-header-story';
 import { PopoverStory } from './popover/popover-story';
 import { ProgressStory } from './progress/progress-story';
+import { RadioStory } from './radio/radio-story';
 import { RelativeTimeStory } from './relative-time/relative-time-story';
+import { SearchFieldStory } from './search-field/search-field-story';
+import { SegmentedStory } from './segmented/segmented-story';
 import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
 import { SkeletonStory } from './skeleton/skeleton-story';
 import { SplitterStory } from './splitter/splitter-story';
+import { SwitchStory } from './switch/switch-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 import { ToastStory } from './toast/toast-story';
@@ -76,8 +82,8 @@ export interface ShowcaseStory {
   template: `
     <h2>Welcome</h2>
     <p>
-      Tellma UI showcase — the internal host the component library's browser
-      tests run against. Pick a story from the index.
+      Tellma UI showcase — the internal host the component library's browser tests run against. Pick
+      a story from the index.
     </p>
   `,
 })
@@ -107,7 +113,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'confirm', title: 'Confirm (TmConfirm)', component: ConfirmStory },
   { id: 'error-dialog', title: 'Error dialog (TmErrorDialog)', component: ErrorDialogStory },
   { id: 'card', title: 'Card (tm-card)', component: CardStory },
-  { id: 'page-header', title: 'Page header (tm-page-header)', component: PageHeaderStory, wide: true },
+  {
+    id: 'page-header',
+    title: 'Page header (tm-page-header)',
+    component: PageHeaderStory,
+    wide: true,
+  },
   {
     id: 'description-list',
     title: 'Description list (dl[tmDescriptionList])',
@@ -120,6 +131,20 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'number', title: 'Number input (tmNumber)', component: NumberStory },
   { id: 'date-picker', title: 'Date picker (tm-date-picker)', component: DatePickerStory },
   { id: 'checkbox', title: 'Checkbox (tm-checkbox)', component: CheckboxStory },
+  { id: 'radio', title: 'Radio group (tm-radio-group)', component: RadioStory },
+  { id: 'segmented', title: 'Segmented (tm-segmented)', component: SegmentedStory, wide: true },
+  { id: 'switch', title: 'Switch (tm-switch)', component: SwitchStory },
+  {
+    id: 'search-field',
+    title: 'Search field (tm-search-field + tmSearch)',
+    component: SearchFieldStory,
+  },
+  { id: 'date-range', title: 'Date range (tm-date-range)', component: DateRangeStory },
+  {
+    id: 'date-time',
+    title: 'Date and time (tm-time-field + tm-date-time-field)',
+    component: DateTimeStory,
+  },
   { id: 'image', title: 'Image (tm-image)', component: ImageStory },
   { id: 'files', title: 'Files (tmFilePicker + tm-dropzone)', component: FilesStory },
   { id: 'file-preview', title: 'File preview (TmFilePreview)', component: FilePreviewStory },

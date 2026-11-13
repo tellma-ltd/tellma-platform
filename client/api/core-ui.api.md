@@ -74,6 +74,9 @@ export const TM_UI_STRINGS_EN: {
         readonly parse: "Enter a valid number, like {example}";
         readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
         readonly parseDate: "Enter a date like {example}";
+        readonly parseTime: "Enter a time like {example}";
+        readonly dateRangeOrder: "The end date must be on or after the start date";
+        readonly dateTimeIncomplete: "Enter both a date and a time";
     };
     readonly datePicker: {
         readonly chooseDate: "Choose date";
@@ -319,6 +322,18 @@ export const TM_UI_STRINGS_EN: {
     };
     readonly splitter: {
         readonly label: "Resize panels";
+    };
+    readonly searchField: {
+        readonly placeholder: "Search";
+        readonly clear: "Clear search";
+    };
+    readonly dateRange: {
+        readonly from: "From";
+        readonly to: "To";
+    };
+    readonly dateTime: {
+        readonly date: "Date";
+        readonly time: "Time";
     };
 };
 

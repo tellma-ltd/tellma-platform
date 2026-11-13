@@ -36,13 +36,14 @@ function parseCssTime(value: string, fallback: number): number {
  * the shared Escape stack, and the lazily created floating surface.
  *
  * `TmTooltip` drives one from its inputs; `tmButton` drives its own for a
- * disabled reason when the button carries no `tmTooltip`. The listeners are
+ * disabled reason when the button carries no `tmTooltip`, and a segment of
+ * `tm-segmented` one while it shows its icon alone. The listeners are
  * attached here rather than as host bindings so a host that only sometimes
  * needs a tooltip (a button while it has a reason) pays for none of it the
  * rest of the time.
  *
- * @internal Shared by `TmTooltip`, `TmButton` and `TmCopyButton`; never use
- * directly.
+ * @internal Shared by `TmTooltip`, `TmButton`, `TmCopyButton` and the
+ * segmented control's icon-only segments; never use directly.
  */
 export class ɵTmTooltipController {
   /** Whether a touch tap on the host shows the tooltip (long-press always does). */

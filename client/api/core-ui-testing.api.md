@@ -191,6 +191,27 @@ export class TmDatePickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmDateRangeHarness extends ComponentHarness {
+    getFrom(): Promise<TmDatePickerHarness>;
+    getFromField(): Promise<TmFormFieldHarness>;
+    getLabel(): Promise<string | null>;
+    getTo(): Promise<TmDatePickerHarness>;
+    getToField(): Promise<TmFormFieldHarness>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmDateTimeFieldHarness extends ComponentHarness {
+    getDate(): Promise<TmDatePickerHarness>;
+    getDateField(): Promise<TmFormFieldHarness>;
+    getLabel(): Promise<string | null>;
+    getTime(): Promise<TmTimeFieldHarness>;
+    getTimeField(): Promise<TmFormFieldHarness>;
+    getZoneLabel(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmDropzoneHarness extends ComponentHarness {
     focus(): Promise<void>;
     getHintText(): Promise<string>;
@@ -545,6 +566,37 @@ export class TmProgressBarHarness extends ComponentHarness {
 }
 
 // @public
+export class TmRadioGroupHarness extends ComponentHarness {
+    check(label: string | RegExp): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getAriaLabelledby(): Promise<string | null>;
+    getCheckedLabel(): Promise<string | null>;
+    getRadios(filters?: TmRadioHarnessFilters): Promise<TmRadioHarness[]>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+}
+
+// @public
+export class TmRadioHarness extends ComponentHarness {
+    check(): Promise<void>;
+    focus(): Promise<void>;
+    getHint(): Promise<string | null>;
+    getLabel(): Promise<string>;
+    static hostSelector: string;
+    isChecked(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    static with(options?: TmRadioHarnessFilters): HarnessPredicate<TmRadioHarness>;
+}
+
+// @public
+export interface TmRadioHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+}
+
+// @public
 export class TmReferenceHarness extends ComponentHarness {
     copy(): Promise<void>;
     getCopyButton(): Promise<TmCopyButtonHarness>;
@@ -559,6 +611,36 @@ export class TmRelativeTimeHarness extends ComponentHarness {
     getDateTime(): Promise<string | null>;
     getText(): Promise<string>;
     static hostSelector: string;
+}
+
+// @public
+export class TmSearchFieldHarness extends ComponentHarness {
+    clear(): Promise<void>;
+    focus(): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getPlaceholder(): Promise<string>;
+    getValue(): Promise<string>;
+    static hostSelector: string;
+    isClearVisible(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    setValue(text: string): Promise<void>;
+}
+
+// @public
+export class TmSegmentedHarness extends ComponentHarness {
+    check(label: string): Promise<void>;
+    focus(label: string): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getCheckedLabel(): Promise<string | null>;
+    getFocusedLabel(): Promise<string | null>;
+    getLabels(): Promise<string[]>;
+    getSegmentAriaLabel(label: string): Promise<string | null>;
+    static hostSelector: string;
+    isDisabled(label: string): Promise<boolean>;
+    isTabStop(label: string): Promise<boolean>;
+    press(label: string, key: TestKey): Promise<void>;
 }
 
 // @public
@@ -596,6 +678,18 @@ export class TmSplitterHarness extends ComponentHarness {
 export type TmSplitterKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Home';
 
 // @public
+export class TmSwitchHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    focus(): Promise<void>;
+    getLabelText(): Promise<string>;
+    static hostSelector: string;
+    isChecked(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    toggle(): Promise<void>;
+}
+
+// @public
 export class TmTabGroupHarness extends ComponentHarness {
     getActivePanelText(): Promise<string>;
     getSelectedTab(): Promise<TmTabHarness | null>;
@@ -612,6 +706,17 @@ export class TmTabHarness extends ComponentHarness {
     isDisabled(): Promise<boolean>;
     isSelected(): Promise<boolean>;
     select(): Promise<void>;
+}
+
+// @public
+export class TmTimeFieldHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    focus(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    setText(text: string): Promise<void>;
 }
 
 // @public

@@ -26,6 +26,9 @@ export const TM_UI_STRINGS_EN = {
     numberPrecision:
       'Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}',
     parseDate: 'Enter a date like {example}',
+    parseTime: 'Enter a time like {example}',
+    dateRangeOrder: 'The end date must be on or after the start date',
+    dateTimeIncomplete: 'Enter both a date and a time',
   },
   datePicker: {
     chooseDate: 'Choose date',
@@ -290,5 +293,18 @@ export const TM_UI_STRINGS_EN = {
   },
   splitter: {
     label: 'Resize panels',
+  },
+  searchField: {
+    placeholder: 'Search',
+    // The clear button's accessible name.
+    clear: 'Clear search',
+  },
+  dateRange: {
+    from: 'From',
+    to: 'To',
+  },
+  dateTime: {
+    date: 'Date',
+    time: 'Time',
   },
 } as const;

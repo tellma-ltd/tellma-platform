@@ -611,6 +611,39 @@ export const tmTokensDefault: TmTokens = {
       gap: '9px',
       labelFontSize: '13px',
     },
+    // tm-radio-group: the drawn circle and its dot. Rows ride the size
+    // ladder's option-row heights (formField.optionHeight*), so these are the
+    // only fixed sizes; a horizontal group spaces its rows by inlineGap.
+    radio: {
+      circleSize: '16px',
+      dotSize: '8px',
+      gap: '8px',
+      inlineGap: '16px',
+    },
+    // tm-segmented: a sunken track at the field height whose segments sit
+    // inset from its edge; the track follows the size ladder (formField),
+    // so these are the inset and the icon geometry only.
+    segmented: {
+      inset: '2px',
+      iconGap: '4px',
+      iconSize: '16px',
+    },
+    // tm-switch: a 28×16 track with a 12px knob. The hit target is the
+    // whole label row, padded past the 24px minimum.
+    switch: {
+      trackWidth: '28px',
+      trackHeight: '16px',
+      knobSize: '12px',
+      gap: '8px',
+      labelFontSize: '13px',
+    },
+    // tm-time-field and tm-date-time-field: the time input's width, which
+    // holds the widest locale's time text ("12:30 AM", "١٢:٣٠ م"), and the
+    // gap between the date, the time and the zone label.
+    dateTime: {
+      timeWidth: '112px',
+      gap: '8px',
+    },
     // tm-date-picker: popup geometry. Cells exceed the 24px touch minimum;
     // the popup width holds seven cells plus gaps at every view. Cells are
     // wider than they are tall — a calendar reads as columns of weekdays,

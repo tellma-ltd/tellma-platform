@@ -55,6 +55,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     openPopup(): void;
     readonly ownsChrome = false;
     readonly ownsErrorIcon = true;
+    readonly parseErrors: Signal<readonly ValidationError.WithoutFieldTree[]>;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly picked: _angular_core.OutputEmitterRef<string | null>;
     readonly placeholder: _angular_core.InputSignal<string | undefined>;
