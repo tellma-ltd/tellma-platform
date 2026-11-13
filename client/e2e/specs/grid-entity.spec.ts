@@ -29,8 +29,9 @@ import { appStable } from '../support/settle';
  * modal round trips, and the axe/RTL gates.
  *
  * Story columns: 0 description (text), 1 agentId (entity, full config),
- * 2 otherId (entity, search only — no resolver), 3 quantity (number).
- * Row 0 starts with agentId 5 ('Bob Stone').
+ * 2 otherId (entity, search only — no resolver), 3 quantity (number),
+ * 4 centerId (entity: two-line dropdown rows, label and display parts).
+ * Row 0 starts with agentId 5 ('Bob Stone') and centerId 3 ('INV-0011 - نقد').
  */
 
 interface OrderLine {
@@ -39,6 +40,7 @@ interface OrderLine {
   readonly agentId: number | null;
   readonly otherId: number | null;
   readonly quantity: number | null;
+  readonly centerId: number | null;
 }
 
 const lines = modelJson<OrderLine[]>;
@@ -610,4 +612,89 @@ test.describe('axe & RTL', () => {
     const magnifierBox = (await magnifier.boundingBox())!;
     expect(magnifierBox.x).toBeLessThan(inputBox.x); // inline end = physical left
   });
+});
+
+test.describe('two-line rows & display parts', () => {
+  test("a cell's dropdown draws two-line rows at the fixed height; footer rows stay one line", async ({
+    page,
+  }) => {
+    const expected = await page.evaluate(() =>
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--entity-picker-option-height-2line',
+        ),
+      ),
+    );
+    expect(expected).toBeGreaterThan(0);
+    await activateCell(page, 2, 4); // row 2's Center starts empty
+    await page.keyboard.press('J');
+    await expect(pickerInput(page)).toHaveValue('J');
+    const rows = page.locator('.tm-entity-picker__option:not(.tm-entity-picker__action)');
+    await expect(rows).toHaveCount(2);
+    await appStable(page);
+    for (const row of await rows.all()) {
+      expect((await row.boundingBox())!.height).toBeCloseTo(expected, 1);
+    }
+    await expect(rows.locator('.tm-entity-picker__option-description')).toHaveText([
+      'Western Region',
+      'Logistics',
+    ]);
+    await expect(rows.first().locator('.tm-entity-picker__option-label > bdi')).toHaveText([
+      'JED-01',
+      'Jeddah',
+    ]);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(editor(page)).toHaveCount(0);
+
+    // The Agent column binds no description: one-line rows, and its footer
+    // rows keep the one-line height beside them.
+    await activateCell(page, 1, 1);
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(actions(page).first()).toBeVisible();
+    await appStable(page);
+    const oneLine = (await actions(page).first().boundingBox())!.height;
+    expect(oneLine).toBeLessThan(expected);
+    expect((await rows.first().boundingBox())!.height).toBeCloseTo(oneLine, 1);
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`a display cell keeps a Latin code first beside an Arabic name (${dir})`, async ({
+      page,
+    }) => {
+      await gotoGrid(page, 'grid-entity', { dir });
+      const runs = cell(page, 0, 4).locator('.tm-grid__text > bdi');
+      await expect(runs).toHaveText(['INV-0011', 'نقد']);
+      const code = (await runs.nth(0).boundingBox())!;
+      const name = (await runs.nth(1).boundingBox())!;
+      // "First" is the inline start: the left in LTR, the right in RTL.
+      if (dir === 'ltr') {
+        expect(code.x + code.width).toBeLessThanOrEqual(name.x);
+      } else {
+        expect(name.x + name.width).toBeLessThanOrEqual(code.x);
+      }
+      // The cell reads as format's plain text: the runs add no characters.
+      await expectCellText(page, 0, 4, 'INV-0011 - نقد');
+    });
+
+    test(`a cell's dropdown keeps a Latin code first beside an Arabic name (${dir})`, async ({
+      page,
+    }) => {
+      await gotoGrid(page, 'grid-entity', { dir });
+      await activateCell(page, 2, 4);
+      await page.keyboard.type('INV');
+      const option = page.locator('.tm-entity-picker__option:not(.tm-entity-picker__action)');
+      await expect(option).toHaveCount(1);
+      await appStable(page);
+      const runs = option.locator('.tm-entity-picker__option-label > bdi');
+      await expect(runs).toHaveText(['INV-0011', 'نقد']);
+      const code = (await runs.nth(0).boundingBox())!;
+      const name = (await runs.nth(1).boundingBox())!;
+      if (dir === 'ltr') {
+        expect(code.x + code.width).toBeLessThanOrEqual(name.x);
+      } else {
+        expect(name.x + name.width).toBeLessThanOrEqual(code.x);
+      }
+    });
+  }
 });

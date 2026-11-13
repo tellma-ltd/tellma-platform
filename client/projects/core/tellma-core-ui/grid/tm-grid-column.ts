@@ -74,6 +74,18 @@ export class TmGridColumn<T = unknown, V = unknown> {
    */
   readonly format = input<((value: V, row: T) => string) | undefined>(undefined);
   /**
+   * Display parts, given the same arguments as `format`: the display cell
+   * draws each part as its own isolated run, joined by " - ", so a code
+   * beside a name in another script keeps its order in either direction.
+   * Joined by " - ", the parts must equal `format`'s text, which stays the
+   * cell's text representation (copy, find, announcements); a cell whose
+   * parts are `null` or do not join to that text shows `format`'s text as
+   * one isolated run, as an `entity` column without `formatParts` does.
+   */
+  readonly formatParts = input<((value: V, row: T) => readonly string[] | null) | undefined>(
+    undefined,
+  );
+  /**
    * Text→value conversion for typed paste and text-editor commits.
    * Overrides the built-in defaults (`date` columns parse locale text in
    * the ambient display calendar into ISO `YYYY-MM-DD` out of the box).
@@ -100,6 +112,21 @@ export class TmGridColumn<T = unknown, V = unknown> {
   readonly itemId = input<((item: never) => TmEntityId) | undefined>(undefined);
   /** `entity` columns: maps a search result to its display text (required alongside `search`). */
   readonly itemLabel = input<((item: never) => string) | undefined>(undefined);
+  /**
+   * `entity` columns: maps a search result to a second line under its label
+   * in the editor's dropdown; bound, every result row shows two lines at one
+   * fixed height.
+   */
+  readonly itemDescription = input<((item: never) => string | null) | undefined>(undefined);
+  /**
+   * `entity` columns: maps a search result to the parts of its label, drawn
+   * as isolated runs joined by " - " in the editor's dropdown; joined, they
+   * must equal `itemLabel` (parts that do not are ignored, and the row draws
+   * `itemLabel` as one run).
+   */
+  readonly itemLabelParts = input<((item: never) => readonly string[] | null) | undefined>(
+    undefined,
+  );
   /** `entity` columns: the advanced-search page; absent ⇒ no magnifier and no footer row. */
   readonly advancedSearch = input<TmEntityPickerPage | undefined>(undefined);
   /** `entity` columns: the create page; absent ⇒ no Create… footer row. */

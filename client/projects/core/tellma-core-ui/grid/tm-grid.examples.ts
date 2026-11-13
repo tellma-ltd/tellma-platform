@@ -82,6 +82,34 @@ export const EnumAndComputedColumns = {
 };
 
 /**
+ * An `entity` column whose dropdown rows show a second line
+ * (`itemDescription`) and draw the label in parts (`itemLabelParts`), and
+ * whose display cells draw `format`'s text in parts too (`formatParts`), so
+ * a Latin code keeps its place beside an Arabic name in either direction.
+ * `format` stays the cell's text for copy, find and announcements.
+ */
+export const EntityColumnWithParts = {
+  template: `
+    <tm-grid gridId="voucher-lines" [field]="lineForm" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="memo" header="Memo" [flex]="1" />
+      <tm-grid-column
+        key="centerId"
+        type="entity"
+        header="Center"
+        [search]="searchCenters"
+        [itemId]="centerId"
+        [itemLabel]="centerLabel"
+        [itemDescription]="centerParent"
+        [itemLabelParts]="centerCodeAndName"
+        [format]="centerText"
+        [formatParts]="centerTextParts"
+        [width]="220"
+      />
+    </tm-grid>
+  `,
+};
+
+/**
  * A custom cell rendered through `*tmGridDisplay` — here a record link.
  * The context gives the cell's value, the row, and its `rowId`; copy and
  * find still use the column's text representation.

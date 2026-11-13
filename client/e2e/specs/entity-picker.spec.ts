@@ -1120,3 +1120,117 @@ test.describe('forced-colors & reduced motion', () => {
     }
   });
 });
+
+test.describe('two-line rows & label parts', () => {
+  /** The two-line Center picker's input. */
+  function centers(page: Page): Locator {
+    return input(page, 'picker-centers');
+  }
+
+  /** The two-line row height token, in px. */
+  async function twoLineHeight(page: Page): Promise<number> {
+    return page.evaluate(() =>
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--entity-picker-option-height-2line',
+        ),
+      ),
+    );
+  }
+
+  test('every result row takes the one two-line height, a row without a description included', async ({
+    page,
+  }) => {
+    const expected = await twoLineHeight(page);
+    expect(expected).toBeGreaterThan(0);
+    await centers(page).fill('J');
+    await expect(options(page)).toHaveCount(2);
+    await appStable(page);
+    for (const row of await options(page).all()) {
+      expect((await row.boundingBox())!.height).toBeCloseTo(expected, 1);
+    }
+    // The two Jeddahs are told apart by their description lines.
+    await expect(options(page).locator('.tm-entity-picker__option-description')).toHaveText([
+      'Western Region',
+      'Logistics',
+    ]);
+    // DMM-01 has no parent: its row keeps the same height, so the panel
+    // does not re-measure between the two queries.
+    await centers(page).fill('DMM');
+    await expect(options(page)).toHaveCount(1);
+    await appStable(page);
+    expect((await options(page).first().boundingBox())!.height).toBeCloseTo(expected, 1);
+  });
+
+  // The two lines fit the two-line height with air to spare, at the default
+  // and the large field size, Latin and Arabic rows alike: neither line may
+  // reach within 1px of the row's edges, where the active row's ring and the
+  // chosen row's bar are drawn.
+  for (const testid of ['picker-centers', 'picker-centers-lg'] as const) {
+    test(`both lines sit inside the row with room above and below (${testid})`, async ({
+      page,
+    }) => {
+      const field = input(page, testid);
+      for (const query of ['J', 'INV', 'DMM']) {
+        await field.fill(query);
+        await expect(options(page).first()).toBeVisible();
+        await appStable(page);
+        for (const row of await options(page).all()) {
+          const rowBox = (await row.boundingBox())!;
+          for (const line of [
+            '.tm-entity-picker__option-label',
+            '.tm-entity-picker__option-description',
+          ]) {
+            const box = (await row.locator(line).boundingBox())!;
+            expect(box.y - rowBox.y).toBeGreaterThanOrEqual(1);
+            expect(rowBox.y + rowBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    });
+  }
+
+  test('a row is named "label, description" while the separator stays unseen', async ({
+    page,
+  }) => {
+    await centers(page).fill('RUH');
+    await expect(options(page)).toHaveCount(1);
+    await expect(options(page).first()).toHaveAccessibleName('RUH-01 - Riyadh, Central Region');
+    const separator = options(page).first().locator('.tm-entity-picker__option-separator');
+    const clipped = await separator.evaluate((el) => getComputedStyle(el).clipPath);
+    expect(clipped).not.toBe('none');
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`a Latin code beside an Arabic name stays first (${dir})`, async ({ page }) => {
+      await page.goto(storyUrl('entity-picker', { dir }));
+      await page.getByTestId('search-async').uncheck();
+      await centers(page).fill('INV');
+      await expect(options(page)).toHaveCount(1);
+      await appStable(page);
+      const runs = options(page).first().locator('.tm-entity-picker__option-label > bdi');
+      await expect(runs).toHaveText(['INV-0011', 'نقد']);
+      const code = (await runs.nth(0).boundingBox())!;
+      const name = (await runs.nth(1).boundingBox())!;
+      // "First" is the inline start: the left in LTR, the right in RTL.
+      if (dir === 'ltr') {
+        expect(code.x + code.width).toBeLessThanOrEqual(name.x);
+      } else {
+        expect(name.x + name.width).toBeLessThanOrEqual(code.x);
+      }
+      await expect(options(page).first()).toHaveAccessibleName('INV-0011 - نقد, الأصول المتداولة');
+    });
+  }
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const dir of ['ltr', 'rtl'] as const) {
+      test(`no axe violations with a two-line panel open (${theme}, ${dir})`, async ({ page }) => {
+        await page.goto(storyUrl('entity-picker', { theme, dir }));
+        await page.getByTestId('search-async').uncheck();
+        await centers(page).fill('J');
+        await expect(options(page)).toHaveCount(2);
+        await expectNoAxeViolations(page);
+      });
+    }
+  }
+});

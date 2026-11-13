@@ -15,9 +15,34 @@ export class TmEntityPickerOptionHarness extends ComponentHarness {
   /** Matches entity result rows AND the command footer rows. */
   static hostSelector = '.tm-entity-picker__option';
 
-  /** The row's visible text. */
+  /** The row's label line: an entity's label, or a footer row's caption. */
   async getText(): Promise<string> {
-    return (await this.host()).text();
+    const label = await this.locatorFor('.tm-entity-picker__option-label')();
+    // The hidden ", " that joins the label to a description in the row's
+    // accessible name is not part of the label.
+    return label.text({ exclude: '.tm-entity-picker__option-separator' });
+  }
+
+  /**
+   * The row's description line, or `null` when the row has none (a
+   * one-line row, a footer row, or a row whose description is empty).
+   */
+  async getDescription(): Promise<string | null> {
+    const description = await this.locatorForOptional('.tm-entity-picker__option-description')();
+    if (description === null) {
+      return null;
+    }
+    const text = await description.text();
+    return text === '' ? null : text;
+  }
+
+  /**
+   * The label's separately drawn runs, in order: one per label part when the
+   * picker draws parts, else the whole label as one run.
+   */
+  async getLabelParts(): Promise<string[]> {
+    const runs = await this.locatorForAll('.tm-entity-picker__option-label > bdi')();
+    return Promise.all(runs.map((run) => run.text()));
   }
 
   /** Whether the row is the highlighted (active-descendant) option. */

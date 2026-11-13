@@ -648,6 +648,11 @@ export const tmTokensDefault: TmTokens = {
       optionRadius: '{radius.xs}',
       optionPaddingX: '8px',
       optionGap: '8px',
+      // A row with a description line under its label (spec 0010 §E.1): a
+      // 14px label and a 12px description at the snug leading (35px), with
+      // air above and below. Every row of a two-line list takes it, so the
+      // panel never re-measures between result sets.
+      optionHeight2line: '42px',
       iconSize: '15px',
       noticeFontSize: '11.5px',
     },
