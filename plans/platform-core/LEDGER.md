@@ -103,8 +103,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-044 | pc-3 | pc/PC-044 | impl (high; complex → R2 inherit xhigh) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
 | PC-058 | pc-f2 | pc/PC-058 | impl (high; R1) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
 | PC-030 | pc-1 | pc/PC-030 | fix1 + integrate (R1 0/2/6: zone-label width shifts the date/time parts; zone not exposed to screen readers; minute-floored compare rewrites repeated hours (→ wall-time); required on the filled part; parseErrors → internal; budgets above 0023 §1 caps (D-072); Identity IT not run; time field width) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 done | 2026-11-13 |
-| PC-043 | pc-4 | pc/PC-043 | r2 (fable; fix1 0af47f3: R1-1..4 fixed, D-073 via ActionResourceMap carried on UserAccess, Compose takes it as 6th arg) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done; r2 (fable, launched) | 2026-11-13 |
-| PC-054 | pc-2 | pc/PC-054 | impl | aede283b100436c0c (Opus inherit) | | 2026-11-13 |
+| PC-043 | pc-4 | pc/PC-043 | fix2 + integrate (R2 0/0/2: RoleAccessGrant refuses a filtered '*' resource; tests for the memo cap, interner reset and drift-memory reset) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done; r2 a54564c7ccc874ef0 (fable) done | 2026-11-13 |
+| PC-054 | pc-2 | pc/PC-054 | r1 (impl 12871ed: 5 deviations; ./grid 41.84 KB linked, ceiling 40.77→41.94, 0.06 under the 42 hard cap → next ./grid growth needs the D-057(2) re-split; removed a stale 0-byte pc-2 index.lock) | aede283b100436c0c (Opus inherit) | r1 (launched) | 2026-11-13 |
 
 ## Fix items
 
@@ -139,6 +139,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F28 | CI red on 9f9adb7 (build-test windows + ubuntu, unit) and once on 5c3674f: TimerTests.The_reconciliation_runs_five_minutes_after_the_first_snapshot_and_then_every_interval ("condition did not hold in time"; likely FakeTimeProvider advance before the timer is armed; PC-047) | done (integrated a533113 (CI 43421083528 green; fast-forward; root cause: the reconcile PeriodicTimer was created after the first run, so early advances were lost; services now wait on absolute due times via HostedSchedule with an internal armed hook; TimerTests 60/60 + 50/50 under load); r1 a5122952bd3d79729 done 0/0/1: R1-1 same lost-Advance race in SessionLifecycleTests identity-server-deadline test (hang risk); fix1 integrated baffb30 (CI 43428288932 green; stall test steps the clock until done, all awaits bounded; 32/32 under load) (impl-PC-047 a5cf206eb092b4ff3 in pc-f, also commits the untracked review file)) | a533113, baffb30 (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-037 returns held |
 | PC-F29 | load-sensitive tellma-core-tools tests from PC-073: lint:test build.fixture.spec.ts (1200 s beforeAll) and common.spec 'starts a package manager's shim' (vitest default 5 s, spawns pnpm --version) time out when dotnet gates run alongside; pass alone | todo (low) | | | make them robust under load (explicit timeouts sized to a cold run, or move the cold ng build to the nightly tier) |
 | PC-F30 | CI red on db81630 (every dotnet job): dotnet restore Tellma.slnx MSB3202, distributions/acme/test/Tellma.Distro.Acme.E2E/*.csproj missing; .gitignore *.e2e (VS trace files) matches the folder case-insensitively on Windows, so PC-085 never committed the project | done (integrated 9a1754d, CI 43488423725 green; fast-forward; negations !*.e2e/ and !*.E2E/ replace the single Identity one; Acme E2E csproj + README added (no sources); all 81 slnx paths tracked; clean-clone restore/build/format green) | 9a1754d (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-075 returns held |
+| PC-F31 | Core integration flake: SqlQueryTextTests.A_commands_span_carries_no_query_text asserts over every SqlClient span in the process, so other classes' CREATE/ALTER DATABASE spans fail it under the full suite (seen by PC-033 integrate, PC-038 R2, PC-043 R2); scope the listener to the test's own connection or activity | todo (medium; next free fix slot) | | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -184,7 +185,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | CI client-e2e-quarantine/client-e2e: playwright OS deps install failed (apt mirror), webkit failed to launch (run 43403796974 at 5c3674f) | 2026-11-13 | infra; watch |
 | dotnet Tellma.Imaging HostileDocumentTests memory-growth floor (119 MiB under the 128 MiB floor under parallel load; passes alone; PC-047 merge) | 2026-11-13 | watch |
 | dotnet Tellma.Core.IntegrationTests DataBatchTests cancellation wall-clock assertion (failed once under load; 28/28 alone; PC-047 merge) | 2026-11-13 | watch |
-| dotnet Tellma.Core.IntegrationTests SqlQueryTextTests.A_commands_span_carries_no_query_text (captures other classes' fixture ALTER DATABASE spans running at the same time; passes alone; seen by PC-033 integrate and PC-038 R2) | 2026-11-13 | watch; a fix item if it reaches CI |
+| dotnet Tellma.Core.IntegrationTests SqlQueryTextTests.A_commands_span_carries_no_query_text (captures other classes' fixture ALTER DATABASE spans running at the same time; passes alone; seen by PC-033 integrate and PC-038 R2) | 2026-11-13 | PC-F31 (third sighting: PC-043 R2) |
 | client e2e grid-clipboard test stuck on the shared clipboard lock (PC-B01 fixer, local; 14 load failures on first full run, reruns green) | 2026-11-12 | watch; PC-F18 area |
 | (lesson) client tooling tests that lint sample text through a typed-linted path must set disallowAutomaticSingleRunInference, or they pass locally and fail under CI=true | 2026-11-11 | consider a shared ESLint helper for tooling tests (PC-F19) |
 | client core-ui tm-grid-clipboard.spec.ts "menu Paste reads the async clipboard and drives the same ladder" (CI ef67f47: expected 'Alpha' to be 'MenuPasted'; no client change since the previous green sha) | 2026-11-11 | timing-dependent (turn-capped wait vs real Blob read); PC-F18 |
@@ -274,7 +275,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-040 | 0012-g | 1 | todo | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
-| PC-043 | 0014-c | 1 | r2 | 1ee46fa, 0af47f3 |  |  |
+| PC-043 | 0014-c | 1 | fix2 + integrate | 1ee46fa, 0af47f3 |  |  |
 | PC-044 | 0013-e | 1 | impl |  |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
@@ -283,9 +284,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-049 | 0013-f | 1 | todo | | | |
 | PC-050 | 0014-d | 1 | todo | | | |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
-| PC-052 | 0014-e | 1 | todo | | | |
+| PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
-| PC-054 | 0010-c5 | 1 | impl | | | |
+| PC-054 | 0010-c5 | 1 | r1 | 12871ed |  |  |
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
@@ -328,7 +329,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-094 | 0024-f | 1 | todo | | | |
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
-| PC-097 | 0020-b | 1 | integrated a90b368 (CI 43515001627 pending) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
+| PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |
