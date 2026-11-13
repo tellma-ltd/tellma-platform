@@ -101,9 +101,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-044 | pc-3 | pc/PC-044 | impl (high; complex → R2 inherit xhigh) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
-| PC-097 | pc-f2 | pc/PC-097 | fix1 + integrate (R1 0/1/3: D-8 rejected → null-or-terminal JobId enforced in SQL with a rowcount check; refuse TransactionMode.None; TenantPollerWake failure tests; built-in schedule seed test) | a342737a128172612 (Opus inherit) | r1 a3e9738a114d4e98a done | 2026-11-13 |
+| PC-058 | pc-f2 | pc/PC-058 | impl (high; R1) | impl (Opus, launched 2026-11-13) | | 2026-11-13 |
 | PC-030 | pc-1 | pc/PC-030 | fix1 + integrate (R1 0/2/6: zone-label width shifts the date/time parts; zone not exposed to screen readers; minute-floored compare rewrites repeated hours (→ wall-time); required on the filled part; parseErrors → internal; budgets above 0023 §1 caps (D-072); Identity IT not run; time field width) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 done | 2026-11-13 |
-| PC-043 | pc-4 | pc/PC-043 | fix1 (R1 0/1/3: (*, A') implied Read narrowed to resources registering A' (D-073); one filter root per resource rechecked in Classify; engine-exception test; inactive-role test deferred to PC-050) → then R2 (fable) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done | 2026-11-13 |
+| PC-043 | pc-4 | pc/PC-043 | r2 (fable; fix1 0af47f3: R1-1..4 fixed, D-073 via ActionResourceMap carried on UserAccess, Compose takes it as 6th arg) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done; r2 (fable, launched) | 2026-11-13 |
 | PC-054 | pc-2 | pc/PC-054 | impl | aede283b100436c0c (Opus inherit) | | 2026-11-13 |
 
 ## Fix items
@@ -274,7 +274,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-040 | 0012-g | 1 | todo | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
-| PC-043 | 0014-c | 1 | fix1 | 1ee46fa |  |  |
+| PC-043 | 0014-c | 1 | r2 | 1ee46fa, 0af47f3 |  |  |
 | PC-044 | 0013-e | 1 | impl |  |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
@@ -289,7 +289,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
-| PC-058 | 0010-e2 | 1 | todo | | | |
+| PC-058 | 0010-e2 | 1 | impl |  |  |  |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
@@ -328,7 +328,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-094 | 0024-f | 1 | todo | | | |
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
-| PC-097 | 0020-b | 1 | fix1 + integrate | bf01975 |  |  |
+| PC-097 | 0020-b | 1 | integrated a90b368 (CI 43515001627 pending) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |

@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-074 (PC-097, 2026-11-13): job owners are checked in SQL, and enqueue needs a transaction
+
+- Ruling: enqueue accepts any in-memory JobId. The owner UPDATE succeeds only when the owner row exists and its JobId is null or names an ended job, read under READCOMMITTEDLOCK; `@@ROWCOUNT` is compared with the owner count, and a mismatch throws 50422 `Jobs.OwnerUnavailable`. Enqueue outside a transaction throws `Jobs.EnqueueOutsideTransaction` (TransactionMode.None is refused). The codes are public in JobEnqueueCodes. This replaces the implementer's D-8 (an in-memory null-JobId check).
+- Why: spec 0022 §7.1's outbox retry re-enqueues an owner with a terminal JobId. An in-memory check also misses stale or partly loaded entities and races between concurrent enqueuers, which the UPDATE's locks serialise. Without a transaction, the job INSERT and the owner UPDATE are not atomic, and the retry rules could duplicate jobs.
+- For Ahmad: spec 0020's enqueue contract should state that the null-or-terminal JobId rule is enforced in SQL, and that enqueue requires a transaction; spec 0022 §7.1 relies on it.
+
 ### D-073 (PC-043, 2026-11-13): a wildcard-resource grant implies Read only where its action is registered
 
 - Ruling: `(*, A')` with A' ≠ Read matches `(R, Read)` only when R registers A'. `(R, A')` is unchanged. UserAccess keeps a per-action resource set built from the registry. This is narrower than spec 0014 §5.2 step 2 and fails closed. Spec §8's delegation coverage of `(R, Read)` by `(*, A')` should follow the same rule (PC-078 carry). PC-043 D5 stays: `(*, A)` with an action no resource registers is UnknownAction drift, and PC-078's §3.7 rule 1 save check must refuse it.
