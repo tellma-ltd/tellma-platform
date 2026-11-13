@@ -46,31 +46,37 @@ namespace Tellma.Core.AspNetCore.Tenancy
         /// <summary>How often the service looks for the registry's first snapshot.</summary>
         public static readonly TimeSpan SnapshotPollInterval = TimeSpan.FromSeconds(5);
 
+        /// <summary>
+        ///     Told the due time of each run once the service waits for it, before the wait ends; lets a
+        ///     test move a fake clock only once the wait is in place.
+        /// </summary>
+        internal Action<DateTimeOffset>? WaitingUntil { get; set; }
+
         /// <inheritdoc />
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
-                // --- The first run: five minutes after the first snapshot ---
+                // --- The registry's first snapshot ---
                 DateTimeOffset? loadedAt;
                 while ((loadedAt = registry.SnapshotLoadedAt) is null)
                 {
                     await Task.Delay(SnapshotPollInterval, time, stoppingToken).ConfigureAwait(false);
                 }
 
-                TimeSpan wait = loadedAt.Value + FirstRunDelay - time.GetUtcNow();
-                if (wait > TimeSpan.Zero)
+                // --- The first run five minutes after it, then one every interval on from that ---
+                // Each wait is for a due time on the schedule, so a wait that starts late does not
+                // push its run back.
+                TimeSpan interval = options.Value.MembershipReconcileInterval;
+                DateTimeOffset due = loadedAt.Value + FirstRunDelay;
+                while (!stoppingToken.IsCancellationRequested)
                 {
-                    await Task.Delay(wait, time, stoppingToken).ConfigureAwait(false);
-                }
+                    Task wait = HostedSchedule.DelayUntil(due, time, stoppingToken);
+                    WaitingUntil?.Invoke(due);
+                    await wait.ConfigureAwait(false);
 
-                _ = await RunOnceAsync(stoppingToken).ConfigureAwait(false);
-
-                // --- Then every interval ---
-                using PeriodicTimer timer = new(options.Value.MembershipReconcileInterval, time);
-                while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
-                {
                     _ = await RunOnceAsync(stoppingToken).ConfigureAwait(false);
+                    due = HostedSchedule.Next(due, interval, time.GetUtcNow());
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
