@@ -1,0 +1,239 @@
+{
+  "render": [
+    {
+      "name": "a group renders the active slot",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "PrimaryAndSecondary",
+      "row": { "id": 5, "name": "Head office", "name2": "المكتب الرئيسي" },
+      "slot": 2,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "المكتب الرئيسي"
+    },
+    {
+      "name": "an empty active slot falls back to the first",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "PrimaryAndSecondary",
+      "row": { "id": 6, "name": "Jeddah", "name2": null },
+      "slot": 2,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "Jeddah"
+    },
+    {
+      "name": "an empty-text active slot falls back to the first",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "All",
+      "row": { "id": 6, "name": "Jeddah", "name2": "جدة", "name3": "" },
+      "slot": 3,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "Jeddah"
+    },
+    {
+      "name": "a slot the shape does not admit reads the first",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "Primary",
+      "row": { "id": 6, "name": "Jeddah" },
+      "slot": 2,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "Jeddah"
+    },
+    {
+      "name": "a prefix and a name join with the fixed separator",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "row": { "id": 7, "code": "1101", "name": "Cash" },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "1101 - Cash"
+    },
+    {
+      "name": "the separator is never localized",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "PrimaryAndSecondary",
+      "row": { "id": 7, "code": "1101", "name": "Cash", "name2": "النقد" },
+      "slot": 2,
+      "locale": "ar-SA-u-nu-latn",
+      "calendar": "gc",
+      "expected": "1101 - النقد"
+    },
+    {
+      "name": "a name holding the separator keeps it after the first",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "row": { "id": 8, "code": "A1", "name": "Rent - Office" },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "A1 - Rent - Office"
+    },
+    {
+      "name": "a prefix alone is the text",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "row": { "id": 7, "code": "1101", "name": null },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "1101"
+    },
+    {
+      "name": "neither a name nor a prefix renders the fallback",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "row": { "id": 12, "code": null, "name": null },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "#12"
+    },
+    {
+      "name": "a row with no name renders the fallback",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "Primary",
+      "row": { "id": 3 },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "#3"
+    },
+    {
+      "name": "the fallback writes the id ungrouped",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"] },
+      "shape": "Primary",
+      "row": { "id": 12345 },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "#12345"
+    },
+    {
+      "name": "an integer source formats in native digits on the client",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "Primary",
+      "row": { "id": 9, "serialNumber": 42 },
+      "slot": 1,
+      "locale": "ar-SA",
+      "calendar": "gc",
+      "expected": "٤٢",
+      "clientOnly": true
+    },
+    {
+      "name": "an integer source formats in Latin digits under the latn numbering",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "Primary",
+      "row": { "id": 9, "serialNumber": 42 },
+      "slot": 1,
+      "locale": "ar-SA-u-nu-latn",
+      "calendar": "gc",
+      "expected": "42"
+    },
+    {
+      "name": "an integer source is never grouped",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "Primary",
+      "row": { "id": 9, "serialNumber": 1234567 },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "1234567"
+    },
+    {
+      "name": "an integer source reads the first slot whatever the active one",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "All",
+      "row": { "id": 9, "serialNumber": 42 },
+      "slot": 3,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "42"
+    },
+    {
+      "name": "the key as the source renders the id",
+      "rule": { "key": "Id", "source": "Id", "sourceType": "integer" },
+      "shape": "Primary",
+      "row": { "id": 7 },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "7"
+    },
+    {
+      "name": "a date source renders in the calendar's numeric style",
+      "rule": { "key": "Id", "source": "PostedOn", "sourceType": "date" },
+      "shape": "Primary",
+      "row": { "id": 4, "postedOn": "2026-03-15" },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "3/15/2026"
+    },
+    {
+      "name": "a date source carries no bidi controls in a right-to-left locale",
+      "rule": { "key": "Id", "source": "PostedOn", "sourceType": "date" },
+      "shape": "Primary",
+      "row": { "id": 4, "postedOn": "2026-03-15" },
+      "slot": 1,
+      "locale": "ar-SA-u-nu-latn",
+      "calendar": "gc",
+      "expected": "15/3/2026"
+    },
+    {
+      "name": "bidi controls are stripped from the text",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "row": { "id": 7, "code": "‏1101", "name": "‫Cash‬⁦⁩" },
+      "slot": 1,
+      "locale": "en",
+      "calendar": "gc",
+      "expected": "1101 - Cash"
+    }
+  ],
+  "expansion": [
+    {
+      "name": "one language selects the first twin and the prefix",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "navigation": null,
+      "columns": ["Id", "Name", "Code"]
+    },
+    {
+      "name": "two languages select two twins",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "PrimaryAndSecondary",
+      "navigation": null,
+      "columns": ["Id", "Name", "Name2", "Code"]
+    },
+    {
+      "name": "a navigation prefixes every column",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "All",
+      "navigation": "Parent",
+      "columns": ["Parent.Id", "Parent.Name", "Parent.Name2", "Parent.Name3", "Parent.Code"]
+    },
+    {
+      "name": "a group without a third twin stops at the second",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", null] },
+      "shape": "All",
+      "navigation": null,
+      "columns": ["Id", "Name", "Name2"]
+    },
+    {
+      "name": "a scalar source is one column under every shape",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "All",
+      "navigation": "Document",
+      "columns": ["Document.Id", "Document.SerialNumber"]
+    },
+    {
+      "name": "the key as the source is the key alone",
+      "rule": { "key": "Id", "source": "Id", "sourceType": "integer" },
+      "shape": "All",
+      "navigation": null,
+      "columns": ["Id"]
+    }
+  ]
+}

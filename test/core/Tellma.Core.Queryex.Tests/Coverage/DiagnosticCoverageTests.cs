@@ -24,6 +24,7 @@ namespace Tellma.Core.Queryex.Tests.Coverage
         /// </summary>
         private static readonly FrozenDictionary<string, string> Elsewhere = new Dictionary<string, string>
         {
+            ["QX3203"] = nameof(Binding.CollationConflictTests.AnOperationOverColumnsOfDifferentCollations_IsRefusedAtTheOperation),
             ["QX3400"] = nameof(Binding.DiscoveryTests.Parameter_UsedAtTwoTypes_ReportsBoth),
         }.ToFrozenDictionary(StringComparer.Ordinal);
 

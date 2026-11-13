@@ -43,7 +43,10 @@ namespace Tellma.Core.Data.Batches
     /// <param name="type">The SQL type.</param>
     /// <param name="value">The value, or null for SQL <c>NULL</c>.</param>
     /// <param name="size">The size of a sized type, or null for the provider's.</param>
-    internal sealed class ScalarParameter(string name, SqlDbType type, object? value, int? size = null) : BatchParameter(name)
+    /// <param name="precision">A decimal's precision, or null for the provider's.</param>
+    /// <param name="scale">A decimal's scale, or null for the provider's.</param>
+    internal sealed class ScalarParameter(string name, SqlDbType type, object? value, int? size = null, byte? precision = null, byte? scale = null)
+        : BatchParameter(name)
     {
         /// <summary>The SQL type.</summary>
         public SqlDbType Type { get; } = type;
@@ -54,6 +57,12 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The size of a sized type, or null for the provider's.</summary>
         public int? Size { get; } = size;
 
+        /// <summary>A decimal's precision, or null for the provider's.</summary>
+        public byte? Precision { get; } = precision;
+
+        /// <summary>A decimal's scale, or null for the provider's.</summary>
+        public byte? Scale { get; } = scale;
+
         /// <inheritdoc />
         public override SqlParameter Create()
         {
@@ -61,6 +70,13 @@ namespace Tellma.Core.Data.Batches
             if (Size is int size)
             {
                 parameter.Size = size;
+            }
+
+            // Both or neither: the provider derives the facets it is not given from the value.
+            if (Precision is byte precision && Scale is byte scale)
+            {
+                parameter.Precision = precision;
+                parameter.Scale = scale;
             }
 
             return parameter;
@@ -72,6 +88,8 @@ namespace Tellma.Core.Data.Batches
             return other is ScalarParameter scalar
                 && scalar.Type == Type
                 && scalar.Size == Size
+                && scalar.Precision == Precision
+                && scalar.Scale == Scale
                 && ScalarValues.AreEqual(scalar.Value, Value);
         }
     }

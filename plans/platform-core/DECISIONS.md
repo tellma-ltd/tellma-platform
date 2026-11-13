@@ -373,7 +373,10 @@ Format, one entry per ruling:
 - For Ahmad:
   - (1) Spec 0012 §5.2 has no public contract that can name a captured key table. Add one, or confirm it stays internal to Tellma.Core.
   - (2) Child FK targets in the details round trip: should 0012 gain a ChildSelect, or should 0015 load them via a captured FK set (the provisional ruling)?
-  - (3) Fluent-API-only collations are invisible to Queryex. Should composition refuse them?
+  - (3) Fluent-API-only collations are invisible to Queryex. Settled by review 2: CollationConvention now throws on a fluent UseCollation on a tenant column, so [Collation] is the only source. Confirm.
+  - (4) Review 2 added engine diagnostic QX3203 (comparing or combining text of different collations is refused), an addition to spec 0008's diagnostic table.
+  - (5) core.UserStamp is a read-only Queryex root (no CLR type: Rows, Count and Assert only). Its PermissionsTag and PreferencesTag are withheld from the schema as cache validators; the spec is silent.
+  - (6) TieBroken was removed: unpaged ordered reads (captures, ancestors, child pages) now compile with Skip = 0, so each ends in OFFSET @qx{n}_skip ROWS bound to 0, and the engine appends the key only when the ordering lacks it.
 
 ### D-061 (PC-035, 2026-11-12): seeded write-frame contracts and planner notes
 - Spec: 0015 §7.5, §13.3; 0021 §2.3, §11; 0018; 0022.

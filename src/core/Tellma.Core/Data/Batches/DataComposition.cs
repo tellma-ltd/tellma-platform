@@ -7,10 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
+using Tellma.Core.Data.Queries;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Data.Batches
 {
-    /// <summary>Registers the data layer's runtime: the options, the executor and its instruments, the tenant database and its factory.</summary>
+    /// <summary>Registers the data layer's runtime: the options, the executor and its instruments, the query services, the tenant database and its factory.</summary>
     internal static class DataComposition
     {
         /// <summary>Registers the data layer.</summary>
@@ -28,6 +30,15 @@ namespace Tellma.Core.Data.Batches
             // TryAdd for the owners: the stack registry's composition maps tables to their stacks.
             services.TryAddSingleton<IStackTableOwners, NoStackTableOwners>();
             _ = services.AddSingleton<DataExecutor>();
+
+            // --- The query statements: one engine, whose caches every compile shares, and the schemas ---
+            // TryAdd for the engine: a host that tunes its options registers it first.
+            services.TryAddSingleton(static _ => new QueryexEngine());
+            _ = services.AddSingleton<QueryexSchemaProvider>();
+            _ = services.AddSingleton<IQueryexSchemaProvider>(static services => services.GetRequiredService<QueryexSchemaProvider>());
+            _ = services.AddSingleton<EntityMaterializer>();
+            _ = services.AddSingleton<QueryServices>();
+            _ = services.AddSingleton<IDisplayNames, DisplayNames>();
 
             // AddMetrics is idempotent and supplies the IMeterFactory the executor's instruments are created from.
             _ = services.AddMetrics();

@@ -113,13 +113,14 @@ namespace Tellma.Core.Queryex.Nullity
         /// <returns>Its nullity.</returns>
         /// <remarks>
         ///     Present only when every step of the way is: a navigation whose foreign key may be
-        ///     absent means there may be no row to read the next name from at all.
+        ///     absent, or that the schema declares optional, means there may be no row to read the
+        ///     next name from at all.
         /// </remarks>
         private static QueryexNullity PathNullity(TypedPath path)
         {
             foreach (NavigationDescriptor navigation in path.Navigations)
             {
-                if (!navigation.ForeignKey.IsNotNull)
+                if (navigation.MayBeMissing)
                 {
                     return QueryexNullity.Nullable;
                 }

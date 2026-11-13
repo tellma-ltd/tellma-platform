@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 
 namespace Tellma.Core.Data.Batches
 {
@@ -15,6 +17,14 @@ namespace Tellma.Core.Data.Batches
     {
         /// <summary>The tenant whose database the connection reaches.</summary>
         int TenantId { get; }
+
+        /// <summary>The tenant's multilingual shape, which picks the query schema the batch's query statements compile against.</summary>
+        /// <exception cref="InvalidOperationException">The connection has no tenant settings to read it from.</exception>
+        MultilingualShape Shape { get; }
+
+        /// <summary>The context values the batch's query statements bind: today, now, the user and the time zone.</summary>
+        /// <exception cref="InvalidOperationException">The connection has no request context to read them from.</exception>
+        QueryexContextValues Context { get; }
 
         /// <summary>Acquires an open connection for one round trip.</summary>
         /// <param name="cancellationToken">Cancels opening or waiting for the connection.</param>

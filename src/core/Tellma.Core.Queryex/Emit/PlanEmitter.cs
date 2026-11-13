@@ -542,8 +542,16 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>Writes a row's key tested against a table of keys the host supplies.</summary>
         /// <param name="restriction">The node.</param>
         /// <remarks>
-        ///     The table's name is written as the host supplied it, which its form was checked to make
-        ///     safe: a marker and an identifier, with nothing that could end either one.
+        ///     <para>
+        ///         The table's name is written as the host supplied it, which its form was checked to
+        ///         make safe: a marker and an identifier, with nothing that could end either one.
+        ///     </para>
+        ///     <para>
+        ///         A table's text column takes the database's collation, so against a column that
+        ///         declares its own, the table's keys are converted to the column's. The conversion
+        ///         sits on the table's side: the column stays bare, so its index still serves the
+        ///         test, and the text is the same for every execution.
+        ///     </para>
         /// </remarks>
         private void WriteKeySetRestriction(PlanKeySetRestriction restriction)
         {
@@ -551,6 +559,12 @@ namespace Tellma.Core.Queryex.Emit
             Value(restriction.Key);
             _sql.Write(" IN (SELECT ");
             _sql.Quoted(KeySetColumn);
+            if (restriction.Key.Property.Collation is string collation)
+            {
+                _sql.Write(" COLLATE ");
+                _sql.Write(collation);
+            }
+
             _sql.Write(" FROM ");
             _sql.Write(restriction.TableSource);
             _sql.Write("))");

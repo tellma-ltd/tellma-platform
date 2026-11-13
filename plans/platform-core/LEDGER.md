@@ -92,17 +92,18 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-12 06:00 | 43 | 19 | 2026-11-17 20:00 | ΔU 8 since 01:24 (≈1.7/h). 37 done + PC-F15 done; PC-B01 done. In flight: PC-071 fix2+int, PC-101 fix1+int, PC-023 impl, PC-048 impl, PC-F18 |
 | 2026-11-12 11:50 | 48 | 19 | 2026-11-17 20:00 | Line green: CI 43210943912 on a77ee57 (PC-F22). PC-048 done → 40 done; 40-checkpoint forecast published (T1 2.9 weeks). PC-023 released to integrate; PC-F21 fix1 (R2 due), PC-F18 fix1; pc-2, pc-3, pc-f free (only T3 ready) |
 | 2026-11-12 13:50 | | | 2026-11-17 20:00 | PC-F18 done (CI 43216268294), PC-023 done (CI 43221550998) → 41 done. check_deps fix (D-059): 8 T1 ready → PC-026 pc-1, PC-033 pc-3, PC-034 pc-f launched; PC-F21 r2, PC-F23 impl |
-| 2026-11-12 22:10 | | | 2026-11-17 20:00 | PC-F23 done (CI 43248406932), PC-035 done (CI 43284321336, 42 done), PC-F21 done (CI 43287447113; PC-051/PC-057 unblocked). In flight: PC-026, PC-033, PC-034 fix+int; PC-073, PC-036 impl |
+| 2026-11-12 19:22 | | | 2026-11-17 20:00 | PC-F23 done (CI 43248406932), PC-035 done (CI 43284321336, 42 done), PC-F21 done (CI 43287447113; PC-051/PC-057 unblocked). In flight: PC-026, PC-033, PC-034 fix+int; PC-073, PC-036 impl |
+| 2026-11-12 20:00 | 59 | 19 | 2026-11-17 20:00 | ΔU 11 since 11:50 (≈1.4/h, 5 heavy agents, Opus only). R 41: in flight PC-026/PC-033/PC-034 fix+int, PC-073/PC-036 impl; next ready PC-051, PC-057, PC-075 |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-026 | pc-1 | pc/PC-026 | fix1 + integrate (R1 0/3/4: page-header start slot spills under the end slot; card descendant selectors reach nested cards; error-dialog e2e measures mid-animation; focus not on the primary button; no announcement on replace; Details styles; test gaps) | a7246514cf8630136 (Opus inherit) | r1 afd72538f1e78d5b2 done | 2026-11-12 13:50 |
-| PC-033 | pc-3 | pc/PC-033 | fix2 + integrate (R2 0/2/3: core.UserStamp missing from the schema; TieBroken QX4008 on 'Id desc, Code'; child FK targets ruling D-062) | a1b829e904137df13 (Opus inherit) | r1 ab230e3733f47b7df, r2 af89459cccec54323 done | 2026-11-12 13:50 |
-| PC-034 | pc-f | pc/PC-034 | fix2 + integrate (R2 0/1/5: rerun refuses its own row when the server is spelled tcp:x,1433; README on repeatability; generic steps not closed over the leaf; steps keyed by CLR type (0033 needs named instances); exits outside 0-3; test READMEs) | ac0b8eb84821588e8 (Opus inherit) | r1 a0cb71c4e2d2cbd20, r2 adf696c44bc6b185f done | 2026-11-12 13:50 |
+| PC-047 | pc-3 | pc/PC-047 | impl | a5cf206eb092b4ff3 (Opus inherit) |  | 2026-11-12 21:00 |
 | PC-073 | pc-2 | pc/PC-073 | impl | a40e83c79ea0ee930 (Opus inherit) | | 2026-11-12 |
-| PC-036 | pc-4 | pc/PC-036 | impl | a462c68ffc3a42040 (Opus inherit) | | 2026-11-12 |
+| PC-036 | pc-4 | pc/PC-036 | fix1 + integrate (R1 0/0/3: GapThreshold bound overflows DATEADD; handler marks untestable outside Tellma.Core (Testing probe); converter test) | a462c68ffc3a42040 (Opus inherit) | r1 a2d143b4439ac5198 done | 2026-11-12 |
+| PC-051 | pc-f | pc/PC-051 | impl | ae80b824ba3c6b328 (Opus inherit) | | 2026-11-12 |
 
 ## Fix items
 
@@ -246,10 +247,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-030 | 0023-e | 1 | todo | | | |
 | PC-031 | 0023-f | 1 | todo | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
-| PC-033 | 0012-d | 1 | fix2 + integrate | f156e3d, 5f0a6e0 |  |  |
-| PC-034 | 0011-d | 1 | fix2 + integrate | 2cbb909, 074a856 |  |  |
+| PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
+| PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
 | PC-035 | 0021-a | 1 | done (CI 43284321336 green; integrated d0093fc; fast-forward; new deviation 12: IDataBatch.IsComposing) | c49c44f, d0093fc (pc) | 11.79M (impl+fix+int 9.64, r1 2.15) |  |
-| PC-036 | 0020-a | 1 | impl |  |  |  |
+| PC-036 | 0020-a | 1 | fix1 + integrate | 2e5de44 |  |  |
 | PC-037 | 0012-e | 1 | todo | | | |
 | PC-038 | 0013-d | 1 | todo | | | |
 | PC-039 | 0014-b | 1 | todo | | | |
@@ -260,11 +261,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-044 | 0013-e | 1 | todo | | | |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
-| PC-047 | 0011-f | 1 | todo | | | |
+| PC-047 | 0011-f | 1 | impl |  |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | todo | | | |
 | PC-050 | 0014-d | 1 | todo | | | |
-| PC-051 | 0010-c4 | 1 | todo | | | |
+| PC-051 | 0010-c4 | 1 | impl |  |  |  |
 | PC-052 | 0014-e | 1 | todo | | | |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | todo | | | |

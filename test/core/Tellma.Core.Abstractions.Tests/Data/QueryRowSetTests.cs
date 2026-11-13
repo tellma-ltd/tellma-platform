@@ -62,6 +62,75 @@ namespace Tellma.Core.Abstractions.Tests.Data
             Assert.False(rows.IsNull(1, 1));
         }
 
+        /// <summary>Every pair a buffer holds: the query type, the provider's field type, a value read, and the buffer and element it lands as.</summary>
+        public static TheoryData<QueryexType, Type, object, Type, object> HeldPairs { get; } = new()
+        {
+            { QueryexType.QxNumeric, typeof(int), 7, typeof(int[]), 7 },
+            { QueryexType.QxNumeric, typeof(long), 8L, typeof(long[]), 8L },
+            { QueryexType.QxNumeric, typeof(short), (short)9, typeof(short[]), (short)9 },
+            { QueryexType.QxNumeric, typeof(byte), (byte)10, typeof(byte[]), (byte)10 },
+            { QueryexType.QxNumeric, typeof(decimal), 1.25m, typeof(decimal[]), 1.25m },
+            { QueryexType.QxNumeric, typeof(double), 2.5d, typeof(double[]), 2.5d },
+            { QueryexType.QxNumeric, typeof(float), 0.5f, typeof(double[]), 0.5d },
+            { QueryexType.QxBool, typeof(bool), true, typeof(bool[]), true },
+            { QueryexType.QxBool, typeof(int), 2, typeof(bool[]), true },
+            { QueryexType.QxBool, typeof(long), 0L, typeof(bool[]), false },
+            { QueryexType.QxBool, typeof(short), (short)1, typeof(bool[]), true },
+            { QueryexType.QxBool, typeof(byte), (byte)0, typeof(bool[]), false },
+            { QueryexType.QxString, typeof(string), "Cash", typeof(string[]), "Cash" },
+            { QueryexType.QxGuid, typeof(Guid), new Guid("6f9619ff-8b86-d011-b42d-00c04fc964ff"), typeof(Guid[]), new Guid("6f9619ff-8b86-d011-b42d-00c04fc964ff") },
+            { QueryexType.QxDate, typeof(DateTime), new DateTime(2026, 11, 8), typeof(DateOnly[]), new DateOnly(2026, 11, 8) },
+            { QueryexType.QxDateTime, typeof(DateTime), new DateTime(2026, 11, 8, 9, 30, 0), typeof(DateTime[]), new DateTime(2026, 11, 8, 9, 30, 0) },
+            { QueryexType.QxDateTimeOffset, typeof(DateTimeOffset), new DateTimeOffset(2026, 11, 8, 9, 30, 0, TimeSpan.FromHours(3)), typeof(DateTimeOffset[]), new DateTimeOffset(2026, 11, 8, 9, 30, 0, TimeSpan.FromHours(3)) },
+            { QueryexType.QxHierarchyId, typeof(string), "/1/2/", typeof(string[]), "/1/2/" },
+        };
+
+        /// <summary>Pairs no buffer holds: a query type with a field type the backend never sends for it.</summary>
+        public static TheoryData<QueryexType, Type> RefusedPairs { get; } = new()
+        {
+            { QueryexType.QxNumeric, typeof(string) },
+            { QueryexType.QxNumeric, typeof(bool) },
+            { QueryexType.QxBool, typeof(string) },
+            { QueryexType.QxBool, typeof(decimal) },
+            { QueryexType.QxString, typeof(int) },
+            { QueryexType.QxString, typeof(Guid) },
+            { QueryexType.QxGuid, typeof(string) },
+            { QueryexType.QxDate, typeof(DateTimeOffset) },
+            { QueryexType.QxDate, typeof(string) },
+            { QueryexType.QxDateTime, typeof(DateTimeOffset) },
+            { QueryexType.QxDateTime, typeof(DateOnly) },
+            { QueryexType.QxDateTimeOffset, typeof(DateTime) },
+            { QueryexType.QxGeography, typeof(byte[]) },
+        };
+
+        [Theory]
+        [MemberData(nameof(HeldPairs))]
+        public void Every_held_pair_reads_into_its_buffer(QueryexType type, Type fieldType, object value, Type bufferType, object expected)
+        {
+            DataTable table = new();
+            _ = table.Columns.Add("Value", fieldType);
+            _ = table.Rows.Add(value);
+            _ = table.Rows.Add(DBNull.Value);
+
+            QueryRowSet rows = Read(table, Column("Value", type));
+
+            Array buffer = rows.GetBuffer(0);
+            Assert.IsType(bufferType, buffer);
+            Assert.Equal(expected, buffer.GetValue(0));
+            Assert.Equal((false, true), (rows.IsNull(0, 0), rows.IsNull(0, 1)));
+        }
+
+        [Theory]
+        [MemberData(nameof(RefusedPairs))]
+        public void Every_other_pair_is_refused_naming_the_column(QueryexType type, Type fieldType)
+        {
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+                () => new QueryRowSet.Builder([Column("Value", type)], [fieldType], 0));
+
+            Assert.Contains("'Value'", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(fieldType.Name, exception.Message, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void A_pair_no_buffer_holds_is_refused_naming_the_column()
         {

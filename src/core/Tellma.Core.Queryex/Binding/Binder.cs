@@ -162,6 +162,10 @@ namespace Tellma.Core.Queryex.Binding
                     item.Expression,
                     expected,
                     DiagnosticCodes.IncompatibleOperandTypes);
+                if (bound.Type != BoundType.Error)
+                {
+                    CheckCollations(bound);
+                }
 
                 if (index == 0)
                 {
@@ -195,6 +199,8 @@ namespace Tellma.Core.Queryex.Binding
         /// <param name="bound">The bound expression.</param>
         private void CheckItemRules(ExpressionItemSyntax item, TypedExpr bound)
         {
+            CheckCollations(bound);
+
             if (_context.Mode.Shape == QueryexShape.Value && bound.Type == BoundType.Null)
             {
                 // An item whose only possible value is absent has no column type to give a result
@@ -1028,6 +1034,20 @@ namespace Tellma.Core.Queryex.Binding
         private void Report(string code, QueryexSpan span, string name, string value, bool always = false)
         {
             Report(code, span, always, new KeyValuePair<string, string>(name, value));
+        }
+
+        /// <summary>Reports an operation that combines text from columns of different collations.</summary>
+        /// <param name="bound">A bound item, free of errors.</param>
+        /// <remarks>
+        ///     The types agree, so the expression binds; the backend would still refuse it when the
+        ///     statement runs, as a failure the author could not have read anything into.
+        /// </remarks>
+        private void CheckCollations(TypedExpr bound)
+        {
+            if (!bound.ContainsError && CollationCheck.FirstConflict(bound) is TypedExpr conflict)
+            {
+                _scope.Report(DiagnosticCodes.CollationConflict, conflict.Span);
+            }
         }
 
         /// <summary>Reports a problem.</summary>
