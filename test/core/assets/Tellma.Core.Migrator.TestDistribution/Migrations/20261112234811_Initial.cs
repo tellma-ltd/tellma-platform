@@ -83,6 +83,20 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "VersionTags",
+                schema: "core",
+                columns: table => new
+                {
+                    Name = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Tag = table.Column<Guid>(type: "uniqueidentifier", nullable: false, defaultValueSql: "NEWID()")
+                        .Annotation("Relational:DefaultConstraintName", "DF_VersionTags_Tag")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VersionTags", x => x.Name);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Blobs",
                 schema: "core",
                 columns: table => new
@@ -819,6 +833,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserStamps",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "VersionTags",
                 schema: "core");
 
             migrationBuilder.DropTable(

@@ -7,6 +7,8 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Access;
+using Tellma.Core.Caching;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Batches
@@ -23,21 +25,27 @@ namespace Tellma.Core.Data.Batches
     internal sealed class PersistChecks
     {
         /// <summary>The tenant-level tags' table.</summary>
-        public static readonly TableName VersionTags = new("core", "VersionTags");
+        public static readonly TableName VersionTags = VersionTagRowConfiguration.Table;
 
         /// <summary>The per-user tags' table, whose row of the caller the guard reads.</summary>
-        public static readonly TableName UserStamps = new("core", "UserStamps");
+        public static readonly TableName UserStamps = UserStampConfiguration.Table;
 
         /// <summary>The users' table, whose row of the caller the re-check reads.</summary>
         public static readonly TableName Users = new("core", "Users");
 
+        // Each arm counts the stale rows among the rows it seeks rather than filtering on the
+        // comparison: a filter on the tag becomes a residual predicate of the seek, and SQL Server
+        // releases the shared or update lock of every row that fails it, which is every row that
+        // still matches. The spec's text (spec 0013 §2.5) filters, and so holds no lock on a fresh
+        // row; counting keeps every expected row a qualifying row, whose lock the hint holds to COMMIT.
+
         /// <summary>The guard's arm over the expected tags the batch only reads: a shared lock held to COMMIT.</summary>
         private static readonly string ReadArm =
-            $"IF EXISTS (SELECT 1 FROM {VersionTags.Delimited} AS t WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK) JOIN {ReservedSqlNames.ExpectedTags} AS e ON e.[Name] = t.[Name] WHERE e.[Bumped] = 0 AND t.[Tag] <> e.[Tag])";
+            $"IF (SELECT SUM(IIF(t.[Tag] = e.[Tag], 0, 1)) FROM {VersionTags.Delimited} AS t WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK) JOIN {ReservedSqlNames.ExpectedTags} AS e ON e.[Name] = t.[Name] WHERE e.[Bumped] = 0) > 0";
 
         /// <summary>The guard's arm over the expected tags the batch bumps: an update lock, so two writers of one row serialise.</summary>
         private static readonly string BumpArm =
-            $"   OR EXISTS (SELECT 1 FROM {VersionTags.Delimited} AS t WITH (UPDLOCK, ROWLOCK, FORCESEEK) JOIN {ReservedSqlNames.ExpectedTags} AS e ON e.[Name] = t.[Name] WHERE e.[Bumped] = 1 AND t.[Tag] <> e.[Tag])";
+            $"   OR (SELECT SUM(IIF(t.[Tag] = e.[Tag], 0, 1)) FROM {VersionTags.Delimited} AS t WITH (UPDLOCK, ROWLOCK, FORCESEEK) JOIN {ReservedSqlNames.ExpectedTags} AS e ON e.[Name] = t.[Name] WHERE e.[Bumped] = 1) > 0";
 
         /// <summary>The guard's failure.</summary>
         private static readonly string StaleThrow = string.Create(
@@ -71,33 +79,22 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Composes the checks of a writing persist batch that carries the connect prologue.</summary>
         /// <param name="premises">What the connect prologue confirmed.</param>
         /// <param name="dependencies">The cached inputs the batch declared.</param>
-        /// <param name="bumps">The tenant-level tags the batch bumps explicitly.</param>
-        /// <param name="written">The tables the batch's statements declare they write.</param>
-        /// <param name="registry">Which tags the written tables bump, when the caching feature is composed.</param>
+        /// <param name="bumps">What the batch bumps, which the bump epilogue moves before the commit.</param>
         /// <param name="binder">The table-type binder.</param>
         /// <returns>The checks.</returns>
         public static PersistChecks Compose(
             GuardPremises premises,
             IReadOnlyList<VersionTagDependency> dependencies,
-            IReadOnlySet<string> bumps,
-            IReadOnlySet<TableName> written,
-            IVersionTagRegistry? registry,
+            VersionTagBumpPlan bumps,
             TableTypeBinder binder)
         {
             ArgumentNullException.ThrowIfNull(premises);
             ArgumentNullException.ThrowIfNull(dependencies);
             ArgumentNullException.ThrowIfNull(bumps);
-            ArgumentNullException.ThrowIfNull(written);
             ArgumentNullException.ThrowIfNull(binder);
 
-            // --- The names the batch bumps: its written tables' and its explicit ones; any entity's adds the entities tag ---
-            VersionTagEffects effects = registry?.Resolve(written) ?? VersionTagEffects.None;
-            HashSet<string> bumped = new(effects.TenantNames, StringComparer.Ordinal);
-            bumped.UnionWith(bumps);
-            if (bumped.Any(static name => name.StartsWith(VersionTagNames.EntityPrefix, StringComparison.Ordinal)))
-            {
-                _ = bumped.Add(VersionTagNames.Entities);
-            }
+            // --- The names the batch bumps, which the guard reads under an update lock ---
+            HashSet<string> bumped = new(bumps.TenantNames, StringComparer.Ordinal);
 
             // --- The expected tags: settings, permissions for a user, and every dependency ---
             // Two expectations of one name that disagree mean the batch composed under two states of
@@ -122,12 +119,11 @@ namespace Tellma.Core.Data.Batches
             List<string> lines = [ReadArm, BumpArm];
             if (!premises.IsSystem)
             {
-                // The caller's stamp row under an update lock when the batch writes it, so two
-                // self-writes by one user serialise instead of deadlocking on the lock conversion.
-                bool writesStamp = written.Contains(UserStamps)
-                    || effects.UserRules.Any(static rule => rule.Column == UserVersionTagNames.Preferences);
+                // The caller's stamp row under an update lock when the batch writes the stamps table,
+                // itself or through a user-level bump, so two writes of one stamp row serialise
+                // instead of deadlocking on the conversion from a shared lock.
                 lines.Add(
-                    $"   OR EXISTS (SELECT 1 FROM {UserStamps.Delimited} AS s WITH ({(writesStamp ? "UPDLOCK" : "REPEATABLEREAD")}, ROWLOCK) WHERE s.[UserId] = {ReservedSqlNames.UserId} AND s.[PermissionsTag] <> {ReservedSqlNames.ExpectedUserPermissionsTag})");
+                    $"   OR (SELECT SUM(IIF(s.[PermissionsTag] = {ReservedSqlNames.ExpectedUserPermissionsTag}, 0, 1)) FROM {UserStamps.Delimited} AS s WITH ({(bumps.WritesUserStamps ? "UPDLOCK" : "REPEATABLEREAD")}, ROWLOCK) WHERE s.[UserId] = {ReservedSqlNames.UserId}) > 0");
             }
 
             lines.Add(StaleThrow);

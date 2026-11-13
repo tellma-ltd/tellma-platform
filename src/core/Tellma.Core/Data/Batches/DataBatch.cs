@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Frozen;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Caching;
+using Tellma.Core.Data.TableTypes;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Data.Batches
@@ -207,6 +209,23 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The caller's user-level tags the connect prologue's reader read, when it read them.</summary>
         internal UserVersionTagSnapshot? ReadUserVersionTags { get; private set; }
 
+        /// <summary>The users whose user-level tags the bump epilogue moved, as its reader read them; null when it moved none.</summary>
+        internal IReadOnlyList<AffectedUser>? AffectedUsers { get; private set; }
+
+        /// <summary>The table-type binder, through which platform statements bind their table-valued parameters.</summary>
+        internal TableTypeBinder Binder => _executor.Binder;
+
+        /// <summary>
+        ///     What the batch bumps: the tenant-level names and user-level rules its written tables and
+        ///     explicit bumps resolve to. Fixed when the epilogue stage starts, from the writes declared
+        ///     before it, so the bump epilogue's own writes never count; resolved afresh before then.
+        /// </summary>
+        internal VersionTagBumpPlan Bumps
+        {
+            get => field ?? VersionTagBumpPlan.Resolve(_executor.VersionTags, _written, _bumps);
+            private set;
+        }
+
         // ===================== The caller channel =====================
 
         /// <inheritdoc />
@@ -246,6 +265,7 @@ namespace Tellma.Core.Data.Batches
 
             // --- Refusals at append: a write outside the caller's authority, a user-id source that is no batch table ---
             CheckAuthority(options.Writes);
+            CheckUserIds(options);
             if (options.UserIds is SqlIdentifier userIds)
             {
                 _ = userIds.IsVariable
@@ -359,6 +379,16 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             EnsureComposing();
+
+            // A name the registry does not know has no row in any database the migrator seeded, so
+            // the bump would fail at commit; it is refused here, where the mistake is.
+            if (_executor.VersionTags is IVersionTagRegistry registry && !registry.Names.Contains(name, StringComparer.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"The version tag '{name}' is not registered. Bump a tag an entity declares with [BumpsVersionTag], or a platform tag ('{VersionTagNames.Settings}', '{VersionTagNames.Permissions}', '{VersionTagNames.Entities}').",
+                    nameof(name));
+            }
+
             _ = _bumps.Add(name);
         }
 
@@ -385,7 +415,9 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
+            // The bumps are fixed first, from the writes the caller and the prologue declared.
             EnsurePrologue();
+            Bumps = VersionTagBumpPlan.Resolve(_executor.VersionTags, _written, _bumps);
             _stage = Stage.Epilogue;
             try
             {
@@ -598,6 +630,13 @@ namespace Tellma.Core.Data.Batches
             ReadUserVersionTags = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         }
 
+        /// <summary>Reports the users whose user-level tags the bump epilogue moved, from its reader.</summary>
+        /// <param name="affected">Each user, with the tag moved for them.</param>
+        internal void ReportAffectedUsers(IReadOnlyList<AffectedUser> affected)
+        {
+            AffectedUsers = affected ?? throw new ArgumentNullException(nameof(affected));
+        }
+
         /// <summary>Sets the authority of the current appender: the stack-owned tables its statements may write.</summary>
         /// <param name="authority">The tables.</param>
         internal void SetCallerAuthority(IReadOnlySet<TableName> authority)
@@ -636,7 +675,7 @@ namespace Tellma.Core.Data.Batches
 
             // --- The re-checks: on a writing persist batch that carries the connect prologue, whatever its transaction mode ---
             PersistChecks? checks = Purpose == BatchPurpose.Persist && Premises is GuardPremises premises && _written.Count > 0
-                ? PersistChecks.Compose(premises, _dependencies, _bumps, _written, _executor.VersionTags, _executor.Binder)
+                ? PersistChecks.Compose(premises, _dependencies, Bumps, _executor.Binder)
                 : null;
 
             return BatchAssembly.Create(_statements, _executor.Fingerprint, CarriesConnectPrologue, inTextTransaction, checks);
@@ -710,6 +749,27 @@ namespace Tellma.Core.Data.Batches
                     throw new InvalidOperationException(
                         $"The statement writes {table}, which the stack '{owner}' owns and the current caller may not write. Enlist the write with '{owner}', so it runs under that stack's authority.");
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Refuses a raw write to a table with a user-level tag rule that does not say which users it
+        ///     wrote: their cached permissions or preferences would never be invalidated.
+        /// </summary>
+        /// <param name="options">The statement's options.</param>
+        /// <exception cref="ArgumentException">The statement writes such a table without <see cref="SqlOptions.UserIds" />.</exception>
+        private void CheckUserIds(SqlOptions options)
+        {
+            if (options.UserIds is not null || options.Writes.Count == 0 || _executor.VersionTags is not IVersionTagRegistry registry)
+            {
+                return;
+            }
+
+            if (registry.Resolve(options.Writes).UserRules is [UserVersionTagRule rule, ..])
+            {
+                throw new ArgumentException(
+                    $"The statement writes {rule.Table}, whose writes bump the {rule.Column} tag of each user they name, but it does not say which users it wrote. Pass their ids in SqlOptions.UserIds, or SqlOptions.ForCaller for the caller's own rows.",
+                    nameof(options));
             }
         }
 

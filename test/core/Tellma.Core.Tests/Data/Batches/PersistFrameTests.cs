@@ -23,6 +23,8 @@ namespace Tellma.Core.Tests.Data.Batches
 
         private static readonly TableName Profiles = new("fixture", "Profiles");
 
+        private static readonly TableName Currencies = new("fixture", "Currencies");
+
         private static readonly VersionTag Settings = Tag(1);
 
         private static readonly VersionTag Permissions = Tag(2);
@@ -33,10 +35,10 @@ namespace Tellma.Core.Tests.Data.Batches
         /// <summary>The transaction-head stand-in: an application lock.</summary>
         private const string Lock = "EXEC sp_getapplock @Resource = N'fx', @LockMode = 'Exclusive';";
 
-        /// <summary>Widgets bump their entity's tag; profiles write the users' preferences tags.</summary>
+        /// <summary>Widgets bump their entity's tag, currencies a plain tag; profiles write the users' preferences tags.</summary>
         private readonly BatchHarness _harness = new(
             registry: new MapRegistry(
-                new Dictionary<TableName, string[]> { [Widgets] = [VersionTagNames.ForEntity("Widget")] },
+                new Dictionary<TableName, string[]> { [Widgets] = [VersionTagNames.ForEntity("Widget")], [Currencies] = ["currencies"] },
                 new UserVersionTagRule(Profiles, UserVersionTagNames.Preferences, "UserId")));
 
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -80,7 +82,7 @@ namespace Tellma.Core.Tests.Data.Batches
             Assert.Contains("WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
             Assert.Contains("WITH (UPDLOCK, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
             Assert.Contains("[core].[UserStamps] AS s WITH (REPEATABLEREAD, ROWLOCK)", checks.Text, StringComparison.Ordinal);
-            Assert.Contains($"[PermissionsTag] <> {ReservedSqlNames.ExpectedUserPermissionsTag}", checks.Text, StringComparison.Ordinal);
+            Assert.Contains($"IIF(s.[PermissionsTag] = {ReservedSqlNames.ExpectedUserPermissionsTag}, 0, 1)", checks.Text, StringComparison.Ordinal);
             Assert.Contains($"THROW {TellmaSqlErrors.StaleVersionTag}, N'{TellmaSqlErrors.StaleVersionTagCode}', 1;", checks.Text, StringComparison.Ordinal);
             Assert.EndsWith($"THROW {TellmaSqlErrors.CallerInvalid}, N'{TellmaSqlErrors.CallerInvalidCode}', 1;", checks.Text, StringComparison.Ordinal);
 
@@ -165,7 +167,8 @@ namespace Tellma.Core.Tests.Data.Batches
 
             // --- Writing a table whose rule bumps the preferences tag ---
             DataBatch profiles = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, Permissions));
-            _ = profiles.Sql($"DELETE FROM [fixture].[Profiles] WHERE 1 = 0;", new SqlOptions(writes: Set(Profiles)));
+            SqlIdentifier users = profiles.DeclareIdTable();
+            _ = profiles.Sql($"DELETE FROM [fixture].[Profiles] OUTPUT deleted.[UserId] INTO {users} WHERE 1 = 0;", new SqlOptions(writes: Set(Profiles), userIds: users));
             Assert.Contains("[core].[UserStamps] AS s WITH (UPDLOCK, ROWLOCK)", (await BatchHarness.SealAsync(profiles)).Checks!.Text, StringComparison.Ordinal);
         }
 
