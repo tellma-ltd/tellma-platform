@@ -77,18 +77,48 @@ namespace Tellma.Core.Data.Ids
             }
         }
 
-        /// <summary>Hands a need the ids its statement reserved; after a disposal without a persist they return to the buffer.</summary>
+        /// <summary>The ranges a need holds so far.</summary>
         /// <param name="need">The need.</param>
-        /// <param name="ranges">The ranges, holding exactly the pending ids.</param>
-        public void Fill(Need need, List<IdRange> ranges)
+        /// <returns>A copy of them.</returns>
+        public List<IdRange> HeldOf(Need need)
+        {
+            lock (_gate)
+            {
+                return [.. need.Held];
+            }
+        }
+
+        /// <summary>
+        ///     Hands a need the ids its statement reserved; after a disposal without a persist they
+        ///     return to the buffer. After a heal, the ids the need held at or below the floor are
+        ///     discarded, since the ranges replace them.
+        /// </summary>
+        /// <param name="need">The need.</param>
+        /// <param name="ranges">The ranges: the pending ids, plus one for each held id at or below the floor.</param>
+        /// <param name="floor">After a heal, the table's largest id; null otherwise.</param>
+        public void Fill(Need need, List<IdRange> ranges, long? floor)
         {
             lock (_gate)
             {
                 if (_disposed && !_persistAttempted)
                 {
+                    // The held ids went back at disposal, possibly after the heal dropped the buffer's
+                    // stale ids: drop them again before the fresh ones join them.
                     allocator.Return(tenantId, need.Sequence, ranges);
+                    if (floor is long disposedFloor)
+                    {
+                        allocator.DropAtOrBelow(tenantId, need.Sequence, disposedFloor);
+                    }
+
                     need.Pending = 0;
                     return;
+                }
+
+                if (floor is long heldFloor)
+                {
+                    List<IdRange> kept = IdRange.Above(need.Held, heldFloor);
+                    need.Held.Clear();
+                    need.Held.AddRange(kept);
                 }
 
                 need.Held.AddRange(ranges);
@@ -107,12 +137,24 @@ namespace Tellma.Core.Data.Ids
             }
         }
 
-        /// <summary>Records that a batch saving the assigned rows executed: from now on no id returns.</summary>
-        public void MarkPersistAttempted()
+        /// <summary>
+        ///     Records that a batch saving the assigned rows is about to execute: from now on no id
+        ///     returns. Refused once the hold gave its ids back, since another reservation may hold
+        ///     them by now.
+        /// </summary>
+        /// <returns>Whether the mark held; false when the hold already gave its ids back.</returns>
+        public bool TryMarkPersistAttempted()
         {
+            // The check and the mark under one lock: a disposal cannot slip in between.
             lock (_gate)
             {
+                if (_disposed && !_persistAttempted)
+                {
+                    return false;
+                }
+
                 _persistAttempted = true;
+                return true;
             }
         }
 

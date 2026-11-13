@@ -3,6 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using System.Data;
+using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Ids;
@@ -24,6 +28,8 @@ namespace Tellma.Core.Tests.Data.Ids
 
         /// <summary>The composition over the save model.</summary>
         private readonly BatchHarness _harness = new(compose: SaveModel.Compose);
+
+        private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         private IdAllocator Allocator => _harness.Executor.Allocator;
 
@@ -122,6 +128,87 @@ namespace Tellma.Core.Tests.Data.Ids
 
             Assert.Equal(9, Allocator.Buffered(Tenant, typeof(Crate)));
             Assert.False(Allocator.HoldOf(crate)!.IsReturned);
+        }
+
+        [Fact]
+        public async Task A_batch_saving_rows_whose_reservation_was_disposed_after_the_save_was_composed_is_refused()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            Crate crate = new() { Name = "new" };
+            IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), [crate]);
+            reservation.Assign([crate]);
+            DataBatch persist = _harness.Batch(BatchPurpose.Persist);
+            _ = persist.Save([crate]);
+
+            // The ids went back to the buffer, where the next reservation takes them: the batch never sends.
+            reservation.Dispose();
+            InvalidOperationException refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => persist.ExecuteAsync(Token));
+
+            Assert.Contains("disposed before the batch executed", refusal.Message, StringComparison.Ordinal);
+            Assert.Equal(10, Allocator.Buffered(Tenant, typeof(Crate)));
+            ReservationHold hold = Allocator.HoldOf(crate)!;
+            Assert.True(hold.IsReturned);
+            Assert.False(hold.TryMarkPersistAttempted());
+        }
+
+        [Fact]
+        public async Task A_range_reserved_for_a_reservation_disposed_before_its_batch_ran_returns_to_the_front_of_the_buffer()
+        {
+            using MetricCollector<long> returned = Collector(DataTelemetryNames.IdReturned);
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 100);
+            DataBatch batch = _harness.Batch(BatchPurpose.Validate);
+            IdReservation reservation = Allocator.Reserve(batch, typeof(Crate), [new Crate(), new Crate(), new Crate()]);
+
+            // --- Disposed before its batch ran: the id taken from the buffer goes back at once ---
+            reservation.Dispose();
+            Assert.Equal(1, Allocator.Buffered(Tenant, typeof(Crate)));
+
+            // --- The batch runs later: its range's head (two ids) goes back too, ahead of the rest ---
+            await RunRangeAsync(batch, first: 1000, last: 1065, maxId: null);
+
+            Assert.Equal(67, Allocator.Buffered(Tenant, typeof(Crate)));
+            Assert.Equal([1, 2], returned.GetMeasurementSnapshot().Select(static measurement => measurement.Value));
+            Crate[] next = [new Crate(), new Crate(), new Crate(), new Crate()];
+            using IdReservation again = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), next);
+            again.Assign(next);
+            Assert.Equal([1000, 1001, 100, 1002], next.Select(static crate => crate.Id));
+        }
+
+        [Fact]
+        public void A_buffer_drops_exactly_its_ids_at_or_below_a_tables_largest_id()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 104);
+            Allocator.Replenish(Tenant, typeof(Crate), 200, 204);
+            Allocator.Replenish(Tenant, typeof(Crate), 300, 304);
+            SequenceInfo sequence = Allocator.SequenceOf(_harness.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Crate)));
+
+            Allocator.DropAtOrBelow(Tenant, sequence, 202);
+
+            Assert.Equal(7, Allocator.Buffered(Tenant, typeof(Crate)));
+            Crate[] rows = [.. Enumerable.Range(0, 7).Select(static _ => new Crate())];
+            using IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), rows);
+            reservation.Assign(rows);
+            Assert.Equal([203, 204, 300, 301, 302, 303, 304], rows.Select(static crate => crate.Id));
+        }
+
+        [Fact]
+        public async Task A_refill_that_finds_the_sequence_behind_keeps_only_the_ids_above_the_table_and_counts_it()
+        {
+            using MetricCollector<long> healed = Collector(DataTelemetryNames.IdHealed);
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            _ = batch.Save([new Crate { Id = 42, Name = "existing" }]);
+            _ = await BatchHarness.SealAsync(batch);
+
+            // The refill reads 54 ids from 200 while the table already holds 205: ids up to 205 may collide.
+            await RunRangeAsync(batch, first: 200, last: 253, maxId: 205, statement: 1);
+
+            Assert.Equal(1, Assert.Single(healed.GetMeasurementSnapshot()).Value);
+            Assert.Equal(48, Allocator.Buffered(Tenant, typeof(Crate)));
+            Crate[] rows = [new Crate()];
+            using IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), rows);
+            reservation.Assign(rows);
+            Assert.Equal(206, rows[0].Id);
         }
 
         [Fact]
@@ -236,6 +323,43 @@ namespace Tellma.Core.Tests.Data.Ids
         public void Dispose()
         {
             _harness.Dispose();
+        }
+
+        /// <summary>
+        ///     Plays a batch's range statement as if the server ran it: its reader reads the range given,
+        ///     its completion applies, and the batch's completion steps run.
+        /// </summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="first">The range's first id.</param>
+        /// <param name="last">The range's last id.</param>
+        /// <param name="maxId">The table's largest id; null for an empty table.</param>
+        /// <param name="statement">The index of the range statement in the batch.</param>
+        /// <returns>A task that completes when the steps ran.</returns>
+        private static async Task RunRangeAsync(DataBatch batch, long first, long last, long? maxId, int statement = 0)
+        {
+            using DataTable range = new();
+            _ = range.Columns.Add("First", typeof(long));
+            _ = range.Columns.Add("Last", typeof(long));
+            _ = range.Columns.Add("MaxId", typeof(long));
+            _ = range.Rows.Add(first, last, maxId is long value ? value : DBNull.Value);
+            using DataTableReader reader = new(range);
+            ResultSetCursor cursor = new(reader);
+
+            await batch.Statements[statement].Reader!(cursor, Token);
+            await cursor.EndAsync(Token);
+            cursor.ApplyCompletions();
+            foreach (Func<CancellationToken, Task> step in batch.ExecutedSteps)
+            {
+                await step(Token);
+            }
+        }
+
+        /// <summary>A collector of one of the data layer's counters, from now on.</summary>
+        /// <param name="name">The counter.</param>
+        /// <returns>The collector.</returns>
+        private MetricCollector<long> Collector(string name)
+        {
+            return new MetricCollector<long>(_harness.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, name);
         }
 
         /// <summary>A new crate with new compartments, each with new items.</summary>

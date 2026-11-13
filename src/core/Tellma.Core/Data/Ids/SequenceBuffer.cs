@@ -15,6 +15,24 @@ namespace Tellma.Core.Data.Ids
         /// <summary>How many ids the range holds.</summary>
         public long Count => Last - First + 1;
 
+        /// <summary>How many ids of some ranges are at or below a floor.</summary>
+        /// <param name="ranges">The ranges.</param>
+        /// <param name="floor">The floor.</param>
+        /// <returns>The ids at or below it.</returns>
+        public static long CountAtOrBelow(IEnumerable<IdRange> ranges, long floor)
+        {
+            return ranges.Sum(range => range.First > floor ? 0 : Math.Min(range.Last, floor) - range.First + 1);
+        }
+
+        /// <summary>The parts of some ranges above a floor, in their order.</summary>
+        /// <param name="ranges">The ranges.</param>
+        /// <param name="floor">The floor.</param>
+        /// <returns>The parts above it.</returns>
+        public static List<IdRange> Above(IEnumerable<IdRange> ranges, long floor)
+        {
+            return [.. ranges.Where(range => range.Last > floor).Select(range => range with { First = Math.Max(range.First, floor + 1) })];
+        }
+
         /// <summary>The ids of the range, ascending.</summary>
         /// <returns>The ids.</returns>
         public IEnumerable<long> Ids()
@@ -113,6 +131,34 @@ namespace Tellma.Core.Data.Ids
                     _ = _ranges.AddFirst(ranges[index]);
                     _count += ranges[index].Count;
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Drops every id at or below a floor: the table already holds an id that large, so any of
+        ///     them may collide.
+        /// </summary>
+        /// <param name="floor">The table's largest id.</param>
+        /// <returns>How many ids were dropped.</returns>
+        public long DropAtOrBelow(long floor)
+        {
+            lock (_gate)
+            {
+                long dropped = IdRange.CountAtOrBelow(_ranges, floor);
+                if (dropped == 0)
+                {
+                    return 0;
+                }
+
+                List<IdRange> kept = IdRange.Above(_ranges, floor);
+                _ranges.Clear();
+                foreach (IdRange range in kept)
+                {
+                    _ = _ranges.AddLast(range);
+                }
+
+                _count -= dropped;
+                return dropped;
             }
         }
 

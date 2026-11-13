@@ -20,11 +20,29 @@ namespace Tellma.Core.Data.Ids
         /// <param name="first">The first id of the range found behind.</param>
         /// <param name="maxId">The largest id the table held.</param>
         /// <param name="consumed">How many ids the healing reservation asked for.</param>
+        /// <param name="dropped">How many buffered ids at or below the table's largest id were dropped.</param>
         [LoggerMessage(
             EventName = "IdAllocator.Healed",
             Level = LogLevel.Warning,
-            Message = "The sequence {Sequence} of tenant {TenantId} was behind its table: it returned {First} while the table held {MaxId}. The gap was consumed with a reservation of {Consumed} ids.")]
-        public static partial void Healed(ILogger logger, string sequence, int tenantId, long first, long maxId, long consumed);
+            Message = "The sequence {Sequence} of tenant {TenantId} was behind its table: it returned {First} while the table held {MaxId}. The gap was consumed with a reservation of {Consumed} ids, and {Dropped} buffered ids at or below the table's largest id were dropped.")]
+        public static partial void Healed(ILogger logger, string sequence, int tenantId, long first, long maxId, long consumed, long dropped);
+
+        /// <summary>
+        ///     A refill found a sequence behind its table: an out-of-band insert wrote ids the sequence
+        ///     had not issued. The refill kept only the ids above the table, and the buffer dropped its
+        ///     ids at or below them; the next reservation that reads a range below the table heals.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sequence">The sequence.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="first">The first id of the range found behind.</param>
+        /// <param name="maxId">The largest id the table held.</param>
+        /// <param name="dropped">How many buffered ids at or below the table's largest id were dropped.</param>
+        [LoggerMessage(
+            EventName = "IdAllocator.BehindOnRefill",
+            Level = LogLevel.Warning,
+            Message = "A refill found the sequence {Sequence} of tenant {TenantId} behind its table: it returned {First} while the table held {MaxId}. Only the ids above the table were kept, and {Dropped} buffered ids at or below it were dropped.")]
+        public static partial void BehindOnRefill(ILogger logger, string sequence, int tenantId, long first, long maxId, long dropped);
 
         /// <summary>A duplicate primary key surfaced on a table the buffer serves, so its buffered ranges were dropped.</summary>
         /// <param name="logger">The logger.</param>

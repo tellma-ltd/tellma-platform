@@ -398,6 +398,16 @@ namespace Tellma.Core.Data.Batches
                 throw new InvalidOperationException("A statement of the batch is still being composed.");
             }
 
+            // A save whose reservation was disposed after the save was composed would insert ids the
+            // buffer already took back, and may have handed to another reservation.
+            foreach (ReservationHold hold in _holds)
+            {
+                if (hold.IsReturned)
+                {
+                    throw ReturnedReservation();
+                }
+            }
+
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
             // The allocator's refills ride the body, after the caller's statements.
             EnsurePrologue();
@@ -420,10 +430,15 @@ namespace Tellma.Core.Data.Batches
             _stage = Stage.Sealed;
 
             // A persist is attempted from here: whatever its outcome, the ids its saves insert may be
-            // in the database, so their reservations never return them.
+            // in the database, so their reservations never return them. The mark is refused for a
+            // reservation disposed since the check above; the batch then never runs, and a hold
+            // marked before it only leaves a gap in its sequence.
             foreach (ReservationHold hold in _holds)
             {
-                hold.MarkPersistAttempted();
+                if (!hold.TryMarkPersistAttempted())
+                {
+                    throw ReturnedReservation();
+                }
             }
 
             return _executor.ExecuteAsync(this, cancellationToken);
@@ -716,6 +731,14 @@ namespace Tellma.Core.Data.Batches
                 throw new InvalidOperationException(
                     "A contributor failed while the batch ran its prologue or epilogue stage, so the batch is incomplete and can neither take more statements nor execute. Create a new batch.");
             }
+        }
+
+        /// <summary>The refusal of a batch carrying a save whose reservation already gave its ids back.</summary>
+        /// <returns>The exception.</returns>
+        private static InvalidOperationException ReturnedReservation()
+        {
+            return new InvalidOperationException(
+                "A save of the batch holds ids whose reservation was disposed before the batch executed, so the ids went back to the buffer. Keep the reservation until the batch that saves its rows executes.");
         }
 
         /// <summary>Refuses an append once the batch is sealed or broken.</summary>

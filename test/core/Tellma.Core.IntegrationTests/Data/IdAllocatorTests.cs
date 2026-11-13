@@ -8,14 +8,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Options;
+using System.Data.Common;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Data.Ids;
+using Tellma.Core.Data.Queries;
+using Tellma.Core.Data.Saves;
+using Tellma.Core.Data.TableTypes;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data
@@ -160,6 +167,75 @@ namespace Tellma.Core.IntegrationTests.Data
             Widget next = NewWidget("w2");
             _ = await CreateAsync(next);
             Assert.Equal(widget.Id + 1, next.Id);
+            _ = Assert.Single(Logged("IdAllocator.Healed"));
+        }
+
+        [Fact]
+        public async Task A_heal_replaces_the_ids_the_reservation_took_from_the_buffer_at_or_below_the_table()
+        {
+            // --- The buffer holds ids the table also holds: one inside it, and the table runs ahead of the sequence ---
+            Widget warmUp = NewWidget("warm-up");
+            _ = await CreateAsync(warmUp);
+            await InsertWidgetAsync(warmUp.Id + 5);
+            int ahead = await InsertAheadOfSequenceAsync(10);
+
+            // --- A create that empties the buffer and reads the rest: the heal replaces every taken id ---
+            Widget[] widgets = [.. Enumerable.Range(0, 70).Select(static index => NewWidget(string.Create(CultureInfo.InvariantCulture, $"w{index}")))];
+            SaveReceipt receipt = await CreateAsync(widgets);
+
+            Assert.Equal(70, receipt.Inserted);
+            Assert.All(widgets, widget => Assert.True(widget.Id > ahead));
+            _ = Assert.Single(Logged("IdAllocator.Healed"));
+        }
+
+        [Fact]
+        public async Task A_refill_that_finds_the_sequence_behind_reports_it_and_drops_the_buffered_ids_below_the_table()
+        {
+            Widget warmUp = NewWidget("warm-up");
+            _ = await CreateAsync(warmUp);
+            await InsertWidgetAsync(warmUp.Id + 3);
+            int ahead = await InsertAheadOfSequenceAsync(10);
+            using MetricCollector<long> healed = Collector(DataTelemetryNames.IdHealed);
+
+            // --- A create served from the buffer carries the refill, whose range starts under the table ---
+            Widget served = NewWidget("served");
+            _ = await CreateAsync(served);
+
+            Assert.Equal(warmUp.Id + 1, served.Id);
+            FakeLogRecord record = Assert.Single(Logged("IdAllocator.BehindOnRefill"));
+            Assert.Equal(LogLevel.Warning, record.Level);
+            Assert.Equal(1, Assert.Single(healed.GetMeasurementSnapshot()).Value);
+            Assert.Equal(0, fixture.Allocator.Buffered(FixtureTenant.TenantId, typeof(Widget)));
+
+            // --- The next create reuses no dropped id, collides with nothing and heals ---
+            Widget next = NewWidget("next");
+            _ = await CreateAsync(next);
+            Assert.True(next.Id > ahead);
+            _ = Assert.Single(Logged("IdAllocator.Healed"));
+        }
+
+        [Fact]
+        public async Task A_heals_newer_version_tags_are_not_replaced_by_the_older_tags_of_the_batch_that_healed()
+        {
+            _ = await InsertAheadOfSequenceAsync(10);
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            RecordingSnapshots snapshots = new();
+            TagReadingContributor tags = new();
+            DataExecutor executor = ExecutorWith(snapshots);
+            ContributorScope services = new(scope.ServiceProvider, tags);
+
+            // --- The reservation's batch reads its tags first; the heal it triggers reads newer ones ---
+            Widget widget = NewWidget("w1");
+            DataBatch validate = new(executor, new CountingConnection(fixture.ConnectionString), services, BatchPurpose.Validate);
+            using IdReservation reservation = Allocator(scope).Reserve(validate, typeof(Widget), [widget]);
+            BatchOutcome outcome = await validate.ExecuteAsync(Token);
+            reservation.Assign([widget]);
+
+            // The heal's snapshot replaced the reservation batch's, never the other way round.
+            Assert.Equal(2, outcome.RoundTrips);
+            Assert.Equal(2, tags.Read.Count);
+            Assert.Equal(tags.Read, snapshots.Replaced);
+            Assert.Same(tags.Read[1], snapshots.Current(FixtureTenant.TenantId));
             _ = Assert.Single(Logged("IdAllocator.Healed"));
         }
 
@@ -412,6 +488,99 @@ namespace Tellma.Core.IntegrationTests.Data
         private MetricCollector<long> Collector(string name)
         {
             return new MetricCollector<long>(fixture.Tenant.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, name);
+        }
+
+        /// <summary>An executor over the host's services whose process snapshots are the test's.</summary>
+        /// <param name="snapshots">The snapshots.</param>
+        /// <returns>The executor.</returns>
+        private DataExecutor ExecutorWith(IVersionTagSnapshots snapshots)
+        {
+            IServiceProvider root = fixture.Tenant.Services;
+            return new DataExecutor(
+                root.GetRequiredService<IOptions<DataOptions>>(),
+                root.GetRequiredService<IEntityMetadataProvider>(),
+                root.GetRequiredService<TableTypeBinder>(),
+                root.GetRequiredService<IStackTableOwners>(),
+                TimeProvider.System,
+                root.GetRequiredService<ILogger<DataBatch>>(),
+                root.GetRequiredService<DataMetrics>(),
+                root.GetRequiredService<QueryServices>(),
+                root.GetRequiredService<IdAllocator>(),
+                root.GetRequiredService<SaveEmitter>(),
+                new ContributorScope(root, snapshots: snapshots));
+        }
+
+        /// <summary>The process snapshots, recording every replacement in order.</summary>
+        private sealed class RecordingSnapshots : IVersionTagSnapshots
+        {
+            /// <summary>The snapshots replaced, in order.</summary>
+            public List<VersionTagSnapshot> Replaced { get; } = [];
+
+            /// <inheritdoc />
+            public VersionTagSnapshot Current(int tenantId)
+            {
+                return Replaced.LastOrDefault() ?? new VersionTagSnapshot(tenantId, new Dictionary<string, VersionTag>(StringComparer.Ordinal), DateTimeOffset.MinValue);
+            }
+
+            /// <inheritdoc />
+            public void Replace(VersionTagSnapshot snapshot)
+            {
+                Replaced.Add(snapshot);
+            }
+        }
+
+        /// <summary>
+        ///     Stands in for the tag-reading prelude: every batch's prologue carries a statement whose
+        ///     reader reports a snapshot read later than the one before.
+        /// </summary>
+        private sealed class TagReadingContributor : IDataBatchContributor
+        {
+            /// <summary>The snapshots reported, in the order the batches read them.</summary>
+            public List<VersionTagSnapshot> Read { get; } = [];
+
+            /// <inheritdoc />
+            public int Order => 0;
+
+            /// <inheritdoc />
+            public void Contribute(IDataBatch batch, DataBatchStage stage)
+            {
+                if (stage != DataBatchStage.Prologue)
+                {
+                    return;
+                }
+
+                var data = (DataBatch)batch;
+                StatementDraft draft = data.Begin();
+                int ordinal = draft.Ordinal;
+                data.Append(draft, "SELECT 1 AS [Read];", reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken);
+                    _ = await set.ReadAsync(cancellationToken);
+                    cursor.CountRows(1);
+                    VersionTagSnapshot snapshot = new(
+                        FixtureTenant.TenantId,
+                        new Dictionary<string, VersionTag>(StringComparer.Ordinal) { ["fx"] = new VersionTag(Guid.NewGuid()) },
+                        DateTimeOffset.UtcNow);
+                    Read.Add(snapshot);
+                    data.ReportVersionTags(snapshot);
+                });
+            }
+        }
+
+        /// <summary>A scope's services with a contributor or the process snapshots added.</summary>
+        /// <param name="inner">The scope's services.</param>
+        /// <param name="contributor">The contributor added to the scope's, if any.</param>
+        /// <param name="snapshots">The process snapshots, if any.</param>
+        private sealed class ContributorScope(IServiceProvider inner, IDataBatchContributor? contributor = null, IVersionTagSnapshots? snapshots = null) : IServiceProvider
+        {
+            /// <inheritdoc />
+            public object? GetService(Type serviceType)
+            {
+                // The contributor joins the scope's own; the snapshots stand in for the process's.
+                return contributor is not null && serviceType == typeof(IEnumerable<IDataBatchContributor>)
+                    ? (IDataBatchContributor[])[contributor, .. inner.GetServices<IDataBatchContributor>()]
+                    : snapshots is not null && serviceType == typeof(IVersionTagSnapshots) ? snapshots : inner.GetService(serviceType);
+            }
         }
 
         /// <summary>

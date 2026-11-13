@@ -184,16 +184,9 @@ namespace Tellma.Core.Data.Batches
                 await after.AfterAsync(auditState, batch.WrittenTables, afterSend).ConfigureAwait(false);
             }
 
-            // --- The platform's completion steps: before the outcome, so their round trips count ---
-            if (bodyRan)
-            {
-                foreach (Func<CancellationToken, Task> step in batch.ExecutedSteps)
-                {
-                    await step(beforeSend).ConfigureAwait(false);
-                }
-            }
-
-            // --- The outcome: the snapshots the prologue read replace the process's ---
+            // --- The outcome's snapshots: the ones the prologue read replace the process's ---
+            // Before the completion steps: a step may run a sibling batch (a heal) whose prologue read
+            // later tags and already replaced them; replacing after it would put the older read back.
             VersionTagSnapshot tags = batch.ReadVersionTags
                 ?? _snapshots?.Current(run.TenantId)
                 ?? new VersionTagSnapshot(run.TenantId, new Dictionary<string, VersionTag>(StringComparer.Ordinal), _time.GetUtcNow());
@@ -207,7 +200,17 @@ namespace Tellma.Core.Data.Batches
                 _userSnapshots?.Replace(user);
             }
 
-            // Every attempt, a probe, an explicit transaction's begin and commit count.
+            // --- The platform's completion steps: before the round trips are counted, so a heal's counts ---
+            if (bodyRan)
+            {
+                foreach (Func<CancellationToken, Task> step in batch.ExecutedSteps)
+                {
+                    await step(beforeSend).ConfigureAwait(false);
+                }
+            }
+
+            // Every attempt, a probe, an explicit transaction's begin and commit, and a completion
+            // step's round trip count.
             BatchOutcome outcome = new(tags, batch.ReadUserVersionTags, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
 
             // --- The commit callbacks: outside the transaction, never thrown ---

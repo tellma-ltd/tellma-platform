@@ -142,7 +142,7 @@ namespace Tellma.Core.Data.Batches
             _idsHealed = meter.CreateCounter<long>(
                 DataTelemetryNames.IdHealed,
                 EventUnit,
-                "Sequences found behind their table at reservation and healed by consuming the gap, by sequence.");
+                "Sequences found behind their table, healed at reservation or trimmed at refill, by sequence.");
 
             _rowsSaved = meter.CreateCounter<long>(
                 DataTelemetryNames.RowsSaved,
