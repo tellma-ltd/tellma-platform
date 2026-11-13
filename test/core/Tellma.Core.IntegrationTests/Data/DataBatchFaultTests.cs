@@ -965,6 +965,9 @@ namespace Tellma.Core.IntegrationTests.Data
             public QueryexContextValues Context => throw new InvalidOperationException("The fault batches carry raw statements only, so they bind no context values.");
 
             /// <inheritdoc />
+            public int? UserId => null;
+
+            /// <inheritdoc />
             public async ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)
             {
                 SqlConnection connection = new(connectionString);

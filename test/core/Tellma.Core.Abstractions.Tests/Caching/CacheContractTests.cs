@@ -76,7 +76,7 @@ namespace Tellma.Core.Abstractions.Tests.Caching
 
             Assert.NotNull(name.GetCustomAttribute<KeyAttribute>());
             Assert.Equal(128, name.GetCustomAttribute<MaxLengthAttribute>()!.Length);
-            Assert.Equal(typeof(Guid), typeof(VersionTagList).GetProperty(nameof(VersionTagList.Tag))!.PropertyType);
+            Assert.Equal(typeof(Guid?), typeof(VersionTagList).GetProperty(nameof(VersionTagList.Tag))!.PropertyType);
             Assert.Equal(typeof(bool), typeof(VersionTagList).GetProperty(nameof(VersionTagList.Bumped))!.PropertyType);
         }
 

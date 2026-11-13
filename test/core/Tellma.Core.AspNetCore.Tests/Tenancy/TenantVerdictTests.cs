@@ -200,7 +200,8 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
         public async Task A_member_request_binds_the_tenant_principal_session_and_client()
         {
             TellmaTestHost host = matrix.Host;
-            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", host.Cookie(acr: "urn:tellma:acr:pwd", handle: "handle-1"));
+            TestSession session = host.Session(acr: "urn:tellma:acr:pwd");
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", session.Cookie);
 
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -211,7 +212,7 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
             Assert.Equal("sub-1", probe.Subject);
             Assert.Equal(TellmaTestHost.Slug, probe.ClientId);
             Assert.Equal("sid-1", probe.SessionId);
-            Assert.Equal("handle-1", probe.SessionHandle);
+            Assert.Equal(session.Handle, probe.SessionHandle);
             Assert.Equal("web", probe.Client);
             Assert.Equal("urn:tellma:acr:pwd", probe.Acr);
         }

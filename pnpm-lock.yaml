@@ -39,6 +39,9 @@ catalogs:
     '@angular/router':
       specifier: 22.0.5
       version: 22.0.5
+    '@angular/service-worker':
+      specifier: 22.0.5
+      version: 22.0.5
     '@capsizecss/metrics':
       specifier: ^4.1.0
       version: 4.1.0
@@ -99,6 +102,9 @@ catalogs:
     ng-packagr:
       specifier: 22.0.1
       version: 22.0.1
+    parse5:
+      specifier: 8.0.1
+      version: 8.0.1
     postcss-value-parser:
       specifier: 4.2.0
       version: 4.2.0
@@ -163,6 +169,9 @@ importers:
       '@angular/router':
         specifier: 'catalog:'
         version: 22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(@angular/platform-browser@22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)))(rxjs@7.8.2)
+      '@angular/service-worker':
+        specifier: 'catalog:'
+        version: 22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2)
       '@internationalized/date':
         specifier: 'catalog:'
         version: 3.12.2
@@ -181,7 +190,7 @@ importers:
     devDependencies:
       '@angular/build':
         specifier: 'catalog:'
-        version: 22.0.5(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(@angular/compiler@22.0.5)(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(@angular/platform-browser@22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)))(@types/node@24.13.2)(chokidar@5.0.0)(istanbul-lib-instrument@6.0.3)(jiti@2.7.0)(less@4.6.7)(ng-packagr@22.0.1(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(tslib@2.8.1)(typescript@6.0.3))(postcss@8.5.16)(terser@5.48.0)(tslib@2.8.1)(tsx@4.22.4)(typescript@6.0.3)(vitest@4.1.9)
+        version: 22.0.5(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(@angular/compiler@22.0.5)(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(@angular/platform-browser@22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)))(@angular/service-worker@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@24.13.2)(chokidar@5.0.0)(istanbul-lib-instrument@6.0.3)(jiti@2.7.0)(less@4.6.7)(ng-packagr@22.0.1(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(tslib@2.8.1)(typescript@6.0.3))(postcss@8.5.16)(terser@5.48.0)(tslib@2.8.1)(tsx@4.22.4)(typescript@6.0.3)(vitest@4.1.9)
       '@angular/cli':
         specifier: 'catalog:'
         version: 22.0.5(@types/node@24.13.2)(chokidar@5.0.0)
@@ -278,6 +287,12 @@ importers:
       angular-eslint:
         specifier: 'catalog:'
         version: 22.0.0(@angular/cli@22.0.5(@types/node@24.13.2)(chokidar@5.0.0))(chokidar@5.0.0)(eslint@10.6.0(jiti@2.7.0))(typescript-eslint@8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3))(typescript@6.0.3)
+      parse5:
+        specifier: 'catalog:'
+        version: 8.0.1
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.4
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.62.1(eslint@10.6.0(jiti@2.7.0))(typescript@6.0.3)
@@ -562,6 +577,14 @@ packages:
       '@angular/common': 22.0.5
       '@angular/core': 22.0.5
       '@angular/platform-browser': 22.0.5
+      rxjs: ^6.5.3 || ^7.4.0
+
+  '@angular/service-worker@22.0.5':
+    resolution: {integrity: sha512-y28ANueBYJqp7+ZVGCRT7ryMuZhRSZffshgCzgs5ZGO1MDwMSDYIvvHpETPH/B9w7dbESK9xPTQUjLrp8O8HkQ==}
+    engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
+    hasBin: true
+    peerDependencies:
+      '@angular/core': 22.0.5
       rxjs: ^6.5.3 || ^7.4.0
 
   '@asamuzakjp/css-color@5.1.11':
@@ -4429,7 +4452,7 @@ snapshots:
       '@angular/core': 22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@angular/build@22.0.5(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(@angular/compiler@22.0.5)(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(@angular/platform-browser@22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)))(@types/node@24.13.2)(chokidar@5.0.0)(istanbul-lib-instrument@6.0.3)(jiti@2.7.0)(less@4.6.7)(ng-packagr@22.0.1(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(tslib@2.8.1)(typescript@6.0.3))(postcss@8.5.16)(terser@5.48.0)(tslib@2.8.1)(tsx@4.22.4)(typescript@6.0.3)(vitest@4.1.9)':
+  '@angular/build@22.0.5(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(@angular/compiler@22.0.5)(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(@angular/platform-browser@22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)))(@angular/service-worker@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@24.13.2)(chokidar@5.0.0)(istanbul-lib-instrument@6.0.3)(jiti@2.7.0)(less@4.6.7)(ng-packagr@22.0.1(@angular/compiler-cli@22.0.5(@angular/compiler@22.0.5)(typescript@6.0.3))(tslib@2.8.1)(typescript@6.0.3))(postcss@8.5.16)(terser@5.48.0)(tslib@2.8.1)(tsx@4.22.4)(typescript@6.0.3)(vitest@4.1.9)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@angular-devkit/architect': 0.2200.5(chokidar@5.0.0)
@@ -4463,6 +4486,7 @@ snapshots:
     optionalDependencies:
       '@angular/core': 22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)
       '@angular/platform-browser': 22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))
+      '@angular/service-worker': 22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2)
       istanbul-lib-instrument: 6.0.3
       less: 4.6.7
       lmdb: 3.5.4
@@ -4571,6 +4595,12 @@ snapshots:
       '@angular/common': 22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)
       '@angular/platform-browser': 22.0.5(@angular/common@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))
+      rxjs: 7.8.2
+      tslib: 2.8.1
+
+  '@angular/service-worker@22.0.5(@angular/core@22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2))(rxjs@7.8.2)':
+    dependencies:
+      '@angular/core': 22.0.5(@angular/compiler@22.0.5)(rxjs@7.8.2)
       rxjs: 7.8.2
       tslib: 2.8.1
 

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Conventions;
 
@@ -52,13 +53,16 @@ namespace Tellma.Core.Access
         /// <summary>The query language's name for the table, which it reads but never writes.</summary>
         public const string QueryexName = "core.UserStamp";
 
+        /// <summary>The table, which the user-level version-tag bumps write.</summary>
+        public static readonly TableName Table = new("core", "UserStamps");
+
         /// <inheritdoc />
         public void Configure(EntityTypeBuilder<UserStamp> builder)
         {
             ArgumentNullException.ThrowIfNull(builder);
 
             // --- The table: keyed by its user, not system-versioned ---
-            _ = builder.ToTable("UserStamps", "core");
+            _ = builder.ToTable(Table.Name, Table.Schema);
             _ = builder.HasKey(static stamp => stamp.UserId);
             _ = builder.Property(static stamp => stamp.UserId).ValueGeneratedNever();
             _ = builder.HasAnnotation(TellmaAnnotationNames.QueryexReadOnlyEntity, QueryexName);

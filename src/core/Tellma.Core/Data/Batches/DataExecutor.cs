@@ -13,7 +13,11 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Caching;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Batches
@@ -42,14 +46,14 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The logger.</summary>
         private readonly ILogger _logger;
 
-        /// <summary>The executor's instruments.</summary>
-        private readonly DataMetrics _metrics;
-
         /// <summary>The process's tenant snapshots, when the caching feature is composed.</summary>
         private readonly IVersionTagSnapshots? _snapshots;
 
         /// <summary>The process's user snapshots, when the caching feature is composed.</summary>
         private readonly IUserVersionTagSnapshots? _userSnapshots;
+
+        /// <summary>The version tags' instruments, when the caching feature is composed.</summary>
+        private readonly VersionTagMetrics? _tagMetrics;
 
         /// <summary>Creates the executor.</summary>
         /// <param name="options">The execution settings.</param>
@@ -60,6 +64,8 @@ namespace Tellma.Core.Data.Batches
         /// <param name="logger">The logger.</param>
         /// <param name="metrics">The executor's instruments.</param>
         /// <param name="queries">What query statements compile and materialise with.</param>
+        /// <param name="allocator">The id allocator, whose refills ride the batches that write its tables.</param>
+        /// <param name="saves">The save emitter.</param>
         /// <param name="services">The root provider, for the optional caching services.</param>
         public DataExecutor(
             IOptions<DataOptions> options,
@@ -70,6 +76,8 @@ namespace Tellma.Core.Data.Batches
             ILogger<DataBatch> logger,
             DataMetrics metrics,
             QueryServices queries,
+            IdAllocator allocator,
+            SaveEmitter saves,
             IServiceProvider services)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -80,6 +88,8 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(queries);
+            ArgumentNullException.ThrowIfNull(allocator);
+            ArgumentNullException.ThrowIfNull(saves);
             ArgumentNullException.ThrowIfNull(services);
 
             _options = options;
@@ -88,11 +98,14 @@ namespace Tellma.Core.Data.Batches
             Owners = owners;
             _time = time;
             _logger = logger;
-            _metrics = metrics;
+            Metrics = metrics;
             Queries = queries;
+            Allocator = allocator;
+            Saves = saves;
             _snapshots = services.GetService<IVersionTagSnapshots>();
             _userSnapshots = services.GetService<IUserVersionTagSnapshots>();
             VersionTags = services.GetService<IVersionTagRegistry>();
+            _tagMetrics = services.GetService<VersionTagMetrics>();
         }
 
         /// <summary>Where a failed attempt was when it failed.</summary>
@@ -123,6 +136,15 @@ namespace Tellma.Core.Data.Batches
         /// <summary>What query statements compile and materialise with.</summary>
         public QueryServices Queries { get; }
 
+        /// <summary>The id allocator.</summary>
+        public IdAllocator Allocator { get; }
+
+        /// <summary>The save emitter.</summary>
+        public SaveEmitter Saves { get; }
+
+        /// <summary>The data layer's instruments.</summary>
+        public DataMetrics Metrics { get; }
+
         /// <summary>The running model's storage fingerprint.</summary>
         public string Fingerprint => _metadata.StorageFingerprint;
 
@@ -144,35 +166,59 @@ namespace Tellma.Core.Data.Batches
 
             Run run = new(batch, assembly, options, batch.Connection.TenantId, batch.Access.Operation, PurposeName(batch.Purpose));
             int roundTripsBefore = batch.Access.RoundTrips;
-            _metrics.RecordStatements(run.Purpose, assembly.StatementCount);
+            Metrics.RecordStatements(run.Purpose, assembly.StatementCount);
 
             object? auditState = batch.Audit is IDataBatchAudit audit
                 ? await audit.BeforeAsync(beforeSend).ConfigureAwait(false)
                 : null;
 
-            bool bodyRan = await RunAsync(run, beforeSend, afterSend).ConfigureAwait(false);
+            Attempt done;
+            try
+            {
+                done = await RunAsync(run, beforeSend, afterSend).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (Failed(batch, run.TenantId, exception))
+            {
+                // Never taken: the filter only observes the failure, which propagates as it is.
+                throw;
+            }
 
+            bool bodyRan = done.BodyRan;
             if (batch.Audit is IDataBatchAudit after)
             {
                 await after.AfterAsync(auditState, batch.WrittenTables, afterSend).ConfigureAwait(false);
             }
 
-            // --- The outcome: the snapshots the prologue read replace the process's ---
-            VersionTagSnapshot tags = batch.ReadVersionTags
-                ?? _snapshots?.Current(run.TenantId)
-                ?? new VersionTagSnapshot(run.TenantId, new Dictionary<string, VersionTag>(StringComparer.Ordinal), _time.GetUtcNow());
-            if (batch.ReadVersionTags is not null)
+            // --- The outcome: the snapshots the prologue read, with the batch's own bumps, replace the process's ---
+            (VersionTagSnapshot tags, UserVersionTagSnapshot? user) = ReplaceSnapshots(batch, run.TenantId, committed: bodyRan);
+
+            // --- A read or validate result whose re-run input moved is discarded before any handle completes ---
+            if (bodyRan && batch.Purpose is BatchPurpose.Read or BatchPurpose.Validate && batch.ReadVersionTags is VersionTagSnapshot read)
             {
-                _snapshots?.Replace(tags);
+                IReadOnlyList<VersionTagDependency> stale = VersionTagPolicies.StaleReruns(batch.Dependencies, read);
+                if (stale.Count > 0)
+                {
+                    _tagMetrics?.ReportReadRerun([.. stale.Select(static dependency => dependency.Name).Distinct(StringComparer.Ordinal)], run.TenantId);
+                    throw new StaleContextException(stale);
+                }
             }
 
-            if (batch.ReadUserVersionTags is UserVersionTagSnapshot user)
+            done.Cursor?.ApplyCompletions();
+
+            // --- The platform's completion steps: after the snapshots were replaced, so a sibling batch's
+            // newer read (a heal's) is never overwritten by this batch's older one, and before the
+            // round trips are counted, so a heal's counts ---
+            if (bodyRan)
             {
-                _userSnapshots?.Replace(user);
+                foreach (Func<CancellationToken, Task> step in batch.ExecutedSteps)
+                {
+                    await step(beforeSend).ConfigureAwait(false);
+                }
             }
 
-            // Every attempt, a probe, an explicit transaction's begin and commit count.
-            BatchOutcome outcome = new(tags, batch.ReadUserVersionTags, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
+            // Every attempt, a probe, an explicit transaction's begin and commit, and a completion
+            // step's round trip count.
+            BatchOutcome outcome = new(tags, user, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
 
             // --- The commit callbacks: outside the transaction, never thrown ---
             if (bodyRan)
@@ -193,6 +239,130 @@ namespace Tellma.Core.Data.Batches
             return outcome;
         }
 
+        /// <summary>
+        ///     Replaces the process's snapshots after a batch: the tenant tags its prelude read, with
+        ///     every name the batch bumped at the batch's tag when it committed, and the caller's tags its
+        ///     connect prologue read, with the caller's own bumped columns overlaid the same way. Nothing
+        ///     is read back: the batch generated the tag it wrote.
+        /// </summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="committed">Whether the batch's body ran and committed, so its bumps hold.</param>
+        /// <returns>The tenant snapshot and the caller's, for the outcome.</returns>
+        private (VersionTagSnapshot Tags, UserVersionTagSnapshot? User) ReplaceSnapshots(DataBatch batch, int tenantId, bool committed)
+        {
+            // --- The tenant tags: none read leaves the process's snapshot as it is ---
+            VersionTagSnapshot tags;
+            if (batch.ReadVersionTags is not VersionTagSnapshot read)
+            {
+                tags = _snapshots?.Current(tenantId) ?? VersionTagSnapshots.Empty(tenantId);
+            }
+            else
+            {
+                // The migrator's seed reads the rows it is about to insert: a missing row is no defect there.
+                if (VersionTags is IVersionTagRegistry registry && !WritesTagsDirectly(batch))
+                {
+                    _tagMetrics?.WarnMissing(read, registry.Names);
+                }
+
+                tags = read;
+                VersionTagBumpPlan plan = batch.Bumps;
+                if (committed && WritesTagsDirectly(batch))
+                {
+                    // A statement of the body moved tags to values this instance does not know (the
+                    // migrator's seed or wholesale bump): every kind reads as uncached until the
+                    // next prelude reads them.
+                    tags = VersionTagSnapshots.Empty(tenantId);
+                }
+                else if (committed && plan.TenantNames.Count > 0)
+                {
+                    // The update found every name, or the batch would have failed: each holds the batch's tag.
+                    Dictionary<string, VersionTag> overlaid = new(read.Tags, StringComparer.Ordinal);
+                    VersionTag bumped = new(batch.Tag);
+                    foreach (string name in plan.TenantNames)
+                    {
+                        overlaid[name] = bumped;
+                    }
+
+                    tags = new VersionTagSnapshot(read.TenantId, overlaid, read.ReadAtUtc);
+                }
+
+                _snapshots?.Replace(tags);
+            }
+
+            // --- The caller's tags, from a batch that carried the connect prologue ---
+            UserVersionTagSnapshot? user = batch.ReadUserVersionTags;
+            if (user is not null)
+            {
+                if (committed && batch.AffectedUsers is IReadOnlyList<AffectedUser> affected)
+                {
+                    VersionTag bumped = new(batch.Tag);
+                    int caller = user.UserId;
+                    foreach (AffectedUser moved in affected.Where(moved => moved.UserId == caller))
+                    {
+                        user = moved.Column == UserVersionTagNames.Permissions ? user with { Permissions = bumped } : user with { Preferences = bumped };
+                    }
+                }
+
+                _userSnapshots?.Replace(user);
+            }
+
+            return (tags, user);
+        }
+
+        /// <summary>Whether a statement other than the bump epilogue's writes the tenant tags' table.</summary>
+        /// <param name="batch">The batch.</param>
+        /// <returns>True when one does.</returns>
+        private static bool WritesTagsDirectly(DataBatch batch)
+        {
+            return batch.Statements.Any(static statement => statement.Section != BatchSection.Epilogue && statement.Writes.Contains(VersionTagRowConfiguration.Table));
+        }
+
+        /// <summary>
+        ///     Observes a batch that failed, for an exception filter, and lets the failure propagate: the
+        ///     tags its prelude read before the failure still replace the process's (nothing it bumped
+        ///     committed), a refusal by the in-transaction guard is metered as stale, a bump of a
+        ///     name without a row is metered as missing, and a duplicate primary key drops the id
+        ///     buffer that handed the id out.
+        /// </summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="exception">The failure.</param>
+        /// <returns>False, always, so the failure is not caught.</returns>
+        private bool Failed(DataBatch batch, int tenantId, Exception exception)
+        {
+            try
+            {
+                // A duplicate primary key is never healed: the buffer that handed the id out is
+                // dropped, so the next reservation reads the table afresh.
+                if (exception is UniqueConstraintViolationException violation)
+                {
+                    Allocator.OnDuplicateKey(tenantId, violation.IndexName);
+                }
+
+                _ = ReplaceSnapshots(batch, tenantId, committed: false);
+                if (exception is BatchAssertionFailedException { Number: TellmaSqlErrors.StaleVersionTag })
+                {
+                    _tagMetrics?.RecordStale(VersionTagMetrics.WriteGuardPhase);
+                }
+                else if (exception is InvalidOperationException { InnerException: SqlException sql }
+                    && sql.Number == TellmaSqlErrors.Invariant
+                    && sql.Message == TellmaSqlErrors.VersionTagMissingCode)
+                {
+                    // The names the prelude did not find; all the batch bumped when it read none.
+                    VersionTagSnapshot? read = batch.ReadVersionTags;
+                    _tagMetrics?.RecordMissing(batch.Bumps.TenantNames.Where(name => read is null || !read.Has(name)));
+                }
+            }
+            catch (Exception observing) when (observing is not OutOfMemoryException)
+            {
+                // Observing never replaces the batch's own failure.
+                DataBatchLog.FailureObservationFailed(_logger, observing, batch.Access.Operation, tenantId);
+            }
+
+            return false;
+        }
+
         /// <summary>The command timeout of a purpose: the maintenance one for a maintenance batch, the ordinary one otherwise.</summary>
         /// <param name="purpose">The batch's purpose.</param>
         /// <param name="options">The execution settings.</param>
@@ -209,8 +379,8 @@ namespace Tellma.Core.Data.Batches
         /// <param name="run">The batch being run.</param>
         /// <param name="beforeSend">The caller's token, which cancels the opens, the waits between attempts and any command until it is sent.</param>
         /// <param name="afterSend">The token of a sent command: never cancelled for a persist.</param>
-        /// <returns>Whether the body ran.</returns>
-        private async Task<bool> RunAsync(Run run, CancellationToken beforeSend, CancellationToken afterSend)
+        /// <returns>The attempt that succeeded, whose staged results the caller completes.</returns>
+        private async Task<Attempt> RunAsync(Run run, CancellationToken beforeSend, CancellationToken afterSend)
         {
             DataBatch batch = run.Batch;
             BatchAssembly assembly = run.Assembly;
@@ -234,9 +404,8 @@ namespace Tellma.Core.Data.Batches
                 Attempt result = await AttemptAsync(run, attempt, beforeSend, afterSend).ConfigureAwait(false);
                 if (result.Failure is not Exception failure)
                 {
-                    result.Cursor?.ApplyCompletions();
-                    _metrics.RecordRoundTrip(run.Operation, run.Purpose, DataMetrics.Ok, result.Elapsed);
-                    return result.BodyRan;
+                    Metrics.RecordRoundTrip(run.Operation, run.Purpose, DataMetrics.Ok, result.Elapsed);
+                    return result;
                 }
 
                 // --- Cancellation of the attempt: the open, or a sent command other than a persist ---
@@ -262,7 +431,7 @@ namespace Tellma.Core.Data.Batches
                 if (notCommitted is not null && errors is not null && batch.Probe!.IsOwnPrimaryKeyViolation(SqlErrorInfo.Primary(errors)))
                 {
                     Settle(run, result, DataMetrics.Failed);
-                    _metrics.RecordProbe(CommitVerdict.Committed);
+                    Metrics.RecordProbe(CommitVerdict.Committed);
                     throw new DataAccessAmbiguousException(notCommitted, CommitVerdict.Committed);
                 }
 
@@ -372,7 +541,7 @@ namespace Tellma.Core.Data.Batches
                 timeoutReruns += timedOut ? 1 : 0;
                 Settle(run, result, DataMetrics.Retried, applyCompletions: false);
                 batch.Access.Retries++;
-                _metrics.RecordRetry(retryClass, errors is null ? DataMetrics.ConnectionLost : SqlErrorInfo.Primary(errors).Number.ToString(CultureInfo.InvariantCulture));
+                Metrics.RecordRetry(retryClass, errors is null ? DataMetrics.ConnectionLost : SqlErrorInfo.Primary(errors).Number.ToString(CultureInfo.InvariantCulture));
             }
         }
 
@@ -401,7 +570,7 @@ namespace Tellma.Core.Data.Batches
         /// <returns>The exception to throw.</returns>
         private DataAccessAmbiguousException UnknownOutcome(Exception failure)
         {
-            _metrics.RecordProbe(CommitVerdict.Unknown);
+            Metrics.RecordProbe(CommitVerdict.Unknown);
             return new DataAccessAmbiguousException(failure, CommitVerdict.Unknown);
         }
 
@@ -472,7 +641,7 @@ namespace Tellma.Core.Data.Batches
                 attempt.Cursor?.ApplyCompletions();
             }
 
-            _metrics.RecordRoundTrip(run.Operation, run.Purpose, outcome, attempt.Elapsed);
+            Metrics.RecordRoundTrip(run.Operation, run.Purpose, outcome, attempt.Elapsed);
         }
 
         /// <summary>Sends the command once, reads every result set and commits an explicit transaction.</summary>
@@ -698,7 +867,7 @@ namespace Tellma.Core.Data.Batches
                 DataBatchLog.CommitProbeFailed(_logger, failure, run.Operation, run.TenantId);
             }
 
-            _metrics.RecordProbe(answer.Verdict);
+            Metrics.RecordProbe(answer.Verdict);
             return answer.Verdict;
         }
 

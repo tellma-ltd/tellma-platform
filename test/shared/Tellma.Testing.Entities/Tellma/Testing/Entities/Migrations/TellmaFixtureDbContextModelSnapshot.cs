@@ -35,6 +35,9 @@ namespace Tellma.Testing.Entities.Migrations
             modelBuilder.HasSequence<int>("sq_Links", "fixture")
                 .StartsAt(1000L);
 
+            modelBuilder.HasSequence<int>("sq_Lookups", "fixture")
+                .StartsAt(1000L);
+
             modelBuilder.HasSequence<int>("sq_Nodes", "fixture")
                 .StartsAt(1000L);
 
@@ -692,6 +695,23 @@ namespace Tellma.Testing.Entities.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tellma.Core.Caching.VersionTagRow", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid>("Tag")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.HasKey("Name")
+                        .HasName("PK_VersionTags");
+
+                    b.ToTable("VersionTags", "core");
+                });
+
             modelBuilder.Entity("Tellma.Core.Data.TellmaProvisioningRow", b =>
                 {
                     b.Property<string>("Step")
@@ -758,23 +778,6 @@ namespace Tellma.Testing.Entities.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Tellma.Testing.Entities.FixtureVersionTag", b =>
-                {
-                    b.Property<string>("Name")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<Guid>("Tag")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasDefaultValueSql("NEWID()");
-
-                    b.HasKey("Name")
-                        .HasName("PK_VersionTags");
-
-                    b.ToTable("VersionTags", "core");
-                });
-
             modelBuilder.Entity("Tellma.Testing.Entities.Link", b =>
                 {
                     b.Property<int>("Id")
@@ -800,6 +803,56 @@ namespace Tellma.Testing.Entities.Migrations
                     b.ToTable("Links", "fixture", t =>
                         {
                             t.HasCheckConstraint("CK_Links_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Testing.Entities.Lookup", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true, "DF_Lookups_IsActive");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Lookups");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Lookups_Code");
+
+                    b.ToTable("Lookups", "fixture", t =>
+                        {
+                            t.HasCheckConstraint("CK_Lookups_Id", "[Id] > 0");
                         });
 
                     b
@@ -1071,6 +1124,9 @@ namespace Tellma.Testing.Entities.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<int?>("DrawingId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
@@ -1098,6 +1154,11 @@ namespace Tellma.Testing.Entities.Migrations
 
                     b.HasKey("Id")
                         .HasName("PK_WidgetParts");
+
+                    b.HasIndex("DrawingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WidgetParts_DrawingId")
+                        .HasFilter("[DrawingId] IS NOT NULL");
 
                     b.HasIndex("WidgetId")
                         .HasDatabaseName("IX_WidgetParts_WidgetId");
@@ -1300,6 +1361,23 @@ namespace Tellma.Testing.Entities.Migrations
                         .HasConstraintName("FK_Links_OtherNodeId");
                 });
 
+            modelBuilder.Entity("Tellma.Testing.Entities.Lookup", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Lookups_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Lookups_ModifiedById");
+                });
+
             modelBuilder.Entity("Tellma.Testing.Entities.Node", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -1381,6 +1459,12 @@ namespace Tellma.Testing.Entities.Migrations
 
             modelBuilder.Entity("Tellma.Testing.Entities.WidgetPart", b =>
                 {
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.WidgetPart", "DrawingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_WidgetParts_DrawingId");
+
                     b.HasOne("Tellma.Testing.Entities.Widget", null)
                         .WithMany()
                         .HasForeignKey("WidgetId")
@@ -1508,7 +1592,7 @@ namespace Tellma.Testing.Entities.Migrations
 
             modelBuilder.HasTableTypeDefinition("VersionTagList", "dbo", type => type
                 .Column(name: "Name", storeType: "nvarchar(128)", maxLength: 128)
-                .Column(name: "Tag", storeType: "uniqueidentifier")
+                .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
                 .HasGrants("tellma_app"));
@@ -1518,6 +1602,19 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "Id", storeType: "int")
                 .Column(name: "NodeId", storeType: "int")
                 .Column(name: "OtherNodeId", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("LookupsList", "fixture", type => type
+                .ForTable("Lookups", "fixture")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Code", storeType: "varchar(50)")
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "IsActive", storeType: "bit")
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
@@ -1565,6 +1662,7 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "Ordinal", storeType: "int")
                 .Column(name: "Notes", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
                 .Column(name: "Settings", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "DrawingId", storeType: "int", nullable: true)
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 

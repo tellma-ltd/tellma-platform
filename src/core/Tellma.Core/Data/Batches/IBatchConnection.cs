@@ -26,6 +26,12 @@ namespace Tellma.Core.Data.Batches
         /// <exception cref="InvalidOperationException">The connection has no request context to read them from.</exception>
         QueryexContextValues Context { get; }
 
+        /// <summary>
+        ///     The user the batch's writes are stamped with: the request context's user, or null where
+        ///     there is no request context.
+        /// </summary>
+        int? UserId { get; }
+
         /// <summary>Acquires an open connection for one round trip.</summary>
         /// <param name="cancellationToken">Cancels opening or waiting for the connection.</param>
         /// <returns>The open connection.</returns>

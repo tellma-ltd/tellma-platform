@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { fontsLoaded } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -48,6 +49,9 @@ test('an invalid card shows the dot and names its heading, collapsed and expande
   const card = page.getByTestId('card-invalid');
   const dot = card.locator('.tm-card__dot');
   const heading = card.locator('h3');
+  // The heading is as wide as its text: measure it rendered, in its final face.
+  await expect(heading).toBeVisible();
+  await fontsLoaded(page);
   const width = (await heading.boundingBox())!.width;
   await expect(dot).toBeHidden();
 

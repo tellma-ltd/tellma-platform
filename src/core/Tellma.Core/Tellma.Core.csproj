@@ -26,6 +26,8 @@
     <!-- Referenced directly for its [LoggerMessage] source generator, which a transitive
          reference does not bring. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- The bounded private caches of the version-tag snapshots. -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <!-- Options binding from configuration (Bind) for the options a feature declares. -->
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <!-- ValidateDataAnnotations for the same options. -->
