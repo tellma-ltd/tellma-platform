@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Composition;
@@ -61,6 +62,24 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             Assert.Contains("/{tenantId:int:min(1)}/api/v{version:apiVersion}/probe", routes);
         }
 
+        [Fact]
+        public async Task A_bundle_s_platform_route_is_mapped_anonymous_and_tenantless_and_passes_the_audit()
+        {
+            // A route under a reserved platform segment, which the audit refuses from a distribution.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+                options.ConfigureServices = static services => services.AddSingleton<IPlatformEndpointSource>(new ProbePlatformSource()));
+
+            RouteEndpoint endpoint = Assert.Single(
+                host.Services.GetRequiredService<MappedEndpoints>().Endpoints().OfType<RouteEndpoint>(),
+                static endpoint => endpoint.RoutePattern.RawText == ProbePlatformSource.Route);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+            Assert.Equal(ProbePlatformSource.TenantlessReason, endpoint.Metadata.GetMetadata<TenantlessEndpointMetadata>()?.Reason);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<PlatformEndpointMetadata>());
+
+            using HttpResponseMessage response = await host.Client.GetAsync(new Uri(ProbePlatformSource.Route, UriKind.Relative), TestContext.Current.CancellationToken);
+            Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
+        }
+
         /// <summary>Each violation: the endpoint to map, the route and method the problem names, and what it says.</summary>
         public static TheoryData<string, string, string> Violations()
         {
@@ -71,6 +90,7 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 { "tenant-endpoint-anonymous", "GET /{tenantId:int:min(1)}/api/web/open", "is a tenant endpoint that allows anonymous callers" },
                 { "tenant-endpoint-without-grant", "GET /{tenantId:int:min(1)}/api/web/ungranted", "carries neither SecurableEndpointMetadata nor MemberEndpointMetadata" },
                 { "tenant-endpoint-with-two-grants", "GET /{tenantId:int:min(1)}/api/web/twice", "carries 2 of SecurableEndpointMetadata and MemberEndpointMetadata" },
+                { "unregistered-securable", "GET /{tenantId:int:min(1)}/api/web/unregistered", "requires the securable 'acme.Missing:Read', which no feature registers." },
                 { "cookie-get-mutation", "GET /{tenantId:int:min(1)}/api/web/delete", "is a cookie-authenticated GET stamped as a mutation" },
                 { "cookie-cors", "POST /{tenantId:int:min(1)}/api/web/shared", "attaches a CORS policy" },
                 { "anonymous-without-tenantless", "GET /public", "allows anonymous callers without TenantlessEndpointMetadata" },
@@ -110,6 +130,78 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 CompositionProblem problem = Assert.Single(exception.Problems, problem => problem.Problem.Contains(says, StringComparison.Ordinal));
                 Assert.Equal(TellmaEndpointAudit.CheckName, problem.Source);
                 Assert.StartsWith(where + " ", problem.Problem, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public async Task An_endpoint_requiring_a_registered_securable_passes_the_gate()
+        {
+            // Startup runs the audit against the registry: the host starting is the assertion.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.ConfigureServices = static services => services.AddSingleton<ISecurableContributor>(new HostSecurables());
+                options.Map = static (_, endpoints) => endpoints.Web.MapGet("/report", Nothing).WithMutation(false).RequireSecurable("ACME.report", "read");
+            });
+
+            Assert.NotNull(host.Services.GetRequiredService<ISecurableRegistry>().Find("acme.Report", "Read"));
+        }
+
+        [Fact]
+        public async Task A_registry_that_did_not_compose_leaves_the_securables_unaudited_with_a_pointer_and_the_rest_audited()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.ConfigureServices = static services => services.AddSingleton<ISecurableContributor>(new ThrowingSecurables());
+                options.Map = static (application, endpoints) =>
+                {
+                    _ = endpoints.Web.MapGet("/report", Nothing).WithMutation(false).RequireSecurable("acme.Missing", "Read");
+                    MapViolation(application, endpoints, "server-first-segment");
+                };
+            });
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+
+                // The cause once, from the securables check; the audit's own findings and one pointer.
+                CompositionProblem failure = Assert.Single(exception.Problems, static problem => problem.Source == "core.securables");
+                Assert.Contains("failed with FormatException: bad pair", failure.Problem, StringComparison.Ordinal);
+                Assert.Equal(
+                    [
+                        "GET /bff/extra begins with 'bff', a route word the platform or the SPA owns.",
+                        "The securables the endpoints require could not be audited, because the securable registry did not compose.",
+                    ],
+                    exception.Problems.Where(static problem => problem.Source == TellmaEndpointAudit.CheckName).Select(static problem => problem.Problem));
+            }
+        }
+
+        [Fact]
+        public async Task The_audit_refuses_an_endpoint_requiring_an_unregistered_pair_or_a_former_name()
+        {
+            // The walk itself, over an in-memory data source: whatever else is wrong with these
+            // endpoints, only the securables they require are judged here.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options => options.MapProbes = false);
+            ISecurableRegistry registry = new SecurableRegistry([(new HostSecurables(), "acme")]);
+            DefaultEndpointDataSource source = new(
+                Endpoint("/registered", new SecurableEndpointMetadata("acme.Report", "Read")),
+                Endpoint("/unregistered", new SecurableEndpointMetadata("acme.Report", "Delete")),
+                Endpoint("/renamed", new SecurableEndpointMetadata("acme.OldReport", "Read")),
+                Endpoint("/member", new MemberEndpointMetadata()));
+
+            IReadOnlyList<CompositionProblem> problems = await TellmaEndpointAudit.AuditAsync(
+                source.Endpoints, host.Services.GetRequiredService<IAuthorizationPolicyProvider>(), securables: registry);
+
+            Assert.Equal(
+                [
+                    "GET /unregistered requires the securable 'acme.Report:Delete', which no feature registers.",
+                    "GET /renamed requires the securable 'acme.OldReport:Read', a former name of 'acme.Report:Read'.",
+                ],
+                problems.Where(static problem => problem.Problem.Contains(" requires the securable ", StringComparison.Ordinal)).Select(static problem => problem.Problem));
+
+            // An endpoint on any route, carrying its metadata alone.
+            static RouteEndpoint Endpoint(string route, object grant)
+            {
+                return new RouteEndpoint(Nothing, RoutePatternFactory.Parse(route), order: 0, new EndpointMetadataCollection(new HttpMethodMetadata(["GET"]), grant), route);
             }
         }
 
@@ -270,6 +362,7 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 "tenant-endpoint-anonymous" => endpoints.Web.MapGet("/open", Nothing).AllowAnonymous().AsTenantlessEndpoint("x").WithMutation(false).AllowMember(),
                 "tenant-endpoint-without-grant" => endpoints.Web.MapGet("/ungranted", Nothing).WithMutation(false),
                 "tenant-endpoint-with-two-grants" => endpoints.Web.MapGet("/twice", Nothing).WithMutation(false).AllowMember().RequireSecurable("acme.Thing", "Read"),
+                "unregistered-securable" => endpoints.Web.MapGet("/unregistered", Nothing).WithMutation(false).RequireSecurable("acme.Missing", "Read"),
                 "cookie-get-mutation" => endpoints.Web.MapGet("/delete", Nothing).WithMutation(true).AllowMember(),
                 "cookie-cors" => endpoints.Web.MapPost("/shared", Nothing).RequireCors("anywhere").WithMutation(true).AllowMember(),
                 "anonymous-without-tenantless" => app.MapGet("/public", Nothing).AllowAnonymous(),
@@ -306,6 +399,45 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 "tenant-short-circuit" => endpoints.Web.MapGet("/short", Nothing).WithMutation(false).AllowMember().ShortCircuit(),
                 _ => throw new ArgumentOutOfRangeException(nameof(violation), violation, "Not a violation of the suite."),
             };
+        }
+
+        /// <summary>A bundle's platform route: under a reserved segment, answering no content.</summary>
+        private sealed class ProbePlatformSource : IPlatformEndpointSource
+        {
+            /// <summary>The route.</summary>
+            public const string Route = "/api/webhooks/probe";
+
+            /// <summary>The tenantless reason.</summary>
+            public const string TenantlessReason = "probe-bundle";
+
+            /// <inheritdoc />
+            public string Reason => TenantlessReason;
+
+            /// <inheritdoc />
+            public IReadOnlyList<IEndpointConventionBuilder> Map(IEndpointRouteBuilder endpoints)
+            {
+                return [endpoints.MapGet(Route, static () => Results.NoContent())];
+            }
+        }
+
+        /// <summary>Securables a host registers outside every feature: one report, renamed from its former name.</summary>
+        private sealed class HostSecurables : ISecurableContributor
+        {
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
+                _ = builder.Add("acme.Report", "Read", null).Alias("acme.OldReport", "acme.Report");
+            }
+        }
+
+        /// <summary>Securables a host registers by a contributor that throws.</summary>
+        private sealed class ThrowingSecurables : ISecurableContributor
+        {
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
+                throw new FormatException("bad pair");
+            }
         }
 
         /// <summary>A stack registry reduced to its routes.</summary>

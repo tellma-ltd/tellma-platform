@@ -11,9 +11,10 @@ namespace Tellma.Core.Migrator
 {
     /// <summary>
     ///     How one migrator run is hosted: where its tenant migrations, configuration and output come
-    ///     from. A distribution's migrator runs with the defaults; the suites replace them.
+    ///     from. A distribution's migrator runs with the defaults; its suites replace them to run the
+    ///     migrator in process.
     /// </summary>
-    internal sealed class MigratorRunSettings
+    public sealed class MigratorRunSettings
     {
         /// <summary>
         ///     The assembly that carries the tenant model's migrations: the process's entry assembly, which

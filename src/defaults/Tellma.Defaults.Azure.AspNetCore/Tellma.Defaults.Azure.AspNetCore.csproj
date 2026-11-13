@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Azure web host's half of the defaults: UseAzureWebDefaults() composes the webhook endpoint as one of the platform's tenantless routes, keeps the Data Protection key ring in Azure Blob storage under a Key Vault key when Tellma:DataProtection names both, and exports logs, traces and metrics to Azure Monitor when APPLICATIONINSIGHTS_CONNECTION_STRING is set. A distribution-layer package, called from a web host's composeWeb delegate; no Core package references it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\core\Tellma.Core.Webhooks\Tellma.Core.Webhooks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The key ring: kept in a blob, wrapped by a Key Vault key, both reached with the host's
+         TokenCredential. -->
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
+    <!-- DefaultAzureCredential, the host's TokenCredential when it registers none. -->
+    <PackageReference Include="Azure.Identity" />
+    <!-- The exporter only: the host's own instrumentation stays the one that records. -->
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite asserts the bundle's registrations through its marker and endpoint source. -->
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.Tests" />
+  </ItemGroup>
+
+</Project>

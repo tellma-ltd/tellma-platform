@@ -1,0 +1,128 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-end-cell — a cell of the row-end column (spec 0010 §C.14). */
+
+:host {
+  position: sticky;
+  inset-inline-end: 0;
+  /* Above every layer a scrolled-under data cell paints: the editor, the
+     pending spinner, the clipboard marquee, the active-row bar. */
+  z-index: 3;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The hairline, transparent until content scrolls under the column, so
+     showing it moves nothing. */
+  border-inline-start: var(--border-width) solid transparent;
+}
+
+:host-context(.tm-grid__scroller--end-overlap) {
+  border-inline-start-color: var(--grid-header-line);
+}
+
+/* Rows open on click: an empty row-end cell is part of the clickable band. */
+:host-context(.tm-grid__scroller--rows) {
+  cursor: pointer;
+}
+
+/* ---- body cells ---- */
+
+/* The row's band — the consumer row background, the stripe, the checked
+   and the active-row tints — as a layer over an opaque page surface, so
+   the content scrolling under the cell never shows through. */
+:host(.tm-grid__endcell) {
+  --tm-grid-end-tint: var(--tm-grid-row-bg, transparent);
+
+  background: linear-gradient(var(--tm-grid-end-tint), var(--tm-grid-end-tint)) var(--surface-page);
+  color: var(--tm-grid-row-ink);
+  border-block-end: var(--border-width) solid var(--tm-grid-rule);
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the cell takes real (roving) focus; the active ring below is the
+     equally-visible substitute, as on a data cell. */
+  outline: none;
+}
+
+:host-context(.tm-grid__row--zebra) {
+  --tm-grid-end-tint: var(--tm-grid-row-bg, var(--grid-zebra-bg));
+}
+
+:host-context(.tm-grid__row--checked) {
+  --tm-grid-end-tint: var(--surface-selected);
+}
+
+:host-context(.tm-grid__row--active) {
+  --tm-grid-end-tint: var(--grid-active-row-bg);
+}
+
+:host-context(.tm-grid__row--placeholder) {
+  --tm-grid-end-tint: transparent;
+}
+
+/* A selection spanning the whole row runs on through the row-end cell: the
+   data cells' translucent range fill, layered over the band. */
+:host(.tm-grid__endcell--selected) {
+  background:
+    linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg)),
+    linear-gradient(var(--tm-grid-end-tint), var(--tm-grid-end-tint)) var(--surface-page);
+}
+
+:host(.tm-grid__endcell--active) {
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-selection-border);
+}
+
+/* ---- the header cell ---- */
+
+/* The header's surface and rule. A popover its action opens renders in
+   place, inside this cell: the page's typesetting, not the header row's
+   row-tall line height, weight, no-wrap and no-select. */
+:host(.tm-grid__endhdr) {
+  background: var(--grid-header-bg);
+  border-block-end: var(--border-width) solid var(--grid-header-line);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-ui);
+  text-align: start;
+  white-space: normal;
+  user-select: text;
+  cursor: auto;
+}
+
+:host(.tm-grid__endhdr:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--grid-selection-border);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+@media (forced-colors: active) {
+  :host {
+    border-color: CanvasText;
+  }
+
+  :host(.tm-grid__endcell) {
+    background: Canvas;
+  }
+
+  :host-context(.tm-grid__row--checked) {
+    background: SelectedItem;
+    color: SelectedItemText;
+  }
+
+  :host(.tm-grid__endcell--selected) {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  :host(.tm-grid__endcell--active) {
+    box-shadow: none;
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  :host(.tm-grid__endhdr:focus-visible) {
+    outline-color: Highlight;
+  }
+}

@@ -147,16 +147,24 @@ namespace Tellma.Core.Migrator.Sql
             return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is null or DBNull;
         }
 
-        /// <summary>Turns on read-committed snapshot isolation, unless it is on already (it is, on Azure SQL Database).</summary>
-        /// <param name="connection">An open connection to the database, the only one open in it.</param>
+        /// <summary>
+        ///     Turns on read-committed snapshot isolation in a fresh database, unless it is on already
+        ///     (it is, on Azure SQL Database). Any other connection open in the database is ended.
+        /// </summary>
+        /// <param name="connection">An open connection to the database.</param>
         /// <param name="cancellationToken">Cancels the statement.</param>
         /// <returns>A task that completes when the option is on.</returns>
         public static async Task EnableReadCommittedSnapshotAsync(SqlConnection connection, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(connection);
+
+            // The option waits for every other connection in the database to leave. A web host
+            // started before its catalog exists polls it, and its pooled connections stay, so the
+            // statement would wait out its timeout; in a fresh database they hold nothing, and are
+            // ended instead.
             await ExecuteAsync(
                 connection,
-                "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE [database_id] = DB_ID() AND [is_read_committed_snapshot_on] = 1) ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON;",
+                "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE [database_id] = DB_ID() AND [is_read_committed_snapshot_on] = 1) ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;",
                 cancellationToken).ConfigureAwait(false);
         }
 

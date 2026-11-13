@@ -26,15 +26,30 @@ namespace Tellma.Core.AspNetCore.Sessions
         TimeProvider time,
         ILogger<SessionSweepService> logger) : BackgroundService
     {
+        /// <summary>
+        ///     Told the due time of each sweep once the service waits for it, before the wait ends; lets a
+        ///     test move a fake clock only once the wait is in place.
+        /// </summary>
+        internal Action<DateTimeOffset>? WaitingUntil { get; set; }
+
         /// <inheritdoc />
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            using PeriodicTimer timer = new(options.Value.SweepInterval, time);
             try
             {
-                while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+                // --- A sweep every interval from the start ---
+                // Each wait is for a due time on the schedule, so a wait that starts late does not
+                // push its sweep back.
+                TimeSpan interval = options.Value.SweepInterval;
+                DateTimeOffset due = time.GetUtcNow() + interval;
+                while (!stoppingToken.IsCancellationRequested)
                 {
+                    Task wait = HostedSchedule.DelayUntil(due, time, stoppingToken);
+                    WaitingUntil?.Invoke(due);
+                    await wait.ConfigureAwait(false);
+
                     await SweepOnceAsync(stoppingToken).ConfigureAwait(false);
+                    due = HostedSchedule.Next(due, interval, time.GetUtcNow());
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

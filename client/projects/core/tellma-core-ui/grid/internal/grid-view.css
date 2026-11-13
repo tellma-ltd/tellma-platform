@@ -85,105 +85,6 @@
   --tm-grid-cell-padding-x: var(--grid-plain-cell-padding-x);
 }
 
-/* ---- sticky header ---- */
-
-.tm-grid__header {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: var(--grid-template);
-  block-size: var(--grid-row-height);
-}
-
-.tm-grid__corner,
-.tm-grid__colhdr {
-  box-sizing: border-box;
-  padding-inline: var(--tm-grid-cell-padding-x);
-  background: var(--grid-header-bg);
-  color: var(--grid-header-text);
-  /* The header's lower edge is drawn at full strength in BOTH looks: it
-     separates chrome from data, which is a different job from separating
-     one cell from the next. */
-  border-block-end: var(--border-width) solid var(--grid-header-line);
-  border-inline-end: var(--border-width) solid var(--tm-grid-rule);
-  font-size: var(--grid-header-font-size);
-  font-weight: var(--weight-medium);
-  line-height: calc(var(--grid-row-height) - var(--border-width));
-  white-space: nowrap;
-  user-select: none;
-}
-
-.tm-grid__colhdr {
-  position: relative; /* anchors the resize handle */
-}
-
-.tm-grid__colhdr-label {
-  display: inline-block;
-  max-inline-size: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-
-.tm-grid__colhdr--hit {
-  /* The translucent selection tint LAYERS over the header background (a
-     background-image over the base color) — set as `background:` it would
-     replace the header and show the page through it. */
-  background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
-}
-
-/* ---- sort indicator (sortable headers) ---- */
-
-.tm-grid__colhdr--sortable {
-  cursor: pointer;
-}
-
-/* The label yields the indicator's slot, so a long label's ellipsis never
-   pushes the arrow out of the header. */
-.tm-grid__colhdr--sortable .tm-grid__colhdr-label {
-  max-inline-size: calc(100% - var(--icon-size-sm));
-}
-
-/* A fixed slot after the label, present whether or not the column is
-   sorted: sorting never shifts the label. */
-.tm-grid__sort {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: var(--icon-size-sm);
-  block-size: calc(var(--grid-row-height) - var(--border-width));
-  vertical-align: bottom;
-}
-
-/* The next direction's arrow is the hover preview: hidden at rest, and
-   shown faintly in place of the current one while a pointer hovers. */
-.tm-grid__sort-glyph--next {
-  display: none;
-  color: var(--text-muted);
-}
-
-@media (hover: hover) {
-  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph {
-    display: none;
-  }
-
-  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph--next {
-    display: inline-flex;
-  }
-}
-
-.tm-grid__resize {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-end: 0;
-  inline-size: var(--grid-handle-size);
-  cursor: col-resize;
-  touch-action: none;
-  z-index: 1;
-}
-
 /* ---- virtualized body ---- */
 
 .tm-grid__spacer {
@@ -198,6 +99,14 @@
   display: grid;
   grid-template-columns: var(--grid-template);
   block-size: var(--grid-row-height);
+}
+
+/* With a row-end column, the header and the rows are never narrower than
+   their tracks' minimums: a sticky row-end cell keeps to its row's box, so a
+   row only as wide as the view would carry the cell off on a sideways scroll. */
+.tm-grid__scroller--row-end .tm-grid__header,
+.tm-grid__scroller--row-end .tm-grid__row {
+  min-inline-size: min-content;
 }
 
 /* The always-rendered active row outside the window: absolutely positioned
@@ -229,11 +138,6 @@
   user-select: none;
 }
 
-.tm-grid__rowhdr--hit {
-  /* Layer the selection tint over the header background (see colhdr--hit). */
-  background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
-}
-
 /* ---- row-checkbox chrome column (readonly list screens) ---- */
 
 .tm-grid__checkhdr,
@@ -250,9 +154,12 @@
   user-select: none;
 }
 
-/* The check glyph rides the same tokens as tm-checkbox's box (the
-   .tm-grid-bool approach): a static div, no per-row component. */
-.tm-grid__check {
+/* The check glyph and the boolean cell's glyph ride the same tokens as
+   tm-checkbox's box: static elements, no per-row component. An editable
+   boolean cell is a live checkbox, so the glyph invites a click (the
+   surrounding cell space starts a range drag). */
+.tm-grid__check,
+.tm-grid-bool {
   inline-size: var(--checkbox-box-size);
   block-size: var(--checkbox-box-size);
   box-sizing: border-box;
@@ -263,18 +170,21 @@
 }
 
 .tm-grid__check--on,
-.tm-grid__check--mixed {
+.tm-grid__check--mixed,
+.tm-grid-bool--on {
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
 
 /* The check/dash glyph is the SAME SVG tm-checkbox draws, painted through a
    mask so it matches pixel-for-pixel (the old CSS border-rotate checkmark
-   sat slightly off-centre). The mask is sized to the checkbox's GLYPH box,
-   not the element: sizing it `contain` would scale the same viewBox to the
-   full 18px box here against 14px there, and the two would visibly differ. */
+   sat slightly off-centre), and a boolean cell and tm-checkbox read
+   identically. The mask is sized to the checkbox's GLYPH box, not the
+   element: sizing it `contain` would scale the same viewBox to the full
+   18px box here against 14px there, and the two would visibly differ. */
 .tm-grid__check--on::after,
-.tm-grid__check--mixed::after {
+.tm-grid__check--mixed::after,
+.tm-grid-bool--on::after {
   content: '';
   display: block;
   inline-size: 100%;
@@ -285,7 +195,8 @@
   mask-repeat: no-repeat;
 }
 
-.tm-grid__check--on::after {
+.tm-grid__check--on::after,
+.tm-grid-bool--on::after {
   mask-image: var(--tm-grid-check-mask);
 }
 
@@ -390,7 +301,11 @@
 
 /* The range highlight is a translucent LAYER (background-image), so it
    composites over any base tint — zebra, readonly, checked, error — instead
-   of being masked by them or replacing an opaque background. */
+   of being masked by them or replacing an opaque background. The headers of
+   the selected columns and rows take the same layer over the header
+   background, which a `background:` would replace, showing the page through. */
+.tm-grid__colhdr--hit,
+.tm-grid__rowhdr--hit,
 .tm-grid__cell.tm-grid__cell--selected {
   background-image: linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg));
 }
@@ -583,39 +498,11 @@
   inline-size: max-content;
 }
 
-/* ---- boolean glyph (token lock-step with tm-checkbox's box) ---- */
+/* ---- boolean glyph (its box and check share the row checkbox's rules) ---- */
 
 .tm-grid-bool {
   display: inline-block;
-  inline-size: var(--checkbox-box-size);
-  block-size: var(--checkbox-box-size);
-  box-sizing: border-box;
-  border: var(--border-width) solid var(--field-border);
-  border-radius: var(--radius-xs);
-  background: var(--field-bg);
   vertical-align: middle;
-  /* An editable boolean cell is a live checkbox — the glyph invites a click
-     (the surrounding cell space starts a range drag, §6.2). */
-  cursor: pointer;
-}
-
-.tm-grid-bool--on {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
-/* The same masked checkmark as the row-checkbox glyph, so a boolean cell and
-   tm-checkbox read identically. */
-.tm-grid-bool--on::after {
-  content: '';
-  display: block;
-  inline-size: 100%;
-  block-size: 100%;
-  background-color: var(--color-on-primary);
-  mask-image: var(--tm-grid-check-mask);
-  mask-position: center;
-  mask-size: var(--checkbox-glyph-size);
-  mask-repeat: no-repeat;
 }
 
 /* A readonly boolean is display-only, not a clickable checkbox: no box — a
@@ -722,9 +609,16 @@
   .tm-grid__corner,
   .tm-grid__colhdr,
   .tm-grid__rowhdr,
+  .tm-grid__checkhdr,
+  .tm-grid__checkcell,
   .tm-grid__cell,
   .tm-grid__status {
     border-color: CanvasText;
+  }
+
+  .tm-grid__colhdr:focus-visible,
+  .tm-grid__check:focus-visible {
+    outline-color: Highlight;
   }
 
   /* Find matches never rely on tint alone: a dotted outline (distinct
@@ -786,11 +680,6 @@
     background: SelectedItem;
     color: SelectedItemText;
     --tm-grid-overlay-ink: SelectedItemText;
-  }
-
-  .tm-grid__checkhdr,
-  .tm-grid__checkcell {
-    border-color: CanvasText;
   }
 
   /* After --active: the active match keeps its solid outline. */

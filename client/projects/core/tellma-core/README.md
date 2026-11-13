@@ -234,5 +234,6 @@ enforces the graph, and ng-packagr refuses a cycle between entry points.
 
 ## Budgets
 
-Each entry point's gzipped weight has a ceiling in `package.json` (`"tellma".budgetsInKb`),
-checked by `pnpm run size:check`; every raise carries a note beside it.
+Each entry point's gzipped weight, as a production app ships it after the Angular linker, has a
+ceiling in `package.json` (`"tellma".budgetsInKb`), checked by `pnpm run size:check`; every raise
+carries a note beside it.

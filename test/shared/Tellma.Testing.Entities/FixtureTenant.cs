@@ -108,12 +108,16 @@ namespace Tellma.Testing.Entities
         ///     Creates a scope bound to the fixture tenant for the platform's own principal, as the
         ///     tenant scope factory binds a system job's scope.
         /// </summary>
+        /// <param name="userId">
+        ///     The user the scope's writes are stamped with, such as the system user; none by default,
+        ///     as a system job's scope has none until it names one.
+        /// </param>
         /// <returns>The scope; the caller disposes it.</returns>
-        public AsyncServiceScope CreateScope()
+        public AsyncServiceScope CreateScope(int? userId = null)
         {
             AsyncServiceScope scope = _provider.CreateAsyncScope();
             IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-            holder.Set(holder.Current with { Tenant = Info.Descriptor, Kind = PrincipalKind.System, Subject = "system" });
+            holder.Set(holder.Current with { Tenant = Info.Descriptor, Kind = PrincipalKind.System, Subject = "system", UserId = userId });
             return scope;
         }
 

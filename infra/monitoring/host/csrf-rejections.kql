@@ -1,0 +1,9 @@
+// CSRF refusals, per rule.
+// Backs the "the CSRF control is refusing traffic" alert: a burst on one rule after a deployment is
+// usually the host's own client (a public origin or a client header that no longer matches); a
+// steady trickle on sec_fetch_site or origin is cross-site requests the control exists to refuse.
+customMetrics
+| where name == "tellma.auth.csrf_rejections"
+| extend rule = tostring(customDimensions["rule"])
+| summarize refused = sum(valueSum) by rule, bin(timestamp, 5m)
+| where refused > 50 or (rule in ("header", "content_type") and refused > 10)

@@ -9,7 +9,10 @@ using Microsoft.Extensions.Localization;
 
 namespace Tellma.Core.Localization
 {
-    /// <summary>Registers the process's string localization: the framework's localizers, rendered through ICU.</summary>
+    /// <summary>
+    ///     Registers the process's string localization: the framework's localizers, rendered through
+    ///     ICU, and the keys the neutral shared resources declare.
+    /// </summary>
     internal static class LocalizationComposition
     {
         /// <summary>
@@ -31,6 +34,10 @@ namespace Tellma.Core.Localization
             // AddLocalization does) keeps this one.
             _ = services.RemoveAll<IStringLocalizerFactory>();
             services.AddSingleton<IStringLocalizerFactory, IcuStringLocalizerFactory>();
+
+            // --- The keys the neutral shared resources declare, which the client metadata's label keys follow ---
+            // TryAdd: the string pack's composition, which merges the same resources, may answer instead.
+            services.TryAddSingleton<INeutralStringKeys, NeutralStringKeys>();
         }
     }
 }

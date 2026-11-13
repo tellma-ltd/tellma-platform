@@ -1124,6 +1124,9 @@ namespace Tellma.Testing.Entities.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<int?>("DrawingId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
@@ -1151,6 +1154,11 @@ namespace Tellma.Testing.Entities.Migrations
 
                     b.HasKey("Id")
                         .HasName("PK_WidgetParts");
+
+                    b.HasIndex("DrawingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WidgetParts_DrawingId")
+                        .HasFilter("[DrawingId] IS NOT NULL");
 
                     b.HasIndex("WidgetId")
                         .HasDatabaseName("IX_WidgetParts_WidgetId");
@@ -1451,6 +1459,12 @@ namespace Tellma.Testing.Entities.Migrations
 
             modelBuilder.Entity("Tellma.Testing.Entities.WidgetPart", b =>
                 {
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.WidgetPart", "DrawingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_WidgetParts_DrawingId");
+
                     b.HasOne("Tellma.Testing.Entities.Widget", null)
                         .WithMany()
                         .HasForeignKey("WidgetId")
@@ -1648,6 +1662,7 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "Ordinal", storeType: "int")
                 .Column(name: "Notes", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
                 .Column(name: "Settings", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "DrawingId", storeType: "int", nullable: true)
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 

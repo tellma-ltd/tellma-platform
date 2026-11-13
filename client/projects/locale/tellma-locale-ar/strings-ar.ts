@@ -105,6 +105,10 @@ export const TM_LOCALE_AR_STRINGS = {
     selectAll: 'تحديد كل الصفوف',
     selectRow: 'تحديد الصف',
     rowActivationHint: `${pressVerb} Enter لفتح صف. ${pressVerb} F2 للوصول إلى رابط في خلية.`,
+    headerNavHint:
+      '{filter, select, true {Enter للفرز. {filterKeys} للتصفية.} other {Enter للفرز.}}',
+    headerActionHint: `${pressVerb} Enter للفتح.`,
+    headerActionActive: 'مفعّل',
     menu: {
       cut: '{gender, select, female {قصي} other {قص}}',
       copy: copyVerb,
@@ -217,6 +221,7 @@ export const TM_LOCALE_AR_STRINGS = {
       deleteRows: 'حذف الصفوف المحددة',
       expand: 'توسيع الصف',
       collapse: 'طي الصف',
+      headerAction: 'فتح إجراء عنوان العمود، مثل التصفية',
     },
   },
   menu: {

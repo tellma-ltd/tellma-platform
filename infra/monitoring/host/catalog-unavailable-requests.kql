@@ -1,0 +1,8 @@
+// Tenant requests refused because the catalog was unavailable.
+// Backs the "tenants are being refused for want of the catalog" alert: any such refusal means an
+// instance's snapshot went past its staleness bound and the instance is turning away every tenant.
+customMetrics
+| where name == "tellma.tenancy.resolutions"
+| extend outcome = tostring(customDimensions["outcome"])
+| summarize refused = sumif(valueSum, outcome == "catalog_unavailable") by cloud_RoleInstance, bin(timestamp, 5m)
+| where refused > 0

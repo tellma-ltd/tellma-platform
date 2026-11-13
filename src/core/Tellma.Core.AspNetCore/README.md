@@ -44,7 +44,14 @@ feature or entity added there would diverge the web host's model from the migrat
   other send outside a tenant still fails;
 - Data Protection under the application name `tellma-{slug}`, persisted to
   `Tellma:DataProtection:KeyRingPath` when set; outside Development a host with no persistent key
-  repository fails `host.data-protection`;
+  repository fails `host.data-protection`. The section's `BlobUri` and `KeyId` (a key ring in a
+  blob under a Key Vault key, which the Azure web defaults wire) are checked here: both or neither,
+  each an absolute https URL, and never beside `KeyRingPath`;
+- in Development, the worktree's ports: the gitignored `.dev-ports.local`, looked for from the
+  content root up to the repository's root, whose `<SLUG>_WEB` line sets both `urls` and
+  `Tellma:PublicOrigin` (`https://localhost:<web>`, the host's own origin while no client dev server
+  fronts it) just above the configuration files, so environment variables and the command line still
+  win;
 - forwarded headers from the configured proxies alone;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
@@ -86,8 +93,14 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `POST /bff/logout` | `Tellma.Web`; the sign-out, `global` or `local` |
 | `GET /bff/user` | `Tellma.Web`; the user and the tenants the membership hints list |
 | `POST /bff/backchannel-logout` | anonymous; the identity server's logout tokens |
-| `/id/...` | the engine's own, in in-proc mode |
+| `/id/...` | the engine's own, in in-proc mode; an engine endpoint that states no authorization is anonymous, and an anonymous one authenticates the engine's sign-in cookie, never the platform's session |
+| `POST /api/webhooks/{key}` | anonymous; the webhook receivers, when the Azure web defaults compose them |
 | the SPA's files and the navigation fallback | anonymous |
+
+A defaults bundle contributes routes of its own through the internal `IPlatformEndpointSource`
+seam: `MapTellma` maps each source's endpoints anonymous and tenantless, stamped as the platform's,
+so they may sit under the `api` words the audit reserves. A build's static web assets also map a
+development endpoint that serves files from disk; it is stamped like the published files.
 
 | Group | Route | Policy | Guard |
 |---|---|---|---|
@@ -117,7 +130,11 @@ reached through without the platform's controls:
   surface, or a cookie mutation answering `GET`.
 
 It also fails startup for a distribution route, or a stack's resource segment, that takes a word
-the platform or the SPA owns under `/{tenantId}`.
+the platform or the SPA owns under `/{tenantId}`, and, in the realised gate, for any endpoint whose
+`RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
+(compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
+run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
+skips the pairs and says so in one line, leaving the cause to `core.securables`.
 
 - a distribution endpoint under a policy that names no authentication scheme.
 
@@ -171,6 +188,9 @@ over an existing session tell every `ISessionTerminationListener` the ended hand
 `SessionSweepService` deletes rows expired for a day, every `SweepInterval`.
 `MembershipReconcileService` rebuilds every active tenant's membership hints from its users five
 minutes after the registry's first snapshot and then every `Tellma:Tenancy:MembershipReconcileInterval`.
+Both keep their schedule as due times, each an interval after the last one, so neither a run's length
+nor a wait that starts late moves the later runs; a run that overruns whole intervals is followed by
+one run at once.
 The catalog's application lock keeps two instances' runs from overlapping, not from both running:
 each instance's timer runs on its own, so each may run once per interval. A run is idempotent, so a
 second one over unchanged users changes no row.

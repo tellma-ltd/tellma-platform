@@ -15,7 +15,9 @@ using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Caching;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Batches
@@ -44,9 +46,6 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The logger.</summary>
         private readonly ILogger _logger;
 
-        /// <summary>The executor's instruments.</summary>
-        private readonly DataMetrics _metrics;
-
         /// <summary>The process's tenant snapshots, when the caching feature is composed.</summary>
         private readonly IVersionTagSnapshots? _snapshots;
 
@@ -65,6 +64,8 @@ namespace Tellma.Core.Data.Batches
         /// <param name="logger">The logger.</param>
         /// <param name="metrics">The executor's instruments.</param>
         /// <param name="queries">What query statements compile and materialise with.</param>
+        /// <param name="allocator">The id allocator, whose refills ride the batches that write its tables.</param>
+        /// <param name="saves">The save emitter.</param>
         /// <param name="services">The root provider, for the optional caching services.</param>
         public DataExecutor(
             IOptions<DataOptions> options,
@@ -75,6 +76,8 @@ namespace Tellma.Core.Data.Batches
             ILogger<DataBatch> logger,
             DataMetrics metrics,
             QueryServices queries,
+            IdAllocator allocator,
+            SaveEmitter saves,
             IServiceProvider services)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -85,6 +88,8 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(queries);
+            ArgumentNullException.ThrowIfNull(allocator);
+            ArgumentNullException.ThrowIfNull(saves);
             ArgumentNullException.ThrowIfNull(services);
 
             _options = options;
@@ -93,8 +98,10 @@ namespace Tellma.Core.Data.Batches
             Owners = owners;
             _time = time;
             _logger = logger;
-            _metrics = metrics;
+            Metrics = metrics;
             Queries = queries;
+            Allocator = allocator;
+            Saves = saves;
             _snapshots = services.GetService<IVersionTagSnapshots>();
             _userSnapshots = services.GetService<IUserVersionTagSnapshots>();
             VersionTags = services.GetService<IVersionTagRegistry>();
@@ -129,6 +136,15 @@ namespace Tellma.Core.Data.Batches
         /// <summary>What query statements compile and materialise with.</summary>
         public QueryServices Queries { get; }
 
+        /// <summary>The id allocator.</summary>
+        public IdAllocator Allocator { get; }
+
+        /// <summary>The save emitter.</summary>
+        public SaveEmitter Saves { get; }
+
+        /// <summary>The data layer's instruments.</summary>
+        public DataMetrics Metrics { get; }
+
         /// <summary>The running model's storage fingerprint.</summary>
         public string Fingerprint => _metadata.StorageFingerprint;
 
@@ -150,7 +166,7 @@ namespace Tellma.Core.Data.Batches
 
             Run run = new(batch, assembly, options, batch.Connection.TenantId, batch.Access.Operation, PurposeName(batch.Purpose));
             int roundTripsBefore = batch.Access.RoundTrips;
-            _metrics.RecordStatements(run.Purpose, assembly.StatementCount);
+            Metrics.RecordStatements(run.Purpose, assembly.StatementCount);
 
             object? auditState = batch.Audit is IDataBatchAudit audit
                 ? await audit.BeforeAsync(beforeSend).ConfigureAwait(false)
@@ -189,7 +205,19 @@ namespace Tellma.Core.Data.Batches
 
             done.Cursor?.ApplyCompletions();
 
-            // Every attempt, a probe, an explicit transaction's begin and commit count.
+            // --- The platform's completion steps: after the snapshots were replaced, so a sibling batch's
+            // newer read (a heal's) is never overwritten by this batch's older one, and before the
+            // round trips are counted, so a heal's counts ---
+            if (bodyRan)
+            {
+                foreach (Func<CancellationToken, Task> step in batch.ExecutedSteps)
+                {
+                    await step(beforeSend).ConfigureAwait(false);
+                }
+            }
+
+            // Every attempt, a probe, an explicit transaction's begin and commit, and a completion
+            // step's round trip count.
             BatchOutcome outcome = new(tags, user, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
 
             // --- The commit callbacks: outside the transaction, never thrown ---
@@ -293,8 +321,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>
         ///     Observes a batch that failed, for an exception filter, and lets the failure propagate: the
         ///     tags its prelude read before the failure still replace the process's (nothing it bumped
-        ///     committed), a refusal by the in-transaction guard is metered as stale, and a bump of a
-        ///     name without a row is metered as missing.
+        ///     committed), a refusal by the in-transaction guard is metered as stale, a bump of a
+        ///     name without a row is metered as missing, and a duplicate primary key drops the id
+        ///     buffer that handed the id out.
         /// </summary>
         /// <param name="batch">The batch.</param>
         /// <param name="tenantId">The tenant.</param>
@@ -304,6 +333,13 @@ namespace Tellma.Core.Data.Batches
         {
             try
             {
+                // A duplicate primary key is never healed: the buffer that handed the id out is
+                // dropped, so the next reservation reads the table afresh.
+                if (exception is UniqueConstraintViolationException violation)
+                {
+                    Allocator.OnDuplicateKey(tenantId, violation.IndexName);
+                }
+
                 _ = ReplaceSnapshots(batch, tenantId, committed: false);
                 if (exception is BatchAssertionFailedException { Number: TellmaSqlErrors.StaleVersionTag })
                 {
@@ -368,7 +404,7 @@ namespace Tellma.Core.Data.Batches
                 Attempt result = await AttemptAsync(run, attempt, beforeSend, afterSend).ConfigureAwait(false);
                 if (result.Failure is not Exception failure)
                 {
-                    _metrics.RecordRoundTrip(run.Operation, run.Purpose, DataMetrics.Ok, result.Elapsed);
+                    Metrics.RecordRoundTrip(run.Operation, run.Purpose, DataMetrics.Ok, result.Elapsed);
                     return result;
                 }
 
@@ -395,7 +431,7 @@ namespace Tellma.Core.Data.Batches
                 if (notCommitted is not null && errors is not null && batch.Probe!.IsOwnPrimaryKeyViolation(SqlErrorInfo.Primary(errors)))
                 {
                     Settle(run, result, DataMetrics.Failed);
-                    _metrics.RecordProbe(CommitVerdict.Committed);
+                    Metrics.RecordProbe(CommitVerdict.Committed);
                     throw new DataAccessAmbiguousException(notCommitted, CommitVerdict.Committed);
                 }
 
@@ -505,7 +541,7 @@ namespace Tellma.Core.Data.Batches
                 timeoutReruns += timedOut ? 1 : 0;
                 Settle(run, result, DataMetrics.Retried, applyCompletions: false);
                 batch.Access.Retries++;
-                _metrics.RecordRetry(retryClass, errors is null ? DataMetrics.ConnectionLost : SqlErrorInfo.Primary(errors).Number.ToString(CultureInfo.InvariantCulture));
+                Metrics.RecordRetry(retryClass, errors is null ? DataMetrics.ConnectionLost : SqlErrorInfo.Primary(errors).Number.ToString(CultureInfo.InvariantCulture));
             }
         }
 
@@ -534,7 +570,7 @@ namespace Tellma.Core.Data.Batches
         /// <returns>The exception to throw.</returns>
         private DataAccessAmbiguousException UnknownOutcome(Exception failure)
         {
-            _metrics.RecordProbe(CommitVerdict.Unknown);
+            Metrics.RecordProbe(CommitVerdict.Unknown);
             return new DataAccessAmbiguousException(failure, CommitVerdict.Unknown);
         }
 
@@ -605,7 +641,7 @@ namespace Tellma.Core.Data.Batches
                 attempt.Cursor?.ApplyCompletions();
             }
 
-            _metrics.RecordRoundTrip(run.Operation, run.Purpose, outcome, attempt.Elapsed);
+            Metrics.RecordRoundTrip(run.Operation, run.Purpose, outcome, attempt.Elapsed);
         }
 
         /// <summary>Sends the command once, reads every result set and commits an explicit transaction.</summary>
@@ -831,7 +867,7 @@ namespace Tellma.Core.Data.Batches
                 DataBatchLog.CommitProbeFailed(_logger, failure, run.Operation, run.TenantId);
             }
 
-            _metrics.RecordProbe(answer.Verdict);
+            Metrics.RecordProbe(answer.Verdict);
             return answer.Verdict;
         }
 

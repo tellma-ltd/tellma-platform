@@ -56,6 +56,9 @@ namespace Tellma.Core.Data.Batches
         public int TenantId => accessor.Current.RequireTenant().Id;
 
         /// <inheritdoc />
+        public int? UserId => accessor.Current.UserId;
+
+        /// <inheritdoc />
         public IDataBatch CreateBatch(BatchPurpose purpose)
         {
             return new DataBatch(executor, this, services, purpose);

@@ -14,6 +14,7 @@ using Microsoft.Extensions.Primitives;
 using System.Net;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -120,7 +121,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idacctanon", Seed);
             await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "anon@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             string? loginUrl = null;
             foreach ((string? section, string _) in Sections)
@@ -318,7 +319,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                     ("expired@example.com", "/Identity/Manage/Passkeys?" + Carried, "/Identity/Manage/Passkeys"),
                 ])
             {
-                using OidcFlowClient flow = new(factory);
+                using OidcFlowClient flow = factory.CreateFlowClient();
                 string inEnglish = challenged.Replace("ui_locales=ar", "ui_locales=en", StringComparison.Ordinal);
 
                 using HttpResponseMessage challenge = await GetAsync(flow, challenged);
@@ -518,7 +519,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, email);
 
-            OidcFlowClient flow = new(factory);
+            OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync(email, "/Identity/Account/Login");
             return flow;
         }

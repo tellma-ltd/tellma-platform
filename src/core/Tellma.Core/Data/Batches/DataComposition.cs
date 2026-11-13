@@ -6,13 +6,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Data.Saves;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Data.Batches
 {
-    /// <summary>Registers the data layer's runtime: the options, the executor and its instruments, the query services, the tenant database and its factory.</summary>
+    /// <summary>Registers the data layer's runtime: the options, the executor and its instruments, the id allocator and the save emitter, the query services, the tenant database and its factory.</summary>
     internal static class DataComposition
     {
         /// <summary>Registers the data layer.</summary>
@@ -30,6 +33,14 @@ namespace Tellma.Core.Data.Batches
             // TryAdd for the owners: the stack registry's composition maps tables to their stacks.
             services.TryAddSingleton<IStackTableOwners, NoStackTableOwners>();
             _ = services.AddSingleton<DataExecutor>();
+
+            // --- The id allocator, its buffers per tenant and sequence, and the save emitter's plans ---
+            _ = services.AddSingleton<IdAllocator>();
+            _ = services.AddSingleton<IIdAllocator>(static services => services.GetRequiredService<IdAllocator>());
+            _ = services.AddSingleton<SaveEmitter>();
+
+            // A tenant frozen for a relocation or a restore may come back on another database: its buffers go.
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITenantStateListener, IdBufferTenantListener>());
 
             // --- The query statements: one engine, whose caches every compile shares, and the schemas ---
             // TryAdd for the engine: a host that tunes its options registers it first.

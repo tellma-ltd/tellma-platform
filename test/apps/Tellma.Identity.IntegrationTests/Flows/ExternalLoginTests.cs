@@ -11,6 +11,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -42,7 +43,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfed" + provider.ToLowerInvariant(), ProviderSeed);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             using HttpResponseMessage loginPage = await flow.Browser.GetAsync(
                 new Uri("/Identity/Account/Login", UriKind.Relative), TestContext.Current.CancellationToken);
@@ -103,7 +104,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // so there is nothing to permit.
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idfednone");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             using HttpResponseMessage loginPage = await flow.Browser.GetAsync(
                 new Uri("/Identity/Account/Login", UriKind.Relative), TestContext.Current.CancellationToken);
 
@@ -117,7 +118,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedfiltered", ProviderSeed);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The allow-list on the authorize redirect names only the email code, so the providers
             // are configured but not offerable. The button and the policy have to agree about

@@ -98,6 +98,9 @@ export default defineConfig(
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
       'projects/core/tellma-core-tools/dist/',
+      // The tellma-client fixture app's build output and the specs' working copies of it.
+      'projects/core/tellma-core-tools/fixtures/**/dist/',
+      'projects/core/tellma-core-tools/fixtures/run-*/',
       'projects/core/tellma-core/boot/',
       '**/*.d.ts',
     ],

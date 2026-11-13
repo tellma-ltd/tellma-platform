@@ -1,0 +1,5 @@
+/* The application build's TypeScript configuration: the app from its entry file. */
+{
+  "extends": "./tsconfig.json",
+  "files": ["src/main.ts"]
+}

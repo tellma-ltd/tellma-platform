@@ -15,7 +15,16 @@ import type { TmSchemeColors, TmTokens } from '../contract/tokens';
  * runtime `setProperty` writes beat both by the normal cascade.
  */
 
-const KEBAB = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+/**
+ * camelCase to kebab-case. A digit run that follows a letter starts a word
+ * of its own, as an upper-case letter does: `optionHeight2line` emits
+ * `option-height-2line`.
+ */
+const KEBAB = (s: string) =>
+  s
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([a-z])([0-9])/g, '$1-$2')
+    .toLowerCase();
 
 /**
  * Maps a token Ref path to its emitted variable name. Primitive paths map

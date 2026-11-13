@@ -4,13 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Reflection;
-using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Access;
 
 namespace Tellma.Core.Tests.Access
 {
     /// <summary>The access vocabulary: well-known ids in the reserved band, actions and resources in their grammars.</summary>
-    public partial class AccessVocabularyTests
+    public class AccessVocabularyTests
     {
         [Fact]
         public void Every_well_known_id_lies_in_the_reserved_band()
@@ -28,7 +28,7 @@ namespace Tellma.Core.Tests.Access
 
             Assert.Equal(14, actions.Count);
             Assert.All(actions, static action => Assert.True(
-                action.Value == "*" || (action.Value == action.Name && action.Value.Length <= 32 && ActionGrammar().IsMatch(action.Value)),
+                action.Value == "*" || (action.Value == action.Name && SecurableNames.IsAction(action.Value)),
                 action.Name));
         }
 
@@ -39,7 +39,7 @@ namespace Tellma.Core.Tests.Access
 
             Assert.All(
                 resources.Where(static resource => resource.Name is not nameof(CoreResources.Wildcard) and not nameof(CoreResources.SettingsPrefix)),
-                static resource => Assert.True(resource.Value.Length <= 128 && ResourceGrammar().IsMatch(resource.Value), resource.Name));
+                static resource => Assert.True(SecurableNames.IsResource(resource.Value), resource.Name));
             Assert.Equal("*", CoreResources.Wildcard);
             Assert.StartsWith(CoreResources.SettingsPrefix, CoreResources.SettingsGeneral, StringComparison.Ordinal);
         }
@@ -54,11 +54,5 @@ namespace Tellma.Core.Tests.Access
                 .Where(static field => field.IsLiteral && field.FieldType == typeof(T))
                 .Select(static field => (field.Name, (T)field.GetRawConstantValue()!))];
         }
-
-        [GeneratedRegex("^[A-Z][A-Za-z0-9]*$", RegexOptions.CultureInvariant)]
-        private static partial Regex ActionGrammar();
-
-        [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$", RegexOptions.CultureInvariant)]
-        private static partial Regex ResourceGrammar();
     }
 }

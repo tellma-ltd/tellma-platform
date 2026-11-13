@@ -39,12 +39,33 @@ const AGENTS: readonly Agent[] = [
   { id: 7, name: 'Dana Reed', code: 'AG-007' },
 ];
 
+/** A cost center: a code, a name, and the parent that tells namesakes apart. */
+interface Center {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+  readonly parent: string | null;
+}
+
+/**
+ * The Center column's directory: two Centers named 'Jeddah' that only their
+ * code and parent tell apart, and a Latin code beside an Arabic name, which
+ * the display cell and the dropdown keep code-first in either direction.
+ */
+const CENTERS: readonly Center[] = [
+  { id: 1, code: 'JED-01', name: 'Jeddah', parent: 'Western Region' },
+  { id: 2, code: 'JED-02', name: 'Jeddah', parent: 'Logistics' },
+  { id: 3, code: 'INV-0011', name: 'نقد', parent: 'الأصول المتداولة' },
+  { id: 4, code: 'DMM-01', name: 'الدمام', parent: null },
+];
+
 interface OrderLine {
   readonly id: number;
   readonly description: string | null;
   readonly agentId: number | null;
   readonly otherId: number | null;
   readonly quantity: number | null;
+  readonly centerId: number | null;
 }
 
 /**
@@ -79,7 +100,9 @@ export class GridAgentPage {
  * Entity-column grid demo host: the Agent column mounts the built-in
  * `tm-entity-picker` editor (search + accessors + modal pages + the async
  * paste/typed-commit resolver); the Other column has search but NO resolver
- * (typed labels become invalid inputs directly). The toolbar tunes the
+ * (typed labels become invalid inputs directly); the Center column shows
+ * two-line dropdown rows and code-first label parts, in its dropdown and in
+ * its display cells. The toolbar tunes the
  * search and resolver latencies (or holds their responses until released)
  * and counts their calls; the model dump is the committed-value oracle.
  */
@@ -155,6 +178,21 @@ export class GridAgentPage {
         [width]="160"
       />
       <tm-grid-column key="quantity" type="number" header="Qty" [width]="90" />
+      <!-- Two-line dropdown rows, and a code beside a name in another
+           script kept code-first in the dropdown and the display cell. -->
+      <tm-grid-column
+        key="centerId"
+        type="entity"
+        header="Center"
+        [search]="centerSearch"
+        [itemId]="centerIdOf"
+        [itemLabel]="centerLabelOf"
+        [itemDescription]="centerDescriptionOf"
+        [itemLabelParts]="centerPartsOf"
+        [format]="centerFormat"
+        [formatParts]="centerFormatParts"
+        [width]="200"
+      />
     </tm-grid>
 
     <h3>Model</h3>
@@ -194,12 +232,12 @@ export class GridAgentPage {
 export class GridEntityStory {
   readonly model = signal({
     lines: [
-      { id: 1, description: 'Consulting', agentId: 5, otherId: null, quantity: 3 },
-      { id: 2, description: 'Hardware', agentId: 3, otherId: null, quantity: 12 },
-      { id: 3, description: 'Freight', agentId: null, otherId: null, quantity: 1 },
-      { id: 4, description: 'Support', agentId: 6, otherId: null, quantity: 8 },
-      { id: 5, description: 'License', agentId: null, otherId: null, quantity: 2 },
-      { id: 6, description: 'Training', agentId: 7, otherId: null, quantity: 5 },
+      { id: 1, description: 'Consulting', agentId: 5, otherId: null, quantity: 3, centerId: 3 },
+      { id: 2, description: 'Hardware', agentId: 3, otherId: null, quantity: 12, centerId: 1 },
+      { id: 3, description: 'Freight', agentId: null, otherId: null, quantity: 1, centerId: null },
+      { id: 4, description: 'Support', agentId: 6, otherId: null, quantity: 8, centerId: 4 },
+      { id: 5, description: 'License', agentId: null, otherId: null, quantity: 2, centerId: null },
+      { id: 6, description: 'Training', agentId: 7, otherId: null, quantity: 5, centerId: 2 },
     ] as OrderLine[],
   });
   readonly f = form(this.model);
@@ -226,6 +264,7 @@ export class GridEntityStory {
     agentId: null,
     otherId: null,
     quantity: null,
+    centerId: null,
   });
 
   readonly agentPage = GridAgentPage;
@@ -233,6 +272,31 @@ export class GridEntityStory {
   readonly agentNameOf = (agent: Agent): string => agent.name;
   readonly agentFormat = (value: number | null): string =>
     value === null ? '' : (AGENTS.find((agent) => agent.id === value)?.name ?? `#${String(value)}`);
+
+  readonly centerIdOf = (center: Center): number => center.id;
+  readonly centerLabelOf = (center: Center): string => `${center.code} - ${center.name}`;
+  readonly centerDescriptionOf = (center: Center): string | null => center.parent;
+  readonly centerPartsOf = (center: Center): readonly string[] => [center.code, center.name];
+  readonly centerFormat = (value: number | null): string => {
+    if (value === null) {
+      return '';
+    }
+    const center = CENTERS.find((candidate) => candidate.id === value);
+    return center === undefined ? `#${String(value)}` : this.centerLabelOf(center);
+  };
+  readonly centerFormatParts = (value: number | null): readonly string[] | null => {
+    const center = CENTERS.find((candidate) => candidate.id === value);
+    return center === undefined ? null : this.centerPartsOf(center);
+  };
+  /** A synchronous search over a Center's code, name and parent. */
+  readonly centerSearch = (query: string): readonly Center[] => {
+    const q = query.trim().toLowerCase();
+    return CENTERS.filter((center) =>
+      [center.code, center.name, center.parent ?? ''].some((text) =>
+        text.toLowerCase().includes(q),
+      ),
+    );
+  };
 
   /**
    * Sync at delay 0 (the fast path) unless searches are held; a delayed
