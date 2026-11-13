@@ -58,7 +58,8 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>
         ///     Notification type keys and categories are well formed, keys are unique, every target
-        ///     names a routable entity with an integer key, and channel-only types follow their rule.
+        ///     names a routable entity with an integer key or a registered securable resource, and
+        ///     channel-only types follow their rule.
         /// </summary>
         public const string NotificationTypes = "core.notification-types";
 
@@ -70,6 +71,13 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Client event names are well formed and unique.</summary>
         public const string ClientEvents = "core.client-events";
+
+        /// <summary>
+        ///     The securables compose without conflict, their names follow the grammar, their filter
+        ///     roots are query entities, a child's owner is reached through its navigation, owner
+        ///     chains end, and every securable belongs to a composed feature.
+        /// </summary>
+        public const string Securables = "core.securables";
 
         /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
         public const string TimeZones = "core.time-zones";

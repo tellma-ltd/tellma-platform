@@ -736,7 +736,7 @@ registries into the Core chunk of the client metadata as the sections `notificat
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
-| `core.notification-types` | a key is not two or more dot-separated lower-case segments of at most 64 characters; a category is not one such segment of at most 32; a key is registered twice; a severity is undefined; a channel-only type (`Inbox = false`) is mutable or a toast; a target is not a stack resource (an entity a feature contributed with `Entity<T>()`, named by its leaf's metadata), or names one whose key is neither `int` nor `long` | no |
+| `core.notification-types` | a key is not two or more dot-separated lower-case segments of at most 64 characters; a category is not one such segment of at most 32; a key is registered twice; a severity is undefined; a channel-only type (`Inbox = false`) is mutable or a toast; a target is neither a stack resource (an entity a feature contributed with `Entity<T>()`, named by its leaf's metadata) nor a registered securable resource, both matched as spelled, or names a stack resource whose key is neither `int` nor `long` | no |
 | `core.notification-channels` | a key is not one lower-case segment of at most 16 characters; a key is registered twice; `inbox` or `email` is missing; an `INotificationChannel` sender cannot be created in the gate's tenantless scope, names an unregistered channel or `inbox`, or shares its channel with another sender | no |
 | `core.client-events` | a name breaks the type-key grammar, or is registered twice | no |
 
@@ -748,6 +748,56 @@ unregistered name, a payload over 4,096 UTF-8 bytes and a batch that already exe
 anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
 users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
+
+## Securables
+
+A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
+filter binds against (`FilterRoot`, or none), whether it asks for a recent sign-in (`IsSensitive`),
+the feature it belongs to and, for a child exposed as a query root, its `Owner`. Contributors
+register them: each `ISecurableContributor` service (a collection service), and each
+`contribution.Securables(builder => …)`, which the realizer turns into one on behalf of its feature.
+`SecurableRegistry`, the singleton `ISecurableRegistry` `CoreFeature` registers, runs every
+contributor once, on first resolution (the realised gate resolves it), then freezes the builder.
+
+- **Merging.** The same pair registered again is one securable: the first registration's
+  spelling, sensitive when any registration says so. Another filter root, another owner, another
+  feature or another spelling of the resource or action is a problem.
+- **A throwing contributor** is a problem; the other contributors still run, and the registry then
+  holds no securable at all. The checks that judge against the registry (`core.notification-types`'
+  securable targets, the endpoint audit's securables) skip that part and add one line pointing to
+  `core.securables`.
+- **Feature.** `Add`'s `feature`, else the feature whose contributor registered it: the item's
+  feature, the feature that registered the contributor's type, or `core` for a contributor
+  registered by a factory or outside every feature.
+- **Sensitivity.** Registered sensitive, a Core default (`core.User` × `Save | Delete | Activate |
+  Invite | Credentials`, `core.Role` × `Save | Delete | Activate`, `core.Settings.General` × `Save`,
+  `core.Schedule` × `Save | Delete | Activate`; a default nobody registers changes nothing), or
+  `MarkSensitive`, unless `MarkNotSensitive`. A mark of an unregistered pair, and a pair marked both
+  ways, are problems; the latter stays sensitive.
+- **Aliases** resolve a renamed resource on `Find` alone, one step, to a registered resource.
+- **Lookup.** `All` is ordered by resource, ignoring case, then by action: the platform's
+  actions first, in the order `Read`, `Save`, `Delete`, `Activate`, `Invite`, `Preferences`,
+  `Credentials`, `Retry`, `Cancel`, `Resume`, `Share`, `Publish`, `Transfer`, then any other action,
+  ignoring case, so the client lists a resource's actions in that order; names compare
+  ordinal-ignore-case and keep their registered spelling. `Fingerprint` is the lowercase hex SHA-256
+  of the sorted `Resource|Action|FilterRoot|IsSensitive|OwnerResource|OwnerNavigation` lines and
+  `alias|Old|New` lines.
+
+`CoreFeature` registers `core.User` × `Read` (filter root `core.User`) and `core.UserStamp` ×
+`Read` (filter root `core.UserStamp`, owned by `core.User` through `User`).
+`SecurablesClientAssetContributor` writes the `securables` section of the Core chunk: one
+`ClientSecurable` per securable, each label key the first of its chain that a neutral shared
+`Strings` resource of a composed feature declares (`INeutralStringKeys`), else the chain's first key
+with humanized English as the fallback (pluralized for an entity's plural key). Core's `Strings`
+declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Core_Role_Plural`,
+`Securable_core_UserStamp` and `Feature_core`.
+
+| Check | Fails when | Needs infrastructure |
+|---|---|---|
+| `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root | no |
+
+The host's endpoint audit (`host.endpoint-audit`) refuses an endpoint whose
+`SecurableEndpointMetadata` names a pair the registry does not hold, or holds only through an alias.
 
 ## Background jobs
 
@@ -762,7 +812,7 @@ share the notification type keys' grammar.
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets and entities. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
@@ -777,8 +827,9 @@ share the notification type keys' grammar.
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally, the composition step that binds the jobs' options. |
+| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, and the securables section of the client metadata. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests

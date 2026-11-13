@@ -117,7 +117,11 @@ reached through without the platform's controls:
   surface, or a cookie mutation answering `GET`.
 
 It also fails startup for a distribution route, or a stack's resource segment, that takes a word
-the platform or the SPA owns under `/{tenantId}`.
+the platform or the SPA owns under `/{tenantId}`, and, in the realised gate, for any endpoint whose
+`RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
+(compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
+run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
+skips the pairs and says so in one line, leaving the cause to `core.securables`.
 
 - a distribution endpoint under a policy that names no authentication scheme.
 
