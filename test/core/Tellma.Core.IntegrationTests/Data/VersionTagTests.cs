@@ -33,7 +33,7 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The fixture's cacheable list.</summary>
         private static readonly TableName Lookups = new(FixtureSchema.Name, "Lookups");
 
-        /// <summary>The stand-in jobs table, written where a batch must write something.</summary>
+        /// <summary>The jobs table, written where a batch must write something.</summary>
         private static readonly TableName Jobs = new("core", "Jobs");
 
         /// <summary>The users' preference bags, whose writes bump each named user's preferences tag.</summary>
@@ -225,7 +225,7 @@ namespace Tellma.Core.IntegrationTests.Data
             var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
             batch.MarkConnectPrologue(DataBatchDatabase.Premises);
             batch.DependsOn([new VersionTagDependency(LookupTag, VersionTag.None, VersionTagMismatchPolicy.Rerun)]);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES (NEXT VALUE FOR [core].[sq_Jobs]);", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (NEXT VALUE FOR [core].[sq_Jobs], N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
 
             BatchAssertionFailedException refused = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
 
@@ -270,7 +270,7 @@ namespace Tellma.Core.IntegrationTests.Data
             using MetricCollector<long> missing = new(fixture.Tenant.Services.GetRequiredService<IMeterFactory>(), CacheTelemetryNames.MeterName, CacheTelemetryNames.Missing);
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
             var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES (NEXT VALUE FOR [core].[sq_Jobs]);", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (NEXT VALUE FOR [core].[sq_Jobs], N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             _ = batch.Sql(TouchLookups, new SqlOptions(writes: Set(Lookups)));
 
             InvalidOperationException failed = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(Token));

@@ -57,7 +57,11 @@ namespace Tellma.Core.Abstractions.TableTypes
         /// <summary>The user who requested the job, <c>int</c>; null for nobody.</summary>
         public int? RequestedById { get; set; }
 
-        /// <summary>The id of the row whose job id the statement sets, <c>int</c>; null for a job that names no row.</summary>
-        public int? OwnerId { get; set; }
+        /// <summary>
+        ///     The id of the row whose job id the statement sets, <c>bigint</c> so it carries the key of
+        ///     an entity keyed by either <see cref="int" /> or <see cref="long" />; null for a job that
+        ///     names no row.
+        /// </summary>
+        public long? OwnerId { get; set; }
     }
 }

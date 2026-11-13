@@ -33,8 +33,24 @@ namespace Tellma.Testing.Entities
         /// <param name="fingerprint">The storage fingerprint to record, or <see langword="null" /> to record none.</param>
         /// <param name="cancellationToken">Cancels the creation.</param>
         /// <returns>The new database's connection string.</returns>
-        public static async Task<string> CreateAsync(
+        public static Task<string> CreateAsync(
             string masterConnectionString, string databaseName, string? fingerprint, CancellationToken cancellationToken = default)
+        {
+            return CreateAsync(masterConnectionString, databaseName, fingerprint, readCommittedSnapshot: true, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Creates and migrates a fixture database with read-committed snapshot on or off, for a
+        ///     test that holds the migrations to running under either setting.
+        /// </summary>
+        /// <param name="masterConnectionString">A connection string to the server's <c>master</c> database.</param>
+        /// <param name="databaseName">The new database's name; the caller drops it.</param>
+        /// <param name="fingerprint">The storage fingerprint to record, or <see langword="null" /> to record none.</param>
+        /// <param name="readCommittedSnapshot">Whether the database reads committed data from row versions, as provisioning sets it.</param>
+        /// <param name="cancellationToken">Cancels the creation.</param>
+        /// <returns>The new database's connection string.</returns>
+        public static async Task<string> CreateAsync(
+            string masterConnectionString, string databaseName, string? fingerprint, bool readCommittedSnapshot, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
             ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
@@ -45,7 +61,7 @@ namespace Tellma.Testing.Entities
                 masterConnectionString,
                 cancellationToken,
                 $"CREATE DATABASE {quoted} COLLATE {DatabaseCollations.Platform};",
-                $"ALTER DATABASE {quoted} SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;",
+                $"ALTER DATABASE {quoted} SET READ_COMMITTED_SNAPSHOT {(readCommittedSnapshot ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE;",
                 $"ALTER DATABASE {quoted} SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 1 DAYS, AUTO_CLEANUP = ON);");
 
             string connectionString = new SqlConnectionStringBuilder(masterConnectionString) { InitialCatalog = databaseName }.ConnectionString;

@@ -8,8 +8,8 @@ using Tellma.Core.Abstractions.Composition;
 namespace Tellma.Testing.Entities
 {
     /// <summary>
-    ///     The feature that contributes the fixture schema and the stand-in core table to a
-    ///     composition, so a test host's tenant model is the fixture database's.
+    ///     The feature that contributes the fixture schema and its job handlers to a composition, so
+    ///     a test host's tenant model is the fixture database's.
     /// </summary>
     public sealed class FixtureFeature : ITellmaFeature
     {
@@ -29,17 +29,20 @@ namespace Tellma.Testing.Entities
         {
             ArgumentNullException.ThrowIfNull(contribution);
 
-            // --- The stand-in core table the fixture's job foreign keys name ---
-            // Core contributes the access tables, core.VersionTags and core.Blobs itself.
-            _ = contribution.Entity<FixtureJob>();
-
             // --- The fixture schema; children come with their parents ---
             _ = contribution
                 .Entity<Widget>()
                 .Entity<WidgetExtra>()
                 .Entity<Node>()
                 .Entity<Shipment>()
+                .Entity<Export>()
                 .Entity<Lookup>();
+
+            // --- The job handlers, one per shape: arguments only, over a long key, over an int key ---
+            _ = contribution
+                .JobHandler<ProbeJobHandler>()
+                .JobHandler<ShipJobHandler>()
+                .JobHandler<ExportJobHandler>();
         }
     }
 }

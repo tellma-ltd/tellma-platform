@@ -25,6 +25,16 @@ namespace Tellma.Core.Abstractions.Jobs
         /// </summary>
         public const int MaxArgumentsLength = 4000;
 
+        /// <summary>
+        ///     The most bytes a job's or a schedule's handler arguments may take once serialised, counted
+        ///     as UTF-8: 64 KB. More is a programming error at enqueue, refused with
+        ///     <see cref="ArgumentException" />.
+        /// </summary>
+        public const int MaxHandlerArgumentsBytes = 65_536;
+
+        /// <summary>The most characters a schedule's cron expression may have: the width of its column.</summary>
+        public const int MaxCronExpressionLength = 128;
+
         /// <summary>The most jobs one claim of a handler's key may lease: the most a handler's batch size may be.</summary>
         public const int MaxBatchSize = 500;
 

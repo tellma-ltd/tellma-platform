@@ -7,9 +7,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
@@ -73,6 +75,15 @@ namespace Tellma.Core.Composition
 
         /// <summary>The client event names the features contributed, in realisation order.</summary>
         public List<ContributedClientEvent> ClientEvents { get; } = [];
+
+        /// <summary>The background job handlers the features registered, in realisation order, each read from its attribute.</summary>
+        public List<ContributedJobHandler> JobHandlers { get; } = [];
+
+        /// <summary>The built-in schedules the features declared, in realisation order.</summary>
+        public List<ContributedBuiltInSchedule> BuiltInSchedules { get; } = [];
+
+        /// <summary>The job handler keys the features retired, in realisation order.</summary>
+        public List<ContributedRetiredJobKey> RetiredJobKeys { get; } = [];
 
         /// <summary>
         ///     The services the features registered, in realisation order, including those a dependent
@@ -148,6 +159,26 @@ namespace Tellma.Core.Composition
     /// <param name="Name">The event's name as contributed.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedClientEvent(string Name, ITellmaFeature Owner);
+
+    /// <summary>A background job handler a feature registered, as its attribute and interface declare it.</summary>
+    /// <param name="HandlerType">The handler class.</param>
+    /// <param name="Attribute">The class's handler attribute: the key and the options.</param>
+    /// <param name="EntityType">
+    ///     The entity an entity-backed handler processes, as its interface names it (before leaf
+    ///     substitution); null for an arguments-only handler.
+    /// </param>
+    /// <param name="Owner">The feature that registered it.</param>
+    internal sealed record ContributedJobHandler(Type HandlerType, JobHandlerAttribute Attribute, Type? EntityType, ITellmaFeature Owner);
+
+    /// <summary>A built-in schedule a feature declared.</summary>
+    /// <param name="Seed">The schedule, its arguments serialised, as the migrations seed it.</param>
+    /// <param name="Owner">The feature that declared it.</param>
+    internal sealed record ContributedBuiltInSchedule(BuiltInScheduleSeed Seed, ITellmaFeature Owner);
+
+    /// <summary>A job handler key a feature retired.</summary>
+    /// <param name="Key">The key.</param>
+    /// <param name="Owner">The feature that retired it.</param>
+    internal sealed record ContributedRetiredJobKey(string Key, ITellmaFeature Owner);
 
     /// <summary>A service a feature registered.</summary>
     /// <param name="ServiceType">The service type.</param>

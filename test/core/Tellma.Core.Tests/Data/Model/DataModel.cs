@@ -103,7 +103,6 @@ namespace Tellma.Core.Tests.Data.Model
         private static void Contribute(FeatureContribution contribution)
         {
             _ = contribution
-                .Entity<TestJob>()
                 .Entity<Widget>()
                 .Entity<WidgetExtra>()
                 .Entity<Center>()

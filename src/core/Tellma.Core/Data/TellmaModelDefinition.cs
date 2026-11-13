@@ -6,12 +6,14 @@
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 using Tellma.Core.Composition;
+using Tellma.Core.Jobs;
 
 namespace Tellma.Core.Data
 {
     /// <summary>
     ///     What one composition puts in the tenant model: the leaf entity classes, the standalone
-    ///     table-type classes and Core's model configurations, each closed over the leaves. A
+    ///     table-type classes and Core's model configurations, each closed over the leaves, and the
+    ///     built-in schedules the migrations seed. A
     ///     <see cref="TellmaDbContext" /> builds its model from exactly this, so the web host, the
     ///     workers and the migrator, composing the same features, build the same model.
     /// </summary>
@@ -34,11 +36,13 @@ namespace Tellma.Core.Data
     /// <param name="tableTypes">The standalone table-type classes.</param>
     /// <param name="configurations">The closed model configuration classes, in the order they apply.</param>
     /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
+    /// <param name="builtInSchedules">The built-in schedules the features declared, in realisation order; null for none.</param>
     internal sealed class TellmaModelDefinition(
         IReadOnlyList<Type> entityTypes,
         IReadOnlyList<Type> tableTypes,
         IReadOnlyList<Type> configurations,
-        IReadOnlyDictionary<Type, Type> leaves)
+        IReadOnlyDictionary<Type, Type> leaves,
+        IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null)
     {
         /// <summary>The leaf entity classes, children included, in model order.</summary>
         public IReadOnlyList<Type> EntityTypes { get; } = [.. entityTypes];
@@ -55,6 +59,9 @@ namespace Tellma.Core.Data
 
         /// <summary>The closed model configuration classes, in the order they apply.</summary>
         public IReadOnlyList<Type> Configurations { get; } = [.. configurations];
+
+        /// <summary>The built-in schedules the migrations seed, in realisation order.</summary>
+        public IReadOnlyList<BuiltInScheduleSeed> BuiltInSchedules { get; } = [.. builtInSchedules ?? []];
 
         /// <summary>The leaf registered for an entity class: its substitute, else the class itself.</summary>
         /// <param name="entityType">The entity class.</param>
@@ -76,7 +83,8 @@ namespace Tellma.Core.Data
                 record.Entities.Select(static entity => entity.EntityType),
                 record.TableTypes.Select(static tableType => tableType.Type),
                 record.ModelConfigurations.Select(static configuration => configuration.Type),
-                record.Leaves);
+                record.Leaves,
+                [.. record.BuiltInSchedules.Select(static schedule => schedule.Seed)]);
         }
 
         /// <summary>A definition from contributed parts and the leaf substitutions.</summary>
@@ -84,12 +92,14 @@ namespace Tellma.Core.Data
         /// <param name="tableTypes">The contributed standalone table-type classes.</param>
         /// <param name="configurations">The contributed model configurations, closed or open.</param>
         /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
+        /// <param name="builtInSchedules">The built-in schedules the migrations seed; null for none.</param>
         /// <returns>The definition.</returns>
         public static TellmaModelDefinition Create(
             IEnumerable<Type> entities,
             IEnumerable<Type> tableTypes,
             IEnumerable<Type> configurations,
-            IReadOnlyDictionary<Type, Type> leaves)
+            IReadOnlyDictionary<Type, Type> leaves,
+            IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null)
         {
             ArgumentNullException.ThrowIfNull(entities);
             ArgumentNullException.ThrowIfNull(tableTypes);
@@ -119,7 +129,7 @@ namespace Tellma.Core.Data
                 }
             }
 
-            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed, leaves);
+            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed, leaves, builtInSchedules);
         }
 
         /// <summary>

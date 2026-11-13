@@ -245,5 +245,57 @@ namespace Tellma.Core.Abstractions.Composition
         {
             return Add(new ShapeRequirementContributionItem(typeof(TEntity), typeof(TShape)));
         }
+
+        /// <summary>
+        ///     Registers a background job handler: a class carrying <see cref="Jobs.JobHandlerAttribute" />
+        ///     that implements exactly one of <see cref="Jobs.IJobHandler" /> and
+        ///     <see cref="Jobs.IEntityJobHandler{TEntity}" />. The platform resolves it from each job's
+        ///     tenant scope; the composition gate refuses a malformed or duplicated key, an option out of
+        ///     range, and a key under the platform's <c>core.</c> prefix from any feature but the platform's.
+        /// </summary>
+        /// <typeparam name="THandler">The handler class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution JobHandler<THandler>()
+            where THandler : class
+        {
+            return Add(new JobHandlerContributionItem(typeof(THandler)));
+        }
+
+        /// <summary>
+        ///     Declares a built-in schedule: a row of <c>core.Schedules</c> in the reserved id band that
+        ///     the migrations seed, running as the system user, with its code and name equal to the
+        ///     handler key. The id and the key are stable for the life of the distribution; a changed
+        ///     default is a new key.
+        /// </summary>
+        /// <param name="id">
+        ///     The row's id, from 1 to <see cref="WellKnownIds.ReservedIdBandEnd" />: 1–99 are the
+        ///     platform's, 100–499 the module packs', 500–999 the distribution's.
+        /// </param>
+        /// <param name="handlerKey">The key of the handler whose jobs the schedule enqueues.</param>
+        /// <param name="cron">The five-field Unix cron expression.</param>
+        /// <param name="arguments">The arguments each job receives, serialised as JSON; null for none.</param>
+        /// <param name="timeZoneId">A zone of the platform's time-zone set; null for the tenant's zone at fire time.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="handlerKey" /> or <paramref name="cron" /> is null.</exception>
+        public FeatureContribution BuiltInSchedule(int id, string handlerKey, string cron, object? arguments = null, string? timeZoneId = null)
+        {
+            ArgumentNullException.ThrowIfNull(handlerKey);
+            ArgumentNullException.ThrowIfNull(cron);
+            return Add(new BuiltInScheduleContributionItem(id, handlerKey, cron, arguments, timeZoneId));
+        }
+
+        /// <summary>
+        ///     Retires a job handler key the feature removed or replaced. Jobs of the key are cancelled
+        ///     and schedules naming it pause; the composition gate refuses a key some handler still
+        ///     registers or a built-in schedule still names.
+        /// </summary>
+        /// <param name="key">The retired handler key.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="key" /> is null.</exception>
+        public FeatureContribution RetiredJobKey(string key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return Add(new RetiredJobKeyContributionItem(key));
+        }
     }
 }

@@ -145,7 +145,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Provision_resumes_a_provisioning_row_that_migrate_reported_and_left_untouched()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_resume"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             await using (CatalogHost host = await CatalogHost.ComposeAsync(sql, migrator.CatalogConnectionString, values => values["Tellma:Sql:DatabasePrefix"] = migrator.DatabasePrefix))
             {
                 _ = await host.Catalog.RegisterAsync(new TenantRegistration("Self-serve", TenantCategory.Live, null, null), "admin", cancellationToken: Token);
@@ -178,7 +178,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 ActivityStopped = stopped.Enqueue,
             };
             ActivitySource.AddActivityListener(listener);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             // The caller's own trace does not become the step's parent.
             using (outer.StartActivity("caller"))
@@ -212,7 +212,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = Steps(new(sql, "mig_ahead"));
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             await SqlServerFixture.ExecuteAsync(
                 migrator.TenantConnectionString(1),
                 "INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'99991231235959_Future', N'10.0.11');");
@@ -231,7 +231,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = Steps(new(sql, "mig_suspended"));
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("set-state", "--tenant", "1", "--state", "Suspended", "--reason", "unpaid")).ExitCode);
 
             // --- Suspended: migrated, its bumped step deferred ---
@@ -254,7 +254,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = Steps(new(sql, "mig_rerun"));
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string tenant = migrator.TenantConnectionString(1);
             DateTimeOffset first = await CompletedAtAsync(tenant);
 
@@ -278,7 +278,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "mig_fingerprint");
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string tenant = migrator.TenantConnectionString(1);
             string first = (await SqlServerFixture.ScalarAsync<string>(tenant, "SELECT [Fingerprint] FROM [dbo].[__TellmaSchema];"))!;
 
@@ -304,7 +304,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "mig_status");
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string fingerprint = (await SqlServerFixture.ScalarAsync<string>(migrator.TenantConnectionString(1), "SELECT [Fingerprint] FROM [dbo].[__TellmaSchema];"))!;
 
             MigratorResult status = await migrator.RunAsync("status");
@@ -322,7 +322,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "mig_state");
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             MigratorResult result = await migrator.RunAsync("set-state", "--tenant", "1", "--state", "Provisioning");
 
@@ -335,7 +335,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Provision_turns_on_read_committed_snapshot_and_the_query_store_in_a_fresh_tenant_database()
         {
             MigratorHarness migrator = new(sql, "mig_fresh");
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             MigratorResult result = await migrator.RunAsync("provision", "--name", "Fresh", "--category", "Live", "--tenant", "5");
 
@@ -353,7 +353,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Provision_leaves_the_isolation_query_store_and_users_of_an_existing_database_alone()
         {
             MigratorHarness migrator = new(sql, "mig_existing");
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             // --- An operator's database: a history table, read-committed snapshot and the query store off ---
             string name = migrator.TenantDatabaseName(5);
@@ -411,7 +411,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = Steps(new(sql, "mig_frozen"));
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("set-state", "--tenant", "1", "--state", "Frozen", "--reason", "relocation")).ExitCode);
 
             migrator.Values[ProbeStep.VersionKey] = "2";
@@ -428,7 +428,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "mig_regrant");
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string tenant = migrator.TenantConnectionString(1);
             await SqlServerFixture.ExecuteAsync(
                 tenant,
@@ -450,7 +450,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = Steps(new(sql, "mig_cancel"));
             migrator.Seed(1, 2);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             // The bumped step times out on tenant 1, the way an HTTP client's timeout surfaces.
             migrator.Values[ProbeStep.VersionKey] = "2";
@@ -467,7 +467,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Rerunning_the_registering_provision_line_resumes_a_failed_run_and_then_reports_already()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_rerunline"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string[] command = ["provision", "--name", "Gadgets Inc", "--category", "Live", "--tenant", "5"];
 
             // --- The first run registers the tenant, then fails in its step ---
@@ -498,7 +498,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Rerunning_a_line_that_spells_its_server_with_a_protocol_prefix_resumes_the_row()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_rerunsrv"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             // The catalog stores the server canonically: no protocol prefix, lower case.
             string server = "TCP:" + new SqlConnectionStringBuilder(migrator.CatalogConnectionString).DataSource;
@@ -518,7 +518,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task A_registration_drawn_from_the_sequence_prints_its_id_at_once_and_names_the_resume_when_it_fails()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_seqresume"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
 
             // --- The registering run fails in its step: the id and the resume are printed ---
             migrator.Values[ProbeStep.FailTenantKey] = "1000";
@@ -563,7 +563,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Provision_refuses_a_provisioning_tenant_whose_database_is_ahead()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_pahead"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             migrator.Values[ProbeStep.FailTenantKey] = "5";
             Assert.Equal(MigratorExitCodes.PartialFailure, (await migrator.RunAsync("provision", "--name", "Ahead", "--category", "Live", "--tenant", "5")).ExitCode);
             await SqlServerFixture.ExecuteAsync(
@@ -583,7 +583,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Overlapping_provision_runs_serialise_on_the_tenant_lock_and_both_converge()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_overlap"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             migrator.Values[ProbeStep.GateKeyKey] = migrator.CatalogName;
             ProbeStep.Gate gate = ProbeStep.Hold(migrator.CatalogName);
             string[] command = ["provision", "--name", "Overlap", "--category", "Live", "--tenant", "5"];
@@ -608,7 +608,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task A_run_whose_lock_session_ends_stops_before_it_turns_the_tenant_active()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_lostlock"));
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             migrator.Values[ProbeStep.GateKeyKey] = migrator.CatalogName;
             ProbeStep.Gate gate = ProbeStep.Hold(migrator.CatalogName);
 
