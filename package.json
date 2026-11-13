@@ -19,6 +19,7 @@
     "e2e": "pnpm --dir client run e2e",
     "tokens:build-css": "pnpm --dir client run tokens:build-css",
     "tokens:check": "pnpm --dir client run tokens:check",
+    "assets:generate": "pnpm --dir client run assets:generate",
     "identity:copy-assets": "pnpm --dir client run identity:copy-assets",
     "api:check": "pnpm --dir client run api:check",
     "api:approve": "pnpm --dir client run api:approve",

@@ -30,6 +30,12 @@ app.UseTellmaIdentity();
 app.MapTellmaIdentity();
 ```
 
+The engine sends through the sender keyed `TellmaIdentityServiceCollectionExtensions.EmailSenderKey`,
+which is the host's `IEmailSender` unless the host registers its own under that key. A distribution
+running the engine in-proc does: its sandbox flag answers the bound tenant's category and refuses
+work bound to no tenant, and the engine's mail belongs to no tenant, so the distribution's sender
+for the engine answers "never sandboxed" for it, as `SandboxContext.Never` does in a standalone host.
+
 Omitting the email registrations **fails startup** rather than accepting sign-in codes and
 discarding them — the engine mounts a mail worker, and that worker refuses to start against a
 container with no sender in it.

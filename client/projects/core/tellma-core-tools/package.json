@@ -12,6 +12,10 @@
       "types": "./dist/eslint/index.d.ts",
       "default": "./dist/eslint/index.js"
     },
+    "./fonts": {
+      "types": "./dist/fonts/index.d.ts",
+      "default": "./dist/fonts/index.js"
+    },
     "./stylelint": {
       "types": "./dist/stylelint/index.d.ts",
       "default": "./dist/stylelint/index.js"
@@ -35,6 +39,8 @@
     "@eslint/js": "catalog:",
     "@typescript-eslint/utils": "catalog:",
     "angular-eslint": "catalog:",
+    "parse5": "catalog:",
+    "tsx": "catalog:",
     "typescript-eslint": "catalog:"
   },
   "peerDependencies": {

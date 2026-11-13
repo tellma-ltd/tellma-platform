@@ -35,7 +35,7 @@ export interface TmBootScriptConfig {
 }
 
 /** The boot strings a language may carry; English must carry all of them. */
-const BOOT_STRING_KEYS: readonly string[] = [
+export const TM_BOOT_STRING_KEYS: readonly string[] = Object.freeze([
   'Distribution_DisplayName',
   'Boot_Title',
   'Boot_Unsupported',
@@ -43,7 +43,7 @@ const BOOT_STRING_KEYS: readonly string[] = [
   'Boot_SignInFailed',
   'Boot_LoadFailed',
   'Boot_TryAgain',
-];
+]);
 
 /** A BCP 47 language tag, in the plain shape the platform offers: `en`, `ar-SA`, `zh-Hant`. */
 const LANGUAGE_TAG = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
@@ -85,13 +85,13 @@ function check(config: TmBootScriptConfig): void {
       fail(`the strings name the language '${code}', which is not offered.`);
     }
     for (const [key, value] of Object.entries(table)) {
-      if (!BOOT_STRING_KEYS.includes(key) || typeof value !== 'string') {
+      if (!TM_BOOT_STRING_KEYS.includes(key) || typeof value !== 'string') {
         fail(`the string '${key}' of '${code}' is not a boot string.`);
       }
     }
   }
   const english = config.strings['en'];
-  for (const key of BOOT_STRING_KEYS) {
+  for (const key of TM_BOOT_STRING_KEYS) {
     if (typeof english?.[key] !== 'string' || english[key] === '') {
       fail(`the English string '${key}', the fallback of every language, is missing.`);
     }

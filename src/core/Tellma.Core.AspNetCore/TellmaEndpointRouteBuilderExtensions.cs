@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Surfaces;
@@ -62,6 +63,27 @@ namespace Tellma.Core.AspNetCore
             if (HostSettings.Read<AdminSurfaceOptions>(app.Configuration, AdminSurfaceOptions.SectionPath).IsEnabled(identity.Mode))
             {
                 AdminEndpoints.MapV1(app);
+            }
+
+            // --- The BFF: sign-in, sign-out and the back-channel logout are anonymous; the user needs a session ---
+            (IEndpointConventionBuilder[] anonymous, IEndpointConventionBuilder[] session) = BffEndpoints.Map(app);
+            foreach (IEndpointConventionBuilder endpoint in anonymous)
+            {
+                Platform(endpoint, BffEndpoints.TenantlessReason);
+            }
+
+            foreach (IEndpointConventionBuilder endpoint in session)
+            {
+                _ = endpoint
+                    .RequireAuthorization(TellmaPolicies.Web)
+                    .AsTenantlessEndpoint(BffEndpoints.TenantlessReason)
+                    .WithMetadata(PlatformEndpointMetadata.Instance);
+            }
+
+            // --- The in-proc identity server's controllers and pages, under its path base ---
+            if (InProcIdentity.IsInProc(app.Configuration))
+            {
+                InProcIdentity.Map(app);
             }
 
             // --- The tenant route groups ---

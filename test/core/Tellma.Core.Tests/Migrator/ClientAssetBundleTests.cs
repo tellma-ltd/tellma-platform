@@ -39,6 +39,15 @@ namespace Tellma.Core.Tests.Migrator
         }
 
         [Fact]
+        public void A_hash_matches_the_vectors_the_client_build_reads_names_back_by()
+        {
+            // @tellma/core-tools pins the same two vectors: the client build refuses an emitted
+            // file whose name is not the hash of its content.
+            Assert.Equal("WERC8GMRZGE1", ContentHash.Of([]));
+            Assert.Equal("WD346811P10Q", ContentHash.Of(/*lang=json,strict*/ "{\"a\":1}\n"u8));
+        }
+
+        [Fact]
         public void Canonical_JSON_orders_members_ordinally_keeps_arrays_and_re_escapes_text()
         {
             using var document = JsonDocument.Parse("""{ "b": [3, 1, {"z": true, "Z": null}], "a": "\u0041<", "B": 1.50 }""");
