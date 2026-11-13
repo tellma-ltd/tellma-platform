@@ -7,7 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Frozen;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Caching;
 using Tellma.Core.Data.Ids;
+using Tellma.Core.Data.TableTypes;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Data.Batches
@@ -87,8 +89,14 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The id reservations whose rows a save of the batch inserts.</summary>
         private readonly HashSet<ReservationHold> _holds = [];
 
+        /// <summary>The ordinals of the connect prologue's own statements, whose writes are bookkeeping that bumps nothing.</summary>
+        private readonly HashSet<int> _connectStatements = [];
+
         /// <summary>Where the batch is in its life.</summary>
         private Stage _stage;
+
+        /// <summary>Whether the bump statement is appended, after which no statement may write a table with a tag.</summary>
+        private bool _bumpAppended;
 
         /// <summary>The statement being composed, if any; one at a time.</summary>
         private StatementDraft? _open;
@@ -229,6 +237,26 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The caller's user-level tags the connect prologue's reader read, when it read them.</summary>
         internal UserVersionTagSnapshot? ReadUserVersionTags { get; private set; }
 
+        /// <summary>The users whose user-level tags the bump epilogue moved, as its reader read them; null when it moved none.</summary>
+        internal IReadOnlyList<AffectedUser>? AffectedUsers { get; private set; }
+
+        /// <summary>The table-type binder, through which platform statements bind their table-valued parameters.</summary>
+        internal TableTypeBinder Binder => _executor.Binder;
+
+        /// <summary>
+        ///     What the batch bumps: the tenant-level names and user-level rules its written tables and
+        ///     explicit bumps resolve to. Fixed when the epilogue stage starts, from the writes declared
+        ///     before it, so the bump epilogue's own writes never count; resolved afresh before then. The
+        ///     writes of the connect prologue's own statements never count: they are the platform's
+        ///     bookkeeping (the activity stamp and the join flip), which no cache reads. Any other
+        ///     prologue statement that writes a table with a tag is refused when appended.
+        /// </summary>
+        internal VersionTagBumpPlan Bumps
+        {
+            get => field ?? ResolveBumps();
+            private set;
+        }
+
         // ===================== The caller channel =====================
 
         /// <inheritdoc />
@@ -260,6 +288,15 @@ namespace Tellma.Core.Data.Batches
 
             // --- Refusals at append: a write outside the caller's authority, a user-id source that is no batch table ---
             CheckAuthority(options.Writes);
+            CheckUserIds(options);
+            if (options.UserIds is SqlIdentifier { Name: ReservedSqlNames.CallerIds } && Premises is not { IsSystem: false })
+            {
+                // Only a user's connect prologue declares the caller's ids; without it the batch would
+                // fail to compile on the server.
+                throw new InvalidOperationException(
+                    "The statement names the caller's own rows (SqlOptions.ForCaller), but the batch carries no user's connect prologue, which declares the caller. Pass the user ids in SqlOptions.UserIds instead.");
+            }
+
             if (options.UserIds is SqlIdentifier userIds)
             {
                 _ = userIds.IsVariable
@@ -355,10 +392,27 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(dependencies);
             EnsureComposing();
+
+            // --- Every name checked before any is kept: a refused list leaves the batch unchanged ---
+            // A name the registry does not know (one differing from a registered name in case alone
+            // among them) has no row to guard, and would collide with its registered twin in the
+            // guard's case-insensitive key; it is refused here, where the mistake is.
             foreach (VersionTagDependency dependency in dependencies)
             {
-                _dependencies.Add(dependency ?? throw new ArgumentException("The dependencies must not hold a null entry.", nameof(dependencies)));
+                if (dependency is null)
+                {
+                    throw new ArgumentException("The dependencies must not hold a null entry.", nameof(dependencies));
+                }
+
+                if (_executor.VersionTags is IVersionTagRegistry registry && !registry.Names.Contains(dependency.Name, StringComparer.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"The dependency on the version tag '{dependency.Name}' names no registered tag. Name the tag exactly as it is registered: a platform tag ('{VersionTagNames.Settings}', '{VersionTagNames.Permissions}', '{VersionTagNames.Entities}'), a list's tag, or one an entity declares with [BumpsVersionTag].",
+                        nameof(dependencies));
+                }
             }
+
+            _dependencies.AddRange(dependencies);
         }
 
         /// <inheritdoc />
@@ -373,6 +427,16 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             EnsureComposing();
+
+            // A name the registry does not know has no row in any database the migrator seeded, so
+            // the bump would fail at commit; it is refused here, where the mistake is.
+            if (_executor.VersionTags is IVersionTagRegistry registry && !registry.Names.Contains(name, StringComparer.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"The version tag '{name}' is not registered. Bump a tag an entity declares with [BumpsVersionTag], or a platform tag ('{VersionTagNames.Settings}', '{VersionTagNames.Permissions}', '{VersionTagNames.Entities}').",
+                    nameof(name));
+            }
+
             _ = _bumps.Add(name);
         }
 
@@ -409,15 +473,36 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
-            // The allocator's refills ride the body, after the caller's statements.
+            // The allocator's refills ride the body, after the caller's statements; they declare no
+            // writes, so the bumps, fixed next from the writes the caller declared, are unchanged.
             EnsurePrologue();
             _executor.Allocator.AppendRefills(this);
+            VersionTagBumpPlan plan = ResolveBumps();
+
+            // An autocommit batch commits each write on its own, so a failure after one would leave it
+            // committed with no tag moved: a write that bumps a tag needs a transaction.
+            if (TransactionMode == TransactionMode.None && !plan.IsEmpty)
+            {
+                throw new InvalidOperationException(
+                    $"The batch runs in {nameof(TransactionMode.None)} mode, which commits each statement on its own, but its writes bump version tags ({Describe(plan)}). The bump must commit with the writes it covers: run the batch in {nameof(TransactionMode.Auto)} or {nameof(TransactionMode.Explicit)} mode.");
+            }
+
+            Bumps = plan;
             _stage = Stage.Epilogue;
             try
             {
                 for (int index = _contributors.Count - 1; index >= 0; index--)
                 {
                     _contributors[index].Contribute(this, DataBatchStage.Epilogue);
+                }
+
+                // An epilogue statement that writes a table whose tags the fixed plan does not move
+                // would commit rows no cache learns of: refuse it rather than leave them stale.
+                VersionTagBumpPlan after = ResolveBumps();
+                if (after.TenantNames.Except(plan.TenantNames, StringComparer.Ordinal).Any() || after.UserRules.Except(plan.UserRules).Any())
+                {
+                    throw new InvalidOperationException(
+                        $"An epilogue statement writes a table whose version tags the batch does not bump ({Describe(after)}, where the caller's writes bump {Describe(plan)}). The bump is fixed when the epilogue stage starts; such a write belongs in the body.");
                 }
             }
             catch
@@ -520,6 +605,7 @@ namespace Tellma.Core.Data.Batches
             }
 
             FrozenSet<TableName> written = writes is null || writes.Count == 0 ? [] : writes.ToFrozenSet();
+            CheckTaggedWritePlacement(draft, written);
 
             // A declared write ends the write epoch: a later read must see it, so no earlier handle
             // is shared past this point. Cleared before the caller caches this statement's own key,
@@ -543,6 +629,7 @@ namespace Tellma.Core.Data.Batches
         {
             if (ReferenceEquals(draft, _open))
             {
+                _ = _connectStatements.Remove(draft.Ordinal);
                 _open = null;
             }
         }
@@ -569,6 +656,37 @@ namespace Tellma.Core.Data.Batches
         internal DataBatch CreateSibling(BatchPurpose purpose)
         {
             return new DataBatch(_executor, Connection, _services, purpose);
+        }
+
+        /// <summary>
+        ///     Begins one of the connect prologue's own statements, in the <see cref="BatchSection.Prologue" />
+        ///     section: its writes (the activity stamp, the join flip) are the platform's bookkeeping,
+        ///     which bumps no tag. Every other prologue statement that writes a table with a tag is refused.
+        /// </summary>
+        /// <returns>The draft; complete it with <see cref="Append" />.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The batch carries no connect prologue (<see cref="MarkConnectPrologue" />), or its prologue
+        ///     stage ended.
+        /// </exception>
+        internal StatementDraft BeginConnectPrologue()
+        {
+            if (Premises is null)
+            {
+                throw new InvalidOperationException("Only a batch marked with the connect prologue takes the connect prologue's statements.");
+            }
+
+            StatementDraft draft = Begin(BatchSection.Prologue);
+            _ = _connectStatements.Add(draft.Ordinal);
+            return draft;
+        }
+
+        /// <summary>
+        ///     Records that the bump statement is appended. A later statement that writes a table with
+        ///     a tag is refused: it would commit after the bump, and its users would read no source.
+        /// </summary>
+        internal void MarkBumpAppended()
+        {
+            _bumpAppended = true;
         }
 
         /// <summary>
@@ -661,6 +779,13 @@ namespace Tellma.Core.Data.Batches
             ReadUserVersionTags = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         }
 
+        /// <summary>Reports the users whose user-level tags the bump epilogue moved, from its reader.</summary>
+        /// <param name="affected">Each user, with the tag moved for them.</param>
+        internal void ReportAffectedUsers(IReadOnlyList<AffectedUser> affected)
+        {
+            AffectedUsers = affected ?? throw new ArgumentNullException(nameof(affected));
+        }
+
         /// <summary>Sets the authority of the current appender: the stack-owned tables its statements may write.</summary>
         /// <param name="authority">The tables.</param>
         internal void SetCallerAuthority(IReadOnlySet<TableName> authority)
@@ -706,7 +831,7 @@ namespace Tellma.Core.Data.Batches
 
             // --- The re-checks: on a writing persist batch that carries the connect prologue, whatever its transaction mode ---
             PersistChecks? checks = Purpose == BatchPurpose.Persist && Premises is GuardPremises premises && _written.Count > 0
-                ? PersistChecks.Compose(premises, _dependencies, _bumps, _written, _executor.VersionTags, _executor.Binder)
+                ? PersistChecks.Compose(premises, _dependencies, Bumps, _executor.Binder)
                 : null;
 
             return BatchAssembly.Create(_statements, _executor.Fingerprint, CarriesConnectPrologue, inTextTransaction, checks);
@@ -720,6 +845,50 @@ namespace Tellma.Core.Data.Batches
         private static NotSupportedException NotAvailable(string member)
         {
             return new NotSupportedException($"{nameof(IDataBatch)}.{member} is not available: its statement compiler is not part of this build.");
+        }
+
+        /// <summary>The bumps of the writes declared outside the connect prologue's own statements, and of the explicit bumps.</summary>
+        /// <returns>The plan.</returns>
+        private VersionTagBumpPlan ResolveBumps()
+        {
+            HashSet<TableName> written = [.. _statements.Where(statement => !_connectStatements.Contains(statement.Ordinal)).SelectMany(static statement => statement.Writes)];
+            return VersionTagBumpPlan.Resolve(_executor.VersionTags, written, _bumps);
+        }
+
+        /// <summary>
+        ///     Refuses a write to a table with a tag where no bump can cover it: in a prologue statement
+        ///     other than the connect prologue's own, which runs outside the batch's transaction, or after
+        ///     the bump statement, which then no longer runs last and has read its users already.
+        /// </summary>
+        /// <param name="draft">The statement's draft.</param>
+        /// <param name="written">The tables it writes.</param>
+        /// <exception cref="InvalidOperationException">The statement writes such a table there.</exception>
+        private void CheckTaggedWritePlacement(StatementDraft draft, FrozenSet<TableName> written)
+        {
+            bool prologue = draft.Section == BatchSection.Prologue && !_connectStatements.Contains(draft.Ordinal);
+            if (written.Count == 0 || !(prologue || _bumpAppended))
+            {
+                return;
+            }
+
+            var plan = VersionTagBumpPlan.Resolve(_executor.VersionTags, written, FrozenSet<string>.Empty);
+            if (plan.IsEmpty)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(prologue
+                ? $"A prologue statement writes a table whose writes bump version tags ({Describe(plan)}). The prologue runs before the batch's transaction, where no bump covers it; such a write belongs in the body."
+                : $"A statement appended after the bump writes a table whose writes bump version tags ({Describe(plan)}). The bump is the last statement before the commit; such a write belongs in the body, or in an epilogue that runs before the bump.");
+        }
+
+        /// <summary>A plan's names and rules, for a refusal's message.</summary>
+        /// <param name="plan">The plan.</param>
+        /// <returns>The description.</returns>
+        private static string Describe(VersionTagBumpPlan plan)
+        {
+            IEnumerable<string> items = plan.TenantNames.Concat(plan.UserRules.Select(static rule => $"{rule.Column} of the users {rule.Table} names"));
+            return items.Any() ? string.Join(", ", items) : "nothing";
         }
 
         /// <summary>Refuses everything once a contributor failed during a stage.</summary>
@@ -788,6 +957,27 @@ namespace Tellma.Core.Data.Batches
                     throw new InvalidOperationException(
                         $"The statement writes {table}, which the stack '{owner}' owns and the current caller may not write. Enlist the write with '{owner}', so it runs under that stack's authority.");
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Refuses a raw write to a table with a user-level tag rule that does not say which users it
+        ///     wrote: their cached permissions or preferences would never be invalidated.
+        /// </summary>
+        /// <param name="options">The statement's options.</param>
+        /// <exception cref="ArgumentException">The statement writes such a table without <see cref="SqlOptions.UserIds" />.</exception>
+        private void CheckUserIds(SqlOptions options)
+        {
+            if (options.UserIds is not null || options.Writes.Count == 0 || _executor.VersionTags is not IVersionTagRegistry registry)
+            {
+                return;
+            }
+
+            if (registry.Resolve(options.Writes).UserRules is [UserVersionTagRule rule, ..])
+            {
+                throw new ArgumentException(
+                    $"The statement writes {rule.Table}, whose writes bump the {rule.Column} tag of each user they name, but it does not say which users it wrote. Pass their ids in SqlOptions.UserIds, or SqlOptions.ForCaller for the caller's own rows.",
+                    nameof(options));
             }
         }
 

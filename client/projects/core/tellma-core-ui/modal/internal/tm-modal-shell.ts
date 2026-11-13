@@ -39,10 +39,10 @@ import type { ɵTmModalShellPayload } from '../tm-modal-ref';
     '[class.tm-modal--end]': 'payload.placement === "end"',
   },
   template: `
-    @if (payload.title !== undefined || payload.showClose) {
+    @if (payload.title() !== undefined || payload.showClose) {
       <div class="tm-modal__header">
-        @if (payload.title !== undefined) {
-          <h2 class="tm-modal__title" [id]="payload.titleId">{{ payload.title }}</h2>
+        @if (payload.title(); as title) {
+          <h2 class="tm-modal__title" [id]="payload.titleId">{{ title }}</h2>
         }
         @if (payload.showClose) {
           <button

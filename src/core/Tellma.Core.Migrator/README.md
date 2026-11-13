@@ -61,6 +61,12 @@ instance, fails that tenant instead of letting two runs interleave. Only the run
 stops a run; any other failure, a timeout inside a step included, is that tenant's and the others go
 on.
 
+A tenant run that applied a migration or ran a step moves every version tag at its end, and also
+on the way out when it fails after doing either, since what it committed stays. That last move is
+bounded by `Tellma:Migrator:VersionTagBumpTimeout` (a `TimeSpan`, 30 seconds by default) and is not
+stopped by the run's cancellation; when it fails or runs out of time, the run logs
+`MigratorVersionTagBumpFailed` and reports the original failure.
+
 ### The application role's grants
 
 After every migration the migrator recomputes `tellma_app`'s grants from the model: `SELECT`,

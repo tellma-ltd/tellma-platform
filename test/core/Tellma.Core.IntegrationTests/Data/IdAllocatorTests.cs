@@ -87,7 +87,10 @@ namespace Tellma.Core.IntegrationTests.Data
             DataBatch validate = Batch(scope, connection, BatchPurpose.Validate);
             using IdReservation reservation = Allocator(scope).Reserve(validate, typeof(Widget), widgets);
             Assert.False(reservation.IsImmediate);
-            _ = Assert.Single(validate.Statements);
+
+            // The version-tag prelude rides the prologue; the reservation is the one statement after it.
+            _ = Assert.Single(validate.Statements, static statement => statement.Section == BatchSection.Body);
+            Assert.Contains("sp_sequence_get_range", validate.Statements[^1].Text, StringComparison.Ordinal);
             BatchOutcome reserved = await validate.ExecuteAsync(Token);
             reservation.Assign(widgets);
 
@@ -539,7 +542,8 @@ namespace Tellma.Core.IntegrationTests.Data
             public List<VersionTagSnapshot> Read { get; } = [];
 
             /// <inheritdoc />
-            public int Order => 0;
+            /// <remarks>Last, so its report follows the real prelude's and is the one the batch keeps.</remarks>
+            public int Order => int.MaxValue;
 
             /// <inheritdoc />
             public void Contribute(IDataBatch batch, DataBatchStage stage)

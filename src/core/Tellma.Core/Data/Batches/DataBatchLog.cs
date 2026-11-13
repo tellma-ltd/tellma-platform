@@ -91,5 +91,16 @@ namespace Tellma.Core.Data.Batches
             Level = LogLevel.Information,
             Message = "Attempt {Attempt} of a round trip of {Operation} on tenant {TenantId} failed ({RetryClass}); it is sent again in {DelayMs} ms.")]
         public static partial void Retrying(ILogger logger, Exception exception, string operation, int tenantId, int attempt, string retryClass, double delayMs);
+
+        /// <summary>Recording what a failed batch read (its tags, its metering) failed; the batch's own failure surfaces.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The recording's exception.</param>
+        /// <param name="operation">The scope's operation.</param>
+        /// <param name="tenantId">The tenant.</param>
+        [LoggerMessage(
+            EventName = "DataBatch.FailureObservationFailed",
+            Level = LogLevel.Warning,
+            Message = "Recording the version tags of a failed batch of {Operation} on tenant {TenantId} failed; the batch's own failure surfaces.")]
+        public static partial void FailureObservationFailed(ILogger logger, Exception exception, string operation, int tenantId);
     }
 }

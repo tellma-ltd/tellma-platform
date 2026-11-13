@@ -94,16 +94,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-12 13:50 | | | 2026-11-17 20:00 | PC-F18 done (CI 43216268294), PC-023 done (CI 43221550998) → 41 done. check_deps fix (D-059): 8 T1 ready → PC-026 pc-1, PC-033 pc-3, PC-034 pc-f launched; PC-F21 r2, PC-F23 impl |
 | 2026-11-12 19:22 | | | 2026-11-17 20:00 | PC-F23 done (CI 43248406932), PC-035 done (CI 43284321336, 42 done), PC-F21 done (CI 43287447113; PC-051/PC-057 unblocked). In flight: PC-026, PC-033, PC-034 fix+int; PC-073, PC-036 impl |
 | 2026-11-12 20:00 | 59 | 19 | 2026-11-17 20:00 | ΔU 11 since 11:50 (≈1.4/h, 5 heavy agents, Opus only). R 41: in flight PC-026/PC-033/PC-034 fix+int, PC-073/PC-036 impl; next ready PC-051, PC-057, PC-075 |
+| 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-026 | pc-1 | pc/PC-026 | fix1 + integrate (R1 0/3/4: page-header start slot spills under the end slot; card descendant selectors reach nested cards; error-dialog e2e measures mid-animation; focus not on the primary button; no announcement on replace; Details styles; test gaps) | a7246514cf8630136 (Opus inherit) | r1 afd72538f1e78d5b2 done | 2026-11-12 13:50 |
-| PC-047 | pc-3 | pc/PC-047 | impl | a5cf206eb092b4ff3 (Opus inherit) |  | 2026-11-12 21:00 |
-| PC-073 | pc-2 | pc/PC-073 | impl | a40e83c79ea0ee930 (Opus inherit) | | 2026-11-12 |
-| PC-036 | pc-4 | pc/PC-036 | fix1 + integrate (R1 0/0/3: GapThreshold bound overflows DATEADD; handler marks untestable outside Tellma.Core (Testing probe); converter test) | a462c68ffc3a42040 (Opus inherit) | r1 a2d143b4439ac5198 done | 2026-11-12 |
-| PC-051 | pc-f | pc/PC-051 | impl | ae80b824ba3c6b328 (Opus inherit) | | 2026-11-12 |
+| PC-047 | pc-3 | pc/PC-047 | held: merge d732283 on pc/PC-047 ready (fix2 48d00f6: 5 s deadline, 2 retries 1 s apart (12 s window), 20 s backoff only for unreached; gates green); push queued behind PC-038 (CI green at c3103a7) | a5cf206eb092b4ff3 (Opus inherit) | r1 ae7eaf7bcafdc1e03 (2.42M), r2 a7ce9fbd8c6955482 done | 2026-11-12 21:00 |
+| PC-073 | pc-2 | pc/PC-073 | held: merge a7c1051 on pc/PC-073 ready (fix2 fe8eae5: base href required before URL-loading elements, prelint:test builds MCP inputs (timeout back to 60 s), build runs assets:generate; e2e 906); push queued behind PC-038 (CI green at c3103a7) | a40e83c79ea0ee930 (Opus inherit) | r1 acef55d162a7a175c (2.17M), r2 afca6fbc74abb1947 done | 2026-11-12 |
+| PC-038 | pc-4 | pc/PC-038 | integrate released 2026-11-13 (re-merge onto c3103a7, gates, push); was held at 9e82c32 | a1e701bcaf1f222d3 (Opus inherit) | r1 ac1ca81d98305fdf5 (2.72M), r2 a0f8274885e0c90e5 done | 2026-11-12 22:00 |
+| PC-037 | pc-f2 | pc/PC-037 | fix2 + integrate, held (R2 0/0/4: stale ids re-enter the buffer after a drop; BehindOnRefill repeats every batch; heal failures wrapped as 500; PITR cut-over leaves stale buffers) | a3251b1aa2fda801b (Opus inherit) | r1 a8fbedb6a36a5e00b (1.99M), r2 a1f3b2aa082b1b9d0 done | 2026-11-13 02:30 |
+| PC-051 | pc-f | pc/PC-051 | fix2 + integrate (R2 0/2/5: @defer chunks measured unlinked, no leftover-declaration assertion; row-end ring survives Mod+A/Shift+Space/drag so keyboard clipboard no-ops; D-067 entry list wrong) | ae80b824ba3c6b328 (Opus inherit) | r1 a1869d9a34dc587e5 (1.65M), r2 a74bea9a2ea109da0 done | 2026-11-12 |
 
 ## Fix items
 
@@ -132,6 +133,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F22 | CI red on 9007c81 (client, PR-tier e2e chromium): grid-search-page.spec.ts:124 'Enter opens the active row; Mod+Enter opens it in a new tab' (ltr) flaky — first attempt 5.4 s, activated text not '1 via keyboard'; retry passed; new PC-048 test | done (CI 43210943912 green at a77ee57) ← integrated a77ee57 (fast-forward of 6e6f973 + a77ee57; CI 43210943912 pending; R1-1 fixed with a mutant-checked test; R1-2 → PC-F24) ← fix1 + integrate (R1 0/0/2: test for a repeating Enter with no active row; consumer-write mirror race pushed to PC-F24) ← r1 (fix 6e6f973: product race — driver Enter read the activeRowId model, written back only on the next render, so Enter queued behind ArrowDown fell through; now activateRow() reads the engine synchronously; deterministic unit + e2e; spec ×20 840/840; full CI-mode e2e 781/781) | 6e6f973, a77ee57 (pc) |  | stop the line; PC-023 holds its push |
 | PC-F23 | api:check golden union order depends on the build path: a single-project `ng build` and the full `pnpm run build` print literal unions in different orders (`rowActivation` row/none, chip `kind`); PC-048 and PC-023 each flipped goldens with api:approve, so CI api:check can fail on whichever order the other path produced. Make the API report order-stable (sort unions in the report, or make api:approve use the CI build path). PC-F22 finding: the flip comes from a warm .angular/cache (clean build prints "row" first, matching CI); approving from a warm cache writes the wrong order | done (CI 43248406932 green; integrated fe611bf; fix 2aeb8e1, merge 01a5726; post-merge approve reordered chip/toast/banner/core-ui-testing goldens) ← fix1 + integrate (R1 0/1/4: same-line comments lost when reordering; multi-line separators; number vs bigint rank; CRLF; shape tests) ← r1 (impl 87db466: TypeScript-parser normalizer sorts every union in the API reports on check and approve; 29 goldens re-normalized once; warm and clean builds both pass) ← impl (2026-11-12 11:55), pc-2, fix-PC-F23 (Opus) | 87db466, 2aeb8e1, 01a5726, fe611bf (pc) | 3.75M (impl+fix+int) + r1 1.05M | from PC-048/PC-023 integrations |
 | PC-F24 | tmGridDriver: a consumer write to activeRowId reaches the grid only on the next render, so an ArrowDown or Enter queued behind it acts on the stale active cell (pre-existing; found by PC-F22 R1-2). Fix: apply the pending consumer write before moveActiveRow/activateRow | todo (low) | | | follow-up |
+| PC-F25 | CI red on ddb8259 (client, PR-tier e2e chromium): grid-a11y.spec.ts:95 forced colors 'selected and active cells stay distinguishable from normal cells' flaky (selected background equalled the plain even row's at line 113; passed on retry) | done (CI 43352828665 green; f9b7e33) | 6b47145, f9b7e33 (pc) | 5.64M (impl+fix 4.30, r1 1.34) | stop the line |
+| PC-F26 | forced colors: the row-activation accent bar is Highlight on the first painted cell and may match a hit row header or a checked checkcell wherever SelectedItem equals Highlight (Windows); found by PC-F25 | todo (low) | | | |
+| PC-F27 | CI red on 89c4708 (client, PR-tier e2e chromium): splitter.spec.ts:146 'a shrinking container clamps the list and keeps the size asked for' flaky (toBeLessThan NaN on the first attempt; passed on retry) | done (CI 43388722956 green at c3103a7; fast-forward; fix1 waits on the resize's own render (aria-valuemin) and on fonts; 270/270 repeat) | dfe426b, c3103a7 (pc) |  | stop the line |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -169,6 +173,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| dotnet Tellma.Imaging HostileDocumentTests memory-growth floor (119 MiB under the 128 MiB floor under parallel load; passes alone; PC-047 merge) | 2026-11-13 | watch |
+| dotnet Tellma.Core.IntegrationTests DataBatchTests cancellation wall-clock assertion (failed once under load; 28/28 alone; PC-047 merge) | 2026-11-13 | watch |
+| dotnet Tellma.Core.IntegrationTests SqlQueryTextTests.A_commands_span_carries_no_query_text (captures other classes' fixture ALTER DATABASE spans running at the same time; passes alone; seen by PC-033 integrate and PC-038 R2) | 2026-11-13 | watch; a fix item if it reaches CI |
 | client e2e grid-clipboard test stuck on the shared clipboard lock (PC-B01 fixer, local; 14 load failures on first full run, reruns green) | 2026-11-12 | watch; PC-F18 area |
 | (lesson) client tooling tests that lint sample text through a typed-linted path must set disallowAutomaticSingleRunInference, or they pass locally and fail under CI=true | 2026-11-11 | consider a shared ESLint helper for tooling tests (PC-F19) |
 | client core-ui tm-grid-clipboard.spec.ts "menu Paste reads the async clipboard and drives the same ladder" (CI ef67f47: expected 'Alpha' to be 'MenuPasted'; no client change since the previous green sha) | 2026-11-11 | timing-dependent (turn-capped wait vs real Blob read); PC-F18 |
@@ -240,7 +247,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-023 | 0023-c | 1 | done (CI 43221550998 green; integrated 4e5d705; golden re-approved from a clean build 6a32a52; '.' 8.71/8.81, chip 5.65/5.75, toast 5.58/5.7, banner 2.48/2.6, busy-overlay 2.39/2.5; e2e 837/837) | 83d81bb, c224a4e, b44e9a5, 76d2f23, 6a32a52, 4e5d705 (pc) | 20.51M (impl+fix+int 18.45, r1 2.06) |  |
 | PC-024 | 0011-b | 1 | done | 5d367f3, e5e0155, 630bf26 (pc) | 25.08M | CI red from the PC-F12 consent test; done with PC-F12 at f2b1591, CI 42608310703 green; 16 deviations; D-036 |
 | PC-025 | 0011-c | 1 | done | ef6a61c, 3c46607, 3db32cd (pc) | 22.05M (impl+fix+int 20.60 fable, r1 1.45 Opus) | CI 43007537552 green |
-| PC-026 | 0023-d | 1 | fix1 + integrate | 65a5310 |  |  |
+| PC-026 | 0023-d | 1 | done (integrated 89c4708; CI 43372513599 red from its own splitter flake, fixed by PC-F27; green at c3103a7, CI 43388722956) | 65a5310, a486a58, 064e666, 89c4708 (pc) | 17.23M (impl+fix 14.97, r1 2.26) |  |
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
@@ -250,9 +257,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
 | PC-035 | 0021-a | 1 | done (CI 43284321336 green; integrated d0093fc; fast-forward; new deviation 12: IDataBatch.IsComposing) | c49c44f, d0093fc (pc) | 11.79M (impl+fix+int 9.64, r1 2.15) |  |
-| PC-036 | 0020-a | 1 | fix1 + integrate | 2e5de44 |  |  |
-| PC-037 | 0012-e | 1 | todo | | | |
-| PC-038 | 0013-d | 1 | todo | | | |
+| PC-036 | 0020-a | 1 | done (CI 43325841371 red on ddb8259 from a pre-existing grid flake, fixed by PC-F25; green at f9b7e33, CI 43352828665) | 2e5de44, 60bff60, ddb8259 (pc) | 9.52M (impl+fix 8.14, r1 1.38) |  |
+| PC-037 | 0012-e | 1 | fix2 + integrate (held) | 79c94a2, 30c3508 |  |  |
+| PC-038 | 0013-d | 1 | integrating (released) | 57575e0, b3ac84e, ac5c5b6, 9e82c32 (pending) |  |  |
 | PC-039 | 0014-b | 1 | todo | | | |
 | PC-040 | 0012-g | 1 | todo | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
@@ -261,11 +268,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-044 | 0013-e | 1 | todo | | | |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
-| PC-047 | 0011-f | 1 | impl |  |  |  |
+| PC-047 | 0011-f | 1 | held (merged d732283, not pushed) | 90931cd, 5b1ef79, 48d00f6, d732283 (pending) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | todo | | | |
 | PC-050 | 0014-d | 1 | todo | | | |
-| PC-051 | 0010-c4 | 1 | impl |  |  |  |
+| PC-051 | 0010-c4 | 1 | fix2 + integrate | 6927550, 2dfda91 |  |  |
 | PC-052 | 0014-e | 1 | todo | | | |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | todo | | | |
@@ -287,7 +294,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-070 | 0015-e | 1 | todo | | | |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | todo | | | |
-| PC-073 | 0024-e | 1 | impl |  |  |  |
+| PC-073 | 0024-e | 1 | held (merged a7c1051, not pushed) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051 (pending) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
 | PC-075 | 0025-a | 1 | todo | | | |
 | PC-076 | 0015-h | 1 | todo | | | |

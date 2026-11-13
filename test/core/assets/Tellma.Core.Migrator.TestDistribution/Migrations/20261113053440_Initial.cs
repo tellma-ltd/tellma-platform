@@ -83,6 +83,20 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "VersionTags",
+                schema: "core",
+                columns: table => new
+                {
+                    Name = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Tag = table.Column<Guid>(type: "uniqueidentifier", nullable: false, defaultValueSql: "NEWID()")
+                        .Annotation("Relational:DefaultConstraintName", "DF_VersionTags_Tag")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VersionTags", x => x.Name);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Blobs",
                 schema: "core",
                 columns: table => new
@@ -741,14 +755,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "VersionTagList",
-                physicalName: "VersionTagList_8fc97fb9",
+                physicalName: "VersionTagList_e552f6b8",
                 schema: "dbo",
                 scope: "tellma.tenant",
-                definitionHash: "8fc97fb9559068b857bd2a5130ea70c89f68b9735bed22801db4428de7a37a56",
+                definitionHash: "e552f6b802344fc80645c75f7e6b7b6c72af4148dac74e8172c6836a1480ae13",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(128)", MaxLength = 128 },
-                    new TableTypeColumnDefinition { Name = "Tag", StoreType = "uniqueidentifier" },
+                    new TableTypeColumnDefinition { Name = "Tag", StoreType = "uniqueidentifier", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "Bumped", StoreType = "bit" },
                 },
                 primaryKey: new[] { "Name" },
@@ -772,7 +786,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_8fc97fb9", "GadgetsList_d6f3f00e" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "GadgetsList_d6f3f00e" });
         }
 
         /// <inheritdoc />
@@ -819,6 +833,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserStamps",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "VersionTags",
                 schema: "core");
 
             migrationBuilder.DropTable(

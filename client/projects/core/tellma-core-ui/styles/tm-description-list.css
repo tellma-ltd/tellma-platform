@@ -1,0 +1,76 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* dl[tmDescriptionList] — the directive's global stylesheet (a directive
+   has no view to carry styles). The list is a wrapping row of pairs, each
+   pair a <div> holding a <dt> and its <dd>. One column gives every pair the
+   whole line; two give each pair half of it less the gap between them. */
+
+.tm-description-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--description-list-row-gap) var(--description-list-column-gap);
+  margin: 0;
+  padding: 0;
+}
+
+/* One pair: the label above its value. */
+.tm-description-list > div {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: var(--description-list-pair-gap);
+  min-inline-size: 0;
+}
+
+/* Two columns: each pair is exactly half the line less half the gap, so a
+   short pair beside a long one keeps its column, and an odd last pair
+   stays in the first column instead of stretching across. */
+.tm-description-list[data-columns='2'] > div {
+  flex: 0 0 calc((100% - var(--description-list-column-gap)) / 2);
+}
+
+/* Auto: the list is the container its pairs query, so the switch to two
+   columns follows the list's own width, not the viewport's. */
+.tm-description-list[data-columns='auto'] {
+  container-type: inline-size;
+}
+
+@container (width >= 576px) {
+  .tm-description-list[data-columns='auto'] > div {
+    flex: 0 0 calc((100% - var(--description-list-column-gap)) / 2);
+  }
+}
+
+/* Inline: the label beside its value. Every pair in a column has the same
+   width, so a label share of each pair lines the values up down the
+   column. */
+.tm-description-list[data-layout='inline'] > div {
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--description-list-inline-label-width))
+    minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: var(--description-list-column-gap);
+}
+
+.tm-description-list dt {
+  margin: 0;
+  color: var(--description-list-label-color);
+  font-size: var(--description-list-label-font-size);
+  font-weight: var(--weight-medium);
+}
+
+/* Values are what the reader came for: strong ink, and a long unbroken
+   value (a trace id, a URL) wraps instead of widening the pair. */
+.tm-description-list dd {
+  margin: 0;
+  color: var(--description-list-value-color);
+  font-size: var(--description-list-value-font-size);
+  overflow-wrap: anywhere;
+}

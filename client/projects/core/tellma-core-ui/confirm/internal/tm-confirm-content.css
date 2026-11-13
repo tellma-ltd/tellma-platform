@@ -1,0 +1,59 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The confirm body: an optional 26 px tinted disc, then the message. */
+.tm-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--modal-alert-gap);
+}
+
+.tm-confirm__icon {
+  --icon-size: var(--modal-alert-glyph-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--modal-alert-icon-size);
+  block-size: var(--modal-alert-icon-size);
+  border-radius: var(--radius-full);
+}
+
+.tm-confirm__icon[data-tone='warning'] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.tm-confirm__icon[data-tone='error'] {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.tm-confirm__icon[data-tone='info'] {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+/* The message sits on the disc's centre line when it is one line long. */
+.tm-confirm__message {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  padding-block: calc((var(--modal-alert-icon-size) - 1lh) / 2);
+  color: var(--text-body);
+  font-size: var(--modal-message-font-size);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+@media (forced-colors: active) {
+  /* The tint is repainted away: the disc keeps an outline. */
+  .tm-confirm__icon {
+    border: var(--border-width) solid CanvasText;
+  }
+}
