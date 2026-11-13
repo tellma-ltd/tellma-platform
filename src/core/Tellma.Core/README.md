@@ -283,8 +283,42 @@ before it surfaces. A statement's reader stages its results on the cursor, so on
 counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
 `DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
 `tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
-remaining statement compilers (saves, updates, deletes, the version-tag cache) join the batch in
-later releases; until then those members throw `NotSupportedException`.
+remaining statement compilers (updates, deletes, the version-tag cache) join the batch in later
+releases; until then those members throw `NotSupportedException`.
+
+### Ids and saves
+
+There are no identity columns: `IIdAllocator` (a singleton) hands out ids from each table's
+`sq_<Table>` sequence through a buffer of contiguous ranges per tenant and sequence. `Reserve`
+counts the exact deficit of a payload (every row with no id yet, children included, a temporary
+negative id unique per table), serves it from the buffer, and appends one `sp_sequence_get_range`
+statement per short table to the batch it is given, sized to the shortfall plus
+`Tellma:Data:IdBufferLowWater`, reading the table's `MAX([Id])` with the range. Once that batch
+ran, `Assign` gives every new row its id in topological order, sets each child's parent key from
+the nesting and rewrites temporary ids in self-typed references and a tree's parent key; a
+temporary id no row defines stays negative for the pipeline to report. Disposing the reservation
+before a batch saving its rows executed returns its ids to the front of the buffer; after one, even
+a failed one, none returns. A range that starts at or under the table's largest id is discarded
+and one more autocommit round trip consumes the gap (`IdAllocator.Healed`, Warning). A duplicate
+primary key is never healed or retried: the executor drops that sequence's buffer
+(`IdAllocator.BufferDropped`) and rethrows. Any batch writing a table whose buffer is in use and
+below the low-water mark carries a refill. `TakeAsync` serves callers outside any batch, with one
+autocommit round trip when the buffer is short.
+
+`IDataBatch.Save` appends one statement per save, its text cached per root entity and recompile
+hint: two table-valued parameters per table (new and existing rows) plus each child collection's
+parents; the saved set; a concurrency guard taking U locks on every existing root that selects its
+conflict rows and throws `50409` with a capped JSON message (90 ids per list for an `int` key, 50
+for a `bigint` one); the root insert with server stamps and a tree's provisional node; each child
+collection synchronised under the parents that supplied it (removed rows' descendants deleted
+deepest first, changed rows updated, new rows inserted), nested collections after; and the root
+update of rows that changed or whose children did, stamped. Unchanged rows are skipped by a
+binary-collated `EXCEPT`, so a no-op leaves no history row. Every blob-reference column has a
+capture table of old and new ids, which the `SaveHandle` names with the saved, new and touched
+root sets. Above `Tellma:Data:LargeBatchThreshold` rows in any table every data-modifying statement
+carries `OPTION (RECOMPILE)`. A save needs its batch in one transaction. Once the batch ran, the
+rows carry the stamps the statement wrote and the new rows count as existing. The allocator meters
+`tellma.data.ids.*`, the emitter `tellma.data.rows.saved` and `tellma.data.concurrency.conflicts`.
 
 ### Queries
 
@@ -670,6 +704,8 @@ share the notification type keys' grammar.
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
+| `Data/Ids/` | `IdAllocator`, its per-tenant sequence buffers, the reservation hold that assigns and rewrites ids, and its log events. |
+| `Data/Saves/` | The save emitter: the plan of a root entity's tables and columns, the payload sorted into new and existing rows, and the statement's text. |
 | `Data/Batches/` | `ITenantDatabase`, `ITenantDatabaseFactory` and their implementations, `DataBatch` with its internal channel, the assembly and line map, the hole renderer, the result-set cursor, the executor and its log events. `DataOptions` and `DataCancellation` sit in `Data/`. |
 | `Data/Metadata/` | `EntityMetadataProvider` and the builder that validates the model into it, the compiled accessors, the fingerprints, and the source the startup check and the host share. |
 | `Tenancy/` | `CatalogDbContext`, `CatalogMigrations`, the options, `ITenantRegistry`, `ITenantConnectionFactory`, `ITenantConnectionProvider`, `ITenantCatalog`, `TenantInfo`, `TenantLocation`, `TenantRegistration`, `DatabaseCreation`, `IRequestContextHolder`, `ITenantAccessGuard`, `TenantAccessRequirement`; internally the registry and its refresh service, the catalog reader and statements, the location grammar, the connection composition, the state table, the membership directory, the request-context holder, the access guard, the scope factory, the sandbox context, the scope's connection provider, the log events and instruments. |

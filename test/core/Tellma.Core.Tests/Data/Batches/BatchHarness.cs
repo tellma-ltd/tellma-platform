@@ -13,7 +13,9 @@ using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Composition;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -51,6 +53,8 @@ namespace Tellma.Core.Tests.Data.Batches
                 _root.GetRequiredService<ILogger<DataBatch>>(),
                 _root.GetRequiredService<DataMetrics>(),
                 _root.GetRequiredService<QueryServices>(),
+                _root.GetRequiredService<IdAllocator>(),
+                _root.GetRequiredService<SaveEmitter>(),
                 _root);
         }
 
@@ -110,6 +114,9 @@ namespace Tellma.Core.Tests.Data.Batches
 
             /// <inheritdoc />
             public QueryexContextValues Context => context;
+
+            /// <inheritdoc />
+            public int? UserId => 7;
 
             /// <inheritdoc />
             public ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)
