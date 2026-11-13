@@ -361,9 +361,9 @@ Format, one entry per ruling:
 
 ### D-071 (PC-075, 2026-11-13): the interim session expiry signs in instead of reloading (amends D-048)
 
-- Ruling: until PC-110's expiry dialog lands, TmSession's interim `expired()` sweeps the user's stored partitions, clears `sub` and navigates to sign-in. This replaces D-048's reload. D-048's intent holds: an expired tab never keeps showing the user's data. The reload's only advantage was simplicity, and the sign-in avoids a pointless round trip to the boot page.
-- Also from PC-075 review 1: the store's boot step writes `sub` itself, but only when the store opened on disk. A store that fell back to memory (3 s open timeout or a transaction failure) never writes `sub`, and its sweeps report "not applied", so the next launch's backstop sweep still runs. `ɵstart` never rejects (spec 0025 Decision 13).
-- For Ahmad: spec 0025 §2.6 says a receiving tab empties the mirror entries under a sweep's prefix, but it re-reads them. Spec 0025 §2.1/§2.6 and 0024 §8.1 need text saying who writes `sub`. The user sees no explanation on expiry until PC-110.
+- Ruling: until PC-110's expiry dialog lands, TmSession's interim `expired()` sweeps the user's stored partitions and navigates to sign-in; it clears `sub` only when that sweep did not apply (cut short, rejected or resolved false), and otherwise keeps it per spec 0024 §8.6. This replaces D-048's reload. D-048's intent holds: an expired tab never keeps showing the user's data. The reload's only advantage was simplicity, and the sign-in avoids a pointless round trip to the boot page.
+- Also from PC-075 review 1: the store's boot step writes `sub` itself, but only when the store opened on disk. A store that could not reach an existing IndexedDB (3 s open timeout or a transaction failure) never writes `sub` (it does write it when IndexedDB is absent or under a memory host, which is harmless), and its sweeps report "not applied", so the next launch's backstop sweep still runs. `ɵstart` never rejects (spec 0025 Decision 13).
+- For Ahmad: spec 0025 §2.6 says a receiving tab empties the mirror entries under a sweep's prefix, but it re-reads them. Spec 0025 §2.1/§2.6 and 0024 §8.1 need text saying who writes `sub`; spec 0025 §2.1's contract needs `sweep(): Promise<boolean>`. The user sees no explanation on expiry until PC-110.
 
 ### D-070 (PC-057, 2026-11-13): unbound entity labels are bidi-isolated in both the picker and the grid
 
