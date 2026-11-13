@@ -11,12 +11,14 @@ import type { ɵTmGridRowVm, ɵTmGridViewCore } from './grid-core';
 /**
  * A cell of the row-end column: its header when no row is given, otherwise
  * that row's body cell. Sticky at the inline end, it paints its row's band
- * over an opaque surface, draws a hairline on its inline-start edge while
- * content scrolls under it, and projects the consumer's row-end template.
+ * over an opaque surface (with the range fill while its whole row is
+ * selected), draws a hairline on its inline-start edge while content scrolls
+ * under it, and projects the consumer's row-end template.
  *
- * A component of its own so the column's styles, roles, indexes and tab stop
- * live beside it rather than in the grid view, whose template and styles the
- * published bundle carries twice.
+ * A component of its own, like the find bar and the touch handles, so the
+ * column's sticky layering, band repainting, roles, indexes and tab stop
+ * live together in one place, and its stylesheet stands apart from the grid
+ * view's.
  */
 @Component({
   selector: 'tm-grid-end-cell',
@@ -35,6 +37,7 @@ import type { ɵTmGridRowVm, ɵTmGridViewCore } from './grid-core';
     '[class.tm-grid__endhdr]': '!row()',
     '[class.tm-grid__endcell]': '!!row()',
     '[class.tm-grid__endcell--active]': '!!row()?.endActive',
+    '[class.tm-grid__endcell--selected]': '!!row()?.endSelected',
     '[attr.data-tm-endhdr]': 'row() ? null : ""',
     '[attr.data-tm-endcell]': 'row() ? "" : null',
     '[attr.data-row]': 'row()?.viewIndex ?? null',

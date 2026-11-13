@@ -36,13 +36,6 @@ export interface TmGridKeyContext {
   readonly activeIsBoolean: boolean;
   /** Whether the readonly grid opens rows (row activation is on). */
   readonly rowActivation: boolean;
-  /**
-   * Whether focus is on a column header of a grid whose header row
-   * navigates; absent, focus is on a cell. On a header, Alt+ArrowDown opens
-   * the header's action rather than a cell's dropdown (the header's other
-   * keys resolve through `tmResolveHeaderKey`).
-   */
-  readonly header?: boolean;
 }
 
 /** Where a header-row key moves the header focus. */
@@ -306,7 +299,7 @@ function conditionHolds(
     case 'rowActivation':
       return ctx.rowActivation;
     case 'header':
-      return ctx.header === true;
+      return false; // header keys resolve through tmResolveHeaderKey
     default:
       return true;
   }
@@ -345,9 +338,6 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
       return ctx.isTree ? { kind: key === 'ArrowRight' ? 'expand' : 'collapse' } : null;
     }
     if (key === 'ArrowDown') {
-      if (ctx.header === true) {
-        return { kind: 'headerAction' };
-      }
       // Routed as an edit intent that carries the ask, so ONE press reaches
       // the panel or calendar (F2 on the same cell opens the editor without it).
       return ctx.editable ? { kind: 'edit', mode: 'edit', dropdown: true } : null;
@@ -451,6 +441,11 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
   return null;
 }
 
+// The bindings that apply on a navigable header rather than in the rows.
+const HEADER_BINDINGS: readonly TmGridKeyBinding[] = TM_GRID_KEY_BINDINGS.filter(
+  (binding) => binding.when === 'header',
+);
+
 /** What the header-key resolver needs to know about the grid. */
 export interface TmGridHeaderKeyContext {
   /** Whether the platform is Apple's, where Mod is ⌘ rather than Ctrl. */
@@ -473,15 +468,15 @@ export function tmResolveHeaderKey(
   if (ctx.searchable && tmKeysMatch(event, TM_GRID_FIND_KEYS, ctx.apple)) {
     return { kind: 'find' };
   }
-  const key = event.key;
-  const shift = event.shiftKey;
-  // Alt+ArrowDown opens the header's action; no other key takes Alt.
-  if (event.altKey) {
-    return key === 'ArrowDown' && !event.ctrlKey && !event.metaKey && !shift
-      ? { kind: 'headerAction' }
-      : null;
+  // The table's header bindings (Alt+ArrowDown opens the header's action);
+  // no other key takes Alt.
+  for (const binding of HEADER_BINDINGS) {
+    if (tmKeysMatch(event, binding.keys, ctx.apple)) {
+      return binding.intent;
+    }
   }
-  if (event.ctrlKey || event.metaKey || shift) {
+  const key = event.key;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
     return null;
   }
   switch (key) {

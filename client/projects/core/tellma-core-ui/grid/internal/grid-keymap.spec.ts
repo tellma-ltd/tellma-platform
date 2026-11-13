@@ -109,12 +109,8 @@ function letterOf(binding: TmGridKeyBinding): string | undefined {
 
 // Section: grid states.
 
-/**
- * Every condition met; the active cell is not a boolean one. Focus is on a
- * header only for a header binding: a header and a cell are never focused
- * at once.
- */
-function everything(apple: boolean, binding?: TmGridKeyBinding): TmGridKeyContext {
+/** Every condition met; the active cell is not a boolean one. */
+function everything(apple: boolean): TmGridKeyContext {
   return {
     apple,
     editable: true,
@@ -123,8 +119,21 @@ function everything(apple: boolean, binding?: TmGridKeyBinding): TmGridKeyContex
     isTree: true,
     activeIsBoolean: false,
     rowActivation: true,
-    header: binding?.when === 'header',
   };
+}
+
+/**
+ * Resolves a binding's keydown where it applies: on a navigable header for
+ * a header binding, in the rows otherwise.
+ */
+function resolveWhereBound(
+  binding: TmGridKeyBinding,
+  event: KeyboardEvent,
+  apple: boolean,
+): TmGridIntent | null {
+  return binding.when === 'header'
+    ? tmResolveHeaderKey(event, { apple, searchable: true })
+    : tmResolveGridKey(event, everything(apple));
 }
 
 /** Every condition met except the binding's own (each of them, for a list). */
@@ -161,9 +170,9 @@ describe('tmResolveGridKey (binding table)', () => {
       it.each(TM_GRID_KEY_BINDINGS.map((binding) => [binding.keys, binding] as const))(
         'resolves %s to its binding',
         (_keys, binding) => {
-          expect(
-            tmResolveGridKey(pressBinding(binding.keys, apple), everything(apple, binding)),
-          ).toEqual(binding.intent);
+          expect(resolveWhereBound(binding, pressBinding(binding.keys, apple), apple)).toEqual(
+            binding.intent,
+          );
         },
       );
 

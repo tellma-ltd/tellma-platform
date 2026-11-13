@@ -64,6 +64,14 @@
   --tm-grid-end-tint: transparent;
 }
 
+/* A selection spanning the whole row runs on through the row-end cell: the
+   data cells' translucent range fill, layered over the band. */
+:host(.tm-grid__endcell--selected) {
+  background:
+    linear-gradient(var(--grid-selection-bg), var(--grid-selection-bg)),
+    linear-gradient(var(--tm-grid-end-tint), var(--tm-grid-end-tint)) var(--surface-page);
+}
+
 :host(.tm-grid__endcell--active) {
   box-shadow: inset 0 0 0 var(--focus-ring-width) var(--grid-selection-border);
 }
@@ -101,6 +109,11 @@
   :host-context(.tm-grid__row--checked) {
     background: SelectedItem;
     color: SelectedItemText;
+  }
+
+  :host(.tm-grid__endcell--selected) {
+    background: Highlight;
+    color: HighlightText;
   }
 
   :host(.tm-grid__endcell--active) {

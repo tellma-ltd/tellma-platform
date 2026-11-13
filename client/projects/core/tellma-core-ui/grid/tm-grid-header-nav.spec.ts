@@ -54,8 +54,8 @@ function makeRows(count: number): readonly Row[] {
     TmGridRowEndDef,
     TmGridRowEndHeaderDef,
   ],
-  // The tokens the header action and the row-end cell paint with, which a
-  // unit test's page does not load.
+  // The tokens the header action and the row-end cell paint with, and the
+  // chrome tracks' widths, which a unit test's page does not load.
   template: `
     <div
       [dir]="dir()"
@@ -63,6 +63,10 @@ function makeRows(count: number): readonly Row[] {
         --grid-header-action-size: 24px;
         --surface-page: rgb(255, 255, 255);
         --grid-active-row-bg: rgb(7, 8, 9);
+        --grid-selection-bg: rgba(1, 2, 3, 0.5);
+        --grid-row-header-width: 40px;
+        --grid-check-col-width: 32px;
+        --grid-row-end-width: 36px;
       "
     >
       <tm-grid
@@ -165,6 +169,42 @@ class PlainHost {
   readonly rowId = (row: Row): number => row.id;
 }
 
+/**
+ * A navigating header row (one sortable column) whose other headers carry
+ * interactive content of their own rather than a header action.
+ */
+@Component({
+  imports: [TmGrid, TmGridColumn, TmGridHeaderDef],
+  template: `
+    <tm-grid
+      gridId="header-content-grid"
+      [data]="rows"
+      [rowId]="rowId"
+      style="block-size: 200px; inline-size: 600px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="140" sortable />
+      <tm-grid-column key="qty" [width]="140">
+        <button
+          *tmGridHeader
+          type="button"
+          class="header-button"
+          (click)="clicks.set(clicks() + 1)"
+        >
+          Qty
+        </button>
+      </tm-grid-column>
+      <tm-grid-column key="id" [width]="140">
+        <input *tmGridHeader class="header-input" aria-label="Filter id" />
+      </tm-grid-column>
+    </tm-grid>
+  `,
+})
+class ContentHost {
+  readonly rows = makeRows(3);
+  readonly clicks = signal(0);
+  readonly rowId = (row: Row): number => row.id;
+}
+
 // Section: helpers.
 
 async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
@@ -262,6 +302,33 @@ async function activate(
   await stable(fixture);
   cellAt(scroller, row, col).focus();
   await stable(fixture);
+}
+
+/** A right-click on an element, at its top inline-start corner. */
+function contextMenu(target: Element): MouseEvent {
+  const rect = target.getBoundingClientRect();
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: rect.left + 2,
+    clientY: rect.top + 2,
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
+/** A touch press held on an element until the long-press menu opens, then released. */
+async function longPress(fixture: ComponentFixture<unknown>, target: Element): Promise<void> {
+  pointer(target, 'pointerdown', { pointerType: 'touch', pointerId: 7 });
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  await stable(fixture);
+  pointer(target, 'pointerup', { pointerType: 'touch', pointerId: 7 });
+  await stable(fixture);
+}
+
+/** Whether the grid's context menu is open. */
+function menuOpen(): boolean {
+  return document.querySelector('.tm-menu__panel') !== null;
 }
 
 function dispatchClipboard(scroller: HTMLElement, kind: 'copy' | 'cut'): DataTransfer {
@@ -415,6 +482,35 @@ describe('tm-grid header navigation', () => {
     expect(document.activeElement).toBe(headerAt(scroller, 0));
   });
 
+  it('reaches the first content of a header with neither a sort nor an action', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(ContentHost);
+    await stable(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    const scroller = root.querySelector<HTMLElement>('.tm-grid__scroller')!;
+    const button = root.querySelector<HTMLElement>('.header-button')!;
+    // Out of the tab order: the header row is the keyboard route to it.
+    expect(button.getAttribute('tabindex')).toBe('-1');
+
+    await activate(fixture, scroller, 0, 1);
+    await key(fixture, 'ArrowUp');
+    expect(document.activeElement).toBe(headerAt(scroller, 1));
+    expect((await key(fixture, 'Enter')).defaultPrevented).toBe(true);
+    expect(fixture.componentInstance.clicks()).toBe(1);
+    expect(document.activeElement).toBe(headerAt(scroller, 1));
+
+    // A form field takes focus, and keeps its keys but Escape, which returns to its header.
+    await key(fixture, 'ArrowRight');
+    await key(fixture, 'Enter');
+    const input = root.querySelector<HTMLElement>('.header-input')!;
+    expect(document.activeElement).toBe(input);
+    expect((await key(fixture, 'ArrowLeft')).defaultPrevented).toBe(false);
+    expect((await key(fixture, 'Enter')).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+    expect((await key(fixture, 'Escape')).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(headerAt(scroller, 2));
+  });
+
   it("counts focus on a header's action as that header's focus", async () => {
     const { fixture, host, scroller } = await setup();
     const action = scroller.querySelector<HTMLElement>('.note-action')!;
@@ -564,6 +660,90 @@ describe('tm-grid row-end column', () => {
     expect(document.activeElement).toBe(cellAt(scroller, 0, 0));
   });
 
+  it('reaches the row-end cell with the inline-end arrow in a right-to-left grid', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.dir.set('rtl');
+    await stable(fixture);
+    await activate(fixture, scroller, 1, 2);
+    await key(fixture, 'ArrowRight');
+    expect(document.activeElement).toBe(cellAt(scroller, 1, 1));
+    await key(fixture, 'ArrowLeft');
+    expect(document.activeElement).toBe(cellAt(scroller, 1, 2));
+    await key(fixture, 'ArrowLeft');
+    expect(document.activeElement).toBe(endCellAt(scroller, 1));
+    // The inline-end arrow stays; the inline-start arrow returns.
+    await key(fixture, 'ArrowLeft');
+    expect(document.activeElement).toBe(endCellAt(scroller, 1));
+    await key(fixture, 'ArrowRight');
+    expect(document.activeElement).toBe(cellAt(scroller, 1, 2));
+  });
+
+  it('takes a right-click or a long-press as its row, holding the ring with a template', async () => {
+    const { fixture, scroller } = await setup();
+    const harness = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmGridHarness);
+    await activate(fixture, scroller, 0, 0);
+
+    expect(contextMenu(endCellAt(scroller, 3)).defaultPrevented).toBe(true);
+    await stable(fixture);
+    expect(menuOpen()).toBe(true);
+    expect(await harness.isRowEndActive()).toBe(true);
+    expect(await harness.getActiveRowIndex()).toBe(3);
+    keydown(document.activeElement!, 'Escape');
+    await stable(fixture);
+    expect(menuOpen()).toBe(false);
+
+    // A right-click on the active position's data cell moves the ring there.
+    contextMenu(cellAt(scroller, 3, 2));
+    await stable(fixture);
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(await harness.getActiveCell()).toEqual({ row: 3, col: 2 });
+    keydown(document.activeElement!, 'Escape');
+    await stable(fixture);
+
+    await longPress(fixture, endCellAt(scroller, 5));
+    expect(menuOpen()).toBe(true);
+    expect(await harness.isRowEndActive()).toBe(true);
+    expect(await harness.getActiveRowIndex()).toBe(5);
+  });
+
+  it("takes a right-click or a long-press as its row's last data cell without a template", async () => {
+    const { fixture, scroller } = await setup((h) => h.endCell.set(false));
+    const harness = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmGridHarness);
+    await activate(fixture, scroller, 0, 0);
+
+    contextMenu(endCellAt(scroller, 3));
+    await stable(fixture);
+    expect(menuOpen()).toBe(true);
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(await harness.getActiveCell()).toEqual({ row: 3, col: 2 });
+    keydown(document.activeElement!, 'Escape');
+    await stable(fixture);
+
+    await longPress(fixture, endCellAt(scroller, 5));
+    expect(menuOpen()).toBe(true);
+    expect(await harness.isRowEndActive()).toBe(false);
+    expect(await harness.getActiveCell()).toEqual({ row: 5, col: 2 });
+  });
+
+  it('paints the range fill while its whole row is selected', async () => {
+    const { fixture, scroller } = await setup();
+    const fill = 'rgba(1, 2, 3, 0.5)';
+    await activate(fixture, scroller, 2, 0);
+    press(cellAt(scroller, 2, 1), { shiftKey: true });
+    await stable(fixture);
+    // Part of the row: no fill.
+    expect(endCellAt(scroller, 2).classList).not.toContain('tm-grid__endcell--selected');
+    expect(getComputedStyle(endCellAt(scroller, 2)).backgroundImage).not.toContain(fill);
+
+    press(cellAt(scroller, 2, 2), { shiftKey: true });
+    await stable(fixture);
+    expect(endCellAt(scroller, 2).classList).toContain('tm-grid__endcell--selected');
+    expect(getComputedStyle(endCellAt(scroller, 2)).backgroundImage).toContain(fill);
+    expect(endCellAt(scroller, 4).classList).not.toContain('tm-grid__endcell--selected');
+    // Paint only: the cell stays outside the selection.
+    expect(endCellAt(scroller, 2).hasAttribute('aria-selected')).toBe(false);
+  });
+
   it('stays outside selection and column selection', async () => {
     const { fixture, scroller } = await setup();
     await activate(fixture, scroller, 0, 2);
@@ -595,6 +775,27 @@ describe('tm-grid row-end column', () => {
     await key(fixture, 'End');
     expect(dispatchClipboard(scroller, 'copy').getData('text/plain')).toBe('');
     expect(dispatchClipboard(scroller, 'cut').getData('text/plain')).toBe('');
+  });
+
+  it('never takes a paste', async () => {
+    const { fixture, scroller } = await setup();
+    const paste = (): ClipboardEvent => {
+      const data = new DataTransfer();
+      data.setData('text/plain', 'Pasted');
+      const event = new ClipboardEvent('paste', {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      });
+      scroller.dispatchEvent(event);
+      return event;
+    };
+    await activate(fixture, scroller, 0, 2);
+    expect(paste().defaultPrevented).toBe(true);
+
+    // On the row-end cell the paste is left to the page.
+    await key(fixture, 'End');
+    expect(paste().defaultPrevented).toBe(false);
   });
 
   it('is never a find match, and a match leaves the row-end cell', async () => {

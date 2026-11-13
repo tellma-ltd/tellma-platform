@@ -243,7 +243,7 @@ function cellSelector(cell: TmRowCol): string {
   return `[data-tm-cell][data-row="${cell.row}"][data-col="${cell.col}"]`;
 }
 
-/** A row's row-end cell (spec 0010 §C.14). */
+/** The selector of a row's row-end cell. */
 function endCellSelector(row: number): string {
   return `[data-tm-endcell][data-row="${row}"]`;
 }
@@ -538,6 +538,11 @@ export interface ɵTmGridRowVm {
   readonly endCtx: TmGridRowEndContext<unknown> | null;
   /** Whether the row-end cell is the active cell (the ring and the tab stop). */
   readonly endActive: boolean;
+  /**
+   * Whether the row-end cell paints the range fill: every data cell of the
+   * row paints it, so the selection spans the whole row.
+   */
+  readonly endSelected: boolean;
 }
 
 /**
@@ -2074,7 +2079,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     // A navigable header (spec 0010 §C.4) has keys of its own.
     const header = this.headerSlotOf(event.target);
     if (header !== null) {
-      this.onHeaderKeydown(event, header.slot, header.onContent);
+      this.onHeaderKeydown(event, header);
       return;
     }
     const engine = this.engine;
@@ -2159,31 +2164,48 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
    * The header slot a keydown's target sits in, when the header row
    * navigates: `onContent` when the target is content inside the slot (a
    * header action, a link in a header template) rather than the slot
-   * itself. A text field in a header keeps every key.
+   * itself, and `inField` when that content is a form field.
    */
-  private headerSlotOf(
-    target: EventTarget | null,
-  ): { readonly slot: number; readonly onContent: boolean } | null {
+  private headerSlotOf(target: EventTarget | null): {
+    readonly slot: number;
+    readonly onContent: boolean;
+    readonly inField: boolean;
+  } | null {
     if (!(target instanceof Element) || !untracked(this.headerNav)) {
       return null;
     }
     const element = target.closest('[data-tm-hslot]');
-    if (element === null || target.closest('input, textarea, select, [contenteditable]') !== null) {
+    if (element === null) {
       return null;
     }
     const slot = Number(element.getAttribute('data-tm-hslot'));
-    return Number.isInteger(slot) ? { slot, onContent: target !== element } : null;
+    const inField = target.closest('input, textarea, select, [contenteditable]') !== null;
+    return Number.isInteger(slot) ? { slot, onContent: target !== element, inField } : null;
   }
 
   /**
    * A keydown on a navigable header: moves between header cells and back to
    * the rows, sorts, toggles select-all or clicks the header's action. Tab
    * stays native, so the grid remains a single tab stop; Enter and Space on
-   * content inside the header keep their own meaning.
+   * content inside the header keep their own meaning, and a form field in
+   * the header keeps every key but Escape.
    */
-  private onHeaderKeydown(event: KeyboardEvent, slot: number, onContent: boolean): void {
+  private onHeaderKeydown(
+    event: KeyboardEvent,
+    { slot, onContent, inField }: { slot: number; onContent: boolean; inField: boolean },
+  ): void {
     if (event.defaultPrevented) {
       return; // a popover trigger already handled it (Escape closes its popover)
+    }
+    if (inField) {
+      // A form field in a header keeps every key but a bare Escape, which
+      // returns to its header.
+      const bare = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      if (event.key === 'Escape' && bare) {
+        this.focusHeaderSlot(slot);
+        event.preventDefault();
+      }
+      return;
     }
     const intent = tmResolveHeaderKey(event, {
       apple: tmIsApplePlatform(),
@@ -2316,15 +2338,31 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
   /**
    * Enter or Space on a header: cycles a sortable column's sort, toggles
    * select-all on its header, and on any other header clicks its first
-   * action.
+   * action or, when it has none, reaches its first interactive content.
    */
   private activateHeader(slot: number): void {
     if (slot === -1) {
       this.toggleSelectAllCheckbox();
     } else if (untracked(this.headerSort)[slot] !== undefined) {
       this.cycleSort(slot);
+    } else if (!this.clickHeaderAction(slot)) {
+      this.activateHeaderContent(slot);
+    }
+  }
+
+  /**
+   * Reaches a header's first interactive content outside any overlay — a
+   * link or button in a header template, which the header row takes out of
+   * the tab order: a form field takes focus, and anything else is clicked.
+   */
+  private activateHeaderContent(slot: number): void {
+    const element = untracked(this.scrollerSignal)?.querySelector(headerSlotSelector(slot));
+    const candidates = element?.querySelectorAll<HTMLElement>(INTERACTIVE_CONTENT_SELECTOR) ?? [];
+    const content = [...candidates].find((candidate) => !this.inOverlay(candidate));
+    if (content?.matches('input, select, textarea')) {
+      content.focus();
     } else {
-      this.clickHeaderAction(slot);
+      content?.click();
     }
   }
 
@@ -3065,14 +3103,23 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       }
       return;
     }
-    const cellElement = target.closest('[data-tm-cell]');
-    if (cellElement === null) {
+    // A row-end cell stands for its row's last data cell, as a press on it
+    // does; one with a row-end template takes the ring itself.
+    const cellElement = target.closest('[data-tm-cell], [data-tm-endcell]');
+    const cell = cellElement === null ? null : this.cellFromElement(cellElement);
+    if (cell === null) {
       return;
     }
-    const cell = this.cellFromElement(cellElement);
-    if (cell !== null && !untracked(() => engine.selection.isCellSelected(cell))) {
+    const onEnd = this.isRowEndCell(cellElement!);
+    const active = untracked(() => engine.nav.activeCell());
+    if (!untracked(() => engine.selection.isCellSelected(cell))) {
       this.escapedSignal.set(false);
       engine.clickCell(cell);
+      this.rowEndFocusSignal.set(onEnd);
+    } else if (active?.row === cell.row && active.col === cell.col) {
+      // Inside the selection the active position stays; a press on it moves
+      // the ring between the row-end cell and the data cell beneath.
+      this.rowEndFocusSignal.set(onEnd);
     }
   }
 
@@ -3897,6 +3944,7 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
         endCtx:
           rowEndDef === undefined || view === null ? null : { $implicit: view.row, rowId: view.id },
         endActive: rowEndActive && active!.row === viewIndex,
+        endSelected: cells.length > 0 && cells.every((cell) => cell.fill),
       });
     };
 
@@ -5902,9 +5950,10 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     // pulled out of the tab order — it stays reachable through cell
     // navigation + Enter, and links keep their native pointer affordances.
     // Column HEADERS join the pass only while the header row navigates
-    // (spec 0010 §C.4), where Enter and Alt+ArrowDown reach their actions;
-    // otherwise there is no key into the header row, and neutralizing its
-    // content would make a rich/interactive header pointer-only. Runs per
+    // (spec 0010 §C.4), where Enter and Alt+ArrowDown reach their actions
+    // and Enter reaches an action-less header's first content; otherwise
+    // there is no key into the header row, and neutralizing its content
+    // would make a rich/interactive header pointer-only. Runs per
     // render so recycled window rows are re-stamped. Editor content is
     // exempt (it must hold focus), so are the header slots' own roving
     // tabindexes, and so is anything inside an overlay — a top-layer
