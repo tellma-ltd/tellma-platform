@@ -81,15 +81,23 @@ namespace Tellma.Core.Tests.Caching
         // ===================== The epilogue's text =====================
 
         [Fact]
-        public void A_tenant_level_bump_is_one_update_that_must_find_a_row_for_every_name()
+        public void A_tenant_level_bump_moves_each_name_in_the_guards_order_and_must_find_a_row_for_every_name()
         {
             var plan = VersionTagBumpPlan.Resolve(Registry, new HashSet<TableName> { Currencies }, new HashSet<string>());
 
             (string text, IReadOnlySet<TableName> writes) = VersionTagBumpContributor.Compose(plan, []);
 
             Assert.Equal(
-                "UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] IN (SELECT [Id] FROM @tm_tagNames);\n"
-                + "IF @@ROWCOUNT <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
+                string.Join(
+                    "\n",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "WHILE @tm_bumpName IS NOT NULL",
+                    "BEGIN",
+                    "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
+                    "    SET @tm_bumpCount += @@ROWCOUNT;",
+                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "END;",
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;"),
                 text);
             Assert.Equal([new TableName("core", "VersionTags")], writes);
         }
@@ -109,8 +117,14 @@ namespace Tellma.Core.Tests.Caching
             Assert.Equal(
                 string.Join(
                     "\n",
-                    "UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] IN (SELECT [Id] FROM @tm_tagNames);",
-                    "IF @@ROWCOUNT <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "WHILE @tm_bumpName IS NOT NULL",
+                    "BEGIN",
+                    "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
+                    "    SET @tm_bumpCount += @@ROWCOUNT;",
+                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "END;",
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
                     "DECLARE @tm_userIds_Permissions TABLE ([Id] int NOT NULL PRIMARY KEY);",
                     "DECLARE @tm_userIds_Preferences TABLE ([Id] int NOT NULL PRIMARY KEY);",
                     "INSERT INTO @tm_userIds_Permissions ([Id]) SELECT DISTINCT s.[GranteeId] FROM @tb3_saved AS s WHERE s.[GranteeId] IS NOT NULL AND NOT EXISTS (SELECT 1 FROM @tm_userIds_Permissions AS i WHERE i.[Id] = s.[GranteeId]);",

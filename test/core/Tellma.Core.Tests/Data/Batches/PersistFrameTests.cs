@@ -78,13 +78,24 @@ namespace Tellma.Core.Tests.Data.Batches
                     string.Empty),
                 assembly.Text);
 
-            // --- A user's re-checks: both guard arms, the caller's stamp under a shared lock, then the caller ---
-            Assert.Contains("WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
-            Assert.Contains("WITH (UPDLOCK, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
-            Assert.Contains("[core].[UserStamps] AS s WITH (REPEATABLEREAD, ROWLOCK)", checks.Text, StringComparison.Ordinal);
-            Assert.Contains($"IIF(s.[PermissionsTag] = {ReservedSqlNames.ExpectedUserPermissionsTag}, 0, 1)", checks.Text, StringComparison.Ordinal);
-            Assert.Contains($"THROW {TellmaSqlErrors.StaleVersionTag}, N'{TellmaSqlErrors.StaleVersionTagCode}', 1;", checks.Text, StringComparison.Ordinal);
-            Assert.EndsWith($"THROW {TellmaSqlErrors.CallerInvalid}, N'{TellmaSqlErrors.CallerInvalidCode}', 1;", checks.Text, StringComparison.Ordinal);
+            // --- A user's re-checks: the tag rows one at a time in name order, under an update lock since
+            // the batch bumps, then the caller's stamp under a shared lock, then the caller ---
+            Assert.Equal(
+                string.Join(
+                    "\n",
+                    "DECLARE @tm_guardName nvarchar(128) = (SELECT MIN([Name] COLLATE Latin1_General_100_BIN2) FROM @tm_expectedTags), @tm_guardTag uniqueidentifier, @tm_guardStale bit = 0;",
+                    "WHILE @tm_guardName IS NOT NULL",
+                    "BEGIN",
+                    "    SET @tm_guardTag = (SELECT [Tag] FROM [core].[VersionTags] WITH (UPDLOCK, ROWLOCK, FORCESEEK) WHERE [Name] = @tm_guardName);",
+                    "    IF EXISTS (SELECT 1 FROM @tm_expectedTags WHERE [Name] = @tm_guardName AND [Tag] <> '00000000-0000-0000-0000-000000000000' AND [Tag] <> @tm_guardTag) SET @tm_guardStale = 1;",
+                    "    SET @tm_guardName = (SELECT MIN([Name] COLLATE Latin1_General_100_BIN2) FROM @tm_expectedTags WHERE [Name] COLLATE Latin1_General_100_BIN2 > @tm_guardName);",
+                    "END;",
+                    "IF @tm_guardStale = 1",
+                    "   OR (SELECT SUM(IIF(s.[PermissionsTag] = @tm_ExpectedUserPermissionsTag, 0, 1)) FROM [core].[UserStamps] AS s WITH (REPEATABLEREAD, ROWLOCK) WHERE s.[UserId] = @tm_UserId) > 0",
+                    "    THROW 50412, N'StaleVersionTag', 1;",
+                    "IF NOT EXISTS (SELECT 1 FROM [core].[Users] WHERE [Id] = @tm_UserId AND [IsActive] = 1)",
+                    "    THROW 50401, N'CallerInvalid', 1;"),
+                checks.Text);
 
             // --- The guard's table binds once, after the fingerprint; the checks' lines are the frame's ---
             Assert.Equal([ReservedSqlNames.SchemaFingerprint, ReservedSqlNames.ExpectedTags, "@tb1_p0"], assembly.Parameters.Select(static parameter => parameter.Name));
@@ -122,7 +133,37 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
-        public async Task Two_expectations_of_one_tag_that_disagree_expect_the_empty_tag_so_the_guard_fails()
+        public async Task A_name_the_batch_bumps_without_expecting_it_is_locked_in_the_same_pass_and_never_compared()
+        {
+            DataBatch batch = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, Permissions));
+            _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: Set(Widgets)));
+
+            BatchAssembly assembly = await BatchHarness.SealAsync(batch);
+
+            Assert.Equal(
+                [
+                    (VersionTagNames.Entities, PersistChecks.NoExpectation, true),
+                    (VersionTagNames.ForEntity("Widget"), PersistChecks.NoExpectation, true),
+                    (VersionTagNames.Permissions, Permissions.Value, false),
+                    (VersionTagNames.Settings, Settings.Value, false),
+                ],
+                assembly.Checks!.ExpectedTags.Select(static row => (row.Name, row.Tag, row.Bumped)));
+        }
+
+        [Fact]
+        public async Task A_batch_that_bumps_no_tenant_tag_locks_its_expected_rows_under_a_shared_lock()
+        {
+            DataBatch batch = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, Permissions));
+            _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", new SqlOptions(writes: Set(new TableName("core", "Jobs"))));
+
+            PersistChecks checks = (await BatchHarness.SealAsync(batch)).Checks!;
+
+            Assert.Contains("[core].[VersionTags] WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("UPDLOCK", checks.Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Two_expectations_of_one_tag_that_disagree_expect_a_tag_no_row_holds_so_the_guard_fails()
         {
             DataBatch batch = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, Permissions));
             batch.DependsOn(
@@ -138,9 +179,9 @@ namespace Tellma.Core.Tests.Data.Batches
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
             var expected = assembly.Checks!.ExpectedTags.ToDictionary(static row => row.Name, static row => row.Tag);
-            Assert.Equal(Guid.Empty, expected["currencies"]);
+            Assert.Equal(PersistChecks.Conflicting, expected["currencies"]);
             Assert.Equal(Tag(8).Value, expected["units"]);
-            Assert.Equal(Guid.Empty, expected[VersionTagNames.Settings]);
+            Assert.Equal(PersistChecks.Conflicting, expected[VersionTagNames.Settings]);
         }
 
         [Fact]
@@ -193,11 +234,12 @@ namespace Tellma.Core.Tests.Data.Batches
             }
 
             // --- Autocommit and an explicit transaction re-check without a transaction in the text ---
+            // The write bumps no tag: an autocommit batch may not bump one.
             foreach (TransactionMode mode in new[] { TransactionMode.None, TransactionMode.Explicit })
             {
                 DataBatch batch = Marked(BatchPurpose.Persist, premises);
                 batch.TransactionMode = mode;
-                _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", new SqlOptions(writes: Set(Widgets)));
+                _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", new SqlOptions(writes: Set(new TableName("core", "Jobs"))));
                 BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
                 Assert.NotNull(assembly.Checks);
@@ -214,7 +256,7 @@ namespace Tellma.Core.Tests.Data.Batches
                 DataBatch batch = _harness.Batch(BatchPurpose.Persist);
                 batch.TransactionMode = mode;
                 batch.Append(batch.Begin(BatchSection.TransactionHead), Lock);
-                _ = batch.Sql($"DELETE FROM [fixture].[Widgets] WHERE 1 = 0;", writes ? new SqlOptions(writes: Set(Widgets)) : null);
+                _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", writes ? new SqlOptions(writes: Set(new TableName("core", "Jobs"))) : null);
 
                 _ = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(Token));
             }

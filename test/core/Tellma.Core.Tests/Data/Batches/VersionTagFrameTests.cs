@@ -56,8 +56,14 @@ namespace Tellma.Core.Tests.Data.Batches
                     BatchAssembly.TransactionOpen,
                     "DELETE FROM [vt].[Currencies] WHERE 1 = 0;",
                     "PRINT 'epilogue';",
-                    "UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] IN (SELECT [Id] FROM @tm_tagNames);",
-                    "IF @@ROWCOUNT <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "WHILE @tm_bumpName IS NOT NULL",
+                    "BEGIN",
+                    "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
+                    "    SET @tm_bumpCount += @@ROWCOUNT;",
+                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "END;",
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
                     BatchAssembly.TransactionCommit,
                     string.Empty),
                 assembly.Text);
@@ -126,9 +132,47 @@ namespace Tellma.Core.Tests.Data.Batches
                 () => batch.Sql($"DELETE FROM [vt].[Profiles] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Profiles })));
 
             Assert.Contains("vt.Profiles, whose writes bump the Preferences tag of each user they name", refused.Message, StringComparison.Ordinal);
+        }
 
-            // The caller's own rows name the caller.
-            _ = batch.Sql($"DELETE FROM [vt].[Profiles] WHERE 1 = 0;", SqlOptions.ForCaller(new HashSet<TableName> { Profiles }));
+        [Fact]
+        public void The_callers_own_rows_name_the_caller_only_in_a_batch_that_carries_a_users_connect_prologue()
+        {
+            // --- No connect prologue, or the platform's: nothing declares the caller ---
+            foreach (GuardPremises? premises in new[] { null, GuardPremises.ForSystem(VersionTag.None) })
+            {
+                DataBatch batch = Batch(BatchPurpose.Persist);
+                if (premises is not null)
+                {
+                    batch.MarkConnectPrologue(premises);
+                }
+
+                InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                    () => batch.Sql($"DELETE FROM [vt].[Profiles] WHERE 1 = 0;", SqlOptions.ForCaller(new HashSet<TableName> { Profiles })));
+                Assert.Contains("carries no user's connect prologue", refused.Message, StringComparison.Ordinal);
+            }
+
+            // --- A user's connect prologue declares the caller ---
+            DataBatch marked = Batch(BatchPurpose.Persist);
+            marked.MarkConnectPrologue(GuardPremises.ForUser(VersionTag.None, VersionTag.None));
+            _ = marked.Sql($"DELETE FROM [vt].[Profiles] WHERE 1 = 0;", SqlOptions.ForCaller(new HashSet<TableName> { Profiles }));
+        }
+
+        [Fact]
+        public async Task An_autocommit_batch_may_write_only_tables_that_bump_no_tag()
+        {
+            // --- A bumping write needs a transaction the bump commits with ---
+            DataBatch bumping = Batch(BatchPurpose.Persist);
+            bumping.TransactionMode = TransactionMode.None;
+            _ = bumping.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Currencies }));
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => bumping.ExecuteAsync(TestContext.Current.CancellationToken));
+            Assert.Contains("commits each statement on its own, but its writes bump version tags (currencies)", refused.Message, StringComparison.Ordinal);
+
+            // --- A write that bumps nothing runs ---
+            DataBatch plain = Batch(BatchPurpose.Persist);
+            plain.TransactionMode = TransactionMode.None;
+            _ = plain.Sql($"DELETE FROM [vt].[Elsewhere] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { new("vt", "Elsewhere") }));
+            Assert.DoesNotContain("[core].[VersionTags] SET", (await BatchHarness.SealAsync(plain)).Text, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -144,21 +188,57 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
-        public async Task The_bump_plan_is_fixed_when_the_epilogue_starts_so_an_epilogues_own_writes_bump_nothing()
+        public async Task An_epilogue_write_that_the_fixed_bump_plan_does_not_cover_is_refused()
         {
-            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(60, static (batch, stage) =>
+            // --- An epilogue write whose tag the caller's writes do not bump would commit unannounced ---
+            DataBatch uncovered = Batch(BatchPurpose.Persist, EpilogueWrite(Currencies));
+            _ = uncovered.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => uncovered.ExecuteAsync(TestContext.Current.CancellationToken));
+            Assert.Contains("An epilogue statement writes a table whose version tags the batch does not bump (currencies, where the caller's writes bump nothing)", refused.Message, StringComparison.Ordinal);
+            Assert.True(uncovered.Bumps.IsEmpty);
+
+            // --- One whose tags the plan already moves is covered by the bump ---
+            DataBatch covered = Batch(BatchPurpose.Persist, EpilogueWrite(Currencies));
+            _ = covered.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Currencies }));
+            BatchAssembly assembly = await BatchHarness.SealAsync(covered);
+            Assert.Equal(["currencies"], covered.Bumps.TenantNames);
+            Assert.Contains("UPDATE [core].[VersionTags] SET [Tag] = @tm_tag", assembly.Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_prologue_statements_writes_bump_nothing()
+        {
+            // The connect prologue's bookkeeping (the activity stamp, the join flip) is no cached input.
+            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(10, static (batch, stage) =>
             {
-                if (stage == DataBatchStage.Epilogue)
+                if (stage == DataBatchStage.Prologue)
                 {
-                    _ = batch.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Currencies }));
+                    var data = (DataBatch)batch;
+                    data.Append(data.Begin(), "DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new HashSet<TableName> { Currencies });
                 }
             }));
             _ = batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
 
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
-            Assert.DoesNotContain("UPDATE [core].[VersionTags]", assembly.Text, StringComparison.Ordinal);
             Assert.True(batch.Bumps.IsEmpty);
+            Assert.Contains(Currencies, batch.WrittenTables);
+            Assert.DoesNotContain("[core].[VersionTags] SET", assembly.Text, StringComparison.Ordinal);
+        }
+
+        /// <summary>A contributor whose epilogue writes a table.</summary>
+        /// <param name="table">The table.</param>
+        /// <returns>The contributor, at an order whose epilogue runs before the bump's.</returns>
+        private static DelegateContributor EpilogueWrite(TableName table)
+        {
+            return new DelegateContributor(60, (batch, stage) =>
+            {
+                if (stage == DataBatchStage.Epilogue)
+                {
+                    _ = batch.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { table }));
+                }
+            });
         }
 
         /// <summary>A batch whose scope holds the prelude, the bump and the given contributors.</summary>

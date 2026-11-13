@@ -25,7 +25,7 @@ namespace Tellma.Core.Caching
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///         The tenant-level update must find a row for every name: a registered name the database
+    ///         The tenant-level move must find a row for every name: a registered name the database
     ///         lacks is a deployment defect that fails the batch with <c>VersionTag.Missing</c>, never a
     ///         silent miss. Only the migrator inserts rows.
     ///     </para>
@@ -44,10 +44,23 @@ namespace Tellma.Core.Caching
         /// <summary>The client event every bump announces.</summary>
         public const string CacheChangedEvent = "cache.changed";
 
-        /// <summary>The bump's failure when a name has no row.</summary>
-        private static readonly string MissingThrow = string.Create(
-            CultureInfo.InvariantCulture,
-            $"IF @@ROWCOUNT <> (SELECT COUNT(*) FROM {ReservedSqlNames.TagNames}) THROW {TellmaSqlErrors.Invariant}, N'{TellmaSqlErrors.VersionTagMissingCode}', 1;");
+        /// <summary>
+        ///     The tenant-level move: one row at a time, in the guard's binary name order, so the bump
+        ///     converts its locks in the order every guard takes them; then the refusal when a name has
+        ///     no row.
+        /// </summary>
+        private static readonly string TenantMove = string.Join(
+            '\n',
+            $"DECLARE {ReservedSqlNames.BumpName} nvarchar(128) = (SELECT MIN([Id] COLLATE {PersistChecks.NameOrder}) FROM {ReservedSqlNames.TagNames}), {ReservedSqlNames.BumpCount} int = 0;",
+            $"WHILE {ReservedSqlNames.BumpName} IS NOT NULL",
+            "BEGIN",
+            $"    UPDATE {VersionTagRowConfiguration.Table.Delimited} SET [Tag] = {ReservedSqlNames.Tag} WHERE [Name] = {ReservedSqlNames.BumpName};",
+            $"    SET {ReservedSqlNames.BumpCount} += @@ROWCOUNT;",
+            $"    SET {ReservedSqlNames.BumpName} = (SELECT MIN([Id] COLLATE {PersistChecks.NameOrder}) FROM {ReservedSqlNames.TagNames} WHERE [Id] COLLATE {PersistChecks.NameOrder} > {ReservedSqlNames.BumpName});",
+            "END;",
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"IF {ReservedSqlNames.BumpCount} <> (SELECT COUNT(*) FROM {ReservedSqlNames.TagNames}) THROW {TellmaSqlErrors.Invariant}, N'{TellmaSqlErrors.VersionTagMissingCode}', 1;"));
 
         /// <inheritdoc />
         public int Order => BumpOrder;
@@ -89,11 +102,10 @@ namespace Tellma.Core.Caching
             StringBuilder text = new();
             HashSet<TableName> writes = [];
 
-            // --- The tenant-level names: one update, which must find every row ---
+            // --- The tenant-level names: moved in name order, every one of which must find its row ---
             if (plan.TenantNames.Count > 0)
             {
-                _ = text.Append(CultureInfo.InvariantCulture, $"UPDATE {VersionTagRowConfiguration.Table.Delimited} SET [Tag] = {ReservedSqlNames.Tag} WHERE [Name] IN (SELECT [Id] FROM {ReservedSqlNames.TagNames});\n")
-                    .Append(MissingThrow).Append('\n');
+                _ = text.Append(TenantMove).Append('\n');
                 _ = writes.Add(VersionTagRowConfiguration.Table);
             }
 

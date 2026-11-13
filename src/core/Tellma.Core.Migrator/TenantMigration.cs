@@ -78,27 +78,30 @@ namespace Tellma.Core.Migrator
 
                 await PrepareAsync(database, provisioning: true, cancellationToken).ConfigureAwait(false);
 
-                // --- Migrations, fingerprint and grants ---
-                MigrationResult migration = await MigrateDatabaseAsync(tenant, held, cancellationToken).ConfigureAwait(false);
+                // --- Migrations, fingerprint, grants, version tags and steps; a failure after a change still moves the tags ---
+                ITenantVersionTagSeeder? tags = Services.GetService<ITenantVersionTagSeeder>();
+                TagMove move = new();
+                (MigrationResult migration, IReadOnlyList<string> steps) = await MovingTagsOnFailureAsync(tenant.Id, tags, move, async () =>
+                {
+                    MigrationResult migration = await MigrateDatabaseAsync(tenant, held, move, cancellationToken).ConfigureAwait(false);
+                    if (!migration.Current)
+                    {
+                        return (migration, (IReadOnlyList<string>)[]);
+                    }
+
+                    if (tags is not null)
+                    {
+                        await tags.SeedAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    IReadOnlyList<string> steps = await RunStepsAsync(move, tenant.Descriptor, isNew: true, administrator.Subject, administrator.Email, held, cancellationToken).ConfigureAwait(false);
+                    await MoveTagsAsync(tenant.Id, tags, move, cancellationToken).ConfigureAwait(false);
+                    return (migration, steps);
+                }).ConfigureAwait(false);
+
                 if (!migration.Current)
                 {
                     return TenantOutcome.Failure(tenantId, $"its database is ahead of this migrator, whose last migration is {migration.LastMigration}; provision it with the migrator that migrated it");
-                }
-
-                // --- Version tags, steps, then the bump when anything changed ---
-                ITenantVersionTagSeeder? tags = Services.GetService<ITenantVersionTagSeeder>();
-                if (tags is not null)
-                {
-                    await tags.SeedAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-                }
-
-                IReadOnlyList<string> steps = await Services.GetRequiredService<ProvisioningStepRunner>()
-                    .RunAsync(tenant.Descriptor, isNew: true, administrator.Subject, administrator.Email, held.EnsureHeldAsync, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (tags is not null && (migration.Applied > 0 || steps.Count > 0))
-                {
-                    await tags.BumpAllAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
                 }
 
                 // --- The administrator: the membership hint when the subject is known, then the invitation ---
@@ -166,40 +169,44 @@ namespace Tellma.Core.Migrator
                 _ = await database.EnsureExistsAsync(create: false, SqlOptions.CreateDatabaseOptions, cancellationToken).ConfigureAwait(false);
                 await PrepareAsync(database, provisioning: false, cancellationToken).ConfigureAwait(false);
 
-                // --- Migrations, fingerprint and grants; an ahead database stops here ---
-                MigrationResult migration = await MigrateDatabaseAsync(tenant, held, cancellationToken).ConfigureAwait(false);
+                // --- Migrations, fingerprint, grants, the seed, then (unless suspended) the due steps ---
+                // A failure after any of them changed the database still moves the tags on the way out:
+                // the next run may apply nothing and run nothing, and would never move them.
+                ITenantVersionTagSeeder? tags = Services.GetService<ITenantVersionTagSeeder>();
+                TagMove move = new();
+                (MigrationResult migration, IReadOnlyList<string> steps) = await MovingTagsOnFailureAsync(tenant.Id, tags, move, async () =>
+                {
+                    MigrationResult migration = await MigrateDatabaseAsync(tenant, held, move, cancellationToken).ConfigureAwait(false);
+                    if (!migration.Current)
+                    {
+                        return (migration, (IReadOnlyList<string>)[]);
+                    }
+
+                    if (tags is not null)
+                    {
+                        await tags.SeedAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    IReadOnlyList<string> steps = tenant.Descriptor.State == TenantState.Suspended
+                        ? []
+                        : await RunStepsAsync(move, tenant.Descriptor, isNew: false, adminSubject: null, adminEmail: null, held, cancellationToken).ConfigureAwait(false);
+                    await MoveTagsAsync(tenant.Id, tags, move, cancellationToken).ConfigureAwait(false);
+                    return (migration, steps);
+                }).ConfigureAwait(false);
+
+                // --- An ahead database stops here; a suspended tenant stops before its steps ---
                 if (!migration.Current)
                 {
                     MigratorLog.TenantAhead(context.Logger, tenantId, migration.LastMigration);
                     return new TenantOutcome(tenantId, TenantOutcome.Ahead, $"this migrator's last migration is {migration.LastMigration}", []);
                 }
 
-                // --- The version-tag seed; a suspended tenant stops after it ---
-                ITenantVersionTagSeeder? tags = Services.GetService<ITenantVersionTagSeeder>();
-                if (tags is not null)
-                {
-                    await tags.SeedAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-                }
-
                 if (tenant.Descriptor.State == TenantState.Suspended)
                 {
-                    if (tags is not null && migration.Applied > 0)
-                    {
-                        await tags.BumpAllAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-                    }
-
                     return new TenantOutcome(tenant.Id, TenantOutcome.SuspendedStepsDeferred, Applied(migration.Applied, steps: 0), []);
                 }
 
-                // --- The due steps, the bump when anything changed, then the drift scan ---
-                IReadOnlyList<string> steps = await Services.GetRequiredService<ProvisioningStepRunner>()
-                    .RunAsync(tenant.Descriptor, isNew: false, adminSubject: null, adminEmail: null, held.EnsureHeldAsync, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (tags is not null && (migration.Applied > 0 || steps.Count > 0))
-                {
-                    await tags.BumpAllAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-                }
+                // --- The drift scan ---
 
                 IReadOnlyList<string> drift = [];
                 if (IsRegistered<ITenantDriftReport>())
@@ -313,14 +320,95 @@ namespace Tellma.Core.Migrator
         }
 
         /// <summary>
+        ///     Runs the tenant's due steps. A step that completed changed the database, so a failure
+        ///     part-way marks the tags due: the steps that completed are recorded and will not run again.
+        /// </summary>
+        /// <param name="move">Whether the run changed the database.</param>
+        /// <param name="tenant">The tenant.</param>
+        /// <param name="isNew">Whether the tenant is being provisioned.</param>
+        /// <param name="adminSubject">The first administrator's subject, or null.</param>
+        /// <param name="adminEmail">The first administrator's email address, or null.</param>
+        /// <param name="held">The tenant's lock, confirmed before each step.</param>
+        /// <param name="cancellationToken">Cancels between steps.</param>
+        /// <returns>The names of the steps that ran.</returns>
+        private async Task<IReadOnlyList<string>> RunStepsAsync(TagMove move, TenantDescriptor tenant, bool isNew, string? adminSubject, string? adminEmail, MigrationLock held, CancellationToken cancellationToken)
+        {
+            try
+            {
+                IReadOnlyList<string> steps = await Services.GetRequiredService<ProvisioningStepRunner>()
+                    .RunAsync(tenant, isNew, adminSubject, adminEmail, held.EnsureHeldAsync, cancellationToken)
+                    .ConfigureAwait(false);
+                move.Due |= steps.Count > 0;
+                return steps;
+            }
+            catch
+            {
+                // Which steps completed before the failure is not known here; moving the tags when
+                // none did costs the tenant's caches one reload.
+                move.Due = true;
+                throw;
+            }
+        }
+
+        /// <summary>Moves every version tag when the run changed the database, once.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="tags">The seeder, or null when none is registered.</param>
+        /// <param name="move">Whether the run changed the database; cleared once the tags moved.</param>
+        /// <param name="cancellationToken">Cancels the bump.</param>
+        /// <returns>A task that completes when the tags moved, or at once when none were due.</returns>
+        private static async Task MoveTagsAsync(int tenantId, ITenantVersionTagSeeder? tags, TagMove move, CancellationToken cancellationToken)
+        {
+            if (tags is not null && move.Due)
+            {
+                await tags.BumpAllAsync(tenantId, cancellationToken).ConfigureAwait(false);
+                move.Due = false;
+            }
+        }
+
+        /// <summary>
+        ///     Runs a tenant's migrating work; when it fails after changing the database and before
+        ///     moving the version tags, moves them on the way out, then lets the failure surface. A
+        ///     failed move is logged and never replaces the failure.
+        /// </summary>
+        /// <typeparam name="T">The work's result.</typeparam>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="tags">The seeder, or null when none is registered.</param>
+        /// <param name="move">Whether the run changed the database.</param>
+        /// <param name="work">The work.</param>
+        /// <returns>The work's result.</returns>
+        private async Task<T> MovingTagsOnFailureAsync<T>(int tenantId, ITenantVersionTagSeeder? tags, TagMove move, Func<Task<T>> work)
+        {
+            try
+            {
+                return await work().ConfigureAwait(false);
+            }
+            catch when (tags is not null && move.Due)
+            {
+                try
+                {
+                    // Not the run's token: a cancelled run still leaves the changes it committed, and
+                    // one update moves the tags.
+                    await tags.BumpAllAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception bumpFailure)
+                {
+                    MigratorLog.VersionTagBumpFailed(context.Logger, tenantId, bumpFailure);
+                }
+
+                throw;
+            }
+        }
+
+        /// <summary>
         ///     Applies the tenant model's pending migrations, records the fingerprint when the history
         ///     ends at this migrator's last migration, and recomputes the grants.
         /// </summary>
         /// <param name="tenant">The tenant.</param>
         /// <param name="held">The tenant's lock, confirmed before the fingerprint is written.</param>
+        /// <param name="move">Marked due before any pending migration is applied.</param>
         /// <param name="cancellationToken">Cancels the work.</param>
         /// <returns>How many migrations were applied, and whether the database is current or ahead.</returns>
-        private async Task<MigrationResult> MigrateDatabaseAsync(TenantInfo tenant, MigrationLock held, CancellationToken cancellationToken)
+        private async Task<MigrationResult> MigrateDatabaseAsync(TenantInfo tenant, MigrationLock held, TagMove move, CancellationToken cancellationToken)
         {
             TellmaModelFactory models = Services.GetRequiredService<TellmaModelFactory>();
             string last;
@@ -334,6 +422,9 @@ namespace Tellma.Core.Migrator
                     ?? throw new MigratorFailureException($"The assembly {context.MigrationsAssembly.GetName().Name} carries no migration of the tenant model; scaffold one with dotnet ef migrations add.");
 
                 applied = (await migrations.Database.GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false)).Count();
+
+                // Marked before migrating: a failure part-way may leave some of them applied.
+                move.Due |= applied > 0;
                 await migrations.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -390,5 +481,12 @@ namespace Tellma.Core.Migrator
         /// <param name="Current">True when the history ends at this migrator's last migration; false when the database is ahead.</param>
         /// <param name="LastMigration">This migrator's last migration.</param>
         private sealed record MigrationResult(int Applied, bool Current, string LastMigration);
+
+        /// <summary>Whether a run changed the tenant database since it last moved the version tags.</summary>
+        private sealed class TagMove
+        {
+            /// <summary>True once a migration or step may have changed the database and the tags have not moved since.</summary>
+            public bool Due { get; set; }
+        }
     }
 }

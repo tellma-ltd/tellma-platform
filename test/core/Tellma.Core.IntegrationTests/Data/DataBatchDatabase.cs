@@ -5,6 +5,7 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Testing;
 using System.Collections.Concurrent;
 using System.Data;
@@ -17,6 +18,7 @@ using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Caching;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data
@@ -64,6 +66,9 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;
 
+        /// <summary>The server round trips of every connection closed since the last <see cref="ResetRoundTrips" />.</summary>
+        private long _roundTrips;
+
         /// <summary>Creates a fixture whose host times every command out after the given time.</summary>
         /// <param name="sql">The suite's server.</param>
         /// <param name="commandTimeout">The command timeout of every read, validation and persist.</param>
@@ -94,6 +99,13 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The fixture host over the database.</summary>
         public FixtureTenant Tenant => _tenant ?? throw new InvalidOperationException("The database is not created yet.");
 
+        /// <summary>
+        ///     The server round trips the host's batch connections took since the last
+        ///     <see cref="ResetRoundTrips" />, as the client library counts them; the change-tracking
+        ///     audit's own connections are not counted.
+        /// </summary>
+        public long ServerRoundTrips => Interlocked.Read(ref _roundTrips);
+
         /// <summary>The server's administrative connection, which may end other sessions and see their requests.</summary>
         public string MasterConnectionString => sql.MasterConnectionString;
 
@@ -114,6 +126,13 @@ namespace Tellma.Core.IntegrationTests.Data
                 {
                     _ = services.AddSingleton<IDataBatchContributor>(Prologue);
                     _ = services.AddScoped<IClientEventPublisher>(_ => Events);
+
+                    // The fixture's connection provider, wrapped so each connection counts its server round trips.
+                    ServiceDescriptor original = services.Last(static descriptor => descriptor.ServiceType == typeof(ITenantConnectionProvider));
+                    Func<IServiceProvider, object> factory = original.ImplementationFactory
+                        ?? throw new InvalidOperationException("The fixture registers its connection provider by factory.");
+                    _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(
+                        provider => new CountingConnections((ITenantConnectionProvider)factory(provider), this)));
                     _ = services.AddFakeLogging();
                     _ = services.Configure<DataOptions>(options =>
                     {
@@ -123,6 +142,12 @@ namespace Tellma.Core.IntegrationTests.Data
                 },
                 audit: _audit,
                 cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>Forgets the server round trips counted so far.</summary>
+        public void ResetRoundTrips()
+        {
+            _ = Interlocked.Exchange(ref _roundTrips, 0);
         }
 
         /// <summary>
@@ -290,6 +315,32 @@ namespace Tellma.Core.IntegrationTests.Data
                         marked.ReportGuard(reader.GetBoolean(0));
                         cursor.CountRows(1);
                     });
+            }
+        }
+
+        /// <summary>The fixture's connections, each adding its server round trips to the database's total when it closes.</summary>
+        /// <param name="inner">The fixture's provider.</param>
+        /// <param name="database">The database whose total grows.</param>
+        private sealed class CountingConnections(ITenantConnectionProvider inner, DataBatchDatabase database) : ITenantConnectionProvider
+        {
+            /// <inheritdoc />
+            public TenantInfo Tenant => inner.Tenant;
+
+            /// <inheritdoc />
+            public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+            {
+                SqlConnection connection = await inner.OpenAsync(cancellationToken).ConfigureAwait(false);
+                connection.StatisticsEnabled = true;
+                connection.StateChange += (_, change) =>
+                {
+                    if (change.CurrentState == ConnectionState.Closed)
+                    {
+                        long trips = Convert.ToInt64(connection.RetrieveStatistics()["ServerRoundtrips"], CultureInfo.InvariantCulture);
+                        _ = Interlocked.Add(ref database._roundTrips, trips);
+                    }
+                };
+
+                return connection;
             }
         }
     }

@@ -218,11 +218,13 @@ namespace Tellma.Core.Data.Batches
         /// <summary>
         ///     What the batch bumps: the tenant-level names and user-level rules its written tables and
         ///     explicit bumps resolve to. Fixed when the epilogue stage starts, from the writes declared
-        ///     before it, so the bump epilogue's own writes never count; resolved afresh before then.
+        ///     before it, so the bump epilogue's own writes never count; resolved afresh before then. The
+        ///     writes of prologue statements never count: they are the platform's own bookkeeping (the
+        ///     connect prologue's activity stamp and join flip), which no cache reads.
         /// </summary>
         internal VersionTagBumpPlan Bumps
         {
-            get => field ?? VersionTagBumpPlan.Resolve(_executor.VersionTags, _written, _bumps);
+            get => field ?? ResolveBumps();
             private set;
         }
 
@@ -266,6 +268,14 @@ namespace Tellma.Core.Data.Batches
             // --- Refusals at append: a write outside the caller's authority, a user-id source that is no batch table ---
             CheckAuthority(options.Writes);
             CheckUserIds(options);
+            if (options.UserIds is SqlIdentifier { Name: ReservedSqlNames.CallerIds } && Premises is not { IsSystem: false })
+            {
+                // Only a user's connect prologue declares the caller's ids; without it the batch would
+                // fail to compile on the server.
+                throw new InvalidOperationException(
+                    "The statement names the caller's own rows (SqlOptions.ForCaller), but the batch carries no user's connect prologue, which declares the caller. Pass the user ids in SqlOptions.UserIds instead.");
+            }
+
             if (options.UserIds is SqlIdentifier userIds)
             {
                 _ = userIds.IsVariable
@@ -415,15 +425,34 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- The contributors' stages: the prologue if nothing was appended, then the epilogue ---
-            // The bumps are fixed first, from the writes the caller and the prologue declared.
+            // The bumps are fixed first, from the writes the caller declared.
             EnsurePrologue();
-            Bumps = VersionTagBumpPlan.Resolve(_executor.VersionTags, _written, _bumps);
+            VersionTagBumpPlan plan = ResolveBumps();
+
+            // An autocommit batch commits each write on its own, so a failure after one would leave it
+            // committed with no tag moved: a write that bumps a tag needs a transaction.
+            if (TransactionMode == TransactionMode.None && !plan.IsEmpty)
+            {
+                throw new InvalidOperationException(
+                    $"The batch runs in {nameof(TransactionMode.None)} mode, which commits each statement on its own, but its writes bump version tags ({Describe(plan)}). The bump must commit with the writes it covers: run the batch in {nameof(TransactionMode.Auto)} or {nameof(TransactionMode.Explicit)} mode.");
+            }
+
+            Bumps = plan;
             _stage = Stage.Epilogue;
             try
             {
                 for (int index = _contributors.Count - 1; index >= 0; index--)
                 {
                     _contributors[index].Contribute(this, DataBatchStage.Epilogue);
+                }
+
+                // An epilogue statement that writes a table whose tags the fixed plan does not move
+                // would commit rows no cache learns of: refuse it rather than leave them stale.
+                VersionTagBumpPlan after = ResolveBumps();
+                if (after.TenantNames.Except(plan.TenantNames, StringComparer.Ordinal).Any() || after.UserRules.Except(plan.UserRules).Any())
+                {
+                    throw new InvalidOperationException(
+                        $"An epilogue statement writes a table whose version tags the batch does not bump ({Describe(after)}, where the caller's writes bump {Describe(plan)}). The bump is fixed when the epilogue stage starts; such a write belongs in the body.");
                 }
             }
             catch
@@ -689,6 +718,23 @@ namespace Tellma.Core.Data.Batches
         private static NotSupportedException NotAvailable(string member)
         {
             return new NotSupportedException($"{nameof(IDataBatch)}.{member} is not available: its statement compiler is not part of this build.");
+        }
+
+        /// <summary>The bumps of the writes declared outside the prologue, and of the explicit bumps.</summary>
+        /// <returns>The plan.</returns>
+        private VersionTagBumpPlan ResolveBumps()
+        {
+            HashSet<TableName> written = [.. _statements.Where(static statement => statement.Section != BatchSection.Prologue).SelectMany(static statement => statement.Writes)];
+            return VersionTagBumpPlan.Resolve(_executor.VersionTags, written, _bumps);
+        }
+
+        /// <summary>A plan's names and rules, for a refusal's message.</summary>
+        /// <param name="plan">The plan.</param>
+        /// <returns>The description.</returns>
+        private static string Describe(VersionTagBumpPlan plan)
+        {
+            IEnumerable<string> items = plan.TenantNames.Concat(plan.UserRules.Select(static rule => $"{rule.Column} of the users {rule.Table} names"));
+            return items.Any() ? string.Join(", ", items) : "nothing";
         }
 
         /// <summary>Refuses everything once a contributor failed during a stage.</summary>

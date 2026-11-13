@@ -70,6 +70,7 @@ namespace Tellma.Core.IntegrationTests.Data
             var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
             _ = batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
             DateTimeOffset before = DateTimeOffset.UtcNow;
+            fixture.ResetRoundTrips();
 
             BatchOutcome outcome = await batch.ExecuteAsync(Token);
 
@@ -77,7 +78,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 string.Join("\n", BatchAssembly.SessionSettings, BatchAssembly.SchemaGuardText, VersionTagPrelude.Text),
                 batch.Assemble().Text,
                 StringComparison.Ordinal);
-            Assert.Equal(1, outcome.RoundTrips);
+            Assert.Equal((1, 1L), (outcome.RoundTrips, fixture.ServerRoundTrips));
             Assert.Equal(stored, outcome.VersionTags.Tags.ToDictionary(static pair => pair.Key, static pair => pair.Value.Value));
             Assert.True(outcome.VersionTags.ReadAtUtc >= before.AddSeconds(-1));
             Assert.Same(outcome.VersionTags, fixture.Tenant.Services.GetRequiredService<IVersionTagSnapshots>().Current(FixtureTenant.TenantId));
@@ -93,8 +94,10 @@ namespace Tellma.Core.IntegrationTests.Data
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
             var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
             _ = batch.Sql(TouchLookups, new SqlOptions(writes: Set(Lookups)));
+            fixture.ResetRoundTrips();
 
             BatchOutcome outcome = await batch.ExecuteAsync(Token);
+            long roundTrips = fixture.ServerRoundTrips;
 
             // --- The database: the two names hold the batch's tag; nothing else moved ---
             Dictionary<string, Guid> after = await fixture.TagsAsync();
@@ -104,7 +107,7 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal(before[VersionTagNames.Permissions], after[VersionTagNames.Permissions]);
 
             // --- The snapshot is the prelude's rows overlaid with the bump, with no read-back ---
-            Assert.Equal(1, outcome.RoundTrips);
+            Assert.Equal((1, 1L), (outcome.RoundTrips, roundTrips));
             Assert.Equal(after, outcome.VersionTags.Tags.ToDictionary(static pair => pair.Key, static pair => pair.Value.Value));
             Assert.Same(outcome.VersionTags, fixture.Tenant.Services.GetRequiredService<IVersionTagSnapshots>().Current(FixtureTenant.TenantId));
 

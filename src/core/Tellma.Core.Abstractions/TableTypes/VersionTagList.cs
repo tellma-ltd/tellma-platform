@@ -10,7 +10,7 @@ namespace Tellma.Core.Abstractions.TableTypes
 {
     /// <summary>
     ///     A row of the version-tag guard's table-valued parameter: one tenant-level tag name a persist
-    ///     batch depends on, the tag it expects, and whether the batch itself bumps the name.
+    ///     batch depends on or bumps, the tag it expects, and whether the batch itself bumps the name.
     /// </summary>
     /// <remarks>
     ///     A standalone table-type shape beside <see cref="IdList" /> and <see cref="StringList" />,
@@ -24,12 +24,15 @@ namespace Tellma.Core.Abstractions.TableTypes
         [MaxLength(128)]
         public string Name { get; set; } = null!;
 
-        /// <summary>The tag the batch expects, <c>uniqueidentifier</c>.</summary>
+        /// <summary>
+        ///     The tag the batch expects, <c>uniqueidentifier</c>; all zeros for a name the batch bumps
+        ///     without depending on it, which the guard locks but never compares.
+        /// </summary>
         public Guid Tag { get; set; }
 
         /// <summary>
-        ///     True when the batch itself bumps the name, so the guard reads the row under an update
-        ///     lock and two writers of it serialise instead of deadlocking; <c>bit</c>.
+        ///     True when the batch itself bumps the name; <c>bit</c>. A batch that bumps any name reads
+        ///     every row it names under an update lock, so two writers serialise instead of deadlocking.
         /// </summary>
         public bool Bumped { get; set; }
     }

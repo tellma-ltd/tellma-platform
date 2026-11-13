@@ -7,7 +7,9 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Caching;
 using Tellma.Core.Migrator;
+using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.IntegrationTests.Migrator
 {
@@ -84,6 +86,50 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.All(before, pair => Assert.Equal(pair.Value, after[pair.Key]));
         }
 
+        [Fact]
+        public async Task A_run_that_applies_a_migration_and_runs_no_step_moves_every_tag_after_the_seed()
+        {
+            MigratorHarness migrator = new(sql, "vt_applied");
+            RecordingSeeder seeder = new(migrator.TenantConnectionString(1));
+            migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
+            migrator.Seed(1);
+
+            // --- The first run applies the initial migration and runs no step: seeded, then every tag moved ---
+            MigratorResult first = await migrator.RunAsync("migrate");
+            Assert.True(first.ExitCode == MigratorExitCodes.Converged, first.ToString());
+            Assert.Contains(first.Lines, static line => line.Contains("(1 migration(s), 0 step(s))", StringComparison.Ordinal));
+            Assert.Equal(["seed", "bump"], seeder.Calls);
+            Dictionary<string, Guid> moved = await TagsAsync(migrator.TenantConnectionString(1));
+            Assert.All(seeder.Seeded!, pair => Assert.NotEqual(pair.Value, moved[pair.Key]));
+
+            // --- A run that applies nothing seeds alone ---
+            seeder.Calls.Clear();
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            Assert.Equal(["seed"], seeder.Calls);
+        }
+
+        [Fact]
+        public async Task A_run_that_fails_after_applying_a_migration_still_moves_every_tag_and_one_that_changed_nothing_does_not()
+        {
+            MigratorHarness migrator = new(sql, "vt_failed");
+            RecordingSeeder seeder = new(migrator.TenantConnectionString(1)) { FailSeed = true };
+            migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
+            migrator.Seed(1);
+
+            // --- The migration applied, then the seed failed: the tags move on the way out ---
+            MigratorResult failed = await migrator.RunAsync("migrate");
+            Assert.NotEqual(MigratorExitCodes.Converged, failed.ExitCode);
+            Assert.Equal(["seed", "bump"], seeder.Calls);
+
+            // --- Provisioned on the next run, which applies nothing; a later failure moves nothing ---
+            seeder.FailSeed = false;
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            seeder.Calls.Clear();
+            seeder.FailSeed = true;
+            Assert.NotEqual(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            Assert.Equal(["seed"], seeder.Calls);
+        }
+
         /// <summary>Reads a tenant database's version tags.</summary>
         /// <param name="database">The tenant database.</param>
         /// <returns>Each name's tag.</returns>
@@ -101,6 +147,55 @@ namespace Tellma.Core.IntegrationTests.Migrator
             }
 
             return tags;
+        }
+
+        /// <summary>
+        ///     The platform's seeder, recording each call and the tags right after each seed, and
+        ///     failing the seed on demand.
+        /// </summary>
+        /// <param name="database">The tenant database whose tags it reads after a seed.</param>
+        private sealed class RecordingSeeder(string database) : ITenantVersionTagSeeder
+        {
+            /// <summary>The seeder it forwards to, once the host built it.</summary>
+            private TenantVersionTagSeeder? _inner;
+
+            /// <summary>The calls, in order: <c>seed</c> and <c>bump</c>.</summary>
+            public List<string> Calls { get; } = [];
+
+            /// <summary>The tags right after the last seed that succeeded.</summary>
+            public Dictionary<string, Guid>? Seeded { get; private set; }
+
+            /// <summary>Whether a seed throws, after it is recorded, instead of seeding.</summary>
+            public bool FailSeed { get; set; }
+
+            /// <summary>Wraps the platform's seeder in the host the migrator builds.</summary>
+            /// <param name="services">The host's services.</param>
+            /// <returns>This seeder.</returns>
+            public RecordingSeeder Over(IServiceProvider services)
+            {
+                _inner = ActivatorUtilities.CreateInstance<TenantVersionTagSeeder>(services);
+                return this;
+            }
+
+            /// <inheritdoc />
+            public async Task SeedAsync(int tenantId, CancellationToken cancellationToken)
+            {
+                Calls.Add("seed");
+                if (FailSeed)
+                {
+                    throw new InvalidOperationException("The seed failed, as the test asked.");
+                }
+
+                await _inner!.SeedAsync(tenantId, cancellationToken);
+                Seeded = await TagsAsync(database);
+            }
+
+            /// <inheritdoc />
+            public Task BumpAllAsync(int tenantId, CancellationToken cancellationToken)
+            {
+                Calls.Add("bump");
+                return _inner!.BumpAllAsync(tenantId, cancellationToken);
+            }
         }
 
         /// <summary>A registry of fixed names, none of which a written table bumps.</summary>

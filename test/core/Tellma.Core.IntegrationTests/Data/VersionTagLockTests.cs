@@ -19,9 +19,10 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <summary>
     ///     Version tags under overlapping batches, each pause a real lock wait: the tag read before the
     ///     rows under a concurrent bump, a tag the persist guard read held until commit, two bumps of
-    ///     one read tag serialised on the guard instead of deadlocking, and two writes of one caller's
-    ///     stamp serialised. The host runs without the change-tracking audit, which is exact only while
-    ///     one batch at a time writes.
+    ///     one read tag serialised on the guard instead of deadlocking, two writes of one caller's
+    ///     stamp serialised, two bumps of different tags each read by the other serialised with no
+    ///     deadlock, and a deadlock victim run again into a stale failure. The host runs without the
+    ///     change-tracking audit, which is exact only while one batch at a time writes.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -177,6 +178,93 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = await first;
             _ = await second;
             Assert.Equal(b.Tag, await StampAsync("PreferencesTag", DataBatchDatabase.CallerId));
+        }
+
+        [Fact]
+        public async Task A_settings_save_and_a_role_save_serialise_on_their_first_shared_tag_and_never_deadlock()
+        {
+            await using SideTransaction side = await SideTransaction.HoldGateAsync(fixture.Database.Tenant.ConnectionString);
+            using MetricCollector<long> retries = new(fixture.Database.Tenant.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
+
+            // --- A bumps settings, expecting both tags, and pauses at the gate after its guard ---
+            await using AsyncServiceScope scopeA = fixture.Database.Tenant.CreateScope();
+            DataBatch a = Bumps(scopeA, VersionTagNames.Settings);
+            _ = a.Sql(Gate, null);
+            Task<BatchOutcome> first = a.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(1, first);
+
+            // --- B bumps permissions: its guard waits at the first name both lock, instead of
+            // sharing the rows and deadlocking when each bump converts the row the other holds ---
+            await using AsyncServiceScope scopeB = fixture.Database.Tenant.CreateScope();
+            DataBatch b = Bumps(scopeB, VersionTagNames.Permissions);
+            Task<BatchOutcome> second = b.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(2, first, second);
+
+            // --- A commits; B then reads the settings tag A moved and fails, never chosen as a deadlock victim ---
+            await side.ReleaseAsync();
+            _ = await first;
+            BatchAssertionFailedException refused = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => second);
+            Assert.Equal(TellmaSqlErrors.StaleVersionTag, refused.Number);
+            Assert.Empty(retries.GetMeasurementSnapshot());
+            Dictionary<string, Guid> tags = await fixture.Database.TagsAsync();
+            Assert.Equal(a.Tag, tags[VersionTagNames.Settings]);
+            Assert.Equal(DataBatchDatabase.PermissionsTag, tags[VersionTagNames.Permissions]);
+        }
+
+        [Fact]
+        public async Task A_guarded_batch_chosen_as_a_deadlock_victim_is_run_again_and_fails_stale_on_the_tag_that_moved()
+        {
+            Guid expected = (await fixture.Database.TagsAsync())[LookupTag];
+            using MetricCollector<long> retries = new(fixture.Database.Tenant.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
+            await using SqlConnection rival = new(fixture.Database.Tenant.ConnectionString);
+            await rival.OpenAsync(Token);
+            await using var rivalTransaction = (SqlTransaction)await rival.BeginTransactionAsync(Token);
+            _ = await ExecuteInAsync(rival, rivalTransaction, "SET DEADLOCK_PRIORITY HIGH; INSERT INTO [core].[Jobs] ([Id]) VALUES (1001);");
+
+            // --- A holds a shared lock on the list's tag and waits at the gate the rival holds ---
+            await using AsyncServiceScope scope = fixture.Database.Tenant.CreateScope();
+            var a = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            a.MarkConnectPrologue(DataBatchDatabase.Premises);
+            a.DependsOn([new VersionTagDependency(LookupTag, new VersionTag(expected), VersionTagMismatchPolicy.Rerun)]);
+            _ = a.Sql($"DELETE FROM [core].[Jobs] WHERE [Id] = 0;", new SqlOptions(writes: Set(Jobs)));
+            _ = a.Sql(Gate, null);
+            Task<BatchOutcome> running = a.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(1, running);
+
+            // --- The rival bumps that tag: a cycle the server breaks by killing A, the lower priority ---
+            _ = await ExecuteInAsync(rival, rivalTransaction, $"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{LookupTag}';");
+            await rivalTransaction.CommitAsync(Token);
+
+            // --- A's re-run reads the moved tag: the guard fails it as stale, the runner's cue to recompose ---
+            BatchAssertionFailedException refused = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => running);
+            Assert.Equal(TellmaSqlErrors.StaleVersionTag, refused.Number);
+            Assert.Single(retries.GetMeasurementSnapshot());
+        }
+
+        /// <summary>A user's batch that bumps one tag explicitly and writes elsewhere, expecting the settings and permissions tags.</summary>
+        /// <param name="scope">The scope.</param>
+        /// <param name="name">The tag it bumps.</param>
+        /// <returns>The batch.</returns>
+        private static DataBatch Bumps(AsyncServiceScope scope, string name)
+        {
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            batch.MarkConnectPrologue(DataBatchDatabase.Premises);
+            batch.BumpVersionTag(name);
+            _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE [Id] = 0;", new SqlOptions(writes: Set(Jobs)));
+            return batch;
+        }
+
+        /// <summary>Runs statements inside an open transaction.</summary>
+        /// <param name="connection">The connection.</param>
+        /// <param name="transaction">The transaction.</param>
+        /// <param name="text">The statements.</param>
+        /// <returns>The rows affected.</returns>
+        private static async Task<int> ExecuteInAsync(SqlConnection connection, SqlTransaction transaction, string text)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = text;
+            return await command.ExecuteNonQueryAsync(Token);
         }
 
         /// <summary>A user's batch that depends on the list's tag and bumps it.</summary>
