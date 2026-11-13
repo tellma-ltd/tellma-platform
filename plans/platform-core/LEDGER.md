@@ -101,9 +101,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-075 | pc-3 | pc/PC-075 | fix2 + integrate (stop-the-line lifted at 9a1754d) (R2 0/1/5: post-boot storage faults reject put/patch/readAll and a memory-fallback patch is lost; sweep vs in-flight write ordering; sign-in-failed defers the sweep; linked-measure restatement (~16.44); stale PC-113 lead; fixed 50 ms waits) | a079c6e696d8bf4b1 (Opus inherit) | r1 abcee4d6b2b554a69 done, r2 a5a1ec716eb481414 done | 2026-11-13 |
-| PC-097 | pc-f2 | pc/PC-097 | r1 (impl bf01975: 11 deviations; enqueue refuses any in-memory JobId (spec: null or terminal); OwnerId bigint; LOCK_ESCALATION via a quarantined subclass of EF's internal SqlServerAnnotationProvider; migrator first-migrate flake 2 of 3 Core IT runs, cause unknown) | a342737a128172612 (Opus inherit) | r1 a3e9738a114d4e98a | 2026-11-13 |
+| PC-097 | pc-f2 | pc/PC-097 | fix1 + integrate (R1 0/1/3: D-8 rejected → null-or-terminal JobId enforced in SQL with a rowcount check; refuse TransactionMode.None; TenantPollerWake failure tests; built-in schedule seed test) | a342737a128172612 (Opus inherit) | r1 a3e9738a114d4e98a done | 2026-11-13 |
 | PC-030 | pc-1 | pc/PC-030 | fix1 + integrate (R1 0/2/6: zone-label width shifts the date/time parts; zone not exposed to screen readers; minute-floored compare rewrites repeated hours (→ wall-time); required on the filled part; parseErrors → internal; budgets above 0023 §1 caps (D-072); Identity IT not run; time field width) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 done | 2026-11-13 |
-| PC-043 | pc-4 | pc/PC-043 | impl | a5331f5d26f9b6e59 (Opus inherit, xhigh) | | 2026-11-13 |
+| PC-043 | pc-4 | pc/PC-043 | fix1 (R1 0/1/3: (*, A') implied Read narrowed to resources registering A' (D-073); one filter root per resource rechecked in Classify; engine-exception test; inactive-role test deferred to PC-050) → then R2 (fable) | a5331f5d26f9b6e59 (Opus inherit, xhigh) | r1 a0933f23627b52d41 done | 2026-11-13 |
 | PC-054 | pc-2 | pc/PC-054 | impl | aede283b100436c0c (Opus inherit) | | 2026-11-13 |
 
 ## Fix items
@@ -224,6 +224,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Spec | Reason |
 |---|---|---|
+| Decide excludes inactive-role grants (PC-043 checkpoint test list) | 0014 §5.2, §6.2 | inactive roles are excluded by the load; carried into PC-050 (PC-043 R1-4) |
 
 ## Status
 
@@ -272,7 +273,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-040 | 0012-g | 1 | todo | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
-| PC-043 | 0014-c | 1 | impl | | | |
+| PC-043 | 0014-c | 1 | fix1 | 1ee46fa |  |  |
 | PC-044 | 0013-e | 1 | todo | | | |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
@@ -307,7 +308,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-075 | 0025-a | 1 | fix2 + integrate | 61c750f, 8f00d42 |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
 | PC-077 | 0015-i | 1 | todo | | | |
-| PC-078 | 0014-f | 1 | todo | | | |
+| PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073 |
 | PC-079 | 0013-h | 1 | todo | | | |
 | PC-080 | 0016-c | 1 | todo | | | |
 | PC-081 | 0016-d | 1 | todo | | | |
@@ -326,7 +327,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-094 | 0024-f | 1 | todo | | | |
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
-| PC-097 | 0020-b | 1 | r1 | bf01975 |  |  |
+| PC-097 | 0020-b | 1 | fix1 + integrate | bf01975 |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |
