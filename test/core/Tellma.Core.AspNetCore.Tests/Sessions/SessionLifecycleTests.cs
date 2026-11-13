@@ -149,7 +149,7 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             Task<HttpResponseMessage>[] requests = [.. Enumerable.Range(0, 8).Select(_ => GetUserAsync(host, session.Cookie))];
             await Task.Delay(200, TestContext.Current.CancellationToken);
             gate.SetResult();
-            HttpResponseMessage[] responses = await Task.WhenAll(requests);
+            HttpResponseMessage[] responses = await Task.WhenAll(requests).WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
 
             Assert.All(responses, static response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
             Assert.Equal(1, host.IdentityServer.Redemptions);
@@ -184,7 +184,7 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             Task<HttpResponseMessage>[] requests = [.. Enumerable.Range(0, 8).Select(_ => GetUserAsync(host, session.Cookie))];
             await Task.Delay(200, TestContext.Current.CancellationToken);
             gate.SetResult();
-            HttpResponseMessage[] responses = await Task.WhenAll(requests);
+            HttpResponseMessage[] responses = await Task.WhenAll(requests).WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
 
             // --- One redemption served every request, and no identity reached two of them ---
             Assert.All(responses, static response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
@@ -550,14 +550,12 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
             host.IdentityServer.StallRefresh = true;
 
+            // The clock moves a second at a time until the request is answered, so a wait armed after a
+            // move is still released by a later one.
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            while (host.IdentityServer.Redemptions == 0)
-            {
-                await Task.Delay(10, TestContext.Current.CancellationToken);
-            }
-
-            host.Time.Advance(OidcTokenRedeemer.Timeout + TimeSpan.FromSeconds(1));
-            using HttpResponseMessage response = await pending;
+            await UntilAsync(() => host.IdentityServer.Redemptions > 0);
+            await AdvanceUntilAsync(host, () => pending.IsCompleted, OidcTokenRedeemer.Timeout + TimeSpan.FromSeconds(3));
+            using HttpResponseMessage response = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal([session.Key], host.Rows.Keys());

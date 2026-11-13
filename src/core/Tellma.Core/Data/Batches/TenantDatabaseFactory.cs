@@ -68,6 +68,9 @@ namespace Tellma.Core.Data.Batches
         public int TenantId { get; }
 
         /// <inheritdoc />
+        public int? UserId => null;
+
+        /// <inheritdoc />
         public QueryexSchema Schema => throw NoRequestContext(nameof(Schema));
 
         /// <inheritdoc />

@@ -5,10 +5,13 @@
 
 /**
  * Per-entry-point bundle budget (spec §8): measures each surface's
- * SELF-weight — its built FESM bundled with esbuild while the assumed app
- * baseline (@angular/* incl. cdk+aria, rxjs, tslib, @jsverse/*) AND the
- * other @tellma entry points stay external — then gzips and compares to the
- * ceilings each library declares in its package.json "tellma".budgetsInKb.
+ * SELF-weight as an app ships it — its built FESM and every chunk it loads
+ * (`@defer` chunks included) linked by the Angular linker and bundled with
+ * esbuild under the production options, while the assumed app baseline
+ * (@angular/* incl. cdk+aria, rxjs, tslib, @jsverse/*) AND the other @tellma
+ * entry points stay external (tools/bundle-measure.mjs says why it links
+ * first, and fails on anything left unlinked) — then gzips and compares to
+ * the ceilings each library declares in its package.json "tellma".budgetsInKb.
  * The ceilings are RATCHETS: set just above measured reality to catch
  * regressions, inspected and tightened as real builds land, never loosened
  * silently.
@@ -25,16 +28,17 @@
  *
  * Usage: node scripts/bundle-size.mjs   (after `pnpm run build`)
  */
-import { gzipSync } from 'node:zlib';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createBundleMeasurer } from '../tools/bundle-measure.mjs';
 import { discoverLibraries } from '../tools/workspace.mjs';
 
 const clientDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(clientDir, 'package.json'));
 const esbuild = require('esbuild');
+const measure = await createBundleMeasurer(clientDir);
 
 let failed = false;
 const rows = [];
@@ -56,18 +60,10 @@ for (const library of discoverLibraries(clientDir)) {
       continue;
     }
     declared.delete(entryPoint.id);
-    const result = await esbuild.build({
-      entryPoints: [join(clientDir, entryPoint.fesm)],
-      bundle: true,
-      minify: true,
-      format: 'esm',
-      write: false,
-      logLevel: 'silent',
-      // The assumed app baseline (counting CDK against tm-select would
-      // double-count) + sibling @tellma entry points (measured on their own).
-      external: ['@angular/*', 'rxjs', 'rxjs/*', 'tslib', '@jsverse/*', '@tellma/*'],
-    });
-    const gzipped = gzipSync(result.outputFiles[0].contents).length / 1024;
+    // The linked production weight; the externals are the assumed app
+    // baseline (counting CDK against tm-select would double-count) and the
+    // sibling @tellma entry points (measured on their own).
+    const gzipped = (await measure(join(clientDir, entryPoint.fesm))) / 1024;
     const over = gzipped > kb;
     failed ||= over;
     rows.push({

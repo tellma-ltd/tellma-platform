@@ -18,7 +18,7 @@ namespace Tellma.Core.Tests.Composition.Checks
     /// <summary>
     ///     <c>core.notification-types</c>: keys and categories follow their grammars, keys are unique,
     ///     severities are defined, channel-only types follow their rule, and targets name a stack
-    ///     entity with an integer key.
+    ///     entity with an integer key or a registered securable resource.
     /// </summary>
     public class NotificationTypesCheckTests
     {
@@ -131,7 +131,7 @@ namespace Tellma.Core.Tests.Composition.Checks
             CompositionProblem problem = Assert.Single((await CheckAsync(
                 new NotificationTypeDescriptor("fixture.export.ready", "files", false, "core.Export"))).From(Check));
 
-            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Export', which is not a stack resource of the composition.", problem.Problem);
+            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Export', which is neither a stack resource nor a registered securable resource of the composition.", problem.Problem);
         }
 
         [Fact]
@@ -157,6 +157,22 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public async Task A_target_naming_a_registered_securable_resource_as_spelled_passes()
+        {
+            // A securable resource with no stack (a report, an export) is routed by name on the client.
+            IReadOnlyList<CompositionProblem> problems = (await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
+                    .Securables(static securables => securables.Add("fixture.Report", "Read", null))
+                    .NotificationType(new NotificationTypeDescriptor("fixture.report.ready", "reports", false, "fixture.Report"))
+                    .NotificationType(new NotificationTypeDescriptor("fixture.report.failed", "reports", false, "fixture.report")))))).From(Check);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Equal(
+                "The notification type 'fixture.report.failed' of the feature 'fixture' targets 'fixture.report', which is neither a stack resource nor a registered securable resource of the composition.",
+                problem.Problem);
+        }
+
+        [Fact]
         public async Task A_target_naming_an_entity_mapped_without_a_stack_is_refused()
         {
             // The blob table is in every model but is no stack, so the client has no route to it.
@@ -165,7 +181,7 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             CompositionProblem problem = Assert.Single((await CheckAsync(new NotificationTypeDescriptor("fixture.blob.stored", "files", false, blob))).From(Check));
 
-            Assert.Equal($"The notification type 'fixture.blob.stored' of the feature 'fixture' targets '{blob}', which is not a stack resource of the composition.", problem.Problem);
+            Assert.Equal($"The notification type 'fixture.blob.stored' of the feature 'fixture' targets '{blob}', which is neither a stack resource nor a registered securable resource of the composition.", problem.Problem);
         }
 
         [Fact]
@@ -181,8 +197,8 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             Assert.Equal(
                 [
-                    $"The notification type 'fixture.child.changed' of the feature 'fixture' targets '{child}', which is not a stack resource of the composition.",
-                    "The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is not a stack resource of the composition.",
+                    $"The notification type 'fixture.child.changed' of the feature 'fixture' targets '{child}', which is neither a stack resource nor a registered securable resource of the composition.",
+                    "The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is neither a stack resource nor a registered securable resource of the composition.",
                 ],
                 problems.Select(static problem => problem.Problem));
         }
@@ -209,6 +225,8 @@ namespace Tellma.Core.Tests.Composition.Checks
                     HandBuiltMetadata.Entity(typeof(TokenRow), "fixture.Token", typeof(Guid)),
                     HandBuiltMetadata.Entity(typeof(CounterRow), "fixture.Counter", typeof(long)),
                 ]),
+                securables: null,
+                securablesFailed: false,
                 problems);
 
             CompositionProblem problem = Assert.Single(problems);

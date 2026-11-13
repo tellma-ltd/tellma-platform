@@ -155,3 +155,42 @@ export const SearchPage = {
     </tm-grid>
   `,
 };
+
+/**
+ * Header filters and a column editor: a column's `tmGridHeaderEnd` template
+ * holds a `button[tmGridHeaderAction]` that opens a filter popover (its
+ * `active` input marks a filter in force), and the grid's
+ * `tmGridRowEndHeader` template puts the column editor in a sticky column
+ * at the inline end. The keyboard reaches both from the header row: ArrowUp
+ * from the first row, then Enter on a filter-only header, Alt+ArrowDown on
+ * a sortable one. `filtered` (a signal), `funnel` and `columns3` (Lucide
+ * icons) are members of the consuming component.
+ */
+export const HeaderFiltersAndColumnEditor = {
+  template: `
+    <tm-grid gridId="search.customers" [data]="rows" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" sortable>
+        <ng-template tmGridHeaderEnd>
+          <button tmGridHeaderAction aria-label="Filter Name" [active]="filtered()"
+                  [tmPopoverTriggerFor]="nameFilter"><tm-icon [svg]="funnel" /></button>
+          <tm-popover #nameFilter aria-label="Filter Name">
+            <ng-template tmPopoverContent>
+              <p>The fields that filter the Name column.</p>
+            </ng-template>
+          </tm-popover>
+        </ng-template>
+      </tm-grid-column>
+      <tm-grid-column key="qty" type="number" header="Orders" [width]="100" />
+      <ng-template tmGridRowEndHeader>
+        <button tmGridHeaderAction aria-label="Choose columns" [tmPopoverTriggerFor]="columnPicker">
+          <tm-icon [svg]="columns3" />
+        </button>
+        <tm-popover #columnPicker aria-label="Choose columns">
+          <ng-template tmPopoverContent>
+            <p>Choose and order the columns of the list.</p>
+          </ng-template>
+        </tm-popover>
+      </ng-template>
+    </tm-grid>
+  `,
+};

@@ -75,6 +75,9 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly selectAll: "تحديد كل الصفوف";
         readonly selectRow: "تحديد الصف";
         readonly rowActivationHint: "{gender, select, female {اضغطي} other {اضغط}} Enter لفتح صف. {gender, select, female {اضغطي} other {اضغط}} F2 للوصول إلى رابط في خلية.";
+        readonly headerNavHint: "{filter, select, true {Enter للفرز. {filterKeys} للتصفية.} other {Enter للفرز.}}";
+        readonly headerActionHint: "{gender, select, female {اضغطي} other {اضغط}} Enter للفتح.";
+        readonly headerActionActive: "مفعّل";
         readonly menu: {
             readonly cut: "{gender, select, female {قصي} other {قص}}";
             readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
@@ -177,6 +180,7 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly deleteRows: "حذف الصفوف المحددة";
             readonly expand: "توسيع الصف";
             readonly collapse: "طي الصف";
+            readonly headerAction: "فتح إجراء عنوان العمود، مثل التصفية";
         };
     };
     readonly menu: {
