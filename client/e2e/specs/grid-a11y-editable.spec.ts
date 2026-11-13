@@ -8,6 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import {
   activateCell,
+  activeCell,
   cell,
   cellPaint,
   editorInput,
@@ -18,13 +19,15 @@ import {
   rowCheckbox,
   statusChip,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * The axe static floor over the EDITABLE grid states (spec 0004 §14):
  * populated editable, an open text editor, the enum editor with its panel
  * open, the error state with the active-cell overlay visible, and the
  * selectable list screen with checked rows and the find bar open; and the
- * forced-colors paint of errored and readonly cells inside a range. The
+ * forced-colors paint of errored and readonly cells inside a range, of the
+ * open editor, and of the active cell on a find match. The
  * readonly/loading/empty/tree scans live in grid-a11y.spec.ts and
  * tree-grid.spec.ts.
  */
@@ -91,7 +94,7 @@ test.describe('error state', () => {
   }
 });
 
-test.describe('forced colors (§14)', () => {
+test.describe('forced colors', () => {
   test('errored and readonly cells inside a range keep the fill, legible ink and their outlines', async ({
     page,
   }) => {
@@ -125,6 +128,55 @@ test.describe('forced colors (§14)', () => {
     expect(errored.outlineColor).not.toBe(errored.background);
     // The active ring shows on the fill too.
     expect(active.outline).toBe('solid');
+    expect(active.outlineColor).not.toBe(active.background);
+
+    // Editing the active cell keeps the range selected; the editor is a
+    // field of its own, and its text stays legible over it.
+    await page.keyboard.press('F2');
+    await expect(editorInput(page)).toBeFocused();
+    await expect(cell(page, 3, 0)).toHaveAttribute('aria-selected', 'true');
+    await appStable(page);
+    const field = await editorInput(page).evaluate((input) => {
+      // The paint under the text: the nearest box that paints a background.
+      let box: Element | null = input;
+      let background = 'rgba(0, 0, 0, 0)';
+      while (box !== null) {
+        const color = getComputedStyle(box).backgroundColor;
+        if (!/^rgba\(.*, 0\)$/.test(color)) {
+          background = color;
+          break;
+        }
+        box = box.parentElement;
+      }
+      return { ink: getComputedStyle(input).color, background };
+    });
+    expect(field.ink).not.toBe(field.background);
+  });
+
+  test('the active cell keeps its solid ring on a find match that is not the active match', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await gotoGrid(page, 'grid-list-screen');
+    await activateCell(page, 0, 0);
+    await page.keyboard.press('Control+f');
+    await findInput(page).fill('Item'); // every row matches; one is the active match
+    await expect(findCounter(page)).toContainText('of');
+
+    // Click a rendered match other than the active one: activity moves,
+    // the find index does not.
+    const match = page
+      .locator('[data-tm-cell].tm-grid__cell--find:not(.tm-grid__cell--find-active)')
+      .nth(2);
+    const row = Number(await match.getAttribute('data-row'));
+    const col = Number(await match.getAttribute('data-col'));
+    await match.click();
+    await expect(activeCell(page)).toHaveAttribute('data-row', String(row));
+    await expect(cell(page, row, col)).toHaveClass(/tm-grid__cell--find(?!-)/);
+    await expect(cell(page, row, col)).not.toHaveClass(/tm-grid__cell--find-active/);
+
+    const active = await cellPaint(page, row, col);
+    expect(active.outline).toBe('solid'); // the ring, not the match's dots
     expect(active.outlineColor).not.toBe(active.background);
   });
 });

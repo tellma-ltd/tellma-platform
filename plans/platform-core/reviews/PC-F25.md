@@ -96,3 +96,79 @@ settled read exposes (Chromium, `forcedColors: 'active'`):
   platforms where SelectedItem equals Highlight. Out of this fix's scope; worth a look.
 - Examine hardest: the specificity reasoning in the fill rule's comment, and that no other cell
   background rule (in any grid CSS) outweighs (0,6,0).
+
+## Review 1
+
+Scope checked: the race fix (cellPaint/appStable against the zoneless scheduler's pending render
+task), the forced-colors cascade under emulated encapsulation (fill `.tm-grid__scroller
+.tm-grid__row > .tm-grid__cell--selected` = 0,6,0 against readonly 0,5,0, zebra/placeholder/
+checked/active-row 0,4,0, error/find 0,3,0; no other stylesheet targets grid cells), and each new
+assertion against the old CSS. The root cause is removed, not masked: no retries, timeouts or
+skips; `appStable` waits on `ApplicationRef.whenStable()`, which holds the scheduled render, and
+the tests also wait on `aria-selected` / `data-tm-cut`, which the same render binds as the class.
+Mutant reasoning agrees with the implementer: 3 of 4 tests fail on the old CSS, the lone-active
+test pins existing behaviour.
+
+Runs (CI=1, production showcase build, chromium, `--workers 2`):
+- The four forced-colors tests, `--repeat-each 15`: 56 of 56 passed, no retries (the last 4 were
+  cut by my own 590 s wrapper, not failures). Log: `.tmp/pcf25r1-e2e-forced.log`.
+- A throwaway probe (`.tmp/pcf25r1-probe/`), forced colors: tree grid range (fill on hierarchy
+  cells, HighlightText ring), checked rows (lone active: SelectedItemText ring on SelectedItem;
+  inside a range: the fill wins), RTL readonly range, and the non-forced range (background-image
+  layer unchanged) all behave as intended. Two combinations fail; see R1-1 and R1-2.
+- eslint (3 changed e2e files), stylelint (grid-view.css), e2e tsc: clean. size:check on the
+  current dist: ./grid 39.04 of 39.25 KB.
+
+### Findings
+
+**R1-1 (major; not a regression).** `client/projects/core/tellma-core-ui/grid/internal/grid-view.css:808-812`
+(with `.tm-grid__editor`, line 533, which has no forced-colors rule). Scenario: forced colors,
+editable grid, select a multi-cell range, press F2 (or type) on the active cell. The range stays
+selected (`--selected --editing` on the cell), so the cell's `color: HighlightText` is inherited
+by the editor's input, while `.tm-grid__editor`'s `var(--field-bg)` is forced to Canvas. Measured
+in Chromium: editor background `rgb(255, 255, 255)`, input ink `rgb(255, 255, 255)`: the text
+being edited is invisible. The lazy-load draft input (`all: unset`, so `color` inherits) is hit
+the same way. The old CSS had the same defect on non-zebra rows, so it is not introduced here,
+but this fix redefines the range's ink and claims "text stays legible on the fill", and its
+tests only check the cell's own ink. Suggested fix: in the forced-colors block add
+`.tm-grid__editor { background: Field; color: FieldText; }` (the editor then also stops reading
+as part of the fill), and extend the editable forced-colors test: press F2 on the active cell of
+the range and assert the editor input's ink differs from the editor's background. If the
+orchestrator would rather not hold the stop-the-line fix for it, file it as a follow-up fix item.
+
+**R1-2 (minor; pre-existing).** `client/projects/core/tellma-core-ui/grid/internal/grid-view.css:788-792`.
+The forced-colors find rule (`outline: … dotted currentColor`, 0,3,0) is declared after the
+active rule (745-749, same specificity), so on an active cell that is a find match but not the
+active match it replaces the 2px solid ring with a 1px dotted outline. Reachable: with the find
+bar open, click any other match (clicking does not move the find index). Measured on
+grid-list-screen: active cell (3,1) `dotted 1px`, the other matches `dotted 1px`, so the active
+cell no longer has a ring; this breaks the "activity still wins the outline" rule the error block
+states. The same ordering also lets the find dots replace an errored cell's dashes. Suggested
+fix (no bytes): move the `--find` block above the `--active` block (keep `--find-active` after
+both), and add an assertion that an active non-active-match cell keeps `outline: solid`.
+
+**R1-3 (minor).** `client/e2e/specs/grid-a11y-editable.spec.ts:94`. The new describe title
+`'forced colors (§14)'` puts a spec section reference in a test name, which AGENTS.md forbids
+(the sibling title in grid-a11y.spec.ts:96 predates this change). Suggested fix: title it
+`'forced colors'`.
+
+### Responses
+
+- R1-1: fixed in the review 1 fix commit (see `git log`; the fix commit cannot cite its own sha).
+  The forced-colors block now gives `.tm-grid__editor` `background: Field; color: FieldText`,
+  so the editor (and the draft input, which inherits through `all: unset`) is a field of its own,
+  not part of the fill. The editable forced-colors test now presses F2 on the active cell of the
+  range, checks the range stays selected, and asserts the input's ink differs from the nearest
+  painted background under it. On the previous CSS it fails (ink
+  `rgb(255, 255, 255)` on `rgb(255, 255, 255)`); it passes with the fix.
+- R1-2: fixed in the same commit. The `--find` block now comes first of the cell outlines (before
+  `--error` and `--active`), and `--find-active` stays after `--active`. An active cell on a
+  non-active match keeps its solid ring, and an errored match keeps its dashes; no bytes added. New
+  test "the active cell keeps its solid ring on a find match that is not the active match"
+  (grid-list-screen, query "Item", click a rendered non-active match): it fails on the previous CSS
+  (received `dotted`) and passes with the fix.
+- R1-3: fixed in the same commit. The new describe in grid-a11y-editable.spec.ts is titled
+  'forced colors'. The pre-existing sibling titles in grid-a11y.spec.ts are left as they were.
+- Evidence: component CSS 13.30 kB (error budget 13.5 kB); the five forced-colors tests in CI mode,
+  `--repeat-each 25 --workers 6`: 125 of 125. Gates and the integration run are listed in the
+  commit messages.

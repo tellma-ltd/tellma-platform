@@ -727,14 +727,24 @@
     border-color: CanvasText;
   }
 
+  /* Find matches never rely on tint alone: a dotted outline (distinct
+     from the error dashes). Declared first of the cell outlines: an error's
+     dashes and the active ring both win over the dots, and the active
+     match (--find-active, below) keeps its solid outline. */
+  .tm-grid__cell.tm-grid__cell--find {
+    background: Canvas;
+    /* The cell's ink, so the dots contrast with whatever background a row
+       state or the range fill paints under them. */
+    outline: var(--border-width) dotted currentColor;
+    outline-offset: calc(-2 * var(--border-width));
+  }
+
   /* Error state never relies on tint alone: a dashed system-color outline
      (before --active below, so activity still wins the outline). */
   .tm-grid__cell.tm-grid__cell--error {
     background: Canvas;
     box-shadow: none;
-    /* The cell's ink, so the dashes contrast with whatever background a
-       row state or the range fill paints under them. */
-    outline: var(--border-width) dashed currentColor;
+    outline: var(--border-width) dashed currentColor; /* the ink, as on finds */
     outline-offset: calc(-2 * var(--border-width));
   }
 
@@ -783,14 +793,7 @@
     border-color: CanvasText;
   }
 
-  /* Find matches never rely on tint alone: a dotted outline (distinct
-     from the error dashes), the active match keeps its solid outline. */
-  .tm-grid__cell.tm-grid__cell--find {
-    background: Canvas;
-    outline: var(--border-width) dotted currentColor; /* the ink, as on errors */
-    outline-offset: calc(-2 * var(--border-width));
-  }
-
+  /* After --active: the active match keeps its solid outline. */
   .tm-grid__cell.tm-grid__cell--find-active {
     outline: var(--focus-ring-width) solid var(--tm-grid-overlay-ink, Highlight);
     outline-offset: calc(-1 * var(--focus-ring-width));
@@ -809,6 +812,14 @@
     background: Highlight;
     color: HighlightText;
     --tm-grid-overlay-ink: HighlightText;
+  }
+
+  /* The open editor is a field, not part of the range fill: without its
+     own ink the input would inherit the fill's HighlightText over the
+     forced Canvas editor background. */
+  .tm-grid__editor {
+    background: Field;
+    color: FieldText;
   }
 
   .tm-grid-bool,
