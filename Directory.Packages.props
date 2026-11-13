@@ -71,6 +71,7 @@
     <!-- The hierarchyid type mapping behind every tree's shadow Node column and the HierarchyId
          reader; on the same servicing line as the EF packages above, which it requires. -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer.HierarchyId" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
     <!-- On-premises secrets as one file per key (Docker or Kubernetes secrets, systemd
          LoadCredential). -->

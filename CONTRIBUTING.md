@@ -121,8 +121,9 @@ pnpm install --frozen-lockfile
 Change a dependency only through the `catalog` in `pnpm-workspace.yaml` (a package names it with
 the specifier `catalog:`), then run `pnpm install` at the root and commit the regenerated
 `pnpm-lock.yaml`; never edit the lockfile by hand. The root `package.json` scripts forward to
-`client/`, so each gate below works from either folder. Run `pnpm run tokens:build-css` first after
-switching branches: the tokens CSS is generated, not committed.
+`client/`, so each gate below works from either folder. Run `pnpm run assets:generate` first after
+switching branches: the tokens CSS and `@tellma/core`'s boot script template are generated, not
+committed (`pnpm run tokens:build-css` writes the tokens CSS alone).
 
 ```bash
 pnpm run lint

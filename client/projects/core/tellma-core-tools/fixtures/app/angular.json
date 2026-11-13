@@ -1,0 +1,79 @@
+{
+  "$schema": "../../../../../node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "pnpm",
+    "analytics": false
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "fixture": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "tm",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "tsConfig": "tsconfig.app.json",
+            "outputPath": "dist/fixture",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "generated/assets",
+                "output": "tm-metadata"
+              },
+              {
+                "glob": "**/*",
+                "input": "generated/root",
+                "output": "/"
+              }
+            ],
+            "styles": [
+              "../../../tellma-core-ui/fonts/fonts.css",
+              "../../../../locale/tellma-locale-ar/fonts/fonts.css",
+              "src/styles.css"
+            ],
+            "serviceWorker": false,
+            "outputHashing": "all",
+            "optimization": {
+              "scripts": true,
+              "styles": {
+                "minify": true,
+                "inlineCritical": false
+              },
+              "fonts": true
+            },
+            "sourceMap": {
+              "scripts": true,
+              "styles": true,
+              "hidden": true
+            },
+            "extractLicenses": false
+          },
+          "configurations": {
+            "production": {},
+            "development": {
+              "optimization": false,
+              "sourceMap": true,
+              "outputHashing": "none"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "buildTarget": "fixture:build:development"
+          }
+        }
+      }
+    }
+  }
+}

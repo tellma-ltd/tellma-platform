@@ -5,47 +5,65 @@
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
-using Tellma.Core.AspNetCore.Problems;
+using Tellma.Core.AspNetCore.Sessions;
 
 namespace Tellma.Core.AspNetCore.Authentication
 {
     /// <summary>
-    ///     Registers the host's authentication schemes and authorization policies. No scheme is the
-    ///     default: every policy names its scheme, so a cookie never authenticates a bearer surface and
-    ///     a bearer never authenticates the web surface, and an endpoint with no policy of its own falls
-    ///     to the session-cookie fallback.
+    ///     Registers the host's authentication schemes and authorization policies: the session cookie
+    ///     and the sign-in that starts it, and the bearer scheme. No scheme is the default: every policy
+    ///     names its scheme, so a cookie never authenticates a bearer surface and a bearer never
+    ///     authenticates the web surface, and an endpoint with no policy of its own falls to the
+    ///     session-cookie fallback.
     /// </summary>
     internal static class TellmaAuthenticationComposition
     {
+        /// <summary>The page a sign-out ends on.</summary>
+        public const string SignedOutPath = "/signed-out";
+
         /// <summary>The bearer handler's tolerance for clock drift, against ten-minute access tokens.</summary>
         internal static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(60);
 
+        /// <summary>The scopes the sign-in requests.</summary>
+        internal static readonly string[] SignInScopes = ["openid", "profile", "email", "offline_access", TellmaClaimTypes.ApiScope];
+
         /// <summary>Registers the schemes, the policies and the bearer requirements' handler.</summary>
         /// <param name="services">The services.</param>
-        public static void Register(IServiceCollection services)
+        /// <param name="slug">The distribution's slug: its sign-in client's id at the identity server.</param>
+        public static void Register(IServiceCollection services, string slug)
         {
             // --- The schemes ---
             _ = services
                 .AddAuthentication()
                 .AddCookie(TellmaAuthentication.SessionScheme)
+                .AddOpenIdConnect(TellmaAuthentication.OidcScheme, static _ => { })
                 .AddJwtBearer(TellmaAuthentication.BearerScheme);
 
             _ = services.AddOptions<CookieAuthenticationOptions>(TellmaAuthentication.SessionScheme)
-                .Configure<IConfiguration, IOptions<TellmaSessionOptions>>(ConfigureSession);
+                .Configure<IOptions<TellmaSessionOptions>, ICatalogSessionStore, SessionCookieSecurity>(ConfigureSession);
+            _ = services.AddOptions<OpenIdConnectOptions>(TellmaAuthentication.OidcScheme)
+                .Configure<IConfiguration, IOptions<IdentityHostOptions>, IHostEnvironment, IdentityClientSecrets, SessionCookieSecurity>(
+                    (options, configuration, identity, environment, secrets, cookies) =>
+                        ConfigureSignIn(options, slug, configuration, identity.Value, environment, secrets, cookies));
             _ = services.AddOptions<JwtBearerOptions>(TellmaAuthentication.BearerScheme)
                 .Configure<IConfiguration, IOptions<IdentityHostOptions>, IHostEnvironment>(ConfigureBearer);
 
             // --- The policies: each names its scheme ---
+            // The default policy stays the framework's, naming no scheme, so an in-proc identity
+            // engine's [Authorize] endpoints keep the engine's own default scheme; the endpoint audit
+            // refuses any other endpoint whose policy names no scheme.
             _ = services.AddAuthorizationBuilder()
                 .SetFallbackPolicy(SessionPolicy())
-                .SetDefaultPolicy(SessionPolicy())
                 .AddPolicy(TellmaPolicies.Web, SessionPolicy())
                 .AddPolicy(TellmaPolicies.Api, BearerPolicy(TellmaClaimTypes.ApiScope, AudienceResource.PublicOrigin))
                 .AddPolicy(TellmaPolicies.Mcp, BearerPolicy(TellmaClaimTypes.ApiScope, AudienceResource.TenantMcp))
@@ -74,40 +92,95 @@ namespace Tellma.Core.AspNetCore.Authentication
                 .Build();
         }
 
-        /// <summary>Configures the session cookie: its name and attributes, and answers that never redirect.</summary>
+        /// <summary>
+        ///     Configures the session cookie: its name and attributes, the catalog session store and the
+        ///     session events, whose answers never redirect.
+        /// </summary>
         /// <param name="options">The cookie options.</param>
-        /// <param name="configuration">The application's configuration.</param>
         /// <param name="session">The session options.</param>
-        private static void ConfigureSession(CookieAuthenticationOptions options, IConfiguration configuration, IOptions<TellmaSessionOptions> session)
+        /// <param name="store">The catalog session store.</param>
+        /// <param name="cookies">Whether the host's cookies are restricted to HTTPS.</param>
+        private static void ConfigureSession(
+            CookieAuthenticationOptions options, IOptions<TellmaSessionOptions> session, ICatalogSessionStore store, SessionCookieSecurity cookies)
         {
             // --- The cookie: host-only, HTTPS-only, script-proof, sent on top-level navigations ---
             // A browser refuses a __Host- cookie without Secure, which plain-HTTP Development cannot set.
-            bool plainHttp = Uri.TryCreate(configuration[HostConfigurationKeys.PublicOrigin], UriKind.Absolute, out Uri? origin)
-                && origin.Scheme == Uri.UriSchemeHttp;
-            options.Cookie.Name = plainHttp ? TellmaAuthentication.DevelopmentSessionCookieName : TellmaAuthentication.SessionCookieName;
+            options.Cookie.Name = cookies.Secure ? TellmaAuthentication.SessionCookieName : TellmaAuthentication.DevelopmentSessionCookieName;
             options.Cookie.HttpOnly = true;
-            options.Cookie.SecurePolicy = plainHttp ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+            options.Cookie.SecurePolicy = cookies.Secure ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.Cookie.Path = "/";
             options.Cookie.IsEssential = true;
             options.ExpireTimeSpan = session.Value.IdleLifetime;
             options.SlidingExpiration = true;
 
-            // --- An API answers 401 and 403; it never redirects to a sign-in page ---
-            options.Events.OnRedirectToLogin = static context => ProblemWriter.WriteAsync(
-                context.HttpContext, StatusCodes.Status401Unauthorized, "unauthenticated");
-            options.Events.OnRedirectToAccessDenied = static context => ProblemWriter.WriteAsync(
-                context.HttpContext, StatusCodes.Status403Forbidden, "forbidden");
-            options.Events.OnRedirectToLogout = static context =>
+            // --- The ticket lives in the catalog; the cookie carries its key ---
+            options.SessionStore = store;
+            options.EventsType = typeof(TellmaSessionEvents);
+        }
+
+        /// <summary>Configures the sign-in scheme: the authorization code flow with PKCE and pushed requests, against the identity server.</summary>
+        /// <param name="options">The OpenID Connect options.</param>
+        /// <param name="slug">The distribution's slug, the client's id.</param>
+        /// <param name="configuration">The application's configuration.</param>
+        /// <param name="identity">The identity options.</param>
+        /// <param name="environment">The host environment.</param>
+        /// <param name="secrets">The clients' secrets.</param>
+        /// <param name="cookies">Whether the host's cookies are restricted to HTTPS.</param>
+        private static void ConfigureSignIn(
+            OpenIdConnectOptions options,
+            string slug,
+            IConfiguration configuration,
+            IdentityHostOptions identity,
+            IHostEnvironment environment,
+            IdentityClientSecrets secrets,
+            SessionCookieSecurity cookies)
+        {
+            // --- The authority and the client; options validation reports what is missing ---
+            string? origin = configuration[HostConfigurationKeys.PublicOrigin];
+            if (!string.IsNullOrWhiteSpace(origin) && (identity.Mode == IdentityMode.InProc || !string.IsNullOrWhiteSpace(identity.Authority)))
             {
-                context.Response.StatusCode = StatusCodes.Status204NoContent;
-                return Task.CompletedTask;
-            };
-            options.Events.OnRedirectToReturnUrl = static context =>
+                options.Authority = identity.ResolveAuthority(origin);
+            }
+
+            options.RequireHttpsMetadata = !environment.IsDevelopment();
+            options.ClientId = slug;
+            options.ClientSecret = secrets.ClientSecret;
+            options.SignInScheme = TellmaAuthentication.SessionScheme;
+            options.SignOutScheme = TellmaAuthentication.SessionScheme;
+
+            // --- The flow: the code, with PKCE, pushed to the authority, which fails closed without it ---
+            options.ResponseType = OpenIdConnectResponseType.Code;
+            options.ResponseMode = OpenIdConnectResponseMode.Query;
+            options.UsePkce = true;
+            options.PushedAuthorizationBehavior = PushedAuthorizationBehavior.Require;
+            options.Scope.Clear();
+            foreach (string scope in SignInScopes)
             {
-                context.Response.StatusCode = StatusCodes.Status204NoContent;
-                return Task.CompletedTask;
-            };
+                options.Scope.Add(scope);
+            }
+
+            // --- The tokens and claims: kept as issued, the principal trimmed by the events ---
+            options.SaveTokens = true;
+            options.MapInboundClaims = false;
+            options.GetClaimsFromUserInfoEndpoint = false;
+            options.ClaimActions.Clear();
+            options.TokenValidationParameters.NameClaimType = TellmaClaimTypes.Subject;
+            options.DisableTelemetry = true;
+
+            // --- The callbacks; the front-channel sign-out path stays unused ---
+            options.CallbackPath = "/signin-oidc";
+            options.SignedOutCallbackPath = "/signout-callback-oidc";
+            options.SignedOutRedirectUri = SignedOutPath;
+            options.RemoteSignOutPath = PathString.Empty;
+
+            // --- The flow's own cookies ride the top-level redirect back, like the session cookie ---
+            options.CorrelationCookie.SameSite = SameSiteMode.Lax;
+            options.NonceCookie.SameSite = SameSiteMode.Lax;
+            options.CorrelationCookie.SecurePolicy = cookies.Secure ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+            options.NonceCookie.SecurePolicy = cookies.Secure ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+
+            options.EventsType = typeof(BffOidcEvents);
         }
 
         /// <summary>Configures the bearer scheme against the identity server's keys and access-token rules.</summary>

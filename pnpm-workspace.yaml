@@ -25,6 +25,7 @@ catalog:
   '@angular/forms': 22.0.5
   '@angular/platform-browser': 22.0.5
   '@angular/router': 22.0.5
+  '@angular/service-worker': 22.0.5
   '@capsizecss/metrics': ^4.1.0
   '@eslint/js': ^10.0.1
   '@fontsource-variable/noto-sans': 5.2.10
@@ -44,6 +45,7 @@ catalog:
   eslint: 10.6.0
   jsdom: 29.1.1
   lucide: 1.66.0
+  parse5: 8.0.1
   ng-packagr: 22.0.1
   postcss-value-parser: 4.2.0
   prettier: ^3.8.1

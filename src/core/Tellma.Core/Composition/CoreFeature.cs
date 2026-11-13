@@ -4,19 +4,23 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Access;
 using Tellma.Core.Blobs;
+using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.Composition
 {
@@ -103,6 +107,19 @@ namespace Tellma.Core.Composition
                 .Securables(static securables => securables
                     .Add(CoreResources.User, AccessActions.Read, CoreResources.User)
                     .Add(UserStampConfiguration.QueryexName, AccessActions.Read, UserStampConfiguration.QueryexName, owner: new SecurableOwner(CoreResources.User, "User")));
+
+            // --- Version tags: the table, the registry, the process's snapshots, the prelude and the bump ---
+            // spec 0013 §1.2 and §2. The migrator seeds the table through the seeder; the bump
+            // announces every move to the clients through cache.changed.
+            _ = contribution
+                .Model<VersionTagRowConfiguration>()
+                .Singleton<IVersionTagRegistry, VersionTagRegistry>()
+                .Singleton<IVersionTagSnapshots, VersionTagSnapshots>()
+                .Singleton<IUserVersionTagSnapshots, UserVersionTagSnapshots>()
+                .Singleton<ITenantVersionTagSeeder, TenantVersionTagSeeder>()
+                .Scoped<IDataBatchContributor, VersionTagPreludeContributor>()
+                .Scoped<IDataBatchContributor, VersionTagBumpContributor>()
+                .ClientEvent(VersionTagBumpContributor.CacheChangedEvent);
 
             // --- Blobs: the table every blob reference resolves to; never a stack ---
             _ = contribution.Model<BlobConfiguration>();

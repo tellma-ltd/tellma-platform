@@ -183,6 +183,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-shapes"] = false,
                 ["core.model-contributors"] = false,
                 ["core.entity-metadata"] = false,
+                ["core.version-tags"] = false,
                 ["core.languages"] = false,
                 ["core.calendars"] = false,
                 ["core.value-sets"] = false,

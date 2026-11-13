@@ -41,6 +41,12 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>The tenant model builds, and every entity leaf in it satisfies the entity contract.</summary>
         public const string EntityMetadata = "core.entity-metadata";
 
+        /// <summary>
+        ///     Every version tag the entities declare is well formed, entity tags come from cacheable
+        ///     entities alone, every user-level tag names an int property, and no two names share a row.
+        /// </summary>
+        public const string VersionTags = "core.version-tags";
+
         /// <summary>The declared languages are described, their regions are theirs, their strings ship, and symbols are unique.</summary>
         public const string Languages = "core.languages";
 

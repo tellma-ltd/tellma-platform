@@ -24,6 +24,14 @@ namespace Tellma.Identity.Hosting
     /// </summary>
     public static class TellmaIdentityServiceCollectionExtensions
     {
+        /// <summary>
+        ///     The service key of the sender the engine's mail goes through. By default it is the
+        ///     host's <see cref="Core.Abstractions.Email.IEmailSender" /> itself; a host that runs
+        ///     the engine beside tenants registers its own under this key, so the engine's mail,
+        ///     which belongs to no tenant, is not asked which tenant it belongs to.
+        /// </summary>
+        public const string EmailSenderKey = "Tellma.Identity";
+
         /// <summary>Registers the identity engine from a configuration section.</summary>
         /// <param name="services">The service collection.</param>
         /// <param name="configuration">
@@ -130,6 +138,12 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<Services.Email.IEmailDispatcher>(
                 static provider => provider.GetRequiredService<Services.Email.EmailDispatcher>());
             services.AddHostedService<Services.Email.EmailDispatchHostedService>();
+
+            // The sender the engine's mail goes through: the host's own unless the host keys one
+            // for the engine, which it may do before or after this call.
+            services.TryAddKeyedScoped(
+                EmailSenderKey,
+                static (provider, _) => provider.GetRequiredService<Core.Abstractions.Email.IEmailSender>());
             services.AddSingleton<IBrandingResolver, DefaultBrandingResolver>();
             services.AddSingleton<Services.BackchannelLogout.LogoutTokenFactory>();
             services.AddScoped<Services.BackchannelLogout.IBackchannelLogoutService, Services.BackchannelLogout.BackchannelLogoutService>();

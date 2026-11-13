@@ -54,6 +54,19 @@ namespace Tellma.Core.Migrator
             Message = "Tenant {TenantId} failed.")]
         public static partial void TenantFailed(ILogger logger, int tenantId, Exception exception);
 
+        /// <summary>
+        ///     A tenant's run failed after it changed the database, and moving the version tags on the
+        ///     way out failed too: the tenant's caches keep their tags until a write moves them.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="exception">The bump's failure.</param>
+        [LoggerMessage(
+            EventName = "MigratorVersionTagBumpFailed",
+            Level = LogLevel.Error,
+            Message = "Tenant {TenantId}'s run failed after it changed the database, and its version tags could not be moved either; run migrate again.")]
+        public static partial void VersionTagBumpFailed(ILogger logger, int tenantId, Exception exception);
+
         /// <summary>The catalog's part of a command failed, which ends the command.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">The failure.</param>

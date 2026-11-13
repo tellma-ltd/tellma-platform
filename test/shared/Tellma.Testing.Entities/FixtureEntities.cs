@@ -193,6 +193,28 @@ namespace Tellma.Testing.Entities
         public int? JobId { get; set; }
     }
 
+    /// <summary>
+    ///     A small cacheable list: a write to it moves its own version tag,
+    ///     <c>entity:fixture.Lookup</c>, and the tenant's <c>entities</c> tag.
+    /// </summary>
+    [Table("Lookups", Schema = FixtureSchema.Name)]
+    [Cacheable(MaxRows = 50)]
+    [TableType]
+    public class Lookup : TopLevelEntity, IActivatable
+    {
+        /// <summary>The code, <c>varchar(50)</c>, unique.</summary>
+        [Column(TypeName = "varchar(50)")]
+        [Unique]
+        public string Code { get; set; } = null!;
+
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <inheritdoc />
+        public bool IsActive { get; set; } = true;
+    }
+
     /// <summary>The fixture schema's name.</summary>
     public static class FixtureSchema
     {

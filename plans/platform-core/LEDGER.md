@@ -100,11 +100,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-047 | pc-3 | pc/PC-047 | held: merge d732283 on pc/PC-047 ready (fix2 48d00f6: 5 s deadline, 2 retries 1 s apart (12 s window), 20 s backoff only for unreached; gates green); push queued behind PC-038 (CI green at c3103a7) | a5cf206eb092b4ff3 (Opus inherit) | r1 ae7eaf7bcafdc1e03 (2.42M), r2 a7ce9fbd8c6955482 done | 2026-11-12 21:00 |
-| PC-073 | pc-2 | pc/PC-073 | held: merge a7c1051 on pc/PC-073 ready (fix2 fe8eae5: base href required before URL-loading elements, prelint:test builds MCP inputs (timeout back to 60 s), build runs assets:generate; e2e 906); push queued behind PC-038 (CI green at c3103a7) | a40e83c79ea0ee930 (Opus inherit) | r1 acef55d162a7a175c (2.17M), r2 afca6fbc74abb1947 done | 2026-11-12 |
-| PC-038 | pc-4 | pc/PC-038 | integrate released 2026-11-13 (re-merge onto c3103a7, gates, push); was held at 9e82c32 | a1e701bcaf1f222d3 (Opus inherit) | r1 ac1ca81d98305fdf5 (2.72M), r2 a0f8274885e0c90e5 done | 2026-11-12 22:00 |
-| PC-037 | pc-f2 | pc/PC-037 | fix2 + integrate, held (R2 0/0/4: stale ids re-enter the buffer after a drop; BehindOnRefill repeats every batch; heal failures wrapped as 500; PITR cut-over leaves stale buffers) | a3251b1aa2fda801b (Opus inherit) | r1 a8fbedb6a36a5e00b (1.99M), r2 a1f3b2aa082b1b9d0 done | 2026-11-13 02:30 |
+| PC-073 | pc-2 | pc/PC-073 | integrate released 2026-11-13 (re-merge onto e4d093c, gates, push); was held at a7c1051 | a40e83c79ea0ee930 (Opus inherit) | r1 acef55d162a7a175c (2.17M), r2 afca6fbc74abb1947 done | 2026-11-12 |
+| PC-037 | pc-f2 | pc/PC-037 | held: merge 0b683ab on pc/PC-037 ready (fix2 e09c4db: monotonic floor on SequenceBuffer; behind mark; mapped failures unwrapped; buffers forgotten on Frozen via ITenantStateListener, no DB-identity seam in 0011; merged c18780c, fixture migration regenerated; gates green); push queued behind PC-073 | a3251b1aa2fda801b (Opus inherit) | r1 a8fbedb6a36a5e00b (1.99M), r2 a1f3b2aa082b1b9d0 done | 2026-11-13 02:30 |
 | PC-051 | pc-f | pc/PC-051 | fix2 + integrate (R2 0/2/5: @defer chunks measured unlinked, no leftover-declaration assertion; row-end ring survives Mod+A/Shift+Space/drag so keyboard clipboard no-ops; D-067 entry list wrong) | ae80b824ba3c6b328 (Opus inherit) | r1 a1869d9a34dc587e5 (1.65M), r2 a74bea9a2ea109da0 done | 2026-11-12 |
+| PC-039 | pc-1 | pc/PC-039 | impl | ae3fe1f89d18c9a1e (Opus inherit) | | 2026-11-13 |
+| PC-057 | pc-4 | pc/PC-057 | impl | ad65b7d8e8f49f36f (Opus inherit) | | 2026-11-13 |
+| PC-075 | pc-3 | pc/PC-075 | impl | a079c6e696d8bf4b1 (Opus inherit) | | 2026-11-13 |
 
 ## Fix items
 
@@ -258,9 +259,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
 | PC-035 | 0021-a | 1 | done (CI 43284321336 green; integrated d0093fc; fast-forward; new deviation 12: IDataBatch.IsComposing) | c49c44f, d0093fc (pc) | 11.79M (impl+fix+int 9.64, r1 2.15) |  |
 | PC-036 | 0020-a | 1 | done (CI 43325841371 red on ddb8259 from a pre-existing grid flake, fixed by PC-F25; green at f9b7e33, CI 43352828665) | 2e5de44, 60bff60, ddb8259 (pc) | 9.52M (impl+fix 8.14, r1 1.38) |  |
-| PC-037 | 0012-e | 1 | fix2 + integrate (held) | 79c94a2, 30c3508 |  |  |
-| PC-038 | 0013-d | 1 | integrating (released) | 57575e0, b3ac84e, ac5c5b6, 9e82c32 (pending) |  |  |
-| PC-039 | 0014-b | 1 | todo | | | |
+| PC-037 | 0012-e | 1 | held (merged 0b683ab, not pushed) | 79c94a2, 30c3508, e09c4db, 0b683ab (pending) |  |  |
+| PC-038 | 0013-d | 1 | done (integrated c18780c, CI 43391353328 green) | 57575e0, b3ac84e, ac5c5b6, 9e82c32, c18780c (pc) |  |  |
+| PC-039 | 0014-b | 1 | impl | | | |
 | PC-040 | 0012-g | 1 | todo | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
@@ -268,7 +269,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-044 | 0013-e | 1 | todo | | | |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
-| PC-047 | 0011-f | 1 | held (merged d732283, not pushed) | 90931cd, 5b1ef79, 48d00f6, d732283 (pending) |  |  |
+| PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | todo | | | |
 | PC-050 | 0014-d | 1 | todo | | | |
@@ -278,7 +279,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-054 | 0010-c5 | 1 | todo | | | |
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
-| PC-057 | 0010-e1 | 1 | todo | | | |
+| PC-057 | 0010-e1 | 1 | impl | | | |
 | PC-058 | 0010-e2 | 1 | todo | | | |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
@@ -294,9 +295,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-070 | 0015-e | 1 | todo | | | |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | todo | | | |
-| PC-073 | 0024-e | 1 | held (merged a7c1051, not pushed) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051 (pending) |  |  |
+| PC-073 | 0024-e | 1 | integrating (released) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051 (pending) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
-| PC-075 | 0025-a | 1 | todo | | | |
+| PC-075 | 0025-a | 1 | impl | | | |
 | PC-076 | 0015-h | 1 | todo | | | |
 | PC-077 | 0015-i | 1 | todo | | | |
 | PC-078 | 0014-f | 1 | todo | | | |
