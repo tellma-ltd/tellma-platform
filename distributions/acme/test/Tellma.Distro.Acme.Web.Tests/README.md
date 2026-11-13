@@ -2,7 +2,8 @@
 
 Unit tests of the Acme distribution's shape, needing no database:
 
-- the web host and the migrator build byte-identical tenant models;
+- the web host, built as `Program.cs` builds it, serves the runtime tenant model the migrator's
+  design-time factory migrates, compared in full;
 - `emit-client-assets` exits 0 with no database reachable;
 - the endpoint audit passes over every endpoint the web host maps, in Development and in
   Production, the webhook endpoint among them;

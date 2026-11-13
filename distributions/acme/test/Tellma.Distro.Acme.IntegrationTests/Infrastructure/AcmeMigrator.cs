@@ -42,7 +42,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
     internal sealed class AcmeMigrator
     {
         /// <summary>The public origin every host of the deployment serves.</summary>
-        public const string PublicOrigin = "https://localhost:4200";
+        public const string PublicOrigin = "https://localhost:7052";
 
         /// <summary>The tenant ids whose databases the fixture drops at the end: the two seeds and the sequence's first.</summary>
         private static readonly int[] TrackedTenants = [1, 2, 1000, 1001];

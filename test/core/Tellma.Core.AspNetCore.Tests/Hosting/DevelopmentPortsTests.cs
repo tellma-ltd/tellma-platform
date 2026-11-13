@@ -44,7 +44,6 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
         public void The_keys_are_the_slug_in_upper_case()
         {
             Assert.Equal("ACME_WEB", DevelopmentPorts.WebKey("acme"));
-            Assert.Equal("MY_ERP_CLIENT", DevelopmentPorts.ClientKey("my-erp"));
         }
 
         [Fact]
@@ -61,14 +60,14 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
         }
 
         [Fact]
-        public void Development_listens_on_the_web_port_and_serves_the_client_s_origin()
+        public void Development_listens_on_the_web_port_and_serves_its_own_origin_whatever_the_client_port()
         {
             WritePorts("ACME_WEB=7120\nACME_CLIENT=4220");
 
-            ConfigurationManager configuration = Apply("Development", files: new() { ["Tellma:PublicOrigin"] = "https://localhost:4200", ["urls"] = "https://localhost:7052" });
+            ConfigurationManager configuration = Apply("Development", files: new() { ["Tellma:PublicOrigin"] = "https://localhost:7052", ["urls"] = "https://localhost:7052" });
 
             Assert.Equal("https://localhost:7120", configuration["urls"]);
-            Assert.Equal("https://localhost:4220", configuration["Tellma:PublicOrigin"]);
+            Assert.Equal("https://localhost:7120", configuration["Tellma:PublicOrigin"]);
         }
 
         [Fact]
@@ -86,14 +85,14 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
         }
 
         [Fact]
-        public void A_port_the_file_does_not_name_keeps_its_fallback()
+        public void A_file_that_names_no_web_port_keeps_the_fallbacks()
         {
-            WritePorts("ACME_WEB=7120");
+            WritePorts("ACME_CLIENT=4220\nDB_SUFFIX=pc2");
 
-            ConfigurationManager configuration = Apply("Development", files: new() { ["Tellma:PublicOrigin"] = "https://localhost:4200" });
+            ConfigurationManager configuration = Apply("Development", files: new() { ["Tellma:PublicOrigin"] = "https://localhost:7052", ["urls"] = "https://localhost:7052" });
 
-            Assert.Equal("https://localhost:7120", configuration["urls"]);
-            Assert.Equal("https://localhost:4200", configuration["Tellma:PublicOrigin"]);
+            Assert.Equal("https://localhost:7052", configuration["urls"]);
+            Assert.Equal("https://localhost:7052", configuration["Tellma:PublicOrigin"]);
         }
 
         [Fact]
@@ -109,7 +108,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
 
         [Theory]
         [InlineData("ACME_WEB=http")]
-        [InlineData("ACME_CLIENT=70000")]
+        [InlineData("ACME_WEB=70000")]
         [InlineData("ACME_WEB=-1")]
         public void A_value_that_is_not_a_port_fails_naming_the_file_and_the_key(string line)
         {

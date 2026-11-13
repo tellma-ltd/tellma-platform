@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Migrator;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
 using Tellma.Identity;
@@ -68,7 +69,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
         }
 
         [Fact]
-        public async Task Provision_allocates_from_the_sequence_and_refuses_a_requested_id_it_does_not_describe()
+        public async Task Provision_allocates_from_the_sequence_and_refuses_a_requested_id_in_the_sequence_s_band()
         {
             AcmeMigrator acme = new(sql, "acme_provision");
             _ = await acme.MigrateAsync();
@@ -80,15 +81,15 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal("Active", await acme.StateAsync(1000));
             Assert.Equal(DatabaseCollations.Platform, await SqlServerFixture.ScalarAsync<string>(acme.TenantConnectionString(1000), CollationQuery));
 
-            // --- The id now held by another registration ---
-            MigratorResult taken = await acme.RunAsync("provision", "--tenant", "1000", "--name", "Someone Else", "--category", "Live");
-            Assert.True(taken.ExitCode == MigratorExitCodes.PartialFailure, taken.ToString());
-            Assert.Contains("is already registered as 'Acme Trading'", taken.Output, StringComparison.Ordinal);
+            // --- Ids of the sequence's band, which only the sequence hands out: the one it just did, and a free one ---
+            foreach (string requested in new[] { "1000", "1001" })
+            {
+                MigratorResult refused = await acme.RunAsync("provision", "--tenant", requested, "--name", "Someone Else", "--category", "Live");
+                Assert.True(refused.ExitCode == MigratorExitCodes.PartialFailure, refused.ToString());
+                Assert.Contains($"provision: failed ({TenantProblemCodes.RegistrationRefused}: ", refused.Output, StringComparison.Ordinal);
+            }
 
-            // --- An id of the sequence's band, which only the sequence hands out ---
-            MigratorResult band = await acme.RunAsync("provision", "--tenant", "1001", "--name", "Someone Else", "--category", "Live");
-            Assert.True(band.ExitCode == MigratorExitCodes.PartialFailure, band.ToString());
-            Assert.Contains("was refused: a requested id lies in 1-999", band.Output, StringComparison.Ordinal);
+            Assert.Equal("Acme Trading", await SqlServerFixture.ScalarAsync<string>(acme.CatalogConnectionString, "SELECT [Name] FROM [catalog].[Tenants] WHERE [Id] = 1000;"));
             Assert.Null(await acme.StateAsync(1001));
         }
 

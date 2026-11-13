@@ -13,10 +13,10 @@ namespace Tellma.Core.AspNetCore.Hosting
 {
     /// <summary>
     ///     The per-worktree ports of local development. A gitignored <c>.dev-ports.local</c> at the
-    ///     repository root names the web host's port (<c>&lt;SLUG&gt;_WEB</c>) and the client dev
-    ///     server's (<c>&lt;SLUG&gt;_CLIENT</c>), so several worktrees of one distribution run side by
-    ///     side. In Development the web host listens on the web port, and its public origin is the
-    ///     client's, the origin the browser sees.
+    ///     repository root names the web host's port (<c>&lt;SLUG&gt;_WEB</c>), so several worktrees of
+    ///     one distribution run side by side. In Development the web host listens on that port, and its
+    ///     public origin is its own, the origin the browser sees while no client dev server fronts it;
+    ///     the file's other lines, the client dev server's port among them, are not read.
     /// </summary>
     /// <remarks>
     ///     The derived values sit below the environment's variables and the command line, so
@@ -40,14 +40,6 @@ namespace Tellma.Core.AspNetCore.Hosting
         public static string WebKey(string slug)
         {
             return KeyPrefix(slug) + "_WEB";
-        }
-
-        /// <summary>The key of the client dev server's port.</summary>
-        /// <param name="slug">The distribution's slug.</param>
-        /// <returns>The key, such as <c>ACME_CLIENT</c>.</returns>
-        public static string ClientKey(string slug)
-        {
-            return KeyPrefix(slug) + "_CLIENT";
         }
 
         /// <summary>
@@ -137,11 +129,11 @@ namespace Tellma.Core.AspNetCore.Hosting
             return values;
         }
 
-        /// <summary>The configuration the ports derive: the listening address and the public origin.</summary>
+        /// <summary>The configuration the web port derives: the listening address and the public origin, both the web host's own.</summary>
         /// <param name="slug">The distribution's slug.</param>
         /// <param name="ports">The file's values.</param>
         /// <param name="file">The file's path, named by a failure.</param>
-        /// <returns>The derived configuration; empty when the file names neither port.</returns>
+        /// <returns>The derived configuration; empty when the file names no web port.</returns>
         /// <exception cref="InvalidOperationException">A named port is not a port.</exception>
         public static Dictionary<string, string?> Derive(string slug, IReadOnlyDictionary<string, string> ports, string file)
         {
@@ -149,12 +141,10 @@ namespace Tellma.Core.AspNetCore.Hosting
             Dictionary<string, string?> derived = new(StringComparer.OrdinalIgnoreCase);
             if (Port(ports, WebKey(slug), file) is { } web)
             {
-                derived[UrlsKey] = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{web}");
-            }
-
-            if (Port(ports, ClientKey(slug), file) is { } client)
-            {
-                derived[PublicOriginKey] = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{client}");
+                // No client dev server fronts the host yet, so the browser sees the host's own origin.
+                string origin = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{web}");
+                derived[UrlsKey] = origin;
+                derived[PublicOriginKey] = origin;
             }
 
             return derived;

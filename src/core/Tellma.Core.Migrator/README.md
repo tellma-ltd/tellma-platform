@@ -39,7 +39,8 @@ when it needs it, because `migrate` may have to create the catalog first.
 ### What `migrate` does, in order
 
 1. Creates the catalog when it is missing (platform collation; read-committed snapshot on a fresh
-   one) and refuses an existing catalog in another collation.
+   one, ending any other connection already open in it, such as a web host's that started first)
+   and refuses an existing catalog in another collation.
 2. Takes the catalog lock (`sp_getapplock 'tellma:migrate:catalog'`, a session lock held in the
    catalog). Under it: the `tellma_app` role (and, in a fresh catalog, the user of
    `Tellma:Sql:ApplicationPrincipal`), the catalog's migrations, the identity store's, the role's

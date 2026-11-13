@@ -75,8 +75,9 @@ the clock:
 Run these from the repository root before opening or updating a pull request. CI runs the same
 commands with `-c Release`, the unit suites on Linux and Windows, and the integration suites in a
 single solution-wide run on Linux; on Windows it runs the two distribution-host suites
-(`Tellma.Core.IntegrationTests` and `Tellma.Distro.Acme.IntegrationTests`) against LocalDB. The client gates run on Linux and Windows too; the client e2e suite runs
-on Linux.
+(`Tellma.Core.IntegrationTests` and `Tellma.Distro.Acme.IntegrationTests`) against LocalDB, in a
+job that does not gate merges yet. The client gates run on Linux and Windows too; the client e2e
+suite runs on Linux.
 
 ```bash
 dotnet build Tellma.slnx

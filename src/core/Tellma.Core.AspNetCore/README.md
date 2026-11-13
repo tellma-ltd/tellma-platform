@@ -48,9 +48,10 @@ feature or entity added there would diverge the web host's model from the migrat
   blob under a Key Vault key, which the Azure web defaults wire) are checked here: both or neither,
   each an absolute https URL, and never beside `KeyRingPath`;
 - in Development, the worktree's ports: the gitignored `.dev-ports.local`, looked for from the
-  content root up to the repository's root, whose `<SLUG>_WEB` and `<SLUG>_CLIENT` lines set `urls`
-  (`https://localhost:<web>`) and `Tellma:PublicOrigin` (`https://localhost:<client>`) just above
-  the configuration files, so environment variables and the command line still win;
+  content root up to the repository's root, whose `<SLUG>_WEB` line sets both `urls` and
+  `Tellma:PublicOrigin` (`https://localhost:<web>`, the host's own origin while no client dev server
+  fronts it) just above the configuration files, so environment variables and the command line still
+  win;
 - forwarded headers from the configured proxies alone;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the

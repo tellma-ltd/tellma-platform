@@ -6,13 +6,16 @@
 using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Trace;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.AspNetCore;
 using Tellma.Core.Composition;
 using Tellma.Defaults.Azure.AspNetCore;
 
@@ -31,6 +34,8 @@ namespace Tellma.Defaults.Azure.Tests
 
         // The blob repository is internal to its package, so it is recognized by name.
         private const string AzureBlobRepository = "AzureBlobXmlRepository";
+
+        private const string ConnectionString = "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://example.invalid/";
 
         [Fact]
         public void The_defaults_register_the_email_pipeline_with_both_Azure_transports_once()
@@ -109,8 +114,60 @@ namespace Tellma.Defaults.Azure.Tests
         {
             Assert.False(HasExporter(Compose([], static tellma => tellma.UseAzureWebDefaults())));
             Assert.True(HasExporter(Compose(
-                new() { [AzureWebDefaultsTellmaBuilderExtensions.ApplicationInsightsConnectionStringKey] = "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://example.invalid/" },
+                new() { [AzureWebDefaultsTellmaBuilderExtensions.ApplicationInsightsConnectionStringKey] = ConnectionString },
                 static tellma => tellma.UseAzureWebDefaults())));
+        }
+
+        [Fact]
+        public async Task The_platform_s_sampler_decides_over_the_exporter_s()
+        {
+            // --- The exporter alone installs a sampler of its own ---
+            ServiceCollection alone = [];
+            _ = alone.AddOpenTelemetry().WithTracing(static tracing => tracing.SetSampler(new ParentBasedSampler(new AlwaysOnSampler()))).UseAzureMonitorExporter(static exporter => exporter.ConnectionString = ConnectionString);
+            QuietExporter(alone);
+            await using (ServiceProvider provider = alone.BuildServiceProvider())
+            {
+                Assert.IsNotType<ParentBasedSampler>(SamplerOf(provider.GetRequiredService<TracerProvider>()));
+            }
+
+            // --- A web host composing the bundle in its web delegate, as a distribution does ---
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                EnvironmentName = Environments.Development,
+                ApplicationName = "Tellma.Defaults.Azure.Tests",
+                ContentRootPath = AppContext.BaseDirectory,
+            });
+            _ = builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [AzureWebDefaultsTellmaBuilderExtensions.ApplicationInsightsConnectionStringKey] = ConnectionString });
+            _ = builder.AddTellma("acme", static _ => { }, static web => web.UseAzureWebDefaults());
+            QuietExporter(builder.Services);
+            await using WebApplication app = builder.Build();
+
+            // --- The platform's sampler wins: an inbound trace's sampled flag never decides ---
+            Assert.IsType<ParentBasedSampler>(SamplerOf(app.Services.GetRequiredService<TracerProvider>()));
+        }
+
+        /// <summary>
+        ///     Keeps a built exporter from writing or sending anything: no offline storage and no live
+        ///     metrics. Its statsbeat finds no endpoint to report to for the reserved ingestion endpoint.
+        /// </summary>
+        /// <param name="services">The services the exporter is registered in.</param>
+        private static void QuietExporter(IServiceCollection services)
+        {
+            _ = services.ConfigureAll<AzureMonitorExporterOptions>(static options =>
+            {
+                options.DisableOfflineStorage = true;
+                options.EnableLiveMetrics = false;
+            });
+        }
+
+        /// <summary>The sampler a built tracer provider samples with, which the SDK does not expose.</summary>
+        /// <param name="provider">The tracer provider.</param>
+        /// <returns>The sampler.</returns>
+        private static Sampler SamplerOf(TracerProvider provider)
+        {
+            const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+            object? sampler = provider.GetType().GetProperty("Sampler", Flags)?.GetValue(provider) ?? provider.GetType().GetField("Sampler", Flags)?.GetValue(provider);
+            return Assert.IsAssignableFrom<Sampler>(sampler);
         }
 
         /// <summary>Whether any registration comes from the Azure Monitor exporter's assembly.</summary>

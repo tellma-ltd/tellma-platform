@@ -35,23 +35,27 @@ dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web
    sandbox, tenant 2, "Acme Sandbox", with `admin@localhost` as their administrator.
 2. The web host serves `/api/distribution-info`, `/health/live`, `/health/ready` and the BFF
    (`/bff/login`, `/bff/user`, `/bff/logout`), with the identity engine in process under `/id`.
-3. Sign in as `admin@localhost` with the code the web host's console prints.
+3. Open `https://localhost:7052/bff/login` and sign in as `admin@localhost` with the code the web
+   host's console prints; `https://localhost:7052/bff/user` then answers the signed-in user. There
+   is no client app yet, so the BFF's routes are the whole user interface.
 
 A web host started before `migrate` prints that command instead of a stack trace.
 
 ### Ports
 
-The web host listens on `https://localhost:7052`, and its public origin is
-`https://localhost:4200`, the Angular dev server's. A worktree that runs beside others sets its own
-in the gitignored `.dev-ports.local` at the repository root:
+The web host listens on `https://localhost:7052`, which is also its public origin: the in-proc
+identity engine's issuer and every sign-in redirect live under it. When the client app and its dev
+server join, the public origin moves to the dev server's. A worktree that runs beside others sets its
+own port in the gitignored `.dev-ports.local` at the repository root:
 
 ```
 ACME_WEB=7120
-ACME_CLIENT=4220
 ```
 
-In Development the web host reads that file at startup. Environment variables and the command line
-still win: `Tellma__PublicOrigin` and `--urls` override what the file derives.
+In Development the web host reads that file at startup and derives both its listening address and
+its public origin from `ACME_WEB`; other lines, such as `ACME_CLIENT`, are not read yet. Environment
+variables and the command line still win: `Tellma__PublicOrigin` and `--urls` override what the file
+derives.
 
 ### Provisioning another tenant
 
