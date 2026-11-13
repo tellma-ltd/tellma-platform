@@ -3,8 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.Net.Http.Headers;
 using System.Net;
 using System.Text.Json;
@@ -71,6 +74,50 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Equal("0", pushed.Form["max_age"]);
         }
 
+        [Fact]
+        public async Task The_login_forwards_the_distribution_s_policy()
+        {
+            await using TellmaTestHost host = await StartWithPolicyAsync(new LoginPolicy("urn:tellma:acr:mfa", TimeSpan.FromHours(1), ["password", "passkey"]));
+
+            using HttpResponseMessage response = await host.Client.GetAsync(new Uri("/bff/login", UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            IdentityRequest pushed = Assert.Single(host.IdentityServer.Requests, static request => request.Path == "/connect/par");
+            Assert.Equal("urn:tellma:acr:mfa", pushed.Form["acr_values"]);
+            Assert.Equal("3600", pushed.Form["max_age"]);
+            Assert.Equal("password passkey", pushed.Form["tellma_allowed_methods"]);
+        }
+
+        [Fact]
+        public async Task A_caller_cannot_weaken_the_distribution_s_policy()
+        {
+            await using TellmaTestHost host = await StartWithPolicyAsync(new LoginPolicy("urn:tellma:acr:mfa", TimeSpan.FromHours(1), ["passkey"]));
+
+            using HttpResponseMessage response = await host.Client.GetAsync(
+                new Uri("/bff/login?acr_values=urn%3Atellma%3Aacr%3Apwd&max_age=999999", UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            IdentityRequest pushed = Assert.Single(host.IdentityServer.Requests, static request => request.Path == "/connect/par");
+            Assert.Equal("urn:tellma:acr:mfa", pushed.Form["acr_values"]);
+            Assert.Equal("3600", pushed.Form["max_age"]);
+            Assert.Equal("passkey", pushed.Form["tellma_allowed_methods"]);
+        }
+
+        [Fact]
+        public async Task A_caller_may_ask_for_a_more_recent_sign_in_than_the_policy()
+        {
+            await using TellmaTestHost host = await StartWithPolicyAsync(new LoginPolicy(null, TimeSpan.FromHours(1), null));
+
+            using HttpResponseMessage response = await host.Client.GetAsync(
+                new Uri("/bff/login?acr_values=urn%3Atellma%3Aacr%3Apwd&max_age=60", UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            IdentityRequest pushed = Assert.Single(host.IdentityServer.Requests, static request => request.Path == "/connect/par");
+            Assert.Equal("urn:tellma:acr:pwd", pushed.Form["acr_values"]);
+            Assert.Equal("60", pushed.Form["max_age"]);
+            Assert.False(pushed.Form.ContainsKey("tellma_allowed_methods"));
+        }
+
         [Theory]
         [InlineData("?returnUrl=https%3A%2F%2Fevil.example%2F")]
         [InlineData("?returnUrl=%2F%2Fevil.example")]
@@ -106,7 +153,7 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             SetCookieHeaderValue session = result.Cookies[host.SessionCookieName];
             Assert.True(session.HttpOnly);
             Assert.True(session.Secure);
-            Assert.Equal(SameSiteMode.Lax, session.SameSite);
+            Assert.Equal(Microsoft.Net.Http.Headers.SameSiteMode.Lax, session.SameSite);
             Assert.Equal(host.Rows.ExpiresAt(key), session.Expires);
             Assert.Equal(host.Time.GetUtcNow().AddDays(7).ToUnixTimeSeconds(), session.Expires!.Value.ToUnixTimeSeconds());
 
@@ -154,6 +201,63 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.NotEqual(previous.Key, key);
             Assert.Equal([previous.Handle], listener.Handles);
             Assert.NotEqual(previous.Cookie, result.SessionCookie(host));
+        }
+
+        /// <summary>Identity tokens a sign-in refuses, by what is wrong with them.</summary>
+        /// <returns>Each case's name.</returns>
+        public static TheoryData<string> RefusedIdentityTokens()
+        {
+            return ["no session", "no subject", "a subject with a space"];
+        }
+
+        [Theory]
+        [MemberData(nameof(RefusedIdentityTokens))]
+        public async Task A_sign_in_whose_identity_token_breaks_the_platform_s_rules_stores_no_session(string kind)
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            host.IdentityServer.ShapeIdToken = kind switch
+            {
+                "no session" => static claims => claims.Remove("sid"),
+                "no subject" => static claims => claims.Remove("sub"),
+                _ => static claims => claims["sub"] = "sub 1",
+            };
+
+            SignInResult result = await SignInFlow.SignInAsync(host, "?returnUrl=%2F1%2Fhome");
+
+            Assert.NotEqual(HttpStatusCode.Redirect, result.Callback.StatusCode);
+            Assert.Empty(host.Rows.Keys());
+            Assert.False(result.Cookies.ContainsKey(host.SessionCookieName));
+        }
+
+        [Fact]
+        public async Task A_sign_in_keeps_only_the_claims_the_platform_reads()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            long now = host.Time.GetUtcNow().ToUnixTimeSeconds();
+            host.IdentityServer.ShapeIdToken = claims =>
+            {
+                claims["acr"] = "urn:tellma:acr:mfa";
+                claims["amr"] = new[] { "pwd", "otp" };
+                claims["auth_time"] = now;
+                claims["tellma_acr_auth_time"] = now;
+                claims["idp"] = "local";
+                claims["custom"] = "value";
+                claims["groups"] = new[] { "admins" };
+            };
+
+            _ = await SignInFlow.SignInAsync(host);
+
+            // --- The stored principal holds the kept claims, the assurance among them, and nothing else ---
+            string key = Assert.Single(host.Rows.Keys());
+            AuthenticationTicket stored = (await host.Services.GetRequiredService<ICatalogSessionStore>()
+                .RetrieveAsync(key, new DefaultHttpContext(), TestContext.Current.CancellationToken))!;
+            HashSet<string> types = [.. stored.Principal.Claims.Select(static claim => claim.Type)];
+            Assert.Equal(
+                ["acr", "amr", "auth_time", "email", "locale", "name", "sid", "sub", "tellma_acr_auth_time"],
+                [.. types.Order(StringComparer.Ordinal)]);
+            Assert.Equal("urn:tellma:acr:mfa", stored.Principal.FindFirst("acr")?.Value);
+            Assert.Equal(["otp", "pwd"], [.. stored.Principal.FindAll("amr").Select(static claim => claim.Value).Order(StringComparer.Ordinal)]);
+            Assert.Equal("sid-1", stored.Principal.FindFirst("sid")?.Value);
         }
 
         // ------------------------------------------------------------------------------------------
@@ -276,6 +380,8 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
                 options.ConfigureServices = services => services.AddSingleton<ISessionTerminationListener>(listener));
             TestSession session = host.Session();
             TestSession other = host.Session();
+            List<string>? rowsWhenTold = null;
+            listener.During = (_, _) => rowsWhenTold = [.. host.Rows.Keys()];
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/bff/logout", session.Cookie, /*lang=json,strict*/ """{"scope":"local"}""");
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -283,6 +389,7 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             // --- The answer: where to go, nothing cached, both cookies cleared ---
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(/*lang=json,strict*/ """{"redirectUrl":"/signed-out"}""", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
             Assert.Equal("\"cache\"", response.Headers.GetValues("Clear-Site-Data").Single());
             Dictionary<string, SetCookieHeaderValue> cookies = SignInFlow.Parse(response);
             Assert.True(cookies[host.SessionCookieName].Expires < host.Time.GetUtcNow());
@@ -295,6 +402,10 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Equal([session.Handle], handles);
             Assert.DoesNotContain(session.Key, handles);
             Assert.DoesNotContain(host.IdentityServer.Requests, static request => request.Path.Contains("endsession", StringComparison.Ordinal));
+
+            // --- The listener was told while the row still existed ---
+            Assert.NotNull(rowsWhenTold);
+            Assert.Contains(session.Key, rowsWhenTold);
         }
 
         [Fact]
@@ -312,6 +423,66 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.StartsWith(FakeIdentityServer.EndSessionEndpoint + "?", redirect, StringComparison.Ordinal);
             Assert.Contains("post_logout_redirect_uri=" + Uri.EscapeDataString(TellmaTestHost.PublicOrigin + "/signout-callback-oidc"), redirect, StringComparison.Ordinal);
             Assert.Empty(host.Rows.Keys());
+        }
+
+        [Fact]
+        public async Task A_global_sign_out_names_the_session_s_identity_token_and_clears_the_cache()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            SignInResult signIn = await SignInFlow.SignInAsync(host);
+            string key = Assert.Single(host.Rows.Keys());
+            AuthenticationTicket stored = (await host.Services.GetRequiredService<ICatalogSessionStore>()
+                .RetrieveAsync(key, new DefaultHttpContext(), TestContext.Current.CancellationToken))!;
+            string idToken = stored.Properties.GetTokenValue(OpenIdConnectParameterNames.IdToken)!;
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/bff/logout", signIn.SessionCookie(host), /*lang=json,strict*/ """{"scope":"global"}""");
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            string redirect = body.RootElement.GetProperty("redirectUrl").GetString()!;
+            Assert.Contains("id_token_hint=" + Uri.EscapeDataString(idToken), redirect, StringComparison.Ordinal);
+            Assert.Equal("\"cache\"", response.Headers.GetValues("Clear-Site-Data").Single());
+            Assert.Empty(host.Rows.Keys());
+        }
+
+        /// <summary>Ways a global sign-out cannot reach the identity server's end-session endpoint.</summary>
+        /// <returns>Each case's name.</returns>
+        public static TheoryData<string> UnreachableEndSessions()
+        {
+            return ["metadata unreadable", "no end-session endpoint"];
+        }
+
+        [Theory]
+        [MemberData(nameof(UnreachableEndSessions))]
+        public async Task A_global_sign_out_that_cannot_reach_the_identity_server_signs_out_locally_and_is_logged(string kind)
+        {
+            CapturingLoggerProvider capture = new();
+            TestConfigurationManager manager = new(_ =>
+            {
+                if (kind == "metadata unreadable")
+                {
+                    return null;
+                }
+
+                OpenIdConnectConfiguration configuration = FakeIdentityServer.Configuration();
+                configuration.EndSessionEndpoint = null;
+                return configuration;
+            });
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.ConfigureServices = services =>
+            {
+                _ = services.AddSingleton<ILoggerProvider>(capture);
+                TestConfigurationManager.Install(services, manager);
+            });
+            TestSession session = host.Session();
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/bff/logout", session.Cookie);
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(/*lang=json,strict*/ """{"redirectUrl":"/signed-out"}""", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Empty(host.Rows.Keys());
+            Assert.Contains(capture.Events, static captured => captured.Level == LogLevel.Warning && captured.Message.Contains("end-session address", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -349,6 +520,15 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
         // Helpers
         // ------------------------------------------------------------------------------------------
 
+        /// <summary>Starts a host whose distribution states a login policy.</summary>
+        /// <param name="policy">The policy.</param>
+        /// <returns>The started host.</returns>
+        private static Task<TellmaTestHost> StartWithPolicyAsync(LoginPolicy policy)
+        {
+            return TellmaTestHost.StartAsync(options => options.ConfigureServices = services =>
+                services.AddSingleton<IAuthenticationPolicyProvider>(new StubPolicyProvider(policy)));
+        }
+
         /// <summary>An active live membership.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <returns>The membership.</returns>
@@ -372,6 +552,17 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             string path = Path.Combine(AppContext.BaseDirectory, "Bff", "launch-landing-vectors.json");
             return JsonSerializer.Deserialize<List<LandingVector>>(File.ReadAllText(path), VectorJson)
                 ?? throw new InvalidOperationException("The landing vectors are empty.");
+        }
+
+        /// <summary>A distribution's login policy, the same for every sign-in.</summary>
+        /// <param name="policy">The policy.</param>
+        private sealed class StubPolicyProvider(LoginPolicy policy) : IAuthenticationPolicyProvider
+        {
+            /// <inheritdoc />
+            public Task<LoginPolicy> GetLoginPolicyAsync(int? tenantId, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(policy);
+            }
         }
 
         /// <summary>One vector: the memberships and the tenant the landing picks.</summary>

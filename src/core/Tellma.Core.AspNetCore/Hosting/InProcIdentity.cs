@@ -57,6 +57,12 @@ namespace Tellma.Core.AspNetCore.Hosting
         /// <summary>The engine's middleware entry point.</summary>
         private const string PipelineType = "Tellma.Identity.Hosting.TellmaIdentityApplicationBuilderExtensions";
 
+        /// <summary>The engine's registration method.</summary>
+        private const string AddMethod = "AddTellmaIdentity";
+
+        /// <summary>The engine's middleware method.</summary>
+        private const string UseMethod = "UseTellmaIdentity";
+
         /// <summary>The route prefix of every engine endpoint, without slashes.</summary>
         private static readonly string RoutePrefix = IdentityHostOptions.InProcPath.Trim('/');
 
@@ -109,12 +115,19 @@ namespace Tellma.Core.AspNetCore.Hosting
                     $"Set {TellmaCatalogOptions.SectionPath}:{nameof(TellmaCatalogOptions.ConnectionString)}."));
             }
 
-            MethodInfo? add = EntryPoint(ServicesType, "AddTellmaIdentity", typeof(IServiceCollection), typeof(IConfiguration));
-            if (add is null)
+            // --- The engine's entry point: a missing assembly and an incompatible one are told apart ---
+            (Type? servicesType, MethodInfo? add) = EntryPoint(ServicesType, AddMethod, typeof(IServiceCollection), typeof(IConfiguration));
+            if (servicesType is null)
             {
                 problems.Add(Problem(
                     $"{IdentityHostOptions.SectionPath}:{nameof(IdentityHostOptions.Mode)} is InProc, but the identity engine's assembly, {EngineAssembly}, is not referenced by the web host.",
                     $"Reference the {EngineAssembly} package from the distribution's web host, or set {IdentityHostOptions.SectionPath}:{nameof(IdentityHostOptions.Mode)} to Standalone."));
+            }
+            else if (add is null)
+            {
+                problems.Add(Problem(
+                    $"The referenced {EngineAssembly} assembly has no public static {ServicesType}.{AddMethod}(IServiceCollection, IConfiguration), so its version does not match this web host's.",
+                    $"Reference the {EngineAssembly} package of the same release as the platform's packages."));
             }
 
             if (problems.Count > 0)
@@ -130,6 +143,9 @@ namespace Tellma.Core.AspNetCore.Hosting
                 .Build();
 
             _ = add!.Invoke(null, [services, engine]);
+
+            // --- The engine's mail: sent outside any tenant, so given the engine's own sandbox answer ---
+            InProcIdentityMail.Register(services);
         }
 
         /// <summary>The settings the distribution dictates to the engine.</summary>
@@ -192,8 +208,9 @@ namespace Tellma.Core.AspNetCore.Hosting
         public static void Use(IApplicationBuilder app)
         {
             ArgumentNullException.ThrowIfNull(app);
-            MethodInfo use = EntryPoint(PipelineType, "UseTellmaIdentity", typeof(IApplicationBuilder))
-                ?? throw new InvalidOperationException($"The identity engine's middleware entry point was not found in {EngineAssembly}.");
+            MethodInfo use = EntryPoint(PipelineType, UseMethod, typeof(IApplicationBuilder)).Method
+                ?? throw new InvalidOperationException(
+                    $"The referenced {EngineAssembly} assembly has no public static {PipelineType}.{UseMethod}(IApplicationBuilder); reference the {EngineAssembly} package of the same release as the platform's packages.");
             _ = use.Invoke(null, [app]);
             app.Properties[ComposedKey] = true;
         }
@@ -272,10 +289,14 @@ namespace Tellma.Core.AspNetCore.Hosting
         /// <param name="typeName">The declaring type's full name.</param>
         /// <param name="method">The method's name.</param>
         /// <param name="parameters">The method's parameter types.</param>
-        /// <returns>The method, or null when the engine is not referenced.</returns>
-        private static MethodInfo? EntryPoint(string typeName, string method, params Type[] parameters)
+        /// <returns>
+        ///     The declaring type, null when the engine is not referenced; and the method, null when the
+        ///     type is missing or has no such method.
+        /// </returns>
+        internal static (Type? Type, MethodInfo? Method) EntryPoint(string typeName, string method, params Type[] parameters)
         {
-            return Type.GetType($"{typeName}, {EngineAssembly}", throwOnError: false)?.GetMethod(method, BindingFlags.Public | BindingFlags.Static, parameters);
+            var type = Type.GetType($"{typeName}, {EngineAssembly}", throwOnError: false);
+            return (type, type?.GetMethod(method, BindingFlags.Public | BindingFlags.Static, parameters));
         }
 
         /// <summary>A problem of the in-proc composition.</summary>

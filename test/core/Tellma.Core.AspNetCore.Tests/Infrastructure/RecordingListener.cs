@@ -17,9 +17,13 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>Every handle told, flattened.</summary>
         public IReadOnlyList<string> Handles => [.. Ended.SelectMany(static ended => ended.Handles)];
 
+        /// <summary>Runs while the listener is told, so a test can observe what holds at that moment.</summary>
+        public Action<string, IReadOnlyList<string>>? During { get; set; }
+
         /// <inheritdoc />
         public Task SessionsTerminatedAsync(string subject, IReadOnlyList<string> sessionHandles)
         {
+            During?.Invoke(subject, sessionHandles);
             Ended.Enqueue((subject, [.. sessionHandles]));
             return Task.CompletedTask;
         }

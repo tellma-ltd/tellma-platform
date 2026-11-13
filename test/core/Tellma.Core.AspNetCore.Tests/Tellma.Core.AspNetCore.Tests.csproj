@@ -6,6 +6,10 @@
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
     <!-- The identity engine, so the in-proc mode's wiring runs against the real engine. -->
     <ProjectReference Include="..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The platform's email pipeline and its capturing transport, so the in-proc engine's mail goes
+         through the real router. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <!-- Bearer tokens minted against the test issuer's key. -->
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />

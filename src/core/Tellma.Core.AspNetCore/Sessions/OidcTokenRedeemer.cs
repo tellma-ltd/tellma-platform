@@ -21,13 +21,45 @@ namespace Tellma.Core.AspNetCore.Sessions
     ///     back-channel. A refreshed identity token is validated as strictly as the sign-in's.
     /// </summary>
     /// <param name="oidc">The OpenID Connect scheme's options.</param>
-    internal sealed class OidcTokenRedeemer(IOptionsMonitor<OpenIdConnectOptions> oidc) : ITokenRedeemer
+    /// <param name="time">The clock the redemption's deadline runs on.</param>
+    internal sealed class OidcTokenRedeemer(IOptionsMonitor<OpenIdConnectOptions> oidc, TimeProvider time) : ITokenRedeemer
     {
+        /// <summary>Why a refreshed identity token signed by a key the metadata does not list is put off.</summary>
+        private const string UnknownKey = "the refreshed identity token is signed by a key the identity server's metadata does not list";
+
+        /// <summary>
+        ///     The longest one redemption may take before it counts as unreachable: a request waits on
+        ///     it, so an authority that does not answer must not hold that request for the back
+        ///     channel's own, much longer, timeout.
+        /// </summary>
+        internal static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
         /// <inheritdoc />
         public async Task<Redemption> RedeemAsync(string refreshToken, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(refreshToken);
             OpenIdConnectOptions options = oidc.Get(TellmaAuthentication.OidcScheme);
+
+            // --- The redemption's own deadline, beside the caller's cancellation ---
+            using CancellationTokenSource deadline = new(Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+            try
+            {
+                return await RedeemWithinAsync(refreshToken, options, linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                return Redemption.Unreachable("the identity server did not answer in time", exception);
+            }
+        }
+
+        /// <summary>One redemption, bounded by its deadline.</summary>
+        /// <param name="refreshToken">The refresh token.</param>
+        /// <param name="options">The scheme's options.</param>
+        /// <param name="cancellationToken">The deadline, linked to the caller's cancellation.</param>
+        /// <returns>The redemption.</returns>
+        private static async Task<Redemption> RedeemWithinAsync(string refreshToken, OpenIdConnectOptions options, CancellationToken cancellationToken)
+        {
 
             // --- The authority's metadata: its token endpoint and signing keys ---
             OpenIdConnectConfiguration configuration;
@@ -37,7 +69,7 @@ namespace Tellma.Core.AspNetCore.Sessions
                     ?? await (options.ConfigurationManager ?? throw new InvalidOperationException("The OpenID Connect scheme has no configuration manager."))
                         .GetConfigurationAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return Redemption.Unreachable("the identity server's metadata could not be read", exception);
             }
@@ -68,7 +100,7 @@ namespace Tellma.Core.AspNetCore.Sessions
                 status = response.StatusCode;
                 body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return Redemption.Unreachable("the identity server's token endpoint could not be reached", exception);
             }
@@ -79,15 +111,16 @@ namespace Tellma.Core.AspNetCore.Sessions
                 ? Redemption.Refused(ErrorOf(body) ?? string.Create(CultureInfo.InvariantCulture, $"status {code}"))
                 : code is < 200 or >= 300
                     ? Redemption.Unreachable(string.Create(CultureInfo.InvariantCulture, $"the token endpoint answered status {code}"))
-                    : await ReadTokensAsync(body, options, configuration).ConfigureAwait(false);
+                    : await ReadTokensAsync(body, options, configuration, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>Reads a successful token response, validating the identity token it carries.</summary>
         /// <param name="body">The response body.</param>
         /// <param name="options">The scheme's options.</param>
         /// <param name="configuration">The authority's metadata.</param>
+        /// <param name="cancellationToken">The redemption's deadline.</param>
         /// <returns>The redemption.</returns>
-        private static async Task<Redemption> ReadTokensAsync(string body, OpenIdConnectOptions options, OpenIdConnectConfiguration configuration)
+        private static async Task<Redemption> ReadTokensAsync(string body, OpenIdConnectOptions options, OpenIdConnectConfiguration configuration, CancellationToken cancellationToken)
         {
             string? accessToken;
             string? refreshToken;
@@ -119,16 +152,33 @@ namespace Tellma.Core.AspNetCore.Sessions
             ClaimsIdentity? claims = null;
             if (idToken is not null)
             {
-                TokenValidationParameters parameters = options.TokenValidationParameters.Clone();
-                parameters.ValidIssuer = configuration.Issuer;
-                parameters.ValidAudience = options.ClientId;
-                parameters.IssuerSigningKeys = configuration.SigningKeys;
-                parameters.ValidateIssuer = true;
-                parameters.ValidateAudience = true;
-                parameters.ValidateLifetime = true;
-                parameters.ValidateIssuerSigningKey = true;
-                TokenValidationResult result = await new JsonWebTokenHandler { MapInboundClaims = false }
-                    .ValidateTokenAsync(idToken, parameters).ConfigureAwait(false);
+                TokenValidationResult result = await ValidateIdTokenAsync(idToken, options, configuration).ConfigureAwait(false);
+                if (!result.IsValid && result.Exception is SecurityTokenSignatureKeyNotFoundException)
+                {
+                    // The authority may have rolled its keys since they were read: read them again,
+                    // once. Keys still unknown mean stale metadata, which is not the session's fault.
+                    if (options.ConfigurationManager is null)
+                    {
+                        return Redemption.Unreachable(UnknownKey, result.Exception);
+                    }
+
+                    try
+                    {
+                        options.ConfigurationManager.RequestRefresh();
+                        configuration = await options.ConfigurationManager.GetConfigurationAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        return Redemption.Unreachable("the identity server's metadata could not be read", exception);
+                    }
+
+                    result = await ValidateIdTokenAsync(idToken, options, configuration).ConfigureAwait(false);
+                    if (!result.IsValid && result.Exception is SecurityTokenSignatureKeyNotFoundException)
+                    {
+                        return Redemption.Unreachable(UnknownKey, result.Exception);
+                    }
+                }
+
                 if (!result.IsValid)
                 {
                     return Redemption.Refused("the refreshed identity token is not valid");
@@ -138,6 +188,24 @@ namespace Tellma.Core.AspNetCore.Sessions
             }
 
             return Redemption.Redeemed(new RedeemedTokens(accessToken, refreshToken, idToken, claims, tokenType, TimeSpan.FromSeconds(expiresIn)));
+        }
+
+        /// <summary>Validates a refreshed identity token: signed by the authority, issued to this client, current.</summary>
+        /// <param name="idToken">The identity token.</param>
+        /// <param name="options">The scheme's options.</param>
+        /// <param name="configuration">The authority's metadata.</param>
+        /// <returns>The validation's result.</returns>
+        private static Task<TokenValidationResult> ValidateIdTokenAsync(string idToken, OpenIdConnectOptions options, OpenIdConnectConfiguration configuration)
+        {
+            TokenValidationParameters parameters = options.TokenValidationParameters.Clone();
+            parameters.ValidIssuer = configuration.Issuer;
+            parameters.ValidAudience = options.ClientId;
+            parameters.IssuerSigningKeys = configuration.SigningKeys;
+            parameters.ValidateIssuer = true;
+            parameters.ValidateAudience = true;
+            parameters.ValidateLifetime = true;
+            parameters.ValidateIssuerSigningKey = true;
+            return new JsonWebTokenHandler { MapInboundClaims = false }.ValidateTokenAsync(idToken, parameters);
         }
 
         /// <summary>A string member of a JSON object.</summary>

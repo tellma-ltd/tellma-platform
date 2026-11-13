@@ -37,7 +37,11 @@ feature or entity added there would diverge the web host's model from the migrat
 - with `Tellma:Identity:Mode = InProc`, the identity engine (`Tellma.Identity`, which the web host
   references), configured from the `TellmaIdentity` section overlaid with what the distribution
   dictates: the `/id` path base, the issuer, the catalog as its store, and the distribution's own
-  client in its seed;
+  client in its seed. The engine's mail (sign-in codes, invitations, password resets) belongs to no
+  tenant: it goes through the distribution's email pipeline under the sender the engine resolves by
+  its key, and while that sender sends outside a tenant the sandbox flag answers "never sandboxed",
+  as a standalone identity host's does, so the router passes it to the live channel untouched. Every
+  other send outside a tenant still fails;
 - Data Protection under the application name `tellma-{slug}`, persisted to
   `Tellma:DataProtection:KeyRingPath` when set; outside Development a host with no persistent key
   repository fails `host.data-protection`;
@@ -127,12 +131,18 @@ Each instance caches the rows it reads for `Tellma:Session:CacheTtl`. The sessio
 `tellma.profile` cookie expire with the row. Background requests (`Tellma-Activity: background`,
 the hub, client telemetry) renew neither.
 
-A sign-in pushes its request (PAR) with PKCE as the distribution's confidential client. An access
-token within `RefreshSkew` of its expiry is refreshed once per session per instance; the new ticket
-is written with a compare-and-set on the row's `TokensVersion`, and an instance that loses it adopts
-the winner's. A refused refresh ends the session; an unreachable identity server keeps it for
-`MaxAuthorityOutage` past the access token's expiry. A sign-in that returns to the root lands on
-the user's one live tenant when there is exactly one.
+A sign-in pushes its request (PAR) with PKCE as the distribution's confidential client. The
+distribution's `IAuthenticationPolicyProvider` bounds what the login's query asks for: the policy's
+`acr_values` replace the caller's, the shorter `max_age` wins, and the allowed methods are the
+policy's alone. An access token within `RefreshSkew` of its expiry is refreshed once per session per
+instance; the new ticket is written with a compare-and-set on the row's `TokensVersion`, and an
+instance that loses it adopts the winner's. A refused refresh ends the session; an unreachable
+identity server (no answer within ten seconds, a 5xx, a malformed answer, or a refreshed identity
+token signed by a key its metadata still does not list after one re-read) keeps it for
+`MaxAuthorityOutage` past the access token's expiry, and a refresh put off is not tried again for
+twenty seconds. A sign-in that returns to the root lands on the user's one live tenant when there
+is exactly one. A global sign-out whose identity server cannot be reached, or names no end-session
+endpoint, signs out locally and logs `BffGlobalSignOutUnavailable`.
 
 `POST /bff/backchannel-logout` validates the logout token (issuer, audience, `logout+jwt`, the
 back-channel event, no nonce, a recent `iat`) and deletes the sessions of its `sid`, or of its

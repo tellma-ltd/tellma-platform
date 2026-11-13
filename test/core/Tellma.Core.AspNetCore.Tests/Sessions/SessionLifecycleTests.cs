@@ -3,11 +3,18 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
+using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 
 namespace Tellma.Core.AspNetCore.Tests.Sessions
@@ -67,7 +74,7 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
         /// <returns>Each case's name.</returns>
         public static TheoryData<string> BackgroundRequests()
         {
-            return ["activity header", "client telemetry"];
+            return ["activity header", "client telemetry", "hub negotiate"];
         }
 
         [Theory]
@@ -79,9 +86,12 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             DateTimeOffset before = host.Rows.ExpiresAt(session.Key)!.Value;
             host.Time.Advance(TimeSpan.FromDays(4));
 
-            using HttpRequestMessage request = kind == "activity header"
-                ? TellmaTestHost.SpaRequest(HttpMethod.Get, "/bff/user", session.Cookie)
-                : TellmaTestHost.SpaRequest(HttpMethod.Post, "/api/client-telemetry", session.Cookie, "{}");
+            using HttpRequestMessage request = kind switch
+            {
+                "activity header" => TellmaTestHost.SpaRequest(HttpMethod.Get, "/bff/user", session.Cookie),
+                "client telemetry" => TellmaTestHost.SpaRequest(HttpMethod.Post, "/api/client-telemetry", session.Cookie, "{}"),
+                _ => TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/hub/negotiate", session.Cookie),
+            };
             if (kind == "activity header")
             {
                 request.Headers.Add("Tellma-Activity", "background");
@@ -204,6 +214,178 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
 
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
             Assert.Empty(host.Rows.Keys());
+        }
+
+        [Fact]
+        public async Task A_refresh_replaces_the_assurance_name_and_language_and_stores_the_new_tokens()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(acr: "urn:tellma:acr:pwd", accessTokenLifetime: TimeSpan.FromSeconds(30));
+            long acrTime = host.Time.GetUtcNow().ToUnixTimeSeconds();
+            host.IdentityServer.Refresh = _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Tokens(
+                "sub-1",
+                nonce: null,
+                TimeSpan.FromHours(1),
+                acr: "urn:tellma:acr:mfa",
+                shape: claims =>
+                {
+                    claims["name"] = "Jane Smith";
+                    claims["locale"] = "ar";
+                    claims["tellma_acr_auth_time"] = acrTime;
+                },
+                refreshToken: "refresh-2"));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            // --- The request already reads the refreshed claims ---
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var user = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("Jane Smith", user.RootElement.GetProperty("name").GetString());
+            Assert.Equal("ar", user.RootElement.GetProperty("locale").GetString());
+            Assert.Equal("urn:tellma:acr:mfa", user.RootElement.GetProperty("acr").GetString());
+
+            // --- The row holds the new tokens and the refreshed principal, the old claims replaced ---
+            AuthenticationTicket stored = (await host.Services.GetRequiredService<ICatalogSessionStore>()
+                .RetrieveAsync(session.Key, new DefaultHttpContext(), TestContext.Current.CancellationToken))!;
+            Assert.Equal("refresh-2", stored.Properties.GetTokenValue(OpenIdConnectParameterNames.RefreshToken));
+            Assert.NotEqual("access-1", stored.Properties.GetTokenValue(OpenIdConnectParameterNames.AccessToken));
+            Assert.Equal("urn:tellma:acr:mfa", Assert.Single(stored.Principal.FindAll("acr")).Value);
+            Assert.Equal(acrTime.ToString(CultureInfo.InvariantCulture), Assert.Single(stored.Principal.FindAll("tellma_acr_auth_time")).Value);
+            Assert.Equal("Jane Smith", Assert.Single(stored.Principal.FindAll("name")).Value);
+            Assert.Equal("ar", Assert.Single(stored.Principal.FindAll("locale")).Value);
+
+            // --- The profile cookie is re-issued with the new name ---
+            SetCookieHeaderValue profile = SignInFlow.Parse(response)[TellmaAuthentication.ProfileCookieName];
+            using var document = JsonDocument.Parse(System.Buffers.Text.Base64Url.DecodeFromChars(profile.Value.ToString()));
+            Assert.Equal("Jane Smith", document.RootElement.GetProperty("name").GetString());
+        }
+
+        [Fact]
+        public async Task A_refresh_naming_another_subject_ends_the_session()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = static _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Tokens("sub-2", nonce: null, TimeSpan.FromHours(1)));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Empty(host.Rows.Keys());
+        }
+
+        [Fact]
+        public async Task A_refreshed_identity_token_issued_to_another_client_ends_the_session()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = static _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Tokens(
+                "sub-1", nonce: null, TimeSpan.FromHours(1), shape: static claims => claims["aud"] = "another-client"));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Empty(host.Rows.Keys());
+        }
+
+        [Fact]
+        public async Task A_malformed_success_from_the_token_endpoint_puts_the_refresh_off()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = static _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Json(HttpStatusCode.OK, "<html></html>"));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal([session.Key], host.Rows.Keys());
+            Assert.Equal(0, host.Rows.TokensVersion(session.Key));
+        }
+
+        [Fact]
+        public async Task A_refreshed_identity_token_signed_by_a_rolled_key_is_accepted_once_the_keys_are_read_again()
+        {
+            SymmetricSecurityKey rolled = new(RandomNumberGenerator.GetBytes(32)) { KeyId = "rolled-key" };
+            TestConfigurationManager manager = new(refreshes =>
+            {
+                // The metadata lists the rolled key only once it has been read again.
+                OpenIdConnectConfiguration configuration = FakeIdentityServer.Configuration();
+                if (refreshes > 0)
+                {
+                    configuration.SigningKeys.Add(rolled);
+                }
+
+                return configuration;
+            });
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.ConfigureServices = services => TestConfigurationManager.Install(services, manager));
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Tokens("sub-1", nonce: null, TimeSpan.FromHours(1), key: rolled));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, manager.Refreshes);
+            Assert.Equal(1, host.Rows.TokensVersion(session.Key));
+        }
+
+        [Fact]
+        public async Task A_refreshed_identity_token_signed_by_a_key_the_metadata_never_lists_puts_the_refresh_off()
+        {
+            SymmetricSecurityKey unknown = new(RandomNumberGenerator.GetBytes(32)) { KeyId = "unknown-key" };
+            TestConfigurationManager manager = new(static _ => FakeIdentityServer.Configuration());
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.ConfigureServices = services => TestConfigurationManager.Install(services, manager));
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = _ => Task.FromResult<HttpResponseMessage?>(FakeIdentityServer.Tokens("sub-1", nonce: null, TimeSpan.FromHours(1), key: unknown));
+
+            using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
+
+            // Stale metadata is not the session's fault: it is kept, on its current tokens.
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, manager.Refreshes);
+            Assert.Equal([session.Key], host.Rows.Keys());
+            Assert.Equal(0, host.Rows.TokensVersion(session.Key));
+        }
+
+        [Fact]
+        public async Task A_refresh_put_off_is_not_tried_again_until_its_backoff_lapses()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.Refresh = static _ => Task.FromResult<HttpResponseMessage?>(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+
+            using HttpResponseMessage first = await GetUserAsync(host, session.Cookie);
+            using HttpResponseMessage second = await GetUserAsync(host, session.Cookie);
+
+            // --- Within the backoff the session is served on its tokens without asking again ---
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+            Assert.Equal(1, host.IdentityServer.Redemptions);
+
+            // --- Past it, the next request tries again ---
+            host.Time.Advance(SessionRefresher.DeferralBackoff + TimeSpan.FromSeconds(1));
+            using HttpResponseMessage third = await GetUserAsync(host, session.Cookie);
+            Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+            Assert.Equal(2, host.IdentityServer.Redemptions);
+        }
+
+        [Fact]
+        public async Task An_identity_server_that_does_not_answer_is_given_up_on_at_the_redemption_s_deadline()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
+            host.IdentityServer.StallRefresh = true;
+
+            Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
+            while (host.IdentityServer.Redemptions == 0)
+            {
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+
+            host.Time.Advance(OidcTokenRedeemer.Timeout + TimeSpan.FromSeconds(1));
+            using HttpResponseMessage response = await pending;
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal([session.Key], host.Rows.Keys());
+            Assert.Equal(0, host.Rows.TokensVersion(session.Key));
         }
 
         [Fact]

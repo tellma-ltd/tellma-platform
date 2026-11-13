@@ -92,12 +92,12 @@ namespace Tellma.Core.AspNetCore.Observability
 
         /// <summary>A global sign-out could not reach the identity server's end-session endpoint, so it signed out locally.</summary>
         /// <param name="logger">The logger.</param>
-        /// <param name="exception">The failure.</param>
+        /// <param name="exception">The failure; null when the identity server's metadata names no end-session endpoint.</param>
         [LoggerMessage(
             EventName = "BffGlobalSignOutUnavailable",
             Level = LogLevel.Warning,
             Message = "A global sign-out could not build the identity server's end-session address; the session was signed out locally.")]
-        public static partial void BffGlobalSignOutUnavailable(ILogger logger, Exception exception);
+        public static partial void BffGlobalSignOutUnavailable(ILogger logger, Exception? exception);
 
         /// <summary>A sweep of expired sessions failed; the next one retries.</summary>
         /// <param name="logger">The logger.</param>

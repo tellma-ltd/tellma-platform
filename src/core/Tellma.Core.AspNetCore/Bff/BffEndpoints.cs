@@ -17,6 +17,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Observability;
@@ -112,19 +113,21 @@ namespace Tellma.Core.AspNetCore.Bff
                 RedirectUri = returnUrl ?? "/",
                 IsPersistent = true,
             };
-            if ((acrValues ?? policy.AcrValues) is { Length: > 0 } acr)
+            // The policy bounds the caller: its assurance replaces the caller's, and the stricter of the
+            // two recencies wins, so no query weakens what the distribution requires.
+            if ((string.IsNullOrEmpty(policy.AcrValues) ? acrValues : policy.AcrValues) is { Length: > 0 } acr)
             {
                 properties.SetParameter(BffOidcEvents.AcrValuesParameter, acr);
             }
 
-            if (maxAge is int seconds)
+            TimeSpan? requested = maxAge is int seconds ? TimeSpan.FromSeconds(seconds) : null;
+            properties.MaxAge = (requested, policy.MaxAge) switch
             {
-                properties.MaxAge = TimeSpan.FromSeconds(seconds);
-            }
-            else if (policy.MaxAge is TimeSpan age)
-            {
-                properties.MaxAge = age;
-            }
+                (TimeSpan caller, TimeSpan required) => caller < required ? caller : required,
+                (TimeSpan caller, null) => caller,
+                (null, TimeSpan required) => required,
+                _ => null,
+            };
 
             if (uiLocales is not null)
             {
@@ -174,16 +177,26 @@ namespace Tellma.Core.AspNetCore.Bff
             string redirectUrl = TellmaAuthenticationComposition.SignedOutPath;
             if (scope == GlobalScope)
             {
+                ILogger logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(BffEndpoints));
                 try
                 {
                     await context.SignOutAsync(TellmaAuthentication.OidcScheme, new AuthenticationProperties { RedirectUri = TellmaAuthenticationComposition.SignedOutPath })
                         .ConfigureAwait(false);
-                    redirectUrl = BffOidcEvents.CapturedEndSession(context) ?? redirectUrl;
+                    if (BffOidcEvents.CapturedEndSession(context) is string endSession)
+                    {
+                        redirectUrl = endSession;
+                    }
+                    else
+                    {
+                        // The identity server's metadata names no end-session endpoint: its session
+                        // survives, so the fallback to a local sign-out is recorded.
+                        HostLog.BffGlobalSignOutUnavailable(logger, exception: null);
+                    }
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !context.RequestAborted.IsCancellationRequested)
                 {
                     // An unreachable identity server never keeps a user signed in here.
-                    HostLog.BffGlobalSignOutUnavailable(context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(BffEndpoints)), exception);
+                    HostLog.BffGlobalSignOutUnavailable(logger, exception);
                 }
             }
 
@@ -193,12 +206,9 @@ namespace Tellma.Core.AspNetCore.Bff
             // --- 3. Nothing the user saw stays in the browser's cache ---
             context.Response.Headers["Clear-Site-Data"] = "\"cache\"";
             context.Response.Headers[HeaderNames.CacheControl] = NoStore;
-            await WriteJsonAsync(context, writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("redirectUrl", redirectUrl);
-                writer.WriteEndObject();
-            }).ConfigureAwait(false);
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await JsonSerializer.SerializeAsync(context.Response.Body, new LogoutResult(redirectUrl), TellmaJson.Options, context.RequestAborted).ConfigureAwait(false);
         }
 
         /// <summary>The scope a sign-out body names: <c>global</c> when there is no body or it names none.</summary>

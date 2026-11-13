@@ -305,8 +305,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>A bearer access token from the test issuer.</summary>
         /// <param name="claims">The token's claims.</param>
         /// <param name="type">The token's type header.</param>
+        /// <param name="key">The signing key; the test key by default.</param>
         /// <returns>The token.</returns>
-        public static string Token(IDictionary<string, object> claims, string type = "at+jwt")
+        public static string Token(IDictionary<string, object> claims, string type = "at+jwt", SecurityKey? key = null)
         {
             DateTime now = DateTime.UtcNow;
             return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
@@ -317,7 +318,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 NotBefore = now.AddMinutes(-1),
                 Expires = now.AddMinutes(10),
                 TokenType = type,
-                SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256),
+                SigningCredentials = new SigningCredentials(key ?? SigningKey, SecurityAlgorithms.HmacSha256),
             });
         }
 

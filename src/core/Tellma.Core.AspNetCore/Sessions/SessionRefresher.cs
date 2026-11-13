@@ -56,7 +56,9 @@ namespace Tellma.Core.AspNetCore.Sessions
     ///     A refusal by the authority ends the session — its row is deleted and the listeners told — so a
     ///     sign-out everywhere, a disabled user or a tightened policy takes effect within one access token's
     ///     lifetime even when no back-channel logout arrived. An unreachable authority keeps the session up
-    ///     to the outage allowance past the access token's expiry, then ends it the same way.
+    ///     to the outage allowance past the access token's expiry, then ends it the same way. A refresh put
+    ///     off is not attempted again for <see cref="DeferralBackoff" />, so during an outage the session's
+    ///     requests are served on its current tokens instead of each waiting on the authority.
     /// </remarks>
     /// <param name="store">The session store.</param>
     /// <param name="redeemer">Redeems refresh tokens.</param>
@@ -81,8 +83,17 @@ namespace Tellma.Core.AspNetCore.Sessions
             TellmaClaimTypes.Locale,
         ];
 
+        /// <summary>How long a refresh put off is not attempted again for the same session.</summary>
+        internal static readonly TimeSpan DeferralBackoff = TimeSpan.FromSeconds(20);
+
+        /// <summary>How many remembered deferrals prompt a pass that forgets the lapsed ones.</summary>
+        private const int DeferralPruneThreshold = 10_000;
+
         /// <summary>The refreshes in flight on this instance, by session key.</summary>
         private readonly ConcurrentDictionary<string, Lazy<Task<RefreshOutcome>>> _flights = new(StringComparer.Ordinal);
+
+        /// <summary>The sessions whose refresh was put off on this instance, by key, with when it may be tried again.</summary>
+        private readonly ConcurrentDictionary<string, DateTimeOffset> _deferrals = new(StringComparer.Ordinal);
 
         /// <summary>Refreshes a session, joining the refresh already in flight for it on this instance.</summary>
         /// <param name="request">The session.</param>
@@ -90,6 +101,18 @@ namespace Tellma.Core.AspNetCore.Sessions
         public async Task<RefreshOutcome> RefreshAsync(RefreshRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
+
+            // --- A refresh put off moments ago is not tried again yet, unless the allowance is spent ---
+            if (_deferrals.TryGetValue(request.Key, out DateTimeOffset retryAt))
+            {
+                DateTimeOffset now = time.GetUtcNow();
+                if (now < retryAt && now <= request.AccessTokenExpiry + options.Value.MaxAuthorityOutage)
+                {
+                    return new RefreshOutcome(RefreshOutcomeKind.Deferred, null);
+                }
+
+                _ = _deferrals.TryRemove(new KeyValuePair<string, DateTimeOffset>(request.Key, retryAt));
+            }
 
             // The flight is not the asking request's to cancel: other requests may be waiting on it.
             Lazy<Task<RefreshOutcome>> created = new(() => RunGuardedAsync(request), LazyThreadSafetyMode.ExecutionAndPublication);
@@ -127,8 +150,7 @@ namespace Tellma.Core.AspNetCore.Sessions
                 }
 
                 HostLog.SessionRefreshDeferred(logger, request.Handle, exception);
-                metrics.RecordSessionRefresh(HostMetrics.DeferredOutcome);
-                return new RefreshOutcome(RefreshOutcomeKind.Deferred, null);
+                return Deferred(request);
             }
         }
 
@@ -250,6 +272,25 @@ namespace Tellma.Core.AspNetCore.Sessions
             }
 
             HostLog.SessionRefreshDeferred(logger, request.Handle, redemption.Failure);
+            return Deferred(request);
+        }
+
+        /// <summary>Counts a deferral and remembers it, so the session's next requests do not try again at once.</summary>
+        /// <param name="request">The session.</param>
+        /// <returns>The deferral.</returns>
+        private RefreshOutcome Deferred(RefreshRequest request)
+        {
+            DateTimeOffset now = time.GetUtcNow();
+            _deferrals[request.Key] = now + DeferralBackoff;
+            if (_deferrals.Count > DeferralPruneThreshold)
+            {
+                // Sessions that never came back would otherwise be remembered for the instance's life.
+                foreach (KeyValuePair<string, DateTimeOffset> lapsed in _deferrals.Where(entry => entry.Value <= now).ToList())
+                {
+                    _ = _deferrals.TryRemove(lapsed);
+                }
+            }
+
             metrics.RecordSessionRefresh(HostMetrics.DeferredOutcome);
             return new RefreshOutcome(RefreshOutcomeKind.Deferred, null);
         }

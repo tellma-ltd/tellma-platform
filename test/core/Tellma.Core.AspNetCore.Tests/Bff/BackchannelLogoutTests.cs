@@ -36,7 +36,7 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Equal([other.Key], host.Rows.Keys());
             (string subject, IReadOnlyList<string> handles) = Assert.Single(listener.Ended);
             Assert.Equal("sub-1", subject);
-            Assert.Equal([first.Handle, second.Handle], [.. handles.Order(StringComparer.Ordinal)], StringComparer.Ordinal);
+            Assert.Equal([.. new[] { first.Handle, second.Handle }.Order(StringComparer.Ordinal)], [.. handles.Order(StringComparer.Ordinal)], StringComparer.Ordinal);
             Assert.DoesNotContain(first.Key, handles);
         }
 
@@ -107,6 +107,26 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             using HttpResponseMessage response = await PostAsync(host, token);
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal([session.Key], host.Rows.Keys());
+            Assert.Empty(listener.Ended);
+        }
+
+        [Fact]
+        public async Task A_token_that_cannot_be_checked_for_want_of_the_metadata_is_answered_503()
+        {
+            RecordingListener listener = new();
+            TestConfigurationManager manager = new(static _ => null);
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.ConfigureServices = services =>
+            {
+                _ = services.AddSingleton<ISessionTerminationListener>(listener);
+                TestConfigurationManager.Install(services, manager);
+            });
+            TestSession session = host.Session(sessionId: "sid-1");
+
+            using HttpResponseMessage response = await PostAsync(host, Token(Claims(sid: "sid-1")));
+
+            // The identity server retries a delivery this side could not check; nothing ended meanwhile.
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.Equal([session.Key], host.Rows.Keys());
             Assert.Empty(listener.Ended);
         }

@@ -69,8 +69,14 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The access token's lifetime in each answer.</summary>
         public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromHours(1);
 
+        /// <summary>Changes the claims of the identity token the code grant answers; null leaves them as they are.</summary>
+        public Action<IDictionary<string, object>>? ShapeIdToken { get; set; }
+
         /// <summary>The refresh grant's answer for a request; null answers fresh tokens.</summary>
         public Func<IReadOnlyDictionary<string, string>, Task<HttpResponseMessage?>>? Refresh { get; set; }
+
+        /// <summary>Whether the refresh grant never answers, until the request is cancelled.</summary>
+        public bool StallRefresh { get; set; }
 
         /// <summary>How many refresh grants were received.</summary>
         public int Redemptions => Requests.Count(static request => request.Form.TryGetValue("grant_type", out string? grant) && grant == "refresh_token");
@@ -80,13 +86,25 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <param name="nonce">The nonce the identity token carries, if any.</param>
         /// <param name="lifetime">The access token's lifetime.</param>
         /// <param name="acr">The authentication context class, if any.</param>
+        /// <param name="sid">The identity server session the identity token names.</param>
+        /// <param name="shape">Changes the identity token's claims; null leaves them as they are.</param>
+        /// <param name="key">The identity token's signing key; the test key by default.</param>
+        /// <param name="refreshToken">The refresh token answered; a fresh one by default.</param>
         /// <returns>The response.</returns>
-        public static HttpResponseMessage Tokens(string subject, string? nonce, TimeSpan lifetime, string? acr = null)
+        public static HttpResponseMessage Tokens(
+            string subject,
+            string? nonce,
+            TimeSpan lifetime,
+            string? acr = null,
+            string sid = "sid-1",
+            Action<IDictionary<string, object>>? shape = null,
+            SecurityKey? key = null,
+            string? refreshToken = null)
         {
             Dictionary<string, object> claims = new(StringComparer.Ordinal)
             {
                 ["sub"] = subject,
-                ["sid"] = "sid-1",
+                ["sid"] = sid,
                 ["aud"] = TellmaTestHost.Slug,
                 ["azp"] = TellmaTestHost.Slug,
                 ["name"] = "Jane Doe",
@@ -103,11 +121,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 claims["acr"] = acr;
             }
 
-            string idToken = TellmaTestHost.Token(claims, type: "JWT");
+            shape?.Invoke(claims);
+            string idToken = TellmaTestHost.Token(claims, type: "JWT", key);
             string body = JsonSerializer.Serialize(new Dictionary<string, object>
             {
                 ["access_token"] = "access-" + Guid.NewGuid().ToString("N"),
-                ["refresh_token"] = "refresh-" + Guid.NewGuid().ToString("N"),
+                ["refresh_token"] = refreshToken ?? ("refresh-" + Guid.NewGuid().ToString("N")),
                 ["id_token"] = idToken,
                 ["token_type"] = "Bearer",
                 ["expires_in"] = (int)lifetime.TotalSeconds,
@@ -150,11 +169,17 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             string path = request.RequestUri!.AbsolutePath;
             Requests.Enqueue(new IdentityRequest(path, form));
 
+            // --- An identity server that does not answer, until the caller gives up ---
+            if (StallRefresh && form.GetValueOrDefault("grant_type") == "refresh_token")
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
             // --- The endpoints ---
             return path switch
             {
                 "/connect/par" => Json(HttpStatusCode.Created, JsonSerializer.Serialize(new { request_uri = RequestUri, expires_in = 60 })),
-                "/connect/token" when form.GetValueOrDefault("grant_type") == "authorization_code" => Tokens(Subject, LatestNonce(), AccessTokenLifetime),
+                "/connect/token" when form.GetValueOrDefault("grant_type") == "authorization_code" => Tokens(Subject, LatestNonce(), AccessTokenLifetime, sid: SessionId, shape: ShapeIdToken),
                 "/connect/token" when form.GetValueOrDefault("grant_type") == "refresh_token" =>
                     (Refresh is null ? null : await Refresh(form)) ?? Tokens(Subject, nonce: null, AccessTokenLifetime),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
