@@ -490,6 +490,65 @@ export const tmTokensDefault: TmTokens = {
       text: '{text.strong}',
       spinnerSize: '20px',
     },
+    // tm-card: a framed block under an optional heading. Card fill, a
+    // hairline, radius md, no shadow. The header is a 33px band (8px
+    // padding around a 17px line of 13px semibold text), or 51px with the
+    // 18px subtitle line, whatever the card holds. The error dot sits in a
+    // box every card with `invalid` bound reserves.
+    card: {
+      bg: '{surface.card}',
+      border: '{border.default}',
+      radius: '{radius.md}',
+      headerPaddingX: '11px',
+      headerPaddingY: '8px',
+      headerGap: '8px',
+      fontSize: '13px',
+      lineHeight: '17px',
+      subtitleFontSize: '12px',
+      subtitleLineHeight: '18px',
+      bodyPadding: '11px',
+      chevronSize: '14px',
+      dotSize: '6px',
+      dotGap: '6px',
+    },
+    // tm-page-header: a page's title row and toolbar row, each at least the
+    // field height, then a band that wraps. 12x14px padding, or 10px below
+    // the sm breakpoint.
+    pageHeader: {
+      paddingX: '14px',
+      paddingY: '12px',
+      paddingNarrow: '10px',
+      rowGap: '8px',
+      gap: '8px',
+      titleFontSize: '16px',
+      backFontSize: '13px',
+      separatorSize: '14px',
+    },
+    // dl[tmDescriptionList]: label-value pairs. Labels are 12px medium
+    // secondary text, values 13px strong text, pairs 10px apart down and
+    // 18px across; an inline pair gives its label this share of its width.
+    descriptionList: {
+      labelFontSize: '12px',
+      labelColor: '{text.secondary}',
+      valueFontSize: '13px',
+      valueColor: '{text.strong}',
+      rowGap: '10px',
+      columnGap: '18px',
+      pairGap: '2px',
+      inlineLabelWidth: '40%',
+    },
+    // tm-splitter: a 7px bar between two panes with a 3x28px grip, taking
+    // the pointer across a 24px hit area. The bar is quiet at rest and
+    // takes the accent while hovered or dragged.
+    splitter: {
+      size: '7px',
+      hitSize: '24px',
+      gripWidth: '3px',
+      gripLength: '28px',
+      bg: '{border.subtle}',
+      grip: '{border.strong}',
+      activeBg: '{action.accent}',
+    },
     // tmButton: heights ride the shared field-height scale (buttons align
     // with form fields in toolbars); per-variant colors resolve per scheme
     // through the semantic action/field/status roles.
@@ -759,6 +818,12 @@ export const tmTokensDefault: TmTokens = {
       closeSize: '28px',
       iconSize: '15px',
       scrim: 'rgba(4, 18, 24, 0.55)',
+      // The alert dialogs (TmConfirm, TmErrorDialog): a 26px tinted disc
+      // beside the message, and the gaps between the body's blocks.
+      alertIconSize: '26px',
+      alertGlyphSize: '16px',
+      alertGap: '12px',
+      messageFontSize: '13px',
     },
     // tm-spinner: a decorative ring — a quiet full track with one quarter
     // arc turning on it. The arc rides `color` so a host re-points it by

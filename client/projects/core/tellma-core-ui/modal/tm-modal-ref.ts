@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TemplateRef, Type } from '@angular/core';
+import { signal, type Signal, type TemplateRef, type Type, type WritableSignal } from '@angular/core';
 import type { Observable } from 'rxjs';
 import { hasModifierKey } from '@angular/cdk/keycodes';
 
@@ -71,8 +71,36 @@ export class TmModalRef<R = void> {
     this.resolveClosed = resolve;
   });
 
+  /**
+   * The header title the shell renders, or undefined for none.
+   * @internal
+   */
+  readonly ɵtitle: Signal<string | undefined>;
+
+  /** The writable side of {@link TmModalRef.ɵtitle}. */
+  private readonly titleState: WritableSignal<string | undefined>;
+
   /** @internal Constructed by `TmModal.open` only. */
-  constructor(private readonly policy: DismissalPolicy) {}
+  constructor(
+    private readonly policy: DismissalPolicy,
+    title?: string,
+  ) {
+    this.titleState = signal(title);
+    this.ɵtitle = this.titleState.asReadonly();
+  }
+
+  /**
+   * Retitles the open modal in place, keeping the title element (and so
+   * the dialog's `aria-labelledby`) — for content that replaces itself
+   * while open. A modal opened without a title stays untitled, and an
+   * empty title is ignored, so the dialog never loses its name.
+   * @internal
+   */
+  ɵsetTitle(title: string): void {
+    if (this.titleState() !== undefined && title !== '') {
+      this.titleState.set(title);
+    }
+  }
 
   /**
    * Closes the modal programmatically. `closed` resolves with
@@ -182,8 +210,12 @@ export interface ɵTmModalShellPayload {
   readonly component: Type<unknown> | null;
   /** The content template, or null for component content. */
   readonly template: TemplateRef<unknown> | null;
-  /** The header title, or undefined for none. */
-  readonly title: string | undefined;
+  /**
+   * The header title, or undefined for none. A signal, so content that
+   * replaces itself in place (the error dialog) can retitle the open modal
+   * through {@link TmModalRef.ɵsetTitle}.
+   */
+  readonly title: Signal<string | undefined>;
   /** The title element's id, the dialog's `aria-labelledby`. */
   readonly titleId: string;
   /** Where the modal sits: centered, or the drawer at the inline-end edge. */

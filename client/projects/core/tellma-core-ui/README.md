@@ -49,6 +49,12 @@ disabled/readonly/required).
 | `@tellma/core-ui/toast` | `TmToasts` + `provideTellmaToasts()` — transient messages in the block-start, inline-end corner: three on show behind an "N more" pill, six-second timers that pause on hover, focus and a hidden page, keyed replacement, `focus()` |
 | `@tellma/core-ui/banner` | `tm-banner-bar` — a 32 px page-wide message bar in a tone, with an action, previous/next paging and dismiss |
 | `@tellma/core-ui/busy-overlay` | `TmBusyOverlay` — `run(work)` holds the pointer and the keyboard from the calling task, shows a scrim, spinner and label after 200 ms (or at once), and returns focus when the work settles |
+| `@tellma/core-ui/confirm` | `TmConfirm` — `ask()` puts a question with two or more answers in a small alert dialog and resolves to the chosen key (or `null` when dismissed); `confirm()` is the yes-or-no case, with a destructive mode that focuses Cancel |
+| `@tellma/core-ui/error-dialog` | `TmErrorDialog` — a failure the user must acknowledge: the message, up to ten items and a count of the rest, a reference to copy, a Details disclosure with facts and actions, and caller footer buttons whose async `run` shows a pending state; a later `show` replaces the open dialog in place |
+| `@tellma/core-ui/card` | `tm-card` — a framed panel with a heading, a count, subtitle and action slots, a body and a footer; optionally a disclosure (`collapsible`, `preserveContent`), with an error dot whose box is reserved so it never moves the header |
+| `@tellma/core-ui/page-header` | `tm-page-header` — a page's title row (crumb link, `h1`, extras, end slot) and toolbar row on one line each, and a band below them that wraps |
+| `@tellma/core-ui/description-list` | `dl[tmDescriptionList]` — label and value pairs, stacked or inline, in one, two or container-sized columns (global stylesheet) |
+| `@tellma/core-ui/splitter` | `tm-splitter` + `tmSplitterPane` — two panes divided by a bar dragged with any pointer or moved by keyboard, the primary pane's size clamped to the container in CSS while `size` keeps the user's intent |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
@@ -59,9 +65,10 @@ Add to the application's `styles` array:
 - `@tellma/core-ui-tokens`' emitted stylesheet (the token variables);
 - this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);
 - one stylesheet per BARE DIRECTIVE — `styles/tm-button.css`,
-  `styles/tm-input.css`, `styles/tm-number.css`. A directive has no view of
-  its own to carry styles, so its appearance ships as a global sheet;
-  skipping these leaves buttons and text/number inputs unstyled. The
+  `styles/tm-input.css`, `styles/tm-number.css`,
+  `styles/tm-description-list.css`. A directive has no view of its own to
+  carry styles, so its appearance ships as a global sheet; skipping these
+  leaves buttons, text/number inputs and description lists unstyled. The
   authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
   by the entry point that needs it.
 
