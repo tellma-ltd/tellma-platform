@@ -14,7 +14,7 @@ using Tellma.Testing.Entities;
 namespace Tellma.Testing.Entities.Migrations
 {
     [DbContext(typeof(TellmaFixtureDbContext))]
-    [Migration("20261112235308_Initial")]
+    [Migration("20261113053329_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -1581,7 +1581,7 @@ namespace Tellma.Testing.Entities.Migrations
 
             modelBuilder.HasTableTypeDefinition("VersionTagList", "dbo", type => type
                 .Column(name: "Name", storeType: "nvarchar(128)", maxLength: 128)
-                .Column(name: "Tag", storeType: "uniqueidentifier")
+                .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
                 .HasGrants("tellma_app"));

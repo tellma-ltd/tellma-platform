@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Caching;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Testing.Entities;
 
@@ -21,8 +22,9 @@ namespace Tellma.Core.IntegrationTests.Data
     /// <summary>
     ///     Version tags against a fixture database whose every batch is audited: the prelude heading
     ///     every batch and replacing the process's snapshot, the bump moving a cacheable list's tags
-    ///     and the named users' tags and announcing each move after the commit, and a missing row
-    ///     failing the bump.
+    ///     and the named users' preferences or permissions tags and announcing each move after the
+    ///     commit, an expectation of no tag guarded, no missing-row warning from a batch that writes
+    ///     the tags itself, and a missing row failing the bump.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -36,6 +38,15 @@ namespace Tellma.Core.IntegrationTests.Data
 
         /// <summary>The users' preference bags, whose writes bump each named user's preferences tag.</summary>
         private static readonly TableName UserPreferences = new("core", "UserPreferences");
+
+        /// <summary>The roles, whose writes bump the tenant's permissions tag.</summary>
+        private static readonly TableName Roles = new("core", "Roles");
+
+        /// <summary>The role memberships, whose writes bump each named member's permissions tag.</summary>
+        private static readonly TableName RoleMemberships = new("core", "RoleMemberships");
+
+        /// <summary>The tenant-level tags' table, which only the migrator writes directly.</summary>
+        private static readonly TableName VersionTags = new("core", "VersionTags");
 
         /// <summary>The list's own tag.</summary>
         private static readonly string LookupTag = VersionTagNames.ForEntity("fixture.Lookup");
@@ -169,6 +180,87 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal((DataBatchDatabase.CallerId, batch.Tag, DataBatchDatabase.UserPermissionsTag), (user.UserId, user.Preferences.Value, user.Permissions.Value));
             Assert.Same(user, fixture.Tenant.Services.GetRequiredService<IUserVersionTagSnapshots>().Current(FixtureTenant.TenantId, DataBatchDatabase.CallerId));
             Assert.Equal(batch.Tag, await StampAsync("PreferencesTag", DataBatchDatabase.CallerId));
+        }
+
+        [Fact]
+        public async Task A_role_save_naming_its_administrator_and_another_member_moves_the_permissions_tags_of_the_tenant_and_both()
+        {
+            int other = DataBatchDatabase.CallerId + 1;
+            await fixture.SeedUserAsync(other);
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            batch.MarkConnectPrologue(DataBatchDatabase.Premises);
+            batch.SetCallerAuthority(Set(Roles, RoleMemberships));
+            SqlIdentifier members = batch.Tvp<IdList>([new() { Id = DataBatchDatabase.CallerId }, new() { Id = other }]);
+            _ = batch.Sql($"DELETE FROM [core].[Roles] WHERE 1 = 0;", new SqlOptions(writes: Set(Roles)));
+            _ = batch.Sql($"DELETE FROM [core].[RoleMemberships] WHERE [UserId] IN (SELECT [Id] FROM {members});", new SqlOptions(writes: Set(RoleMemberships), userIds: members));
+
+            BatchOutcome outcome = await batch.ExecuteAsync(Token);
+
+            // --- The tenant's permissions tag and both members' stamps hold the batch's tag ---
+            Assert.True(batch.GuardPassed);
+            VersionTag tag = new(batch.Tag);
+            Assert.Equal(batch.Tag, (await fixture.TagsAsync())[VersionTagNames.Permissions]);
+            Assert.Equal(batch.Tag, await StampAsync("PermissionsTag", DataBatchDatabase.CallerId));
+            Assert.Equal(batch.Tag, await StampAsync("PermissionsTag", other));
+            Assert.NotEqual(batch.Tag, await StampAsync("PreferencesTag", other));
+
+            // --- The administrator's own snapshot carries the move, with no read-back ---
+            Assert.Equal(tag, outcome.VersionTags[VersionTagNames.Permissions]);
+            UserVersionTagSnapshot user = Assert.IsType<UserVersionTagSnapshot>(outcome.UserVersionTags);
+            Assert.Equal((DataBatchDatabase.CallerId, tag), (user.UserId, user.Permissions));
+
+            // --- The tenant hears that permissions moved, without a value; each member hears its composite ---
+            CacheChangedPayload composite = new(VersionTagWire.PermissionsItem, VersionTagWire.Permissions(tag, tag));
+            Assert.Equal(
+                [(0, new CacheChangedPayload(VersionTagNames.Permissions, null)), (DataBatchDatabase.CallerId, composite), (other, composite)],
+                fixture.Events.Published.Select(static clientEvent => (clientEvent.UserIds.SingleOrDefault(), (CacheChangedPayload)clientEvent.Payload!)).OrderBy(static pair => pair.Item1));
+        }
+
+        [Fact]
+        public async Task A_dependency_that_expects_no_tag_fails_stale_once_the_row_exists()
+        {
+            // A kind read while its row was missing is expected as no tag; the row seeded since moves it.
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            batch.MarkConnectPrologue(DataBatchDatabase.Premises);
+            batch.DependsOn([new VersionTagDependency(LookupTag, VersionTag.None, VersionTagMismatchPolicy.Rerun)]);
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES (NEXT VALUE FOR [core].[sq_Jobs]);", new SqlOptions(writes: Set(Jobs)));
+
+            BatchAssertionFailedException refused = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
+
+            Assert.Equal(TellmaSqlErrors.StaleVersionTag, refused.Number);
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_batch_that_writes_the_tags_itself_warns_of_no_missing_row_and_a_later_read_does()
+        {
+            // No other test of the class reads the tags while the entities row is missing, so the
+            // once-per-process warning is still due for it.
+            string deleteEntities = $"DELETE FROM [core].[VersionTags] WHERE [Name] = N'{VersionTagNames.Entities}';";
+            await SqlServerFixture.ExecuteAsync(fixture.Tenant.ConnectionString, deleteEntities);
+
+            // --- The migrator's seed reads the table before it inserts the row: no warning ---
+            await using (AsyncServiceScope scope = fixture.Tenant.CreateScope())
+            {
+                IDataBatch seed = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
+                _ = seed.Sql($"INSERT INTO [core].[VersionTags] ([Name], [Tag]) VALUES ({VersionTagNames.Entities}, NEWID());", new SqlOptions(writes: Set(VersionTags)));
+                _ = await seed.ExecuteAsync(Token);
+            }
+
+            Assert.DoesNotContain(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "VersionTagRowMissing");
+
+            // --- A read that finds the row missing warns ---
+            await SqlServerFixture.ExecuteAsync(fixture.Tenant.ConnectionString, deleteEntities);
+            await using (AsyncServiceScope scope = fixture.Tenant.CreateScope())
+            {
+                IDataBatch read = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
+                _ = read.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
+                _ = await read.ExecuteAsync(Token);
+            }
+
+            Assert.Single(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "VersionTagRowMissing");
         }
 
         [Fact]

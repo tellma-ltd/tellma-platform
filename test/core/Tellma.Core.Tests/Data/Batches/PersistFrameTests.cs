@@ -78,17 +78,24 @@ namespace Tellma.Core.Tests.Data.Batches
                     string.Empty),
                 assembly.Text);
 
-            // --- A user's re-checks: the tag rows one at a time in name order, under an update lock since
-            // the batch bumps, then the caller's stamp under a shared lock, then the caller ---
+            // --- A user's re-checks: the tag rows one at a time in name order, a bumped name under an
+            // exclusive lock and every other under a shared one, then the caller's stamp under a shared
+            // lock, then the caller ---
             Assert.Equal(
                 string.Join(
                     "\n",
-                    "DECLARE @tm_guardName nvarchar(128) = (SELECT MIN([Name] COLLATE Latin1_General_100_BIN2) FROM @tm_expectedTags), @tm_guardTag uniqueidentifier, @tm_guardStale bit = 0;",
+                    "DECLARE @tm_guardOrder TABLE ([Name] nvarchar(128) COLLATE Latin1_General_100_BIN2 NOT NULL PRIMARY KEY, [Tag] uniqueidentifier NULL, [Bumped] bit NOT NULL);",
+                    "INSERT INTO @tm_guardOrder ([Name], [Tag], [Bumped]) SELECT [Name], [Tag], [Bumped] FROM @tm_expectedTags;",
+                    "DECLARE @tm_guardName nvarchar(128) = (SELECT MIN([Name]) FROM @tm_guardOrder), @tm_guardExpected uniqueidentifier, @tm_guardBumped bit, @tm_guardTag uniqueidentifier, @tm_guardStale bit = 0;",
                     "WHILE @tm_guardName IS NOT NULL",
                     "BEGIN",
-                    "    SET @tm_guardTag = (SELECT [Tag] FROM [core].[VersionTags] WITH (UPDLOCK, ROWLOCK, FORCESEEK) WHERE [Name] = @tm_guardName);",
-                    "    IF EXISTS (SELECT 1 FROM @tm_expectedTags WHERE [Name] = @tm_guardName AND [Tag] <> '00000000-0000-0000-0000-000000000000' AND [Tag] <> @tm_guardTag) SET @tm_guardStale = 1;",
-                    "    SET @tm_guardName = (SELECT MIN([Name] COLLATE Latin1_General_100_BIN2) FROM @tm_expectedTags WHERE [Name] COLLATE Latin1_General_100_BIN2 > @tm_guardName);",
+                    "    SELECT @tm_guardExpected = [Tag], @tm_guardBumped = [Bumped] FROM @tm_guardOrder WHERE [Name] = @tm_guardName;",
+                    "    IF @tm_guardBumped = 1",
+                    "        SET @tm_guardTag = (SELECT [Tag] FROM [core].[VersionTags] WITH (XLOCK, ROWLOCK, FORCESEEK) WHERE [Name] = @tm_guardName);",
+                    "    ELSE",
+                    "        SET @tm_guardTag = (SELECT [Tag] FROM [core].[VersionTags] WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK) WHERE [Name] = @tm_guardName);",
+                    "    IF @tm_guardExpected <> @tm_guardTag SET @tm_guardStale = 1;",
+                    "    SET @tm_guardName = (SELECT TOP (1) [Name] FROM @tm_guardOrder WHERE [Name] > @tm_guardName ORDER BY [Name]);",
                     "END;",
                     "IF @tm_guardStale = 1",
                     "   OR (SELECT SUM(IIF(s.[PermissionsTag] = @tm_ExpectedUserPermissionsTag, 0, 1)) FROM [core].[UserStamps] AS s WITH (REPEATABLEREAD, ROWLOCK) WHERE s.[UserId] = @tm_UserId) > 0",
@@ -151,15 +158,31 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
-        public async Task A_batch_that_bumps_no_tenant_tag_locks_its_expected_rows_under_a_shared_lock()
+        public async Task A_batch_that_bumps_no_tenant_tag_marks_no_expected_row_for_the_exclusive_lock()
         {
             DataBatch batch = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, Permissions));
             _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", new SqlOptions(writes: Set(new TableName("core", "Jobs"))));
 
             PersistChecks checks = (await BatchHarness.SealAsync(batch)).Checks!;
 
-            Assert.Contains("[core].[VersionTags] WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK)", checks.Text, StringComparison.Ordinal);
-            Assert.DoesNotContain("UPDLOCK", checks.Text, StringComparison.Ordinal);
+            Assert.All(checks.ExpectedTags, static row => Assert.False(row.Bumped));
+            Assert.Contains("[core].[UserStamps] AS s WITH (REPEATABLEREAD, ROWLOCK)", checks.Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task An_expectation_of_no_tag_is_compared_like_any_other()
+        {
+            // A kind read while its row was missing expects no tag: once the row exists, the guard fails.
+            DataBatch batch = Marked(BatchPurpose.Persist, GuardPremises.ForUser(Settings, VersionTag.None));
+            batch.BumpVersionTag(VersionTagNames.Settings);
+            _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", new SqlOptions(writes: Set(new TableName("core", "Jobs"))));
+
+            BatchAssembly assembly = await BatchHarness.SealAsync(batch);
+
+            Assert.Equal(
+                [(VersionTagNames.Permissions, (Guid?)Guid.Empty, false), (VersionTagNames.Settings, Settings.Value, true)],
+                assembly.Checks!.ExpectedTags.Select(static row => (row.Name, row.Tag, row.Bumped)));
+            Assert.Null(PersistChecks.NoExpectation);
         }
 
         [Fact]
@@ -358,13 +381,21 @@ namespace Tellma.Core.Tests.Data.Batches
             return batch;
         }
 
-        /// <summary>A registry over a fixed map of tables to tenant tags, and fixed user rules.</summary>
+        /// <summary>
+        ///     A registry over a fixed map of tables to tenant tags, and fixed user rules; its names are
+        ///     the platform's three, the map's, and the tags the tests depend on that no table bumps.
+        /// </summary>
         /// <param name="tenant">Each table's tenant-level tags.</param>
         /// <param name="rules">The user-level rules.</param>
         private sealed class MapRegistry(Dictionary<TableName, string[]> tenant, params UserVersionTagRule[] rules) : IVersionTagRegistry
         {
             /// <inheritdoc />
-            public IReadOnlyList<string> Names => [.. tenant.Values.SelectMany(static names => names).Distinct(StringComparer.Ordinal)];
+            public IReadOnlyList<string> Names =>
+            [
+                .. new[] { VersionTagNames.Settings, VersionTagNames.Permissions, VersionTagNames.Entities, VersionTagNames.ForEntity("Agent"), "units" }
+                    .Concat(tenant.Values.SelectMany(static names => names))
+                    .Distinct(StringComparer.Ordinal),
+            ];
 
             /// <inheritdoc />
             public VersionTagEffects Resolve(IReadOnlySet<TableName> writtenTables)

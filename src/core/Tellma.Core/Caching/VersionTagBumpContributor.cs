@@ -45,22 +45,25 @@ namespace Tellma.Core.Caching
         public const string CacheChangedEvent = "cache.changed";
 
         /// <summary>
-        ///     The tenant-level move: one row at a time, in the guard's binary name order, so the bump
-        ///     converts its locks in the order every guard takes them; then the refusal when a name has
-        ///     no row.
+        ///     The tenant-level move: one row at a time, in the guard's binary name order (the names
+        ///     copied into a table keyed in that order, so each step is a seek), so a batch without the
+        ///     guard takes its locks in the order every guard does; then the refusal when a name has no
+        ///     row. Behind the guard, the rows are already held exclusively.
         /// </summary>
         private static readonly string TenantMove = string.Join(
             '\n',
-            $"DECLARE {ReservedSqlNames.BumpName} nvarchar(128) = (SELECT MIN([Id] COLLATE {PersistChecks.NameOrder}) FROM {ReservedSqlNames.TagNames}), {ReservedSqlNames.BumpCount} int = 0;",
+            $"DECLARE {ReservedSqlNames.BumpOrder} TABLE ([Name] nvarchar(128) COLLATE {PersistChecks.NameOrder} NOT NULL PRIMARY KEY);",
+            $"INSERT INTO {ReservedSqlNames.BumpOrder} ([Name]) SELECT [Id] FROM {ReservedSqlNames.TagNames};",
+            $"DECLARE {ReservedSqlNames.BumpName} nvarchar(128) = (SELECT MIN([Name]) FROM {ReservedSqlNames.BumpOrder}), {ReservedSqlNames.BumpCount} int = 0;",
             $"WHILE {ReservedSqlNames.BumpName} IS NOT NULL",
             "BEGIN",
             $"    UPDATE {VersionTagRowConfiguration.Table.Delimited} SET [Tag] = {ReservedSqlNames.Tag} WHERE [Name] = {ReservedSqlNames.BumpName};",
             $"    SET {ReservedSqlNames.BumpCount} += @@ROWCOUNT;",
-            $"    SET {ReservedSqlNames.BumpName} = (SELECT MIN([Id] COLLATE {PersistChecks.NameOrder}) FROM {ReservedSqlNames.TagNames} WHERE [Id] COLLATE {PersistChecks.NameOrder} > {ReservedSqlNames.BumpName});",
+            $"    SET {ReservedSqlNames.BumpName} = (SELECT TOP (1) [Name] FROM {ReservedSqlNames.BumpOrder} WHERE [Name] > {ReservedSqlNames.BumpName} ORDER BY [Name]);",
             "END;",
             string.Create(
                 CultureInfo.InvariantCulture,
-                $"IF {ReservedSqlNames.BumpCount} <> (SELECT COUNT(*) FROM {ReservedSqlNames.TagNames}) THROW {TellmaSqlErrors.Invariant}, N'{TellmaSqlErrors.VersionTagMissingCode}', 1;"));
+                $"IF {ReservedSqlNames.BumpCount} <> (SELECT COUNT(*) FROM {ReservedSqlNames.BumpOrder}) THROW {TellmaSqlErrors.Invariant}, N'{TellmaSqlErrors.VersionTagMissingCode}', 1;"));
 
         /// <inheritdoc />
         public int Order => BumpOrder;
@@ -196,6 +199,7 @@ namespace Tellma.Core.Caching
                 // Idempotent: a second run writes the batch's one tag again, so a re-run after a lost
                 // connection moves nothing further.
                 data.Append(draft, text, writes, idempotent: true, reader: reader);
+                data.MarkBumpAppended();
             }
             catch
             {

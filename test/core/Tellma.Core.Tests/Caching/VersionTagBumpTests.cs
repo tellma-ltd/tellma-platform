@@ -90,14 +90,16 @@ namespace Tellma.Core.Tests.Caching
             Assert.Equal(
                 string.Join(
                     "\n",
-                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "DECLARE @tm_bumpOrder TABLE ([Name] nvarchar(128) COLLATE Latin1_General_100_BIN2 NOT NULL PRIMARY KEY);",
+                    "INSERT INTO @tm_bumpOrder ([Name]) SELECT [Id] FROM @tm_tagNames;",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Name]) FROM @tm_bumpOrder), @tm_bumpCount int = 0;",
                     "WHILE @tm_bumpName IS NOT NULL",
                     "BEGIN",
                     "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
                     "    SET @tm_bumpCount += @@ROWCOUNT;",
-                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "    SET @tm_bumpName = (SELECT TOP (1) [Name] FROM @tm_bumpOrder WHERE [Name] > @tm_bumpName ORDER BY [Name]);",
                     "END;",
-                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;"),
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_bumpOrder) THROW 50422, N'VersionTag.Missing', 1;"),
                 text);
             Assert.Equal([new TableName("core", "VersionTags")], writes);
         }
@@ -117,14 +119,16 @@ namespace Tellma.Core.Tests.Caching
             Assert.Equal(
                 string.Join(
                     "\n",
-                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "DECLARE @tm_bumpOrder TABLE ([Name] nvarchar(128) COLLATE Latin1_General_100_BIN2 NOT NULL PRIMARY KEY);",
+                    "INSERT INTO @tm_bumpOrder ([Name]) SELECT [Id] FROM @tm_tagNames;",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Name]) FROM @tm_bumpOrder), @tm_bumpCount int = 0;",
                     "WHILE @tm_bumpName IS NOT NULL",
                     "BEGIN",
                     "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
                     "    SET @tm_bumpCount += @@ROWCOUNT;",
-                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "    SET @tm_bumpName = (SELECT TOP (1) [Name] FROM @tm_bumpOrder WHERE [Name] > @tm_bumpName ORDER BY [Name]);",
                     "END;",
-                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_bumpOrder) THROW 50422, N'VersionTag.Missing', 1;",
                     "DECLARE @tm_userIds_Permissions TABLE ([Id] int NOT NULL PRIMARY KEY);",
                     "DECLARE @tm_userIds_Preferences TABLE ([Id] int NOT NULL PRIMARY KEY);",
                     "INSERT INTO @tm_userIds_Permissions ([Id]) SELECT DISTINCT s.[GranteeId] FROM @tb3_saved AS s WHERE s.[GranteeId] IS NOT NULL AND NOT EXISTS (SELECT 1 FROM @tm_userIds_Permissions AS i WHERE i.[Id] = s.[GranteeId]);",

@@ -387,8 +387,10 @@ namespace Tellma.Core.Migrator
                 try
                 {
                     // Not the run's token: a cancelled run still leaves the changes it committed, and
-                    // one update moves the tags.
-                    await tags.BumpAllAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
+                    // one update moves the tags. Bounded instead, so a live transaction holding a tag
+                    // row delays the failure by seconds, not by the command timeout.
+                    using CancellationTokenSource bound = new(context.VersionTagBumpTimeout);
+                    await tags.BumpAllAsync(tenantId, bound.Token).ConfigureAwait(false);
                 }
                 catch (Exception bumpFailure)
                 {

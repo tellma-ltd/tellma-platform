@@ -1,11 +1,12 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.SqlServer.Types;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
 #nullable disable
 
-namespace Tellma.Core.Migrator.TestDistribution.Migrations
+namespace Tellma.Testing.Entities.Migrations
 {
     /// <inheritdoc />
     public partial class Initial : Migration
@@ -20,7 +21,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "core");
 
             migrationBuilder.EnsureSchema(
-                name: "probe");
+                name: "fixture");
 
             migrationBuilder.CreateSequence<int>(
                 name: "sq_Blobs",
@@ -28,8 +29,23 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
-                name: "sq_Gadgets",
-                schema: "probe",
+                name: "sq_Jobs",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Links",
+                schema: "fixture",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Lookups",
+                schema: "fixture",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Nodes",
+                schema: "fixture",
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
@@ -47,9 +63,29 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core",
                 startValue: 1000L);
 
+            migrationBuilder.CreateSequence(
+                name: "sq_Shipments",
+                schema: "fixture",
+                startValue: 1000L);
+
             migrationBuilder.CreateSequence<int>(
                 name: "sq_Users",
                 schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_WidgetPartNotes",
+                schema: "fixture",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_WidgetParts",
+                schema: "fixture",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Widgets",
+                schema: "fixture",
                 startValue: 1000L);
 
             migrationBuilder.CreateTable(
@@ -80,6 +116,19 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK___TellmaSchema", x => x.Fingerprint);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Jobs",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Jobs", x => x.Id);
+                    table.CheckConstraint("CK_Jobs_Id", "[Id] > 0");
                 });
 
             migrationBuilder.CreateTable(
@@ -203,12 +252,15 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
             migrationBuilder.CreateTable(
-                name: "Gadgets",
-                schema: "probe",
+                name: "Lookups",
+                schema: "fixture",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "varchar(50)", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Lookups_IsActive"),
                     CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
                     CreatedById = table.Column<int>(type: "int", nullable: false),
                     ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
@@ -216,19 +268,64 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Gadgets", x => x.Id);
-                    table.CheckConstraint("CK_Gadgets_Id", "[Id] > 0");
+                    table.PrimaryKey("PK_Lookups", x => x.Id);
+                    table.CheckConstraint("CK_Lookups_Id", "[Id] > 0");
                     table.ForeignKey(
-                        name: "FK_Gadgets_CreatedById",
+                        name: "FK_Lookups_CreatedById",
                         column: x => x.CreatedById,
                         principalSchema: "core",
                         principalTable: "Users",
                         principalColumn: "Id");
                     table.ForeignKey(
-                        name: "FK_Gadgets_ModifiedById",
+                        name: "FK_Lookups_ModifiedById",
                         column: x => x.ModifiedById,
                         principalSchema: "core",
                         principalTable: "Users",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Nodes",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "varchar(50)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Node = table.Column<SqlHierarchyId>(type: "hierarchyid", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false),
+                    ParentId = table.Column<int>(type: "int", nullable: true),
+                    SubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Nodes_SubtreeCount"),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Nodes_IsActive"),
+                    ActiveSubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Nodes_ActiveSubtreeCount")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Nodes", x => x.Id);
+                    table.CheckConstraint("CK_Nodes_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Nodes_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Nodes_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Nodes_ParentId",
+                        column: x => x.ParentId,
+                        principalSchema: "fixture",
+                        principalTable: "Nodes",
                         principalColumn: "Id");
                 });
 
@@ -279,6 +376,45 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
             migrationBuilder.CreateTable(
+                name: "Shipments",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false),
+                    State = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    Payload = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    JobId = table.Column<int>(type: "int", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Shipments", x => x.Id);
+                    table.CheckConstraint("CK_Shipments_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Shipments_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Shipments_JobId",
+                        column: x => x.JobId,
+                        principalSchema: "core",
+                        principalTable: "Jobs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_Shipments_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "UserPreferences",
                 schema: "core",
                 columns: table => new
@@ -325,6 +461,90 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Widgets",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "varchar(50)", nullable: true),
+                    Kind = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Name2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Subject = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Price = table.Column<decimal>(type: "decimal(19,4)", nullable: true),
+                    OptionalKind = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: true),
+                    DueOn = table.Column<DateOnly>(type: "date", nullable: true),
+                    Settings = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ImageId = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Widgets_IsActive"),
+                    ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
+                    ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodEndColumn", true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Widgets", x => x.Id);
+                    table.CheckConstraint("CK_Widgets_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Widgets_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Widgets_ImageId",
+                        column: x => x.ImageId,
+                        principalSchema: "core",
+                        principalTable: "Blobs",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Widgets_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                })
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "Links",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    NodeId = table.Column<int>(type: "int", nullable: false),
+                    OtherNodeId = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Links", x => x.Id);
+                    table.CheckConstraint("CK_Links_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Links_NodeId",
+                        column: x => x.NodeId,
+                        principalSchema: "fixture",
+                        principalTable: "Nodes",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Links_OtherNodeId",
+                        column: x => x.OtherNodeId,
+                        principalSchema: "fixture",
+                        principalTable: "Nodes",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -403,6 +623,89 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
+            migrationBuilder.CreateTable(
+                name: "WidgetExtras",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Note = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WidgetExtras", x => x.Id);
+                    table.CheckConstraint("CK_WidgetExtras_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_WidgetExtras_Id",
+                        column: x => x.Id,
+                        principalSchema: "fixture",
+                        principalTable: "Widgets",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "WidgetParts",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    WidgetId = table.Column<int>(type: "int", nullable: false),
+                    Ordinal = table.Column<int>(type: "int", nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    Settings = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
+                    ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodEndColumn", true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WidgetParts", x => x.Id);
+                    table.CheckConstraint("CK_WidgetParts_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_WidgetParts_WidgetId",
+                        column: x => x.WidgetId,
+                        principalSchema: "fixture",
+                        principalTable: "Widgets",
+                        principalColumn: "Id");
+                })
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetPartsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "WidgetPartNotes",
+                schema: "fixture",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    WidgetPartId = table.Column<int>(type: "int", nullable: false),
+                    Text = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
+                    ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodEndColumn", true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WidgetPartNotes", x => x.Id);
+                    table.CheckConstraint("CK_WidgetPartNotes_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_WidgetPartNotes_WidgetPartId",
+                        column: x => x.WidgetPartId,
+                        principalSchema: "fixture",
+                        principalTable: "WidgetParts",
+                        principalColumn: "Id");
+                })
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetPartNotesHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
             migrationBuilder.InsertData(
                 schema: "core",
                 table: "Users",
@@ -454,6 +757,46 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core",
                 table: "Blobs",
                 column: "StorageKey",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Links_NodeId",
+                schema: "fixture",
+                table: "Links",
+                column: "NodeId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Links_OtherNodeId",
+                schema: "fixture",
+                table: "Links",
+                column: "OtherNodeId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Lookups_Code",
+                schema: "fixture",
+                table: "Lookups",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Nodes_ParentId",
+                schema: "fixture",
+                table: "Nodes",
+                column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Nodes_Code",
+                schema: "fixture",
+                table: "Nodes",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Nodes_Node",
+                schema: "fixture",
+                table: "Nodes",
+                column: "Node",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -515,6 +858,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 filter: "[Name3] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
+                name: "UX_Shipments_JobId",
+                schema: "fixture",
+                table: "Shipments",
+                column: "JobId",
+                unique: true,
+                filter: "[JobId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Users_IsActive_Name",
                 schema: "core",
                 table: "Users",
@@ -553,6 +904,50 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 filter: "[Subject] IS NOT NULL")
                 .Annotation("SqlServer:Include", new[] { "Kind", "IsActive", "State" });
 
+            migrationBuilder.CreateIndex(
+                name: "IX_WidgetPartNotes_WidgetPartId",
+                schema: "fixture",
+                table: "WidgetPartNotes",
+                column: "WidgetPartId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WidgetParts_WidgetId",
+                schema: "fixture",
+                table: "WidgetParts",
+                column: "WidgetId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_WidgetParts_WidgetId_Ordinal",
+                schema: "fixture",
+                table: "WidgetParts",
+                columns: new[] { "WidgetId", "Ordinal" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Widgets_Code",
+                schema: "fixture",
+                table: "Widgets",
+                column: "Code",
+                unique: true,
+                filter: "[Code] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Widgets_ImageId",
+                schema: "fixture",
+                table: "Widgets",
+                column: "ImageId",
+                unique: true,
+                filter: "[ImageId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Widgets_Subject",
+                schema: "fixture",
+                table: "Widgets",
+                column: "Subject",
+                unique: true);
+
             migrationBuilder.AddForeignKey(
                 name: "FK_Blobs_CreatedById",
                 schema: "core",
@@ -566,7 +961,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "PermissionsList",
                 physicalName: "PermissionsList_c3b8a544",
                 schema: "core",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "c3b8a5448c3ebe9abda39f7863ab8f1c51bf4febcf750494fe59e24a322ff5fa",
                 columns: new[]
                 {
@@ -585,7 +980,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "RoleMembershipsList",
                 physicalName: "RoleMembershipsList_fd20e92d",
                 schema: "core",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "fd20e92d0e313d9d665c56bf58a525b09d4ad285c6a3dcbe0caf187e11768638",
                 columns: new[]
                 {
@@ -603,7 +998,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "RolesList",
                 physicalName: "RolesList_77bed563",
                 schema: "core",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "77bed56318fe7519a3e1d8fc5fc6cae3bd36fb57a18186f1d045d4761f893158",
                 columns: new[]
                 {
@@ -626,7 +1021,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "UsersList",
                 physicalName: "UsersList_860a025a",
                 schema: "core",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "860a025ad78c27c2ed4301feaa147b354e0063c7147d5460efb6b5478ed0b8d5",
                 columns: new[]
                 {
@@ -664,7 +1059,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "BigIdList",
                 physicalName: "BigIdList_7629c0a3",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "7629c0a3a446421ff892d55dadf08542aa91e81c0cc44094c98c8b1f8f855fc0",
                 columns: new[]
                 {
@@ -677,7 +1072,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "DateList",
                 physicalName: "DateList_566fd984",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "566fd984369b0e179c71109162547c6116f323bba59c3b751b23bd82c1e97289",
                 columns: new[]
                 {
@@ -690,7 +1085,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "GuidList",
                 physicalName: "GuidList_922aa933",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "922aa9332204e9ae67927ae2859ebd2257c9d8fc661d2a7d466ee23b65a556fd",
                 columns: new[]
                 {
@@ -703,7 +1098,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "IdList",
                 physicalName: "IdList_9b0dfe3c",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "9b0dfe3cc224df2fa3d3bd564e819ff2393ca1b74dbf4b3ad4cb72d30bbc3cd1",
                 columns: new[]
                 {
@@ -716,7 +1111,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "IdStampList",
                 physicalName: "IdStampList_36427f71",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "36427f71498d797e4fa760e904a4e497235bf4a13838e4474980e12901da7d4c",
                 columns: new[]
                 {
@@ -730,7 +1125,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "StringList",
                 physicalName: "StringList_bb8903a2",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "bb8903a29566afaa31e26e0a6d2da5c1c4b678e9e3696420b40579d9859653fb",
                 columns: new[]
                 {
@@ -743,7 +1138,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "UserPreferenceList",
                 physicalName: "UserPreferenceList_8b1ed724",
                 schema: "dbo",
-                scope: "tellma.tenant",
+                scope: "tellma.fixture",
                 definitionHash: "8b1ed7248545f0a9000f554af4c438d31317249cc56cd8978434aef1ae02a913",
                 columns: new[]
                 {
@@ -755,29 +1150,46 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             migrationBuilder.CreateTableType(
                 name: "VersionTagList",
-                physicalName: "VersionTagList_8fc97fb9",
+                physicalName: "VersionTagList_e552f6b8",
                 schema: "dbo",
-                scope: "tellma.tenant",
-                definitionHash: "8fc97fb9559068b857bd2a5130ea70c89f68b9735bed22801db4428de7a37a56",
+                scope: "tellma.fixture",
+                definitionHash: "e552f6b802344fc80645c75f7e6b7b6c72af4148dac74e8172c6836a1480ae13",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(128)", MaxLength = 128 },
-                    new TableTypeColumnDefinition { Name = "Tag", StoreType = "uniqueidentifier" },
+                    new TableTypeColumnDefinition { Name = "Tag", StoreType = "uniqueidentifier", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "Bumped", StoreType = "bit" },
                 },
                 primaryKey: new[] { "Name" },
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
-                name: "GadgetsList",
-                physicalName: "GadgetsList_d6f3f00e",
-                schema: "probe",
-                scope: "tellma.tenant",
-                definitionHash: "d6f3f00ec247077f105e1b5a730546399a9b7d5c2e7f96907f0e6dbae6e4a011",
+                name: "LinksList",
+                physicalName: "LinksList_da254281",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "da2542810a5568b5b1c705c0587adfd0654874877b3254e2ee704ceffd92ca3d",
                 columns: new[]
                 {
                     new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "NodeId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "OtherNodeId", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "LookupsList",
+                physicalName: "LookupsList_20dd89f0",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "20dd89f04552e1bc57851ace8dd637570ca3b44691ad20315b9c27a3d456f22f",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "varchar(50)" },
                     new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
                     new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
                     new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
                     new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
@@ -786,7 +1198,111 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_8fc97fb9", "GadgetsList_d6f3f00e" });
+            migrationBuilder.CreateTableType(
+                name: "NodesList",
+                physicalName: "NodesList_133dd19b",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "133dd19ba1f09c77f18ad739896c5bf041eb495d62412bd0e9855ab842ddb284",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "varchar(50)" },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ParentId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "SubtreeCount", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "ActiveSubtreeCount", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "ShipmentsList",
+                physicalName: "ShipmentsList_19cd4949",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "19cd49496e07ce230fe28a48b4fd75101b157a504a8cc49cfcb4a0e4988d3efe",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "bigint" },
+                    new TableTypeColumnDefinition { Name = "State", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "Payload", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "JobId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "WidgetPartNotesList",
+                physicalName: "WidgetPartNotesList_ff09ea87",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "ff09ea87ca0e0276a412127e89607542c1d8b5a575f1cd965f275cad1f26d8cf",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "WidgetPartId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Text", StoreType = "nvarchar(max)" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "WidgetPartsList",
+                physicalName: "WidgetPartsList_7aefe66b",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "7aefe66b5a376b9dbe7014846a4fb4fae428d609dfab3960cb7df17ae3052cfd",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "WidgetId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Ordinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Notes", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                    new TableTypeColumnDefinition { Name = "Settings", StoreType = "nvarchar(max)", IsNullable = true },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "WidgetsList",
+                physicalName: "WidgetsList_32217e51",
+                schema: "fixture",
+                scope: "tellma.fixture",
+                definitionHash: "32217e51a4b3ca214a93e22e6bc8fae5db03b594b54d3f1ae23ff884d51230cd",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "varchar(50)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Kind", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Subject", StoreType = "nvarchar(64)", MaxLength = 64 },
+                    new TableTypeColumnDefinition { Name = "Price", StoreType = "decimal(19,4)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "OptionalKind", StoreType = "varchar(8)", IsNullable = true, MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "DueOn", StoreType = "date", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Settings", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "ImageId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_7aefe66b", "WidgetsList_32217e51" });
         }
 
         /// <inheritdoc />
@@ -806,8 +1322,12 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "dbo");
 
             migrationBuilder.DropTable(
-                name: "Gadgets",
-                schema: "probe");
+                name: "Links",
+                schema: "fixture");
+
+            migrationBuilder.DropTable(
+                name: "Lookups",
+                schema: "fixture");
 
             migrationBuilder.DropTable(
                 name: "Permissions",
@@ -828,6 +1348,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
             migrationBuilder.DropTable(
+                name: "Shipments",
+                schema: "fixture");
+
+            migrationBuilder.DropTable(
                 name: "UserPreferences",
                 schema: "core");
 
@@ -840,11 +1364,50 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core");
 
             migrationBuilder.DropTable(
+                name: "WidgetExtras",
+                schema: "fixture");
+
+            migrationBuilder.DropTable(
+                name: "WidgetPartNotes",
+                schema: "fixture")
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetPartNotesHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "Nodes",
+                schema: "fixture");
+
+            migrationBuilder.DropTable(
                 name: "Roles",
                 schema: "core")
                 .Annotation("SqlServer:IsTemporal", true)
                 .Annotation("SqlServer:TemporalHistoryTableName", "RolesHistory")
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "Jobs",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "WidgetParts",
+                schema: "fixture")
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetPartsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "Widgets",
+                schema: "fixture")
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "WidgetsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "fixture")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
@@ -866,8 +1429,20 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core");
 
             migrationBuilder.DropSequence(
-                name: "sq_Gadgets",
-                schema: "probe");
+                name: "sq_Jobs",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Links",
+                schema: "fixture");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Lookups",
+                schema: "fixture");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Nodes",
+                schema: "fixture");
 
             migrationBuilder.DropSequence(
                 name: "sq_Permissions",
@@ -882,10 +1457,26 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core");
 
             migrationBuilder.DropSequence(
+                name: "sq_Shipments",
+                schema: "fixture");
+
+            migrationBuilder.DropSequence(
                 name: "sq_Users",
                 schema: "core");
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new string[0]);
+            migrationBuilder.DropSequence(
+                name: "sq_WidgetPartNotes",
+                schema: "fixture");
+
+            migrationBuilder.DropSequence(
+                name: "sq_WidgetParts",
+                schema: "fixture");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Widgets",
+                schema: "fixture");
+
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new string[0]);
         }
     }
 }

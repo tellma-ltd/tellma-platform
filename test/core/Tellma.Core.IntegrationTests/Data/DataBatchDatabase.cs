@@ -161,6 +161,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await FixtureDatabase.RecordFingerprintAsync(Tenant.ConnectionString, Tenant.Fingerprint, TestContext.Current.CancellationToken);
             Prologue.Passes = true;
             Prologue.ExpectedUserPermissionsTag = UserPermissionsTag;
+            Prologue.UserId = CallerId;
             Events.Clear();
             Logs.Clear();
         }
@@ -176,12 +177,26 @@ namespace Tellma.Core.IntegrationTests.Data
                 Tenant.ConnectionString,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) VALUES (N'{VersionTagNames.Settings}', '{SettingsTag}'), (N'{VersionTagNames.Permissions}', '{PermissionsTag}');"),
-                // An individual who was invited and has joined, created by the system user, as the checks require.
+                    $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) VALUES (N'{VersionTagNames.Settings}', '{SettingsTag}'), (N'{VersionTagNames.Permissions}', '{PermissionsTag}');"));
+            await SeedUserAsync(CallerId);
+        }
+
+        /// <summary>
+        ///     Stores an active user who has joined, with a stamp carrying <see cref="UserPermissionsTag" />,
+        ///     so the prologue stand-in may act for them (<see cref="ConnectPrologue.UserId" />).
+        /// </summary>
+        /// <param name="userId">The user, above the reserved band.</param>
+        /// <returns>A task that completes when the user is stored.</returns>
+        public async Task SeedUserAsync(int userId)
+        {
+            // An individual who was invited and has joined, created by the system user, as the checks require.
+            string subject = string.Create(CultureInfo.InvariantCulture, $"fx-user-{userId}");
+            await SqlServerFixture.ExecuteAsync(
+                Tenant.ConnectionString,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({CallerId}, '{UserKind.Individual}', 'fx-caller', N'fx-caller@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'fx-caller', 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId});"),
-                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[UserStamps] ([UserId], [PermissionsTag]) VALUES ({CallerId}, '{UserPermissionsTag}');"));
+                    $"INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({userId}, '{UserKind.Individual}', '{subject}', N'{subject}@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'{subject}', 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId});"),
+                string.Create(CultureInfo.InvariantCulture, $"INSERT INTO [core].[UserStamps] ([UserId], [PermissionsTag]) VALUES ({userId}, '{UserPermissionsTag}');"));
         }
 
         /// <summary>
@@ -267,6 +282,9 @@ namespace Tellma.Core.IntegrationTests.Data
             /// <summary>The caller's per-user permissions tag the prologue confirmed.</summary>
             public Guid ExpectedUserPermissionsTag { get; set; } = UserPermissionsTag;
 
+            /// <summary>The user the next user's batch acts for, read when the batch is composed.</summary>
+            public int UserId { get; set; } = CallerId;
+
             /// <inheritdoc />
             public int Order => 0;
 
@@ -279,14 +297,15 @@ namespace Tellma.Core.IntegrationTests.Data
                 }
 
                 // --- For a user the caller, the caller's ids, tag and stamp; then the tags and the guard variable ---
-                StatementDraft draft = marked.Begin();
+                StatementDraft draft = marked.BeginConnectPrologue();
                 int ordinal = draft.Ordinal;
+                int userId = UserId;
                 string caller = string.Empty;
                 if (!premises.IsSystem)
                 {
                     caller = string.Create(
                         CultureInfo.InvariantCulture,
-                        $"DECLARE {ReservedSqlNames.UserId} int = {CallerId};\nDECLARE {ReservedSqlNames.CallerIds} TABLE ([Id] int PRIMARY KEY);\nINSERT INTO {ReservedSqlNames.CallerIds} ([Id]) VALUES ({ReservedSqlNames.UserId});\nSELECT [PreferencesTag], [PermissionsTag] FROM [core].[UserStamps] WHERE [UserId] = {ReservedSqlNames.UserId};\n");
+                        $"DECLARE {ReservedSqlNames.UserId} int = {userId};\nDECLARE {ReservedSqlNames.CallerIds} TABLE ([Id] int PRIMARY KEY);\nINSERT INTO {ReservedSqlNames.CallerIds} ([Id]) VALUES ({ReservedSqlNames.UserId});\nSELECT [PreferencesTag], [PermissionsTag] FROM [core].[UserStamps] WHERE [UserId] = {ReservedSqlNames.UserId};\n");
                     draft.Reserved(new ScalarParameter(ReservedSqlNames.ExpectedUserPermissionsTag, SqlDbType.UniqueIdentifier, ExpectedUserPermissionsTag));
                 }
 
@@ -302,7 +321,7 @@ namespace Tellma.Core.IntegrationTests.Data
                             if (await stamp.ReadAsync(cancellationToken))
                             {
                                 marked.ReportUserVersionTags(new UserVersionTagSnapshot(
-                                    marked.Connection.TenantId, CallerId, new VersionTag(stamp.GetGuid(0)), new VersionTag(stamp.GetGuid(1)), DateTimeOffset.UtcNow));
+                                    marked.Connection.TenantId, userId, new VersionTag(stamp.GetGuid(0)), new VersionTag(stamp.GetGuid(1)), DateTimeOffset.UtcNow));
                                 cursor.CountRows(1);
                             }
                         }

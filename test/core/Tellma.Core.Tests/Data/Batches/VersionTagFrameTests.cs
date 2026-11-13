@@ -18,8 +18,8 @@ namespace Tellma.Core.Tests.Data.Batches
     /// <summary>
     ///     The version tags in a batch's frame with no database: the prelude heading every batch that
     ///     carries no connect prologue, the bump closing every batch whose writes or explicit bumps
-    ///     resolve to a tag, and the refusals of an unregistered bump and of a write whose users go
-    ///     unnamed.
+    ///     resolve to a tag, and the refusals of an unregistered bump or dependency, of a write whose
+    ///     users go unnamed, and of a write with a tag where no bump covers it.
     /// </summary>
     public sealed class VersionTagFrameTests : IDisposable
     {
@@ -56,14 +56,16 @@ namespace Tellma.Core.Tests.Data.Batches
                     BatchAssembly.TransactionOpen,
                     "DELETE FROM [vt].[Currencies] WHERE 1 = 0;",
                     "PRINT 'epilogue';",
-                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames), @tm_bumpCount int = 0;",
+                    "DECLARE @tm_bumpOrder TABLE ([Name] nvarchar(128) COLLATE Latin1_General_100_BIN2 NOT NULL PRIMARY KEY);",
+                    "INSERT INTO @tm_bumpOrder ([Name]) SELECT [Id] FROM @tm_tagNames;",
+                    "DECLARE @tm_bumpName nvarchar(128) = (SELECT MIN([Name]) FROM @tm_bumpOrder), @tm_bumpCount int = 0;",
                     "WHILE @tm_bumpName IS NOT NULL",
                     "BEGIN",
                     "    UPDATE [core].[VersionTags] SET [Tag] = @tm_tag WHERE [Name] = @tm_bumpName;",
                     "    SET @tm_bumpCount += @@ROWCOUNT;",
-                    "    SET @tm_bumpName = (SELECT MIN([Id] COLLATE Latin1_General_100_BIN2) FROM @tm_tagNames WHERE [Id] COLLATE Latin1_General_100_BIN2 > @tm_bumpName);",
+                    "    SET @tm_bumpName = (SELECT TOP (1) [Name] FROM @tm_bumpOrder WHERE [Name] > @tm_bumpName ORDER BY [Name]);",
                     "END;",
-                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_tagNames) THROW 50422, N'VersionTag.Missing', 1;",
+                    "IF @tm_bumpCount <> (SELECT COUNT(*) FROM @tm_bumpOrder) THROW 50422, N'VersionTag.Missing', 1;",
                     BatchAssembly.TransactionCommit,
                     string.Empty),
                 assembly.Text);
@@ -103,8 +105,8 @@ namespace Tellma.Core.Tests.Data.Batches
 
             Assert.Equal(2, assembly.Text.Split("SELECT [Name], [Tag] FROM [core].[VersionTags];").Length);
 
-            // The guard re-checks the name the batch read and bumps under an update lock, and the bump closes the body.
-            Assert.Contains("WITH (UPDLOCK, ROWLOCK, FORCESEEK)", assembly.Checks!.Text, StringComparison.Ordinal);
+            // The guard re-checks the name the batch read and bumps under an exclusive lock, and the bump closes the body.
+            Assert.Contains("WITH (XLOCK, ROWLOCK, FORCESEEK)", assembly.Checks!.Text, StringComparison.Ordinal);
             Assert.Contains(("currencies", true), assembly.Checks.ExpectedTags.Select(static row => (row.Name, row.Bumped)));
             Assert.EndsWith($"N'VersionTag.Missing', 1;\n{BatchAssembly.TransactionCommit}\n{BatchAssembly.GuardClose}\n", assembly.Text, StringComparison.Ordinal);
         }
@@ -207,24 +209,89 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
-        public async Task A_prologue_statements_writes_bump_nothing()
+        public async Task The_connect_prologues_own_writes_bump_nothing()
         {
             // The connect prologue's bookkeeping (the activity stamp, the join flip) is no cached input.
-            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(10, static (batch, stage) =>
+            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(0, static (batch, stage) =>
             {
                 if (stage == DataBatchStage.Prologue)
                 {
                     var data = (DataBatch)batch;
-                    data.Append(data.Begin(), "DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new HashSet<TableName> { Currencies });
+                    data.Append(data.BeginConnectPrologue(), "DELETE FROM [vt].[Profiles] WHERE 1 = 0;", new HashSet<TableName> { Profiles });
                 }
             }));
+            batch.MarkConnectPrologue(GuardPremises.ForUser(VersionTag.None, VersionTag.None));
             _ = batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
 
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
             Assert.True(batch.Bumps.IsEmpty);
-            Assert.Contains(Currencies, batch.WrittenTables);
-            Assert.DoesNotContain("[core].[VersionTags] SET", assembly.Text, StringComparison.Ordinal);
+            Assert.Contains(Profiles, batch.WrittenTables);
+            Assert.DoesNotContain("[core].[UserStamps] AS u", assembly.Text, StringComparison.Ordinal);
+            _ = Assert.Throws<InvalidOperationException>(() => Batch(BatchPurpose.Persist).BeginConnectPrologue());
+        }
+
+        [Fact]
+        public void Any_other_prologue_statement_that_writes_a_table_with_a_tag_is_refused()
+        {
+            // It would commit before the batch's transaction opens, where no bump covers it.
+            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(10, static (batch, stage) =>
+            {
+                if (stage == DataBatchStage.Prologue)
+                {
+                    var data = (DataBatch)batch;
+                    data.Append(data.Begin(), "DELETE FROM [vt].[Elsewhere] WHERE 1 = 0;", new HashSet<TableName> { new("vt", "Elsewhere") });
+                    data.Append(data.Begin(), "DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new HashSet<TableName> { Currencies });
+                }
+            }));
+
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => batch.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1)));
+
+            Assert.Contains("A prologue statement writes a table whose writes bump version tags (currencies)", refused.Message, StringComparison.Ordinal);
+            Assert.False(batch.IsComposing);
+        }
+
+        [Fact]
+        public async Task A_write_to_a_table_with_a_tag_appended_after_the_bump_is_refused()
+        {
+            // An epilogue below the bump's order runs after it: the bump would no longer be last.
+            DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(10, static (batch, stage) =>
+            {
+                if (stage == DataBatchStage.Epilogue)
+                {
+                    _ = batch.Sql($"PRINT 'after the bump';", null);
+                    _ = batch.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Currencies }));
+                }
+            }));
+            _ = batch.Sql($"DELETE FROM [vt].[Currencies] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { Currencies }));
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(TestContext.Current.CancellationToken));
+
+            Assert.Contains("A statement appended after the bump writes a table whose writes bump version tags (currencies)", refused.Message, StringComparison.Ordinal);
+            Assert.False(batch.IsComposing);
+        }
+
+        [Fact]
+        public void Only_a_registered_name_may_be_depended_on_and_it_is_matched_exactly()
+        {
+            DataBatch batch = Batch(BatchPurpose.Persist);
+
+            // --- An unknown name, and a registered one in another case, are refused whole ---
+            ArgumentException unknown = Assert.Throws<ArgumentException>(
+                () => batch.DependsOn([Depends("units"), Depends("unheard-of")]));
+            Assert.Contains("'unheard-of' names no registered tag", unknown.Message, StringComparison.Ordinal);
+            ArgumentException cased = Assert.Throws<ArgumentException>(() => batch.DependsOn([Depends("Units")]));
+            Assert.Contains("'Units' names no registered tag", cased.Message, StringComparison.Ordinal);
+            Assert.Empty(batch.Dependencies);
+
+            // --- A registered name is kept ---
+            batch.DependsOn([Depends("units"), Depends(VersionTagNames.Settings)]);
+            Assert.Equal(["units", VersionTagNames.Settings], batch.Dependencies.Select(static dependency => dependency.Name));
+
+            static VersionTagDependency Depends(string name)
+            {
+                return new(name, VersionTag.None, VersionTagMismatchPolicy.Rerun);
+            }
         }
 
         /// <summary>A contributor whose epilogue writes a table.</summary>

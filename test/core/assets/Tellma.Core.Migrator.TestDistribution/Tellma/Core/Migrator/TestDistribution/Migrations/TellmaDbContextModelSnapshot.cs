@@ -1008,7 +1008,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             modelBuilder.HasTableTypeDefinition("VersionTagList", "dbo", type => type
                 .Column(name: "Name", storeType: "nvarchar(128)", maxLength: 128)
-                .Column(name: "Tag", storeType: "uniqueidentifier")
+                .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
                 .HasGrants("tellma_app"));

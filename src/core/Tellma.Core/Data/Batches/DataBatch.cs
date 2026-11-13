@@ -74,8 +74,14 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The commit callbacks, in registration order.</summary>
         private readonly List<Action<BatchOutcome>> _committed = [];
 
+        /// <summary>The ordinals of the connect prologue's own statements, whose writes are bookkeeping that bumps nothing.</summary>
+        private readonly HashSet<int> _connectStatements = [];
+
         /// <summary>Where the batch is in its life.</summary>
         private Stage _stage;
+
+        /// <summary>Whether the bump statement is appended, after which no statement may write a table with a tag.</summary>
+        private bool _bumpAppended;
 
         /// <summary>The statement being composed, if any; one at a time.</summary>
         private StatementDraft? _open;
@@ -219,8 +225,9 @@ namespace Tellma.Core.Data.Batches
         ///     What the batch bumps: the tenant-level names and user-level rules its written tables and
         ///     explicit bumps resolve to. Fixed when the epilogue stage starts, from the writes declared
         ///     before it, so the bump epilogue's own writes never count; resolved afresh before then. The
-        ///     writes of prologue statements never count: they are the platform's own bookkeeping (the
-        ///     connect prologue's activity stamp and join flip), which no cache reads.
+        ///     writes of the connect prologue's own statements never count: they are the platform's
+        ///     bookkeeping (the activity stamp and the join flip), which no cache reads. Any other
+        ///     prologue statement that writes a table with a tag is refused when appended.
         /// </summary>
         internal VersionTagBumpPlan Bumps
         {
@@ -371,10 +378,27 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(dependencies);
             EnsureComposing();
+
+            // --- Every name checked before any is kept: a refused list leaves the batch unchanged ---
+            // A name the registry does not know (one differing from a registered name in case alone
+            // among them) has no row to guard, and would collide with its registered twin in the
+            // guard's case-insensitive key; it is refused here, where the mistake is.
             foreach (VersionTagDependency dependency in dependencies)
             {
-                _dependencies.Add(dependency ?? throw new ArgumentException("The dependencies must not hold a null entry.", nameof(dependencies)));
+                if (dependency is null)
+                {
+                    throw new ArgumentException("The dependencies must not hold a null entry.", nameof(dependencies));
+                }
+
+                if (_executor.VersionTags is IVersionTagRegistry registry && !registry.Names.Contains(dependency.Name, StringComparer.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"The dependency on the version tag '{dependency.Name}' names no registered tag. Name the tag exactly as it is registered: a platform tag ('{VersionTagNames.Settings}', '{VersionTagNames.Permissions}', '{VersionTagNames.Entities}'), a list's tag, or one an entity declares with [BumpsVersionTag].",
+                        nameof(dependencies));
+                }
             }
+
+            _dependencies.AddRange(dependencies);
         }
 
         /// <inheritdoc />
@@ -542,6 +566,7 @@ namespace Tellma.Core.Data.Batches
             }
 
             FrozenSet<TableName> written = writes is null || writes.Count == 0 ? [] : writes.ToFrozenSet();
+            CheckTaggedWritePlacement(draft, written);
 
             // A declared write ends the write epoch: a later read must see it, so no earlier handle
             // is shared past this point. Cleared before the caller caches this statement's own key,
@@ -565,8 +590,40 @@ namespace Tellma.Core.Data.Batches
         {
             if (ReferenceEquals(draft, _open))
             {
+                _ = _connectStatements.Remove(draft.Ordinal);
                 _open = null;
             }
+        }
+
+        /// <summary>
+        ///     Begins one of the connect prologue's own statements, in the <see cref="BatchSection.Prologue" />
+        ///     section: its writes (the activity stamp, the join flip) are the platform's bookkeeping,
+        ///     which bumps no tag. Every other prologue statement that writes a table with a tag is refused.
+        /// </summary>
+        /// <returns>The draft; complete it with <see cref="Append" />.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The batch carries no connect prologue (<see cref="MarkConnectPrologue" />), or its prologue
+        ///     stage ended.
+        /// </exception>
+        internal StatementDraft BeginConnectPrologue()
+        {
+            if (Premises is null)
+            {
+                throw new InvalidOperationException("Only a batch marked with the connect prologue takes the connect prologue's statements.");
+            }
+
+            StatementDraft draft = Begin(BatchSection.Prologue);
+            _ = _connectStatements.Add(draft.Ordinal);
+            return draft;
+        }
+
+        /// <summary>
+        ///     Records that the bump statement is appended. A later statement that writes a table with
+        ///     a tag is refused: it would commit after the bump, and its users would read no source.
+        /// </summary>
+        internal void MarkBumpAppended()
+        {
+            _bumpAppended = true;
         }
 
         /// <summary>
@@ -720,12 +777,39 @@ namespace Tellma.Core.Data.Batches
             return new NotSupportedException($"{nameof(IDataBatch)}.{member} is not available: its statement compiler is not part of this build.");
         }
 
-        /// <summary>The bumps of the writes declared outside the prologue, and of the explicit bumps.</summary>
+        /// <summary>The bumps of the writes declared outside the connect prologue's own statements, and of the explicit bumps.</summary>
         /// <returns>The plan.</returns>
         private VersionTagBumpPlan ResolveBumps()
         {
-            HashSet<TableName> written = [.. _statements.Where(static statement => statement.Section != BatchSection.Prologue).SelectMany(static statement => statement.Writes)];
+            HashSet<TableName> written = [.. _statements.Where(statement => !_connectStatements.Contains(statement.Ordinal)).SelectMany(static statement => statement.Writes)];
             return VersionTagBumpPlan.Resolve(_executor.VersionTags, written, _bumps);
+        }
+
+        /// <summary>
+        ///     Refuses a write to a table with a tag where no bump can cover it: in a prologue statement
+        ///     other than the connect prologue's own, which runs outside the batch's transaction, or after
+        ///     the bump statement, which then no longer runs last and has read its users already.
+        /// </summary>
+        /// <param name="draft">The statement's draft.</param>
+        /// <param name="written">The tables it writes.</param>
+        /// <exception cref="InvalidOperationException">The statement writes such a table there.</exception>
+        private void CheckTaggedWritePlacement(StatementDraft draft, FrozenSet<TableName> written)
+        {
+            bool prologue = draft.Section == BatchSection.Prologue && !_connectStatements.Contains(draft.Ordinal);
+            if (written.Count == 0 || !(prologue || _bumpAppended))
+            {
+                return;
+            }
+
+            var plan = VersionTagBumpPlan.Resolve(_executor.VersionTags, written, FrozenSet<string>.Empty);
+            if (plan.IsEmpty)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(prologue
+                ? $"A prologue statement writes a table whose writes bump version tags ({Describe(plan)}). The prologue runs before the batch's transaction, where no bump covers it; such a write belongs in the body."
+                : $"A statement appended after the bump writes a table whose writes bump version tags ({Describe(plan)}). The bump is the last statement before the commit; such a write belongs in the body, or in an epilogue that runs before the bump.");
         }
 
         /// <summary>A plan's names and rules, for a refusal's message.</summary>

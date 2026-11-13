@@ -13,7 +13,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.Migrator.TestDistribution.Migrations
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261112234811_Initial")]
+    [Migration("20261113053440_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -1011,7 +1011,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             modelBuilder.HasTableTypeDefinition("VersionTagList", "dbo", type => type
                 .Column(name: "Name", storeType: "nvarchar(128)", maxLength: 128)
-                .Column(name: "Tag", storeType: "uniqueidentifier")
+                .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
                 .HasGrants("tellma_app"));

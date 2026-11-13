@@ -34,34 +34,50 @@ namespace Tellma.Core.Data.Batches
         public static readonly TableName Users = new("core", "Users");
 
         /// <summary>
-        ///     The expected tag of a name the batch bumps without depending on it: the guard locks the
-        ///     row and never compares it. No generated tag is all zeros.
+        ///     The expected tag of a name the batch bumps without depending on it: null, so the guard
+        ///     locks the row and never compares it. <see cref="VersionTag.None" /> is an expectation
+        ///     like any other.
         /// </summary>
-        public static readonly Guid NoExpectation = Guid.Empty;
+        public static readonly Guid? NoExpectation;
 
         /// <summary>The expected tag of a name two expectations disagree on: no generated tag is all ones, so the guard fails.</summary>
         public static readonly Guid Conflicting = Guid.AllBitsSet;
 
         // The tag rows are locked one at a time, in binary name order, by a loop over the expected
-        // names (spec 0013 §2.5 gives one EXISTS per lock mode instead). Two reasons:
+        // names (spec 0013 §2.5 gives one EXISTS per lock mode instead). Three reasons:
         // - Each row is read by a seek on its name alone and compared afterwards. A comparison inside
         //   the seek is a residual predicate, and SQL Server releases the REPEATABLEREAD or UPDLOCK
         //   lock of every row such a predicate rejects, which is every row that still matches.
-        // - One global order. A batch that bumps any name locks every row it names, its bumped names
-        //   among them, under UPDLOCK; one that bumps nothing locks them under REPEATABLEREAD; and
-        //   the bump converts its rows in the same order. Two writers then meet at their first
-        //   shared name and serialise there, so no two of these batches hold each other's rows. A
-        //   settings save and a role save (each reading the other's tag) deadlocked under the
-        //   spec's two arms.
+        // - Final modes. A name the batch bumps is read under XLOCK, every other name under
+        //   REPEATABLEREAD, so the bump converts no lock: a batch holds every tag lock it will ever
+        //   take before it takes any lock on a stamp row, and every batch takes the tag rows before
+        //   the stamp rows. A settings save and a write of the saver's stamp deadlocked when the
+        //   bump converted its tag lock after the guard had locked the stamp row.
+        // - One order. Two batches that both lock a name, one of them exclusively, meet there and
+        //   serialise; since each takes its tag locks in binary name order, the first name they
+        //   meet at is the same for both.
+        // The names are copied into a table keyed in that order, so each step is a seek. A null on
+        // either side of the comparison (a lock-only name, a missing row) is unknown, never stale.
 
         /// <summary>The binary collation every lock loop orders names by, so every batch takes its locks in one order.</summary>
         public const string NameOrder = "Latin1_General_100_BIN2";
 
-        /// <summary>The guard's loop of a batch that bumps no tenant-level name: every row under a shared lock held to COMMIT.</summary>
-        private static readonly string SharedLoop = GuardLoop("REPEATABLEREAD");
-
-        /// <summary>The guard's loop of a batch that bumps a tenant-level name: every row under an update lock.</summary>
-        private static readonly string UpdateLoop = GuardLoop("UPDLOCK");
+        /// <summary>The guard's loop over the expected names: each row read under its final lock mode by a seek on its name, then compared.</summary>
+        private static readonly string GuardLoop = string.Join(
+            '\n',
+            $"DECLARE {ReservedSqlNames.GuardOrder} TABLE ([Name] nvarchar(128) COLLATE {NameOrder} NOT NULL PRIMARY KEY, [Tag] uniqueidentifier NULL, [Bumped] bit NOT NULL);",
+            $"INSERT INTO {ReservedSqlNames.GuardOrder} ([Name], [Tag], [Bumped]) SELECT [Name], [Tag], [Bumped] FROM {ReservedSqlNames.ExpectedTags};",
+            $"DECLARE {ReservedSqlNames.GuardName} nvarchar(128) = (SELECT MIN([Name]) FROM {ReservedSqlNames.GuardOrder}), {ReservedSqlNames.GuardExpected} uniqueidentifier, {ReservedSqlNames.GuardBumped} bit, {ReservedSqlNames.GuardTag} uniqueidentifier, {ReservedSqlNames.GuardStale} bit = 0;",
+            $"WHILE {ReservedSqlNames.GuardName} IS NOT NULL",
+            "BEGIN",
+            $"    SELECT {ReservedSqlNames.GuardExpected} = [Tag], {ReservedSqlNames.GuardBumped} = [Bumped] FROM {ReservedSqlNames.GuardOrder} WHERE [Name] = {ReservedSqlNames.GuardName};",
+            $"    IF {ReservedSqlNames.GuardBumped} = 1",
+            $"        SET {ReservedSqlNames.GuardTag} = (SELECT [Tag] FROM {VersionTags.Delimited} WITH (XLOCK, ROWLOCK, FORCESEEK) WHERE [Name] = {ReservedSqlNames.GuardName});",
+            "    ELSE",
+            $"        SET {ReservedSqlNames.GuardTag} = (SELECT [Tag] FROM {VersionTags.Delimited} WITH (REPEATABLEREAD, ROWLOCK, FORCESEEK) WHERE [Name] = {ReservedSqlNames.GuardName});",
+            $"    IF {ReservedSqlNames.GuardExpected} <> {ReservedSqlNames.GuardTag} SET {ReservedSqlNames.GuardStale} = 1;",
+            $"    SET {ReservedSqlNames.GuardName} = (SELECT TOP (1) [Name] FROM {ReservedSqlNames.GuardOrder} WHERE [Name] > {ReservedSqlNames.GuardName} ORDER BY [Name]);",
+            "END;");
 
         /// <summary>The guard's verdict over the tag rows, which the caller's stamp arm may extend.</summary>
         private static readonly string StaleTest = $"IF {ReservedSqlNames.GuardStale} = 1";
@@ -112,13 +128,13 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(bumps);
             ArgumentNullException.ThrowIfNull(binder);
 
-            // --- The names the batch bumps, which the guard reads under an update lock ---
+            // --- The names the batch bumps, which the guard reads under an exclusive lock ---
             HashSet<string> bumped = new(bumps.TenantNames, StringComparer.Ordinal);
 
             // --- The expected tags: settings, permissions for a user, and every dependency ---
             // Two expectations of one name that disagree mean the batch composed under two states of
             // it: the conflicting tag matches no stored tag, so the guard fails and the runner recomposes.
-            SortedDictionary<string, Guid> expected = new(StringComparer.Ordinal);
+            SortedDictionary<string, Guid?> expected = new(StringComparer.Ordinal);
             Expect(expected, VersionTagNames.Settings, premises.Settings);
             if (premises.Permissions is VersionTag permissions)
             {
@@ -141,13 +157,10 @@ namespace Tellma.Core.Data.Batches
             TableParameter parameter = new(ReservedSqlNames.ExpectedTags, rows, rows.Count, name => binding.Parameter(name, rows));
 
             // --- The text: the tag rows in name order, the caller's stamp, then the caller re-check for a user ---
-            // Every row under an update lock when the batch bumps a tenant-level name, so that two
-            // writers serialise at their first shared name instead of holding shared locks the
-            // other's bump must convert.
-            List<string> lines = [bumps.TenantNames.Count > 0 ? UpdateLoop : SharedLoop, StaleTest];
+            List<string> lines = [GuardLoop, StaleTest];
             if (!premises.IsSystem)
             {
-                // The caller's stamp row after the tag rows, in the order the bump writes them; under
+                // The caller's stamp row after every tag row, in the order the bump writes them; under
                 // an update lock when the batch writes the stamps table, itself or through a
                 // user-level bump, so two writes of one stamp row serialise instead of deadlocking on
                 // the conversion from a shared lock. Summed rather than filtered, so its lock is held.
@@ -168,25 +181,9 @@ namespace Tellma.Core.Data.Batches
         /// <param name="expected">The expectations so far.</param>
         /// <param name="name">The tag's name.</param>
         /// <param name="tag">The tag expected.</param>
-        private static void Expect(SortedDictionary<string, Guid> expected, string name, VersionTag tag)
+        private static void Expect(SortedDictionary<string, Guid?> expected, string name, VersionTag tag)
         {
-            expected[name] = expected.TryGetValue(name, out Guid known) && known != tag.Value ? Conflicting : tag.Value;
-        }
-
-        /// <summary>The guard's loop over the expected names: each row read under the lock mode by a seek on its name, then compared.</summary>
-        /// <param name="mode">The lock hint.</param>
-        /// <returns>The loop's text.</returns>
-        private static string GuardLoop(string mode)
-        {
-            return string.Join(
-                '\n',
-                $"DECLARE {ReservedSqlNames.GuardName} nvarchar(128) = (SELECT MIN([Name] COLLATE {NameOrder}) FROM {ReservedSqlNames.ExpectedTags}), {ReservedSqlNames.GuardTag} uniqueidentifier, {ReservedSqlNames.GuardStale} bit = 0;",
-                $"WHILE {ReservedSqlNames.GuardName} IS NOT NULL",
-                "BEGIN",
-                $"    SET {ReservedSqlNames.GuardTag} = (SELECT [Tag] FROM {VersionTags.Delimited} WITH ({mode}, ROWLOCK, FORCESEEK) WHERE [Name] = {ReservedSqlNames.GuardName});",
-                $"    IF EXISTS (SELECT 1 FROM {ReservedSqlNames.ExpectedTags} WHERE [Name] = {ReservedSqlNames.GuardName} AND [Tag] <> '{NoExpectation}' AND [Tag] <> {ReservedSqlNames.GuardTag}) SET {ReservedSqlNames.GuardStale} = 1;",
-                $"    SET {ReservedSqlNames.GuardName} = (SELECT MIN([Name] COLLATE {NameOrder}) FROM {ReservedSqlNames.ExpectedTags} WHERE [Name] COLLATE {NameOrder} > {ReservedSqlNames.GuardName});",
-                "END;");
+            expected[name] = expected.TryGetValue(name, out Guid? known) && known != tag.Value ? Conflicting : tag.Value;
         }
     }
 }

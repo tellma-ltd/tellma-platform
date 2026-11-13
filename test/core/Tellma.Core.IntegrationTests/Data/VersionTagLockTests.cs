@@ -10,6 +10,7 @@ using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Testing.Entities;
@@ -21,6 +22,7 @@ namespace Tellma.Core.IntegrationTests.Data
     ///     rows under a concurrent bump, a tag the persist guard read held until commit, two bumps of
     ///     one read tag serialised on the guard instead of deadlocking, two writes of one caller's
     ///     stamp serialised, two bumps of different tags each read by the other serialised with no
+    ///     deadlock, a settings save and a write of the saver's stamp waiting at the tags with no
     ///     deadlock, and a deadlock victim run again into a stale failure. The host runs without the
     ///     change-tracking audit, which is exact only while one batch at a time writes.
     /// </summary>
@@ -209,6 +211,49 @@ namespace Tellma.Core.IntegrationTests.Data
             Dictionary<string, Guid> tags = await fixture.Database.TagsAsync();
             Assert.Equal(a.Tag, tags[VersionTagNames.Settings]);
             Assert.Equal(DataBatchDatabase.PermissionsTag, tags[VersionTagNames.Permissions]);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_settings_save_and_a_write_of_the_savers_stamp_take_the_tags_before_the_stamp_and_never_deadlock(bool bySaver)
+        {
+            int writer = bySaver ? DataBatchDatabase.CallerId : DataBatchDatabase.CallerId + 1;
+            if (!bySaver)
+            {
+                await fixture.Database.SeedUserAsync(writer);
+            }
+
+            await using SideTransaction side = await SideTransaction.HoldGateAsync(fixture.Database.Tenant.ConnectionString);
+            using MetricCollector<long> retries = new(fixture.Database.Tenant.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
+
+            // --- A, acting for the writer, writes the saver's preference rows and pauses at the gate
+            // after its guard, holding shared locks on the tags and an update lock on its own stamp ---
+            fixture.Database.Prologue.UserId = writer;
+            await using AsyncServiceScope scopeA = fixture.Database.Tenant.CreateScope();
+            var a = (DataBatch)scopeA.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            a.MarkConnectPrologue(DataBatchDatabase.Premises);
+            SqlIdentifier saver = a.Tvp<IdList>([new() { Id = DataBatchDatabase.CallerId }]);
+            _ = a.Sql($"DELETE FROM [core].[UserPreferences] WHERE [UserId] IN (SELECT [Id] FROM {saver});", new SqlOptions(writes: Set(UserPreferences), userIds: saver));
+            _ = a.Sql(Gate, null);
+            Task<BatchOutcome> first = a.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(1, first);
+
+            // --- V, the saver, bumps settings: it waits at the settings tag A holds, before it takes
+            // any lock on its stamp row, so A's bump of that row never waits for V ---
+            fixture.Database.Prologue.UserId = DataBatchDatabase.CallerId;
+            await using AsyncServiceScope scopeV = fixture.Database.Tenant.CreateScope();
+            DataBatch v = Bumps(scopeV, VersionTagNames.Settings);
+            Task<BatchOutcome> second = v.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(2, first, second);
+
+            // --- A commits its stamp move; V then commits, neither chosen as a deadlock victim ---
+            await side.ReleaseAsync();
+            _ = await first;
+            _ = await second;
+            Assert.Empty(retries.GetMeasurementSnapshot());
+            Assert.Equal(v.Tag, (await fixture.Database.TagsAsync())[VersionTagNames.Settings]);
+            Assert.Equal(a.Tag, await StampAsync("PreferencesTag", DataBatchDatabase.CallerId));
         }
 
         [Fact]

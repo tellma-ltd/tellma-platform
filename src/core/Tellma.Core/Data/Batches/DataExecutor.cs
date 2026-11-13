@@ -231,7 +231,8 @@ namespace Tellma.Core.Data.Batches
             }
             else
             {
-                if (VersionTags is IVersionTagRegistry registry)
+                // The migrator's seed reads the rows it is about to insert: a missing row is no defect there.
+                if (VersionTags is IVersionTagRegistry registry && !WritesTagsDirectly(batch))
                 {
                     _tagMetrics?.WarnMissing(read, registry.Names);
                 }

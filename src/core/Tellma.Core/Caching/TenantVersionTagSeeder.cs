@@ -52,9 +52,12 @@ namespace Tellma.Core.Caching
         /// <inheritdoc />
         public async Task BumpAllAsync(int tenantId, CancellationToken cancellationToken)
         {
+            // One table lock rather than a row lock per tag in the clustered index's order, which is
+            // not the binary name order every guard locks in: a single resource forms no cycle with a
+            // live persist that holds some tags and waits for others.
             await RunAsync(
                 tenantId,
-                static batch => batch.Sql($"UPDATE [core].[VersionTags] SET [Tag] = NEWID();", new SqlOptions(writes: Writes)),
+                static batch => batch.Sql($"UPDATE [core].[VersionTags] WITH (TABLOCKX) SET [Tag] = NEWID();", new SqlOptions(writes: Writes)),
                 cancellationToken).ConfigureAwait(false);
             CachingLog.VersionTagsBumped(logger, tenantId);
         }

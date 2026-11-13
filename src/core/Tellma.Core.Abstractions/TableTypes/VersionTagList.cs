@@ -25,14 +25,17 @@ namespace Tellma.Core.Abstractions.TableTypes
         public string Name { get; set; } = null!;
 
         /// <summary>
-        ///     The tag the batch expects, <c>uniqueidentifier</c>; all zeros for a name the batch bumps
-        ///     without depending on it, which the guard locks but never compares.
+        ///     The tag the batch expects, <c>uniqueidentifier</c>; null for a name the batch bumps without
+        ///     depending on it, which the guard locks but never compares. An expectation of
+        ///     <see cref="Caching.VersionTag.None" /> (all zeros) is compared like any other, so it fails
+        ///     once the row exists.
         /// </summary>
-        public Guid Tag { get; set; }
+        public Guid? Tag { get; set; }
 
         /// <summary>
-        ///     True when the batch itself bumps the name; <c>bit</c>. A batch that bumps any name reads
-        ///     every row it names under an update lock, so two writers serialise instead of deadlocking.
+        ///     True when the batch itself bumps the name; <c>bit</c>. The guard reads a bumped name's row
+        ///     under an exclusive lock and every other name's under a shared one, so the bump converts no
+        ///     lock and two writers of one row serialise at the guard.
         /// </summary>
         public bool Bumped { get; set; }
     }

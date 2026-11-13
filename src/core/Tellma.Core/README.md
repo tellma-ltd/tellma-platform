@@ -245,11 +245,11 @@ composed under (`settings`, the caller's `permissions`, its declared dependencie
 The platform's own batches (`GuardPremises.ForSystem`) re-check the tags alone. The guard locks
 the tag rows one at a time in binary name order, each by a seek on its name, and compares them
 afterwards: SQL Server releases the lock of a row a seek's residual predicate rejects, which would
-leave every fresh row unlocked. A batch that bumps a tenant-level name locks every row it names, its
-bumped names included, under `UPDLOCK`; one that bumps nothing locks them under `REPEATABLEREAD`;
-the bump moves its rows in the same order, so two writers serialise at their first shared name
-instead of deadlocking. The caller's stamp row comes last, under `UPDLOCK` when the batch writes
-the stamps table.
+leave every fresh row unlocked. Each row is locked in its final mode: `XLOCK` for a name the batch
+bumps (a bumped name it does not depend on is locked and never compared), `REPEATABLEREAD` for
+every other, so the bump converts no lock. The caller's stamp row comes after every tag row, under
+`UPDLOCK` when the batch writes the stamps table, so every batch takes the tag rows, in one order,
+before any stamp row. An expectation of `VersionTag.None` is compared like any other.
 
 The scope's `IDataBatchContributor`s run their prologue stage, in ascending `Order`, before the
 first statement that is not a prologue (or at execution, for a batch with none). They run their
@@ -656,9 +656,11 @@ A version tag is a `Guid` a tenant database keeps per cached input, in `core.Ver
   of the users each rule's source names (the ids a statement declared, or the caller for
   `SqlOptions.ForCaller`, refused unless the batch carries a user's connect prologue) and returns
   the users it moved. The plan is fixed when the epilogue stage starts from the writes of every
-  statement outside the prologue (the connect prologue's bookkeeping moves no tag); an epilogue
-  write the plan does not cover is refused, as is an autocommit (`None`) batch whose writes bump a
-  tag. Re-running the statement moves the same rows to the same tag. On commit it publishes `cache.changed` to the tenant for each tenant-level
+  statement but the connect prologue's own (`DataBatch.BeginConnectPrologue`: its bookkeeping
+  moves no tag). Refused: another prologue statement that writes a table with a tag; an epilogue
+  write the plan does not cover; a write with a tag appended after the bump; an autocommit
+  (`None`) batch whose writes bump a tag; and a dependency on a name the registry does not hold
+  exactly. Re-running the statement moves the same rows to the same tag. On commit it publishes `cache.changed` to the tenant for each tenant-level
   name and to the affected users for each user-level one.
 - **The snapshots.** `IVersionTagSnapshots` and `IUserVersionTagSnapshots` keep, per tenant (and
   per user), the last tags a batch read or wrote, bounded by `Tellma:Cache`. A batch's read
@@ -671,7 +673,9 @@ A version tag is a `Guid` a tenant database keeps per cached input, in `core.Ver
   write instead (`THROW 50412`, `BatchAssertionFailedException`).
 - **The seed.** `ITenantVersionTagSeeder` inserts a row for every registered name that a tenant
   database lacks, on every migrator run, and moves every tag after a run that applied a migration
-  or ran a step, and on the way out of a run that failed after doing either.
+  or ran a step, and on the way out of a run that failed after doing either (bounded, so a held
+  tag row delays the failure by seconds). The wholesale move takes one table lock, so it forms no
+  cycle with a live persist that holds some tag rows.
 - **The wire.** `VersionTagWire` formats the four client tags (`settings`, `permissions`,
   `preferences`, `entities`) for the response header, under the format version of the shape each
   covers; the client's `permissions` tag joins the tenant's and the user's own.

@@ -5,6 +5,7 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Caching;
@@ -16,8 +17,8 @@ namespace Tellma.Core.IntegrationTests.Migrator
     /// <summary>
     ///     The migrator's version-tag seed against a real server: a row for every registered name on
     ///     every run, every tag moved after a run that applied a migration or a step and never after
-    ///     one that changed nothing, a name registered later seeded on the next run, and a lost row
-    ///     restored.
+    ///     one that changed nothing (a failed one included, its move bounded), a name registered later
+    ///     seeded on the next run, and a lost row restored.
     /// </summary>
     [Trait("Category", "Integration")]
     public class VersionTagSeedTests(SqlServerFixture sql)
@@ -130,6 +131,25 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.Equal(["seed"], seeder.Calls);
         }
 
+        [Fact]
+        public async Task The_move_on_the_way_out_of_a_failed_run_gives_up_after_its_bound_and_the_failure_surfaces()
+        {
+            MigratorHarness migrator = new(sql, "vt_bounded");
+            RecordingSeeder seeder = new(migrator.TenantConnectionString(1)) { FailSeed = true, HangBump = true };
+            migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
+            migrator.Values[MigratorContext.VersionTagBumpTimeoutKey] = "00:00:01";
+            migrator.Seed(1);
+
+            // A move that never finishes on its own, as one blocked by a live transaction would be.
+            var elapsed = Stopwatch.StartNew();
+            MigratorResult failed = await migrator.RunAsync("migrate");
+            elapsed.Stop();
+
+            Assert.NotEqual(MigratorExitCodes.Converged, failed.ExitCode);
+            Assert.Equal(["seed", "bump", "bump cancelled"], seeder.Calls);
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(60), elapsed.Elapsed.ToString());
+        }
+
         /// <summary>Reads a tenant database's version tags.</summary>
         /// <param name="database">The tenant database.</param>
         /// <returns>Each name's tag.</returns>
@@ -168,6 +188,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
             /// <summary>Whether a seed throws, after it is recorded, instead of seeding.</summary>
             public bool FailSeed { get; set; }
 
+            /// <summary>Whether a bump waits, after it is recorded, until it is cancelled, then records the cancellation.</summary>
+            public bool HangBump { get; set; }
+
             /// <summary>Wraps the platform's seeder in the host the migrator builds.</summary>
             /// <param name="services">The host's services.</param>
             /// <returns>This seeder.</returns>
@@ -191,10 +214,23 @@ namespace Tellma.Core.IntegrationTests.Migrator
             }
 
             /// <inheritdoc />
-            public Task BumpAllAsync(int tenantId, CancellationToken cancellationToken)
+            public async Task BumpAllAsync(int tenantId, CancellationToken cancellationToken)
             {
                 Calls.Add("bump");
-                return _inner!.BumpAllAsync(tenantId, cancellationToken);
+                if (HangBump)
+                {
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Calls.Add("bump cancelled");
+                        throw;
+                    }
+                }
+
+                await _inner!.BumpAllAsync(tenantId, cancellationToken);
             }
         }
 
