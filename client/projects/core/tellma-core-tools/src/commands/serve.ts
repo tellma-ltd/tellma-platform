@@ -8,20 +8,25 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseEnv } from 'node:util';
 
+import { tmResolveBrandFiles } from '../checks/brand.js';
 import { TmBuildFailure } from '../common/problems.js';
 import { tmRunEmit } from '../emit/emit.js';
 import { tmReadEmittedMetadata, type TmEmittedRouting } from '../emit/emitted-metadata.js';
+import { tmBootConfig, tmBuildBootScript } from '../output/boot.js';
+import { tmRefreshRootFiles } from '../output/root-files.js';
 import { tmReadAppProject, tmRequirePackageDir, type TmAppProject } from '../project/app-project.js';
 import { tmLogStep, type TmCommandContext } from './context.js';
 
 // `tellma-client serve` (spec 0024 §2.6): the development loop. It runs the
-// emit, exports the ASP.NET Core development certificate, and runs
-// `ng serve` over HTTPS on the worktree's client port, proxying every path
-// the server owns (the routing words, websockets included) to the
+// emit, writes tm-boot.js and the brand files to generated/root/ (which
+// angular.json copies to the output root, so the dev server serves them as
+// the built app does), exports the ASP.NET Core development certificate, and
+// runs `ng serve` over HTTPS on the worktree's client port, proxying every
+// path the server owns (the routing words, websockets included) to the
 // distribution's web host. It sets no CSP and registers no worker: the dev
 // server serves the app unbuilt. Inside the platform's own repository it
-// first writes the platform's generated assets (the token stylesheets), which
-// a published package already holds.
+// first writes the platform's generated assets (the token stylesheets and
+// the boot script template), which a published package already holds.
 
 /** How `serve` runs. */
 export interface TmServeOptions {
@@ -125,6 +130,9 @@ async function exportDevCertificate(context: TmCommandContext, folder: string, s
   return { cert, key };
 }
 
+/** The platform repository's script that writes the generated assets its packages ship. */
+const PLATFORM_ASSETS_SCRIPT = 'assets:generate';
+
 /** Inside the platform's repository, writes the generated assets a published package holds. */
 async function platformAssets(context: TmCommandContext, project: TmAppProject): Promise<void> {
   const root = findAbove(project.dir, 'pnpm-workspace.yaml');
@@ -132,13 +140,13 @@ async function platformAssets(context: TmCommandContext, project: TmAppProject):
     return;
   }
   const scripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { readonly scripts?: Record<string, string> }).scripts;
-  if (scripts?.['tokens:build-css'] === undefined) {
+  if (scripts?.[PLATFORM_ASSETS_SCRIPT] === undefined) {
     return;
   }
   tmLogStep(context, "Writing the platform's generated assets");
-  const code = await context.runner.run('pnpm', ['run', 'tokens:build-css'], { cwd: root });
+  const code = await context.runner.run('pnpm', ['run', PLATFORM_ASSETS_SCRIPT], { cwd: root });
   if (code !== 0) {
-    throw new TmBuildFailure(`pnpm run tokens:build-css exited with code ${code}.`);
+    throw new TmBuildFailure(`pnpm run ${PLATFORM_ASSETS_SCRIPT} exited with code ${code}.`);
   }
 }
 
@@ -156,13 +164,28 @@ export async function tmServe(context: TmCommandContext, options: TmServeOptions
   if (!project.hasServeTarget) {
     throw new TmBuildFailure(`angular.json: the application '${project.angularProject}' needs a serve target on @angular/build:dev-server.`);
   }
+  if (!project.copiesRootAssets) {
+    throw new TmBuildFailure(
+      `angular.json: the application '${project.angularProject}' must copy generated/root/ to the output root, ` +
+        'where serve writes tm-boot.js and the brand files: add the asset { "glob": "**/*", "input": "generated/root", "output": "/" }.',
+    );
+  }
   await platformAssets(context, project);
 
-  // --- The emit, the certificate and the ports ---
+  // --- The emit, the boot script and brand files, the certificate and the ports ---
   tmLogStep(context, 'Emitting the client metadata');
   await tmRunEmit(project, {}, context.runner);
-  const { core } = tmReadEmittedMetadata(project.generatedDir);
+  const metadata = tmReadEmittedMetadata(project.generatedDir);
+  const { core } = metadata;
   const slug = core.value.distribution.slug;
+  tmLogStep(context, 'Writing tm-boot.js and the brand files');
+  const coreDir = tmRequirePackageDir(project, '@tellma/core');
+  const defaults = join(coreDir, 'brand');
+  tmRefreshRootFiles(
+    project.rootAssetsDir,
+    tmBuildBootScript(coreDir, tmBootConfig(metadata)),
+    tmResolveBrandFiles(project.publicDir, existsSync(defaults) ? defaults : null),
+  );
   const certificate = await exportDevCertificate(context, options.certificateDir ?? tmDefaultCertificateDir(), slug);
   const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   const port = options.port ?? tmDevPort(project.dir, `${prefix}_CLIENT`) ?? TM_DEFAULT_CLIENT_PORT;

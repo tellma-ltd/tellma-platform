@@ -14,9 +14,10 @@ import type { TmEmittedMetadata } from '../emit/emitted-metadata.js';
 // with TM_BOOT built from the emitted metadata. The languages and their
 // directions come from the Core chunk, the first being the default; the
 // boot page's strings come from the string packs. English is always
-// embedded, as every language's fallback, and the distribution's display
-// name fills English's Distribution_DisplayName when the pack has none, so
-// any language without its own falls back to it.
+// embedded, as every language's fallback. The distribution's display name
+// fills a language's missing Distribution_DisplayName: English's always, and
+// another language's only when English's differs from it, since that
+// language would otherwise fall back to English's.
 
 /** The template's path inside `@tellma/core`. */
 export const TM_BOOT_TEMPLATE = 'boot/tm-boot.template.js';
@@ -39,6 +40,9 @@ export function tmBootConfig(metadata: TmEmittedMetadata): TmBootScriptConfig {
       if (typeof pack[key] === 'string' && pack[key] !== '') {
         table[key] = pack[key];
       }
+    }
+    if (code !== 'en' && table['Distribution_DisplayName'] === undefined && strings['en']!['Distribution_DisplayName'] !== distribution.displayName) {
+      table['Distribution_DisplayName'] = distribution.displayName;
     }
     if (code === 'en') {
       table['Distribution_DisplayName'] ??= distribution.displayName;

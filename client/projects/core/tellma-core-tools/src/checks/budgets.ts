@@ -15,7 +15,13 @@ import { tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../outpu
 // package.json, `"tellma": { "budgets": { "<name>": { "error": 280, "note":
 // "…" } } }`, and a raise needs its note. The boot script's ceiling grows
 // with its string tables: 3 KB for the code with English, which every boot
-// script embeds, and 0.4 KB for each further table.
+// script embeds, and 0.4 KB for each further table. Every lazily loaded
+// chunk no budget covers, a `@defer` block's or a distribution's route,
+// gets a line of its own with no level: the metafile records a dynamic
+// import, not whether a route or a `@defer` block made it.
+
+/** The name prefix of a lazily loaded chunk's own line, followed by the module it starts at. */
+export const TM_LAZY_BUDGET_PREFIX = 'lazy:';
 
 /** The build problem code of a figure over its error level. */
 export const TM_BUDGET_EXCEEDED = 'budget-exceeded';
@@ -156,7 +162,8 @@ export interface TmBudgetInputs {
  * Measures every budget's figure.
  *
  * @param inputs - What the budgets measure.
- * @returns One figure per budget, in TM_BUDGETS's order.
+ * @returns One figure per budget, in TM_BUDGETS's order, then one per lazily
+ * loaded chunk no budget covers, in its file's ordinal order.
  */
 export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
   const sizes = new Map<string, TmCompressedSize>();
@@ -188,17 +195,30 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
   const search = tmEntryPointModule('tellma-core', 'search');
   const details = tmEntryPointModule('tellma-core', 'details');
   const reports = inputs.codedReports === undefined ? [] : [inputs.codedReports];
+  const searchRoute = beyondInitial((input) => search(input) || entity(input));
+  const detailsRoute = beyondInitial((input) => details(input) || entity(input));
+  const echartsEngine = beyondInitial(tmEchartsModule);
 
-  return [
+  const figures = [
     sum('initialJs', inputs.initialJs),
     sum('initialCss', inputs.initialCss),
-    sum('searchRoute', beyondInitial((input) => search(input) || entity(input))),
-    sum('detailsRoute', beyondInitial((input) => details(input) || entity(input))),
-    sum('echartsEngine', beyondInitial(tmEchartsModule)),
+    sum('searchRoute', searchRoute),
+    sum('detailsRoute', detailsRoute),
+    sum('echartsEngine', echartsEngine),
     sum('workerShell', inputs.shell),
     { name: 'codedReports', ...tmCompressedSize(JSON.stringify(inputs.codedReports ?? [])), files: reports.length },
     sum('bootScript', ['tm-boot.js']),
   ];
+
+  // --- Each other lazily loaded chunk: its static closure beyond the initial set ---
+  const covered = new Set([...inputs.initialJs, ...searchRoute, ...detailsRoute, ...echartsEngine]);
+  for (const root of inputs.graph.dynamicTargets()) {
+    if (!covered.has(root)) {
+      const files = [...inputs.graph.staticClosure([root])].filter((file) => !inputs.initialJs.has(file));
+      figures.push(sum(`${TM_LAZY_BUDGET_PREFIX}${inputs.graph.outputs.get(root)?.entryPoint ?? root}`, files));
+    }
+  }
+  return figures;
 }
 
 /**

@@ -28,6 +28,11 @@
                 "glob": "**/*",
                 "input": "generated/assets",
                 "output": "tm-metadata"
+              },
+              {
+                "glob": "**/*",
+                "input": "generated/root",
+                "output": "/"
               }
             ],
             "styles": [

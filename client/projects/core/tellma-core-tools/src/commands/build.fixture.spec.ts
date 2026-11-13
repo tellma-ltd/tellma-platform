@@ -90,6 +90,8 @@ describe('tellma-client build on the fixture app', () => {
     expect(first.code).toBe(TM_CLI_EXIT.success);
     expect(first.out).toContain('Built with 0 error(s) and 0 warning(s).');
     expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +230 +260 +\d+$/m);
+    // The lazy page, which no budget covers, prints on a line of its own with no level.
+    expect(first.out).toMatch(/^lazy:src\/app\/review-page\.ts +\d+\.\d\d +\d+\.\d\d +- +- +\d+$/m);
   });
 
   it('writes the brand files, tm-boot.js and the localized manifest names', () => {

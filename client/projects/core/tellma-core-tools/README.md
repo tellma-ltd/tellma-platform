@@ -47,13 +47,15 @@ export { default } from '@tellma/core-tools/stylelint';
 The commands run in a distribution's client project, the folder holding its `package.json` (with
 `"tellma": { "migrator": "<path of the Migrator project's folder>" }`), its `angular.json` (one
 application on `@angular/build:application`, with `serviceWorker: false`, `outputHashing: all`, the
-hidden source maps, `public/**` as assets and `generated/assets/**` copied to `tm-metadata/`) and
-`src/app.config.ts`, which exports `appConfig`.
+hidden source maps, `public/**` as assets, `generated/assets/**` copied to `tm-metadata/`, and
+`generated/root/**` copied to the output root, the asset
+`{ "glob": "**/*", "input": "generated/root", "output": "/" }`) and `src/app.config.ts`, which
+exports `appConfig`.
 
 | Command | Does |
 |---|---|
 | `emit [--configuration c] [--no-dotnet-build]` | Runs `dotnet run --project <Migrator> -- emit-client-assets <project>/generated`, which writes the client metadata, the string packs and the loaders module. |
-| `serve [--port n]` | Runs the emit, exports the ASP.NET Core development certificate (once, as `<slug>.pem` and `<slug>.key` where ASP.NET Core's SPA templates keep it), then `ng serve` over HTTPS on `--port`, else `<SLUG>_CLIENT` from the worktree's `.dev-ports.local`, else 4200. Every path the server owns (the Core chunk's routing words, and its words under a tenant id) is proxied to `https://localhost:<SLUG>_WEB`, else 7052, websockets included. No CSP and no service worker. Inside the platform's repository it first runs `tokens:build-css`. The application needs a `serve` target on `@angular/build:dev-server`. |
+| `serve [--port n]` | Runs the emit, exports the ASP.NET Core development certificate (once, as `<slug>.pem` and `<slug>.key` where ASP.NET Core's SPA templates keep it), then `ng serve` over HTTPS on `--port`, else `<SLUG>_CLIENT` from the worktree's `.dev-ports.local`, else 4200. Every path the server owns (the Core chunk's routing words, and its words under a tenant id) is proxied to `https://localhost:<SLUG>_WEB`, else 7052, websockets included. It first writes `tm-boot.js` and the default brand files to `generated/root/`, so the dev server serves them as the built app does (the overrides come from `public/brand/`). No CSP and no service worker. Inside the platform's repository it first runs `assets:generate` (the token stylesheets and `@tellma/core`'s boot script template). The application needs a `serve` target on `@angular/build:dev-server`. |
 | `build [--configuration c] [--no-dotnet-build]` | The production build and its checks, in the six steps below. |
 
 `build` runs:
@@ -61,7 +63,8 @@ hidden source maps, `public/**` as assets and `generated/assets/**` copied to `t
 1. the emit; then the source checks: the config check (`src/app.config.ts` loaded through `tsx` in
    a Node process of its own, `@angular/compiler` first, and `tmCheckAppConfig` run against the
    emitted Core and Entities chunks and the string packs), the `index.html` rules, the manifest
-   (members, PNG icon sizes, short names), the brand files and the budget notes; then
+   (members, PNG icon sizes, short names), the brand files and the budget notes; then it refreshes
+   `generated/root/` as `serve` writes it, so no stale copy reaches the output, and runs
    `ng build --stats-json`, with Angular's chunk optimizer off so the metafile is the output's true
    chunk graph. A source problem stops the build before `ng build`;
 2. copies the brand files (`public/brand/<name>` over `@tellma/core`'s `brand/<name>`), writes
@@ -84,8 +87,10 @@ own files). `label-missing` and `budget-warning` are warnings, which print and p
 
 **Budgets.** `initialJs` (warn 230 KB, error 260 KB), `initialCss` (40), `searchRoute` (110),
 `detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `codedReports` (16) and
-`bootScript` (3 KB for the script with English, plus 0.4 KB per further string table). A
-distribution sets a level in `package.json`; a raise needs a note:
+`bootScript` (3 KB for the script with English, plus 0.4 KB per further string table). Every
+lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
+line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the
+initial set. A distribution sets a level in `package.json`; a raise needs a note:
 
 ```json
 { "tellma": { "budgets": { "initialJs": { "error": 280, "note": "Why the raise is worth it." } } } }

@@ -24,6 +24,8 @@ export interface TmBuildOutput {
   readonly inputs: readonly string[];
   /** The JavaScript files it imports, with how. */
   readonly imports: readonly { readonly path: string; readonly kind: TmImportKind }[];
+  /** The module the file starts at when it is an entry point or a dynamic import's chunk, relative to the project folder with forward slashes. */
+  readonly entryPoint?: string;
 }
 
 /** The metafile's shape, as far as the build reads it. */
@@ -34,6 +36,7 @@ interface Metafile {
       {
         readonly imports?: readonly { readonly path: string; readonly kind: string; readonly external?: boolean }[];
         readonly inputs?: Readonly<Record<string, unknown>>;
+        readonly entryPoint?: string;
       }
     >
   >;
@@ -83,6 +86,7 @@ export class TmBuildGraph {
           .filter((edge) => edge.external !== true && /\.m?js$/.test(edge.path))
           .filter((edge) => edge.kind === 'import-statement' || edge.kind === 'dynamic-import')
           .map((edge) => ({ path: edge.path, kind: edge.kind === 'dynamic-import' ? 'dynamic' : 'static' })),
+        ...(output.entryPoint === undefined ? {} : { entryPoint: output.entryPoint.replace(/\\/g, '/') }),
       });
     }
     return new TmBuildGraph(outputs);
@@ -111,6 +115,19 @@ export class TmBuildGraph {
       }
     }
     return reached;
+  }
+
+  /** The targets of every dynamic import, in ordinal order. */
+  dynamicTargets(): string[] {
+    const targets = new Set<string>();
+    for (const output of this.outputs.values()) {
+      for (const edge of output.imports) {
+        if (edge.kind === 'dynamic' && this.outputs.has(edge.path)) {
+          targets.add(edge.path);
+        }
+      }
+    }
+    return [...targets].sort();
   }
 
   /** The files a set of files loads before it runs: the set and every static import, transitively. */

@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TmBuildGraph } from '../output/stats.js';
 import {
   TM_BUDGETS,
+  TM_LAZY_BUDGET_PREFIX,
   tmBootScriptBudget,
   tmBudgetProblems,
   tmFormatBudgetReport,
@@ -111,6 +112,39 @@ describe('the budget figures', () => {
     near('bootScript', 900, 1);
     expect(byName.get('codedReports')!.files).toBe(1);
     expect(figures.map((figure) => figure.name)).toEqual(TM_BUDGETS.map((budget) => budget.name));
+  });
+
+  it('give each lazily loaded chunk no budget covers a line of its own, with no level', () => {
+    dir = mkdtempSync(join(tmpdir(), 'tm-budgets-'));
+    const files: Record<string, number> = { 'main-A.js': 1000, 'search-B.js': 1000, 'editor-C.js': 3000, 'page-D.js': 2000, 'shared-E.js': 500, 'tm-boot.js': 900 };
+    for (const [name, size] of Object.entries(files)) {
+      writeFileSync(join(dir, name), randomBytes(size));
+    }
+    const graph = new TmBuildGraph([
+      // main imports the search route and a page lazily, and its own shared chunk lazily too.
+      {
+        path: 'main-A.js',
+        inputs: ['src/main.ts'],
+        imports: [{ path: 'search-B.js', kind: 'dynamic' }, { path: 'page-D.js', kind: 'dynamic' }, { path: 'shared-E.js', kind: 'static' }, { path: 'shared-E.js', kind: 'dynamic' }],
+      },
+      // The search route defers an editor, which the route's own figure leaves out.
+      { path: 'search-B.js', inputs: ['node_modules/@tellma/core/fesm2022/tellma-core-search.mjs'], imports: [{ path: 'editor-C.js', kind: 'dynamic' }] },
+      { path: 'editor-C.js', inputs: ['src/editor.ts'], imports: [{ path: 'shared-E.js', kind: 'static' }], entryPoint: 'src/editor.ts' },
+      { path: 'page-D.js', inputs: ['src/page.ts'], imports: [], entryPoint: 'src/page.ts' },
+      { path: 'shared-E.js', inputs: ['src/shared.ts'], imports: [] },
+    ]);
+    const figures = tmMeasureBudgets({ browserDir: dir, graph, initialJs: graph.staticClosure(['main-A.js']), initialCss: [], shell: [], codedReports: undefined });
+    const lazy = figures.filter((figure) => figure.name.startsWith(TM_LAZY_BUDGET_PREFIX));
+    expect(lazy.map((figure) => [figure.name, figure.files])).toEqual([
+      ['lazy:src/editor.ts', 1],
+      ['lazy:src/page.ts', 1],
+    ]);
+    expect(lazy[0]!.gzip).toBeGreaterThanOrEqual(3000);
+    expect(figures.find((figure) => figure.name === 'searchRoute')!.files).toBe(1);
+    // A line with no level is printed and never a problem.
+    const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
+    expect(tmBudgetProblems(lazy, levels, 'acme')).toEqual([]);
+    expect(tmFormatBudgetReport(lazy, levels)).toMatch(/^lazy:src\/editor\.ts +\d+\.\d\d +\d+\.\d\d +- +- +1$/m);
   });
 
   it('report a figure over its error level as an error, over its warn level as a warning', () => {

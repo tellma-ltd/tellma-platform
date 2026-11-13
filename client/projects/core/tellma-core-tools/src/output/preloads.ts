@@ -5,6 +5,7 @@
 
 import { TM_BOOT_SCRIPT_FILE } from '../build/index-html-rules.js';
 import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
+import { tmEntryPointModule, type TmBuildGraph } from './stats.js';
 
 // The preloads (spec 0024 §2.6, step 3), which let the browser fetch during
 // the boot script and the first parse what the first render needs: the fonts
@@ -92,4 +93,29 @@ export function tmAddPreloads(html: string, preloads: TmPreloads): string {
     ...preloads.modules.map((url) => `<link rel="modulepreload" href="${attribute(url)}">`),
   ].join('');
   return html.replace(/<\/head>/i, `${links}</head>`);
+}
+
+/** The `/shell` and `/attention` chunks the build preloads, and the initial JavaScript with them. */
+export interface TmShellModulePreloads {
+  /** The chunks to modulepreload: those holding `/shell` or `/attention`, with their static imports, beyond what `index.html` already loads; in ordinal order. */
+  readonly modules: readonly string[];
+  /** The initial JavaScript: the scripts, their static imports, `index.html`'s own module preloads and the chunks above. */
+  readonly initialJs: ReadonlySet<string>;
+}
+
+/**
+ * Finds the `/shell` and `/attention` chunks to modulepreload. Only static
+ * imports are followed: a chunk they import dynamically loads when used.
+ *
+ * @param graph - The build's chunk graph.
+ * @param initial - The files the built `index.html` loads.
+ * @returns The chunks to preload, and the initial JavaScript they join.
+ */
+export function tmShellModulePreloads(graph: TmBuildGraph, initial: TmInitialFiles): TmShellModulePreloads {
+  const loaded = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
+  const shell = tmEntryPointModule('tellma-core', 'shell');
+  const attention = tmEntryPointModule('tellma-core', 'attention');
+  const roots = graph.outputsHolding((input) => shell(input) || attention(input));
+  const modules = [...graph.staticClosure(roots)].filter((file) => !loaded.has(file)).sort();
+  return { modules, initialJs: new Set([...loaded, ...modules]) };
 }

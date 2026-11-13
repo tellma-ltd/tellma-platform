@@ -39,7 +39,9 @@ describe('@tellma/core-ui-mcp server', () => {
         args: [join(mcpDir, 'dist', 'server.js')],
       }),
     );
-  }, 60_000);
+    // Building the inputs standalone takes a while on a clean checkout, where
+    // lint:test runs before the build, beside the other specs' real ng build.
+  }, 300_000);
 
   it('emits every field the server hand-reads from components.json (rename guard)', async () => {
     // server.ts picks these fields BY NAME off the parsed JSON; a rename in

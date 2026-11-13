@@ -111,7 +111,7 @@ describe('serve', () => {
 
     // In this repository the platform's generated assets come first.
     const commands = runner.calls.map((call) => [call.command, ...call.args.slice(0, 2)].join(' '));
-    expect(commands.slice(0, 3)).toEqual(['pnpm run tokens:build-css', 'dotnet run --project', 'dotnet dev-certs https']);
+    expect(commands.slice(0, 3)).toEqual(['pnpm run assets:generate', 'dotnet run --project', 'dotnet dev-certs https']);
     expect(runner.calls[2]!.args).toEqual(['dev-certs', 'https', '--export-path', join(certificates, 'fixture.pem'), '--format', 'Pem', '--no-password']);
     expect(served).toHaveLength(1);
     expect(served[0]!.slice(1, 10)).toEqual([
@@ -129,6 +129,10 @@ describe('serve', () => {
     const routing = (JSON.parse(readFileSync(join(FIXTURES_DIR, 'migrator', 'core.json'), 'utf8')) as { routing: typeof ROUTING }).routing;
     expect(proxy).toEqual(tmProxyConfig(routing, TM_DEFAULT_WEB_PORT));
     expect(out).toContain('Serving on https://localhost:4321/');
+    // The boot script the page loads first is there for the dev server to serve.
+    const boot = readFileSync(join(app, 'generated', 'root', 'tm-boot.js'), 'utf8');
+    expect(boot).toContain('"defaultLanguage":"en"');
+    expect(boot).not.toContain('/*TM_BOOT*/');
   });
 
   it('serves on the --port given, else on the default port, and exports the certificate once', async () => {
@@ -144,6 +148,21 @@ describe('serve', () => {
     }
     expect(served.map((args) => args[args.indexOf('--port') + 1])).toEqual(['5000', String(TM_DEFAULT_CLIENT_PORT)]);
     expect(runner.calls.filter((call) => call.args[0] === 'dev-certs')).toHaveLength(1);
+  });
+
+  it('fails before the emit when angular.json does not copy generated/root/ to the output root', async () => {
+    const copy = copyFixtureApp('serve-no-root');
+    const file = join(copy, 'angular.json');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('"input": "generated/root"', '"input": "generated/other"'));
+    const runner = fakeRunner();
+    try {
+      await expect(tmServe({ cwd: copy, runner, streams: { out: () => undefined, err: () => undefined } }, {})).rejects.toThrow(
+        /must copy generated\/root\/ to the output root/,
+      );
+      expect(runner.calls).toEqual([]);
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
   });
 
   it('fails when the certificate cannot be exported', async () => {

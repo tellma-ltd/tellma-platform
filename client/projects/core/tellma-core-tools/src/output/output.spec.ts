@@ -12,7 +12,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { fakeEmitData } from '../../fixtures/fake-emit.js';
 import type { TmEmittedCore, TmEmittedMetadata } from '../emit/emitted-metadata.js';
 import { tmBootConfig, tmBuildBootScript } from './boot.js';
-import { tmAddPreloads, tmReadInitialFiles } from './preloads.js';
+import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from './preloads.js';
+import { tmRefreshRootFiles, tmWriteRootFiles } from './root-files.js';
 import { tmMoveSourceMaps } from './source-maps.js';
 import { TmBuildGraph, tmEchartsModule, tmEntryPointModule } from './stats.js';
 import { tmNavigationUrls, tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups } from './worker-config.js';
@@ -186,6 +187,28 @@ describe('the preloads', () => {
         '<link rel="modulepreload" href="chunk-D.js"></head>',
     );
   });
+
+  it('modulepreload the /shell and /attention chunks with their static imports, beyond what index.html loads', () => {
+    const graph = new TmBuildGraph([
+      { path: 'main.js', inputs: ['src/main.ts'], imports: [{ path: 'common.js', kind: 'static' }, { path: 'shell.js', kind: 'dynamic' }, { path: 'attention.js', kind: 'dynamic' }] },
+      { path: 'common.js', inputs: ['node_modules/@angular/core/fesm2022/core.mjs'], imports: [] },
+      { path: 'preloaded.js', inputs: ['p.ts'], imports: [] },
+      {
+        path: 'shell.js',
+        inputs: ['node_modules/@tellma/core/fesm2022/tellma-core-shell.mjs'],
+        imports: [{ path: 'common.js', kind: 'static' }, { path: 'nav.js', kind: 'static' }, { path: 'menu.js', kind: 'dynamic' }],
+      },
+      { path: 'nav.js', inputs: ['n.ts'], imports: [{ path: 'preloaded.js', kind: 'static' }] },
+      { path: 'menu.js', inputs: ['m.ts'], imports: [] },
+      { path: 'attention.js', inputs: ['../tellma-core/attention/src/x.ts'], imports: [] },
+    ]);
+    const { modules, initialJs } = tmShellModulePreloads(graph, { scripts: ['main.js'], modulePreloads: ['preloaded.js'], stylesheets: [] });
+    // Already loaded files are not preloaded again, and a dynamic import of the shell's stays lazy.
+    expect(modules).toEqual(['attention.js', 'nav.js', 'shell.js']);
+    expect([...initialJs].sort()).toEqual(['attention.js', 'common.js', 'main.js', 'nav.js', 'preloaded.js', 'shell.js']);
+    // Without those entry points there is nothing to preload.
+    expect(tmShellModulePreloads(new TmBuildGraph([{ path: 'main.js', inputs: [], imports: [] }]), { scripts: ['main.js'], modulePreloads: [], stylesheets: [] }).modules).toEqual([]);
+  });
 });
 
 describe('the boot script', () => {
@@ -208,6 +231,19 @@ describe('the boot script', () => {
     expect(Object.keys(config.strings)).toEqual(['en']);
   });
 
+  it("fills another language's missing display name with the configured one only where English's differs", () => {
+    const { en, ar } = fakeEmitData().strings;
+    const arabic = { ...ar! };
+    delete arabic['Distribution_DisplayName'];
+    // English's own name differs from the configured 'Fixture': Arabic would otherwise fall back to it.
+    const named = tmBootConfig(metadata({ en: { ...en!, Distribution_DisplayName: 'Fixture Accounting' }, ar: arabic }));
+    expect(named.strings['en']!['Distribution_DisplayName']).toBe('Fixture Accounting');
+    expect(named.strings['ar']!['Distribution_DisplayName']).toBe('Fixture');
+    // English's is the configured name: the fallback already says it.
+    expect(tmBootConfig(metadata({ en: en!, ar: arabic })).strings['ar']).not.toHaveProperty('Distribution_DisplayName');
+    expect(Object.keys(tmBootConfig(metadata({ en: { ...en!, Distribution_DisplayName: 'Fixture Accounting' }, ar: {} })).strings)).toEqual(['en', 'ar']);
+  });
+
   it('fails when the English pack lacks a boot string, the fallback of every language', () => {
     const en = { ...fakeEmitData().strings['en']! };
     delete en['Boot_Cookies'];
@@ -222,6 +258,33 @@ describe('the boot script', () => {
     expect(tmBuildBootScript(core, tmBootConfig(metadata()))).toMatch(/^var TM_BOOT=\{"v":1,"languages":\[\{"code":"en"/);
     writeFileSync(join(core, 'boot', 'tm-boot.template.js'), 'no marker');
     expect(() => tmBuildBootScript(core, tmBootConfig(metadata()))).toThrow(/could not be written/);
+  });
+});
+
+describe('the root files', () => {
+  it('hold the boot script and the brand files; the generated folder leaves the overrides to public/', () => {
+    const root = scratch();
+    mkdirSync(join(root, 'sources'));
+    writeFileSync(join(root, 'sources', 'default.svg'), 'default');
+    writeFileSync(join(root, 'sources', 'override.svg'), 'override');
+    const brand = [
+      { name: 'mark-on-dark.svg', source: join(root, 'sources', 'default.svg'), override: false },
+      { name: 'mark-on-light.svg', source: join(root, 'sources', 'override.svg'), override: true },
+      { name: 'wordmark-on-dark.svg', source: null, override: false },
+    ];
+    tmWriteRootFiles(join(root, 'out'), 'boot();', brand);
+    expect(readFileSync(join(root, 'out', 'tm-boot.js'), 'utf8')).toBe('boot();');
+    expect(readFileSync(join(root, 'out', 'brand', 'mark-on-light.svg'), 'utf8')).toBe('override');
+    expect(existsSync(join(root, 'out', 'brand', 'wordmark-on-dark.svg'))).toBe(false);
+
+    const generated = join(root, 'generated', 'root');
+    mkdirSync(join(generated, 'brand'), { recursive: true });
+    writeFileSync(join(generated, 'stale.txt'), 'x');
+    tmRefreshRootFiles(generated, 'boot();', brand);
+    expect(existsSync(join(generated, 'stale.txt'))).toBe(false);
+    expect(readFileSync(join(generated, 'brand', 'mark-on-dark.svg'), 'utf8')).toBe('default');
+    expect(existsSync(join(generated, 'brand', 'mark-on-light.svg'))).toBe(false);
+    expect(existsSync(join(generated, 'tm-boot.js'))).toBe(true);
   });
 });
 

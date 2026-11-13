@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { tmReadBudgetLevels, tmBudgetProblems, tmFormatBudgetReport, tmMeasureBudgets, type TmBudgetLevels } from '../checks/budgets.js';
@@ -18,9 +18,10 @@ import { tmRunEmit, type TmEmitOptions } from '../emit/emit.js';
 import { tmReadEmittedMetadata, type TmEmittedMetadata } from '../emit/emitted-metadata.js';
 import { tmBuiltFontUrls, tmFontFragments, tmIsFontForFragments } from '../fonts/index.js';
 import { tmBootConfig, tmBuildBootScript } from '../output/boot.js';
-import { tmAddPreloads, tmReadInitialFiles } from '../output/preloads.js';
+import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from '../output/preloads.js';
+import { tmRefreshRootFiles, tmWriteRootFiles } from '../output/root-files.js';
 import { tmMoveSourceMaps } from '../output/source-maps.js';
-import { TmBuildGraph, tmEntryPointModule } from '../output/stats.js';
+import { TmBuildGraph } from '../output/stats.js';
 import { tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups, TM_WORKER_FILES } from '../output/worker-config.js';
 import { tmReadAppProject, tmRequirePackageDir, type TmAppProject } from '../project/app-project.js';
 import { tmLogStep, tmReportProblems, type TmCommandContext } from './context.js';
@@ -134,11 +135,7 @@ async function angularBuild(context: TmCommandContext, project: TmAppProject): P
 
 /** Step 2: the brand files, tm-boot.js and the manifest's localized names. */
 function assetStep(project: TmAppProject, source: SourceStep): void {
-  mkdirSync(join(project.browserDir, 'brand'), { recursive: true });
-  for (const file of source.brand) {
-    copyFileSync(file.source!, join(project.browserDir, 'brand', file.name));
-  }
-  writeFileSync(join(project.browserDir, 'tm-boot.js'), source.bootScript);
+  tmWriteRootFiles(project.browserDir, source.bootScript, source.brand);
 
   const manifestFile = join(project.browserDir, TM_MANIFEST_FILE);
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) as Record<string, unknown>;
@@ -169,6 +166,8 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   if (tmHasErrors(problems)) {
     return { passed: false, problems };
   }
+  // The files serve copies from generated/root/, refreshed so ng build never copies stale ones.
+  tmRefreshRootFiles(project.rootAssetsDir, source.bootScript, source.brand);
   await angularBuild(context, project);
   const browser = project.browserDir;
   const { core, strings } = source.metadata;
@@ -183,11 +182,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   const graph = TmBuildGraph.read(project.statsFile);
   const indexFile = join(browser, 'index.html');
   const initial = tmReadInitialFiles(readFileSync(indexFile, 'utf8'));
-  const loaded = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
-  const shellAndAttention = graph.outputsHolding(
-    (input) => tmEntryPointModule('tellma-core', 'shell')(input) || tmEntryPointModule('tellma-core', 'attention')(input),
-  );
-  const modules = [...graph.staticClosure(shellAndAttention)].filter((file) => !loaded.has(file)).sort();
+  const { modules, initialJs } = tmShellModulePreloads(graph, initial);
   const fontFragments = tmFontFragments(languages);
   const fetches = [core.name, strings.get(languages[0]!)?.name]
     .filter((name): name is string => name !== undefined)
@@ -205,7 +200,6 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
       modules,
     }),
   );
-  const initialJs = new Set([...loaded, ...modules]);
 
   // --- Step 4: the service worker ---
   tmLogStep(context, 'Writing the service worker configuration');

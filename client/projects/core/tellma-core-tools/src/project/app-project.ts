@@ -21,7 +21,11 @@ interface AngularBuildOptions {
   readonly outputPath?: string | { readonly base?: string; readonly browser?: string };
   readonly index?: string | { readonly input?: string };
   readonly tsConfig?: string;
+  readonly assets?: readonly unknown[];
 }
+
+/** The folder under generated/ whose files the application copies to its output root. */
+const ROOT_ASSETS = 'root';
 
 /** A distribution's client project. */
 export interface TmAppProject {
@@ -55,6 +59,10 @@ export interface TmAppProject {
   readonly publicDir: string;
   /** The folder the emit writes, absolute. */
   readonly generatedDir: string;
+  /** The folder the commands write `tm-boot.js` and the brand files to, `generated/root`, absolute. */
+  readonly rootAssetsDir: string;
+  /** Whether the build target copies `generated/root/` to the output root, which serving needs. */
+  readonly copiesRootAssets: boolean;
 }
 
 /** Reads a JSON file, failing the step with the file named when it is missing or malformed. */
@@ -112,6 +120,22 @@ export function tmReadAppProject(dir: string): TmAppProject {
   const browser = typeof outputPath === 'object' ? (outputPath.browser ?? 'browser') : 'browser';
   const outputDir = resolve(appDir, base);
   const index = typeof options.index === 'string' ? options.index : (options.index?.input ?? 'src/index.html');
+  const generatedDir = join(appDir, 'generated');
+  const rootAssetsDir = join(generatedDir, ROOT_ASSETS);
+
+  // --- The asset entry that copies generated/root/ to the output root ---
+  // An object entry's output defaults to the output root.
+  const copiesRootAssets = (options.assets ?? []).some((asset) => {
+    const input = member(asset, 'input');
+    const output = member(asset, 'output') ?? '';
+    return (
+      member(asset, 'glob') === '**/*' &&
+      typeof input === 'string' &&
+      resolve(appDir, input) === rootAssetsDir &&
+      typeof output === 'string' &&
+      /^[/.]?$/.test(output)
+    );
+  });
 
   return {
     dir: appDir,
@@ -128,7 +152,9 @@ export function tmReadAppProject(dir: string): TmAppProject {
     tsconfig: resolve(appDir, options.tsConfig ?? 'tsconfig.json'),
     appConfig: join(appDir, 'src', 'app.config.ts'),
     publicDir: join(appDir, 'public'),
-    generatedDir: join(appDir, 'generated'),
+    generatedDir,
+    rootAssetsDir,
+    copiesRootAssets,
   };
 }
 

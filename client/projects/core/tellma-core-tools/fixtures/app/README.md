@@ -6,8 +6,9 @@ A minimal distribution client, in the layout `tellma-client` expects, that the c
 - `package.json` names the Migrator, `../migrator/`, a stand-in: the specs answer the emit's
   `dotnet run … emit-client-assets` themselves, from the JSON files in that folder.
 - `angular.json` holds one application, `fixture`, with the build options a distribution uses:
-  `serviceWorker: false`, `outputHashing: all`, hidden source maps, `public/**` as assets and
-  `generated/assets/**` copied to `tm-metadata/`, and the Latin and Arabic font stylesheets.
+  `serviceWorker: false`, `outputHashing: all`, hidden source maps, `public/**` as assets,
+  `generated/assets/**` copied to `tm-metadata/` and `generated/root/**` to the output root, and the
+  Latin and Arabic font stylesheets.
 - `tsconfig.json` extends the client workspace's, whose path mappings resolve every `@tellma`
   package to its sources, so the fixture builds without the packages being built.
 - `src/app.config.ts` exports `appConfig` with one `provideTellma` call, English and Arabic, and

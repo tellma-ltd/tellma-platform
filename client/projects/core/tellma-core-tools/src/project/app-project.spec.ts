@@ -39,7 +39,29 @@ describe('a client project', () => {
       appConfig: join(app, 'src', 'app.config.ts'),
       publicDir: join(app, 'public'),
       generatedDir: join(app, 'generated'),
+      rootAssetsDir: join(app, 'generated', 'root'),
+      copiesRootAssets: true,
     });
+  });
+
+  it("knows whether the build copies generated/root/ to the output root, an object asset's default", () => {
+    const file = join(app, 'angular.json');
+    const original = readFileSync(file, 'utf8');
+    const withAsset = (asset: unknown): boolean => {
+      const workspace = JSON.parse(original) as { projects: { fixture: { architect: { build: { options: { assets: unknown[] } } } } } };
+      workspace.projects.fixture.architect.build.options.assets = [{ glob: '**/*', input: 'public' }, asset];
+      writeFileSync(file, JSON.stringify(workspace));
+      return tmReadAppProject(app).copiesRootAssets;
+    };
+    try {
+      expect(withAsset({ glob: '**/*', input: 'generated/root/' })).toBe(true);
+      expect(withAsset({ glob: '**/*', input: './generated/root', output: '' })).toBe(true);
+      expect(withAsset({ glob: '**/*', input: 'generated/root', output: 'boot' })).toBe(false);
+      expect(withAsset({ glob: '*.js', input: 'generated/root' })).toBe(false);
+      expect(withAsset('generated/root')).toBe(false);
+    } finally {
+      writeFileSync(file, original);
+    }
   });
 
   it('fails without exactly one application', () => {

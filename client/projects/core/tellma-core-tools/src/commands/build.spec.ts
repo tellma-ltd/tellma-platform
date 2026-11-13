@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
@@ -31,6 +31,10 @@ interface Run {
   readonly err: string;
   /** The programs started, as `command first-argument`. */
   readonly started: readonly string[];
+  /** The programs started, each with all its arguments. */
+  readonly calls: readonly (readonly string[])[];
+  /** The copy's folder. */
+  readonly app: string;
   /** Whether ng build ran. */
   readonly ngBuilt: boolean;
 }
@@ -69,7 +73,15 @@ async function build(
   let out = '';
   let err = '';
   const code = await tmRunCli(['build', ...(options.args ?? [])], { out: (text) => (out += text), err: (text) => (err += text) }, { cwd: app, runner });
-  return { code, out, err, started: runner.calls.map((call) => `${call.command} ${call.args[0] ?? ''}`), ngBuilt };
+  return {
+    code,
+    out,
+    err,
+    started: runner.calls.map((call) => `${call.command} ${call.args[0] ?? ''}`),
+    calls: runner.calls.map((call) => [call.command, ...call.args]),
+    app,
+    ngBuilt,
+  };
 }
 
 /** Changes a JSON file in place. */
@@ -162,11 +174,27 @@ describe('tellma-client build, before ng build', () => {
   });
 
   it('reaches ng build when the sources pass, and exits 2 when it fails', async () => {
-    const run = await build('passes');
+    const run = await build('passes', undefined, { args: ['-c', 'Release', '--no-dotnet-build'] });
     expect(run.ngBuilt).toBe(true);
     expect(run.code).toBe(TM_CLI_EXIT.failure);
     expect(run.err).toContain('ng build exited with code 1.');
-    expect(run.started[0]).toBe('dotnet run');
+    // The emit's options reach the Migrator's run.
+    expect(run.calls[0]).toEqual([
+      'dotnet',
+      'run',
+      '--project',
+      join(run.app, '..', 'migrator'),
+      '--no-launch-profile',
+      '--configuration',
+      'Release',
+      '--no-build',
+      '--',
+      'emit-client-assets',
+      join(run.app, 'generated'),
+    ]);
+    // generated/root/ is fresh before ng build: the boot script, and no override of public/brand/.
+    expect(readFileSync(join(run.app, 'generated', 'root', 'tm-boot.js'), 'utf8')).toContain('"defaultLanguage":"en"');
+    expect(readdirSync(join(run.app, 'generated', 'root', 'brand'))).toEqual([]);
   });
 });
 
@@ -185,7 +213,7 @@ describe('tellma-client build, failures', () => {
     expect(run.ngBuilt).toBe(false);
   });
 
-  it('exits 2 when the Migrator is missing, and passes the emit options through', async () => {
+  it('exits 2 when the Migrator is missing', async () => {
     const run = await build(
       'migrator',
       (app) =>
