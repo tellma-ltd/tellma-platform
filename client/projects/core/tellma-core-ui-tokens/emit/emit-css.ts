@@ -15,9 +15,11 @@ import type { TmSchemeColors, TmTokens } from '../contract/tokens';
  * runtime `setProperty` writes beat both by the normal cascade.
  */
 
-// camelCase to kebab-case. A digit run that follows a letter starts a word
-// of its own, as an upper-case letter does: `optionHeight2line` emits
-// `option-height-2line`.
+/**
+ * camelCase to kebab-case. A digit run that follows a letter starts a word
+ * of its own, as an upper-case letter does: `optionHeight2line` emits
+ * `option-height-2line`.
+ */
 const KEBAB = (s: string) =>
   s
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')

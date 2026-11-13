@@ -2251,10 +2251,58 @@ describe('tm-grid entity columns (descriptions, label parts, display parts)', ()
     expect(textOf(scroller, 2, 0).textContent?.trim()).toBe('');
   });
 
-  it('a column without formatParts renders its display text as before', async () => {
+  it('an entity column without formatParts draws its display text as one isolated run', async () => {
     const { scroller } = await setupParts();
-    expect(runsOf(scroller, 0, 1)).toEqual([]);
-    expect(textOf(scroller, 0, 1).textContent).toBe('INV-0011 - نقد');
+    expect(runsOf(scroller, 0, 1)).toEqual(['INV-0011 - نقد']);
+    expect(textOf(scroller, 0, 1).textContent?.trim()).toBe('INV-0011 - نقد');
+    // An empty cell draws no run.
+    expect(runsOf(scroller, 1, 1)).toEqual([]);
+  });
+
+  it('in a right-to-left page, an unbound entity cell and its dropdown row order a mixed label alike', async () => {
+    // The whole page turns right-to-left, so the portaled dropdown does too.
+    const pageDir = document.documentElement.dir;
+    document.documentElement.dir = 'rtl';
+    try {
+      const { fixture, scroller } = await setupParts();
+
+      /** Whether the code's text sits left of the name's within one run. */
+      const codeLeftOfName = (run: Element): boolean => {
+        const text = run.firstChild as Text;
+        const box = (word: string): DOMRect => {
+          const range = document.createRange();
+          range.setStart(text, text.data.indexOf(word));
+          range.setEnd(text, text.data.indexOf(word) + word.length);
+          return range.getBoundingClientRect();
+        };
+        return box('INV-0011').left < box('نقد').left;
+      };
+
+      const cellRun = textOf(scroller, 0, 1).querySelector(':scope > bdi')!;
+      // Activate the unbound column's empty cell (row 1, the row's last
+      // column) and search for the same Center.
+      await activateOrigin(fixture, scroller);
+      keydown(scroller, 'ArrowDown');
+      keydown(scroller, 'End');
+      await stable(fixture);
+      expect(cellAt(scroller, 1, 1)!.getAttribute('tabindex')).toBe('0');
+      keydown(scroller, 'I');
+      await stable(fixture);
+      const input = scroller.querySelector<HTMLInputElement>('.tm-entity-picker__input')!;
+      expect(input.getAttribute('dir')).toBe('auto');
+      typeInto(input, 'INV');
+      await stable(fixture);
+      const rows = optionRows();
+      expect(rows.length).toBe(1);
+      const optionRun = rows[0].querySelector('.tm-entity-picker__option-label > bdi')!;
+      expect(optionRun.textContent).toBe('INV-0011 - نقد');
+      // The dropdown row and the display cell agree: both take the label's
+      // own first-strong direction, as the picker's input does.
+      expect(codeLeftOfName(cellRun)).toBe(true);
+      expect(codeLeftOfName(optionRun)).toBe(true);
+    } finally {
+      document.documentElement.dir = pageDir;
+    }
   });
 
   it("a copied display-parts cell carries format's plain text", async () => {

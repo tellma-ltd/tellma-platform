@@ -404,7 +404,9 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
   readonly entitySearch: TmEntitySearchFn<unknown> | undefined;
   readonly entityItemId: ((item: unknown) => TmEntityId) | undefined;
   readonly entityItemLabel: ((item: unknown) => string) | undefined;
+  /** `entity` columns: the result description line the cell's picker draws, if bound. */
   readonly entityItemDescription: ((item: unknown) => string | null) | undefined;
+  /** `entity` columns: the result label parts the cell's picker draws, if bound. */
   readonly entityItemLabelParts: ((item: unknown) => readonly string[] | null) | undefined;
   readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
   readonly entityCreate: TmEntityPickerPage | undefined;
@@ -422,7 +424,8 @@ export interface ɵTmGridCellVm {
   /**
    * The display text in parts, each drawn as its own isolated run joined by
    * " - " (a column binding `formatParts`; a single part when the parts do
-   * not stand for the text); `null` draws `text` as it is.
+   * not stand for the text, or for an `entity` column without them); `null`
+   * draws `text` as it is.
    */
   readonly parts: readonly string[] | null;
   /**
@@ -3246,16 +3249,18 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
         // they ARE that text. Otherwise — the parts are null, an errored
         // cell shows its raw text, a label is still being resolved, or the
         // parts drift from `format` — the text draws as ONE isolated run.
-        // A column without `formatParts` keeps its plain text span.
+        // An `entity` column without `formatParts` draws its text as one
+        // isolated run too, as its picker's rows and input do, so a label in
+        // another script than the grid reads the same in the cell and in
+        // its dropdown. Other columns keep their plain text span.
         let parts: readonly string[] | null = null;
-        if (column.formatParts !== undefined && view !== null) {
-          const candidate = column.formatParts(column.engineColumn.getValue(view.row), view.row);
-          parts =
-            candidate?.length && candidate.join(' - ') === text
-              ? candidate
-              : text === ''
-                ? null
-                : [text];
+        if (view !== null && text !== '') {
+          if (column.formatParts !== undefined) {
+            const candidate = column.formatParts(column.engineColumn.getValue(view.row), view.row);
+            parts = candidate?.length && candidate.join(' - ') === text ? candidate : [text];
+          } else if (column.type === 'entity') {
+            parts = [text];
+          }
         }
         return {
           colIndex: column.index,

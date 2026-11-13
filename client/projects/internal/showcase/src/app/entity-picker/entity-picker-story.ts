@@ -367,6 +367,19 @@ export class DemoPickerModalPage {
           [itemLabelParts]="centerParts"
         />
       </tm-form-field>
+
+      <!-- The same two-line rows in a large field: a larger label line in the
+           same two-line height. -->
+      <tm-form-field label="Cost center (two lines, large)" size="lg">
+        <tm-entity-picker
+          data-testid="picker-centers-lg"
+          [search]="centerSearch"
+          [itemId]="centerId"
+          [itemLabel]="centerLabel"
+          [itemDescription]="centerDescription"
+          [itemLabelParts]="centerParts"
+        />
+      </tm-form-field>
     </div>
 
     <h3>Model</h3>

@@ -75,7 +75,7 @@ export class TmGridColumn<T = unknown, V = unknown> {
    * Joined by " - ", the parts must equal `format`'s text, which stays the
    * cell's text representation (copy, find, announcements); a cell whose
    * parts are `null` or do not join to that text shows `format`'s text as
-   * one isolated run.
+   * one isolated run, as an `entity` column without `formatParts` does.
    */
   readonly formatParts = input<((value: V, row: T) => readonly string[] | null) | undefined>(
     undefined,
@@ -116,7 +116,8 @@ export class TmGridColumn<T = unknown, V = unknown> {
   /**
    * `entity` columns: maps a search result to the parts of its label, drawn
    * as isolated runs joined by " - " in the editor's dropdown; joined, they
-   * must equal `itemLabel`.
+   * must equal `itemLabel` (parts that do not are ignored, and the row draws
+   * `itemLabel` as one run).
    */
   readonly itemLabelParts = input<((item: never) => readonly string[] | null) | undefined>(
     undefined,

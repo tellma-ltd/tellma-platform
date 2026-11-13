@@ -2328,6 +2328,30 @@ describe('tm-entity-picker', () => {
       expect(optionRows().map(visibleLabel)).toEqual(['Alice Green', 'Alan Grey']);
     });
 
+    it('label parts that do not join to itemLabel are ignored, with one development warning', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        const { fixture, host, input } = await setup();
+        host.search.set(syncSearch().fn);
+        // A stale code: the parts no longer spell the label.
+        host.itemLabel.set((agent) => `A-${agent.id} - ${agent.name}`);
+        host.itemLabelParts.set((agent) => [`B-${agent.id}`, agent.name]);
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        for (const row of optionRows()) {
+          expect(labelLine(row).querySelectorAll(':scope > bdi').length).toBe(1);
+        }
+        expect(optionRows().map(visibleLabel)).toEqual(['A-3 - Alice Green', 'A-4 - Alan Grey']);
+        await expect
+          .element(page.getByRole('option', { name: 'A-3 - Alice Green', exact: true }))
+          .toBeInTheDocument();
+        const drift = warn.mock.calls.filter((call) => String(call[0]).includes('itemLabelParts'));
+        expect(drift.length).toBe(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it('re-renders the open rows in place when the description binding changes', async () => {
       const { fixture, host, input } = await setup();
       host.search.set(syncSearch().fn);

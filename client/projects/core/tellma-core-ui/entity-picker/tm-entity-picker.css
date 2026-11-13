@@ -184,7 +184,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-content: center;
-  column-gap: var(--entity-picker-option-gap);
+  /* The base rule's gap would also open a row gap between the two lines,
+     eating the air the two-line height is sized for. */
+  gap: 0 var(--entity-picker-option-gap);
   block-size: var(--entity-picker-option-height-2line);
 }
 

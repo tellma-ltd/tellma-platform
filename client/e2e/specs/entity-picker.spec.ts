@@ -1160,14 +1160,35 @@ test.describe('two-line rows & label parts', () => {
     await expect(options(page)).toHaveCount(1);
     await appStable(page);
     expect((await options(page).first().boundingBox())!.height).toBeCloseTo(expected, 1);
-    // Both lines stay inside the row.
-    const rowBox = (await options(page).first().boundingBox())!;
-    for (const line of ['.tm-entity-picker__option-label', '.tm-entity-picker__option-description']) {
-      const box = (await options(page).first().locator(line).boundingBox())!;
-      expect(box.y).toBeGreaterThanOrEqual(rowBox.y - 0.5);
-      expect(box.y + box.height).toBeLessThanOrEqual(rowBox.y + rowBox.height + 0.5);
-    }
   });
+
+  // The two lines fit the two-line height with air to spare, at the default
+  // and the large field size, Latin and Arabic rows alike: neither line may
+  // reach within 1px of the row's edges, where the active row's ring and the
+  // chosen row's bar are drawn.
+  for (const testid of ['picker-centers', 'picker-centers-lg'] as const) {
+    test(`both lines sit inside the row with room above and below (${testid})`, async ({
+      page,
+    }) => {
+      const field = input(page, testid);
+      for (const query of ['J', 'INV', 'DMM']) {
+        await field.fill(query);
+        await expect(options(page).first()).toBeVisible();
+        await appStable(page);
+        for (const row of await options(page).all()) {
+          const rowBox = (await row.boundingBox())!;
+          for (const line of [
+            '.tm-entity-picker__option-label',
+            '.tm-entity-picker__option-description',
+          ]) {
+            const box = (await row.locator(line).boundingBox())!;
+            expect(box.y - rowBox.y).toBeGreaterThanOrEqual(1);
+            expect(rowBox.y + rowBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    });
+  }
 
   test('a row is named "label, description" while the separator stays unseen', async ({
     page,

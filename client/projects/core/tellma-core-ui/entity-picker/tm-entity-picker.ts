@@ -427,8 +427,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * so a code in one script keeps its place beside a name in another in
    * either page direction. Joined by " - ", the parts must equal
    * `itemLabel`, which stays the row's accessible name and the text a pick
-   * commits. `null` (or no parts) draws `itemLabel` as one run. Reactive,
-   * like `itemLabel`.
+   * commits; parts that do not join to it are ignored (with a development
+   * warning) and the row draws `itemLabel` as one run, as it does for `null`
+   * or no parts. Reactive, like `itemLabel`.
    */
   readonly itemLabelParts = input<((item: T) => readonly string[] | null) | undefined>(undefined);
   /**
@@ -537,6 +538,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private readonly memo = new Map<Id, string>();
   /** One-shot guard for the missing-display dev warning. */
   private warnedMissingDisplay = false;
+  /** One-shot guard for the label-parts-drift dev warning. */
+  private warnedLabelPartsDrift = false;
   /** True once destroy ran — guards late async continuations. */
   private destroyed = false;
   /** Suppresses blur handling while a picker-launched modal owns focus. */
@@ -1209,11 +1212,30 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
 
   /**
    * A search result's label parts, or `null` to draw the label as one run
-   * (no `itemLabelParts` bound, or it gave no parts for this result).
+   * (no `itemLabelParts` bound, it gave no parts for this result, or its
+   * parts joined by " - " are not the result's `itemLabel`).
    */
   protected labelPartsOf(item: T): readonly string[] | null {
     const parts = this.itemLabelParts()?.(item) ?? null;
-    return parts !== null && parts.length > 0 ? parts : null;
+    if (parts === null || parts.length === 0) {
+      return null;
+    }
+    // The parts stand in for the label only where they ARE the label: the
+    // row's accessible name comes from its content, and a pick commits
+    // itemLabel, so parts that drift from it (a stale code, another
+    // separator) would show and name one thing and commit another.
+    const label = this.labelOf(item);
+    if (parts.join(' - ') !== label) {
+      if (isDevMode() && !this.warnedLabelPartsDrift) {
+        this.warnedLabelPartsDrift = true;
+        console.warn(
+          `tm-entity-picker: itemLabelParts do not join (" - ") to itemLabel "${label}"; ` +
+            `drawing itemLabel.`,
+        );
+      }
+      return null;
+    }
+    return parts;
   }
 
   // ---- The text channel ----
