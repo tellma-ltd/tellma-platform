@@ -116,6 +116,32 @@ namespace Tellma.Core.Abstractions.Tests.Access
             Assert.False(Grant(Widget, "Read", startsAt: Now, endsAt: Now.AddHours(-1)).IsCurrentAt(Now));
         }
 
+        // --- The registered actions ---
+
+        [Fact]
+        public void The_registered_actions_answer_ignoring_case_and_the_empty_map_registers_nothing()
+        {
+            var map = ActionResourceMap.From([Securable(Widget, "Approve"), Securable(Kind, "Read")]);
+
+            Assert.True(map.Registers("FX.WIDGET", "approve"));
+            Assert.True(map.Registers(Kind, "Read"));
+            Assert.False(map.Registers(Kind, "Approve"));
+            Assert.False(map.Registers(Widget, "Read"));
+            Assert.False(map.Registers(null!, "Read"));
+            Assert.False(map.Registers(Kind, null!));
+            Assert.False(ActionResourceMap.Empty.Registers(Widget, "Approve"));
+        }
+
+        [Fact]
+        public void The_registered_actions_refuse_null_securables_and_a_set_refuses_none()
+        {
+            _ = Assert.Throws<ArgumentNullException>(() => ActionResourceMap.From(null!));
+            _ = Assert.Throws<ArgumentException>(() => ActionResourceMap.From([null!]));
+            _ = Assert.Throws<ArgumentNullException>(() => new UserAccess { ActionResources = null! });
+            Assert.Same(ActionResourceMap.Empty, new UserAccess().ActionResources);
+            Assert.Same(Actions, (Set() with { }).ActionResources);
+        }
+
         // --- Criteria, problems and the membership filter ---
 
         [Fact]

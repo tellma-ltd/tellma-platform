@@ -205,8 +205,8 @@ namespace Tellma.Core.Abstractions.Tests.Access
                 AccessDecision byTheSet = access.Decide(HeaderRead, [criterion], owner, at);
 
                 List<RoleAccessGrant> current = [.. access.Grants.Where(grant => grant.IsCurrentAt(at))];
-                AccessDecision composedOwner = AccessComposition.Compose(BookRead, current, access.Problems, [], null);
-                AccessDecision composed = AccessComposition.Compose(HeaderRead, current, access.Problems, [criterion], composedOwner);
+                AccessDecision composedOwner = AccessComposition.Compose(BookRead, current, access.Problems, [], null, access.ActionResources);
+                AccessDecision composed = AccessComposition.Compose(HeaderRead, current, access.Problems, [criterion], composedOwner, access.ActionResources);
 
                 Assert.Equal(byTheSet.Outcome, composed.Outcome);
                 Assert.Equal(byTheSet.Grants, composed.Grants);
@@ -220,13 +220,14 @@ namespace Tellma.Core.Abstractions.Tests.Access
         [Fact]
         public void Composition_refuses_null_lists_and_null_items()
         {
-            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, null!, [], [], null));
-            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, [], null!, [], null));
-            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, [], [], null!, null));
-            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(BookRead, [null!], [], [], null));
-            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(BookRead, [], [null!], [], null));
-            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(HeaderRead, [], [], [], null));
-            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(Securable(Book, "*", Book), [], [], [], null));
+            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, null!, [], [], null, Actions));
+            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, [], null!, [], null, Actions));
+            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, [], [], null!, null, Actions));
+            _ = Assert.Throws<ArgumentNullException>(() => AccessComposition.Compose(BookRead, [], [], [], null, null!));
+            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(BookRead, [null!], [], [], null, Actions));
+            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(BookRead, [], [null!], [], null, Actions));
+            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(HeaderRead, [], [], [], null, Actions));
+            _ = Assert.Throws<ArgumentException>(() => AccessComposition.Compose(Securable(Book, "*", Book), [], [], [], null, Actions));
         }
 
         /// <summary>Decides reading the headers, the book's decision taken first.</summary>

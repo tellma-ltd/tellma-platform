@@ -68,11 +68,7 @@ namespace Tellma.Core.Tests.Access
         /// <summary>Creates the builder over the fixture.</summary>
         public UserAccessBuilderTests()
         {
-            _builder = new UserAccessBuilder(
-                new PermissionClassifier(Registry, new QueryexEngine()),
-                new AccessMetrics(_services.GetRequiredService<IMeterFactory>()),
-                _services.GetRequiredService<ILoggerFactory>(),
-                _time);
+            _builder = NewBuilder(new PermissionClassifier(Registry, new QueryexEngine()));
         }
 
         /// <inheritdoc />
@@ -95,6 +91,8 @@ namespace Tellma.Core.Tests.Access
         [InlineData(Widget, "Approve", "Amount > 1", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("fx.Report", "*", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("fx.Mixed", "*", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
+        [InlineData("fx.Mixed", "Read", "Amount > 1", false, AccessProblemCode.FilterUnsupported)]
+        [InlineData("fx.Mixed", "Save", "Name = 'x'", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "Read", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "*", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "*", null, true, AccessProblemCode.WildcardResourceOnPublicRole)]
@@ -187,13 +185,50 @@ namespace Tellma.Core.Tests.Access
             UserAccess access = Build(
                 Row(1, Widget, "Read", "OwnerId = me() and Kind.Name = 'x'"),
                 Row(2, Widget, "*", "Amount > 1"),
-                Row(3, "fx.Mixed", "Read", "Amount > 1"),
-                Row(4, "fx.Mixed", "Save", "Name = 'x'"),
-                Row(5, Kind, "Read", "Name = 'x'"));
+                Row(3, "fx.Gadget", "Save", "Amount > 1"),
+                Row(4, Kind, "Read", "Name = 'x'"));
 
             Assert.Empty(access.Problems);
-            Assert.Equal([1, 2, 3, 4, 5], access.Grants.Select(static grant => grant.PermissionId));
+            Assert.Equal([1, 2, 3, 4], access.Grants.Select(static grant => grant.PermissionId));
             Assert.All(access.Grants, static grant => Assert.Equal(QueryexLanguage.Version, grant.FilterQueryexVersion));
+        }
+
+        [Fact]
+        public void A_filter_on_a_resource_whose_securables_take_two_roots_never_reaches_reading()
+        {
+            // fx.Mixed reads widgets but saves kinds: a filter written for saving kinds would bind
+            // to a widget's column when the implied read applied it.
+            UserAccess access = Build(
+                Row(1, "fx.Mixed", "Save", "Name = 'x'"),
+                Row(2, "fx.Mixed", "Read", "Amount > 1"),
+                Row(3, Widget, "Read", "Amount > 1"));
+            SecurableDescriptor mixedRead = Registry.Find("fx.Mixed", "Read")!;
+
+            Assert.Equal(
+                [(1, AccessProblemCode.FilterUnsupported), (2, AccessProblemCode.FilterUnsupported)],
+                access.Problems.Select(static problem => (problem.PermissionId, problem.Code)));
+            Assert.Equal([3], access.Grants.Select(static grant => grant.PermissionId));
+            Assert.Equal(AccessOutcome.Denied, access.Decide(mixedRead, [], null, Start).Outcome);
+
+            // Unfiltered, the same rows grant, and the save implies reading.
+            UserAccess unfiltered = Build(Row(1, "fx.Mixed", "Save"));
+            Assert.Equal(AccessOutcome.Unrestricted, unfiltered.Decide(mixedRead, [], null, Start).Outcome);
+        }
+
+        [Fact]
+        public void A_wildcard_resource_row_implies_reading_only_the_resources_that_register_its_action()
+        {
+            UserAccess first = Build(Row(1, "*", "approve"));
+            UserAccess second = Build(Row(1, "*", "Run"));
+
+            Assert.Equal(AccessOutcome.Unrestricted, first.Decide(Registry.Find(Widget, "Read")!, [], null, Start).Outcome);
+            Assert.Equal(AccessOutcome.Denied, first.Decide(Registry.Find(Kind, "Read")!, [], null, Start).Outcome);
+            Assert.Equal(AccessOutcome.Denied, first.Decide(Registry.Find("fx.Mixed", "Read")!, [], null, Start).Outcome);
+            Assert.Equal(AccessOutcome.Denied, second.Decide(Registry.Find(Widget, "Read")!, [], null, Start).Outcome);
+
+            // One map, frozen from the registry, serves every set.
+            Assert.Same(first.ActionResources, second.ActionResources);
+            Assert.True(first.ActionResources.Registers("fx.Report", "Run"));
         }
 
         [Fact]
@@ -324,7 +359,7 @@ namespace Tellma.Core.Tests.Access
 
             _ = classifier.Classify(Widget, "Read", "Amount > 1", QueryexLanguage.Version, false, Schema, validations);
             _ = classifier.Classify("fx.Gadget", "*", "Amount > 1", QueryexLanguage.Version, false, Schema, validations);
-            _ = classifier.Classify("fx.Mixed", "Read", "Amount > 1", QueryexLanguage.Version, false, Schema, validations);
+            _ = classifier.Classify("FX.GADGET", "Save", "Amount > 1", QueryexLanguage.Version, false, Schema, validations);
             Assert.Equal([(Widget, "Amount > 1", QueryexLanguage.Version)], validations.Keys);
 
             _ = classifier.Classify(Kind, "Read", "Amount > 1", QueryexLanguage.Version, false, Schema, validations);
@@ -342,6 +377,44 @@ namespace Tellma.Core.Tests.Access
 
             Assert.Equal(AccessProblemCode.FilterInvalid, Assert.Single(access.Problems).Code);
             Assert.Equal([2], access.Grants.Select(static grant => grant.PermissionId));
+        }
+
+        // --- An engine that fails ---
+
+        [Fact]
+        public void A_filter_the_engine_fails_on_grants_nothing_and_the_failure_reaches_the_drift_log()
+        {
+            InvalidOperationException defect = new("The engine failed.");
+            QueryexEngine engine = new();
+            UserAccessBuilder builder = NewBuilder(new PermissionClassifier(
+                Registry,
+                (text, options) => text == "Amount > 13" ? throw defect : engine.Validate(text, options)));
+
+            UserAccess access = builder.Build(
+                7,
+                42,
+                FirstTag,
+                Guid.Empty,
+                [Row(1, Widget, "Read", "Amount > 13"), Row(2, Widget, "Save", "Amount > 1"), Row(3, Kind, "Read")],
+                Schema);
+
+            AccessProblem problem = Assert.Single(access.Problems);
+            Assert.Equal((1, AccessProblemCode.FilterInvalid), (problem.PermissionId, problem.Code));
+            Assert.Empty(problem.Diagnostics);
+            Assert.Equal([2, 3], access.Grants.Select(static grant => grant.PermissionId));
+            Assert.Same(defect, Assert.Single(Drift()).Exception);
+        }
+
+        [Fact]
+        public void A_cancelled_validation_propagates()
+        {
+            UserAccessBuilder builder = NewBuilder(new PermissionClassifier(
+                Registry,
+                static (_, _) => throw new OperationCanceledException()));
+
+            _ = Assert.Throws<OperationCanceledException>(
+                () => builder.Build(7, 42, FirstTag, Guid.Empty, [Row(1, Kind, "Read"), Row(2, Widget, "Read", "Amount > 1")], Schema));
+            Assert.Empty(Drift());
         }
 
         // --- Reporting ---
@@ -468,6 +541,18 @@ namespace Tellma.Core.Tests.Access
                 .Property("KindId", QueryexType.QxNumeric, "KindId", isNotNull: true)
                 .Navigation("Kind", Kind, "KindId");
             return builder.Build();
+        }
+
+        /// <summary>A builder over the fixture's instruments, logs and clock.</summary>
+        /// <param name="classifier">The classifier.</param>
+        /// <returns>The builder.</returns>
+        private UserAccessBuilder NewBuilder(PermissionClassifier classifier)
+        {
+            return new UserAccessBuilder(
+                classifier,
+                new AccessMetrics(_services.GetRequiredService<IMeterFactory>()),
+                _services.GetRequiredService<ILoggerFactory>(),
+                _time);
         }
 
         /// <summary>Builds user 42's set in tenant 7 under the first tag.</summary>

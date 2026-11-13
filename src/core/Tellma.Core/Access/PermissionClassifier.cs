@@ -18,8 +18,9 @@ namespace Tellma.Core.Access
     ///     <para>
     ///         The checks run in the drift table's order, the first failing one deciding: a public
     ///         role naming the wildcard resource; an unknown resource (aliases considered); an unknown
-    ///         action; a filter where none binds (no filter root, a resource whose securables share
-    ///         none, or the wildcard resource); a missing or unsupported Queryex version; a filter the
+    ///         action; a filter where none binds (no filter root, the wildcard resource, or a resource
+    ///         whose securables that take a filter do not share one root, since a filter on any
+    ///         action also reaches reading); a missing or unsupported Queryex version; a filter the
     ///         engine does not validate against the tenant's schema.
     ///     </para>
     ///     <para>
@@ -29,12 +30,41 @@ namespace Tellma.Core.Access
     ///         otherwise imply reading every resource.
     ///     </para>
     /// </remarks>
-    /// <param name="registry">The securable registry.</param>
-    /// <param name="engine">The Queryex engine that validates filters.</param>
-    internal sealed class PermissionClassifier(ISecurableRegistry registry, QueryexEngine engine)
+    internal sealed class PermissionClassifier
     {
+        /// <summary>The securable registry.</summary>
+        private readonly ISecurableRegistry _registry;
+
+        /// <summary>Validates one filter; the engine's own validation but in tests.</summary>
+        private readonly Func<string, ValidationOptions, QueryexResult<ValidatedExpression>> _validate;
+
         /// <summary>Every registered action, ignoring case, with its registered spelling.</summary>
-        private readonly Dictionary<string, string> _actions = RegisteredActions(registry);
+        private readonly Dictionary<string, string> _actions;
+
+        /// <summary>Creates the classifier over the registry, validating with the engine.</summary>
+        /// <param name="registry">The securable registry.</param>
+        /// <param name="engine">The Queryex engine that validates filters.</param>
+        public PermissionClassifier(ISecurableRegistry registry, QueryexEngine engine)
+            : this(registry, (engine ?? throw new ArgumentNullException(nameof(engine))).Validate)
+        {
+        }
+
+        /// <summary>Creates the classifier over the registry with a validation of its own, for tests.</summary>
+        /// <param name="registry">The securable registry.</param>
+        /// <param name="validate">Validates one filter text under the given options.</param>
+        internal PermissionClassifier(ISecurableRegistry registry, Func<string, ValidationOptions, QueryexResult<ValidatedExpression>> validate)
+        {
+            ArgumentNullException.ThrowIfNull(registry);
+            ArgumentNullException.ThrowIfNull(validate);
+
+            _registry = registry;
+            _validate = validate;
+            _actions = RegisteredActions(registry);
+            ActionResources = ActionResourceMap.From(registry.All);
+        }
+
+        /// <summary>The resources that register each action, frozen once from the registry and shared by every set.</summary>
+        public ActionResourceMap ActionResources { get; }
 
         /// <summary>Classifies one stored permission.</summary>
         /// <param name="resource">The stored resource: a name, a former name or the wildcard.</param>
@@ -81,7 +111,7 @@ namespace Tellma.Core.Access
             }
 
             // --- A concrete resource, registered under its name or a former name ---
-            if (registry.FindResource(storedResource) is not string registered)
+            if (_registry.FindResource(storedResource) is not string registered)
             {
                 return PermissionClassification.Drift(storedResource, storedAction, AccessProblemCode.UnknownResource);
             }
@@ -92,7 +122,7 @@ namespace Tellma.Core.Access
             {
                 resolvedAction = AccessActions.Wildcard;
             }
-            else if (registry.Find(registered, storedAction) is SecurableDescriptor securable)
+            else if (_registry.Find(registered, storedAction) is SecurableDescriptor securable)
             {
                 resolvedAction = securable.Action;
             }
@@ -107,12 +137,16 @@ namespace Tellma.Core.Access
                 return PermissionClassification.Grant(registered, resolvedAction, null, null);
             }
 
-            // --- A filter needs a root to bind against and a version this engine compiles ---
-            if (SecurableFilterRoots.Of(registry, registered, resolvedAction) is not string root)
+            // --- A filter needs the one root the resource's filterable securables share: a filter
+            // on any action also reaches reading, so it must bind against the same entity there ---
+            if (SecurableFilterRoots.Of(_registry, registered, resolvedAction) is not string root
+                || SecurableFilterRoots.Shared(_registry.ForResource(registered)) is not string shared
+                || !string.Equals(root, shared, StringComparison.OrdinalIgnoreCase))
             {
                 return PermissionClassification.Drift(registered, resolvedAction, AccessProblemCode.FilterUnsupported);
             }
 
+            // --- And a version this engine compiles ---
             if (version is not int stamp || !QueryexLanguage.IsSupported(stamp))
             {
                 return PermissionClassification.Drift(registered, resolvedAction, AccessProblemCode.VersionUnsupported);
@@ -130,8 +164,6 @@ namespace Tellma.Core.Access
         /// <returns>The actions, ignoring case.</returns>
         private static Dictionary<string, string> RegisteredActions(ISecurableRegistry registry)
         {
-            ArgumentNullException.ThrowIfNull(registry);
-
             Dictionary<string, string> actions = new(StringComparer.OrdinalIgnoreCase);
             foreach (SecurableDescriptor securable in registry.All)
             {
@@ -174,7 +206,7 @@ namespace Tellma.Core.Access
             {
                 // The options of a stored filter: a predicate over the root, under its own stamp,
                 // with a user and no parameters, within the profile of one stored filter.
-                QueryexResult<ValidatedExpression> result = engine.Validate(filter, new ValidationOptions
+                QueryexResult<ValidatedExpression> result = _validate(filter, new ValidationOptions
                 {
                     Schema = schema,
                     Root = entity,

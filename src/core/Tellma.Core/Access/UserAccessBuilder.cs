@@ -139,6 +139,7 @@ namespace Tellma.Core.Access
                 ComputedAt = now,
                 Grants = ordered,
                 Problems = found,
+                ActionResources = classifier.ActionResources,
             };
 
             // --- Reported once per permission and problem for each version of the tenant's permissions ---

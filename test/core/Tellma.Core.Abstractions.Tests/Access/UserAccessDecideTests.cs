@@ -116,16 +116,61 @@ namespace Tellma.Core.Abstractions.Tests.Access
         }
 
         [Fact]
-        public void The_wildcard_resource_reaches_every_resource_and_an_action_on_it_implies_reading_them_all()
+        public void The_wildcard_resource_reaches_its_action_on_every_resource_and_reading_or_everything_everywhere()
         {
             UserAccess save = Set(Grant("*", "Save"));
 
             Assert.Equal(AccessOutcome.Unrestricted, save.Decide(Securable(Kind, "Save", Kind), [], null, Now).Outcome);
-            Assert.Equal(AccessOutcome.Unrestricted, save.Decide(Securable(Kind, "Read", Kind), [], null, Now).Outcome);
             Assert.Equal(AccessOutcome.Denied, save.Decide(Securable(Kind, "Delete", Kind), [], null, Now).Outcome);
+
+            UserAccess read = Set(Grant("*", "Read"));
+            Assert.Equal(AccessOutcome.Unrestricted, read.Decide(Securable("fx.Anything", "Read"), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Denied, read.Decide(Securable(Kind, "Save", Kind), [], null, Now).Outcome);
 
             UserAccess everything = Set(Grant("*", "*"));
             Assert.Equal(AccessOutcome.Unrestricted, everything.Decide(Securable("fx.Anything", "Approve"), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Unrestricted, everything.Decide(Securable("fx.Anything", "Read"), [], null, Now).Outcome);
+        }
+
+        [Fact]
+        public void A_wildcard_resource_grant_on_another_action_implies_reading_only_the_resources_that_register_it()
+        {
+            // Only the widgets register Invite: the grant reads them and nothing else.
+            UserAccess access = Set(Grant("*", "Invite"));
+
+            Assert.Equal(AccessOutcome.Unrestricted, access.Decide(WidgetSecurable("Read"), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Denied, access.Decide(Securable(Kind, "Read", Kind), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Denied, access.Decide(Securable("fx.Anything", "Read"), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Denied, access.Decide(WidgetSecurable("Save"), [], null, Now).Outcome);
+
+            // Without the registry's actions a set implies no read through the wildcard resource.
+            UserAccess unregistered = access with { ActionResources = ActionResourceMap.Empty };
+            Assert.Equal(AccessOutcome.Denied, unregistered.Decide(WidgetSecurable("Read"), [], null, Now).Outcome);
+            Assert.Equal(AccessOutcome.Unrestricted, unregistered.Decide(WidgetSecurable("Invite"), [], null, Now).Outcome);
+        }
+
+        [Fact]
+        public void A_filtered_wildcard_resource_grant_carries_its_filter_to_reading_only_where_its_action_is_registered()
+        {
+            UserAccess access = Set(Grant("*", "Approve", "Amount > 10"));
+
+            AccessDecision widgets = access.Decide(WidgetSecurable("Read"), [], null, Now);
+            Assert.Equal(AccessOutcome.Filtered, widgets.Outcome);
+            Assert.Equal([("Amount > 10", QueryexLanguage.Version)], Leaves(widgets));
+
+            AccessDecision kinds = access.Decide(Securable(Kind, "Read", Kind), [], null, Now);
+            Assert.Equal(AccessOutcome.Denied, kinds.Outcome);
+            Assert.Empty(kinds.Grants);
+        }
+
+        [Fact]
+        public void A_problem_on_the_wildcard_resource_is_listed_only_where_its_pair_would_have_reached()
+        {
+            AccessProblem invite = Problem(1, "*", "Invite", AccessProblemCode.WildcardResourceOnPublicRole);
+            UserAccess access = Set() with { Problems = [invite] };
+
+            Assert.Equal([invite], access.Decide(WidgetSecurable("Read"), [], null, Now).Problems);
+            Assert.Empty(access.Decide(Securable(Kind, "Read", Kind), [], null, Now).Problems);
         }
 
         // --- Absorption and union ---

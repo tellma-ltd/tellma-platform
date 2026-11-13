@@ -809,8 +809,10 @@ active public role, and the stored permissions that grant nothing, each kept as 
 `UserAccess.Decide` is a pure function of the set and the instant it is given, so a window opening or
 closing needs no reload; `AccessComposition.Compose` is the same composition over a list of grants,
 for "who holds this". The composition: a grant matches a securable `(R, A)` when its resource is `R`
-or `*` and its action is `A`, `*`, or any action when `A` is `Read`; a filtered grant never reaches a
-securable without a filter root; any unfiltered match is unrestricted; otherwise the filters union as
+or `*` and its action is `A` or `*`; when `A` is `Read`, a grant of another action on `R` matches too,
+and so does one on `*`, but only when `R` registers that action (`ActionResourceMap`, frozen from the
+registry and shared by every set), so a grant holding an action on one resource never reads every
+other. A filtered grant never reaches a securable without a filter root; any unfiltered match is unrestricted; otherwise the filters union as
 one leaf per distinct text and stamp, sorted ordinally, then each bespoke criterion of the action
 (`IAccessCriteriaProvider`), then the owner's decision on the same action through the owner's
 navigation. Nothing to union is a denial. The system set is unrestricted on everything; a set without
@@ -824,7 +826,7 @@ classified by `PermissionClassifier`, in the drift table's order, the first fail
 | `WildcardResourceOnPublicRole` | names the resource `*` on a public role, which reaches every user |
 | `UnknownResource` | names a resource the registry holds under no name or former name |
 | `UnknownAction` | names an action the resource does not register; with the resource `*`, an action no resource registers |
-| `FilterUnsupported` | carries a filter where none binds: the securable has no filter root, the resource's securables share none (`*` action), or the resource is `*` |
+| `FilterUnsupported` | carries a filter where none binds: the securable has no filter root, the resource is `*`, or the resource's securables that take a filter do not share one root (a filter on any action also reaches `Read`, so it must bind against the same entity there) |
 | `VersionUnsupported` | carries a filter without a Queryex version, or with one this engine does not compile |
 | `FilterInvalid` | carries a filter the engine does not validate against the tenant's schema, as a predicate over the root with a user, no parameters and the `QueryexProfiles.AccessLimits` |
 

@@ -8,7 +8,8 @@ using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Access
 {
-    // The composition contract is spec 0014 §5.2 (steps 2 to 5) and §5.5 (owners).
+    // The composition contract is spec 0014 §5.2 (steps 2 to 5) and §5.5 (owners); the implied read
+    // of a wildcard-resource grant is narrowed to the resources that register its action.
     /// <summary>
     ///     How grants compose into a decision on one securable. <see cref="UserAccess.Decide" />
     ///     composes one caller's set through it, and "who holds this" composes each user's grants
@@ -18,8 +19,10 @@ namespace Tellma.Core.Abstractions.Access
     ///     <para>
     ///         For a securable <c>(R, A)</c>, a grant is a candidate when its resource is <c>R</c> or
     ///         the wildcard and its action is <c>A</c>, the wildcard, or, when <c>A</c> is
-    ///         <c>Read</c>, any action: a grant of another action implies reading with the same
-    ///         filter, never a wider one. No other implication exists. Names compare ignoring case.
+    ///         <c>Read</c>, another action: a grant of another action implies reading with the same
+    ///         filter, never a wider one. On the wildcard resource it implies reading only the
+    ///         resources that register that action, so a grant holding an action on one resource
+    ///         never reads every other. No other implication exists. Names compare ignoring case.
     ///     </para>
     ///     <para>
     ///         A securable without a filter root keeps only its unfiltered candidates: a filtered grant
@@ -53,6 +56,10 @@ namespace Tellma.Core.Abstractions.Access
         ///     For a securable with an owner, the decision on the owner's resource and the securable's
         ///     action, taken first; null for any other securable.
         /// </param>
+        /// <param name="actionResources">
+        ///     The resources that register each action, from the securable registry, as a caller's set
+        ///     carries them in <see cref="UserAccess.ActionResources" />.
+        /// </param>
         /// <returns>The decision.</returns>
         /// <exception cref="ArgumentNullException">An argument other than the owner decision is null.</exception>
         /// <exception cref="ArgumentException">
@@ -64,13 +71,15 @@ namespace Tellma.Core.Abstractions.Access
             IReadOnlyList<RoleAccessGrant> grants,
             IReadOnlyList<AccessProblem> problems,
             IReadOnlyList<AccessCriterion> criteria,
-            AccessDecision? owner)
+            AccessDecision? owner,
+            ActionResourceMap actionResources)
         {
             RequireArguments(securable, criteria, owner);
+            ArgumentNullException.ThrowIfNull(actionResources);
             IReadOnlyList<RoleAccessGrant> checkedGrants = AccessLists.Copy(grants, nameof(grants));
             IReadOnlyList<AccessProblem> checkedProblems = AccessLists.Copy(problems, nameof(problems));
 
-            return Finish(securable, Direct(securable, checkedGrants, checkedProblems), criteria, owner);
+            return Finish(securable, Direct(securable, checkedGrants, checkedProblems, actionResources), criteria, owner);
         }
 
         /// <summary>Checks the arguments every composition takes.</summary>
@@ -130,19 +139,31 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="resource">The pair's resource, which may be the wildcard.</param>
         /// <param name="action">The pair's action, which may be the wildcard.</param>
         /// <param name="securable">The securable.</param>
+        /// <param name="actionResources">The resources that register each action.</param>
         /// <returns>
         ///     True when the resource is the securable's or the wildcard and the action is the
-        ///     securable's, the wildcard, or any action when the securable's is <c>Read</c>.
+        ///     securable's or the wildcard; or, when the securable's action is <c>Read</c>, when the
+        ///     pair names another action on the securable's resource, or on the wildcard resource
+        ///     and the securable's resource registers that action.
         /// </returns>
-        internal static bool Matches(string resource, string action, SecurableDescriptor securable)
+        internal static bool Matches(string resource, string action, SecurableDescriptor securable, ActionResourceMap actionResources)
         {
-            bool resourceMatches = resource == CoreResources.Wildcard
-                || string.Equals(resource, securable.Resource, StringComparison.OrdinalIgnoreCase);
+            bool wildcardResource = resource == CoreResources.Wildcard;
+            if (!wildcardResource && !string.Equals(resource, securable.Resource, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
 
-            return resourceMatches
-                && (action == AccessActions.Wildcard
-                    || string.Equals(action, securable.Action, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(securable.Action, AccessActions.Read, StringComparison.OrdinalIgnoreCase));
+            // --- The action itself, or every action ---
+            if (action == AccessActions.Wildcard || string.Equals(action, securable.Action, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // --- The implied read: a concrete resource registers its own actions, since a row
+            // naming any other drifts; on the wildcard resource, only where the action is registered ---
+            return string.Equals(securable.Action, AccessActions.Read, StringComparison.OrdinalIgnoreCase)
+                && (!wildcardResource || actionResources.Registers(securable.Resource, action));
         }
 
         /// <summary>The system set's decision: unrestricted, through one system grant.</summary>
@@ -167,8 +188,13 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="securable">The securable.</param>
         /// <param name="grants">The grants current at the decision time.</param>
         /// <param name="problems">The broken permissions.</param>
+        /// <param name="actionResources">The resources that register each action.</param>
         /// <returns>The direct side.</returns>
-        internal static DirectSide Direct(SecurableDescriptor securable, IReadOnlyList<RoleAccessGrant> grants, IReadOnlyList<AccessProblem> problems)
+        internal static DirectSide Direct(
+            SecurableDescriptor securable,
+            IReadOnlyList<RoleAccessGrant> grants,
+            IReadOnlyList<AccessProblem> problems,
+            ActionResourceMap actionResources)
         {
             bool filterable = securable.FilterRoot is not null;
 
@@ -177,7 +203,7 @@ namespace Tellma.Core.Abstractions.Access
             bool unrestricted = false;
             foreach (RoleAccessGrant grant in grants)
             {
-                if (!Matches(grant.Resource, grant.Action, securable))
+                if (!Matches(grant.Resource, grant.Action, securable, actionResources))
                 {
                     continue;
                 }
@@ -197,7 +223,7 @@ namespace Tellma.Core.Abstractions.Access
             List<AccessProblem> matched = [];
             foreach (AccessProblem problem in problems)
             {
-                if (Matches(problem.Resource, problem.Action, securable))
+                if (Matches(problem.Resource, problem.Action, securable, actionResources))
                 {
                     matched.Add(problem);
                 }

@@ -61,6 +61,7 @@ namespace Tellma.Core.Abstractions.Access
             IsSystem = original.IsSystem;
             Grants = original.Grants;
             Problems = original.Problems;
+            ActionResources = original.ActionResources;
             _memo = new();
             _validatedTicks = Volatile.Read(ref original._validatedTicks);
         }
@@ -119,6 +120,17 @@ namespace Tellma.Core.Abstractions.Access
             get;
             init => field = AccessLists.Copy(value, nameof(Problems));
         } = [];
+
+        /// <summary>
+        ///     The resources that register each action, from the securable registry the set was
+        ///     built against: a grant on the wildcard resource and another action than <c>Read</c>
+        ///     implies reading only those. Empty by default, which implies no such read.
+        /// </summary>
+        public ActionResourceMap ActionResources
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(ActionResources));
+        } = ActionResourceMap.Empty;
 
         /// <summary>Decides what the caller may do with one securable at one instant.</summary>
         /// <param name="securable">The registered securable; never a wildcard.</param>
@@ -228,7 +240,7 @@ namespace Tellma.Core.Abstractions.Access
                 }
             }
 
-            AccessComposition.DirectSide side = AccessComposition.Direct(securable, current, Problems);
+            AccessComposition.DirectSide side = AccessComposition.Direct(securable, current, Problems, ActionResources);
 
             // --- Memoised for the interval; a full memo composes afresh rather than growing ---
             (long from, long until) = IntervalAt(ticks);

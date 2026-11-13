@@ -35,6 +35,18 @@ namespace Tellma.Core.Abstractions.Tests.Access
         /// <summary>The query schema of the fixture's entities.</summary>
         public static QueryexSchema Schema { get; } = BuildSchema();
 
+        /// <summary>
+        ///     The resources that register each action: every fixture resource registers
+        ///     <c>Read</c>, <c>Save</c> and <c>Delete</c>; the widgets alone register <c>Approve</c>
+        ///     and <c>Invite</c>.
+        /// </summary>
+        public static ActionResourceMap Actions { get; } = ActionResourceMap.From(
+        [
+            .. new[] { Widget, Kind, Book, Header, Line }.SelectMany(static resource => new[] { "Read", "Save", "Delete" }.Select(action => Securable(resource, action))),
+            Securable(Widget, "Approve"),
+            Securable(Widget, "Invite"),
+        ]);
+
         /// <summary>A securable of the fixture's feature.</summary>
         /// <param name="resource">The resource.</param>
         /// <param name="action">The action.</param>
@@ -87,12 +99,12 @@ namespace Tellma.Core.Abstractions.Tests.Access
                 endsAt);
         }
 
-        /// <summary>A caller's set of the given grants and problems.</summary>
+        /// <summary>A caller's set of the given grants, over the fixture's registered actions.</summary>
         /// <param name="grants">The grants.</param>
         /// <returns>The set.</returns>
         public static UserAccess Set(params RoleAccessGrant[] grants)
         {
-            return new UserAccess { TenantId = 7, UserId = 42, ComputedAt = Now, Grants = grants };
+            return new UserAccess { TenantId = 7, UserId = 42, ComputedAt = Now, Grants = grants, ActionResources = Actions };
         }
 
         /// <summary>A problem of a stored permission.</summary>
