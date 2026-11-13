@@ -226,6 +226,7 @@ namespace Tellma.Core.Tests.Composition.Checks
                     HandBuiltMetadata.Entity(typeof(CounterRow), "fixture.Counter", typeof(long)),
                 ]),
                 securables: null,
+                securablesFailed: false,
                 problems);
 
             CompositionProblem problem = Assert.Single(problems);

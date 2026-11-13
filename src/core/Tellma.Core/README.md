@@ -663,8 +663,12 @@ register them: each `ISecurableContributor` service (a collection service), and 
 contributor once, on first resolution (the realised gate resolves it), then freezes the builder.
 
 - **Merging.** The same pair registered again is one securable: the first registration's
-  spelling and feature, sensitive when any registration says so. Another filter root, another owner
-  or another spelling of the resource or action is a problem.
+  spelling, sensitive when any registration says so. Another filter root, another owner, another
+  feature or another spelling of the resource or action is a problem.
+- **A throwing contributor** is a problem; the other contributors still run, and the registry then
+  holds no securable at all. The checks that judge against the registry (`core.notification-types`'
+  securable targets, the endpoint audit's securables) skip that part and add one line pointing to
+  `core.securables`.
 - **Feature.** `Add`'s `feature`, else the feature whose contributor registered it: the item's
   feature, the feature that registered the contributor's type, or `core` for a contributor
   registered by a factory or outside every feature.
@@ -674,7 +678,10 @@ contributor once, on first resolution (the realised gate resolves it), then free
   `MarkSensitive`, unless `MarkNotSensitive`. A mark of an unregistered pair, and a pair marked both
   ways, are problems; the latter stays sensitive.
 - **Aliases** resolve a renamed resource on `Find` alone, one step, to a registered resource.
-- **Lookup.** `All` is ordered by resource, then action, ignoring case; names compare
+- **Lookup.** `All` is ordered by resource, ignoring case, then by action: the platform's
+  actions first, in the order `Read`, `Save`, `Delete`, `Activate`, `Invite`, `Preferences`,
+  `Credentials`, `Retry`, `Cancel`, `Resume`, `Share`, `Publish`, `Transfer`, then any other action,
+  ignoring case, so the client lists a resource's actions in that order; names compare
   ordinal-ignore-case and keep their registered spelling. `Fingerprint` is the lowercase hex SHA-256
   of the sorted `Resource|Action|FilterRoot|IsSensitive|OwnerResource|OwnerNavigation` lines and
   `alias|Old|New` lines.
@@ -684,7 +691,9 @@ contributor once, on first resolution (the realised gate resolves it), then free
 `SecurablesClientAssetContributor` writes the `securables` section of the Core chunk: one
 `ClientSecurable` per securable, each label key the first of its chain that a neutral shared
 `Strings` resource of a composed feature declares (`INeutralStringKeys`), else the chain's first key
-with humanized English as the fallback.
+with humanized English as the fallback (pluralized for an entity's plural key). Core's `Strings`
+declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Core_Role_Plural`,
+`Securable_core_UserStamp` and `Feature_core`.
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|

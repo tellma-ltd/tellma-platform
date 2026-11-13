@@ -16,7 +16,12 @@ namespace Tellma.Core.Abstractions.Access
     /// </remarks>
     public interface ISecurableRegistry
     {
-        /// <summary>Every registered securable, ordered by resource, then action, ignoring case.</summary>
+        /// <summary>
+        ///     Every registered securable, ordered by resource, ignoring case, then by action: the
+        ///     platform's actions of <see cref="AccessActions" /> first, in the order that class
+        ///     declares them (<c>Read</c>, <c>Save</c>, <c>Delete</c>, <c>Activate</c>, …), then any
+        ///     other action, ignoring case. The client lists a resource's actions in this order.
+        /// </summary>
         IReadOnlyList<SecurableDescriptor> All { get; }
 
         /// <summary>Every registered resource once, in the order of <see cref="All" />.</summary>

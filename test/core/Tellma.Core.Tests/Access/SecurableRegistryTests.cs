@@ -97,11 +97,11 @@ namespace Tellma.Core.Tests.Access
         // --- Merging by pair ---
 
         [Fact]
-        public void The_same_pair_registered_again_is_one_securable_of_the_first_feature_made_sensitive_by_either()
+        public void The_same_pair_registered_again_for_the_same_feature_is_one_securable_made_sensitive_by_either()
         {
             SecurableRegistry registry = Compose(
                 ("gl", static builder => builder.Add("gl.Center", "Save", "gl.Center")),
-                ("acme", static builder => builder.Add("GL.center", "Save", "GL.CENTER", isSensitive: true, feature: "acme")));
+                ("acme", static builder => builder.Add("GL.center", "Save", "GL.CENTER", isSensitive: true, feature: "gl")));
 
             SecurableDescriptor securable = Assert.Single(registry.All);
             Assert.Equal(new SecurableDescriptor("gl.Center", "Save", "gl.Center", true, "gl", null), securable);
@@ -109,28 +109,53 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
-        public void The_same_pair_with_another_filter_root_owner_or_action_spelling_is_a_problem()
+        public void The_same_pair_with_another_filter_root_owner_action_spelling_or_feature_is_a_problem()
         {
             SecurableRegistry registry = Compose(
                 ("gl", static builder => builder
                     .Add("gl.Center", "Read", "gl.Center")
-                    .Add("gl.CenterLine", "Read", "gl.CenterLine", owner: new SecurableOwner("gl.Center", "Center"))),
+                    .Add("gl.CenterLine", "Read", "gl.CenterLine", owner: new SecurableOwner("gl.Center", "Center"))
+                    .Add("gl.Account", "Read", "gl.Account")),
                 ("acme", static builder => builder
-                    .Add("gl.Center", "Read", null)
-                    .Add("gl.CenterLine", "Read", "gl.CenterLine", owner: new SecurableOwner("gl.Center", "Parent"))
-                    .Add("gl.Center", "READ", "gl.Center")));
+                    .Add("gl.Center", "Read", null, feature: "gl")
+                    .Add("gl.CenterLine", "Read", "gl.CenterLine", owner: new SecurableOwner("gl.Center", "Parent"), feature: "gl")
+                    .Add("gl.Center", "READ", "gl.Center", feature: "gl")
+                    .Add("gl.Account", "Read", "gl.Account")));
 
             Assert.Equal(
                 [
                     "The securable 'gl.Center:Read' is registered with the filter root 'gl.Center' by the feature 'gl' and with none by the feature 'acme'.",
                     "The securable 'gl.CenterLine:Read' is registered with the owner 'gl.Center' through 'Center' by the feature 'gl' and with 'gl.Center' through 'Parent' by the feature 'acme'.",
                     "The securable 'gl.Center:Read' of the feature 'gl' is registered with the action 'READ' by the feature 'acme'.",
+                    "The securable 'gl.Account:Read' is registered under the feature 'gl' by the feature 'gl' and under the feature 'acme' by the feature 'acme'.",
                 ],
                 Problems(registry));
 
             // The first registration stands.
             Assert.Equal("gl.Center", registry.Find("gl.Center", "Read")!.FilterRoot);
             Assert.Equal(new SecurableOwner("gl.Center", "Center"), registry.Find("gl.CenterLine", "Read")!.Owner);
+            Assert.Equal("gl", registry.Find("gl.Account", "Read")!.Feature);
+        }
+
+        [Fact]
+        public void A_pair_registered_under_two_features_is_a_problem_whether_the_feature_is_named_or_implied()
+        {
+            // Core registers core.User:Read for itself; a pack's stack contributor naming its own
+            // feature would group the pair elsewhere in the permissions editor.
+            SecurableRegistry registry = Compose(
+                ("core", static builder => builder.Add(CoreResources.User, AccessActions.Read, CoreResources.User)),
+                ("crud", static builder => builder
+                    .Add(CoreResources.User, AccessActions.Read, CoreResources.User, feature: "acme")
+                    .Add(CoreResources.User, AccessActions.Read, CoreResources.User, feature: "core")),
+                ("acme", static builder => builder.Add(CoreResources.User, AccessActions.Read, CoreResources.User)));
+
+            Assert.Equal(
+                [
+                    "The securable 'core.User:Read' is registered under the feature 'core' by the feature 'core' and under the feature 'acme' by the feature 'crud'.",
+                    "The securable 'core.User:Read' is registered under the feature 'core' by the feature 'core' and under the feature 'acme' by the feature 'acme'.",
+                ],
+                Problems(registry));
+            Assert.Equal("core", Assert.Single(registry.All).Feature);
         }
 
         [Fact]
@@ -210,6 +235,54 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
+        public void The_core_defaults_are_exactly_the_platforms_twelve_sensitive_pairs()
+        {
+            // Every pair of the user, role, general settings and schedule administration that a
+            // recent sign-in guards; a dropped or misspelled pair would silently lose its step-up.
+            (string Resource, string Action)[] expected =
+            [
+                ("core.User", "Save"),
+                ("core.User", "Delete"),
+                ("core.User", "Activate"),
+                ("core.User", "Invite"),
+                ("core.User", "Credentials"),
+                ("core.Role", "Save"),
+                ("core.Role", "Delete"),
+                ("core.Role", "Activate"),
+                ("core.Settings.General", "Save"),
+                ("core.Schedule", "Save"),
+                ("core.Schedule", "Delete"),
+                ("core.Schedule", "Activate"),
+            ];
+
+            Assert.Equal(expected.Order(), SecurableRegistry.CoreSensitive.Order());
+
+            // Registered, each is sensitive with no mark, and its neighbours are not.
+            SecurableRegistry registry = Compose(("core", Register));
+
+            Assert.Empty(registry.Problems);
+            Assert.All(expected, pair => Assert.True(registry.Find(pair.Resource, pair.Action)!.IsSensitive, $"{pair.Resource}:{pair.Action}"));
+            Assert.Equal(
+                ["core.Role:Read", "core.Settings.General:Read", "core.User:Read", "core.User:Preferences"],
+                registry.All.Where(static securable => !securable.IsSensitive).Select(static securable => securable.ToString()));
+
+            // Every default pair, and four neighbours of them.
+            void Register(SecurableRegistryBuilder builder)
+            {
+                foreach ((string resource, string action) in expected)
+                {
+                    _ = builder.Add(resource, action, null);
+                }
+
+                _ = builder
+                    .Add("core.User", "Read", null)
+                    .Add("core.Role", "Read", null)
+                    .Add("core.Settings.General", "Read", null)
+                    .Add("core.User", "Preferences", null);
+            }
+        }
+
+        [Fact]
         public void MarkSensitive_adds_a_pair_and_MarkNotSensitive_overrides_a_registration_that_said_sensitive()
         {
             SecurableRegistry registry = Compose(
@@ -248,19 +321,45 @@ namespace Tellma.Core.Tests.Access
         // --- Order, lookup and the fingerprint ---
 
         [Fact]
-        public void All_is_ordered_by_resource_then_action_ignoring_case_and_lookups_ignore_case()
+        public void All_is_ordered_by_resource_then_the_platforms_actions_in_their_order_then_others_ignoring_case()
         {
             SecurableRegistry registry = Compose(("acme", static builder => builder
                 .Add("gl.center", "Save", null)
                 .Add("acme.Report", "Read", null)
                 .Add("gl.center", "Delete", null)
-                .Add("GL.Account", "Read", null)));
+                .Add("GL.Account", "Read", null)
+                .Add("core.User", "Credentials", null)
+                .Add("core.User", "Preferences", null)
+                .Add("core.User", "Archive", null)
+                .Add("core.User", "Invite", null)
+                .Add("core.User", "Activate", null)
+                .Add("core.User", "Approve", null)
+                .Add("core.User", "Delete", null)
+                .Add("core.User", "Save", null)
+                .Add("core.User", "Read", null)));
 
-            Assert.Equal(["acme.Report:Read", "GL.Account:Read", "gl.center:Delete", "gl.center:Save"], registry.All.Select(static securable => securable.ToString()));
-            Assert.Equal(["acme.Report", "GL.Account", "gl.center"], registry.Resources);
-            Assert.Equal(["Delete", "Save"], registry.ForResource("GL.CENTER").Select(static securable => securable.Action));
+            Assert.Equal(
+                [
+                    "acme.Report:Read",
+                    "core.User:Read",
+                    "core.User:Save",
+                    "core.User:Delete",
+                    "core.User:Activate",
+                    "core.User:Invite",
+                    "core.User:Preferences",
+                    "core.User:Credentials",
+                    "core.User:Approve",
+                    "core.User:Archive",
+                    "GL.Account:Read",
+                    "gl.center:Save",
+                    "gl.center:Delete",
+                ],
+                registry.All.Select(static securable => securable.ToString()));
+            Assert.Equal(["acme.Report", "core.User", "GL.Account", "gl.center"], registry.Resources);
+            Assert.Equal(["Save", "Delete"], registry.ForResource("GL.CENTER").Select(static securable => securable.Action));
             Assert.Equal("Save", registry.Find("Gl.Center", "save")!.Action);
             Assert.Null(registry.Find("gl.center", "Read"));
+            Assert.Null(registry.Find("gl.center", "Activate"));
             Assert.Null(registry.Find(null!, "Read"));
             Assert.Null(registry.Find("gl.center", null!));
             Assert.Empty(registry.ForResource(null!));
@@ -289,21 +388,73 @@ namespace Tellma.Core.Tests.Access
                 .Add("acme.Report", "Read", null)
                 .Add("gl.Center", "Read", "gl.Center"))).Fingerprint);
 
-            // Sensitivity, a filter root and an alias each move it.
+            // Sensitivity, a filter root and an alias each move it; so do an owner's resource and
+            // navigation, and an alias's target.
             Assert.NotEqual(fingerprint, Compose(("gl", First), ("acme", Second), ("acme.local", static builder => builder.MarkSensitive("acme.Report", "Read"))).Fingerprint);
             Assert.NotEqual(fingerprint, Compose(("gl", First), ("acme", static builder => builder.Add("acme.Report", "Read", "acme.Report").Alias("gl.CostCenter", "gl.Center"))).Fingerprint);
             Assert.NotEqual(fingerprint, Compose(("gl", First), ("acme", static builder => builder.Add("acme.Report", "Read", null))).Fingerprint);
+
+            string owned = Compose(("gl", static builder => Owned(builder, "gl.Center", "Center"))).Fingerprint;
+            Assert.NotEqual(owned, Compose(("gl", static builder => Owned(builder, "gl.Center", "Parent"))).Fingerprint);
+            Assert.NotEqual(owned, Compose(("gl", static builder => Owned(builder, "gl.Account", "Center"))).Fingerprint);
+            Assert.NotEqual(
+                Compose(("gl", static builder => builder.Add("gl.Center", "Read", null).Add("gl.Account", "Read", null).Alias("gl.CostCenter", "gl.Center"))).Fingerprint,
+                Compose(("gl", static builder => builder.Add("gl.Center", "Read", null).Add("gl.Account", "Read", null).Alias("gl.CostCenter", "gl.Account"))).Fingerprint);
+
+            // Two owners for one line, the rest unchanged.
+            static void Owned(SecurableRegistryBuilder builder, string resource, string navigation)
+            {
+                _ = builder
+                    .Add("gl.Center", "Read", "gl.Center")
+                    .Add("gl.Account", "Read", "gl.Account")
+                    .Add("gl.CenterLine", "Read", "gl.CenterLine", owner: new SecurableOwner(resource, navigation));
+            }
         }
 
         [Fact]
-        public void A_contributor_that_throws_fails_the_composition_naming_it_and_its_feature()
+        public void A_contributor_that_throws_is_a_problem_the_others_still_run_and_nothing_is_served()
         {
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-                () => Compose(("acme", static _ => throw new FormatException("bad pair"))));
+            int ran = 0;
+            SecurableRegistry registry = Compose(
+                ("acme", static _ => throw new FormatException("bad pair")),
+                ("gl", Gl),
+                ("crm", static _ => throw new InvalidOperationException("no stacks")));
 
-            Assert.StartsWith("The securable contributor ", exception.Message, StringComparison.Ordinal);
-            Assert.EndsWith(" of the feature 'acme' failed: bad pair", exception.Message, StringComparison.Ordinal);
-            _ = Assert.IsType<FormatException>(exception.InnerException);
+            // Every failing contributor once; nothing is judged against the part that composed.
+            Assert.Equal(1, ran);
+            Assert.True(registry.Failed);
+            Assert.Collection(
+                Problems(registry),
+                static problem => Assert.Matches("^The securable contributor .+ of the feature 'acme' failed with FormatException: bad pair$", problem),
+                static problem => Assert.Matches("^The securable contributor .+ of the feature 'crm' failed with InvalidOperationException: no stacks$", problem));
+            Assert.Empty(registry.All);
+            Assert.Empty(registry.Resources);
+            Assert.Null(registry.Find("gl.Center", "Read"));
+            Assert.Empty(registry.ForResource("gl.Center"));
+            Assert.Equal(Compose().Fingerprint, registry.Fingerprint);
+            Assert.False(Compose().Failed);
+
+            // A contributor that registers, one of them malformed, and counts its runs.
+            void Gl(SecurableRegistryBuilder builder)
+            {
+                ran++;
+                _ = builder.Add("gl.Center", "Read", "gl.Center").Add("*", "Read", null);
+            }
+        }
+
+        [Fact]
+        public void The_platforms_action_order_is_the_declaration_order_of_the_access_actions()
+        {
+            // The order the access actions are declared in, the wildcard aside.
+            string[] declared =
+            [
+                .. typeof(AccessActions).GetFields()
+                    .Where(static field => field.IsLiteral)
+                    .Select(static field => (string)field.GetRawConstantValue()!)
+                    .Where(static action => action != AccessActions.Wildcard),
+            ];
+
+            Assert.Equal(declared, SecurableRegistry.PlatformActionOrder);
         }
 
         [Fact]

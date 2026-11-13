@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography;
 using System.Text;
 using Tellma.Core.Abstractions.Access;
@@ -19,11 +20,22 @@ namespace Tellma.Core.Access
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///         Composition never throws over what the contributors registered. A conflict (the same
-    ///         pair with two filter roots or two owners, a resource or action spelled two ways, a pair
-    ///         marked both sensitive and not sensitive, an alias or a mark naming nothing registered)
-    ///         or a malformed name is kept in <see cref="Problems" />, which the startup gate reports;
-    ///         the registry keeps the first registration of a pair.
+    ///         Composition never throws. A conflict (the same pair with two filter roots, two owners
+    ///         or two features, a resource or action spelled two ways, a pair marked both sensitive and
+    ///         not sensitive, an alias or a mark naming nothing registered) or a malformed name is kept
+    ///         in <see cref="Problems" />, which the startup gate reports; the registry keeps the first
+    ///         registration of a pair.
+    ///     </para>
+    ///     <para>
+    ///         A contributor that throws is a problem too, and the registry then serves no securable
+    ///         at all (<see cref="Failed" />): a partial registry would judge endpoints and grants
+    ///         against registrations that are missing. Every other contributor still runs, so each
+    ///         failing one is reported, once, since the registry is composed once.
+    ///     </para>
+    ///     <para>
+    ///         <see cref="All" /> is ordered by resource, ignoring case, then by action: the platform's
+    ///         actions first, in the order of <see cref="PlatformActionOrder" />, then any other
+    ///         action, ignoring case. The client lists a resource's actions in this order.
     ///     </para>
     ///     <para>
     ///         A pair is sensitive when any registration says so, when it is one of the platform's
@@ -56,6 +68,27 @@ namespace Tellma.Core.Access
             ],
             PairComparer.Instance);
 
+        /// <summary>
+        ///     The platform's actions in the order a resource's actions are listed: reading, then
+        ///     writing, then the lifecycle and the rest. An action not listed follows them all.
+        /// </summary>
+        internal static readonly IReadOnlyList<string> PlatformActionOrder =
+        [
+            AccessActions.Read,
+            AccessActions.Save,
+            AccessActions.Delete,
+            AccessActions.Activate,
+            AccessActions.Invite,
+            AccessActions.Preferences,
+            AccessActions.Credentials,
+            AccessActions.Retry,
+            AccessActions.Cancel,
+            AccessActions.Resume,
+            AccessActions.Share,
+            AccessActions.Publish,
+            AccessActions.Transfer,
+        ];
+
         private readonly Dictionary<(string Resource, string Action), SecurableDescriptor> _byPair = new(PairComparer.Instance);
         private readonly Dictionary<string, IReadOnlyList<SecurableDescriptor>> _byResource = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
@@ -71,7 +104,6 @@ namespace Tellma.Core.Access
 
         /// <summary>Composes the registry from contributors already attributed to their features.</summary>
         /// <param name="contributors">The contributors, in order, each with the name of its feature.</param>
-        /// <exception cref="InvalidOperationException">A contributor threw.</exception>
         internal SecurableRegistry(IEnumerable<(ISecurableContributor Contributor, string Feature)> contributors)
         {
             ArgumentNullException.ThrowIfNull(contributors);
@@ -87,27 +119,40 @@ namespace Tellma.Core.Access
                 }
                 catch (Exception exception)
                 {
-                    // A contributor that throws is a bug in its feature: no partial registry is served.
-                    throw new InvalidOperationException(
-                        $"The securable contributor {TypeDisplay.Qualified(contributor.GetType())} of the feature '{feature}' failed: {exception.Message}",
-                        exception);
+                    // A contributor that throws is a bug in its feature. The rest still run, so every
+                    // failing contributor is reported at once; what they registered is not served.
+                    _problems.Add(Problem(
+                        $"The securable contributor {TypeDisplay.Qualified(contributor.GetType())} of the feature '{feature}' failed with {exception.GetType().Name}: {exception.Message}",
+                        "Fix the contributor so it registers its securables without throwing; until it does, no securable is registered."));
                 }
             }
 
             builder.Freeze();
+
+            // --- A failed composition serves nothing: no grant or endpoint is judged against a part ---
+            if (_problems.Count > 0)
+            {
+                Failed = true;
+                All = [];
+                Resources = [];
+                Fingerprint = ComputeFingerprint();
+                return;
+            }
 
             // --- The securables, merged by pair; then the aliases and the sensitivity marks ---
             Dictionary<(string Resource, string Action), Entry> entries = Merge(builder.Securables);
             ComposeAliases(builder.Aliases, entries);
             (HashSet<(string Resource, string Action)> sensitive, HashSet<(string Resource, string Action)> notSensitive) = ComposeMarks(builder.Marks, entries);
 
-            // --- The descriptors, in resource then action order, ignoring case ---
+            // --- The descriptors, by resource ignoring case, then the platform's actions in their
+            // order and any other action ignoring case; registration order never matters ---
             All =
             [
                 .. entries.Values
                     .Select(entry => entry.Describe(
                         (entry.IsSensitive || CoreSensitive.Contains(entry.Pair) || sensitive.Contains(entry.Pair)) && (!notSensitive.Contains(entry.Pair) || sensitive.Contains(entry.Pair))))
                     .OrderBy(static descriptor => descriptor.Resource, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static descriptor => ActionRank(descriptor.Action))
                     .ThenBy(static descriptor => descriptor.Action, StringComparer.OrdinalIgnoreCase),
             ];
 
@@ -137,6 +182,9 @@ namespace Tellma.Core.Access
         /// <summary>What composition found wrong with the registrations, for the startup gate.</summary>
         internal IReadOnlyList<CompositionProblem> Problems => _problems;
 
+        /// <summary>Whether a contributor threw, so the registry serves no securable and nothing can be judged against it.</summary>
+        internal bool Failed { get; }
+
         /// <summary>The aliases of renamed resources: each former name with the registered resource it now is.</summary>
         internal IReadOnlyDictionary<string, string> Aliases => _aliases;
 
@@ -159,6 +207,49 @@ namespace Tellma.Core.Access
         public IReadOnlyList<SecurableDescriptor> ForResource(string resource)
         {
             return resource is not null && _byResource.TryGetValue(resource, out IReadOnlyList<SecurableDescriptor>? securables) ? securables : [];
+        }
+
+        /// <summary>
+        ///     The registry a startup check judges against: the composed one, or none, with whether
+        ///     composing it failed. The securables check reports the failure; every other check skips
+        ///     what needs the registry and points to that report.
+        /// </summary>
+        /// <param name="services">The application's services.</param>
+        /// <returns>
+        ///     The registry, null when none is registered or when composing it failed; and whether it
+        ///     failed, its construction having thrown or a contributor having thrown.
+        /// </returns>
+        internal static (ISecurableRegistry? Registry, bool Failed) ForChecks(IServiceProvider services)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ISecurableRegistry? registry;
+            try
+            {
+                registry = services.GetService<ISecurableRegistry>();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A contributor the container could not build: the securables check reports why.
+                return (null, true);
+            }
+
+            return registry is SecurableRegistry { Failed: true } ? (null, true) : (registry, false);
+        }
+
+        /// <summary>An action's rank in a resource's list: its place among the platform's actions, else after them all.</summary>
+        /// <param name="action">The action.</param>
+        /// <returns>The rank.</returns>
+        private static int ActionRank(string action)
+        {
+            for (int index = 0; index < PlatformActionOrder.Count; index++)
+            {
+                if (string.Equals(PlatformActionOrder[index], action, StringComparison.OrdinalIgnoreCase))
+                {
+                    return index;
+                }
+            }
+
+            return PlatformActionOrder.Count;
         }
 
         /// <summary>
@@ -249,7 +340,15 @@ namespace Tellma.Core.Access
                         "Register each securable with one owner, or none."));
                 }
 
-                // Any registration may make the pair sensitive; the first one's feature stands.
+                // The feature is part of the securable: the editor groups the pair under it.
+                if (!string.Equals(entry.Feature, feature, StringComparison.Ordinal))
+                {
+                    _problems.Add(Problem(
+                        $"The securable {pair} is registered under the feature '{entry.Feature}' by the feature '{entry.Contributor}' and under the feature '{feature}' by the feature '{declaration.Contributor}'.",
+                        "Register each securable under one feature, the one whose code it guards: the permissions editor groups it there."));
+                }
+
+                // Any registration may make the pair sensitive.
                 entry.IsSensitive |= declaration.IsSensitive;
             }
 
@@ -520,6 +619,9 @@ namespace Tellma.Core.Access
             /// <summary>The name of the feature whose contributor registered it first.</summary>
             public string Contributor { get; } = first.Contributor;
 
+            /// <summary>The feature the securable belongs to: the one its first registration names, else its contributor's.</summary>
+            public string Feature { get; } = feature;
+
             /// <summary>Whether any registration made it sensitive.</summary>
             public bool IsSensitive { get; set; } = first.IsSensitive;
 
@@ -528,7 +630,7 @@ namespace Tellma.Core.Access
             /// <returns>The descriptor.</returns>
             public SecurableDescriptor Describe(bool isSensitive)
             {
-                return new SecurableDescriptor(Resource, Action, FilterRoot, isSensitive, feature, Owner);
+                return new SecurableDescriptor(Resource, Action, FilterRoot, isSensitive, Feature, Owner);
             }
         }
     }

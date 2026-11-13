@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Access;
 using Tellma.Core.Data.Metadata;
 using Tellma.Core.Notifications;
 
@@ -62,7 +63,8 @@ namespace Tellma.Core.Composition.Checks
             // --- The targets, against the model ---
             if (services.GetService<EntityMetadataSource>()?.Build.Provider is IEntityMetadataProvider metadata)
             {
-                CheckTargets(metadata, services.GetService<ISecurableRegistry>(), problems);
+                (ISecurableRegistry? securables, bool failed) = SecurableRegistry.ForChecks(services);
+                CheckTargets(metadata, securables, failed, problems);
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
@@ -117,9 +119,13 @@ namespace Tellma.Core.Composition.Checks
         ///     or a registered securable resource, spelled as registered.
         /// </summary>
         /// <param name="metadata">The model's entity metadata.</param>
-        /// <param name="securables">The securable registry; null when none is composed.</param>
+        /// <param name="securables">The securable registry; null when none is composed or composing it failed.</param>
+        /// <param name="securablesFailed">
+        ///     Whether composing the securable registry failed, so a target that is no stack resource
+        ///     cannot be judged and is left for the next start.
+        /// </param>
         /// <param name="problems">Receives the problems.</param>
-        internal void CheckTargets(IEntityMetadataProvider metadata, ISecurableRegistry? securables, List<CompositionProblem> problems)
+        internal void CheckTargets(IEntityMetadataProvider metadata, ISecurableRegistry? securables, bool securablesFailed, List<CompositionProblem> problems)
         {
             // A target is the resource the client routes to (spec 0021 §11). The stack resources are
             // the entities the features contributed as stacks, named by their leaves' metadata; an
@@ -141,6 +147,7 @@ namespace Tellma.Core.Composition.Checks
                 }
             }
 
+            int unjudged = 0;
             foreach (ContributedNotificationType contributed in record.NotificationTypes)
             {
                 NotificationTypeDescriptor type = contributed.Descriptor;
@@ -152,7 +159,12 @@ namespace Tellma.Core.Composition.Checks
                 string described = $"The notification type '{type.Key}' of the feature '{contributed.Owner.Name}'";
                 if (!resources.TryGetValue(target, out EntityMetadata? entity))
                 {
-                    if (securables?.Resources.Contains(target, StringComparer.Ordinal) != true)
+                    // Without a composed registry, a securable resource cannot be told from a mistake.
+                    if (securablesFailed)
+                    {
+                        unjudged++;
+                    }
+                    else if (securables?.Resources.Contains(target, StringComparer.Ordinal) != true)
                     {
                         problems.Add(new CompositionProblem(
                             Name,
@@ -173,6 +185,15 @@ namespace Tellma.Core.Composition.Checks
                         $"{described} targets '{target}', whose key is a {key.Name}, which a notification's 64-bit target id cannot hold.",
                         "Target an entity keyed by an int or a long, or set the target to null and carry the reference in the arguments."));
                 }
+            }
+
+            // --- One pointer for every target left unjudged: the securables check says why ---
+            if (unjudged > 0)
+            {
+                problems.Add(new CompositionProblem(
+                    Name,
+                    $"{unjudged} notification type target{(unjudged == 1 ? " that is" : "s that are")} not a stack resource could not be checked, because the securable registry did not compose.",
+                    $"Fix the problems {CoreCheckNames.Securables} reports; the targets are checked on the next start."));
             }
         }
     }

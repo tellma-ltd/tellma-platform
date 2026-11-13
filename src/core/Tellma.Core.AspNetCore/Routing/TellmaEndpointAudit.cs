@@ -9,10 +9,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
+using Tellma.Core.Composition.Checks;
 
 namespace Tellma.Core.AspNetCore.Routing
 {
@@ -49,12 +50,32 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <inheritdoc />
         public async Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
         {
-            return !mapped.IsMapped
-                ? [new CompositionProblem(
+            if (!mapped.IsMapped)
+            {
+                return [new CompositionProblem(
                     CheckName,
                     "MapTellma was not called, so the platform's endpoints and route groups are not mapped.",
-                    "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")]
-                : await AuditAsync(mapped.Endpoints(), policies, stacks.Routes, services.GetService<ISecurableRegistry>()).ConfigureAwait(false);
+                    "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")];
+            }
+
+            // --- Every rule; the securables only against a registry that composed ---
+            IReadOnlyList<Endpoint> endpoints = mapped.Endpoints();
+            (ISecurableRegistry? securables, bool failed) = SecurableRegistry.ForChecks(services);
+            IReadOnlyList<CompositionProblem> problems = await AuditAsync(endpoints, policies, stacks.Routes, securables).ConfigureAwait(false);
+            if (!failed || !endpoints.Any(static endpoint => endpoint.Metadata.GetMetadata<SecurableEndpointMetadata>() is not null))
+            {
+                return problems;
+            }
+
+            // --- One pointer for the securables left unaudited: the securables check says why ---
+            return
+            [
+                .. problems,
+                new CompositionProblem(
+                    CheckName,
+                    "The securables the endpoints require could not be audited, because the securable registry did not compose.",
+                    $"Fix the problems {CoreCheckNames.Securables} reports; the endpoints' securables are audited on the next start."),
+            ];
         }
 
         /// <summary>Audits endpoints.</summary>

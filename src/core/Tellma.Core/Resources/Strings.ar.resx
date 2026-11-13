@@ -126,7 +126,16 @@
   <data name="Parent" xml:space="preserve">
     <value>الأصل</value>
   </data>
-  <!-- Actions: the fallback label of every entity action of these names -->
+  <!-- Actions: the labels of the access actions, and the fallback label of every entity action of these names -->
+  <data name="Action_Read" xml:space="preserve">
+    <value>قراءة</value>
+  </data>
+  <data name="Action_Save" xml:space="preserve">
+    <value>إنشاء وتعديل</value>
+  </data>
+  <data name="Action_Delete" xml:space="preserve">
+    <value>حذف</value>
+  </data>
   <data name="Action_Activate" xml:space="preserve">
     <value>تفعيل</value>
   </data>
@@ -155,6 +164,18 @@
   </data>
   <data name="Access_Reason_self" xml:space="preserve">
     <value>سجلاتهم الخاصة</value>
+  </data>
+  <data name="Core_User_Plural" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
+  <data name="Core_Role_Plural" xml:space="preserve">
+    <value>الأدوار</value>
+  </data>
+  <data name="Securable_core_UserStamp" xml:space="preserve">
+    <value>نشاط المستخدمين</value>
+  </data>
+  <data name="Feature_core" xml:space="preserve">
+    <value>المنصة</value>
   </data>
   <!-- The boot page of the browser application -->
   <data name="Boot_Title" xml:space="preserve">

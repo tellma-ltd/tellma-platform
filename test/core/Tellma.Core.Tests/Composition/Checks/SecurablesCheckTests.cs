@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
@@ -151,6 +152,51 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public async Task A_throwing_contributor_is_reported_once_and_the_dependent_checks_point_to_it_keeping_their_own_findings()
+        {
+            int runs = 0;
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution => contribution
+                    .Securables(_ =>
+                    {
+                        runs++;
+                        throw new FormatException("bad pair");
+                    })
+                    .NotificationType(new NotificationTypeDescriptor("fixture.report.ready", "reports", false, "fixture.Report"))
+                    .NotificationType(new NotificationTypeDescriptor("Fixture.Bad", "reports", false, null)))));
+
+            // Composed once: the securables check reports it, nothing else re-runs the contributor.
+            Assert.Equal(1, runs);
+            CompositionProblem failure = Assert.Single(problems.From(Check));
+            Assert.Matches("^The securable contributor .+ of the feature 'fixture' failed with FormatException: bad pair$", failure.Problem);
+
+            // The notification types keep their own finding, and point to the securables for the target.
+            Assert.Equal(
+                [
+                    "The notification type 'Fixture.Bad' of the feature 'fixture' does not have a well-formed key.",
+                    "1 notification type target that is not a stack resource could not be checked, because the securable registry did not compose.",
+                ],
+                problems.From(CoreCheckNames.NotificationTypes).Select(static problem => problem.Problem));
+            Assert.DoesNotContain(problems, static problem => problem.Problem.StartsWith("The check failed", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public async Task A_contributor_the_container_cannot_build_is_reported_once_by_the_securables_check()
+        {
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
+                    .Singleton<ISecurableContributor, UnbuildableSecurables>()
+                    .NotificationType(new NotificationTypeDescriptor("fixture.report.ready", "reports", false, "fixture.Report")))));
+
+            CompositionProblem failure = Assert.Single(problems.From(Check));
+            Assert.StartsWith("The securable registry could not be built: ", failure.Problem, StringComparison.Ordinal);
+            Assert.Contains("no stacks", failure.Problem, StringComparison.Ordinal);
+            Assert.Equal(
+                ["1 notification type target that is not a stack resource could not be checked, because the securable registry did not compose."],
+                problems.From(CoreCheckNames.NotificationTypes).Select(static problem => problem.Problem));
+        }
+
+        [Fact]
         public void Securables_without_a_configuration_are_a_composition_problem()
         {
             IReadOnlyList<CompositionProblem> problems = TestComposition.Problems(static tellma => tellma
@@ -195,6 +241,22 @@ namespace Tellma.Core.Tests.Composition.Checks
                 _ = builder
                     .Add("fixture.Report", "Read", null)
                     .Add("fixture.Report", "Save", null, feature: "core");
+            }
+        }
+
+        /// <summary>A contributor whose construction fails, as one reading a service that cannot be built would.</summary>
+        private sealed class UnbuildableSecurables : ISecurableContributor
+        {
+            /// <summary>Fails.</summary>
+            /// <exception cref="InvalidOperationException">Always.</exception>
+            public UnbuildableSecurables()
+            {
+                throw new InvalidOperationException("no stacks");
+            }
+
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
             }
         }
     }

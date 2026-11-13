@@ -33,8 +33,8 @@ namespace Tellma.Core.Access
     ///     </list>
     ///     <para>
     ///         With no key of a chain declared, the label carries the chain's first key and humanized
-    ///         English: the resource's last segment (a settings category's name), the action, the
-    ///         feature's name.
+    ///         English: the resource's last segment (in the plural for an entity, whose first key is
+    ///         its plural one; a settings category's name), the action, the feature's name.
     ///     </para>
     /// </remarks>
     /// <param name="registry">The securable registry.</param>
@@ -103,11 +103,12 @@ namespace Tellma.Core.Access
         /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
         private (string Key, string? Fallback) ResourceLabel(string resource)
         {
-            // --- An entity: its plural label, then its singular one ---
+            // --- An entity: its plural label, then its singular one; the fallback goes with the
+            // plural key, so it is plural too ---
             if (metadata.All.Any(entity => string.Equals(entity.Name, resource, StringComparison.OrdinalIgnoreCase)))
             {
                 string prefix = KeyPrefix(resource);
-                return Resolve([$"{prefix}_Plural", prefix], NameHumanizer.Humanize(LastSegment(resource)));
+                return Resolve([$"{prefix}_Plural", prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(LastSegment(resource))));
             }
 
             // --- A settings category: its tab's label; the general settings are the general category ---

@@ -40,13 +40,35 @@ namespace Tellma.Core.Composition.Checks
         public Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(services);
-            if (services.GetService<ISecurableRegistry>() is not ISecurableRegistry registry)
+
+            // --- Building the registry: a contributor the container cannot build fails it here, once ---
+            ISecurableRegistry? registry;
+            try
+            {
+                registry = services.GetService<ISecurableRegistry>();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                return Task.FromResult<IReadOnlyList<CompositionProblem>>(
+                [
+                    new CompositionProblem(
+                        Name,
+                        $"The securable registry could not be built: {exception.GetType().Name}: {exception.Message}",
+                        "Fix the securable contributor the container fails to build; until it builds, no securable is registered."),
+                ]);
+            }
+
+            if (registry is null)
             {
                 return Task.FromResult<IReadOnlyList<CompositionProblem>>([]);
             }
 
-            // --- What composing the registry found ---
+            // --- What composing the registry found; a failed composition holds nothing more to judge ---
             List<CompositionProblem> problems = registry is SecurableRegistry composed ? [.. composed.Problems] : [];
+            if (registry is SecurableRegistry { Failed: true })
+            {
+                return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
+            }
 
             // --- The composed securables on their own ---
             CheckFeatures(registry, problems);

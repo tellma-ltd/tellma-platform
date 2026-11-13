@@ -127,6 +127,35 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
         }
 
         [Fact]
+        public async Task A_registry_that_did_not_compose_leaves_the_securables_unaudited_with_a_pointer_and_the_rest_audited()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.ConfigureServices = static services => services.AddSingleton<ISecurableContributor>(new ThrowingSecurables());
+                options.Map = static (application, endpoints) =>
+                {
+                    _ = endpoints.Web.MapGet("/report", Nothing).WithMutation(false).RequireSecurable("acme.Missing", "Read");
+                    MapViolation(application, endpoints, "server-first-segment");
+                };
+            });
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+
+                // The cause once, from the securables check; the audit's own findings and one pointer.
+                CompositionProblem failure = Assert.Single(exception.Problems, static problem => problem.Source == "core.securables");
+                Assert.Contains("failed with FormatException: bad pair", failure.Problem, StringComparison.Ordinal);
+                Assert.Equal(
+                    [
+                        "GET /bff/extra begins with 'bff', a route word the platform or the SPA owns.",
+                        "The securables the endpoints require could not be audited, because the securable registry did not compose.",
+                    ],
+                    exception.Problems.Where(static problem => problem.Source == TellmaEndpointAudit.CheckName).Select(static problem => problem.Problem));
+            }
+        }
+
+        [Fact]
         public async Task The_audit_refuses_an_endpoint_requiring_an_unregistered_pair_or_a_former_name()
         {
             // The walk itself, over an in-memory data source: whatever else is wrong with these
@@ -357,6 +386,16 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             public void Contribute(SecurableRegistryBuilder builder)
             {
                 _ = builder.Add("acme.Report", "Read", null).Alias("acme.OldReport", "acme.Report");
+            }
+        }
+
+        /// <summary>Securables a host registers by a contributor that throws.</summary>
+        private sealed class ThrowingSecurables : ISecurableContributor
+        {
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
+                throw new FormatException("bad pair");
             }
         }
 

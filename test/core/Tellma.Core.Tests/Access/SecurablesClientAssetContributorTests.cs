@@ -37,15 +37,16 @@ namespace Tellma.Core.Tests.Access
             ClientAssetContext context = new(provider);
             provider.GetServices<IClientAssetContributor>().OfType<SecurablesClientAssetContributor>().Single().Contribute(context);
 
-            // Core declares Action_Activate and SettingCategory_general; no other key of these chains.
+            // Core declares the platform's actions, its entities' plural labels, the general settings
+            // category, its own securables and its feature; a fixture's keys are declared nowhere.
             string expected = /*lang=json,strict*/ """
                 [
-                {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Acme_CreditExposureReport_Action_Read","actionLabelFallback":"Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
-                {"resource":"core.Role","action":"Activate","filterRoot":"core.Role","isSensitive":true,"feature":"fixture","resourceLabelKey":"Core_Role_Plural","resourceLabelFallback":"Role","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
-                {"resource":"core.Settings.General","action":"Save","isSensitive":true,"feature":"fixture","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Core_Settings_General_Action_Save","actionLabelFallback":"Save","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
-                {"resource":"core.Settings.gl","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"SettingCategory_gl","resourceLabelFallback":"Gl","actionLabelKey":"Core_Settings_gl_Action_Read","actionLabelFallback":"Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
-                {"resource":"core.User","action":"Read","filterRoot":"core.User","isSensitive":false,"feature":"core","resourceLabelKey":"Core_User_Plural","resourceLabelFallback":"User","actionLabelKey":"Core_User_Action_Read","actionLabelFallback":"Read","featureLabelKey":"Feature_core","featureLabelFallback":"Core"},
-                {"resource":"core.UserStamp","action":"Read","filterRoot":"core.UserStamp","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Securable_core_UserStamp","resourceLabelFallback":"User stamp","actionLabelKey":"Core_UserStamp_Action_Read","actionLabelFallback":"Read","featureLabelKey":"Feature_core","featureLabelFallback":"Core"}
+                {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Role","action":"Activate","filterRoot":"core.Role","isSensitive":true,"feature":"fixture","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Settings.General","action":"Save","isSensitive":true,"feature":"fixture","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Action_Save","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Settings.gl","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"SettingCategory_gl","resourceLabelFallback":"Gl","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.User","action":"Read","filterRoot":"core.User","isSensitive":false,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.UserStamp","action":"Read","filterRoot":"core.UserStamp","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Securable_core_UserStamp","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"}
                 ]
                 """;
 
@@ -84,6 +85,37 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal(expected, NameHumanizer.Humanize(name));
         }
 
+        [Fact]
+        public async Task An_entity_with_no_label_falls_back_to_its_name_in_the_plural_beside_its_plural_key()
+        {
+            // The fallback goes with the chain's first key, the plural one, so it reads in the plural.
+            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            SecurablesClientAssetContributor contributor = new(SecurableRegistryTests.Compose(), provider.GetRequiredService<IEntityMetadataProvider>(), new DeclaredKeys());
+
+            ClientSecurable securable = contributor.Describe(new SecurableDescriptor(CoreResources.User, AccessActions.Read, CoreResources.User, false, "core", null));
+
+            Assert.Equal(("Core_User_Plural", "Users"), (securable.ResourceLabelKey, securable.ResourceLabelFallback));
+            Assert.Equal(("Core_User_Action_Read", "Read"), (securable.ActionLabelKey, securable.ActionLabelFallback));
+        }
+
+        [Theory]
+        [InlineData("Credit exposure report", "Credit exposure reports")]
+        [InlineData("Category", "Categories")]
+        [InlineData("Day", "Days")]
+        [InlineData("Tax", "Taxes")]
+        [InlineData("Status", "Statuses")]
+        [InlineData("Branch", "Branches")]
+        [InlineData("Wish", "Wishes")]
+        [InlineData("GL account", "GL accounts")]
+        [InlineData("GL", "GLs")]
+        [InlineData("User", "Users")]
+        [InlineData("Q1", "Q1")]
+        [InlineData("", "")]
+        public void Humanized_words_take_the_english_plural_by_their_last_word(string words, string expected)
+        {
+            Assert.Equal(expected, NameHumanizer.Pluralize(words));
+        }
+
         [Theory]
         [InlineData("gl.Center", "Gl_Center")]
         [InlineData("core.Settings.General", "Core_Settings_General")]
@@ -101,6 +133,7 @@ namespace Tellma.Core.Tests.Access
 
             Assert.True(keys.Declares("Action_Activate"));
             Assert.True(keys.Declares("SettingCategory_general"));
+            Assert.True(keys.Declares("Core_User_Plural"));
             Assert.False(keys.Declares("action_activate"));
             Assert.False(keys.Declares("Securable_core_Nothing"));
         }

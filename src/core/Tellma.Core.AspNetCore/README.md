@@ -100,7 +100,8 @@ It also fails startup for a distribution route, or a stack's resource segment, t
 the platform or the SPA owns under `/{tenantId}`, and, in the realised gate, for any endpoint whose
 `RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
 (compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
-run leaves the pairs to the gate.
+run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
+skips the pairs and says so in one line, leaving the cause to `core.securables`.
 
 ## CSRF
 
