@@ -44,6 +44,33 @@ namespace Tellma.Core.Data.Ids
             Message = "A refill found the sequence {Sequence} of tenant {TenantId} behind its table: it returned {First} while the table held {MaxId}. Only the ids above the table were kept, and {Dropped} buffered ids at or below it were dropped.")]
         public static partial void BehindOnRefill(ILogger logger, string sequence, int tenantId, long first, long maxId, long dropped);
 
+        /// <summary>
+        ///     Ids a reservation or a take gave back were at or below the largest id a read found the
+        ///     table holding, so they were discarded rather than buffered again.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sequence">The sequence.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="discarded">How many ids were discarded.</param>
+        [LoggerMessage(
+            EventName = "IdAllocator.StaleDiscarded",
+            Level = LogLevel.Warning,
+            Message = "{Discarded} ids of {Sequence} of tenant {TenantId} came back to the buffer at or below the largest id its table holds, and were discarded.")]
+        public static partial void StaleDiscarded(ILogger logger, string sequence, int tenantId, long discarded);
+
+        /// <summary>
+        ///     A tenant's buffers were forgotten because the database behind it may change: it was
+        ///     frozen for a relocation or a restore, left the freeze, or left the registry.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="dropped">How many buffered ids were dropped.</param>
+        [LoggerMessage(
+            EventName = "IdAllocator.TenantForgotten",
+            Level = LogLevel.Information,
+            Message = "The id buffers of tenant {TenantId} were forgotten, dropping {Dropped} ids: the database behind the tenant may change.")]
+        public static partial void TenantForgotten(ILogger logger, int tenantId, long dropped);
+
         /// <summary>A duplicate primary key surfaced on a table the buffer serves, so its buffered ranges were dropped.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="sequence">The sequence.</param>

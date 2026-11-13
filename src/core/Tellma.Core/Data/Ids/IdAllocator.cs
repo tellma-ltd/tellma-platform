@@ -138,20 +138,21 @@ namespace Tellma.Core.Data.Ids
 
             // --- Each table's deficit: from the buffer, else from a statement riding the batch ---
             int tenantId = data.Connection.TenantId;
-            ReservationHold hold = new(this, tenantId, root);
+            ReservationHold hold = new(this, root);
             try
             {
                 foreach ((EntityMetadata entity, long deficit) in deficits)
                 {
                     SequenceInfo sequence = SequenceOf(entity);
-                    List<IdRange> taken = BufferOf(tenantId, sequence).Take(deficit);
+                    SequenceBuffer buffer = BufferOf(tenantId, sequence);
+                    List<IdRange> taken = buffer.Take(deficit);
                     long held = taken.Sum(static range => range.Count);
                     if (held > 0)
                     {
                         _metrics.RecordIdsReserved(sequence.Tag, held);
                     }
 
-                    ReservationHold.Need need = hold.Add(sequence, taken, pending: deficit - held);
+                    ReservationHold.Need need = hold.Add(buffer, taken, pending: deficit - held);
                     if (need.Pending > 0)
                     {
                         // The range tops the buffer up to the low-water mark, which the take emptied.
@@ -201,7 +202,7 @@ namespace Tellma.Core.Data.Ids
                     batch.TransactionMode = TransactionMode.None;
                     BatchResult<SequenceRead> read = AppendRange(batch, sequence, count - held + LowWater);
                     _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
-                    Settled settled = await SettleAsync(batch, sequence, read.Value, count - held, ranges, cancellationToken).ConfigureAwait(false);
+                    Settled settled = await SettleAsync(batch, buffer, read.Value, count - held, ranges, cancellationToken).ConfigureAwait(false);
 
                     // After a heal, the ids taken from the buffer at or below the table's largest id are
                     // discarded: the settled range already carries their replacements.
@@ -210,8 +211,9 @@ namespace Tellma.Core.Data.Ids
                 }
                 catch
                 {
-                    // The ids taken from the buffer were never handed out.
-                    Return(connection.TenantId, sequence, ranges);
+                    // The ids taken from the buffer were never handed out; the buffer's floor discards
+                    // any a heal found the table holding.
+                    Return(buffer, ranges);
                     throw;
                 }
             }
@@ -237,7 +239,7 @@ namespace Tellma.Core.Data.Ids
         internal void Replenish(int tenantId, Type entityType, long first, long last)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(last, first);
-            BufferOf(tenantId, SequenceOf(_metadata.Get(entityType))).Append(new IdRange(first, last));
+            _ = BufferOf(tenantId, SequenceOf(_metadata.Get(entityType))).Append(new IdRange(first, last));
         }
 
         /// <summary>
@@ -266,8 +268,10 @@ namespace Tellma.Core.Data.Ids
                     continue;
                 }
 
+                // A buffer whose last refill found the sequence behind refills no more: every refill
+                // would find it behind again until a reservation reads a range and heals it.
                 long held = buffer.Count;
-                if (held >= LowWater)
+                if (held >= LowWater || buffer.IsBehind)
                 {
                     continue;
                 }
@@ -277,7 +281,7 @@ namespace Tellma.Core.Data.Ids
                 {
                     if (read.IsCompleted)
                     {
-                        Refilled(tenantId, buffer, read.Value);
+                        Refilled(buffer, read.Value);
                     }
 
                     return Task.CompletedTask;
@@ -336,11 +340,13 @@ namespace Tellma.Core.Data.Ids
             }
         }
 
-        /// <summary>Puts ranges a reservation or a take held back at the front of their buffer, and meters them.</summary>
-        /// <param name="tenantId">The tenant.</param>
-        /// <param name="sequence">The sequence.</param>
+        /// <summary>
+        ///     Puts ranges a reservation or a take held back at the front of the buffer they came from,
+        ///     and meters them. Ids at or below the buffer's floor are discarded and logged.
+        /// </summary>
+        /// <param name="buffer">The buffer the ranges were taken from.</param>
         /// <param name="ranges">The ranges.</param>
-        internal void Return(int tenantId, SequenceInfo sequence, IReadOnlyList<IdRange> ranges)
+        internal void Return(SequenceBuffer buffer, IReadOnlyList<IdRange> ranges)
         {
             long count = ranges.Sum(static range => range.Count);
             if (count == 0)
@@ -348,8 +354,32 @@ namespace Tellma.Core.Data.Ids
                 return;
             }
 
-            BufferOf(tenantId, sequence).Return(ranges);
-            _metrics.RecordIdsReturned(sequence.Tag, count);
+            long discarded = buffer.Return(ranges);
+            _metrics.RecordIdsReturned(buffer.Sequence.Tag, count - discarded);
+            if (discarded > 0)
+            {
+                IdAllocatorLog.StaleDiscarded(_logger, buffer.Sequence.Tag, buffer.TenantId, discarded);
+            }
+        }
+
+        /// <summary>
+        ///     Forgets every buffer of a tenant: the database behind the tenant may change (a relocation,
+        ///     a point-in-time restore), and a buffered id says nothing about the next database. Ids
+        ///     still held by reservations return to the forgotten buffers, never to the new ones.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        internal void ForgetTenant(int tenantId)
+        {
+            long dropped = 0;
+            foreach ((int TenantId, TableName Sequence) key in _buffers.Keys)
+            {
+                if (key.TenantId == tenantId && _buffers.TryRemove(key, out SequenceBuffer? buffer))
+                {
+                    dropped += buffer.Clear();
+                }
+            }
+
+            IdAllocatorLog.TenantForgotten(_logger, tenantId, dropped);
         }
 
         /// <summary>Drops a tenant's buffered ids of a sequence at or below a table's largest id.</summary>
@@ -379,7 +409,7 @@ namespace Tellma.Core.Data.Ids
         /// <returns>The buffer.</returns>
         private SequenceBuffer BufferOf(int tenantId, SequenceInfo sequence)
         {
-            return _buffers.GetOrAdd((tenantId, sequence.Name), static (_, sequence) => new SequenceBuffer(sequence), sequence);
+            return _buffers.GetOrAdd((tenantId, sequence.Name), static (key, sequence) => new SequenceBuffer(key.TenantId, sequence), sequence);
         }
 
         /// <summary>
@@ -457,7 +487,7 @@ namespace Tellma.Core.Data.Ids
 
             try
             {
-                Settled settled = await SettleAsync(origin, need.Sequence, read.Value, need.Pending, hold.HeldOf(need), cancellationToken).ConfigureAwait(false);
+                Settled settled = await SettleAsync(origin, need.Buffer, read.Value, need.Pending, hold.HeldOf(need), cancellationToken).ConfigureAwait(false);
                 hold.Fill(need, settled.Ids, settled.Floor);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -473,7 +503,7 @@ namespace Tellma.Core.Data.Ids
         ///     wanted are kept for the caller and the rest of the range tops the buffer up.
         /// </summary>
         /// <param name="origin">The batch the range was read on, whose scope a healing round trip runs in.</param>
-        /// <param name="sequence">The sequence.</param>
+        /// <param name="buffer">The buffer of the sequence the caller took from, which the tail tops up.</param>
         /// <param name="read">The range read.</param>
         /// <param name="wanted">How many ids the caller wants.</param>
         /// <param name="held">The ids of the sequence the caller already holds, taken from the buffer.</param>
@@ -483,8 +513,9 @@ namespace Tellma.Core.Data.Ids
         ///     the ids it held: the new ids then replace those as well.
         /// </returns>
         /// <exception cref="InvalidOperationException">The sequence is still behind after the heal.</exception>
-        private async Task<Settled> SettleAsync(DataBatch origin, SequenceInfo sequence, SequenceRead read, long wanted, IReadOnlyList<IdRange> held, CancellationToken cancellationToken)
+        private async Task<Settled> SettleAsync(DataBatch origin, SequenceBuffer buffer, SequenceRead read, long wanted, IReadOnlyList<IdRange> held, CancellationToken cancellationToken)
         {
+            SequenceInfo sequence = buffer.Sequence;
             _metrics.RecordIdRefill(sequence.Tag);
             int tenantId = origin.Connection.TenantId;
             IdRange range = new(read.First, read.Last);
@@ -493,7 +524,9 @@ namespace Tellma.Core.Data.Ids
             // --- The heal: an out-of-band insert left ids above the range's start ---
             if (read.MaxId is long maxId && read.First <= maxId)
             {
-                // The caller's held ids at or below the table's largest id may collide: replace them too.
+                // The floor rises before the round trip, so ids at or below the table never return to
+                // the buffer, even when the heal fails; the caller's held ones are replaced.
+                long dropped = buffer.DropAtOrBelow(maxId);
                 wanted += IdRange.CountAtOrBelow(held, maxId);
                 long consumed = maxId - read.First + 1 + wanted + LowWater;
                 DataBatch heal = origin.CreateSibling(BatchPurpose.Maintenance);
@@ -504,9 +537,9 @@ namespace Tellma.Core.Data.Ids
                 SequenceRead again = healed.Value;
                 long start = again.MaxId is long newMax ? Math.Max(again.First, newMax + 1) : again.First;
 
-                // The buffer's ranges at or below the largest id either read may collide as well.
+                // The second read may have found the table further ahead still.
                 floor = Math.Max(maxId, again.MaxId ?? maxId);
-                long dropped = BufferOf(tenantId, sequence).DropAtOrBelow(floor.Value);
+                dropped += buffer.DropAtOrBelow(floor.Value);
                 IdAllocatorLog.Healed(_logger, sequence.Tag, tenantId, read.First, maxId, consumed, dropped);
                 _metrics.RecordIdHealed(sequence.Tag);
                 if (again.Last - start + 1 < wanted)
@@ -520,11 +553,14 @@ namespace Tellma.Core.Data.Ids
             }
 
             // --- The caller's head of the range; the tail tops the buffer up ---
+            // A reservation read a range above the table: the buffer may refill again.
             IdRange head = new(range.First, range.First + wanted - 1);
             if (range.Last > head.Last)
             {
-                BufferOf(tenantId, sequence).Append(new IdRange(head.Last + 1, range.Last));
+                _ = buffer.Append(new IdRange(head.Last + 1, range.Last));
             }
+
+            buffer.ClearBehind();
 
             _metrics.RecordIdsReserved(sequence.Tag, wanted);
             return new Settled([head], floor);
@@ -532,31 +568,30 @@ namespace Tellma.Core.Data.Ids
 
         /// <summary>
         ///     Adds what a refill read to its buffer: the part above the table's largest id. A range
-        ///     that starts at or below it found the sequence behind its table: that is reported, and
-        ///     the buffered ids at or below it are dropped, since any of them may collide.
+        ///     that starts at or below it found the sequence behind its table: the buffered ids at or
+        ///     below it are dropped, since any of them may collide, and the buffer is marked behind,
+        ///     which stops its refills until a reservation heals; the condition is reported once.
         /// </summary>
-        /// <param name="tenantId">The tenant.</param>
         /// <param name="buffer">The buffer.</param>
         /// <param name="read">The range read.</param>
-        private void Refilled(int tenantId, SequenceBuffer buffer, SequenceRead read)
+        private void Refilled(SequenceBuffer buffer, SequenceRead read)
         {
             SequenceInfo sequence = buffer.Sequence;
             _metrics.RecordIdRefill(sequence.Tag);
-            long first = read.First;
             if (read.MaxId is long maxId && read.First <= maxId)
             {
                 // No heal here: the refill keeps what lies above the table, and the next reservation
                 // that reads a range below it heals the sequence.
                 long dropped = buffer.DropAtOrBelow(maxId);
-                IdAllocatorLog.BehindOnRefill(_logger, sequence.Tag, tenantId, read.First, maxId, dropped);
-                _metrics.RecordIdHealed(sequence.Tag);
-                first = maxId + 1;
+                if (buffer.MarkBehind())
+                {
+                    IdAllocatorLog.BehindOnRefill(_logger, sequence.Tag, buffer.TenantId, read.First, maxId, dropped);
+                    _metrics.RecordIdHealed(sequence.Tag);
+                }
             }
 
-            if (first <= read.Last)
-            {
-                buffer.Append(new IdRange(first, read.Last));
-            }
+            // The buffer's floor keeps only what lies above the table.
+            _ = buffer.Append(new IdRange(read.First, read.Last));
         }
 
         /// <summary>Maps every table the model gives a sequence: by entity, by table and by primary-key name.</summary>

@@ -8,6 +8,8 @@ using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Data;
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Tests.Data.Batches;
@@ -212,6 +214,153 @@ namespace Tellma.Core.Tests.Data.Ids
         }
 
         [Fact]
+        public async Task Ids_another_reservation_held_across_a_refill_found_behind_never_return_to_the_buffer()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            Crate[] held = [new Crate(), new Crate(), new Crate(), new Crate(), new Crate()];
+            IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), held);
+            Assert.True(reservation.IsImmediate);
+
+            // --- A refill finds the table holding 205 while the sequence issues from 200 ---
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            _ = batch.Save([new Crate { Id = 42, Name = "existing" }]);
+            _ = await BatchHarness.SealAsync(batch);
+            await RunRangeAsync(batch, first: 200, last: 258, maxId: 205, statement: 1);
+            Assert.Equal(53, Allocator.Buffered(Tenant, typeof(Crate)));
+
+            // --- The reservation fails validation: its ids are at or below the table's, so they are discarded ---
+            reservation.Dispose();
+
+            Assert.Equal(53, Allocator.Buffered(Tenant, typeof(Crate)));
+            Crate[] next = [new Crate()];
+            using IdReservation again = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), next);
+            again.Assign(next);
+            Assert.Equal(206, next[0].Id);
+        }
+
+        [Fact]
+        public async Task A_heal_that_fails_still_raises_the_floor_so_the_reservations_taken_ids_never_return()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 101);
+            Crate[] rows = [new Crate(), new Crate(), new Crate()];
+            DataBatch batch = _harness.Batch(BatchPurpose.Validate);
+            IdReservation reservation = Allocator.Reserve(batch, typeof(Crate), rows);
+
+            // The range starts under the table's largest id; the heal's round trip is refused.
+            await RunRangeAsync(batch, first: 200, last: 264, maxId: 205);
+            InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => reservation.Assign(rows));
+            _ = Assert.IsType<BatchHarness.RefusedConnection.RefusedException>(failure.InnerException);
+
+            reservation.Dispose();
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+        }
+
+        [Fact]
+        public async Task A_refill_found_behind_stops_the_buffers_refills_and_reports_once_until_a_reservation_reads_a_range()
+        {
+            using MetricCollector<long> healed = Collector(DataTelemetryNames.IdHealed);
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+
+            // --- The first refill finds the sequence 100,000 behind and keeps nothing ---
+            DataBatch first = _harness.Batch(BatchPurpose.Persist);
+            _ = first.Save([new Crate { Id = 42, Name = "existing" }]);
+            _ = await BatchHarness.SealAsync(first);
+            await RunRangeAsync(first, first: 200, last: 253, maxId: 100_200, statement: 1);
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+
+            // --- Later batches writing the table carry no refill ---
+            DataBatch second = _harness.Batch(BatchPurpose.Persist);
+            _ = second.Save([new Crate { Id = 42, Name = "existing" }]);
+            _ = await BatchHarness.SealAsync(second);
+            _ = Assert.Single(second.Statements);
+            Assert.Equal(1, Assert.Single(healed.GetMeasurementSnapshot()).Value);
+
+            // --- A reservation reads a range above the table: refills resume ---
+            DataBatch validate = _harness.Batch(BatchPurpose.Validate);
+            Crate[] rows = [new Crate()];
+            using IdReservation reservation = Allocator.Reserve(validate, typeof(Crate), rows);
+            await RunRangeAsync(validate, first: 100_201, last: 100_265, maxId: 100_200);
+            reservation.Assign(rows);
+            Assert.Equal(100_201, rows[0].Id);
+
+            Crate[] more = [new Crate()];
+            using IdReservation immediate = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), more);
+            Assert.Equal(63, Allocator.Buffered(Tenant, typeof(Crate)));
+            DataBatch third = _harness.Batch(BatchPurpose.Persist);
+            _ = third.Save([new Crate { Id = 43, Name = "existing" }]);
+            _ = await BatchHarness.SealAsync(third);
+            Assert.Equal(2, third.Statements.Count);
+            Assert.Contains("@sequence_name = N'[sv].[sq_Crates]'", third.Statements[1].Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_failure_the_caller_maps_surfaces_as_itself_and_any_other_is_wrapped()
+        {
+            Exception[] mapped =
+            [
+                new DataAccessRetryExhaustedException(new TimeoutException(), attempts: 3),
+                new TenantUnavailableException(Tenant, TenantState.Frozen, TenantProblemCodes.Frozen, retryAfter: null),
+                new OperationCanceledException(),
+            ];
+            foreach (Exception failure in mapped)
+            {
+                Exception thrown = Assert.ThrowsAny<Exception>(() => FailedHold(failure).Assign([new Crate()]));
+                Assert.Same(failure, thrown);
+            }
+
+            KeyNotFoundException defect = new();
+            InvalidOperationException wrapped = Assert.Throws<InvalidOperationException>(() => FailedHold(defect).Assign([new Crate()]));
+            Assert.Same(defect, wrapped.InnerException);
+        }
+
+        [Fact]
+        public async Task Freezing_a_tenant_forgets_its_buffers_and_no_other_tenants()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            Allocator.Replenish(Tenant + 1, typeof(Crate), 100, 109);
+            Crate[] held = [new Crate()];
+            IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), held);
+            IdBufferTenantListener listener = _harness.Services.GetServices<ITenantStateListener>().OfType<IdBufferTenantListener>().Single();
+            TenantDescriptor tenant = new(Tenant, "Fixture", null, null, ["en"], TenantCategory.Live, TenantState.Active, null);
+
+            // --- A name change keeps the buffers; the freeze for a restore forgets them ---
+            await listener.OnStateChangedAsync(tenant with { Name = "Renamed" }, TenantState.Active);
+            Assert.Equal(9, Allocator.Buffered(Tenant, typeof(Crate)));
+            await listener.OnStateChangedAsync(tenant with { State = TenantState.Frozen }, TenantState.Active);
+
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+            Assert.Equal(10, Allocator.Buffered(Tenant + 1, typeof(Crate)));
+
+            // --- An id held across the freeze returns to the forgotten buffer, never to the new database's ---
+            reservation.Dispose();
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+
+            // --- Leaving the freeze, and leaving the registry, forget again ---
+            Allocator.Replenish(Tenant, typeof(Crate), 500, 509);
+            await listener.OnStateChangedAsync(tenant, TenantState.Frozen);
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+            Allocator.Replenish(Tenant, typeof(Crate), 500, 509);
+            await listener.OnRemovedAsync(tenant);
+            Assert.Equal(0, Allocator.Buffered(Tenant, typeof(Crate)));
+        }
+
+        [Fact]
+        public void Two_tenants_whose_databases_issue_the_same_ids_never_share_a_buffer()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 104);
+            Allocator.Replenish(Tenant + 1, typeof(Crate), 100, 104);
+
+            Crate[] mine = [new Crate(), new Crate()];
+            using IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), mine);
+            reservation.Assign(mine);
+
+            // The harness's batches are the first tenant's: the second tenant's buffer is untouched.
+            Assert.Equal([100, 101], mine.Select(static crate => crate.Id));
+            Assert.Equal(3, Allocator.Buffered(Tenant, typeof(Crate)));
+            Assert.Equal(5, Allocator.Buffered(Tenant + 1, typeof(Crate)));
+        }
+
+        [Fact]
         public void Temporary_ids_are_rewritten_in_a_self_reference_a_child_parent_key_and_a_grandchild_parent_key()
         {
             Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
@@ -352,6 +501,18 @@ namespace Tellma.Core.Tests.Data.Ids
             {
                 await step(Token);
             }
+        }
+
+        /// <summary>A crate reservation whose one table's statement ran but failed to settle its ids.</summary>
+        /// <param name="failure">The failure.</param>
+        /// <returns>The reservation's hold.</returns>
+        private ReservationHold FailedHold(Exception failure)
+        {
+            EntityMetadata crates = _harness.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Crate));
+            ReservationHold hold = new(Allocator, crates);
+            ReservationHold.Need need = hold.Add(new SequenceBuffer(Tenant, Allocator.SequenceOf(crates)), [], pending: 1);
+            hold.Fail(need, failure);
+            return hold;
         }
 
         /// <summary>A collector of one of the data layer's counters, from now on.</summary>

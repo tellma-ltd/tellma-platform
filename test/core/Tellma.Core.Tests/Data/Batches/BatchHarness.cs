@@ -104,7 +104,7 @@ namespace Tellma.Core.Tests.Data.Batches
         /// <summary>A connection that is never opened.</summary>
         /// <param name="shape">The multilingual shape it reports.</param>
         /// <param name="context">The context values it reports.</param>
-        private sealed class RefusedConnection(MultilingualShape shape, QueryexContextValues context) : IBatchConnection
+        internal sealed class RefusedConnection(MultilingualShape shape, QueryexContextValues context) : IBatchConnection
         {
             /// <inheritdoc />
             public int TenantId => 1;

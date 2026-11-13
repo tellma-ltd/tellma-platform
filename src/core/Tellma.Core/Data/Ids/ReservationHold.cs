@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Errors;
 
 namespace Tellma.Core.Data.Ids
 {
@@ -18,9 +20,8 @@ namespace Tellma.Core.Data.Ids
     ///     batch it rides executes later; it then goes straight back to the buffer. Thread-safe.
     /// </remarks>
     /// <param name="allocator">The allocator.</param>
-    /// <param name="tenantId">The tenant.</param>
     /// <param name="root">The payload's root entity.</param>
-    internal sealed class ReservationHold(IdAllocator allocator, int tenantId, EntityMetadata root) : IIdReservationHold
+    internal sealed class ReservationHold(IdAllocator allocator, EntityMetadata root) : IIdReservationHold
     {
         /// <summary>Guards the hold's state.</summary>
         private readonly Lock _gate = new();
@@ -53,13 +54,13 @@ namespace Tellma.Core.Data.Ids
         }
 
         /// <summary>Adds a table's need: the ranges taken from the buffer and how many ids a statement still reserves.</summary>
-        /// <param name="sequence">The table's sequence.</param>
+        /// <param name="buffer">The buffer of the table's sequence the ranges were taken from.</param>
         /// <param name="taken">The ranges taken from the buffer.</param>
         /// <param name="pending">The ids a reservation statement reserves.</param>
         /// <returns>The need.</returns>
-        public Need Add(SequenceInfo sequence, List<IdRange> taken, long pending)
+        public Need Add(SequenceBuffer buffer, List<IdRange> taken, long pending)
         {
-            Need need = new(sequence, taken, pending);
+            Need need = new(buffer, taken, pending);
             lock (_gate)
             {
                 _needs.Add(need);
@@ -102,14 +103,9 @@ namespace Tellma.Core.Data.Ids
             {
                 if (_disposed && !_persistAttempted)
                 {
-                    // The held ids went back at disposal, possibly after the heal dropped the buffer's
-                    // stale ids: drop them again before the fresh ones join them.
-                    allocator.Return(tenantId, need.Sequence, ranges);
-                    if (floor is long disposedFloor)
-                    {
-                        allocator.DropAtOrBelow(tenantId, need.Sequence, disposedFloor);
-                    }
-
+                    // The held ids went back at disposal; any at or below the table's largest id were
+                    // discarded there by the buffer's floor, which the heal raised.
+                    allocator.Return(need.Buffer, ranges);
                     need.Pending = 0;
                     return;
                 }
@@ -175,6 +171,13 @@ namespace Tellma.Core.Data.Ids
                 {
                     if (need.Failure is Exception failure)
                     {
+                        // A failure the caller already maps (an unavailable tenant, exhausted retries,
+                        // a cancellation) surfaces as itself; anything else is a defect, wrapped.
+                        if (failure is DataAccessException or TellmaException or OperationCanceledException)
+                        {
+                            ExceptionDispatchInfo.Throw(failure);
+                        }
+
                         throw new InvalidOperationException($"The reservation of {need.Sequence.Entity.Name} ids failed after its statement ran, so it holds none.", failure);
                     }
 
@@ -269,7 +272,7 @@ namespace Tellma.Core.Data.Ids
 
                 foreach (Need need in _needs)
                 {
-                    allocator.Return(tenantId, need.Sequence, need.Held);
+                    allocator.Return(need.Buffer, need.Held);
                     need.Held.Clear();
                 }
             }
@@ -300,13 +303,19 @@ namespace Tellma.Core.Data.Ids
         }
 
         /// <summary>One table's part of the reservation.</summary>
-        /// <param name="sequence">The table's sequence.</param>
+        /// <param name="buffer">
+        ///     The buffer the ranges came from, and go back to: a buffer cleared for its tenant since
+        ///     is no longer the allocator's, so ids from a database the tenant left never return.
+        /// </param>
         /// <param name="held">The ranges held so far.</param>
         /// <param name="pending">The ids a reservation statement still reserves.</param>
-        public sealed class Need(SequenceInfo sequence, List<IdRange> held, long pending)
+        public sealed class Need(SequenceBuffer buffer, List<IdRange> held, long pending)
         {
+            /// <summary>The buffer the ranges came from, and go back to.</summary>
+            public SequenceBuffer Buffer { get; } = buffer;
+
             /// <summary>The table's sequence.</summary>
-            public SequenceInfo Sequence { get; } = sequence;
+            public SequenceInfo Sequence => Buffer.Sequence;
 
             /// <summary>The ranges held.</summary>
             public List<IdRange> Held { get; } = held;

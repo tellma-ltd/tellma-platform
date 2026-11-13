@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
@@ -37,6 +38,9 @@ namespace Tellma.Core.Data.Batches
             _ = services.AddSingleton<IdAllocator>();
             _ = services.AddSingleton<IIdAllocator>(static services => services.GetRequiredService<IdAllocator>());
             _ = services.AddSingleton<SaveEmitter>();
+
+            // A tenant frozen for a relocation or a restore may come back on another database: its buffers go.
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<ITenantStateListener, IdBufferTenantListener>());
 
             // --- The query statements: one engine, whose caches every compile shares, and the schemas ---
             // TryAdd for the engine: a host that tunes its options registers it first.

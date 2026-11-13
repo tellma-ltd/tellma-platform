@@ -49,8 +49,15 @@ namespace Tellma.Core.Data.Ids
     ///     from the front; a range that returns goes back to the front, so the ids it held are the next
     ///     handed out; a refill goes to the back. Thread-safe.
     /// </summary>
+    /// <remarks>
+    ///     The buffer keeps a floor that only rises: the largest id any read found its table holding
+    ///     ahead of the sequence. No id at or below it is ever held again, whichever path brings it
+    ///     back. A refill that finds the sequence behind also marks the buffer behind, which stops its
+    ///     refills until a reservation reads a range again.
+    /// </remarks>
+    /// <param name="tenantId">The tenant whose database issued the ranges.</param>
     /// <param name="sequence">The sequence the ranges come from.</param>
-    internal sealed class SequenceBuffer(SequenceInfo sequence)
+    internal sealed class SequenceBuffer(int tenantId, SequenceInfo sequence)
     {
         /// <summary>Guards the ranges.</summary>
         private readonly Lock _gate = new();
@@ -60,6 +67,15 @@ namespace Tellma.Core.Data.Ids
 
         /// <summary>How many ids the ranges hold.</summary>
         private long _count;
+
+        /// <summary>The largest id a read found the table holding ahead of the sequence; ids at or below it are never held.</summary>
+        private long _floor = long.MinValue;
+
+        /// <summary>Whether a refill found the sequence behind its table and no reservation read a range since.</summary>
+        private bool _behind;
+
+        /// <summary>The tenant whose database issued the ranges.</summary>
+        public int TenantId { get; } = tenantId;
 
         /// <summary>The sequence the ranges come from.</summary>
         public SequenceInfo Sequence { get; } = sequence;
@@ -108,35 +124,61 @@ namespace Tellma.Core.Data.Ids
             return taken;
         }
 
-        /// <summary>Adds a fresh range at the back.</summary>
-        /// <param name="range">The range.</param>
-        public void Append(IdRange range)
+        /// <summary>Whether a refill found the sequence behind its table and no reservation read a range since.</summary>
+        public bool IsBehind
         {
-            lock (_gate)
+            get
             {
-                _ = _ranges.AddLast(range);
-                _count += range.Count;
-            }
-        }
-
-        /// <summary>Puts ranges that were taken back at the front, in their order.</summary>
-        /// <param name="ranges">The ranges.</param>
-        public void Return(IReadOnlyList<IdRange> ranges)
-        {
-            ArgumentNullException.ThrowIfNull(ranges);
-            lock (_gate)
-            {
-                for (int index = ranges.Count - 1; index >= 0; index--)
+                lock (_gate)
                 {
-                    _ = _ranges.AddFirst(ranges[index]);
-                    _count += ranges[index].Count;
+                    return _behind;
                 }
             }
         }
 
+        /// <summary>Adds a fresh range at the back, less its ids at or below the floor.</summary>
+        /// <param name="range">The range.</param>
+        /// <returns>How many of its ids were discarded.</returns>
+        public long Append(IdRange range)
+        {
+            lock (_gate)
+            {
+                long discarded = IdRange.CountAtOrBelow([range], _floor);
+                if (range.Last > _floor)
+                {
+                    IdRange kept = range with { First = Math.Max(range.First, _floor + 1) };
+                    _ = _ranges.AddLast(kept);
+                    _count += kept.Count;
+                }
+
+                return discarded;
+            }
+        }
+
+        /// <summary>Puts ranges that were taken back at the front, in their order, less their ids at or below the floor.</summary>
+        /// <param name="ranges">The ranges.</param>
+        /// <returns>How many of their ids were discarded.</returns>
+        public long Return(IReadOnlyList<IdRange> ranges)
+        {
+            ArgumentNullException.ThrowIfNull(ranges);
+            lock (_gate)
+            {
+                // Ids taken before a read raised the floor may come back stale: they never return.
+                long discarded = IdRange.CountAtOrBelow(ranges, _floor);
+                List<IdRange> kept = IdRange.Above(ranges, _floor);
+                for (int index = kept.Count - 1; index >= 0; index--)
+                {
+                    _ = _ranges.AddFirst(kept[index]);
+                    _count += kept[index].Count;
+                }
+
+                return discarded;
+            }
+        }
+
         /// <summary>
-        ///     Drops every id at or below a floor: the table already holds an id that large, so any of
-        ///     them may collide.
+        ///     Raises the floor and drops every id at or below it: the table already holds an id that
+        ///     large, so any of them may collide.
         /// </summary>
         /// <param name="floor">The table's largest id.</param>
         /// <returns>How many ids were dropped.</returns>
@@ -144,6 +186,8 @@ namespace Tellma.Core.Data.Ids
         {
             lock (_gate)
             {
+                _floor = Math.Max(_floor, floor);
+                floor = _floor;
                 long dropped = IdRange.CountAtOrBelow(_ranges, floor);
                 if (dropped == 0)
                 {
@@ -159,6 +203,27 @@ namespace Tellma.Core.Data.Ids
 
                 _count -= dropped;
                 return dropped;
+            }
+        }
+
+        /// <summary>Marks the buffer behind: its refills stop until a reservation reads a range.</summary>
+        /// <returns>Whether it was not marked yet, so the condition is new.</returns>
+        public bool MarkBehind()
+        {
+            lock (_gate)
+            {
+                bool fresh = !_behind;
+                _behind = true;
+                return fresh;
+            }
+        }
+
+        /// <summary>Clears the behind mark: a reservation read a range, healing the sequence when it was behind.</summary>
+        public void ClearBehind()
+        {
+            lock (_gate)
+            {
+                _behind = false;
             }
         }
 
