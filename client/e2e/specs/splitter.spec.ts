@@ -6,6 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -21,9 +22,24 @@ function bar(page: Page) {
   return page.getByTestId('splitter-horizontal').getByRole('separator');
 }
 
-/** The list pane's rendered width. */
+// A key or a pointer move sets the size at once, but the pane and the
+// story's readout change only on the following render; on a starved runner
+// that render can still be queued when the action's promise resolves. Every
+// read below therefore waits for the app to be stable first.
+
+/** The list pane's rendered width, once every pending render has run. */
 async function listWidth(page: Page): Promise<number> {
+  await appStable(page);
   return (await page.getByTestId('pane-list').boundingBox())!.width;
+}
+
+/** The list size the story reports (the splitter's `size`), once every pending render has run. */
+async function reportedListSize(page: Page): Promise<number> {
+  await appStable(page);
+  const text = await page.getByTestId('list-size').textContent();
+  const match = /^List: (\d+)$/.exec(text ?? '');
+  expect(match, `the list size reads "${text}"`).not.toBeNull();
+  return Number(match![1]);
 }
 
 test.describe('axe floor', () => {
@@ -147,7 +163,7 @@ test('a shrinking container clamps the list and keeps the size asked for', async
   await page.goto(storyUrl('splitter'));
   await bar(page).focus();
   await page.keyboard.press('End');
-  const asked = Number((await page.getByTestId('list-size').textContent())!.replace('List: ', ''));
+  const asked = await reportedListSize(page);
   await page.setViewportSize({ width: 700, height: 800 });
   const container = (await page.getByTestId('splitter-horizontal').boundingBox())!.width;
   await expect.poll(() => listWidth(page)).toBeLessThan(asked);
