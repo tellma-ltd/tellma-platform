@@ -36,7 +36,17 @@ export interface TmGridKeyContext {
   readonly activeIsBoolean: boolean;
   /** Whether the readonly grid opens rows (row activation is on). */
   readonly rowActivation: boolean;
+  /**
+   * Whether focus is on a column header of a grid whose header row
+   * navigates; absent, focus is on a cell. On a header, Alt+ArrowDown opens
+   * the header's action rather than a cell's dropdown (the header's other
+   * keys resolve through `tmResolveHeaderKey`).
+   */
+  readonly header?: boolean;
 }
+
+/** Where a header-row key moves the header focus. */
+export type TmGridHeaderMotion = 'left' | 'right' | 'first' | 'last' | 'up' | 'down';
 
 /** A resolved keyboard intent. */
 export type TmGridIntent =
@@ -67,13 +77,24 @@ export type TmGridIntent =
   | { readonly kind: 'find' }
   | { readonly kind: 'escape' }
   | { readonly kind: 'expand' }
-  | { readonly kind: 'collapse' };
+  | { readonly kind: 'collapse' }
+  // The header row's own intents (focus on a column header).
+  | { readonly kind: 'headerMove'; readonly motion: TmGridHeaderMotion }
+  | { readonly kind: 'headerActivate' }
+  | { readonly kind: 'headerAction' };
 
 /**
  * The grid state a binding needs before it acts: an editable grid, the find
- * bar enabled, row checkboxes enabled, a tree, or row activation.
+ * bar enabled, row checkboxes enabled, a tree, row activation, or focus on
+ * a navigable column header.
  */
-export type TmGridKeyCondition = 'editable' | 'searchable' | 'selectable' | 'tree' | 'rowActivation';
+export type TmGridKeyCondition =
+  | 'editable'
+  | 'searchable'
+  | 'selectable'
+  | 'tree'
+  | 'rowActivation'
+  | 'header';
 
 /** One row of the grid's binding table. */
 export interface TmGridKeyBinding {
@@ -238,6 +259,15 @@ export const TM_GRID_KEY_BINDINGS: readonly TmGridKeyBinding[] = [
   // core prevents the browser's history navigation on it.
   { keys: 'Alt+ArrowRight', intent: { kind: 'expand' }, labelKey: label('expand'), when: 'tree' },
   { keys: 'Alt+ArrowLeft', intent: { kind: 'collapse' }, labelKey: label('collapse'), when: 'tree' },
+
+  // Section: the header row's addition (spec 0010 §C.4). A header's other
+  // keys are plain moves and Enter, which the rows above already list.
+  {
+    keys: 'Alt+ArrowDown',
+    intent: { kind: 'headerAction' },
+    labelKey: label('headerAction'),
+    when: 'header',
+  },
 ];
 
 /**
@@ -275,6 +305,8 @@ function conditionHolds(
       return ctx.isTree;
     case 'rowActivation':
       return ctx.rowActivation;
+    case 'header':
+      return ctx.header === true;
     default:
       return true;
   }
@@ -313,6 +345,9 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
       return ctx.isTree ? { kind: key === 'ArrowRight' ? 'expand' : 'collapse' } : null;
     }
     if (key === 'ArrowDown') {
+      if (ctx.header === true) {
+        return { kind: 'headerAction' };
+      }
       // Routed as an edit intent that carries the ask, so ONE press reaches
       // the panel or calendar (F2 on the same cell opens the editor without it).
       return ctx.editable ? { kind: 'edit', mode: 'edit', dropdown: true } : null;
@@ -414,6 +449,62 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
     return { kind: 'edit', mode: 'enter', seed: key };
   }
   return null;
+}
+
+/** What the header-key resolver needs to know about the grid. */
+export interface TmGridHeaderKeyContext {
+  /** Whether the platform is Apple's, where Mod is ⌘ rather than Ctrl. */
+  readonly apple: boolean;
+  /** Whether the find bar is enabled. */
+  readonly searchable: boolean;
+}
+
+/**
+ * Resolves a keydown on a navigable column header to an intent, or `null`
+ * for keys the header leaves alone — Tab among them, so the grid stays a
+ * single tab stop, and every typed character. The horizontal arrows are
+ * PHYSICAL (`left`/`right`); the core maps them through the reading
+ * direction.
+ */
+export function tmResolveHeaderKey(
+  event: KeyboardEvent,
+  ctx: TmGridHeaderKeyContext,
+): TmGridIntent | null {
+  if (ctx.searchable && tmKeysMatch(event, TM_GRID_FIND_KEYS, ctx.apple)) {
+    return { kind: 'find' };
+  }
+  const key = event.key;
+  const shift = event.shiftKey;
+  // Alt+ArrowDown opens the header's action; no other key takes Alt.
+  if (event.altKey) {
+    return key === 'ArrowDown' && !event.ctrlKey && !event.metaKey && !shift
+      ? { kind: 'headerAction' }
+      : null;
+  }
+  if (event.ctrlKey || event.metaKey || shift) {
+    return null;
+  }
+  switch (key) {
+    case 'ArrowLeft':
+      return { kind: 'headerMove', motion: 'left' };
+    case 'ArrowRight':
+      return { kind: 'headerMove', motion: 'right' };
+    case 'Home':
+      return { kind: 'headerMove', motion: 'first' };
+    case 'End':
+      return { kind: 'headerMove', motion: 'last' };
+    case 'ArrowUp':
+      return { kind: 'headerMove', motion: 'up' };
+    case 'ArrowDown':
+      return { kind: 'headerMove', motion: 'down' };
+    case 'Enter':
+    case ' ':
+      return { kind: 'headerActivate' };
+    case 'Escape':
+      return { kind: 'escape' };
+    default:
+      return null;
+  }
 }
 
 /**

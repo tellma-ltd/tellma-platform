@@ -644,6 +644,12 @@ export const tmTokensDefault: TmTokens = {
       checkColWidth: '30px',
       minColWidth: '48px',
       handleSize: '24px',
+      // A header action's square target (a column's filter button): the
+      // 24px minimum target, inside every density's header height.
+      headerActionSize: '24px',
+      // The row-end column (a list's column editor, a per-row menu): one
+      // header action and 6px on each side.
+      rowEndWidth: '36px',
       cellPaddingX: '8px',
       cellFontSize: '12px',
       // The plain (readonly) look drops the vertical rules, so its cells

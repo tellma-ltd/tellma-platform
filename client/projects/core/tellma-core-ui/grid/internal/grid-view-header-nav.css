@@ -1,0 +1,73 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-view, second sheet — the navigable header row and the room the
+   row-end column needs (spec 0010 §C.4, §C.14); the row-end cells style
+   themselves. A sheet of its own so each of the view's component
+   stylesheets stays inside the per-stylesheet budget. */
+
+/* Header focus: the active-cell ring, drawn inset (a header cell's border
+   box is all the room there is — the next header covers anything outside).
+   Only keyboard focus shows it: a press never moves focus to a header. */
+.tm-grid__colhdr:focus-visible {
+  outline: var(--focus-ring-width) solid var(--grid-selection-border);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+/* The select-all checkbox is its own header slot: the ring hugs the box. */
+.tm-grid__check:focus-visible {
+  outline: var(--focus-ring-width) solid var(--grid-selection-border);
+  outline-offset: var(--border-width);
+}
+
+/* The header-end slot: one action's square after the label and the sort
+   slot, reserved whenever the column declares it, above the resize handle
+   (which stays grabbable in the cell's trailing padding). A popover the
+   action opens renders in place, inside the slot: it gets the page's
+   typesetting back, not the header's row-tall line height, weight,
+   alignment, no-wrap and no-select. */
+.tm-grid__hdrend {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--grid-header-action-size);
+  block-size: calc(var(--grid-row-height) - var(--border-width));
+  vertical-align: bottom;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-ui);
+  text-align: start;
+  white-space: normal;
+  user-select: text;
+  cursor: auto;
+}
+
+/* The label yields the slot (and the sort slot beside it, when sortable),
+   so a long label's ellipsis never pushes the action out of the header. */
+.tm-grid__colhdr--end .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--grid-header-action-size));
+}
+
+.tm-grid__colhdr--end.tm-grid__colhdr--sortable .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--icon-size-sm) - var(--grid-header-action-size));
+}
+
+/* The header and the rows are never narrower than their tracks' minimums:
+   a sticky row-end cell keeps to its row's box, so a row only as wide as
+   the view would carry the cell off with it on a sideways scroll. */
+.tm-grid__scroller--row-end .tm-grid__header,
+.tm-grid__scroller--row-end .tm-grid__row {
+  min-inline-size: min-content;
+}
+
+@media (forced-colors: active) {
+  .tm-grid__colhdr:focus-visible,
+  .tm-grid__check:focus-visible {
+    outline-color: Highlight;
+  }
+}

@@ -221,8 +221,9 @@ export class TmGridHarness extends ComponentHarness {
 
   /**
    * The full ARIA column count (`aria-colcount`): the data columns plus the
-   * row-header column (unless `rowHeaders` is off), and — on a `selectable`
-   * grid — the row-checkbox chrome column.
+   * row-header column (unless `rowHeaders` is off), the row-checkbox chrome
+   * column on a `selectable` grid, and the row-end column when the grid
+   * declares one.
    */
   async getColCount(): Promise<number> {
     return Number(await (await this.gridElement()).getAttribute('aria-colcount'));
@@ -250,12 +251,14 @@ export class TmGridHarness extends ComponentHarness {
   }
 
   /**
-   * The coordinates of the active cell (the one holding the roving
-   * `tabindex="0"`), or `null` when no cell is active — including while
-   * focus is parked on the container after Escape.
+   * The coordinates of the active data cell (the one holding the roving
+   * `tabindex="0"`), or `null` when no data cell holds it — no cell active,
+   * focus parked on the container after Escape, a column header holding the
+   * tab stop, or the active row's row-end cell holding the active position
+   * (see {@link isRowEndActive}).
    */
   async getActiveCell(): Promise<TmGridCellCoordinate | null> {
-    const active = await this.locatorForOptional('[role="gridcell"][tabindex="0"]')();
+    const active = await this.locatorForOptional('[data-tm-cell][tabindex="0"]')();
     if (active === null) {
       return null;
     }
@@ -263,6 +266,11 @@ export class TmGridHarness extends ComponentHarness {
       row: Number(await active.getAttribute('data-row')),
       col: Number(await active.getAttribute('data-col')),
     };
+  }
+
+  /** Whether the active row's row-end cell holds the active position (and the tab stop). */
+  async isRowEndActive(): Promise<boolean> {
+    return (await this.locatorForOptional('[data-tm-endcell][tabindex="0"]')()) !== null;
   }
 
   /**
@@ -316,9 +324,13 @@ export class TmGridHarness extends ComponentHarness {
     await this.forceStabilize();
   }
 
-  /** The active cell's view-space row index, or `null` with no active cell. */
+  /**
+   * The active cell's view-space row index — its data cell's or its row-end
+   * cell's — or `null` while no cell holds the tab stop.
+   */
   async getActiveRowIndex(): Promise<number | null> {
-    return (await this.getActiveCell())?.row ?? null;
+    const active = await this.locatorForOptional('[role="gridcell"][tabindex="0"]')();
+    return active === null ? null : Number(await active.getAttribute('data-row'));
   }
 
   /**
@@ -356,11 +368,56 @@ export class TmGridHarness extends ComponentHarness {
   }
 
   /**
-   * Sends keys through the grid's keyboard pipeline: focuses the active
-   * cell (or the grid container when no cell is active) and types there.
+   * Opens a column header's action like a user — clicks the first
+   * `button[tmGridHeaderAction]` in the header of the column with that
+   * `key` — and waits for the grid to settle. A popover the action opens
+   * renders in place, inside the header; resolve its harness from the grid's
+   * or the document's root.
+   */
+  async openHeaderAction(key: string): Promise<void> {
+    const header = `[role="columnheader"][data-key="${key}"]`;
+    await (await this.locatorFor(`${header} .tm-grid-header-action`)()).click();
+    await this.forceStabilize();
+  }
+
+  /**
+   * Opens the row-end column's header action like a user (a list's column
+   * editor): clicks the first `button[tmGridHeaderAction]` in the row-end
+   * header and waits for the grid to settle.
+   */
+  async openRowEndAction(): Promise<void> {
+    await (await this.locatorFor('[data-tm-endhdr] .tm-grid-header-action')()).click();
+    await this.forceStabilize();
+  }
+
+  /**
+   * The header holding header focus — the `key` of its column, `'rowEnd'`
+   * for the row-end header, `'selectAll'` for the select-all checkbox — or
+   * `null` while no header holds the grid's tab stop.
+   */
+  async getFocusedHeader(): Promise<string | null> {
+    const stop = await this.locatorForOptional('[data-tm-hslot][tabindex="0"]')();
+    if (stop === null) {
+      return null;
+    }
+    if ((await stop.getAttribute('data-tm-hslot')) === '-1') {
+      return 'selectAll';
+    }
+    if ((await stop.getAttribute('data-tm-endhdr')) !== null) {
+      return 'rowEnd';
+    }
+    return (await stop.getAttribute('data-key')) ?? '';
+  }
+
+  /**
+   * Sends keys through the grid's keyboard pipeline: focuses the element
+   * holding the grid's tab stop — the active cell, the row-end cell or a
+   * column header — or the grid container when none does, and types there.
    */
   async pressKeys(...keys: (string | TestKey)[]): Promise<void> {
-    const active = await this.locatorForOptional('[role="gridcell"][tabindex="0"]')();
+    const active = await this.locatorForOptional(
+      '[role="gridcell"][tabindex="0"], [data-tm-hslot][tabindex="0"]',
+    )();
     const target = active ?? (await this.gridElement());
     await target.focus();
     await target.sendKeys(...keys);

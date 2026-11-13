@@ -8,7 +8,18 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
-import { Check, ChevronRight, CircleAlert, CircleX, Inbox, Plus, Search, SearchX } from 'lucide';
+import {
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleX,
+  Columns3,
+  Funnel,
+  Inbox,
+  Plus,
+  Search,
+  SearchX,
+} from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
@@ -30,7 +41,10 @@ import {
   TmGridDisplayDef,
   TmGridDriver,
   TmGridEmptyDef,
+  TmGridHeaderAction,
+  TmGridHeaderEndDef,
   TmGridLoadingDef,
+  TmGridRowEndHeaderDef,
   type TmGridRowActivation,
   type TmGridSort,
 } from '@tellma/core-ui/grid';
@@ -156,7 +170,10 @@ class ExamplePage {}
     TmGridDisplayDef,
     TmGridDriver,
     TmGridEmptyDef,
+    TmGridHeaderAction,
+    TmGridHeaderEndDef,
     TmGridLoadingDef,
+    TmGridRowEndHeaderDef,
     TmIcon,
     TmImage,
     TmImagePlaceholder,
@@ -253,7 +270,11 @@ class ExamplePage {}
     >
       <tm-grid-column key="name" header="placeholder">
         <span *tmGridDisplay="let value">{{ value }}</span>
+        <ng-template tmGridHeaderEnd>
+          <button tmGridHeaderAction aria-label="placeholder">P</button>
+        </ng-template>
       </tm-grid-column>
+      <ng-template tmGridRowEndHeader>placeholder</ng-template>
       <span *tmGridEmpty>placeholder</span>
       <span *tmGridLoading>placeholder</span>
     </tm-grid>
@@ -339,6 +360,12 @@ class ExampleHost {
   protected readonly onRow = (activation: TmGridRowActivation<ExampleRow>): void => void activation;
   protected readonly byStatus = (row: ExampleRow): string | null =>
     row.active ? null : 'tm-grid__row--muted';
+
+  // The header-filter example's members: whether a filter is in force, and
+  // the filter and column-editor icons.
+  protected readonly filtered = signal(false);
+  protected readonly funnel = Funnel;
+  protected readonly columns3 = Columns3;
 }
 
 /** The example templates' grids — flat and tree — read off the debug tree. */
@@ -503,6 +530,28 @@ const MARKERS: {
     name: 'TmGridLoadingDef',
     pattern: /\btmGridLoading\b/,
     instantiated: (fixture) => grids(fixture).some((grid) => grid.loadingDef() !== undefined),
+  },
+  {
+    name: 'TmGridHeaderEndDef',
+    pattern: /\btmGridHeaderEnd\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) =>
+        grid.columns().some((column) => column.headerEndDef() !== undefined),
+      ),
+  },
+  {
+    name: 'TmGridRowEndHeaderDef',
+    pattern: /\btmGridRowEndHeader\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.rowEndHeaderDef() !== undefined),
+  },
+  {
+    // A header action renders inside the grid's own header row, outside
+    // the fixture's debug tree; a matched one carries its class.
+    name: 'TmGridHeaderAction',
+    pattern: /\btmGridHeaderAction\b/,
+    instantiated: (fixture) =>
+      (fixture.nativeElement as HTMLElement).querySelector('button.tm-grid-header-action') !==
+      null,
   },
   {
     name: 'selectable',

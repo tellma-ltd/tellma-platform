@@ -300,6 +300,8 @@
     --grid-check-col-width: 30px;
     --grid-min-col-width: 48px;
     --grid-handle-size: 24px;
+    --grid-header-action-size: 24px;
+    --grid-row-end-width: 36px;
     --grid-cell-padding-x: 8px;
     --grid-cell-font-size: 12px;
     --grid-plain-cell-padding-x: 11px;
