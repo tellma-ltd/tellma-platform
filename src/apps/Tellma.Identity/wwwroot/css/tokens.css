@@ -333,6 +333,8 @@
     --grid-cut-border: var(--color-primary);
     --grid-find-match-bg: var(--warning-bg);
     --grid-find-active-outline: var(--warning);
+    --grid-flash-bg: var(--info-bg);
+    --grid-flash-duration: 1200ms;
     --grid-indent: 16px;
     --grid-row-header-width: 34px;
     --grid-check-col-width: 30px;

@@ -702,6 +702,11 @@ export const tmTokensDefault: TmTokens = {
       cutBorder: '{action.primary}',
       findMatchBg: '{status.warning.bg}',
       findActiveOutline: '{status.warning.fg}',
+      // The pulse a row gets when code scrolls it into view: the info tint
+      // (distinct from the find match's warning tint), long enough to be
+      // seen landing, short enough not to linger.
+      flashBg: '{status.info.bg}',
+      flashDuration: '1200ms',
       // One indent step per level, sized to sit under the twisty.
       indent: '16px',
       rowHeaderWidth: '34px',

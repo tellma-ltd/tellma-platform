@@ -217,6 +217,8 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
               [class.tm-grid__row--checked]="row.checked"
               [class.tm-grid__row--placeholder]="row.isPlaceholder"
               [class.tm-grid__row--outlier]="row.outlier"
+              [class.tm-grid__row--flash]="row.flash"
+              [attr.data-tm-key]="row.rowKey"
               [style.transform]="row.outlierTransform"
             >
               @if (core().rowHeaders()) {
@@ -478,7 +480,7 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
   `,
   // The header row's rules load first, in a sheet of their own: together
   // with the body's they outgrow one component stylesheet's budget.
-  styleUrls: ['./grid-header.css', './grid-view.css'],
+  styleUrls: ['./grid-header.css', './grid-view.css', './grid-flash.css'],
   host: { class: 'tm-grid-view' },
 })
 export class ɵTmGridView {

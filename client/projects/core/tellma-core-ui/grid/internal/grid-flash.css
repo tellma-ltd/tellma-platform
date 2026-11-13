@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-view's row flash: the one-off pulse `scrollToRow` gives the row it
+   brings into view. The class is keyed by row id and stays on for
+   --grid-flash-duration, so the animation below runs once per flash. The
+   view loads this sheet last, so these rules follow grid-view.css's. */
+
+/* The cells start on the flash tint and fade back to whatever their row
+   paints (stripe, check, active tint). An animated value overrides the
+   cells' own background-color for the animation's run only. */
+.tm-grid__row--flash > * {
+  animation: tm-grid-flash var(--grid-flash-duration) ease-out;
+}
+
+@keyframes tm-grid-flash {
+  from {
+    background-color: var(--grid-flash-bg);
+  }
+}
+
+/* Reduced motion: the tint holds still for the same time, then clears in
+   one step instead of fading. */
+@media (prefers-reduced-motion: reduce) {
+  .tm-grid__row--flash > * {
+    animation-timing-function: step-end;
+  }
+}
+
+/* Forced colors replace the tint: an outline marks the row instead. */
+@media (forced-colors: active) {
+  .tm-grid__row--flash {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+}

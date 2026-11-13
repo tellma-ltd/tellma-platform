@@ -334,6 +334,8 @@ class ExampleHost {
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+  // The remembered-expansion example's two-way expanded set.
+  protected readonly treeExpandedIds = signal<ReadonlySet<number | string>>(new Set([1]));
   // The chip and banner examples' event handlers.
   protected readonly onRemove = (label: string): void => void label;
   protected readonly onActivate = (key: string): void => void key;

@@ -365,6 +365,7 @@ export class TmGridHarness extends ComponentHarness {
     isEditorOpen(): Promise<boolean>;
     isLoading(): Promise<boolean>;
     isRowEndActive(): Promise<boolean>;
+    isRowFlashing(rowIndex: number): Promise<boolean>;
     modClickCell(rowIndex: number, colIndex: number): Promise<void>;
     openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness>;
     openEditor(rowIndex: number, colIndex: number, via?: TmGridEditorOpenVia, seed?: string): Promise<void>;
@@ -661,6 +662,7 @@ export class TmTreeGridHarness extends TmGridHarness {
     clickExpander(rowIndex: number): Promise<void>;
     collapse(rowIndex: number): Promise<void>;
     expand(rowIndex: number): Promise<void>;
+    getExpandedIds(): Promise<Array<number | string>>;
     getLevel(rowIndex: number): Promise<number>;
     getVisibleRowCount(): Promise<number>;
     static hostSelector: string;

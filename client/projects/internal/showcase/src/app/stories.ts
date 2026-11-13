@@ -35,6 +35,7 @@ import { BasicsGlyphsStory } from './glyphs/basics-glyphs-story';
 import { GlyphsStory } from './glyphs/glyphs-story';
 import { GridStatesStory } from './grid/grid-states-story';
 import { TreeGridLargeStory } from './grid/tree-grid-large-story';
+import { TreeGridRestoreStory } from './grid/tree-grid-restore-story';
 import { TreeGridStory } from './grid/tree-grid-story';
 import { I18nStory } from './i18n/i18n-story';
 import { IconStory } from './icon/icon-story';
@@ -107,7 +108,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'confirm', title: 'Confirm (TmConfirm)', component: ConfirmStory },
   { id: 'error-dialog', title: 'Error dialog (TmErrorDialog)', component: ErrorDialogStory },
   { id: 'card', title: 'Card (tm-card)', component: CardStory },
-  { id: 'page-header', title: 'Page header (tm-page-header)', component: PageHeaderStory, wide: true },
+  {
+    id: 'page-header',
+    title: 'Page header (tm-page-header)',
+    component: PageHeaderStory,
+    wide: true,
+  },
   {
     id: 'description-list',
     title: 'Description list (dl[tmDescriptionList])',
@@ -175,6 +181,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
     id: 'tree-grid-large',
     title: 'Tree grid (large, expanded)',
     component: TreeGridLargeStory,
+    wide: true,
+  },
+  {
+    id: 'tree-grid-restore',
+    title: 'Tree grid (expansion restore)',
+    component: TreeGridRestoreStory,
     wide: true,
   },
   { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
