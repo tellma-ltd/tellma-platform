@@ -295,9 +295,16 @@ describe('TmSessionPaths', () => {
     let retry: (() => void) | undefined;
     const showPage = vi.fn((_reason: string, again?: () => void) => void (retry = again));
     TestBed.configureTestingModule({ providers: tmSessionTestingProviders(host, { mark, showPage }, NOW) });
+    const store = TestBed.inject(TmClientStore);
+    const tenant = { kind: 'tenant', sub: FARAH, tenantId: 17 } as const;
+    await store.put(tenant, 'me', { tag: null, savedAt: NOW, data: { name: 'Farah' } });
+    const sweep = vi.spyOn(store, 'sweep');
     TestBed.inject(TmSessionPaths).expired('401');
     expect(TestBed.inject(TmSession).state()).toBe('expired');
     expect(showPage).toHaveBeenCalledWith('sign-in-failed', expect.any(Function));
+    // The user's data goes before Try again: a tab closed on this page leaves none.
+    expect(sweep.mock.calls).toEqual([['session-ended']]);
+    expect(store.doc(tenant, 'me')()).toBeUndefined();
     await Promise.resolve();
     expect([host.assigned, host.reloads, host.cookieWrites]).toEqual([[], 0, []]);
     // Try again starts the next round: the cookie goes and the tab signs in.

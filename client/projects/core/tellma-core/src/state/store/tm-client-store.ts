@@ -203,6 +203,12 @@ export class TmClientStore {
    * A sweep then deletes nothing on disk.
    */
   #diskUnreached = false;
+  /**
+   * Which partitions each sweep this tab started deletes, in order. A write or
+   * read started before a sweep that covers its partition no longer sets the
+   * mirror: the sweep's delete commits after it.
+   */
+  readonly #sweeps: ((p: string) => boolean)[] = [];
   /** The open (or opening) connection; `null` before the first access and after a `versionchange` closed it. */
   #connection: Promise<IDBDatabase | null> | null = null;
   #persistAsked = false;
@@ -253,7 +259,7 @@ export class TmClientStore {
     });
   }
 
-  /** Where the documents live: `memory` once IndexedDB failed to open, and every launch is then cold. */
+  /** Where the documents live: `memory` once IndexedDB failed to open or failed later, and every launch is then cold. */
   get mode(): 'indexeddb' | 'memory' {
     return this.#mode;
   }
@@ -264,10 +270,13 @@ export class TmClientStore {
    * absent afterwards; another build's copies are skipped.
    *
    * @param partitions - The partitions.
-   * @returns A promise that resolves once the mirror holds them.
+   * @returns A promise that resolves once the mirror holds them. It never
+   *   rejects: when the storage fails, the store runs in memory from then on
+   *   and the mirror keeps what it held.
    */
   async readAll(...partitions: TmPartition[]): Promise<void> {
     const keys = partitions.map((partition) => tmPartitionKey(partition));
+    const since = this.#sweeps.length;
     await this.#transact('readonly', (store) => {
       partitions.forEach((partition, index) => {
         const p = keys[index]!;
@@ -280,12 +289,12 @@ export class TmClientStore {
             const at = n.lastIndexOf('@');
             if (at > 0 && tmDocFormat(this.#formats, n.slice(0, at)) === Number(n.slice(at + 1))) {
               found.add(n);
-              this.#settle(p, n, toDoc(value));
+              this.#settle(p, n, toDoc(value), since);
             }
           }
           for (const entry of this.#mirror.values()) {
             if (entry.p === p && !found.has(entry.n)) {
-              this.#settle(p, entry.n, undefined);
+              this.#settle(p, entry.n, undefined, since);
             }
           }
         };
@@ -316,19 +325,23 @@ export class TmClientStore {
    * is written and the mirror keeps the stored copy. The mirror shows the
    * document at once; other tabs re-read it once it commits. A write the
    * browser's quota refuses is dropped, and the document stays in this tab's
-   * mirror.
+   * mirror; so does a write the storage fails, and the store runs in memory
+   * from then on. A sweep started after the call deletes the document.
    *
    * @param partition - The document's partition.
    * @param name - The document's name.
    * @param doc - The document.
-   * @returns A promise that resolves once the write commits or is dropped.
+   * @returns A promise that resolves once the write commits, or once it is
+   *   dropped and kept in the mirror alone.
    * @throws TmStoreRefusedError when the write guard refuses.
+   * @throws DOMException `DataCloneError` when IndexedDB cannot store the value; nothing is written.
    */
   async put<T>(partition: TmPartition, name: string, doc: TmStoredDoc<T>): Promise<void> {
     this.#guard(partition);
     const p = tmPartitionKey(partition);
     const n = this.#storedName(name);
     const entry = this.#entry(p, n);
+    const since = this.#sweeps.length;
     if ((untracked(entry.stored)?.savedAt ?? -Infinity) <= doc.savedAt) {
       entry.stored.set(doc);
     }
@@ -338,8 +351,11 @@ export class TmClientStore {
       request.onsuccess = () => {
         const stored = toDoc(request.result);
         if (stored !== undefined && stored.savedAt > doc.savedAt) {
-          // A later copy is stored: it wins, here and in the mirror.
-          entry.stored.set(stored);
+          // A later copy is stored: it wins, here and in the mirror, unless
+          // a sweep queued behind this transaction emptied the entry.
+          if (!this.#sweptSince(p, since)) {
+            entry.stored.set(stored);
+          }
           return;
         }
         try {
@@ -358,13 +374,19 @@ export class TmClientStore {
    * Replaces a document with what `update` makes of its stored value, in one
    * readwrite transaction, so no other tab's write lands between the read
    * and the write. `undefined` deletes the document. The stored tag is kept,
-   * and `savedAt` becomes now.
+   * and `savedAt` becomes now. In memory, `update` runs on the mirrored copy.
+   * A write the browser's quota refuses is dropped and kept in this tab's
+   * mirror; so is a write the storage fails, and the store runs in memory
+   * from then on. A sweep started after the call deletes the document.
    *
    * @param partition - The document's partition.
    * @param name - The document's name.
    * @param update - Makes the new value from the stored one, or `undefined` to delete; runs synchronously.
-   * @returns A promise that resolves once the write commits or is dropped.
-   * @throws TmStoreRefusedError when the write guard refuses; whatever `update` throws, writing nothing.
+   * @returns A promise that resolves once the write commits, or once it is
+   *   dropped and kept in the mirror alone.
+   * @throws TmStoreRefusedError when the write guard refuses.
+   * @throws Whatever `update` throws, and DOMException `DataCloneError` when
+   *   IndexedDB cannot store its value; either way nothing is written.
    */
   async patch<T>(
     partition: TmPartition,
@@ -375,39 +397,59 @@ export class TmClientStore {
     const p = tmPartitionKey(partition);
     const n = this.#storedName(name);
     const entry = this.#entry(p, n);
+    const since = this.#sweeps.length;
     // The new copy, from the stored one: the mirror's when the store is in memory.
     const next = (current: TmStoredDoc<unknown> | undefined): TmStoredDoc<unknown> | undefined => {
       const data = update(current?.data as T | undefined);
       return data === undefined ? undefined : { tag: current?.tag ?? null, savedAt: this.#now(), data };
     };
-    if ((await this.#database()) === null) {
-      entry.stored.set(next(untracked(entry.stored)));
-      return;
-    }
-    await this.#write(partition, p, n, 'patch', (store, fail) => {
-      let written = false;
-      const request = store.get([p, n]);
-      request.onsuccess = () => {
-        const current = toDoc(request.result);
-        let doc: TmStoredDoc<unknown> | undefined;
-        try {
-          doc = next(current);
-          if (doc !== undefined) {
-            store.put({ p, n, ...doc } satisfies TmDocRecord);
-            written = true;
-          } else if (current !== undefined) {
-            store.delete([p, n]);
-            written = true;
-          }
-        } catch (error) {
-          // What update threw, or a value IndexedDB cannot clone: nothing is written.
-          fail(error);
-          return;
-        }
+    // Sets the mirror, unless a sweep started after this call emptied it.
+    let mirrored = false;
+    const mirror = (doc: TmStoredDoc<unknown> | undefined): void => {
+      mirrored = true;
+      if (!this.#sweptSince(p, since)) {
         entry.stored.set(doc);
-      };
-      return () => written;
-    });
+      }
+    };
+    // The transaction is created at once, as put's and sweep's are, so a
+    // sweep called after this patch commits after it.
+    await this.#write(
+      partition,
+      p,
+      n,
+      'patch',
+      (store, fail) => {
+        let written = false;
+        const request = store.get([p, n]);
+        request.onsuccess = () => {
+          const current = toDoc(request.result);
+          let doc: TmStoredDoc<unknown> | undefined;
+          try {
+            doc = next(current);
+            if (doc !== undefined) {
+              store.put({ p, n, ...doc } satisfies TmDocRecord);
+              written = true;
+            } else if (current !== undefined) {
+              store.delete([p, n]);
+              written = true;
+            }
+          } catch (error) {
+            // What update threw, or a value IndexedDB cannot clone: nothing is written.
+            fail(error);
+            return;
+          }
+          mirror(doc);
+        };
+        return () => written;
+      },
+      // In memory, from the start or since the storage failed before the
+      // read: the update runs on the mirrored copy.
+      () => {
+        if (!mirrored) {
+          mirror(next(untracked(entry.stored)));
+        }
+      },
+    );
   }
 
   /**
@@ -417,9 +459,11 @@ export class TmClientStore {
    *
    * @param rule - What to delete.
    * @returns A promise that resolves once the delete commits: with `true`
-   *   when no document of the rule is left on disk, and `false` when the store
-   *   runs in memory while the browser's database, which it could not reach,
-   *   may still hold them.
+   *   when it committed, or when nothing is on disk to delete, so that no
+   *   document of the rule written before the call is left; and `false` when
+   *   the store runs in memory while the browser's database, which it could
+   *   not reach, may still hold them. A write started after the call lands
+   *   after the delete. It never rejects.
    */
   async sweep(rule: TmSweepRule): Promise<boolean> {
     const started = performance.now();
@@ -452,6 +496,7 @@ export class TmClientStore {
       ranges = [IDBKeyRange.bound(...tmPartitionKeyBounds(partition))];
       deletes = (p) => p === prefix;
     }
+    this.#sweeps.push(deletes);
     for (const entry of this.#mirror.values()) {
       if (deletes(entry.p)) {
         entry.stored.set(undefined);
@@ -521,10 +566,10 @@ export class TmClientStore {
         this.boot.patch({ sub: profile.sub });
       }
     } catch (error) {
-      // A fault after the open (a lost connection, a corrupt backing store):
-      // the store is only a cache, so the tab runs in memory and starts cold.
-      this.#telemetry.error(error, { source: 'tm-client-store' });
-      this.#toMemory('failed');
+      // A storage fault is reported where it happens, and the store goes on
+      // in memory; anything that still escapes must not stop the app's
+      // start: the store is only a cache, so the tab starts cold.
+      this.#fault(error);
       return;
     }
 
@@ -589,11 +634,19 @@ export class TmClientStore {
     return entry;
   }
 
-  /** Sets a mirrored copy read from the database, unless this tab is writing it. */
-  #settle(p: string, n: string, doc: TmStoredDoc<unknown> | undefined): void {
-    if (!this.#pending.has(mirrorKey(p, n))) {
+  /**
+   * Sets a mirrored copy read from the database, unless this tab is writing
+   * it or a sweep started after the read deletes it.
+   */
+  #settle(p: string, n: string, doc: TmStoredDoc<unknown> | undefined, since: number): void {
+    if (!this.#pending.has(mirrorKey(p, n)) && !this.#sweptSince(p, since)) {
       this.#entry(p, n).stored.set(doc);
     }
+  }
+
+  /** Whether a sweep started since the given count of sweeps deletes a partition. */
+  #sweptSince(p: string, since: number): boolean {
+    return this.#sweeps.slice(since).some((deletes) => deletes(p));
   }
 
   /**
@@ -638,7 +691,8 @@ export class TmClientStore {
   /**
    * Runs one write of a document: it counts as pending until it settles, a
    * commit posts `store.changed` and, after the first tenant write, asks the
-   * browser to keep the site's storage, and a quota refusal is dropped.
+   * browser to keep the site's storage, and a quota refusal is dropped. In
+   * memory, `offline` keeps the write in the mirror alone.
    */
   async #write(
     partition: TmPartition,
@@ -646,12 +700,15 @@ export class TmClientStore {
     n: string,
     kind: 'put' | 'patch',
     work: (store: IDBObjectStore, fail: (error: unknown) => void) => () => boolean,
+    offline?: () => void,
   ): Promise<void> {
     const key = mirrorKey(p, n);
     this.#pending.set(key, (this.#pending.get(key) ?? 0) + 1);
     try {
       const result = await this.#transact('readwrite', work);
-      if (result?.value === true) {
+      if (result === null) {
+        offline?.();
+      } else if (result.value) {
         this.#bus.post({ type: 'store.changed', partition: p, names: [n] });
         if (partition.kind === 'tenant' && !this.#persistAsked) {
           // Spec 0025 §2.7: once, after the first tenant-partition write.
@@ -701,10 +758,11 @@ export class TmClientStore {
     if (entries.length === 0) {
       return;
     }
+    const since = this.#sweeps.length;
     await this.#transact('readonly', (store) => {
       for (const { p, n } of entries) {
         const request = store.get([p, n]);
-        request.onsuccess = () => this.#settle(p, n, toDoc(request.result));
+        request.onsuccess = () => this.#settle(p, n, toDoc(request.result), since);
       }
       return () => undefined;
     });
@@ -712,8 +770,10 @@ export class TmClientStore {
 
   /**
    * Runs work in one transaction. Resolves with the work's result once the
-   * transaction commits, or `null` when the store runs in memory; rejects
-   * with the transaction's error, or what the work passed to `fail`.
+   * transaction commits, or `null` when the store runs in memory, including
+   * from a storage fault on: one the caller did not cause (a lost connection,
+   * a failing backing store) is reported and puts the store in memory.
+   * Rejects with what the work passed to `fail`, or a quota refusal.
    */
   async #transact<T>(
     mode: IDBTransactionMode,
@@ -732,7 +792,7 @@ export class TmClientStore {
       // A connection that closed under us (the database was deleted or
       // upgraded elsewhere): open again, once.
       if (retried || !(error instanceof DOMException) || error.name !== 'InvalidStateError') {
-        throw error;
+        return this.#fault(error);
       }
       if (this.#connection === connection) {
         this.#connection = null;
@@ -745,11 +805,39 @@ export class TmClientStore {
         failure = { error };
         transaction.abort();
       };
-      const result = work(transaction.objectStore(TM_STORE_DOCS), fail);
+      let result: () => T;
+      try {
+        result = work(transaction.objectStore(TM_STORE_DOCS), fail);
+      } catch (error) {
+        // A request the transaction refused at once: the store is not usable.
+        try {
+          transaction.abort();
+        } catch {
+          // Already finished.
+        }
+        resolve(this.#fault(error));
+        return;
+      }
       transaction.oncomplete = () => resolve({ value: result() });
-      transaction.onabort = () =>
-        reject(failure !== null ? failure.error : (transaction.error ?? new DOMException('The write was aborted.', 'AbortError')));
+      transaction.onabort = () => {
+        const error = transaction.error;
+        if (failure !== null) {
+          // The caller's: a value IndexedDB cannot clone, or what an update threw.
+          reject(failure.error);
+        } else if (isQuota(error)) {
+          reject(error);
+        } else {
+          resolve(this.#fault(error ?? new DOMException('The transaction was aborted.', 'AbortError')));
+        }
+      };
     });
+  }
+
+  /** Reports a storage fault the caller did not cause, and runs the tab in memory from now on. */
+  #fault(error: unknown): null {
+    this.#telemetry.error(error, { source: 'tm-client-store' });
+    this.#toMemory('failed');
+    return null;
   }
 
   /** The open connection, opening it on first use; `null` in memory mode. */

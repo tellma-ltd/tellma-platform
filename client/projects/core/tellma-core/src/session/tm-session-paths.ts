@@ -58,7 +58,8 @@ export class TmSessionPaths {
 
   /**
    * Announces that this tab's session started, after a sign-in, so that the
-   * user's other tabs reload. No tab bus exists yet, so nothing is announced.
+   * user's other tabs reload. No tab acts on the announcement yet, so none
+   * is posted.
    *
    * @param sub - The signed-in user's subject identifier.
    */
@@ -68,11 +69,12 @@ export class TmSessionPaths {
 
   /**
    * Runs the expiry path, once: the session is marked expired, the expiry is
-   * reported, every user's stored data is swept, a stale profile cookie is
-   * deleted and the tab leaves to sign in again, coming back to the same
-   * page. When this page itself came back from a sign-in less than a minute
-   * ago, the sign-in is failing, so the page shows that instead of starting
-   * another round, and its Try again button starts the next one. A `401` for
+   * reported, every user's stored data is swept at once, a stale profile
+   * cookie is deleted and the tab leaves to sign in again, coming back to the
+   * same page. When this page itself came back from a sign-in less than a
+   * minute ago, the sign-in is failing, so the page shows that instead of
+   * starting another round, and its Try again button starts the next one;
+   * the data is swept either way. A `401` for
    * a request sent under a session the cookie no longer names belongs to a
    * session already replaced, and runs nothing.
    *
@@ -91,7 +93,11 @@ export class TmSessionPaths {
     this.state.set('expired');
     this.#telemetry.event('tm.session.expired', { source });
     this.#telemetry.flush();
-    const restart = (): void => void this.#signInAgain();
+    // The sweep starts now, on either branch: a tab closed on the
+    // sign-in-failed page must not leave the ended session's data for a
+    // warm launch.
+    const swept = this.#sweep();
+    const restart = (): void => void this.#signInAgain(swept);
     // The boot's loop guard (spec 0024 §4.2 step 3b) only sees a sign-in that
     // comes back without a cookie; this one catches a sign-in that comes back
     // with a cookie the server then refuses.
@@ -105,13 +111,11 @@ export class TmSessionPaths {
   }
 
   /**
-   * The expiry's way out, as the session-ended dialog's Sign in takes it:
-   * the clean-up's sweep, then the sign-in, which comes
-   * back to this page. The sign-in, not a reload, leaves the tab: a reload
-   * would reach the boot script's expiry branch and report the expiry a
-   * second time.
+   * The expiry's clean-up: sweeps every user's stored data, in a time box. A
+   * sweep that did not apply leaves the boot record naming no user, so the
+   * next launch sweeps again.
    */
-  async #signInAgain(): Promise<void> {
+  async #sweep(): Promise<void> {
     // Spec 0024 §8.6, without the dialog and the broadcast.
     const store = this.#injector.get(TmClientStore);
     let box: ReturnType<typeof setTimeout> | undefined;
@@ -127,6 +131,18 @@ export class TmSessionPaths {
       // last tenant stays, as the expiry path keeps it.
       store.boot.patch({ sub: null });
     }
+  }
+
+  /**
+   * The expiry's way out, as the session-ended dialog's Sign in takes it:
+   * once the clean-up's sweep is done, the sign-in, which comes back to this
+   * page. The sign-in, not a reload, leaves the tab: a reload would reach the
+   * boot script's expiry branch and report the expiry a second time.
+   *
+   * @param swept - The clean-up's sweep, started when the session expired.
+   */
+  async #signInAgain(swept: Promise<void>): Promise<void> {
+    await swept;
     // After a 401 the cookie may still be present; deleting it keeps the
     // returning boot from running the app again into the same 401.
     this.#host.writeCookie(PROFILE_COOKIE_DELETE);

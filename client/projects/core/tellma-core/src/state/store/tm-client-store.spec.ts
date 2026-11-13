@@ -127,48 +127,56 @@ interface FakeRequest {
   error: DOMException | null;
 }
 
+/** The browser's refusal of a write on a full disk. */
+const QUOTA = new DOMException('The quota is exceeded.', 'QuotaExceededError');
+
 /**
- * A readwrite transaction that fails as a full disk does: the read succeeds,
- * then the write's request errs and the transaction aborts with
- * `QuotaExceededError` as its error, after the work returned.
+ * A transaction that fails asynchronously, as browsers fail one: a write's
+ * request errs, then the transaction aborts with the error as its own. A
+ * read succeeds first, or, when `reads` is false, the transaction aborts
+ * before it does.
  */
-function quotaTransaction(): IDBTransaction {
-  const quota = new DOMException('The quota is exceeded.', 'QuotaExceededError');
+function failingTransaction(error: DOMException, reads: boolean): IDBTransaction {
   const transaction = {
     error: null as DOMException | null,
     oncomplete: null as (() => void) | null,
     onabort: null as (() => void) | null,
     abort: (): void => undefined,
   };
-  const request = (): FakeRequest => ({ onsuccess: null, onerror: null, result: undefined, error: null });
-  const store = {
-    get: (): FakeRequest => {
-      const read = request();
-      setTimeout(() => read.onsuccess?.());
-      return read;
-    },
-    put: (): FakeRequest => {
-      const write = request();
-      setTimeout(() => {
-        write.error = quota;
-        write.onerror?.();
-        transaction.error = quota;
-        transaction.onabort?.();
-      });
-      return write;
-    },
+  const abort = (): void => {
+    transaction.error = error;
+    transaction.onabort?.();
   };
+  const request = (): FakeRequest => ({ onsuccess: null, onerror: null, result: undefined, error: null });
+  const read = (): FakeRequest => {
+    const pending = request();
+    setTimeout(() => (reads ? pending.onsuccess?.() : abort()));
+    return pending;
+  };
+  const write = (): FakeRequest => {
+    const pending = request();
+    setTimeout(() => {
+      pending.error = error;
+      pending.onerror?.();
+      abort();
+    });
+    return pending;
+  };
+  const store = { get: read, getAll: read, put: write, delete: write };
   return Object.assign(transaction, { objectStore: () => store }) as unknown as IDBTransaction;
 }
 
-/** Makes every later readwrite transaction fail as a full disk does. */
-function fillTheDisk(): void {
+/**
+ * Makes every later transaction of the modes fail with an error, as a full
+ * disk or a failing backing store does.
+ */
+function failTransactions(error: DOMException, modes: readonly IDBTransactionMode[], reads = true): void {
   const original = IDBDatabase.prototype.transaction;
   vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
     this: IDBDatabase,
     ...args: Parameters<IDBDatabase['transaction']>
   ) {
-    return args[1] === 'readwrite' ? quotaTransaction() : original.apply(this, args);
+    return modes.includes(args[1] ?? 'readonly') ? failingTransaction(error, reads) : original.apply(this, args);
   });
 }
 
@@ -273,6 +281,36 @@ describe('TmClientStore', () => {
       expect(store.doc(T170, 'me')()?.data).toBe('u:0b4f/t170 me@1');
       expect(store.doc(USER, 'tenants')()?.data).toBe('u:0b4f/ tenants@1');
       await swept;
+    });
+
+    it('wins over a patch called before it in the same turn, on disk and in the mirror', async () => {
+      const { store } = setUp();
+      await store.readAll(USER, T17);
+      const patched = store.patch(T17, 'me', () => ({ pins: ['a'] }));
+      await store.sweep({ tenant: 17 });
+      await patched;
+      expect(await tmReadRawKeys()).toEqual([]);
+      // A later write lands after the delete.
+      await store.patch(USER, 'tenants', () => ['acme']);
+      const late = store.patch<string[]>(USER, 'tenants', (current) => [...(current ?? []), 'beta']);
+      await store.sweep('session-ended');
+      await late;
+      expect(store.doc(USER, 'tenants')()).toBeUndefined();
+      expect(await tmReadRawKeys()).toEqual([]);
+      await store.patch(USER, 'tenants', () => ['again']);
+      expect(store.doc(USER, 'tenants')()?.data).toEqual(['again']);
+      expect(await tmReadRawKeys()).toEqual([['u:0b4f/', 'tenants@1']]);
+    });
+
+    it('keeps a write in flight from filling the mirror it empties, when a later copy was stored', async () => {
+      const { store } = setUp();
+      await tmWriteRawRecords([{ p: 'u:0b4f/', n: 'tenants@1', tag: null, savedAt: NOW, data: ['stored'] }]);
+      // An older copy: the stored one wins, after the sweep emptied the mirror.
+      const put = store.put(USER, 'tenants', docOf(['older'], NOW - 1));
+      await store.sweep('session-ended');
+      await put;
+      expect(store.doc(USER, 'tenants')()).toBeUndefined();
+      expect(await tmReadRawKeys()).toEqual([]);
     });
 
     it("deletes nothing of a user's own for the user's rules when no one is signed in", async () => {
@@ -547,7 +585,7 @@ describe('TmClientStore', () => {
     it('drops a write the quota refuses, keeping it in the mirror', async () => {
       const { store, bus, telemetry } = setUp();
       await store.readAll(USER);
-      fillTheDisk();
+      failTransactions(QUOTA, ['readwrite']);
       await store.put(USER, 'tenants', docOf(['acme']));
       await store.patch(USER, 'distribution', () => ({ session: { idleDays: 9 } }));
       expect(store.doc(USER, 'tenants')()?.data).toEqual(['acme']);
@@ -575,6 +613,61 @@ describe('TmClientStore', () => {
       // The tab goes on in memory.
       await store.put(USER, 'tenants', docOf(['acme']));
       expect(store.doc(USER, 'tenants')()?.data).toEqual(['acme']);
+    });
+
+    describe('goes on in memory, reporting the fault, when the storage fails after the open', () => {
+      const failure = new DOMException('The backing store failed.', 'UnknownError');
+
+      it('in a put, which stays in the mirror', async () => {
+        const { store, telemetry, bus } = setUp();
+        await store.readAll(USER);
+        const errors = vi.spyOn(telemetry, 'error');
+        failTransactions(failure, ['readwrite']);
+        await expect(store.put(USER, 'tenants', docOf(['acme']))).resolves.toBeUndefined();
+        expect([store.mode, store.doc(USER, 'tenants')()?.data, bus.posted]).toEqual(['memory', ['acme'], []]);
+        expect(errors).toHaveBeenCalledExactlyOnceWith(failure, { source: 'tm-client-store' });
+        expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
+      });
+
+      it('in a patch, whose update then runs on the mirrored copy', async () => {
+        const { store, telemetry } = setUp();
+        await store.put(USER, 'tenants', docOf(['acme']));
+        const errors = vi.spyOn(telemetry, 'error');
+        failTransactions(failure, ['readwrite'], false);
+        await expect(store.patch<string[]>(USER, 'tenants', (current) => [...(current ?? []), 'beta'])).resolves.toBeUndefined();
+        expect([store.mode, store.doc(USER, 'tenants')()?.data]).toEqual(['memory', ['acme', 'beta']]);
+        expect(errors).toHaveBeenCalledOnce();
+        expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
+      });
+
+      it('in a read, which leaves the mirror as it was', async () => {
+        const { store, telemetry } = setUp();
+        await store.put(USER, 'tenants', docOf(['acme']));
+        failTransactions(failure, ['readonly'], false);
+        await expect(store.readAll(DEVICE, USER)).resolves.toBeUndefined();
+        expect([store.mode, store.doc(USER, 'tenants')()?.data]).toEqual(['memory', ['acme']]);
+        expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
+      });
+
+      it('when the connection closed and the next open fails', async () => {
+        let opens = 0;
+        const factory = {
+          open: (...args: Parameters<IDBFactory['open']>) => {
+            if (opens++ > 0) {
+              throw new DOMException('The connection to the database server was lost.', 'UnknownError');
+            }
+            return indexedDB.open(...args);
+          },
+        } as unknown as IDBFactory;
+        const { store, telemetry } = setUp({ host: { indexedDB: factory } });
+        await store.put(USER, 'tenants', docOf(['acme']));
+        vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
+          throw new DOMException('The database connection is closing.', 'InvalidStateError');
+        });
+        await store.patch<string[]>(USER, 'tenants', (current) => [...(current ?? []), 'beta']);
+        expect([store.mode, store.doc(USER, 'tenants')()?.data]).toEqual(['memory', ['acme', 'beta']]);
+        expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
+      });
     });
 
     it('says a sweep deleted nothing while the database it could not reach holds data, and the boot step records no user', async () => {

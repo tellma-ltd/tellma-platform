@@ -24,8 +24,8 @@ const CORE = { distribution: { slug: 'acme' } } as unknown as TmClientMetadata;
 const STORE_CHANGED: TmBusMessage = { type: 'store.changed', partition: 'u:0b4f/', names: ['tenants@1'] };
 const SESSION_STARTED: TmBusMessage = { type: 'session.started', sub: FARAH };
 
-/** Lets the channels deliver what is in flight. */
-function settle(): Promise<void> {
+/** Waits a little: only where nothing can be in flight, since no channel is open yet. */
+function pause(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 50));
 }
 
@@ -57,6 +57,24 @@ class OtherTab {
   /** Closes the channel. */
   close(): void {
     this.#channel.close();
+  }
+}
+
+/**
+ * Waits until a channel delivered everything another tab posted on it so far:
+ * the tab posts a mark last, which the bus ignores, and a fresh listener hears
+ * it. One sender's messages arrive in order.
+ *
+ * @param sender - The tab that posted.
+ * @param name - The channel's name.
+ */
+async function drain(sender: OtherTab, name: string): Promise<void> {
+  const listener = new OtherTab(name);
+  try {
+    sender.post('mark');
+    await vi.waitFor(() => expect(listener.heard).toContain('mark'));
+  } finally {
+    listener.close();
   }
 }
 
@@ -109,9 +127,10 @@ describe('TmTabBus', () => {
     await bus.ɵopened;
     bus.post(SESSION_STARTED);
     bus.post(STORE_CHANGED);
-    await settle();
-    expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
-    expect(user.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+    await vi.waitFor(() => {
+      expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
+      expect(user.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+    });
   });
 
   it("receives each channel's own kind of message, from other tabs only", async () => {
@@ -123,8 +142,11 @@ describe('TmTabBus', () => {
     device.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
     user.post({ v: 1, from: 'tab-b', message: SESSION_STARTED });
     user.post({ v: 1, from: bus.tabId, message: STORE_CHANGED });
-    await settle();
-    expect(received).toEqual([SESSION_STARTED, STORE_CHANGED]);
+    await drain(device, 'tm:acme');
+    await drain(user, `tm:acme:${FARAH}`);
+    // The two channels deliver in no set order between them.
+    expect(received).toHaveLength(2);
+    expect(received).toEqual(expect.arrayContaining([SESSION_STARTED, STORE_CHANGED]));
   });
 
   it('ignores an unknown envelope version, an unknown type and a malformed envelope', async () => {
@@ -135,7 +157,7 @@ describe('TmTabBus', () => {
     user.post({ v: 1, from: 'tab-b', message: null });
     user.post({ v: 1, message: STORE_CHANGED });
     user.post('store.changed');
-    await settle();
+    await drain(user, `tm:acme:${FARAH}`);
     expect(received).toEqual([]);
   });
 
@@ -145,9 +167,9 @@ describe('TmTabBus', () => {
     bus.post(STORE_CHANGED);
     bus.post(SESSION_STARTED);
     user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
-    await settle();
+    await vi.waitFor(() => expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]));
+    await drain(user, `tm:acme:${FARAH}`);
     expect(user.heard).toEqual([]);
-    expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
     expect(received).toEqual([]);
   });
 
@@ -155,13 +177,14 @@ describe('TmTabBus', () => {
     const { bus } = setUp({ loaded: false });
     bus.post(STORE_CHANGED);
     bus.post(SESSION_STARTED);
-    await settle();
+    await pause();
     expect([device.heard, user.heard]).toEqual([[], []]);
     TestBed.inject(TmClientMetadataStore).set(CORE);
     await bus.ɵopened;
-    await settle();
-    expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
-    expect(user.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+    await vi.waitFor(() => {
+      expect(device.heard).toEqual([{ v: 1, from: bus.tabId, message: SESSION_STARTED }]);
+      expect(user.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+    });
   });
 
   it('leaves TM_CLIENT_METADATA working when it starts before the Core chunk loads', async () => {
@@ -183,17 +206,20 @@ describe('TmTabBus', () => {
       user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
       sara.post({ v: 1, from: 'tab-c', message: STORE_CHANGED });
       bus.post(STORE_CHANGED);
-      await settle();
+      await vi.waitFor(() => {
+        expect(received).toEqual([STORE_CHANGED]);
+        expect(sara.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
+      });
+      await drain(user, `tm:acme:${FARAH}`);
       expect(received).toEqual([STORE_CHANGED]);
       expect(user.heard).toEqual([]);
-      expect(sara.heard).toEqual([{ v: 1, from: bus.tabId, message: STORE_CHANGED }]);
 
       // Signed out: no user channel at all.
       profile.set(null);
       TestBed.tick();
       sara.post({ v: 1, from: 'tab-c', message: STORE_CHANGED });
       bus.post(STORE_CHANGED);
-      await settle();
+      await drain(sara, `tm:acme:${SARA}`);
       expect(received).toHaveLength(1);
       expect(sara.heard).toHaveLength(1);
     } finally {
@@ -207,22 +233,25 @@ describe('TmTabBus', () => {
     // A page hidden without entering the cache keeps its channels.
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
     user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
-    await settle();
-    expect(received).toHaveLength(1);
+    await vi.waitFor(() => expect(received).toHaveLength(1));
 
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
     device.post({ v: 1, from: 'tab-b', message: SESSION_STARTED });
-    await settle();
+    await drain(user, `tm:acme:${FARAH}`);
+    await drain(device, 'tm:acme');
     expect(received).toHaveLength(1);
 
     window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
     user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
     device.post({ v: 1, from: 'tab-b', message: SESSION_STARTED });
     bus.post(STORE_CHANGED);
-    await settle();
-    expect(received).toEqual([STORE_CHANGED, STORE_CHANGED, SESSION_STARTED]);
-    expect(user.heard).toContainEqual({ v: 1, from: bus.tabId, message: STORE_CHANGED });
+    await vi.waitFor(() => {
+      expect(received).toHaveLength(3);
+      expect(user.heard).toContainEqual({ v: 1, from: bus.tabId, message: STORE_CHANGED });
+    });
+    // The two channels deliver in no set order between them.
+    expect(received.slice(1)).toEqual(expect.arrayContaining([STORE_CHANGED, SESSION_STARTED]));
   });
 
   it('closes its channels when the app ends', async () => {
@@ -231,7 +260,7 @@ describe('TmTabBus', () => {
     TestBed.resetTestingModule();
     user.post({ v: 1, from: 'tab-b', message: STORE_CHANGED });
     bus.post(SESSION_STARTED);
-    await settle();
+    await drain(user, `tm:acme:${FARAH}`);
     expect([received, device.heard]).toEqual([[], []]);
   });
 });

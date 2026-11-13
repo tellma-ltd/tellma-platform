@@ -66,7 +66,8 @@ every user's stored data (in a 1 s box; a sweep cut short, failed or unable to r
 clears the boot record's user, so the next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
 same page, so the user's data leaves the disk and the screen and the expiry is reported once. An
 expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page instead, so
-a server that keeps refusing fresh sessions cannot loop the tab through sign-ins.
+a server that keeps refusing fresh sessions cannot loop the tab through sign-ins; the sweep runs at
+the expiry either way.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into
@@ -96,8 +97,10 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
 - **Sweeps.** `session-ended` deletes every user's partitions and the image cache;
   `{ sessionOtherThan }` the user's other sessions; `{ tenant }` one tenant. The device partition,
   which holds only `zone`, survives every sweep. A sweep posts its key prefix, and every tab
-  re-reads its mirror under it. A sweep resolves `true` once no document of its rule is left on
-  disk, and `false` when the store runs in memory while a database it could not reach may hold them.
+  re-reads its mirror under it. A sweep wins over every write called before it, on disk and in the
+  mirror; a write called after it lands after the delete. It resolves `true` once its delete
+  committed (or nothing is on disk), and `false` when the store runs in memory while a database it
+  could not reach may hold documents.
 - **The boot step**, `ɵstart(tenantId)`, an initializer of the app's start: it waits for the tab
   bus, sweeps every user when the boot record names none or another user, reads the device, user
   and routed tenant partitions in one readonly transaction (a warm launch's only store access),
@@ -105,8 +108,11 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
   sweeps again), and sweeps the user's other sessions at idle after the first render. It never
   rejects: a storage fault after the open puts the tab in memory, cold.
 - **Fallbacks.** A quota refusal drops the write and keeps it in the mirror. When IndexedDB fails to
-  open within 3 s the store runs in memory (`mode` is `memory`), and when local storage refuses, the
-  boot record lives in memory; each reports `tm.store.unavailable` once. A store host marked
+  open within 3 s, or a transaction fails later for a cause other than the caller's (a lost
+  connection, a failing backing store), the store reports it and runs in memory (`mode` is
+  `memory`): the write stays in the mirror and reads resolve with what the mirror holds, so no read
+  or write rejects for the storage's sake. When local storage refuses, the boot record lives in
+  memory. Each reports `tm.store.unavailable` once. A store host marked
   `memory`, as in tests, runs in memory by design and reports nothing. A `versionchange` closes the connection, which reopens on next use.
 
 `TmTabBus` (`src/state/bus/`) carries every cross-tab message over two `BroadcastChannel`s: the
