@@ -171,6 +171,9 @@ over an existing session tell every `ISessionTerminationListener` the ended hand
 `SessionSweepService` deletes rows expired for a day, every `SweepInterval`.
 `MembershipReconcileService` rebuilds every active tenant's membership hints from its users five
 minutes after the registry's first snapshot and then every `Tellma:Tenancy:MembershipReconcileInterval`.
+Both keep their schedule as due times, each an interval after the last one, so neither a run's length
+nor a wait that starts late moves the later runs; a run that overruns whole intervals is followed by
+one run at once.
 The catalog's application lock keeps two instances' runs from overlapping, not from both running:
 each instance's timer runs on its own, so each may run once per interval. A run is idempotent, so a
 second one over unchanged users changes no row.
