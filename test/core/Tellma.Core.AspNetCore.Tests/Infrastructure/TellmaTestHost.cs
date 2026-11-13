@@ -6,10 +6,13 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -19,16 +22,25 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
+using Tellma.Core.AspNetCore.Tenancy;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {
+    /// <summary>A session the test host stored: its cookie, its key and its handle.</summary>
+    /// <param name="Cookie">The <c>Cookie</c> header's value.</param>
+    /// <param name="Key">The session's key.</param>
+    /// <param name="Handle">The session's handle.</param>
+    internal sealed record TestSession(string Cookie, string Key, string Handle);
+
     /// <summary>
     ///     A distribution's web host on a test server: the real <c>AddTellma</c>, <c>UseTellma</c> and
-    ///     <c>MapTellma</c> over an in-memory tenant catalog, a scripted user connection, a static
-    ///     identity server and the probe endpoints of <see cref="ProbeEndpoints" />.
+    ///     <c>MapTellma</c> over an in-memory tenant catalog and session table, a scripted user
+    ///     connection, a static identity server and the probe endpoints of <see cref="ProbeEndpoints" />.
     /// </summary>
     internal sealed class TellmaTestHost : IAsyncDisposable
     {
@@ -47,8 +59,14 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The subject the scripted connection refuses as no member of any tenant.</summary>
         public const string Stranger = "stranger";
 
+        /// <summary>The distribution's sign-in client secret.</summary>
+        public const string ClientSecret = "test-client-secret";
+
+        /// <summary>The name of the session cookie's reference claim, which carries the session's key.</summary>
+        public const string SessionKeyClaim = "Microsoft.AspNetCore.Authentication.Cookies-SessionId";
+
         /// <summary>The key every test token is signed with.</summary>
-        private static readonly SymmetricSecurityKey SigningKey = new(RandomNumberGenerator.GetBytes(32)) { KeyId = "test-key" };
+        internal static readonly SymmetricSecurityKey SigningKey = new(RandomNumberGenerator.GetBytes(32)) { KeyId = "test-key" };
 
         private readonly WebApplication _app;
 
@@ -58,6 +76,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             Catalog = catalog;
             Time = time;
             Client = app.GetTestClient();
+            Rows = (InMemorySessionRows)app.Services.GetRequiredService<ISessionRows>();
+            IdentityServer = app.Services.GetRequiredService<FakeIdentityServer>();
+            Memberships = (FakeMembershipDirectory)app.Services.GetRequiredService<ITenantMembershipDirectory>();
         }
 
         /// <summary>A client of the host, at <c>https://localhost</c>.</summary>
@@ -72,6 +93,18 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The host's clock.</summary>
         public FakeTimeProvider Time { get; }
 
+        /// <summary>The catalog's session table.</summary>
+        public InMemorySessionRows Rows { get; }
+
+        /// <summary>The identity server's back channel.</summary>
+        public FakeIdentityServer IdentityServer { get; }
+
+        /// <summary>The membership hints.</summary>
+        public FakeMembershipDirectory Memberships { get; }
+
+        /// <summary>The session cookie's name.</summary>
+        public string SessionCookieName => Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(TellmaAuthentication.SessionScheme).Cookie.Name!;
+
         /// <summary>The settings every host starts from.</summary>
         /// <returns>A fresh copy.</returns>
         public static Dictionary<string, string?> SoundSettings()
@@ -84,6 +117,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 ["Tellma:Sql:AllowedServers:0"] = ".database.windows.net",
                 ["Tellma:DisplayName"] = "Acme ERP",
                 ["Tellma:Identity:Authority"] = Issuer,
+                ["Tellma:Identity:ClientSecret"] = ClientSecret,
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
             };
         }
@@ -119,12 +153,24 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             // --- The composition under test ---
             _ = builder.AddTellma(Slug, static _ => { });
 
+            // --- What stands in for the catalog's sessions and memberships, and the reconciliation's lock ---
+            builder.Services.Replace(ServiceDescriptor.Singleton<ISessionRows>(new InMemorySessionRows(time)));
+            builder.Services.Replace(ServiceDescriptor.Singleton<ITenantMembershipDirectory>(new FakeMembershipDirectory()));
+            builder.Services.Replace(ServiceDescriptor.Singleton<IMembershipReconcileStore>(new FakeReconcileStore()));
+
             // --- The identity server: a static issuer and key, so no discovery document is fetched ---
             _ = builder.Services.Configure<JwtBearerOptions>(TellmaAuthentication.BearerScheme, static bearer =>
             {
                 OpenIdConnectConfiguration configuration = new() { Issuer = Issuer };
                 configuration.SigningKeys.Add(SigningKey);
                 bearer.Configuration = configuration;
+            });
+            FakeIdentityServer identityServer = new();
+            _ = builder.Services.AddSingleton(identityServer);
+            _ = builder.Services.Configure<OpenIdConnectOptions>(TellmaAuthentication.OidcScheme, oidc =>
+            {
+                oidc.Configuration = FakeIdentityServer.Configuration();
+                oidc.BackchannelHttpHandler = identityServer;
             });
             if (options.ManifestPath is not null)
             {
@@ -161,16 +207,38 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             return new TellmaTestHost(app, catalog, time);
         }
 
-        /// <summary>A session cookie for a signed-in user, as the cookie scheme protects it.</summary>
+        /// <summary>A session cookie for a signed-in user, its ticket stored as a sign-in stores it.</summary>
         /// <param name="subject">The user's subject.</param>
         /// <param name="acr">The authentication context class the session reached.</param>
         /// <param name="authTime">When the user signed in.</param>
-        /// <param name="handle">The session's handle.</param>
         /// <param name="sessionId">The identity server's session.</param>
         /// <returns>The <c>Cookie</c> header's value.</returns>
-        public string Cookie(string subject = "sub-1", string? acr = null, DateTimeOffset? authTime = null, string? handle = null, string? sessionId = "sid-1")
+        public string Cookie(string subject = "sub-1", string? acr = null, DateTimeOffset? authTime = null, string? sessionId = "sid-1")
         {
-            List<Claim> claims = [new("sub", subject), new("azp", Slug)];
+            return Session(subject, acr, authTime, sessionId).Cookie;
+        }
+
+        /// <summary>
+        ///     A session for a signed-in user: its ticket stored in the session table with tokens that
+        ///     need no refresh for an hour, and the cookie that references it.
+        /// </summary>
+        /// <param name="subject">The user's subject.</param>
+        /// <param name="acr">The authentication context class the session reached.</param>
+        /// <param name="authTime">When the user signed in.</param>
+        /// <param name="sessionId">The identity server's session.</param>
+        /// <param name="accessTokenLifetime">How long the access token lives; an hour by default.</param>
+        /// <param name="refreshToken">The refresh token, if any.</param>
+        /// <returns>The session.</returns>
+        public TestSession Session(
+            string subject = "sub-1",
+            string? acr = null,
+            DateTimeOffset? authTime = null,
+            string? sessionId = "sid-1",
+            TimeSpan? accessTokenLifetime = null,
+            string? refreshToken = "refresh-1")
+        {
+            // --- The principal, as the sign-in keeps it ---
+            List<Claim> claims = [new("sub", subject), new("azp", Slug), new("name", "Jane Doe"), new("email", "jane@example.com"), new("locale", "en")];
             if (sessionId is not null)
             {
                 claims.Add(new Claim("sid", sessionId));
@@ -186,16 +254,52 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 claims.Add(new Claim("auth_time", time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
             }
 
-            AuthenticationProperties properties = new();
-            if (handle is not null)
+            // --- The properties, as the sign-in sets them: persistent, stamped, with the tokens ---
+            DateTimeOffset now = Time.GetUtcNow();
+            TellmaSessionOptions options = Services.GetRequiredService<IOptions<TellmaSessionOptions>>().Value;
+            AuthenticationProperties properties = new() { IsPersistent = true, IssuedUtc = now };
+            SessionProperties.SetCreatedAt(properties, now);
+            properties.ExpiresUtc = SessionProperties.ExpiryAt(now, now, options.IdleLifetime, options.AbsoluteLifetime);
+            List<AuthenticationToken> tokens =
+            [
+                new() { Name = "access_token", Value = "access-1" },
+                new() { Name = "token_type", Value = "Bearer" },
+                new() { Name = SessionProperties.ExpiresAtToken, Value = (now + (accessTokenLifetime ?? TimeSpan.FromHours(1))).ToString("o", CultureInfo.InvariantCulture) },
+            ];
+            if (refreshToken is not null)
             {
-                properties.Items[TellmaAuthentication.SessionHandleProperty] = handle;
+                tokens.Add(new AuthenticationToken { Name = "refresh_token", Value = refreshToken });
             }
 
-            CookieAuthenticationOptions cookie = Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(TellmaAuthentication.SessionScheme);
+            properties.StoreTokens(tokens);
+
+            // --- The row, then the cookie that references it ---
             ClaimsPrincipal principal = new(new ClaimsIdentity(claims, TellmaAuthentication.SessionScheme, "sub", null));
-            string value = cookie.TicketDataFormat.Protect(new AuthenticationTicket(principal, properties, TellmaAuthentication.SessionScheme));
+            ICatalogSessionStore store = Services.GetRequiredService<ICatalogSessionStore>();
+            string key = store.StoreAsync(new AuthenticationTicket(principal, properties, TellmaAuthentication.SessionScheme), new DefaultHttpContext(), CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            return new TestSession(CookieFor(key), key, SessionKeys.HandleOf(key));
+        }
+
+        /// <summary>The cookie that references a stored session, as the cookie scheme protects it.</summary>
+        /// <param name="key">The session's key.</param>
+        /// <returns>The <c>Cookie</c> header's value.</returns>
+        public string CookieFor(string key)
+        {
+            CookieAuthenticationOptions cookie = Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(TellmaAuthentication.SessionScheme);
+            ClaimsPrincipal reference = new(new ClaimsIdentity([new Claim(SessionKeyClaim, key)], cookie.ClaimsIssuer));
+            string value = cookie.TicketDataFormat.Protect(new AuthenticationTicket(reference, new AuthenticationProperties(), TellmaAuthentication.SessionScheme));
             return $"{cookie.Cookie.Name}={value}";
+        }
+
+        /// <summary>A client of the host at <c>https://localhost</c>, as a browser reaches it over TLS.</summary>
+        /// <returns>The client, which the caller disposes.</returns>
+        public HttpClient CreateHttpsClient()
+        {
+            HttpClient client = _app.GetTestClient();
+            client.BaseAddress = new Uri("https://localhost/");
+            return client;
         }
 
         /// <summary>A bearer access token from the test issuer.</summary>

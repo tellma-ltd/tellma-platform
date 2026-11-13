@@ -4,6 +4,8 @@
     <!-- The suite hosts the real pipeline on a test server. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <!-- The identity engine, so the in-proc mode's wiring runs against the real engine. -->
+    <ProjectReference Include="..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <!-- Bearer tokens minted against the test issuer's key. -->
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
@@ -19,6 +21,8 @@
   <ItemGroup>
     <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
     <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
+    <!-- The launch-landing vectors the client's launch redirect reads too: the sign-in's landing follows the same file. -->
+    <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Bff\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
