@@ -160,7 +160,6 @@ namespace Tellma.Core.Tests.Caching
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdJob>()
                     .Entity<VtCurrency>()
                     .Entity<VtHandNamed>()
                     .Entity<VtOwnerless>())));
@@ -174,7 +173,6 @@ namespace Tellma.Core.Tests.Caching
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdJob>()
                     .Entity<VtCurrency>()
                     .Entity<VtUnit>()
                     .Entity<VtList>()

@@ -5,7 +5,6 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -200,20 +199,17 @@ namespace Tellma.Core.Migrator.Commands
 
             // A catalog session lost during the migrations must not register rows another run now guards.
             await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
-            List<SeedTenant> seeds = context.Configuration.GetSection(MigratorContext.SeedTenantsKey).Get<List<SeedTenant>>() ?? [];
+            // The startup gate validated the seeds: each has a name and an id from 1 to 999.
+            IList<TellmaSeedTenant> seeds = context.Services.GetRequiredService<IOptions<TellmaSeedOptions>>().Value.Tenants;
             ITenantCatalog tenants = context.Services.GetRequiredService<ITenantCatalog>();
             HashSet<int> existing = [.. (await tenants.ListAsync(cancellationToken).ConfigureAwait(false)).Select(static tenant => tenant.Id)];
-            foreach (SeedTenant seed in seeds.Where(seed => !existing.Contains(seed.Id)))
+            foreach (TellmaSeedTenant seed in seeds.Where(seed => !existing.Contains(seed.Id)))
             {
                 try
                 {
-                    string name = !string.IsNullOrWhiteSpace(seed.Name)
-                        ? seed.Name
-                        : throw new MigratorFailureException(string.Create(CultureInfo.InvariantCulture, $"The seed tenant {seed.Id} has no name; set {MigratorContext.SeedTenantsKey}'s Name."));
-
-                    _ = await tenants.RegisterAsync(new TenantRegistration(name, seed.Category, seed.LiveTenantId, Location: null), MigratorContext.Actor, seed.Id, cancellationToken).ConfigureAwait(false);
+                    _ = await tenants.RegisterAsync(new TenantRegistration(seed.Name!, seed.Category, seed.LiveTenantId, Location: null), MigratorContext.Actor, seed.Id, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is MigratorFailureException or TenantStateException or ArgumentException)
+                catch (Exception exception) when (exception is TenantStateException or ArgumentException)
                 {
                     outcomes[seed.Id] = TenantOutcome.Failure(seed.Id, TenantOutcome.Describe(exception));
                 }

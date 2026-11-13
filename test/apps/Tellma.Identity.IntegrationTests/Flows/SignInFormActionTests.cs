@@ -5,6 +5,7 @@
 
 using System.Net;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -134,7 +135,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <returns>The <c>Content-Security-Policy</c> header value.</returns>
         private static async Task<string> PolicyOfAsync(StandaloneFactory factory, string url)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             using HttpResponseMessage response = await flow.Browser.GetAsync(
                 new Uri(url, UriKind.Relative), TestContext.Current.CancellationToken);
 

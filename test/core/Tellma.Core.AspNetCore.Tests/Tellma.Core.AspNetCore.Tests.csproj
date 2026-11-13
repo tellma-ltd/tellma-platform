@@ -10,6 +10,8 @@
          through the real router. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The shared reading of the checked-in alert queries. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <!-- Bearer tokens minted against the test issuer's key. -->
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
@@ -27,6 +29,9 @@
     <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
     <!-- The launch-landing vectors the client's launch redirect reads too: the sign-in's landing follows the same file. -->
     <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Bff\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The host's alert queries are read at runtime and cross-checked against the emitted
+         instrument, tag and tag-value names, so a telemetry rename turns an alert query red. -->
+    <Content Include="..\..\..\infra\monitoring\host\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

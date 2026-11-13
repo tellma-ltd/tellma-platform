@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Api
 {
@@ -60,7 +61,7 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             // The CLI is refused the old origin and a tenant under it before any interaction, and
             // is granted the new one (it is sent on to sign in).
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             foreach (string resource in (string[])[OldOrigin, OldOrigin + "/17/mcp"])
             {
                 using HttpResponseMessage response = await AuthorizeCliAsync(flow, resource);

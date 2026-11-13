@@ -9,6 +9,7 @@ import { CanActivateFn } from '@angular/router';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
 import { Type } from '@angular/core';
@@ -24,6 +25,9 @@ export const TM_APP_DECLARATIONS: InjectionToken<TmAppDeclarations>;
 
 // @public
 export const TM_CLIENT_METADATA: InjectionToken<TmClientMetadata>;
+
+// @public
+export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
 
 // @public
 export const TM_NOW: InjectionToken<() => number>;
@@ -179,6 +183,13 @@ export interface TmBootRecord {
 }
 
 // @public
+export interface TmBootRecordAccess {
+    readonly changes: Observable<TmBootRecord>;
+    patch(delta: Partial<Omit<TmBootRecord, 'v'>>): void;
+    read(): TmBootRecord;
+}
+
+// @public
 export interface TmBootResult {
     readonly auto: number | null;
     readonly cold: boolean;
@@ -207,6 +218,16 @@ export interface TmBootStrings {
 export type TmBootTheme = 'dark' | 'light' | 'system';
 
 // @public
+export interface TmBusEnvelope {
+    readonly from: string;
+    readonly message: TmBusMessage;
+    readonly v: 1;
+}
+
+// @public
+export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
+
+// @public
 export interface TmCalendarDefinition {
     readonly code: string;
     readonly load: () => Promise<TmCalendar>;
@@ -221,6 +242,13 @@ export interface TmChildMetadata {
     readonly maxCount: number;
     readonly name: string;
     readonly parentKey: string;
+}
+
+// @public
+export interface TmClientEvent {
+    readonly name: string;
+    readonly payload: TmJson | null;
+    readonly tenantId: number;
 }
 
 // @public
@@ -241,6 +269,20 @@ export interface TmClientMetadata {
     readonly settingCategories: readonly TmSettingCategoryMetadata[];
     readonly settingKeys: readonly TmSettingKeyMetadata[];
     readonly widgetTypes: readonly string[];
+}
+
+// @public
+export class TmClientStore {
+    constructor();
+    readonly boot: TmBootRecordAccess;
+    doc<T>(partition: TmPartition, name: string): Signal<TmStoredDoc<T> | undefined>;
+    get mode(): 'indexeddb' | 'memory';
+    patch<T>(partition: TmPartition, name: string, update: (current: T | undefined) => T | undefined): Promise<void>;
+    put<T>(partition: TmPartition, name: string, doc: TmStoredDoc<T>): Promise<void>;
+    readAll(...partitions: TmPartition[]): Promise<void>;
+    sweep(rule: TmSweepRule): Promise<boolean>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmClientStore, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmClientStore>;
 }
 
 // @public
@@ -389,6 +431,20 @@ export interface TmDownloadOptions extends TmReadOptions {
 }
 
 // @public
+export interface TmDraftsQueryMessage {
+    readonly replyTo: string;
+    readonly type: 'drafts.query';
+}
+
+// @public
+export interface TmDraftsReplyMessage {
+    readonly busy: boolean;
+    readonly dirty: number;
+    readonly replyTo: string;
+    readonly type: 'drafts.reply';
+}
+
+// @public
 export interface TmEntitiesChunk {
     readonly entities: readonly TmEntityMetadata[];
     readonly enums: readonly TmEnumMetadata[];
@@ -510,6 +566,25 @@ export interface TmFeatureMetadata {
 }
 
 // @public
+export interface TmHubEventMessage {
+    readonly event: TmClientEvent;
+    readonly tenantId: number;
+    readonly type: 'hub.event';
+}
+
+// @public
+export type TmHubState = 'connected' | 'connecting' | 'disabled' | 'offline' | 'reconnecting';
+
+// @public
+export interface TmHubStatusMessage {
+    readonly leaderVisible: boolean;
+    readonly since: number;
+    readonly status: TmHubState;
+    readonly tenantId: number;
+    readonly type: 'hub.status';
+}
+
+// @public
 export type TmId = number | TmDecimal;
 
 // @public
@@ -570,6 +645,12 @@ export class TmLaunch {
 export type TmLazyComponent = () => Promise<Type<unknown> | {
     default: Type<unknown>;
 }>;
+
+// @public
+export interface TmLeaderProbeMessage {
+    readonly tenantId: number;
+    readonly type: 'leader.probe';
+}
 
 // @public
 export interface TmLoginMark {
@@ -708,6 +789,29 @@ export type TmPageKind = 'access' | 'custom' | 'dashboard' | 'details' | 'home' 
 
 // @public
 export function tmParseProfileCookie(cookies: string): TmProfile | null;
+
+// @public
+export type TmPartition = {
+    readonly kind: 'device';
+} | {
+    readonly kind: 'session';
+    readonly sub: string;
+    readonly sessionHandle: string;
+} | {
+    readonly kind: 'tenant';
+    readonly sub: string;
+    readonly tenantId: number;
+} | {
+    readonly kind: 'user';
+    readonly sub: string;
+};
+
+// @public
+export interface TmPrefsChangedMessage {
+    readonly tenantId: number;
+    readonly type: 'prefs.changed';
+    readonly values: Readonly<Record<string, string | null>>;
+}
 
 // @public
 export type TmProblem = TmJsonObject & {
@@ -919,6 +1023,12 @@ export type TmSessionCheck = 'changed' | 'missing' | 'same';
 export const tmSessionGuard: CanActivateFn;
 
 // @public
+export interface TmSessionMessage {
+    readonly sub: string;
+    readonly type: 'session.changed' | 'session.expired' | 'session.signed-out' | 'session.signing-out' | 'session.started';
+}
+
+// @public
 export type TmSessionState = 'active' | 'expired' | 'signing-out';
 
 // @public
@@ -983,6 +1093,29 @@ export interface TmStepUpChallenge {
 }
 
 // @public
+export interface TmStoreChangedMessage {
+    readonly names: readonly string[] | null;
+    readonly partition: string;
+    readonly type: 'store.changed';
+}
+
+// @public
+export interface TmStoredDoc<T> {
+    readonly data: T;
+    readonly savedAt: number;
+    readonly tag: string | null;
+}
+
+// @public
+export class TmStoreRefusedError extends Error {
+    constructor(reason: TmStoreRefusedReason);
+    readonly reason: TmStoreRefusedReason;
+}
+
+// @public
+export type TmStoreRefusedReason = 'cookie' | 'other-user' | 'session';
+
+// @public
 export type TmStringPack = Readonly<Record<string, string>>;
 
 // @public
@@ -995,6 +1128,22 @@ export interface TmStringTable {
 export type TmStringTree = {
     readonly [key: string]: string | TmStringTree;
 };
+
+// @public
+export type TmSweepRule = 'session-ended' | {
+    readonly sessionOtherThan: string;
+} | {
+    readonly tenant: number;
+};
+
+// @public
+export abstract class TmTabBus {
+    abstract readonly messages: Observable<TmBusMessage>;
+    abstract post(message: TmBusMessage): void;
+    abstract readonly tabId: string;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTabBus, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmTabBus>;
+}
 
 // @public
 export abstract class TmTelemetry {

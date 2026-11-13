@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -76,7 +77,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.AddExternalLoginAsync(
                 factory, "fedrefuse@example.com", "Google", "google-subject", "only@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("fedrefuse@example.com", "/Identity/Account/Login");
 
             using HttpResponseMessage page = await flow.Browser.GetAsync(
@@ -113,7 +114,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <summary>Signs the user in and returns the rendered external-logins page.</summary>
         private static async Task<string> PageHtmlAsync(StandaloneFactory factory, string email)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync(email, "/Identity/Account/Login");
 
             using HttpResponseMessage page = await flow.Browser.GetAsync(

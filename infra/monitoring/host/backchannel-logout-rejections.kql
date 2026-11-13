@@ -1,0 +1,12 @@
+// Back-channel logout tokens the web host refused.
+// Backs the "sign-outs are not reaching the web host" alert: a refused token leaves a session the
+// identity provider ended alive in the distribution until it next refreshes. Any sustained refusal
+// is a misconfiguration (issuer, audience, signing keys) or a forger.
+customMetrics
+| where name == "tellma.auth.backchannel_logouts"
+| extend outcome = tostring(customDimensions["outcome"])
+| summarize
+    rejected = sumif(valueSum, outcome == "rejected"),
+    accepted = sumif(valueSum, outcome == "accepted")
+    by bin(timestamp, 15m)
+| where rejected > 0

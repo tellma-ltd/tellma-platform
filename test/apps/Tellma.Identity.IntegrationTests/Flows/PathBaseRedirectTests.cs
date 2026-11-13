@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 using System.Net;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -45,7 +46,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using InProcFactory factory = DatabaseBackedFactory.CreateInProc(fixture, "idpbauthz", DistributionSeed);
             await TestData.CreateActiveUserAsync(factory, "paula@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
@@ -89,7 +90,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using InProcFactory factory = DatabaseBackedFactory.CreateInProc(fixture, "idpbcode");
             await TestData.CreateActiveUserAsync(factory, "quinn@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // A sign-in started on the page itself carries no return address, so the code entry
             // falls back to the sign-in page.
@@ -107,7 +108,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using InProcFactory factory = DatabaseBackedFactory.CreateInProc(fixture, "idpbend");
             await TestData.CreateActiveUserAsync(factory, "rory@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("rory@example.com", "/id/Identity/Account/Login");
 
             // A request with no hint asks first; the user's confirmation signs out.

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Test helpers shared by the identity server's integration and browser suites: reading the mail the platform's capturing sender collected. Not a suite itself.</Description>
+    <Description>Test helpers shared by the identity server's suites and the distributions' integration suites: reading the mail the platform's capturing sender collected, and driving OAuth/OIDC flows over HTTP. Not a suite itself.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +16,13 @@
          kind: these are lookups, not assertions, and omitting Microsoft.NET.Test.Sdk keeps
          IsTestProject false so `dotnet test Tellma.slnx` never tries to run this project. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The protocol driver: test-server clients, the sign-in pages' forms parsed as a browser
+         would, and assertions and the test's cancellation from xunit's libraries rather than its
+         metapackage, whose build targets would make this a test project. -->
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="xunit.v3.assert" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
   </ItemGroup>
 
 </Project>

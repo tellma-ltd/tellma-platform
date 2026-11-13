@@ -74,8 +74,10 @@ the clock:
 
 Run these from the repository root before opening or updating a pull request. CI runs the same
 commands with `-c Release`, the unit suites on Linux and Windows, and the integration suites in a
-single solution-wide run. The client gates run on Linux and Windows too; the client e2e suite runs
-on Linux.
+single solution-wide run on Linux; on Windows it runs the two distribution-host suites
+(`Tellma.Core.IntegrationTests` and `Tellma.Distro.Acme.IntegrationTests`) against LocalDB, in a
+job that does not gate merges yet. The client gates run on Linux and Windows too; the client e2e
+suite runs on Linux.
 
 ```bash
 dotnet build Tellma.slnx
@@ -94,8 +96,10 @@ pinned culture data (`eng/culture-data`) needs the ICU release the data came fro
 other; with the variable set it fails instead, so a CI runner that moves to another ICU release is
 noticed. Leave the variable unset on a development machine.
 
-The integration suites need Docker (they bring up SQL Server with Testcontainers). Run them one
-test project at a time:
+The integration suites need Docker (they bring up SQL Server with Testcontainers), or
+`TELLMA_TEST_SQL` set to a connection string to an existing server, such as LocalDB
+(`Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True`); a run
+against an existing server drops the databases it created. Run them one test project at a time:
 
 ```bash
 dotnet test <test project> --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"

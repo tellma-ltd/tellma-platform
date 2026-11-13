@@ -207,7 +207,6 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution => contribution
-                    .Entity<MdJob>()
                     .Entity<Account>()
                     .Model<AccountConfiguration>()
                     .ValueSet(new ValueSetDescriptor(name, Grades)))));
@@ -222,7 +221,6 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdJob>()
                     .Entity<Account>()
                     .Model<AccountConfiguration>()
                     .ValueSet(new ValueSetDescriptor("other.AccountKind", Grades)))));
@@ -280,7 +278,7 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             _ = tellma.AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution =>
             {
-                _ = contribution.Entity<MdJob>().Entity<GradedItem>();
+                _ = contribution.Entity<GradedItem>();
                 if (set is not null)
                 {
                     _ = contribution.ValueSet(set);

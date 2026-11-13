@@ -55,7 +55,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task The_sign_in_redirect_carries_the_language_of_a_request_on_the_url()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idlangquery", Seed);
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // A preference list, passed on whole: the sign-in page picks the first it offers.
             string authorizeUrl = QueryAuthorizeUrl("fr ar en");
@@ -108,7 +108,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idlangpar", Seed);
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "arabic@example.com");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The language rides inside the pushed request; the browser's URL names only the
             // client and the reference.
@@ -181,7 +181,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.CreateActiveUserAsync(factory, "consent-lang@example.com");
             await RequireConsentAsync(factory, "acme");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("consent-lang@example.com", "/Identity/Account/Login");
 
             // A pushed request: nothing on the URL names the language, and the page follows the
@@ -229,7 +229,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task An_external_sign_in_returns_to_a_page_in_the_same_language()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idlangfed", Seed);
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             using HttpResponseMessage loginPage = await GetAsync(
                 flow, "/Identity/Account/Login?returnUrl=%2FIdentity%2FManage&ui_locales=ar");

@@ -132,6 +132,9 @@ namespace Tellma.Core.Composition
                 }
             }
 
+            // --- What no single job item shows: a key registered twice, a retired key still in use ---
+            JobContributionChecks.Check(context);
+
             // --- Declared options ---
             OptionsRegistrar options = new(context, configuration);
             foreach (ComposedFeature feature in ordered)
@@ -163,8 +166,8 @@ namespace Tellma.Core.Composition
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);
 
-            // --- Background jobs: the options (spec 0020 §12.1) ---
-            JobsComposition.Register(services, options);
+            // --- Background jobs: the options, the handler registry, the poller wake and the queue (spec 0020 §4, §12.1) ---
+            JobsComposition.Register(services, _record, options);
 
             // --- The provisioning step runner, which the migrator drives (spec 0011 §6.2) ---
             services.TryAddSingleton<ProvisioningStepRunner>();
@@ -507,6 +510,8 @@ namespace Tellma.Core.Composition
                 new SecurablesCheck(_record),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
                 new ProvisioningStepsCheck(_record),
+                new JobHandlersCheck(_record),
+                new JobSchedulesCheck(_record),
             ]);
 
             foreach (IStartupCheck check in _record.BuiltInChecks)

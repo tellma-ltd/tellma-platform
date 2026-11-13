@@ -57,6 +57,15 @@ namespace Tellma.Core.AspNetCore
                 "health");
             Platform(app.MapGet(ProtectedResourceEndpoint.Route, ProtectedResourceEndpoint.WriteAsync), "protected-resource-metadata");
 
+            // --- The tenantless routes a host bundle contributes, such as the webhook endpoint ---
+            foreach (IPlatformEndpointSource source in app.Services.GetServices<IPlatformEndpointSource>())
+            {
+                foreach (IEndpointConventionBuilder endpoint in source.Map(app))
+                {
+                    Platform(endpoint, source.Reason);
+                }
+            }
+
             // The admin surface's prefix stays reserved when it is off: the audit refuses a
             // distribution endpoint under it either way.
             IdentityHostOptions identity = HostSettings.Read<IdentityHostOptions>(app.Configuration, IdentityHostOptions.SectionPath);

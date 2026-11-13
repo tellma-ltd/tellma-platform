@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -31,7 +32,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddev", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "frank@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // 1. The device requests device + user codes.
             using JsonDocument device = await PostDeviceAuthorizationAsync(factory);
@@ -114,7 +115,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevbad", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "gina@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The page is [Authorize], so reaching it at all means signing in first.
             string verifyUrl = "/connect/verify?user_code=" + Uri.EscapeDataString("WRONGCODE");
@@ -143,7 +144,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevnone", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "hana@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             string loginUrl;
             using (HttpResponseMessage challenge = await flow.Browser.GetAsync(

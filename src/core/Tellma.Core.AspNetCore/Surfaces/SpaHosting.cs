@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.StaticAssets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,8 +77,14 @@ namespace Tellma.Core.AspNetCore.Surfaces
             string manifest = ManifestPath(app);
             if (File.Exists(manifest))
             {
-                StaticAssetsEndpointConventionBuilder assets = app.MapStaticAssets(manifest);
+                // Mapped inside a group without a prefix, so a stamp reaches every endpoint the call
+                // maps. A build's manifest (dotnet run, a test host) also maps a development
+                // endpoint, {**path:file}, that serves files from disk and that the call's own
+                // convention builder never sees; unstamped, it would fail the endpoint audit.
+                RouteGroupBuilder group = app.MapGroup(string.Empty);
+                StaticAssetsEndpointConventionBuilder assets = group.MapStaticAssets(manifest);
                 assets.Add(endpoint => StampAsset(endpoint, policy));
+                ((IEndpointConventionBuilder)group).Add(StampMetadata);
             }
             else
             {
@@ -225,14 +232,30 @@ namespace Tellma.Core.AspNetCore.Surfaces
             return null;
         }
 
+        /// <summary>
+        ///     Marks a static file's endpoint anonymous, tenantless and the platform's, once: both the
+        ///     assets' own conventions and their group's reach an asset's endpoint, and only the
+        ///     group's reaches the development endpoint that serves files from disk.
+        /// </summary>
+        /// <param name="endpoint">The endpoint.</param>
+        private static void StampMetadata(EndpointBuilder endpoint)
+        {
+            if (endpoint.Metadata.OfType<TenantlessEndpointMetadata>().Any())
+            {
+                return;
+            }
+
+            endpoint.Metadata.Add(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+            endpoint.Metadata.Add(new TenantlessEndpointMetadata("spa-assets"));
+            endpoint.Metadata.Add(PlatformEndpointMetadata.Instance);
+        }
+
         /// <summary>Stamps a static asset's endpoint and sets its response headers.</summary>
         /// <param name="endpoint">The asset's endpoint.</param>
         /// <param name="policy">The content security policy of <c>index.html</c>.</param>
         private static void StampAsset(EndpointBuilder endpoint, string policy)
         {
-            endpoint.Metadata.Add(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
-            endpoint.Metadata.Add(new TenantlessEndpointMetadata("spa-assets"));
-            endpoint.Metadata.Add(PlatformEndpointMetadata.Instance);
+            StampMetadata(endpoint);
 
             StaticAssetDescriptor? asset = endpoint.Metadata.OfType<StaticAssetDescriptor>().LastOrDefault();
             RequestDelegate? inner = endpoint.RequestDelegate;

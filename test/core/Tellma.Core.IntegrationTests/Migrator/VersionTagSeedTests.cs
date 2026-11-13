@@ -49,7 +49,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             };
             migrator.Values[ProbeStep.RunKeyKey] = migrator.CatalogName;
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string tenant = migrator.TenantConnectionString(1);
             Dictionary<string, Guid> first = await TagsAsync(tenant);
 
@@ -72,7 +72,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "vt_new_name");
             migrator.Seed(1);
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             string tenant = migrator.TenantConnectionString(1);
             await SqlServerFixture.ExecuteAsync(tenant, $"DELETE FROM [core].[VersionTags] WHERE [Name] = N'{VersionTagNames.Entities}';");
             Dictionary<string, Guid> before = await TagsAsync(tenant);
@@ -105,7 +105,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // --- A run that applies nothing seeds alone ---
             seeder.Calls.Clear();
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             Assert.Equal(["seed"], seeder.Calls);
         }
 
@@ -124,7 +124,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // --- Provisioned on the next run, which applies nothing; a later failure moves nothing ---
             seeder.FailSeed = false;
-            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
+            _ = await migrator.RunConvergedAsync("migrate");
             seeder.Calls.Clear();
             seeder.FailSeed = true;
             Assert.NotEqual(MigratorExitCodes.Converged, (await migrator.RunAsync("migrate")).ExitCode);
@@ -141,13 +141,14 @@ namespace Tellma.Core.IntegrationTests.Migrator
             migrator.Seed(1);
 
             // A move that never finishes on its own, as one blocked by a live transaction would be.
-            var elapsed = Stopwatch.StartNew();
             MigratorResult failed = await migrator.RunAsync("migrate");
-            elapsed.Stop();
 
             Assert.NotEqual(MigratorExitCodes.Converged, failed.ExitCode);
             Assert.Equal(["seed", "bump", "bump cancelled"], seeder.Calls);
-            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(60), elapsed.Elapsed.ToString());
+
+            // The move waited for the configured bound, not the default: timing the move alone keeps
+            // the assertion apart from how long the run's migrations take on a busy server.
+            Assert.True(seeder.BumpWaited < MigratorContext.DefaultVersionTagBumpTimeout, seeder.BumpWaited.ToString());
         }
 
         /// <summary>Reads a tenant database's version tags.</summary>
@@ -191,6 +192,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
             /// <summary>Whether a bump waits, after it is recorded, until it is cancelled, then records the cancellation.</summary>
             public bool HangBump { get; set; }
 
+            /// <summary>How long the last hanging bump waited before it was cancelled.</summary>
+            public TimeSpan BumpWaited { get; private set; }
+
             /// <summary>Wraps the platform's seeder in the host the migrator builds.</summary>
             /// <param name="services">The host's services.</param>
             /// <returns>This seeder.</returns>
@@ -219,12 +223,14 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 Calls.Add("bump");
                 if (HangBump)
                 {
+                    long started = Stopwatch.GetTimestamp();
                     try
                     {
                         await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
+                        BumpWaited = Stopwatch.GetElapsedTime(started);
                         Calls.Add("bump cancelled");
                         throw;
                     }

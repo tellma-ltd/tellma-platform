@@ -12,7 +12,7 @@ import { provideTellmaTesting, TmFakeApi, tmTestMetadata } from '@tellma/core-te
 import { provideTellma } from '../app/provide-tellma';
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';
-import { TM_CLIENT_METADATA, type TmContracts } from '../metadata/tm-client-metadata';
+import { TmClientMetadataStore, type TmContracts } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
@@ -110,12 +110,12 @@ async function setUp(options: { url?: string; providers?: Provider[] } = {}): Pr
       { provide: TM_API_LOCALE, useValue: TM_TEST_API_LOCALE },
       { provide: TM_API_CACHE, useValue: cache },
       { provide: TM_API_UPDATES, useValue: updates },
-      { provide: TM_CLIENT_METADATA, useValue: tmTestMetadata() },
       { provide: TM_METADATA_LOADERS, useValue: loaders },
       ...(options.providers ?? []),
     ],
   });
-  // The boot starts the session before any call, so it holds the tab's user.
+  // The boot loads the Core chunk, and starts the session, before any call.
+  TestBed.inject(TmClientMetadataStore).set(tmTestMetadata());
   TestBed.inject(TmSession);
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -403,7 +403,9 @@ describe('TmHttpApi', () => {
       expect(rig.host.requests).toHaveLength(0);
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       expect(rig.paths.state()).toBe('expired');
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('runs the changed-user path and rejects cancelled, unsent, under another user', async () => {
@@ -461,7 +463,9 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmAnswer(200, {}));
       await flush();
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
@@ -482,7 +486,9 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
       await flush();
       expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
-      expect(rig.sessionHost.reloads).toBe(1);
+      // The expiry path sweeps the store, then leaves to sign in again.
+      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
+      expect(rig.sessionHost.reloads).toBe(0);
     });
 
     it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {

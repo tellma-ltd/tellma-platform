@@ -16,12 +16,15 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Reflection;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Email;
 using Tellma.Core.Testing.Email;
 using Tellma.Identity.Data;
+using Tellma.Identity.Services.Audit;
+using Tellma.Identity.Services.BackchannelLogout;
 using Tellma.Identity.Services.Email;
 
 namespace Tellma.Core.AspNetCore.Tests.Hosting
@@ -33,7 +36,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
     ///     stand in for each other, and its mail goes through the platform's email pipeline live,
     ///     outside any tenant.
     /// </summary>
-    public sealed class InProcIdentityTests(InProcIdentityTests.Host fixture) : IClassFixture<InProcIdentityTests.Host>
+    public sealed partial class InProcIdentityTests(InProcIdentityTests.Host fixture) : IClassFixture<InProcIdentityTests.Host>
     {
         [Fact]
         public async Task The_authorize_endpoint_reaches_the_engine_without_a_session()
@@ -154,14 +157,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
         public async Task An_engine_sign_in_alone_does_not_authenticate_the_platform_s_session_surfaces()
         {
             // --- A sign-in cookie the engine itself accepts ---
-            CookieAuthenticationOptions engine = fixture.Test.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
-            DateTimeOffset now = fixture.Test.Time.GetUtcNow();
-            ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "sub-1"), new Claim("sub", "sub-1")], IdentityConstants.ApplicationScheme));
-            string value = engine.TicketDataFormat.Protect(new AuthenticationTicket(
-                principal,
-                new AuthenticationProperties { IssuedUtc = now, ExpiresUtc = now.AddHours(1) },
-                IdentityConstants.ApplicationScheme));
-            string cookie = $"{engine.Cookie.Name}={value}";
+            string cookie = fixture.EngineCookie(new Claim(ClaimTypes.NameIdentifier, "sub-1"), new Claim("sub", "sub-1"));
             await using (AsyncServiceScope scope = fixture.Test.Services.CreateAsyncScope())
             {
                 DefaultHttpContext probe = new() { RequestServices = scope.ServiceProvider };
@@ -175,6 +171,38 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             using HttpResponseMessage response = await fixture.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task The_engine_s_sign_out_page_ends_the_engine_s_session_when_a_platform_session_is_also_present()
+        {
+            // --- The engine's sign-in and the platform's session, both held by one browser ---
+            string cookies = fixture.EngineCookie(new Claim(ClaimTypes.NameIdentifier, "sub-2"), new Claim("sid", "sid-2"))
+                + "; " + fixture.Test.Cookie();
+
+            // --- The page's form and its antiforgery cookie ---
+            using HttpRequestMessage get = new(HttpMethod.Get, "/id/Identity/Account/Logout");
+            get.Headers.Add("Cookie", cookies);
+            using HttpResponseMessage page = await fixture.Client.SendAsync(get, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            string token = AntiforgeryField().Match(html).Groups["value"].Value;
+            string antiforgery = string.Join("; ", page.Headers.GetValues("Set-Cookie").Select(static header => header.Split(';')[0]));
+
+            // --- The sign-out, posted as the browser posts it ---
+            using HttpRequestMessage post = new(HttpMethod.Post, "/id/Identity/Account/Logout")
+            {
+                Content = new FormUrlEncodedContent([new KeyValuePair<string, string>("__RequestVerificationToken", WebUtility.HtmlDecode(token))]),
+            };
+            post.Headers.Add("Cookie", cookies + "; " + antiforgery);
+            post.Headers.Add("Sec-Fetch-Site", "same-origin");
+            post.Headers.Add("Origin", TellmaTestHost.PublicOrigin);
+            using HttpResponseMessage response = await fixture.Client.SendAsync(post, TestContext.Current.CancellationToken);
+
+            // The page saw the engine's user, not the platform's session, so that session ended
+            // and the engine's distributions are told.
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Contains(("sid-2", "sub-2"), fixture.Logouts.Terminated);
         }
 
         // ------------------------------------------------------------------------------------------
@@ -244,6 +272,24 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             /// <summary>The send outcomes the engine recorded.</summary>
             internal RecordingDispatchRecorder Recorder { get; } = new();
 
+            /// <summary>The sessions the engine's sign-out ended.</summary>
+            internal RecordingLogoutService Logouts { get; } = new();
+
+            /// <summary>A sign-in cookie the engine accepts, for a principal of the given claims, issued now.</summary>
+            /// <param name="claims">The principal's claims.</param>
+            /// <returns>The cookie, as a <c>Cookie</c> header carries it.</returns>
+            internal string EngineCookie(params Claim[] claims)
+            {
+                CookieAuthenticationOptions engine = Test.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+                DateTimeOffset now = Test.Time.GetUtcNow();
+                ClaimsPrincipal principal = new(new ClaimsIdentity(claims, IdentityConstants.ApplicationScheme));
+                string value = engine.TicketDataFormat.Protect(new AuthenticationTicket(
+                    principal,
+                    new AuthenticationProperties { IssuedUtc = now, ExpiresUtc = now.AddHours(1) },
+                    IdentityConstants.ApplicationScheme));
+                return $"{engine.Cookie.Name}={value}";
+            }
+
             /// <inheritdoc />
             public async ValueTask InitializeAsync()
             {
@@ -270,6 +316,12 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
                         services.RemoveAll<IEmailDispatchRecorder>();
                         _ = services.AddSingleton<IEmailDispatchRecorder>(Recorder);
 
+                        // The sign-out's fan-out and audit, which need the database, recorded or dropped.
+                        services.RemoveAll<IBackchannelLogoutService>();
+                        _ = services.AddSingleton<IBackchannelLogoutService>(Logouts);
+                        services.RemoveAll<IAuditLogger>();
+                        _ = services.AddSingleton<IAuditLogger, DiscardingAuditLogger>();
+
                         foreach (ServiceDescriptor descriptor in services
                             .Where(static descriptor => descriptor.ServiceType == typeof(IHostedService)
                                 && descriptor.ImplementationType?.Name is "IdentitySeedHostedService" or "QuartzHostedService")
@@ -290,6 +342,41 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
                 {
                     await _host.DisposeAsync();
                 }
+            }
+        }
+
+        /// <summary>The antiforgery field a form of the engine's carries, with its value.</summary>
+        /// <returns>The pattern.</returns>
+        [GeneratedRegex("name=\"__RequestVerificationToken\"[^>]*value=\"(?<value>[^\"]+)\"", RegexOptions.CultureInvariant)]
+        private static partial Regex AntiforgeryField();
+
+        /// <summary>The engine's session termination, without its database: every terminated session is kept.</summary>
+        internal sealed class RecordingLogoutService : IBackchannelLogoutService
+        {
+            /// <summary>The sessions terminated, with their users.</summary>
+            public ConcurrentQueue<(string Sid, string Subject)> Terminated { get; } = new();
+
+            /// <inheritdoc />
+            public Task TerminateSessionAsync(string sid, string subject, CancellationToken cancellationToken)
+            {
+                Terminated.Enqueue((sid, subject));
+                return Task.CompletedTask;
+            }
+
+            /// <inheritdoc />
+            public Task TerminateAllSessionsAsync(string subject, CancellationToken cancellationToken)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>The engine's audit, without its database: every entry is dropped.</summary>
+        internal sealed class DiscardingAuditLogger : IAuditLogger
+        {
+            /// <inheritdoc />
+            public Task LogAsync(AuditEventEntry entry, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
             }
         }
 

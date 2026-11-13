@@ -10,6 +10,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using ExcludeFromTableTypeAttribute = Tellma.Core.Abstractions.Entities.ExcludeFromTableTypeAttribute;
 using TableTypeAttribute = Tellma.Core.Abstractions.Entities.TableTypeAttribute;
@@ -58,7 +59,7 @@ namespace Tellma.Core.Tests.Data.Model
         }
     }
 
-    /// <summary>A stand-in for <c>core.Jobs</c>.</summary>
+    /// <summary>A stand-in for <c>core.Jobs</c> in models built without Core.</summary>
     [Table("Jobs", Schema = "core")]
     public class TestJob : Entity<int>
     {
@@ -319,7 +320,7 @@ namespace Tellma.Core.Tests.Data.Model
         public void Configure(EntityTypeBuilder<Configured> builder)
         {
             _ = builder.Property(static configured => configured.Kind).HasConversion<int>();
-            _ = builder.HasOne<TestJob>().WithMany().HasForeignKey(static configured => configured.JobId)
+            _ = builder.HasOne<Job>().WithMany().HasForeignKey(static configured => configured.JobId)
                 .HasConstraintName("FK_Configured_OwnJob").OnDelete(DeleteBehavior.Cascade);
             _ = builder.HasOne<Blob>().WithMany().HasForeignKey(static configured => configured.AttachmentRef);
             _ = builder.HasNoTableType();
