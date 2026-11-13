@@ -72,6 +72,37 @@ namespace Tellma.Core.AspNetCore.Observability
             Message = "The session {SessionHandle} could not refresh its tokens: the identity server or the catalog could not be reached. It stays signed in within the outage allowance.")]
         public static partial void SessionRefreshDeferred(ILogger logger, string sessionHandle, Exception? exception);
 
+        /// <summary>A session's refresh token may have been spent without a usable answer, so its redemption is tried again at once.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="reason">Why the answer was not usable.</param>
+        /// <param name="exception">The failure, if one was thrown.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshRetried",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle} may have spent its refresh token without a usable answer ({Reason}). The redemption is tried again while the identity server still accepts the token.")]
+        public static partial void SessionRefreshRetried(ILogger logger, string sessionHandle, string reason, Exception? exception);
+
+        /// <summary>A session stored its refreshed tokens but kept its current claims, which the new identity token could not vouch for.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="reason">Why the new identity token's claims could not be verified.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshClaimsKept",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle} stored its refreshed tokens but kept its current claims: {Reason}.")]
+        public static partial void SessionRefreshClaimsKept(ILogger logger, string sessionHandle, string reason);
+
+        /// <summary>A session's refreshed tokens could not be written to the catalog, so the write is tried again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshWriteRetried",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle}'s refreshed tokens could not be stored. The write is tried again; tokens never stored are kept on this instance for the session's next refresh.")]
+        public static partial void SessionRefreshWriteRetried(ILogger logger, string sessionHandle, Exception exception);
+
         /// <summary>A back-channel logout token was refused.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="reason">Why it was refused.</param>

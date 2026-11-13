@@ -75,6 +75,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The refresh grant's answer for a request; null answers fresh tokens.</summary>
         public Func<IReadOnlyDictionary<string, string>, Task<HttpResponseMessage?>>? Refresh { get; set; }
 
+        /// <summary>
+        ///     The refresh grant's answer for a request, given the request's cancellation; null falls back
+        ///     to <see cref="Refresh" />.
+        /// </summary>
+        public Func<IReadOnlyDictionary<string, string>, CancellationToken, Task<HttpResponseMessage?>>? RefreshWithin { get; set; }
+
         /// <summary>Whether the refresh grant never answers, until the request is cancelled.</summary>
         public bool StallRefresh { get; set; }
 
@@ -181,7 +187,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 "/connect/par" => Json(HttpStatusCode.Created, JsonSerializer.Serialize(new { request_uri = RequestUri, expires_in = 60 })),
                 "/connect/token" when form.GetValueOrDefault("grant_type") == "authorization_code" => Tokens(Subject, LatestNonce(), AccessTokenLifetime, sid: SessionId, shape: ShapeIdToken),
                 "/connect/token" when form.GetValueOrDefault("grant_type") == "refresh_token" =>
-                    (Refresh is null ? null : await Refresh(form)) ?? Tokens(Subject, nonce: null, AccessTokenLifetime),
+                    (RefreshWithin is null ? null : await RefreshWithin(form, cancellationToken))
+                        ?? (Refresh is null ? null : await Refresh(form))
+                        ?? Tokens(Subject, nonce: null, AccessTokenLifetime),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
             };
         }

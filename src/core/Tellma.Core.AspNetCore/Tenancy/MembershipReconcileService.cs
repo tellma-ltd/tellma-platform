@@ -16,10 +16,18 @@ namespace Tellma.Core.AspNetCore.Tenancy
     /// <summary>
     ///     A hosted timer that rebuilds the membership hints of every active tenant from its users, so a
     ///     failed post-commit write is repaired without a deployment. It first runs five minutes after
-    ///     the registry's first snapshot, then every reconcile interval; on each run only the instance
-    ///     that takes the catalog's application lock reconciles. Each tenant is one read of its users and
-    ///     one catalog transaction; a failed tenant is logged and the run goes on.
+    ///     the registry's first snapshot, then every reconcile interval. Each tenant is one read of its
+    ///     users and one catalog transaction; a failed tenant is logged and the run goes on.
     /// </summary>
+    /// <remarks>
+    ///     The catalog's application lock keeps runs from overlapping: an instance whose tick finds
+    ///     another instance's run in progress skips its own. It does not make one run per interval for
+    ///     the deployment: each instance's timer runs from its own first snapshot, and the lock is
+    ///     released when a run ends, so with several instances each may run once per interval, each
+    ///     reading every active tenant's users. That is safe because a run is idempotent: it rebuilds
+    ///     each tenant's hints from the tenant's users, so a second run over unchanged users changes no
+    ///     row.
+    /// </remarks>
     /// <param name="registry">The tenant registry, whose snapshot lists the tenants.</param>
     /// <param name="store">The reconciliation's reads and writes.</param>
     /// <param name="options">The tenancy options.</param>

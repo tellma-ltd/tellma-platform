@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -13,6 +14,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 
@@ -103,6 +105,41 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Equal("passkey", pushed.Form["tellma_allowed_methods"]);
         }
 
+        /// <summary>A policy's acr values, a caller's, and the values the sign-in sends.</summary>
+        /// <returns>Each case.</returns>
+        public static TheoryData<string, string, string> AcrChoices()
+        {
+            return new()
+            {
+                // A step-up above the policy reaches the identity server.
+                { "urn:tellma:acr:aal1", "urn:tellma:acr:aal2", "urn:tellma:acr:aal2" },
+                { "urn:tellma:acr:aal2", "phrh", "phrh" },
+                // A caller below the policy, or level with it, does not replace it.
+                { "urn:tellma:acr:aal2", "urn:tellma:acr:aal1", "urn:tellma:acr:aal2" },
+                { "urn:tellma:acr:aal3", "phr", "urn:tellma:acr:aal3" },
+                { "urn:tellma:acr:aal2", "phr", "urn:tellma:acr:aal2" },
+                // A list ranks as its weakest member.
+                { "urn:tellma:acr:aal2", "urn:tellma:acr:aal3 urn:tellma:acr:aal1", "urn:tellma:acr:aal2" },
+                // A class outside the tiers wins only when it is the configured step-up class.
+                { "urn:tellma:acr:aal1", "urn:tellma:acr:mfa", "urn:tellma:acr:mfa" },
+                { "urn:tellma:acr:aal1", "urn:example:other", "urn:tellma:acr:aal1" },
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(AcrChoices))]
+        public async Task The_login_sends_the_stronger_of_the_policy_s_and_the_caller_s_assurance(string policyAcr, string callerAcr, string sent)
+        {
+            await using TellmaTestHost host = await StartWithPolicyAsync(new LoginPolicy(policyAcr, null, null));
+
+            using HttpResponseMessage response = await host.Client.GetAsync(
+                new Uri("/bff/login?acr_values=" + Uri.EscapeDataString(callerAcr), UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            IdentityRequest pushed = Assert.Single(host.IdentityServer.Requests, static request => request.Path == "/connect/par");
+            Assert.Equal(sent, pushed.Form["acr_values"]);
+        }
+
         [Fact]
         public async Task A_caller_may_ask_for_a_more_recent_sign_in_than_the_policy()
         {
@@ -126,6 +163,8 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
         [InlineData("?max_age=soon")]
         [InlineData("?ui_locales=%3Cscript%3E")]
         [InlineData("?returnUrl=%2Fa&returnUrl=%2Fb")]
+        [InlineData("?returnUrl=%2F1%2F%D8%B9")]
+        [InlineData("?returnUrl=%2F1%2Fa%20b")]
         public async Task The_login_refuses_a_parameter_it_cannot_trust(string query)
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync();
@@ -444,6 +483,52 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Contains("id_token_hint=" + Uri.EscapeDataString(idToken), redirect, StringComparison.Ordinal);
             Assert.Equal("\"cache\"", response.Headers.GetValues("Clear-Site-Data").Single());
             Assert.Empty(host.Rows.Keys());
+        }
+
+        [Fact]
+        public async Task The_identity_server_s_return_from_a_global_sign_out_lands_on_the_signed_out_page()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            TestSession session = host.Session();
+
+            // --- The sign-out hands back the end-session address ---
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/bff/logout", session.Cookie);
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            var endSession = new Uri(body.RootElement.GetProperty("redirectUrl").GetString()!);
+
+            // --- The identity server returns the browser to the post-logout address, with the state the
+            // end-session address carried (an identity server echoes it back unchanged) ---
+            var query = QueryHelpers.ParseQuery(endSession.Query)
+                .ToDictionary(static pair => pair.Key, static pair => pair.Value.ToString(), StringComparer.Ordinal);
+            var postLogout = new Uri(query["post_logout_redirect_uri"]);
+            string back = query.TryGetValue("state", out string? state)
+                ? QueryHelpers.AddQueryString(postLogout.PathAndQuery, "state", state)
+                : postLogout.PathAndQuery;
+            using HttpResponseMessage returned = await host.Client.GetAsync(new Uri(back, UriKind.Relative), TestContext.Current.CancellationToken);
+
+            // --- The framework's callback handler sends it on to the signed-out page ---
+            Assert.Equal(HttpStatusCode.Redirect, returned.StatusCode);
+            Assert.Equal(TellmaAuthenticationComposition.SignedOutPath, returned.Headers.Location?.OriginalString);
+        }
+
+        /// <summary>Queries an identity server's return to the post-logout address may carry.</summary>
+        /// <returns>Each query.</returns>
+        public static TheoryData<string> PostLogoutReturns()
+        {
+            return ["", "?state=garbage", "?state=garbage&post_logout_redirect_uri=https%3A%2F%2Fevil.example%2F"];
+        }
+
+        [Theory]
+        [MemberData(nameof(PostLogoutReturns))]
+        public async Task Any_return_to_the_post_logout_address_lands_on_the_signed_out_page(string query)
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+
+            using HttpResponseMessage returned = await host.Client.GetAsync(new Uri("/signout-callback-oidc" + query, UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Redirect, returned.StatusCode);
+            Assert.Equal(TellmaAuthenticationComposition.SignedOutPath, returned.Headers.Location?.OriginalString);
         }
 
         /// <summary>Ways a global sign-out cannot reach the identity server's end-session endpoint.</summary>

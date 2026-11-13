@@ -219,7 +219,12 @@ namespace Tellma.Core.AspNetCore.Bff
                 manager.RequestRefresh();
             }
 
-            return await manager.GetConfigurationAsync(cancellationToken).ConfigureAwait(false);
+            // The manager's first read does not heed a token, so only the wait is bounded, by the request:
+            // a caller that gives up is not kept waiting. The read finishes on its own and fills the
+            // manager's cache, its failure observed here.
+            Task<OpenIdConnectConfiguration> read = manager.GetConfigurationAsync(CancellationToken.None);
+            _ = read.ContinueWith(static task => _ = task.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return await read.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>A non-empty string member of a JSON object.</summary>

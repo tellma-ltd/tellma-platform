@@ -59,6 +59,15 @@ namespace Tellma.Core.AspNetCore.Sessions
     ///     to the outage allowance past the access token's expiry, then ends it the same way. A refresh put
     ///     off is not attempted again for <see cref="DeferralBackoff" />, so during an outage the session's
     ///     requests are served on its current tokens instead of each waiting on the authority.
+    ///
+    ///     The authority rotates the refresh token on each redemption and accepts a spent one again only
+    ///     within a short reuse leeway; past it, the reuse revokes the session's whole token family. So a
+    ///     refresh never lets a token that may be spent wait on the session's next request: a redemption
+    ///     that may have reached the authority without a usable answer is retried by the refresh itself,
+    ///     every retry sent within <see cref="RetryWindow" /> of the first, and tokens the authority issued
+    ///     are never dropped, whether their identity token's key is unknown or the catalog fails to store
+    ///     them. A request waits on the refresh for at most <see cref="FlightWait" />, then is served on
+    ///     its current tokens while the refresh carries on.
     /// </remarks>
     /// <param name="store">The session store.</param>
     /// <param name="redeemer">Redeems refresh tokens.</param>
@@ -83,8 +92,33 @@ namespace Tellma.Core.AspNetCore.Sessions
             TellmaClaimTypes.Locale,
         ];
 
-        /// <summary>How long a refresh put off is not attempted again for the same session.</summary>
+        /// <summary>
+        ///     How long a refresh put off is not attempted again for the same session: twenty seconds. A
+        ///     refresh is put off only once its retries are spent, or when the refresh token never reached
+        ///     the authority, so a spent token that the leeway still covers never waits on it.
+        /// </summary>
         internal static readonly TimeSpan DeferralBackoff = TimeSpan.FromSeconds(20);
+
+        /// <summary>How long a refresh pauses before it tries a redemption, or a write of the tokens it holds, again: one second.</summary>
+        internal static readonly TimeSpan RetryPause = TimeSpan.FromSeconds(1);
+
+        /// <summary>How many more times a refresh tries a redemption that may have spent the token, or a failed write.</summary>
+        internal const int Retries = 2;
+
+        /// <summary>
+        ///     How long a request waits on its session's refresh before it is served on its current tokens,
+        ///     the refresh carrying on without it: one redemption's deadline, five seconds.
+        /// </summary>
+        internal static readonly TimeSpan FlightWait = OidcTokenRedeemer.Timeout;
+
+        /// <summary>
+        ///     The latest a retry of a refresh token that may be spent is sent, after the first attempt
+        ///     sent it: each earlier attempt ran at most to its deadline, then paused. Twelve seconds with
+        ///     the five-second deadline, one-second pause and two retries; the platform's identity server
+        ///     accepts a spent refresh token again for thirty seconds, so the last retry lands with more
+        ///     than half its leeway to spare.
+        /// </summary>
+        internal static TimeSpan RetryWindow => (OidcTokenRedeemer.Timeout + RetryPause) * Retries;
 
         /// <summary>How many remembered deferrals prompt a pass that forgets the lapsed ones.</summary>
         private const int DeferralPruneThreshold = 10_000;
@@ -94,6 +128,12 @@ namespace Tellma.Core.AspNetCore.Sessions
 
         /// <summary>The sessions whose refresh was put off on this instance, by key, with when it may be tried again.</summary>
         private readonly ConcurrentDictionary<string, DateTimeOffset> _deferrals = new(StringComparer.Ordinal);
+
+        /// <summary>
+        ///     Tokens this instance redeemed but could not store, by session key: the next refresh of the
+        ///     session stores them instead of presenting the spent refresh token again.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, PendingTokens> _pending = new(StringComparer.Ordinal);
 
         /// <summary>Refreshes a session, joining the refresh already in flight for it on this instance.</summary>
         /// <param name="request">The session.</param>
@@ -114,19 +154,29 @@ namespace Tellma.Core.AspNetCore.Sessions
                 _ = _deferrals.TryRemove(new KeyValuePair<string, DateTimeOffset>(request.Key, retryAt));
             }
 
-            // The flight is not the asking request's to cancel: other requests may be waiting on it.
-            Lazy<Task<RefreshOutcome>> created = new(() => RunGuardedAsync(request), LazyThreadSafetyMode.ExecutionAndPublication);
+            // The flight is not the asking request's to cancel: other requests may be waiting on it, and
+            // it may outlast them all. It leaves the table when it ends, not when its first request stops
+            // waiting on it. It runs off the request's thread, so the request's wait starts at once.
+            Lazy<Task<RefreshOutcome>> created = new(() => Task.Run(() => RunGuardedAsync(request)), LazyThreadSafetyMode.ExecutionAndPublication);
             Lazy<Task<RefreshOutcome>> flight = _flights.GetOrAdd(request.Key, created);
+            Task<RefreshOutcome> running = flight.Value;
+            if (ReferenceEquals(flight, created))
+            {
+                _ = running.ContinueWith(
+                    _ => _flights.TryRemove(new KeyValuePair<string, Lazy<Task<RefreshOutcome>>>(request.Key, created)),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+
+            // --- The request waits a while, then is served on its current tokens ---
             try
             {
-                return await flight.Value.ConfigureAwait(false);
+                return await running.WaitAsync(FlightWait, time).ConfigureAwait(false);
             }
-            finally
+            catch (TimeoutException)
             {
-                if (ReferenceEquals(flight, created))
-                {
-                    _ = _flights.TryRemove(new KeyValuePair<string, Lazy<Task<RefreshOutcome>>>(request.Key, created));
-                }
+                return new RefreshOutcome(RefreshOutcomeKind.Deferred, null);
             }
         }
 
@@ -171,36 +221,64 @@ namespace Tellma.Core.AspNetCore.Sessions
                 return Adopt(current);
             }
 
-            if (current.Ticket.Properties.GetTokenValue(OpenIdConnectParameterNames.RefreshToken) is not { Length: > 0 } refreshToken)
+            // --- Tokens redeemed earlier but not stored are stored now; the token they replaced is spent ---
+            RedeemedTokens tokens;
+            DateTimeOffset redeemedAt;
+            if (_pending.TryRemove(request.Key, out PendingTokens? pending) && pending.TokensVersion == current.TokensVersion)
             {
-                return await EndAsync(request, "the session holds no refresh token").ConfigureAwait(false);
+                tokens = pending.Tokens;
+                redeemedAt = pending.RedeemedAt;
+            }
+            else
+            {
+                if (current.Ticket.Properties.GetTokenValue(OpenIdConnectParameterNames.RefreshToken) is not { Length: > 0 } refreshToken)
+                {
+                    return await EndAsync(request, "the session holds no refresh token").ConfigureAwait(false);
+                }
+
+                // --- The redemption, retried at once while the token may be spent ---
+                Redemption redemption = await redeemer.RedeemAsync(refreshToken, CancellationToken.None).ConfigureAwait(false);
+                for (int retry = 0; redemption.Status == RedemptionStatus.Indeterminate && retry < Retries; retry++)
+                {
+                    // The authority accepts a spent token again only within its reuse leeway, so the
+                    // retry cannot wait for the session's next request.
+                    HostLog.SessionRefreshRetried(logger, request.Handle, redemption.Reason ?? string.Empty, redemption.Failure);
+                    await Task.Delay(RetryPause, time).ConfigureAwait(false);
+                    redemption = await redeemer.RedeemAsync(refreshToken, CancellationToken.None).ConfigureAwait(false);
+                }
+
+                switch (redemption.Status)
+                {
+                    case RedemptionStatus.Unreachable:
+                    case RedemptionStatus.Indeterminate:
+                        return await DeferAsync(request, redemption).ConfigureAwait(false);
+
+                    case RedemptionStatus.Refused:
+                        return await EndAsync(request, redemption.Reason ?? "refused").ConfigureAwait(false);
+
+                    case RedemptionStatus.Redeemed:
+                    default:
+                        break;
+                }
+
+                tokens = redemption.Tokens!;
+                redeemedAt = time.GetUtcNow();
             }
 
-            // --- The redemption ---
-            Redemption redemption = await redeemer.RedeemAsync(refreshToken, CancellationToken.None).ConfigureAwait(false);
-            switch (redemption.Status)
-            {
-                case RedemptionStatus.Unreachable:
-                    return await DeferAsync(request, redemption).ConfigureAwait(false);
-
-                case RedemptionStatus.Refused:
-                    return await EndAsync(request, redemption.Reason ?? "refused").ConfigureAwait(false);
-
-                case RedemptionStatus.Redeemed:
-                default:
-                    break;
-            }
-
-            RedeemedTokens tokens = redemption.Tokens!;
             if (tokens.IdTokenClaims is { } refreshed
                 && !string.Equals(refreshed.FindFirst(TellmaClaimTypes.Subject)?.Value, request.Subject, StringComparison.Ordinal))
             {
                 return await EndAsync(request, "the refreshed identity token names another subject").ConfigureAwait(false);
             }
 
+            if (tokens.ClaimsUnverified is string unverified)
+            {
+                HostLog.SessionRefreshClaimsKept(logger, request.Handle, unverified);
+            }
+
             // --- The new ticket, written only if no other writer moved the row meanwhile ---
-            AuthenticationTicket ticket = Refreshed(current.Ticket, tokens, time.GetUtcNow());
-            int? version = await store.ReplaceAsync(request.Key, ticket, current.ExpiresAt, current.TokensVersion, CancellationToken.None).ConfigureAwait(false);
+            AuthenticationTicket ticket = Refreshed(current.Ticket, tokens, redeemedAt);
+            int? version = await WriteAsync(request, current, ticket, new PendingTokens(current.TokensVersion, tokens, redeemedAt)).ConfigureAwait(false);
             if (version is int written)
             {
                 metrics.RecordSessionRefresh(HostMetrics.RefreshedOutcome);
@@ -215,9 +293,9 @@ namespace Tellma.Core.AspNetCore.Sessions
         /// <summary>The session's ticket with the redeemed tokens and the refreshed identity token's claims.</summary>
         /// <param name="ticket">The stored ticket.</param>
         /// <param name="tokens">The redeemed tokens.</param>
-        /// <param name="now">The current instant.</param>
+        /// <param name="redeemedAt">When the tokens were redeemed, which the access token's lifetime runs from.</param>
         /// <returns>The new ticket.</returns>
-        internal static AuthenticationTicket Refreshed(AuthenticationTicket ticket, RedeemedTokens tokens, DateTimeOffset now)
+        internal static AuthenticationTicket Refreshed(AuthenticationTicket ticket, RedeemedTokens tokens, DateTimeOffset redeemedAt)
         {
             // --- The principal: the refreshed assurance, evidence time, name and language replace the old ---
             ClaimsIdentity identity = ((ClaimsIdentity?)ticket.Principal.Identity ?? new ClaimsIdentity(TellmaAuthentication.SessionScheme)).Clone();
@@ -245,10 +323,59 @@ namespace Tellma.Core.AspNetCore.Sessions
                 new AuthenticationToken { Name = OpenIdConnectParameterNames.RefreshToken, Value = tokens.RefreshToken ?? ticket.Properties.GetTokenValue(OpenIdConnectParameterNames.RefreshToken) ?? string.Empty },
                 new AuthenticationToken { Name = OpenIdConnectParameterNames.IdToken, Value = tokens.IdToken ?? ticket.Properties.GetTokenValue(OpenIdConnectParameterNames.IdToken) ?? string.Empty },
                 new AuthenticationToken { Name = OpenIdConnectParameterNames.TokenType, Value = tokens.TokenType ?? ticket.Properties.GetTokenValue(OpenIdConnectParameterNames.TokenType) ?? "Bearer" },
-                new AuthenticationToken { Name = SessionProperties.ExpiresAtToken, Value = (now + tokens.ExpiresIn).ToString("o", CultureInfo.InvariantCulture) },
+                new AuthenticationToken { Name = SessionProperties.ExpiresAtToken, Value = (redeemedAt + tokens.ExpiresIn).ToString("o", CultureInfo.InvariantCulture) },
             ]);
 
             return new AuthenticationTicket(new ClaimsPrincipal(identity), properties, ticket.AuthenticationScheme);
+        }
+
+        /// <summary>
+        ///     Writes a refreshed ticket with the compare-and-set, trying again while the catalog fails:
+        ///     the tokens are in hand and the token they replace is spent. Tokens that still cannot be
+        ///     written are kept for the session's next refresh on this instance.
+        /// </summary>
+        /// <param name="request">The session.</param>
+        /// <param name="current">The row the ticket replaces.</param>
+        /// <param name="ticket">The refreshed ticket.</param>
+        /// <param name="tokens">The redeemed tokens, kept when they cannot be written.</param>
+        /// <returns>The row's new tokens version, or null when another writer moved the row first.</returns>
+        private async Task<int?> WriteAsync(RefreshRequest request, StoredSession current, AuthenticationTicket ticket, PendingTokens tokens)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    return await store.ReplaceAsync(request.Key, ticket, current.ExpiresAt, current.TokensVersion, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (attempt < Retries)
+                {
+                    HostLog.SessionRefreshWriteRetried(logger, request.Handle, exception);
+                }
+                catch (Exception)
+                {
+                    Remember(request.Key, tokens);
+                    throw;
+                }
+
+                await Task.Delay(RetryPause, time).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>Keeps tokens that could not be written, forgetting long-lapsed ones when there are many.</summary>
+        /// <param name="key">The session's key.</param>
+        /// <param name="tokens">The tokens.</param>
+        private void Remember(string key, PendingTokens tokens)
+        {
+            _pending[key] = tokens;
+            if (_pending.Count > DeferralPruneThreshold)
+            {
+                // A session that never came back past the outage allowance has ended anyway.
+                DateTimeOffset lapsed = time.GetUtcNow() - options.Value.MaxAuthorityOutage;
+                foreach (KeyValuePair<string, PendingTokens> entry in _pending.Where(entry => entry.Value.RedeemedAt + entry.Value.Tokens.ExpiresIn < lapsed).ToList())
+                {
+                    _ = _pending.TryRemove(entry);
+                }
+            }
         }
 
         /// <summary>Takes the ticket another refresh wrote.</summary>
@@ -315,5 +442,11 @@ namespace Tellma.Core.AspNetCore.Sessions
             metrics.RecordSessionRefresh(HostMetrics.RejectedOutcome);
             return new RefreshOutcome(RefreshOutcomeKind.Rejected, null);
         }
+
+        /// <summary>Tokens redeemed for a session but not yet stored.</summary>
+        /// <param name="TokensVersion">The tokens version of the row they replace.</param>
+        /// <param name="Tokens">The tokens.</param>
+        /// <param name="RedeemedAt">When they were redeemed.</param>
+        private sealed record PendingTokens(int TokensVersion, RedeemedTokens Tokens, DateTimeOffset RedeemedAt);
     }
 }

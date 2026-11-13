@@ -17,7 +17,7 @@ namespace Tellma.Core.AspNetCore.Tenancy
     /// </summary>
     internal interface IMembershipReconcileStore
     {
-        /// <summary>Takes the reconciliation's lock without waiting, so exactly one instance runs.</summary>
+        /// <summary>Takes the reconciliation's lock without waiting, so no two instances' runs overlap.</summary>
         /// <param name="cancellationToken">Cancels the attempt.</param>
         /// <returns>The lock, released when disposed; null when another instance holds it.</returns>
         Task<IAsyncDisposable?> TryLeadAsync(CancellationToken cancellationToken);

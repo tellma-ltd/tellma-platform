@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using System.Globalization;
@@ -20,6 +21,7 @@ using System.Text.Unicode;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Authentication;
+using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Sessions;
@@ -113,9 +115,11 @@ namespace Tellma.Core.AspNetCore.Bff
                 RedirectUri = returnUrl ?? "/",
                 IsPersistent = true,
             };
-            // The policy bounds the caller: its assurance replaces the caller's, and the stricter of the
-            // two recencies wins, so no query weakens what the distribution requires.
-            if ((string.IsNullOrEmpty(policy.AcrValues) ? acrValues : policy.AcrValues) is { Length: > 0 } acr)
+            // The policy bounds the caller: the stronger of the two assurances and the stricter of the
+            // two recencies win, so no query weakens what the distribution requires and a step-up above
+            // the policy still reaches the identity server.
+            string stepUp = context.RequestServices.GetRequiredService<IOptions<TellmaSessionOptions>>().Value.StepUp.Acr;
+            if (StrongerAcr(policy.AcrValues, acrValues, stepUp) is { Length: > 0 } acr)
             {
                 properties.SetParameter(BffOidcEvents.AcrValuesParameter, acr);
             }
@@ -387,7 +391,10 @@ namespace Tellma.Core.AspNetCore.Bff
 
         /// <summary>
         ///     Whether a return address stays on this origin: a path with one leading slash, not followed by
-        ///     a slash or a backslash, and no control character, which a browser would drop or follow elsewhere.
+        ///     a slash or a backslash, and only visible ASCII characters. A control character is one a
+        ///     browser would drop or follow elsewhere; a space or a character beyond ASCII cannot stand in
+        ///     the <c>Location</c> header the sign-in's callback answers with, so the address must arrive
+        ///     percent-encoded.
         /// </summary>
         /// <param name="url">The address.</param>
         /// <returns>True when it is local.</returns>
@@ -396,7 +403,66 @@ namespace Tellma.Core.AspNetCore.Bff
             return url.Length > 0
                 && url[0] == '/'
                 && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'))
-                && !url.Any(char.IsControl);
+                && url.All(static c => c is > ' ' and <= '~');
+        }
+
+        /// <summary>
+        ///     The acr values a sign-in sends: the stronger of the distribution's policy and the caller's
+        ///     request, never the weaker.
+        /// </summary>
+        /// <param name="policy">The policy's acr values; null or empty when it names none.</param>
+        /// <param name="caller">The caller's acr values; null or empty when it named none.</param>
+        /// <param name="stepUp">The class sensitive operations require, which the platform itself asks callers to step up to.</param>
+        /// <returns>The values to send, or null when neither names any.</returns>
+        /// <remarks>
+        ///     Values are ranked by the identity server's tier scheme (aal1, then aal2 or <c>phr</c>, then
+        ///     aal3 or <c>phrh</c>); a list ranks as its weakest member, since the identity server may
+        ///     satisfy any of them. When either side cannot be ranked, the caller's values win only when
+        ///     they are the step-up class, which the distribution configured as its own bar; otherwise the
+        ///     policy's do.
+        /// </remarks>
+        internal static string? StrongerAcr(string? policy, string? caller, string stepUp)
+        {
+            if (string.IsNullOrEmpty(caller))
+            {
+                return string.IsNullOrEmpty(policy) ? null : policy;
+            }
+
+            if (string.IsNullOrEmpty(policy))
+            {
+                return caller;
+            }
+
+            // --- Both name a class: the higher tier, the policy's on a tie; unranked, the step-up class ---
+            return AcrRank(policy) is int policyRank && AcrRank(caller) is int callerRank
+                ? (callerRank > policyRank ? caller : policy)
+                : (string.Equals(caller, stepUp, StringComparison.Ordinal) ? caller : policy);
+        }
+
+        /// <summary>The tier an acr value or list reaches in the identity server's scheme.</summary>
+        /// <param name="values">The space-separated values.</param>
+        /// <returns>The weakest member's tier, or null when any member is outside the scheme.</returns>
+        private static int? AcrRank(string values)
+        {
+            int? weakest = null;
+            foreach (string value in values.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int? rank = value switch
+                {
+                    "urn:tellma:acr:aal1" => 1,
+                    "urn:tellma:acr:aal2" or "phr" => 2,
+                    "urn:tellma:acr:aal3" or "phrh" => 3,
+                    _ => null,
+                };
+                if (rank is not int known)
+                {
+                    return null;
+                }
+
+                weakest = weakest is int current && current < known ? current : known;
+            }
+
+            return weakest;
         }
 
         /// <summary>Writes a JSON answer.</summary>

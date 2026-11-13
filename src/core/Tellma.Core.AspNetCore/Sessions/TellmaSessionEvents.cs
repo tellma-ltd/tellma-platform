@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Problems;
@@ -163,8 +164,10 @@ namespace Tellma.Core.AspNetCore.Sessions
         private void Apply(CookieValidatePrincipalContext context, StoredSession session)
         {
             // The handler renews from the ticket it read, so its properties take the stored ticket's
-            // items: the new tokens and the tokens version among them.
-            context.ReplacePrincipal(session.Ticket.Principal);
+            // items: the new tokens and the tokens version among them. Every request that joined one
+            // refresh holds the same stored session, so each takes its own copy of the principal, which
+            // a claims transformation may then change without reaching the other requests.
+            context.ReplacePrincipal(new ClaimsPrincipal(session.Ticket.Principal.Identities.Select(static identity => identity.Clone())));
             AuthenticationProperties properties = context.Properties;
             properties.Items.Clear();
             foreach (KeyValuePair<string, string?> item in session.Ticket.Properties.Items)

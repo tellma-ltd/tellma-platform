@@ -11,19 +11,23 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Security.Claims;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Tenancy;
 using Tellma.Core.IntegrationTests.Infrastructure;
+using Tellma.Core.Tenancy;
+using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Catalog
 {
     /// <summary>
     ///     The session store against a real catalog: the rows the statements write, the renewal the
     ///     tokens version guards, the refresh's compare-and-set across two instances, the termination
-    ///     deletes that output the handles, the sweep, and the reconciliation's application lock.
+    ///     deletes that output the handles, the sweep, and the reconciliation's application lock and its
+    ///     read of a tenant's users.
     /// </summary>
     [Trait("Category", "Integration")]
     public class SessionStoreTests(SqlServerFixture sql)
@@ -198,6 +202,36 @@ namespace Tellma.Core.IntegrationTests.Catalog
             IAsyncDisposable? next = await two.TryLeadAsync(Token);
             Assert.NotNull(next);
             await next.DisposeAsync();
+        }
+
+        [Fact]
+        public async Task The_reconciliation_reads_a_tenant_s_users_that_have_a_subject_with_whether_each_is_active()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "sessions_users");
+            await using FixtureTenant tenant = await FixtureTenant.CreateAsync(sql.MasterConnectionString, sql.NewDatabaseName("fx_reconcile"), audit: false, cancellationToken: Token);
+
+            // --- An active and an inactive user with subjects, one without, beside the seeded system user ---
+            await using (SqlConnection connection = new(tenant.ConnectionString))
+            {
+                await connection.OpenAsync(Token);
+                await using SqlCommand command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [InvitedAt], [InviteStatus], [JoinedAt], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES
+                    (NEXT VALUE FOR [core].[sq_Users], 'Individual', 'sub-active', 'active@example.com', SYSDATETIMEOFFSET(), 'Invited', SYSDATETIMEOFFSET(), N'Active', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1),
+                    (NEXT VALUE FOR [core].[sq_Users], 'Individual', 'sub-inactive', 'inactive@example.com', SYSDATETIMEOFFSET(), 'Invited', SYSDATETIMEOFFSET(), N'Inactive', 0, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1),
+                    (NEXT VALUE FOR [core].[sq_Users], 'Individual', NULL, 'unclaimed@example.com', NULL, NULL, NULL, N'Unclaimed', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);
+                    """;
+                _ = await command.ExecuteNonQueryAsync(Token);
+            }
+
+            // --- The tenant's database through its connection factory; the catalog's hints are not read ---
+            SqlMembershipReconcileStore store = new(tenant.Services.GetRequiredService<ITenantConnectionFactory>(), host.Directory);
+            IReadOnlyList<TenantMembershipRecord> records = await store.ReadUsersAsync(FixtureTenant.TenantId, Token);
+
+            Assert.Equal(
+                ["sub-active:True", "sub-inactive:False"],
+                records.Select(static record => $"{record.Subject}:{record.IsActive}").Order(StringComparer.Ordinal));
+            Assert.All(records, static record => Assert.Equal(FixtureTenant.TenantId, record.TenantId));
         }
 
         // ------------------------------------------------------------------------------------------

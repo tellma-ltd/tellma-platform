@@ -30,6 +30,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             }
         }
 
+        /// <summary>How many of the next token replacements fail as an unreachable catalog would.</summary>
+        public int FailingReplacements { get; set; }
+
+        /// <summary>How many token replacements were attempted, failed ones included.</summary>
+        public int ReplaceAttempts { get; private set; }
+
         /// <summary>How many renewals were written.</summary>
         public int Renewals { get; private set; }
 
@@ -124,6 +130,13 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         {
             lock (_gate)
             {
+                ReplaceAttempts++;
+                if (FailingReplacements > 0)
+                {
+                    FailingReplacements--;
+                    throw new InvalidOperationException("The catalog cannot be reached.");
+                }
+
                 if (!_rows.TryGetValue(key, out Row? row) || row.TokensVersion != expectedVersion)
                 {
                     return Task.FromResult<int?>(null);

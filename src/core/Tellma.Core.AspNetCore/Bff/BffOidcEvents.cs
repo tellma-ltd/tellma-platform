@@ -23,8 +23,9 @@ namespace Tellma.Core.AspNetCore.Bff
     /// <summary>
     ///     The sign-in scheme's events: the callback addresses from the public origin, the sign-in's
     ///     constraints forwarded to the identity server, the principal checked and trimmed to the claims
-    ///     the platform keeps, the post-sign-in landing, and the end-session address captured for
-    ///     <c>POST /bff/logout</c> instead of followed.
+    ///     the platform keeps, the post-sign-in landing, the end-session address captured for
+    ///     <c>POST /bff/logout</c> instead of followed, and the identity server's return from it sent
+    ///     to the signed-out page.
     /// </summary>
     /// <param name="directory">The membership hints, for the landing.</param>
     /// <param name="configuration">The application's configuration, which holds the public origin.</param>
@@ -175,6 +176,20 @@ namespace Tellma.Core.AspNetCore.Bff
                 context.HttpContext.Items[EndSessionItem] = message.CreateLogoutRequestUrl();
             }
 
+            context.HandleResponse();
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public override Task SignedOutCallbackRedirect(RemoteSignOutContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            // The captured end-session address carries no state (the handler adds it only after the
+            // event above returns), so the handler alone would answer the return with an empty 200.
+            // Every return lands on the signed-out page instead, whatever the query carries, which
+            // also leaves the query no way to name another destination.
+            context.Response.Redirect(TellmaAuthenticationComposition.SignedOutPath);
             context.HandleResponse();
             return Task.CompletedTask;
         }

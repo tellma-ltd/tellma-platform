@@ -131,18 +131,37 @@ Each instance caches the rows it reads for `Tellma:Session:CacheTtl`. The sessio
 `tellma.profile` cookie expire with the row. Background requests (`Tellma-Activity: background`,
 the hub, client telemetry) renew neither.
 
-A sign-in pushes its request (PAR) with PKCE as the distribution's confidential client. The
-distribution's `IAuthenticationPolicyProvider` bounds what the login's query asks for: the policy's
-`acr_values` replace the caller's, the shorter `max_age` wins, and the allowed methods are the
-policy's alone. An access token within `RefreshSkew` of its expiry is refreshed once per session per
-instance; the new ticket is written with a compare-and-set on the row's `TokensVersion`, and an
-instance that loses it adopts the winner's. A refused refresh ends the session; an unreachable
-identity server (no answer within ten seconds, a 5xx, a malformed answer, or a refreshed identity
-token signed by a key its metadata still does not list after one re-read) keeps it for
-`MaxAuthorityOutage` past the access token's expiry, and a refresh put off is not tried again for
-twenty seconds. A sign-in that returns to the root lands on the user's one live tenant when there
-is exactly one. A global sign-out whose identity server cannot be reached, or names no end-session
-endpoint, signs out locally and logs `BffGlobalSignOutUnavailable`.
+A sign-in pushes its request (PAR) with PKCE as the distribution's confidential client. Its
+`returnUrl` must be a local path of visible ASCII characters (anything else arrives
+percent-encoded). The distribution's `IAuthenticationPolicyProvider` bounds what the login's query
+asks for: the stronger of the policy's and the caller's `acr_values` is sent (ranked by the identity
+server's tiers, `aal1` < `aal2`/`phr` < `aal3`/`phrh`, a list as its weakest member; when either
+cannot be ranked, the caller's wins only when it is `Tellma:Session:StepUp:Acr`), the shorter
+`max_age` wins, and the allowed methods are the policy's alone.
+
+An access token within `RefreshSkew` of its expiry is refreshed once per session per instance; the
+new ticket is written with a compare-and-set on the row's `TokensVersion`, and an instance that
+loses it adopts the winner's. A refused refresh ends the session. The identity server rotates the
+refresh token on each redemption and accepts a spent one again only within its reuse leeway (thirty
+seconds by default), so the refresh keeps every retry of a token that may be spent inside it:
+
+| Timing | Value | What it bounds |
+| --- | --- | --- |
+| Redemption deadline | 5 s | One redemption, metadata read included (a cold read the framework does not cancel too). |
+| Retries, and the pause before each | 2, 1 s | A redemption that may have spent the token (the deadline after sending, a cut-off or malformed answer), and a failed write of redeemed tokens. |
+| Retry window | 12 s | The latest a retry is sent after the first attempt: (5 s + 1 s) x 2, under half the leeway. |
+| A request's wait | 5 s | How long a request waits on its session's refresh before it is served on its current tokens. |
+| Backoff | 20 s | A refresh put off: the token never reached the identity server, or the retries are spent. |
+
+Tokens the identity server issued are never dropped: an identity token signed by a key its metadata
+still does not list after one re-read is stored with the session's current claims
+(`SessionRefreshClaimsKept`), and tokens the catalog cannot store are kept on the instance and
+stored by the session's next refresh there. An identity server that cannot be reached keeps the
+session for `MaxAuthorityOutage` past the access token's expiry. A sign-in that returns to the root
+lands on the user's one live tenant when there is exactly one. The identity server's return from a
+global sign-out (`/signout-callback-oidc`) always lands on `/signed-out`. A global sign-out whose
+identity server cannot be reached, or names no end-session endpoint, signs out locally and logs
+`BffGlobalSignOutUnavailable`.
 
 `POST /bff/backchannel-logout` validates the logout token (issuer, audience, `logout+jwt`, the
 back-channel event, no nonce, a recent `iat`) and deletes the sessions of its `sid`, or of its
@@ -151,8 +170,10 @@ over an existing session tell every `ISessionTerminationListener` the ended hand
 
 `SessionSweepService` deletes rows expired for a day, every `SweepInterval`.
 `MembershipReconcileService` rebuilds every active tenant's membership hints from its users five
-minutes after the registry's first snapshot and then every `Tellma:Tenancy:MembershipReconcileInterval`,
-on the instance that holds the catalog's application lock.
+minutes after the registry's first snapshot and then every `Tellma:Tenancy:MembershipReconcileInterval`.
+The catalog's application lock keeps two instances' runs from overlapping, not from both running:
+each instance's timer runs on its own, so each may run once per interval. A run is idempotent, so a
+second one over unchanged users changes no row.
 
 ## CSRF
 
