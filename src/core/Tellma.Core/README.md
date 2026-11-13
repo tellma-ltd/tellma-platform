@@ -80,6 +80,7 @@ every problem `AddTellma` would throw.
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
+| `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
 `ValidateOnStart`, which would stop startup at the first failing options type before the gate could
@@ -241,7 +242,14 @@ composed under (`settings`, the caller's `permissions`, its declared dependencie
 `@tm_expectedTags`, each marked when the batch bumps it, through the optional
 `IVersionTagRegistry`) and the caller's per-user permissions tag under locks held to `COMMIT`
 (`THROW 50412`), then a user's batch re-checks that its caller is still active (`THROW 50401`).
-The platform's own batches (`GuardPremises.ForSystem`) re-check the tags alone.
+The platform's own batches (`GuardPremises.ForSystem`) re-check the tags alone. The guard locks
+the tag rows one at a time in binary name order, each by a seek on its name, and compares them
+afterwards: SQL Server releases the lock of a row a seek's residual predicate rejects, which would
+leave every fresh row unlocked. Each row is locked in its final mode: `XLOCK` for a name the batch
+bumps (a bumped name it does not depend on is locked and never compared), `REPEATABLEREAD` for
+every other, so the bump converts no lock. The caller's stamp row comes after every tag row, under
+`UPDLOCK` when the batch writes the stamps table, so every batch takes the tag rows, in one order,
+before any stamp row. An expectation of `VersionTag.None` is compared like any other.
 
 The scope's `IDataBatchContributor`s run their prologue stage, in ascending `Order`, before the
 first statement that is not a prologue (or at execution, for a batch with none). They run their
@@ -283,8 +291,8 @@ before it surfaces. A statement's reader stages its results on the cursor, so on
 counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
 `DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
 `tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
-remaining statement compilers (saves, updates, deletes, the version-tag cache) join the batch in
-later releases; until then those members throw `NotSupportedException`.
+remaining statement compilers (saves, updates, deletes) join the batch in later releases; until
+then those members throw `NotSupportedException`.
 
 ### Queries
 
@@ -625,6 +633,56 @@ query. A string property draws from a set with `[ValueSet("core.TimeZone")]`; th
 carries the name (`PropertyMetadata.ValueSet`) and the column stays a plain string.
 `core.value-sets` validates every set and every such property.
 
+## Version tags
+
+A version tag is a `Guid` a tenant database keeps per cached input, in `core.VersionTags` (`Name`
+`nvarchar(128)` key, `Tag`), and per user in `core.UserStamps` (`PermissionsTag`,
+`PreferencesTag`). A cache keeps what it loaded with the tag it read, and a write moves the tag.
+
+- **The registry.** `IVersionTagRegistry` (`VersionTagRegistry`, over the entity metadata) lists
+  every tenant-level name: `entities`, `permissions` and `settings`, every name an entity declares
+  with `[BumpsVersionTag]`, and `entity:<schema>.<Class>` for every `[Cacheable]` entity, in ordinal
+  order. It resolves a batch's written tables to the names they bump (a cacheable entity's table
+  bumps its own name and `entities`) and to the user-level rules (`[BumpsUserVersionTag]`, plus
+  `core.UserPreferences` and `core.NotificationPreferences`, which bump each named user's
+  preferences tag). `core.version-tags` reports what it refuses.
+- **The prelude.** `VersionTagPreludeContributor` (`Order` 50, prologue) opens every batch that does
+  not carry the connect prologue with `SELECT [Name], [Tag] FROM [core].[VersionTags];`; the
+  connect prologue reads the same set through `VersionTagPrelude.ReadAsync` after the caller's
+  stamp. The batch exposes what it read as `ReadVersionTags`.
+- **The bump.** `VersionTagBumpContributor` (`Order` 50, epilogue) moves every name the batch's
+  written tables resolve to, plus every `BumpVersionTag` call, to one new tag bound from C#
+  (`@tm_tag`), refuses a missing row (`THROW 50422`, `VersionTag.Missing`), then moves the stamps
+  of the users each rule's source names (the ids a statement declared, or the caller for
+  `SqlOptions.ForCaller`, refused unless the batch carries a user's connect prologue) and returns
+  the users it moved. The plan is fixed when the epilogue stage starts from the writes of every
+  statement but the connect prologue's own (`DataBatch.BeginConnectPrologue`: its bookkeeping
+  moves no tag). Refused: another prologue statement that writes a table with a tag; an epilogue
+  write the plan does not cover; a write with a tag appended after the bump; an autocommit
+  (`None`) batch whose writes bump a tag; and a dependency on a name the registry does not hold
+  exactly. Re-running the statement moves the same rows to the same tag. On commit it publishes `cache.changed` to the tenant for each tenant-level
+  name and to the affected users for each user-level one.
+- **The snapshots.** `IVersionTagSnapshots` and `IUserVersionTagSnapshots` keep, per tenant (and
+  per user), the last tags a batch read or wrote, bounded by `Tellma:Cache`. A batch's read
+  replaces the tenant's snapshot; a bump overlays its new tags without a read-back.
+- **The policies.** A dependency's `VersionTagMismatchPolicy` follows its batch's purpose: a read
+  refreshes the cache entry it read under a moved tag (`Refresh`) and re-runs on a moved
+  `permissions` tag (`Rerun`); validation and persist batches re-run (`Rerun`). A read or
+  validation batch whose prelude disagrees with a `Rerun` dependency throws
+  `StaleContextException` for the caller to recompose once; a persist batch's guard refuses the
+  write instead (`THROW 50412`, `BatchAssertionFailedException`).
+- **The seed.** `ITenantVersionTagSeeder` inserts a row for every registered name that a tenant
+  database lacks, on every migrator run, and moves every tag after a run that applied a migration
+  or ran a step, and on the way out of a run that failed after doing either (bounded, so a held
+  tag row delays the failure by seconds). The wholesale move takes one table lock, so it forms no
+  cycle with a live persist that holds some tag rows.
+- **The wire.** `VersionTagWire` formats the four client tags (`settings`, `permissions`,
+  `preferences`, `entities`) for the response header, under the format version of the shape each
+  covers; the client's `permissions` tag joins the tenant's and the user's own.
+
+`VersionTagMetrics` meters `tellma.versiontags.bumps` (by tag kind), `tellma.versiontags.stale` (by
+phase) and `tellma.versiontags.missing` (by tag kind), and logs a missing row once per process.
+
 ## Notifications and client events
 
 The catalogue is composed per distribution, never per tenant. A feature registers each notification
@@ -633,7 +691,7 @@ sender for with `contribution.NotificationChannel(descriptor)` and each client e
 with `contribution.ClientEvent(name)`. `NotificationTypeRegistry`, `NotificationChannelRegistry` and
 `ClientEventRegistry` list them in realisation order, `CoreFeature`'s first: the type
 `core.user.added`, the channels `inbox` (on by default) and `email` (off by default), and the events
-`inbox.changed` and `session.ended`. `NotificationsClientAssetContributor` writes the three
+`cache.changed`, `inbox.changed` and `session.ended`. `NotificationsClientAssetContributor` writes the three
 registries into the Core chunk of the client metadata as the sections `notificationTypes`,
 `notificationChannels` and `clientEvents`, with the platform's JSON rules.
 
@@ -676,6 +734,7 @@ share the notification type keys' grammar.
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally, the composition step that binds the jobs' options. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry. |

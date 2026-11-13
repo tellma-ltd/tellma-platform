@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using System.Reflection;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Caching;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
@@ -151,6 +152,9 @@ namespace Tellma.Core.Composition
 
             // --- The data layer: the batch executor, the scoped tenant database and the handle factory ---
             DataComposition.Register(services, options);
+
+            // --- Caching: the options and the version tags' instruments ---
+            CachingComposition.Register(services, options);
 
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);
@@ -489,6 +493,7 @@ namespace Tellma.Core.Composition
                 new EntityShapesCheck(_record),
                 new ModelContributorsCheck(_record),
                 new EntityMetadataCheck(),
+                new VersionTagsCheck(),
                 new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),

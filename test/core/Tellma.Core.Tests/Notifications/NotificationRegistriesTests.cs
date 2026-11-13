@@ -104,7 +104,7 @@ namespace Tellma.Core.Tests.Notifications
                 [new NotificationChannelDescriptor("inbox", true), new NotificationChannelDescriptor("email", false), new NotificationChannelDescriptor("sms", false)],
                 provider.GetRequiredService<INotificationChannelRegistry>().All);
 
-            Assert.Equal(["inbox.changed", "session.ended", "acme.document.changed"], provider.GetRequiredService<IClientEventRegistry>().Names);
+            Assert.Equal(["cache.changed", "inbox.changed", "session.ended", "acme.document.changed"], provider.GetRequiredService<IClientEventRegistry>().Names);
         }
 
         [Fact]
@@ -156,7 +156,7 @@ namespace Tellma.Core.Tests.Notifications
                 [
                     (ClientMetadataChunk.Core, "notificationTypes", /*lang=json,strict*/ """[{"key":"core.user.added","category":"users","mutable":true,"severity":"Info","toast":false,"inbox":true},{"key":"acme.export.ready","category":"files","mutable":false,"targetResource":"core.User","severity":"Success","toast":true,"inbox":true},{"key":"acme.digest.sent","category":"digests","mutable":false,"severity":"Info","toast":false,"inbox":false}]"""),
                     (ClientMetadataChunk.Core, "notificationChannels", /*lang=json,strict*/ """[{"key":"inbox","defaultEnabled":true},{"key":"email","defaultEnabled":false}]"""),
-                    (ClientMetadataChunk.Core, "clientEvents", /*lang=json,strict*/ """["inbox.changed","session.ended","acme.document.changed"]"""),
+                    (ClientMetadataChunk.Core, "clientEvents", /*lang=json,strict*/ """["cache.changed","inbox.changed","session.ended","acme.document.changed"]"""),
                 ],
                 context.Sections.Select(static section => (section.Chunk, section.Name, Encoding.UTF8.GetString(section.Json.Span))));
         }

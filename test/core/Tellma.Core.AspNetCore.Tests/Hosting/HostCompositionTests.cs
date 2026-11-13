@@ -4,9 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting.Internal;
 using System.Net;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
@@ -15,7 +18,8 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
 {
     /// <summary>
     ///     What the host checks at startup and reports when ready: the persisted key ring, the
-    ///     framework's forwarded-headers switch, and the readiness of the catalog.
+    ///     framework's forwarded-headers switch, the identity clients' secrets, and the readiness of
+    ///     the catalog.
     /// </summary>
     public sealed class HostCompositionTests
     {
@@ -28,6 +32,63 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
                 TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
                     () => app.StartAsync(TestContext.Current.CancellationToken));
                 _ = Assert.Single(exception.Problems, static problem => problem.Source == DataProtectionCheck.CheckName);
+            }
+        }
+
+        [Fact]
+        public async Task A_standalone_host_without_its_client_secret_fails_startup()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options => options.Settings.Remove("Tellma:Identity:ClientSecret"));
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+                CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Source == IdentityCheck.CheckName);
+                Assert.Contains("Tellma:Identity:ClientSecret", problem.Problem, StringComparison.Ordinal);
+            }
+        }
+
+        /// <summary>The identity check's verdicts: the mode, the environment, the secrets set, whether mail is composed, and the settings it names.</summary>
+        /// <returns>The cases.</returns>
+        public static TheoryData<string, string, bool, bool, bool, string[]> IdentityCases()
+        {
+            return new TheoryData<string, string, bool, bool, bool, string[]>
+            {
+                { "Standalone", "Production", true, false, false, [] },
+                { "Standalone", "Production", false, false, false, ["ClientSecret"] },
+                { "InProc", "Production", true, true, true, [] },
+                { "InProc", "Production", false, false, true, ["ClientSecret", "ServiceClientSecret"] },
+                { "InProc", "Production", true, true, false, ["IEmailSender"] },
+                { "InProc", "Development", true, false, true, [] },
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(IdentityCases))]
+        public async Task The_identity_check_requires_stable_secrets_and_in_proc_mail(
+            string mode, string environment, bool clientSecret, bool serviceSecret, bool mail, string[] named)
+        {
+            IConfiguration configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Tellma:Identity:Mode"] = mode })
+                .Build();
+            ServiceCollection services = new();
+            if (mail)
+            {
+                _ = services.AddSingleton<IEmailSender>(static _ => throw new InvalidOperationException("Never resolved."));
+            }
+
+            await using ServiceProvider provider = services.BuildServiceProvider();
+            IdentityCheck check = new(
+                new IdentityClientSecrets(clientSecret ? "secret" : null, serviceSecret ? "service-secret" : null),
+                configuration,
+                new HostingEnvironment { EnvironmentName = environment });
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            Assert.Equal(named.Length, problems.Count);
+            foreach (string name in named)
+            {
+                _ = Assert.Single(problems, problem => problem.Problem.StartsWith("Tellma:Identity:" + name + " is not set", StringComparison.Ordinal) || problem.Problem.Contains("no " + name, StringComparison.Ordinal));
             }
         }
 

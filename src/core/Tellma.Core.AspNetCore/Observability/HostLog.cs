@@ -32,5 +32,141 @@ namespace Tellma.Core.AspNetCore.Observability
             Level = LogLevel.Information,
             Message = "No static web assets manifest was found at {Manifest}; the SPA's files are not served by this host.")]
         public static partial void SpaAssetsMissing(ILogger logger, string manifest);
+
+        /// <summary>A session-termination listener failed; the sign-out or revocation it follows completed.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="listener">The listener's type.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "SessionListenerFailed",
+            Level = LogLevel.Error,
+            Message = "The session-termination listener {Listener} failed; the sessions ended regardless.")]
+        public static partial void SessionListenerFailed(ILogger logger, string listener, Exception exception);
+
+        /// <summary>A stored session could not be read, so its user signs in again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure, if one was thrown.</param>
+        [LoggerMessage(
+            EventName = "SessionUnreadable",
+            Level = LogLevel.Warning,
+            Message = "A stored session could not be read: its ticket was protected with a key this instance does not hold, or it is not the session's own. The user will sign in again.")]
+        public static partial void SessionUnreadable(ILogger logger, Exception? exception);
+
+        /// <summary>The authority refused a session's refresh, which ended the session.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="reason">Why the refresh was refused.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshRejected",
+            Level = LogLevel.Information,
+            Message = "The session {SessionHandle} ended because its token refresh was refused: {Reason}.")]
+        public static partial void SessionRefreshRejected(ILogger logger, string sessionHandle, string reason);
+
+        /// <summary>A session's refresh could not be done for now, so it stays up within the outage allowance.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="exception">The failure, if one was thrown.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshDeferred",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle} could not refresh its tokens: the identity server or the catalog could not be reached. It stays signed in within the outage allowance.")]
+        public static partial void SessionRefreshDeferred(ILogger logger, string sessionHandle, Exception? exception);
+
+        /// <summary>A session's refresh token may have been spent without a usable answer, so its redemption is tried again at once.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="reason">Why the answer was not usable.</param>
+        /// <param name="exception">The failure, if one was thrown.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshRetried",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle} may have spent its refresh token without a usable answer ({Reason}). The redemption is tried again while the identity server still accepts the token.")]
+        public static partial void SessionRefreshRetried(ILogger logger, string sessionHandle, string reason, Exception? exception);
+
+        /// <summary>A session stored its refreshed tokens but kept its current claims, which the new identity token could not vouch for.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="reason">Why the new identity token's claims could not be verified.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshClaimsKept",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle} stored its refreshed tokens but kept its current claims: {Reason}.")]
+        public static partial void SessionRefreshClaimsKept(ILogger logger, string sessionHandle, string reason);
+
+        /// <summary>A session's refreshed tokens could not be written to the catalog, so the write is tried again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sessionHandle">The session's handle.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "SessionRefreshWriteRetried",
+            Level = LogLevel.Warning,
+            Message = "The session {SessionHandle}'s refreshed tokens could not be stored. The write is tried again; tokens never stored are kept on this instance for the session's next refresh.")]
+        public static partial void SessionRefreshWriteRetried(ILogger logger, string sessionHandle, Exception exception);
+
+        /// <summary>A back-channel logout token was refused.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="reason">Why it was refused.</param>
+        [LoggerMessage(
+            EventName = "BackchannelLogoutRejected",
+            Level = LogLevel.Warning,
+            Message = "A back-channel logout token was refused: {Reason}.")]
+        public static partial void BackchannelLogoutRejected(ILogger logger, string reason);
+
+        /// <summary>The post-sign-in landing could not read the user's memberships, so the sign-in returns to the root.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "BffLandingFailed",
+            Level = LogLevel.Warning,
+            Message = "The post-sign-in landing could not read the user's tenant memberships; the sign-in returns to the root, where the application decides.")]
+        public static partial void BffLandingFailed(ILogger logger, Exception exception);
+
+        /// <summary>A global sign-out could not reach the identity server's end-session endpoint, so it signed out locally.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure; null when the identity server's metadata names no end-session endpoint.</param>
+        [LoggerMessage(
+            EventName = "BffGlobalSignOutUnavailable",
+            Level = LogLevel.Warning,
+            Message = "A global sign-out could not build the identity server's end-session address; the session was signed out locally.")]
+        public static partial void BffGlobalSignOutUnavailable(ILogger logger, Exception? exception);
+
+        /// <summary>A sweep of expired sessions failed; the next one retries.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "SessionSweepFailed",
+            Level = LogLevel.Warning,
+            Message = "The sweep of expired sessions failed; the next interval retries it.")]
+        public static partial void SessionSweepFailed(ILogger logger, Exception exception);
+
+        /// <summary>A membership reconciliation run completed.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenants">How many tenants were reconciled.</param>
+        /// <param name="rows">How many hint rows changed.</param>
+        /// <param name="failed">How many tenants failed.</param>
+        [LoggerMessage(
+            EventName = "MembershipReconcileCompleted",
+            Level = LogLevel.Information,
+            Message = "The membership reconciliation reconciled {Tenants} tenants and changed {Rows} hint rows; {Failed} tenants failed.")]
+        public static partial void MembershipReconcileCompleted(ILogger logger, int tenants, int rows, int failed);
+
+        /// <summary>One tenant's membership reconciliation failed; the run continued.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "MembershipReconcileTenantFailed",
+            Level = LogLevel.Warning,
+            Message = "The membership reconciliation of tenant {TenantId} failed; the run continued with the next tenant.")]
+        public static partial void MembershipReconcileTenantFailed(ILogger logger, int tenantId, Exception exception);
+
+        /// <summary>A membership reconciliation run failed before it reached the tenants.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "MembershipReconcileFailed",
+            Level = LogLevel.Warning,
+            Message = "The membership reconciliation could not run; the next interval retries it.")]
+        public static partial void MembershipReconcileFailed(ILogger logger, Exception exception);
     }
 }

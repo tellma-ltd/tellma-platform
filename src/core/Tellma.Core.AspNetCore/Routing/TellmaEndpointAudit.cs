@@ -118,6 +118,14 @@ namespace Tellma.Core.AspNetCore.Routing
                     problems.Add(Problem(where, "short-circuits routing without allowing anonymous callers, so authentication, authorization, the CSRF control and the tenant middleware never run for it.", "Remove ShortCircuit(), or state an anonymous tenantless endpoint with AllowAnonymous() and AsTenantlessEndpoint(reason)."));
                 }
 
+                // --- A distribution's endpoint names the scheme it authenticates ---
+                // The default policy names none, so it would authenticate whatever the default scheme
+                // is: none in a standalone host, the identity engine's own cookie in an in-proc one.
+                if (!anonymous && !platform && policy is not null && policy.AuthenticationSchemes.Count == 0)
+                {
+                    problems.Add(Problem(where, "is under an authorization policy that names no authentication scheme, so the scheme it authenticates depends on the host's defaults.", "Require one of the Tellma policies (Web, Api, Mcp or ControlPlane), or map the endpoint on a group of MapTellma, which requires its surface's policy."));
+                }
+
                 // --- Tenant routes: the tenant controls, every one of them ---
                 if (BeginsWithTenantId(endpoint.RoutePattern))
                 {

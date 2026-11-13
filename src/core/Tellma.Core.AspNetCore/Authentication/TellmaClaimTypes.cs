@@ -32,6 +32,18 @@ namespace Tellma.Core.AspNetCore.Authentication
         /// <summary>When the session reached its authentication context class, in seconds since the epoch.</summary>
         public const string AcrAuthenticationTime = "tellma_acr_auth_time";
 
+        /// <summary>The methods the user authenticated with.</summary>
+        public const string AuthenticationMethods = "amr";
+
+        /// <summary>The user's display name.</summary>
+        public const string Name = "name";
+
+        /// <summary>The user's email address.</summary>
+        public const string Email = "email";
+
+        /// <summary>The user's preferred language.</summary>
+        public const string Locale = "locale";
+
         /// <summary>Whether the token's principal is an individual or a service.</summary>
         public const string Kind = "tellma_kind";
 

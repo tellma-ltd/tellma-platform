@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Identity.Hosting;
 
 namespace Tellma.Identity.Services.Email
 {
@@ -90,7 +91,7 @@ namespace Tellma.Identity.Services.Email
                     return;
                 }
 
-                IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+                IEmailSender sender = scope.ServiceProvider.GetRequiredKeyedService<IEmailSender>(TellmaIdentityServiceCollectionExtensions.EmailSenderKey);
                 IReadOnlyList<EmailSendResult> results = await sender.SendAsync(owned, CancellationToken.None);
 
                 // The outcome is recorded against the single-use code each message carries.

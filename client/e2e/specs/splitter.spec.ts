@@ -6,6 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -21,9 +22,24 @@ function bar(page: Page) {
   return page.getByTestId('splitter-horizontal').getByRole('separator');
 }
 
-/** The list pane's rendered width. */
+// A key or a pointer move sets the size at once, but the pane and the
+// story's readout change only on the following render; on a starved runner
+// that render can still be queued when the action's promise resolves. Every
+// read below therefore waits for the app to be stable first.
+
+/** The list pane's rendered width, once every pending render has run. */
 async function listWidth(page: Page): Promise<number> {
+  await appStable(page);
   return (await page.getByTestId('pane-list').boundingBox())!.width;
+}
+
+/** The list size the story reports (the splitter's `size`), once every pending render has run. */
+async function reportedListSize(page: Page): Promise<number> {
+  await appStable(page);
+  const text = await page.getByTestId('list-size').textContent();
+  const match = /^List: (\d+)$/.exec(text ?? '');
+  expect(match, `the list size reads "${text}"`).not.toBeNull();
+  return Number(match![1]);
 }
 
 test.describe('axe floor', () => {
@@ -145,12 +161,28 @@ test('the bar takes the pointer 24 px across, with the resize cursor', async ({ 
 
 test('a shrinking container clamps the list and keeps the size asked for', async ({ page }) => {
   await page.goto(storyUrl('splitter'));
-  await bar(page).focus();
+  const separator = bar(page);
+  await separator.focus();
   await page.keyboard.press('End');
-  const asked = Number((await page.getByTestId('list-size').textContent())!.replace('List: ', ''));
+  const asked = await reportedListSize(page);
+  const minShareBefore = await separator.getAttribute('aria-valuemin');
+
   await page.setViewportSize({ width: 700, height: 800 });
-  const container = (await page.getByTestId('splitter-horizontal').boundingBox())!.width;
-  await expect.poll(() => listWidth(page)).toBeLessThan(asked);
-  expect(await listWidth(page)).toBeLessThanOrEqual(Math.max(240, container - 200 - 7) + 0.5);
+  const container = await page
+    .getByTestId('splitter-horizontal')
+    .evaluate((element) => element.clientWidth);
+  // The story's clamp in the narrower container: at least 240, at most 66 %
+  // and at most what leaves the details 200 px beside the 7 px bar.
+  const clamped = Math.max(240, Math.min(asked, 0.66 * container, container - 200 - 7));
+  const share = (px: number): string => String(Math.round((px / container) * 100));
+  // The 240 px minimum is a larger share of the narrower container, so
+  // seeing the new minimum proves the resize's own render (the observer's)
+  // has run; the value is then the clamped share.
+  expect(share(240)).not.toBe(minShareBefore);
+  await expect(separator).toHaveAttribute('aria-valuemin', share(240));
+  await expect(separator).toHaveAttribute('aria-valuenow', share(clamped));
+
+  // The pane is clamped, and the size asked for survived that render.
+  expect(Math.abs((await listWidth(page)) - clamped)).toBeLessThanOrEqual(1);
   await expect(page.getByTestId('list-size')).toHaveText(`List: ${asked}`);
 });

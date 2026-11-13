@@ -104,6 +104,10 @@ namespace Tellma.Core.AspNetCore
             _ = app.UseRouting();
 
             // --- 8. The in-proc identity engine's middleware, when composed ---
+            if (InProcIdentity.IsInProc(app.Configuration))
+            {
+                InProcIdentity.Use(app);
+            }
 
             // --- 9. Authentication, then authorization ---
             _ = app.UseAuthentication();
