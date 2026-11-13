@@ -95,6 +95,7 @@ namespace Tellma.Core.Tests.Access
         [InlineData("fx.Mixed", "Save", "Name = 'x'", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "Read", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "*", "Id > 1", false, AccessProblemCode.FilterUnsupported)]
+        [InlineData("*", "Read", " ", false, AccessProblemCode.FilterUnsupported)]
         [InlineData("*", "*", null, true, AccessProblemCode.WildcardResourceOnPublicRole)]
         [InlineData("*", "Read", null, true, AccessProblemCode.WildcardResourceOnPublicRole)]
         [InlineData("*", "Fly", "Id > 1", true, AccessProblemCode.WildcardResourceOnPublicRole)]
@@ -123,6 +124,26 @@ namespace Tellma.Core.Tests.Access
             {
                 Assert.Equal(AccessOutcome.Denied, access.Decide(securable, [], null, Start).Outcome);
             }
+        }
+
+        [Fact]
+        public void A_row_whose_grant_could_not_be_built_drifts_and_the_others_still_grant()
+        {
+            // A grant refuses a filter on the wildcard resource and a public role naming it; the
+            // build classifies such rows as drift before it would ever construct one.
+            UserAccess access = Build(
+                Row(1, "*", "Save", "Amount > 1"),
+                Row(2, "*", "*", "Amount > 1"),
+                Row(3, "*", "Read", isPublic: true),
+                Row(4, Widget, "Read"));
+
+            Assert.Equal(
+                [(1, AccessProblemCode.FilterUnsupported), (2, AccessProblemCode.FilterUnsupported), (3, AccessProblemCode.WildcardResourceOnPublicRole)],
+                access.Problems.Select(static problem => (problem.PermissionId, problem.Code)));
+            Assert.Equal([4], access.Grants.Select(static grant => grant.PermissionId));
+            Assert.Equal(AccessOutcome.Unrestricted, access.Decide(Registry.Find(Widget, "Read")!, [], null, Start).Outcome);
+            Assert.Equal(AccessOutcome.Denied, access.Decide(Registry.Find(Widget, "Save")!, [], null, Start).Outcome);
+            Assert.Equal(AccessOutcome.Denied, access.Decide(Registry.Find(Kind, "Read")!, [], null, Start).Outcome);
         }
 
         [Fact]
@@ -438,6 +459,24 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal(6, unresolved.GetMeasurementSnapshot().Count);
             Assert.All(unresolved.GetMeasurementSnapshot(), static measurement => Assert.Equal(1, measurement.Value));
             Assert.Equal(6, Drift().Count);
+        }
+
+        [Fact]
+        public void A_full_drift_memory_starts_over_and_reports_a_problem_met_before_once_more()
+        {
+            // As many problems as the memory holds, each logged once.
+            _ = Build([.. Enumerable.Range(1, UserAccessBuilder.MaxReportedDrift).Select(static id => Row(id, Widget, "Fly"))]);
+            Assert.Equal(UserAccessBuilder.MaxReportedDrift, Drift().Count);
+
+            // One more starts the memory over: it is logged, and a problem met before is logged
+            // again, once.
+            _ = Build(Row(UserAccessBuilder.MaxReportedDrift + 1, Widget, "Fly"));
+            _ = Build(Row(1, Widget, "Fly"));
+            _ = Build(Row(1, Widget, "Fly"));
+
+            List<FakeLogRecord> drift = Drift();
+            Assert.Equal(UserAccessBuilder.MaxReportedDrift + 2, drift.Count);
+            Assert.Equal(2, drift.Count(static record => record.Message.StartsWith("Permission 1 of ", StringComparison.Ordinal)));
         }
 
         [Fact]

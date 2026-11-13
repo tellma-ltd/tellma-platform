@@ -150,9 +150,26 @@ namespace Tellma.Core.Abstractions.Tests.Access
         }
 
         [Fact]
-        public void A_filtered_wildcard_resource_grant_carries_its_filter_to_reading_only_where_its_action_is_registered()
+        public void A_filtered_grant_on_the_wildcard_resource_or_a_public_one_naming_it_cannot_be_built()
         {
-            UserAccess access = Set(Grant("*", "Approve", "Amount > 10"));
+            // No one root binds a filter on every resource, so the composition never sees one.
+            _ = Assert.Throws<ArgumentException>(() => Grant("*", "Approve", "Amount > 10"));
+            _ = Assert.Throws<ArgumentException>(() => Grant("*", "Read", "Amount > 10"));
+            _ = Assert.Throws<ArgumentException>(() => Grant("*", "*", "Amount > 10"));
+
+            // A public role reaches every user, so its grant never names every resource.
+            _ = Assert.Throws<ArgumentException>(() => Grant("*", "Read", isPublic: true));
+            _ = Assert.Throws<ArgumentException>(() => Grant("*", "*", isPublic: true));
+
+            // The same shapes on a concrete resource, and the wildcard resource unfiltered, are grants.
+            Assert.Equal("Amount > 10", Grant(Widget, "*", "Amount > 10", isPublic: true).Filter);
+            Assert.False(Grant("*", "*").IsPublic);
+        }
+
+        [Fact]
+        public void A_filtered_grant_on_another_action_carries_its_filter_to_reading_its_own_resource_only()
+        {
+            UserAccess access = Set(Grant(Widget, "Approve", "Amount > 10"));
 
             AccessDecision widgets = access.Decide(WidgetSecurable("Read"), [], null, Now);
             Assert.Equal(AccessOutcome.Filtered, widgets.Outcome);
@@ -393,6 +410,28 @@ namespace Tellma.Core.Abstractions.Tests.Access
             AccessDecision withCriterion = access.Decide(WidgetSecurable("Read"), [Criterion("Read", "OwnerId = me()")], null, Now);
             Assert.NotSame(first, withCriterion);
             Assert.Same(first.Grants[0], withCriterion.Grants[0]);
+        }
+
+        [Fact]
+        public void The_memo_holds_at_most_4096_securables_and_composes_any_other_afresh()
+        {
+            UserAccess access = Set(Grant("*", "Read"));
+            List<AccessDecision> firsts = [];
+            for (int index = 0; index < 4096; index++)
+            {
+                firsts.Add(access.Decide(Securable($"fx.Resource{index}", "Read"), [], null, Now));
+            }
+
+            // Full, the memo still serves every securable it holds.
+            Assert.Same(firsts[0], access.Decide(Securable("fx.Resource0", "Read"), [], null, Now));
+            Assert.Same(firsts[^1], access.Decide(Securable("fx.Resource4095", "Read"), [], null, Now));
+
+            // One more is decided as it should be, but composed afresh every time rather than held.
+            AccessDecision beyond = access.Decide(Securable("fx.Resource4096", "Read"), [], null, Now);
+            AccessDecision again = access.Decide(Securable("fx.Resource4096", "Read"), [], null, Now);
+            Assert.Equal((AccessOutcome.Unrestricted, AccessOutcome.Unrestricted), (beyond.Outcome, again.Outcome));
+            Assert.Equal(access.Grants, again.Grants);
+            Assert.NotSame(beyond, again);
         }
 
         [Fact]

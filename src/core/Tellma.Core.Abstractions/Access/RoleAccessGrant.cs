@@ -22,6 +22,12 @@ namespace Tellma.Core.Abstractions.Access
     ///         and a filtered grant carries the version its filter was validated under, one this engine
     ///         compiles. Construction refuses anything else, so a grant can always become a leaf.
     ///     </para>
+    ///     <para>
+    ///         The wildcard resource takes no filter, since no one root binds a filter on every
+    ///         resource, and no public role names it, since that would reach every user with every
+    ///         resource. Construction refuses both, so no list of grants handed to the composition
+    ///         can hold either, whoever built it.
+    ///     </para>
     /// </remarks>
     /// <param name="Resource">The resource as registered, or the wildcard.</param>
     /// <param name="Action">The action as registered, or the wildcard.</param>
@@ -48,11 +54,24 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>The role's name.</summary>
         public string RoleName { get; } = RoleName ?? throw new ArgumentNullException(nameof(RoleName));
 
+        /// <summary>Whether the role is public, so the grant reaches every user without a membership.</summary>
+        /// <remarks>A public role's grant never names the wildcard resource: construction refuses it.</remarks>
+        public bool IsPublic { get; } = IsPublic && Resource == CoreResources.Wildcard
+            ? throw new ArgumentException("A public role's grant reaches every user, so it never names the wildcard resource.", nameof(IsPublic))
+            : IsPublic;
+
         /// <summary>The row-level filter; null for an unrestricted grant.</summary>
-        /// <remarks>An empty filter must never read as "every row": construction refuses it instead.</remarks>
-        public string? Filter { get; } = Filter is not null && string.IsNullOrWhiteSpace(Filter)
-            ? throw new ArgumentException("A grant's filter must carry an expression; an unrestricted grant has none.", nameof(Filter))
-            : Filter;
+        /// <remarks>
+        ///     An empty filter must never read as "every row", and a filter on the wildcard resource
+        ///     binds against no one root: construction refuses both.
+        /// </remarks>
+        public string? Filter { get; } = Filter is null
+            ? null
+            : string.IsNullOrWhiteSpace(Filter)
+                ? throw new ArgumentException("A grant's filter must carry an expression; an unrestricted grant has none.", nameof(Filter))
+                : Resource == CoreResources.Wildcard
+                    ? throw new ArgumentException("A grant on the wildcard resource carries no filter: no one root binds it on every resource.", nameof(Filter))
+                    : Filter;
 
         /// <summary>The Queryex version the filter was validated under; null exactly when the filter is.</summary>
         public int? FilterQueryexVersion { get; } = Filter is null

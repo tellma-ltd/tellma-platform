@@ -832,6 +832,10 @@ classified by `PermissionClassifier`, in the drift table's order, the first fail
 
 A grant carries its pair as registered, its filter text and role name interned across sets, and its
 window; a public role's grant has none, and a membership that has ended by the build grants nothing.
+`RoleAccessGrant` itself refuses a filter on `*` and a public role's grant on `*`, so a list of grants
+built anywhere else cannot hold either; the build drifts such rows before it would construct one. The
+interner holds at most 65,536 strings and 4 Mi characters, and the memory of reported problems at
+most 16,384; each starts over when full.
 Each distinct filter is validated once per root, text and stamp; exact duplicates are one grant; the
 grants are ordered by role, permission and window, the problems by permission, whatever order the
 rows arrived in. Each problem is counted (`tellma.access.permissions.unresolved`, by `problem`) and

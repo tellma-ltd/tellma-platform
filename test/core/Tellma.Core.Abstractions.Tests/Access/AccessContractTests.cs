@@ -230,10 +230,11 @@ namespace Tellma.Core.Abstractions.Tests.Access
             [
                 Grant(Widget, "Read", "Amount > 10", permissionId: 3, roleId: 4, startsAt: Now, endsAt: Now.AddDays(1)),
                 Grant(Widget, "*", isPublic: true),
+                Grant("*", "Save"),
                 new BespokeAccessGrant(Widget, "Read", "OwnerId = me()", "self"),
                 new SystemAccessGrant(Widget, "Delete"),
             ];
-            string[] kinds = [AccessGrant.RoleKind, AccessGrant.RoleKind, AccessGrant.BespokeKind, AccessGrant.SystemKind];
+            string[] kinds = [AccessGrant.RoleKind, AccessGrant.RoleKind, AccessGrant.RoleKind, AccessGrant.BespokeKind, AccessGrant.SystemKind];
 
             for (int index = 0; index < grants.Length; index++)
             {
@@ -258,6 +259,8 @@ namespace Tellma.Core.Abstractions.Tests.Access
         [InlineData(/*lang=json,strict*/ """{"kind":"admin","resource":"fx.Widget","action":"Read"}""")]
         [InlineData(/*lang=json,strict*/ """{"kind":"role","resource":"fx.Widget","action":"Read","permissionId":1,"roleId":1,"roleName":"R","isPublic":false,"filter":"Id = 1"}""")]
         [InlineData(/*lang=json,strict*/ """{"kind":"role","resource":"fx.Widget","action":"Read","permissionId":1,"roleId":1,"roleName":"R","isPublic":false,"filterQueryexVersion":1}""")]
+        [InlineData(/*lang=json,strict*/ """{"kind":"role","resource":"*","action":"Read","permissionId":1,"roleId":1,"roleName":"R","isPublic":false,"filter":"Id = 1","filterQueryexVersion":1}""")]
+        [InlineData(/*lang=json,strict*/ """{"kind":"role","resource":"*","action":"Read","permissionId":1,"roleId":1,"roleName":"R","isPublic":true}""")]
         [InlineData(/*lang=json,strict*/ """{"kind":"system","action":"Read"}""")]
         public void A_grant_of_an_unknown_kind_or_an_inconsistent_shape_is_refused(string json)
         {
