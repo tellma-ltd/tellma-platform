@@ -359,6 +359,18 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-073 (PC-043, 2026-11-13): a wildcard-resource grant implies Read only where its action is registered
+
+- Ruling: `(*, A')` with A' ≠ Read matches `(R, Read)` only when R registers A'. `(R, A')` is unchanged. UserAccess keeps a per-action resource set built from the registry. This is narrower than spec 0014 §5.2 step 2 and fails closed. Spec §8's delegation coverage of `(R, Read)` by `(*, A')` should follow the same rule (PC-078 carry). PC-043 D5 stays: `(*, A)` with an action no resource registers is UnknownAction drift, and PC-078's §3.7 rule 1 save check must refuse it.
+- Why: read literally, step 2 lets an odd grant such as `(*, Invite)` give unrestricted Read on every resource, including core.Role and settings. Write-implies-read exists so a user can see what they act on, and a resource without A' offers nothing to act on.
+- For Ahmad: (1) spec 0014 §5.2 step 2 and the delegation rule's `(*, A')` clause need the "where R registers A'" qualifier; (2) §3.7 rule 1 should refuse `(*, A)` for an action no resource registers.
+
+### D-072 (PC-030, 2026-11-13): form-control entry points above their spec 0023 §1 caps
+
+- Ruling: the six new entry points (radio, segmented, switch, search-field, date-range, date-time) may ship above spec 0023 §1's caps of record (2, 2, 1, 2, 2 and 3 KB). These are recorded raises, as in D-058. At integration each ceiling is its linked size (D-067) + 0.1 KB. ./private and "." are re-derived as the parent's linked ceiling plus the checkpoint's measured growth. Each budgetNotes entry states the spec cap, the measured linked size, the savings tried, and why. TmDatePicker/TmTimeField `parseErrors` stays internal (ɵ or @internal), since only the composites read it. The no-write rule compares wall times, not minute-floored instants.
+- Why: §1's figures predate the Signal Forms state surface every control carries (about 3.2 KB, as in tm-checkbox). Trimming below that would mean dropping the forms integration the same spec requires.
+- For Ahmad: (1) spec 0023 §1's caps for these six need restating, or the Signal Forms surface needs to be counted separately; (2) §10 has no message for the time field's parse error, so `errors.parseTime` (en + ar) is new; (3) §1's "one global stylesheet" now also needs styles/tm-search.css (merge-time task: @tellma/core/styles.css must import it); (4) §6.4's "exact instants" for the no-write rule would rewrite a bound 11:00:30 as 11:00:00, so the rule should compare wall times.
+
 ### D-071 (PC-075, 2026-11-13): the interim session expiry signs in instead of reloading (amends D-048)
 
 - Ruling: until PC-110's expiry dialog lands, TmSession's interim `expired()` sweeps the user's stored partitions and navigates to sign-in; it clears `sub` only when that sweep did not apply (cut short, rejected or resolved false), and otherwise keeps it per spec 0024 §8.6. This replaces D-048's reload. D-048's intent holds: an expired tab never keeps showing the user's data. The reload's only advantage was simplicity, and the sign-in avoids a pointless round trip to the boot page.
