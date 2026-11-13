@@ -100,9 +100,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-075 | pc-3 | pc/PC-075 | fix2 + integrate (R2 0/1/5: post-boot storage faults reject put/patch/readAll and a memory-fallback patch is lost; sweep vs in-flight write ordering; sign-in-failed defers the sweep; linked-measure restatement (~16.44); stale PC-113 lead; fixed 50 ms waits) | a079c6e696d8bf4b1 (Opus inherit) | r1 abcee4d6b2b554a69 done, r2 a5a1ec716eb481414 done | 2026-11-13 |
-| PC-097 | pc-f2 | pc/PC-097 | impl | a342737a128172612 (Opus inherit) | | 2026-11-13 |
-| PC-030 | pc-1 | pc/PC-030 | impl | afa920119d3e8d01d (Opus inherit) | | 2026-11-13 |
+| PC-075 | pc-3 | pc/PC-075 | fix2 + integrate (stop-the-line lifted at 9a1754d) (R2 0/1/5: post-boot storage faults reject put/patch/readAll and a memory-fallback patch is lost; sweep vs in-flight write ordering; sign-in-failed defers the sweep; linked-measure restatement (~16.44); stale PC-113 lead; fixed 50 ms waits) | a079c6e696d8bf4b1 (Opus inherit) | r1 abcee4d6b2b554a69 done, r2 a5a1ec716eb481414 done | 2026-11-13 |
+| PC-097 | pc-f2 | pc/PC-097 | r1 (impl bf01975: 11 deviations; enqueue refuses any in-memory JobId (spec: null or terminal); OwnerId bigint; LOCK_ESCALATION via a quarantined subclass of EF's internal SqlServerAnnotationProvider; migrator first-migrate flake 2 of 3 Core IT runs, cause unknown) | a342737a128172612 (Opus inherit) | r1 a3e9738a114d4e98a | 2026-11-13 |
+| PC-030 | pc-1 | pc/PC-030 | r1 (impl 08f0ff9: 11 deviations; six new ceilings above 0023 §1 caps and ./private + primary raised, all on the pre-D-067 measure (re-derive at integration); public parseErrors signals; no-write compares minute-floored instants; new errors.parseTime string) | afa920119d3e8d01d (Opus inherit) | r1 a11038930679a6341 | 2026-11-13 |
 | PC-043 | pc-4 | pc/PC-043 | impl | a5331f5d26f9b6e59 (Opus inherit, xhigh) | | 2026-11-13 |
 | PC-054 | pc-2 | pc/PC-054 | impl | aede283b100436c0c (Opus inherit) | | 2026-11-13 |
 
@@ -138,6 +138,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F27 | CI red on 89c4708 (client, PR-tier e2e chromium): splitter.spec.ts:146 'a shrinking container clamps the list and keeps the size asked for' flaky (toBeLessThan NaN on the first attempt; passed on retry) | done (CI 43388722956 green at c3103a7; fast-forward; fix1 waits on the resize's own render (aria-valuemin) and on fonts; 270/270 repeat) | dfe426b, c3103a7 (pc) |  | stop the line |
 | PC-F28 | CI red on 9f9adb7 (build-test windows + ubuntu, unit) and once on 5c3674f: TimerTests.The_reconciliation_runs_five_minutes_after_the_first_snapshot_and_then_every_interval ("condition did not hold in time"; likely FakeTimeProvider advance before the timer is armed; PC-047) | done (integrated a533113 (CI 43421083528 green; fast-forward; root cause: the reconcile PeriodicTimer was created after the first run, so early advances were lost; services now wait on absolute due times via HostedSchedule with an internal armed hook; TimerTests 60/60 + 50/50 under load); r1 a5122952bd3d79729 done 0/0/1: R1-1 same lost-Advance race in SessionLifecycleTests identity-server-deadline test (hang risk); fix1 integrated baffb30 (CI 43428288932 green; stall test steps the clock until done, all awaits bounded; 32/32 under load) (impl-PC-047 a5cf206eb092b4ff3 in pc-f, also commits the untracked review file)) | a533113, baffb30 (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-037 returns held |
 | PC-F29 | load-sensitive tellma-core-tools tests from PC-073: lint:test build.fixture.spec.ts (1200 s beforeAll) and common.spec 'starts a package manager's shim' (vitest default 5 s, spawns pnpm --version) time out when dotnet gates run alongside; pass alone | todo (low) | | | make them robust under load (explicit timeouts sized to a cold run, or move the cold ng build to the nightly tier) |
+| PC-F30 | CI red on db81630 (every dotnet job): dotnet restore Tellma.slnx MSB3202, distributions/acme/test/Tellma.Distro.Acme.E2E/*.csproj missing; .gitignore *.e2e (VS trace files) matches the folder case-insensitively on Windows, so PC-085 never committed the project | done (integrated 9a1754d, CI 43488423725 green; fast-forward; negations !*.e2e/ and !*.E2E/ replace the single Identity one; Acme E2E csproj + README added (no sources); all 81 slnx paths tracked; clean-clone restore/build/format green) | 9a1754d (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-075 returns held |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -257,7 +258,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
-| PC-030 | 0023-e | 1 | impl | | | |
+| PC-030 | 0023-e | 1 | r1 | 08f0ff9 |  |  |
 | PC-031 | 0023-f | 1 | todo | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
@@ -312,7 +313,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-082 | 0016-e | 1 | todo | | | |
 | PC-083 | 0017-c1 | 1 | todo | | | |
 | PC-084 | 0017-c2 | 1 | todo | | | |
-| PC-085 | 0011-g | 1 | integrated db81630 (CI pending; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
+| PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | todo | | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
@@ -324,7 +325,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-094 | 0024-f | 1 | todo | | | |
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
-| PC-097 | 0020-b | 1 | impl | | | |
+| PC-097 | 0020-b | 1 | r1 | bf01975 |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
 | PC-099 | 0021-b | 1 | todo | | | |
 | PC-100 | 0020-d | 1 | todo | | | |
