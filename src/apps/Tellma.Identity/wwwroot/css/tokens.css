@@ -302,6 +302,7 @@
     --entity-picker-option-radius: var(--radius-xs);
     --entity-picker-option-padding-x: 8px;
     --entity-picker-option-gap: 8px;
+    --entity-picker-option-height-2line: 42px;
     --entity-picker-icon-size: 15px;
     --entity-picker-notice-font-size: 11.5px;
     --empty-state-icon-size: 22px;

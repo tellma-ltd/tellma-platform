@@ -398,10 +398,14 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
   readonly editSeedText: ((value: unknown) => string) | undefined;
   /** The raw display-format override (the entity editor adapts it id-first). */
   readonly format: ((value: unknown, row: T) => string) | undefined;
+  /** The display-parts override: each part of a display cell is its own isolated run. */
+  readonly formatParts: ((value: unknown, row: T) => readonly string[] | null) | undefined;
   /** `entity` columns: the built-in picker's data seam; `search` absent ⇒ no built-in editor. */
   readonly entitySearch: TmEntitySearchFn<unknown> | undefined;
   readonly entityItemId: ((item: unknown) => TmEntityId) | undefined;
   readonly entityItemLabel: ((item: unknown) => string) | undefined;
+  readonly entityItemDescription: ((item: unknown) => string | null) | undefined;
+  readonly entityItemLabelParts: ((item: unknown) => readonly string[] | null) | undefined;
   readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
   readonly entityCreate: TmEntityPickerPage | undefined;
   readonly entityEdit: TmEntityPickerPage | undefined;
@@ -415,6 +419,12 @@ export interface ɵTmGridCellVm {
   readonly ariaColIndex: number;
   /** The cell's display text. */
   readonly text: string;
+  /**
+   * The display text in parts, each drawn as its own isolated run joined by
+   * " - " (a column binding `formatParts`; a single part when the parts do
+   * not stand for the text); `null` draws `text` as it is.
+   */
+  readonly parts: readonly string[] | null;
   /**
    * The text's own direction: `ltr` in `number` columns, so a minus shows at
    * the left of its digits in an RTL grid; `null` (inherited) elsewhere.
@@ -2809,6 +2819,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
     let entitySearch: TmEntitySearchFn<unknown> | undefined;
     let entityItemId: ((item: unknown) => TmEntityId) | undefined;
     let entityItemLabel: ((item: unknown) => string) | undefined;
+    let entityItemDescription: ((item: unknown) => string | null) | undefined;
+    let entityItemLabelParts: ((item: unknown) => readonly string[] | null) | undefined;
     let entityAdvancedSearch: TmEntityPickerPage | undefined;
     let entityCreate: TmEntityPickerPage | undefined;
     let entityEdit: TmEntityPickerPage | undefined;
@@ -2816,6 +2828,8 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       entitySearch = dir.search();
       entityItemId = dir.itemId() as ((item: unknown) => TmEntityId) | undefined;
       entityItemLabel = dir.itemLabel() as ((item: unknown) => string) | undefined;
+      entityItemDescription = dir.itemDescription() as typeof entityItemDescription;
+      entityItemLabelParts = dir.itemLabelParts() as typeof entityItemLabelParts;
       entityAdvancedSearch = dir.advancedSearch();
       entityCreate = dir.create();
       entityEdit = dir.edit();
@@ -3025,9 +3039,12 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
       resolveLabels,
       editSeedText,
       format,
+      formatParts: dir.formatParts(),
       entitySearch,
       entityItemId,
       entityItemLabel,
+      entityItemDescription,
+      entityItemLabelParts,
       entityAdvancedSearch,
       entityCreate,
       entityEdit,
@@ -3224,10 +3241,27 @@ export class ɵTmGridCore<T> implements ɵTmGridViewCore, ɵTmGridEditingHost<T>
               ? ('expanded' as const)
               : ('collapsed' as const)
             : null;
+        const text = engine.displayText(cell);
+        // Display parts (spec 0010 §E.4) stand in for the text only where
+        // they ARE that text. Otherwise — the parts are null, an errored
+        // cell shows its raw text, a label is still being resolved, or the
+        // parts drift from `format` — the text draws as ONE isolated run.
+        // A column without `formatParts` keeps its plain text span.
+        let parts: readonly string[] | null = null;
+        if (column.formatParts !== undefined && view !== null) {
+          const candidate = column.formatParts(column.engineColumn.getValue(view.row), view.row);
+          parts =
+            candidate?.length && candidate.join(' - ') === text
+              ? candidate
+              : text === ''
+                ? null
+                : [text];
+        }
         return {
           colIndex: column.index,
           ariaColIndex: column.ariaColIndex,
-          text: engine.displayText(cell),
+          text,
+          parts,
           // Formatted numbers carry no direction marks (spec 0010 §D.14):
           // markup keeps the sign and the digits in their LTR order.
           dir: column.type === 'number' ? 'ltr' : null,

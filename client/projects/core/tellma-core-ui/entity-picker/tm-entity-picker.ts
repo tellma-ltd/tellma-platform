@@ -27,6 +27,7 @@ import { Combobox, ComboboxPopup, ComboboxWidget } from '@angular/aria/combobox'
 import { Listbox, Option } from '@angular/aria/listbox';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { transformedValue, type ParseResult, type ValidationError } from '@angular/forms/signals';
+import { Check, CircleAlert, Search } from 'lucide';
 
 import type {
   SignalLike,
@@ -41,6 +42,7 @@ import {
   tmResolveFieldErrors,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmModal, type TmModalRef, type TmModalSize } from '@tellma/core-ui/modal';
 import {
   tmCreateAnchoredOverlay,
@@ -158,6 +160,11 @@ function isThenable<T>(
  * — an implementation reading the ambient locale re-renders in place), then
  * the pick-time label memo, then `String(id)` with a dev-mode warning.
  *
+ * Result rows can carry a second line (`itemDescription`) that tells
+ * same-named entities apart, and a label drawn in parts (`itemLabelParts`)
+ * that keeps a code beside a name in another script in order. Every line,
+ * and every part, is its own bidirectional run.
+ *
  * @tmGroup form-control
  * @tmA11yNotes Editable combobox with a listbox popup: DOM focus stays on
  *   the input while aria-activedescendant tracks the highlighted option
@@ -168,7 +175,16 @@ function isThenable<T>(
  */
 @Component({
   selector: 'tm-entity-picker',
-  imports: [Combobox, ComboboxPopup, ComboboxWidget, Listbox, Option, OverlayModule, TmSpinner],
+  imports: [
+    Combobox,
+    ComboboxPopup,
+    ComboboxWidget,
+    Listbox,
+    Option,
+    OverlayModule,
+    TmIcon,
+    TmSpinner,
+  ],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmEntityPicker }],
   template: `
     <input
@@ -204,20 +220,7 @@ function isThenable<T>(
          control it would sit past the button below and shove it sideways
          every time an error came and went. -->
     @if (showsInvalid()) {
-      <svg
-        class="tm-form-field__error-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" x2="12" y1="8" y2="12" />
-        <line x1="12" x2="12.01" y1="16" y2="16" />
-      </svg>
+      <tm-icon class="tm-form-field__error-icon" [svg]="glyphs.error" />
     }
     @if (advancedSearch() !== undefined) {
       <button
@@ -229,18 +232,7 @@ function isThenable<T>(
         (pointerdown)="$event.preventDefault()"
         (click)="onMagnifierClick()"
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
+        <tm-icon [svg]="glyphs.search" />
       </button>
     }
     <span class="tm-entity-picker__live" aria-live="polite" aria-atomic="true">{{
@@ -276,25 +268,34 @@ function isThenable<T>(
             (click)="onListboxClick($event)"
           >
             @for (item of resultItems(); track idOf(item)) {
+              <!-- An entity row: the label line, then the description line (see descriptionOf). -->
+              @let description = descriptionOf(item);
               <li
                 ngOption
                 class="tm-entity-picker__option"
+                [class.tm-entity-picker__option--two-line]="twoLine()"
                 [value]="idOf(item)"
                 [label]="labelOf(item)"
               >
-                <span class="tm-entity-picker__option-label">{{ labelOf(item) }}</span>
-                <svg
-                  class="tm-entity-picker__check"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.75"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
+                <span class="tm-entity-picker__option-label">
+                  @if (labelPartsOf(item); as parts) {
+                    @for (part of parts; track $index) {
+                      @if (!$first) { - }
+                      <bdi>{{ part }}</bdi>
+                    }
+                  } @else {
+                    <bdi>{{ labelOf(item) }}</bdi>
+                  }
+                  @if (description) {
+                    <span class="tm-entity-picker__option-separator">, </span>
+                  }
+                </span>
+                @if (twoLine()) {
+                  <span class="tm-entity-picker__option-description"
+                    ><bdi>{{ description }}</bdi></span
+                  >
+                }
+                <tm-icon class="tm-entity-picker__check" [svg]="glyphs.check" />
               </li>
             }
             @if (showsHasMore()) {
@@ -411,6 +412,25 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * re-renders every visible label in place when those signals change.
    */
   readonly itemLabel = input.required<(item: T) => string>();
+  /**
+   * Maps a search result to a second line under its label — a code and a
+   * parent, say, so two entities with the same name can be told apart.
+   * Bound, every result row shows two lines at one fixed height (a row whose
+   * description is `null` included), the description in smaller secondary
+   * ink, and each row's accessible name becomes "label, description".
+   * Unbound, rows are one line. Reactive, like `itemLabel`.
+   */
+  readonly itemDescription = input<((item: T) => string | null) | undefined>(undefined);
+  /**
+   * Maps a search result to the parts of its label — a code and a name,
+   * say — which the row draws as separately isolated runs joined by " - ",
+   * so a code in one script keeps its place beside a name in another in
+   * either page direction. Joined by " - ", the parts must equal
+   * `itemLabel`, which stays the row's accessible name and the text a pick
+   * commits. `null` (or no parts) draws `itemLabel` as one run. Reactive,
+   * like `itemLabel`.
+   */
+  readonly itemLabelParts = input<((item: T) => readonly string[] | null) | undefined>(undefined);
   /**
    * Resolves a committed id to display text (reactive, like `itemLabel`);
    * `null` — or the empty string, which is not a label — defers to the
@@ -690,6 +710,15 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   }
 
   // ---- Template helpers ----
+  /** The built-in glyphs: the invalid mark, the magnifier and the chosen row's check. */
+  protected readonly glyphs = { error: CircleAlert, search: Search, check: Check } as const;
+  /**
+   * Whether result rows draw two lines. Decided by the binding, never by
+   * the data: every row of a two-line picker takes the two-line height, so
+   * the panel never re-measures as result sets with and without
+   * descriptions replace one another.
+   */
+  protected readonly twoLine = computed(() => this.itemDescription() !== undefined);
   /** The entity rows currently rendered (empty outside the results state). */
   protected readonly resultItems: Signal<readonly T[]> = computed(() => {
     const state = this.searchState();
@@ -1160,6 +1189,31 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** The display label of a search result — reactive via the template. */
   protected labelOf(item: T): string {
     return this.itemLabel()(item);
+  }
+
+  // The row's anatomy is explained here rather than in the template: template
+  // text, comments included, ships in the bundle.
+  /**
+   * A search result's second line, or `null` when it has none (or when no
+   * `itemDescription` is bound) — reactive via the template.
+   *
+   * An entity row draws its label line (one isolated run, or one per label
+   * part joined by " - "), then — with a description bound — the
+   * description line, every row at the one two-line height. A visually
+   * hidden ", " closes the label line when there is a description, which
+   * gives the row the accessible name "label, description".
+   */
+  protected descriptionOf(item: T): string | null {
+    return this.itemDescription()?.(item) ?? null;
+  }
+
+  /**
+   * A search result's label parts, or `null` to draw the label as one run
+   * (no `itemLabelParts` bound, or it gave no parts for this result).
+   */
+  protected labelPartsOf(item: T): readonly string[] | null {
+    const parts = this.itemLabelParts()?.(item) ?? null;
+    return parts !== null && parts.length > 0 ? parts : null;
   }
 
   // ---- The text channel ----
@@ -2292,14 +2346,21 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     page: TmEntityPickerPage,
     source: 'advanced' | 'create' | 'edit',
   ): Promise<void> {
-    const config: { component: Type<unknown>; size?: TmModalSize; title?: string } =
-      typeof page === 'function' ? { component: page } : page;
+    const config: {
+      component: Type<unknown>;
+      size?: TmModalSize;
+      title?: string;
+      context?: unknown;
+    } = typeof page === 'function' ? { component: page } : page;
     const text = this.currentText();
     const data: TmEntityPickerPageData<Id> = {
       // Pristine text is a browse intent, not a query — a create page must
       // not prefill the OLD entity's label as the new entity's name.
       query: this.isBrowseText(text) ? '' : text,
       ...(source === 'edit' ? { id: untracked(this.value) ?? undefined } : {}),
+      // The page's context rides through unread (spec 0010 §E.3); the bare
+      // class form, and a config without one, pass none at all.
+      ...(config.context !== undefined ? { context: config.context } : {}),
     };
     // Supersede the search AND any pending resolution; the modal outcome
     // governs from here.

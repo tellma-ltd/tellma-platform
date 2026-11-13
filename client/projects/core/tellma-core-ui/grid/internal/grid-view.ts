@@ -322,6 +322,14 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                   } @else if (cell.glyphClass; as glyphClass) {
                     <span [class]="glyphClass" aria-hidden="true"></span>
                     <span class="tm-visually-hidden">{{ cell.text }}</span>
+                  } @else if (cell.parts; as parts) {
+                    <!-- Display parts: isolated runs joined by " - ". -->
+                    <span class="tm-grid__text" [attr.dir]="cell.dir">
+                      @for (part of parts; track $index) {
+                        @if (!$first) { - }
+                        <bdi>{{ part }}</bdi>
+                      }
+                    </span>
                   } @else {
                     <!-- A number's text is its own left-to-right run, so its
                          minus sits at the left in an RTL grid too. -->

@@ -39,6 +39,28 @@ const DIRECTORY: Agent[] = [
   { id: 7, name: 'Dana Reed' },
 ];
 
+/** A cost center: a code, a name, and the parent that tells namesakes apart. */
+interface Center {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+  readonly parent: string | null;
+}
+
+/**
+ * The two-line demo directory: two Centers named 'Jeddah' that only their
+ * code and parent tell apart, a Latin code beside an Arabic name (which must
+ * stay code-first in either direction), and a Center without a parent (its
+ * row keeps the two-line height).
+ */
+const CENTERS: readonly Center[] = [
+  { id: 1, code: 'JED-01', name: 'Jeddah', parent: 'Western Region' },
+  { id: 2, code: 'JED-02', name: 'Jeddah', parent: 'Logistics' },
+  { id: 3, code: 'RUH-01', name: 'Riyadh', parent: 'Central Region' },
+  { id: 4, code: 'INV-0011', name: 'نقد', parent: 'الأصول المتداولة' },
+  { id: 5, code: 'DMM-01', name: 'الدمام', parent: null },
+];
+
 /** Browse results are capped here; a larger match set flags `hasMore`. */
 const RESULT_CAP = 5;
 
@@ -199,8 +221,9 @@ export class DemoPickerModalPage {
 /**
  * Entity-picker demo host: a required field-wrapped picker inside a native
  * form (submit counting proves Enter-never-submits-while-open), a bare
- * standalone picker, a no-magnifier picker, and a prepopulated picker whose
- * label only `displayWith` knows. The toolbar switches sync/async search,
+ * standalone picker, a no-magnifier picker, a prepopulated picker whose
+ * label only `displayWith` knows, and a two-line Center picker whose labels
+ * are drawn code-first in parts. The toolbar switches sync/async search,
  * tunes the artificial latency (or holds async responses until released),
  * arms a one-shot failure, toggles abort-signal honoring, and counts search
  * calls; the model dump is the Playwright battery's committed-value oracle.
@@ -330,6 +353,20 @@ export class DemoPickerModalPage {
           [itemLabel]="agentName"
         />
       </tm-form-field>
+
+      <!-- Two-line rows: a description line under each label, and a label
+           drawn in parts so a Latin code stays first beside an Arabic name
+           in either direction. -->
+      <tm-form-field label="Cost center (two lines)">
+        <tm-entity-picker
+          data-testid="picker-centers"
+          [search]="centerSearch"
+          [itemId]="centerId"
+          [itemLabel]="centerLabel"
+          [itemDescription]="centerDescription"
+          [itemLabelParts]="centerParts"
+        />
+      </tm-form-field>
     </div>
 
     <h3>Model</h3>
@@ -447,6 +484,20 @@ export class EntityPickerStory {
     return this.heldSearches
       .wait(this.searchDelay(), this.ignoreAbort() ? undefined : signal)
       .then(compute);
+  };
+
+  readonly centerId = (center: Center): number => center.id;
+  readonly centerLabel = (center: Center): string => `${center.code} - ${center.name}`;
+  readonly centerDescription = (center: Center): string | null => center.parent;
+  readonly centerParts = (center: Center): readonly string[] => [center.code, center.name];
+  /** A synchronous search over a Center's code, name and parent. */
+  readonly centerSearch = (query: string): readonly Center[] => {
+    const q = query.trim().toLowerCase();
+    return CENTERS.filter((center) =>
+      [center.code, center.name, center.parent ?? ''].some((text) =>
+        text.toLowerCase().includes(q),
+      ),
+    );
   };
 
   /** A 24-entry directory returned uncapped — enough rows to scroll. */

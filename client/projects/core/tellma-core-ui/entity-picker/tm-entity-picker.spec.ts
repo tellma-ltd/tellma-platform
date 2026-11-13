@@ -8,6 +8,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { form, FormField, required } from '@angular/forms/signals';
 import { TranslocoService } from '@jsverse/transloco';
+import { page } from 'vitest/browser';
 
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
@@ -125,6 +126,8 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
         [search]="search()"
         [itemId]="itemId"
         [itemLabel]="itemLabel()"
+        [itemDescription]="itemDescription()"
+        [itemLabelParts]="itemLabelParts()"
         [displayWith]="displayWith()"
         [advancedSearch]="advancedPage()"
         [create]="createPage()"
@@ -142,6 +145,10 @@ class Host {
   readonly search = signal<TmEntitySearchFn<Agent>>(() => []);
   readonly itemId = (item: Agent): number => item.id;
   readonly itemLabel = signal<(item: Agent) => string>((item) => item.name);
+  readonly itemDescription = signal<((item: Agent) => string | null) | undefined>(undefined);
+  readonly itemLabelParts = signal<((item: Agent) => readonly string[] | null) | undefined>(
+    undefined,
+  );
   readonly displayWith = signal<((id: number) => string | null) | undefined>(undefined);
   readonly advancedPage = signal<ReturnType<typeof pageOf> | undefined>(undefined);
   readonly createPage = signal<ReturnType<typeof pageOf> | undefined>(undefined);
@@ -2175,6 +2182,185 @@ describe('tm-entity-picker', () => {
     });
   });
 
+  describe('two-line rows & label parts', () => {
+    // The tokens stylesheet is not part of the unit environment: pin the
+    // two row heights so the geometry assertions resolve real lengths.
+    beforeEach(() => {
+      document.documentElement.style.setProperty('--field-option-height', '32px');
+      document.documentElement.style.setProperty('--entity-picker-option-height-2line', '42px');
+    });
+    afterEach(() => {
+      document.documentElement.style.removeProperty('--field-option-height');
+      document.documentElement.style.removeProperty('--entity-picker-option-height-2line');
+    });
+
+    /** The label line of a row. */
+    function labelLine(row: HTMLElement): HTMLElement {
+      return row.querySelector('.tm-entity-picker__option-label') as HTMLElement;
+    }
+
+    /**
+     * A row's visible label text: the label line's text and runs, without
+     * the hidden separator (and without the template's anchor comments).
+     */
+    function visibleLabel(row: HTMLElement): string {
+      return Array.from(labelLine(row).childNodes)
+        .filter((node) =>
+          node instanceof HTMLElement
+            ? !node.matches('.tm-entity-picker__option-separator')
+            : node.nodeType === Node.TEXT_NODE,
+        )
+        .map((node) => node.textContent ?? '')
+        .join('')
+        .trim();
+    }
+
+    /** A row's rendered block size, in px. */
+    function heightOf(row: HTMLElement): number {
+      return row.getBoundingClientRect().height;
+    }
+
+    /** Bidirectional control characters: none may reach the rendered text. */
+    const BIDI_CONTROLS = /[؜‎‏‪-‮⁦-⁩]/;
+
+    it('unbound, every row is one line with its label in one <bdi>', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      const rows = optionRows();
+      expect(rows.length).toBe(2);
+      for (const row of rows) {
+        expect(row.classList.contains('tm-entity-picker__option--two-line')).toBe(false);
+        expect(row.querySelector('.tm-entity-picker__option-description')).toBeNull();
+        expect(row.querySelector('.tm-entity-picker__option-separator')).toBeNull();
+        expect(labelLine(row).querySelectorAll(':scope > bdi').length).toBe(1);
+        expect(heightOf(row)).toBe(32);
+      }
+      expect(rows.map((row) => labelLine(row).textContent?.trim())).toEqual([
+        'Alice Green',
+        'Alan Grey',
+      ]);
+    });
+
+    it('with a description bound, every result row takes the one two-line height, a null description included', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      host.itemDescription.set((agent) => (agent.id === 4 ? null : `Branch ${agent.id}`));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      const rows = optionRows();
+      expect(rows.length).toBe(2);
+      for (const row of rows) {
+        expect(row.classList.contains('tm-entity-picker__option--two-line')).toBe(true);
+        expect(heightOf(row)).toBe(42);
+      }
+      // Alice has a description, in its own isolated run; Alan's is null
+      // and keeps its (empty) line.
+      const [alice, alan] = rows;
+      expect(alice.querySelector('.tm-entity-picker__option-description > bdi')?.textContent).toBe(
+        'Branch 3',
+      );
+      expect(alan.querySelector('.tm-entity-picker__option-description')?.textContent).toBe('');
+      // The labels sit at the same offset in both rows.
+      expect(labelLine(alice).getBoundingClientRect().top - alice.getBoundingClientRect().top).toBe(
+        labelLine(alan).getBoundingClientRect().top - alan.getBoundingClientRect().top,
+      );
+      // The footer row keeps the one-line height.
+      expect(actionRows().map(heightOf)).toEqual([32]);
+
+      // A result set without a single description keeps the same height:
+      // the panel never re-measures between queries.
+      await type(fixture, input, 'Alan');
+      expect(optionRows().map(heightOf)).toEqual([42]);
+    });
+
+    it('names a described row "label, description" and an undescribed row by its label', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.itemDescription.set((agent) => (agent.id === 4 ? null : `Branch ${agent.id}`));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      await expect
+        .element(page.getByRole('option', { name: 'Alice Green, Branch 3', exact: true }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole('option', { name: 'Alan Grey', exact: true }))
+        .toBeInTheDocument();
+      // The separator is heard, not seen: the visible label line carries
+      // the label alone.
+      expect(optionRows().map(visibleLabel)).toEqual(['Alice Green', 'Alan Grey']);
+    });
+
+    it('draws each label part in its own <bdi>, joined by plain " - ", and commits itemLabel', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.itemLabel.set((agent) => `A-${agent.id} - ${agent.name}`);
+      host.itemLabelParts.set((agent) => [`A-${agent.id}`, agent.name]);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      const [alice] = optionRows();
+      const runs = Array.from(labelLine(alice).querySelectorAll(':scope > bdi'));
+      expect(runs.map((run) => run.textContent)).toEqual(['A-3', 'Alice Green']);
+      // The joined text is itemLabel exactly, with no bidi control characters.
+      expect(visibleLabel(alice)).toBe('A-3 - Alice Green');
+      expect(BIDI_CONTROLS.test(labelLine(alice).textContent ?? '')).toBe(false);
+      await expect
+        .element(page.getByRole('option', { name: 'A-3 - Alice Green', exact: true }))
+        .toBeInTheDocument();
+      alice.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(host.model().agentId).toBe(3);
+      expect(input.value).toBe('A-3 - Alice Green');
+    });
+
+    it('null or empty label parts draw itemLabel as one <bdi>', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.itemLabelParts.set((agent) => (agent.id === 3 ? null : []));
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      for (const row of optionRows()) {
+        expect(labelLine(row).querySelectorAll(':scope > bdi').length).toBe(1);
+      }
+      expect(optionRows().map(visibleLabel)).toEqual(['Alice Green', 'Alan Grey']);
+    });
+
+    it('re-renders the open rows in place when the description binding changes', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.itemDescription.set((agent) => `Branch ${agent.id}`);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      expect(optionRows().map(heightOf)).toEqual([42, 42]);
+      host.itemDescription.set(undefined);
+      await settle(fixture);
+      expect(optionRows().map(heightOf)).toEqual([32, 32]);
+      expect(document.querySelector('.tm-entity-picker__option-description')).toBeNull();
+    });
+
+    it('the harness reads a row label, its parts and its description', async () => {
+      const { fixture, host } = await setup();
+      host.search.set(syncSearch().fn);
+      host.itemLabel.set((agent) => `A-${agent.id} - ${agent.name}`);
+      host.itemLabelParts.set((agent) => [`A-${agent.id}`, agent.name]);
+      host.itemDescription.set((agent) => (agent.id === 4 ? null : `Branch ${agent.id}`));
+      await settle(fixture);
+      const loader = TestbedHarnessEnvironment.loader(fixture);
+      const picker = await loader.getHarness(TmEntityPickerHarness);
+      await picker.typeQuery('Al');
+      await settle(fixture);
+      const [alice, alan] = await picker.getOptions();
+      expect(await alice.getText()).toBe('A-3 - Alice Green');
+      expect(await alice.getLabelParts()).toEqual(['A-3', 'Alice Green']);
+      expect(await alice.getDescription()).toBe('Branch 3');
+      expect(await alan.getDescription()).toBeNull();
+      expect(await picker.getOptionLabels()).toEqual(['A-3 - Alice Green', 'A-4 - Alan Grey']);
+    });
+  });
+
   describe('footer rows & modals', () => {
     it('renders footer rows by configuration, Edit… only while a value is committed', async () => {
       const { fixture, host, input } = await setup();
@@ -2220,6 +2406,82 @@ describe('tm-entity-picker', () => {
       expect(pane).not.toBeNull();
       expect(pane.textContent).toContain('Find an agent');
       expect(pane.textContent).not.toContain('Advanced search');
+      (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+      await settle(fixture);
+    });
+
+    it('the object form context reaches the advanced-search, create and edit pages untouched', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      const advancedContext = { entity: 'acme.Agent', page: 'search' };
+      const createContext = { entity: 'acme.Agent', page: 'create' };
+      const editContext = { entity: 'acme.Agent', page: 'edit' };
+      host.advancedPage.set(pageOf({ component: FakePage, context: advancedContext }));
+      host.createPage.set(pageOf({ component: FakePage, context: createContext }));
+      host.editPage.set(pageOf({ component: FakePage, context: editContext }));
+      host.model.set({ agentId: 5 });
+      await settle(fixture);
+
+      /** Closes the open page with no result. */
+      const closePage = async (): Promise<void> => {
+        (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+        await settle(fixture);
+        await settle(fixture);
+      };
+      /** Opens the dropdown and activates the footer row with this caption. */
+      const openFooterRow = async (caption: string): Promise<void> => {
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        actionRows()
+          .find((row) => row.textContent?.includes(caption))
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+      };
+
+      // Advanced search, from the magnifier: the very object, not a copy.
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(lastPageData?.context).toBe(advancedContext);
+      await closePage();
+
+      await openFooterRow('Create…');
+      expect(lastPageData?.context).toBe(createContext);
+      await closePage();
+
+      await openFooterRow('Edit…');
+      expect(lastPageData?.context).toBe(editContext);
+      expect(lastPageData?.id).toBe(5);
+      await closePage();
+    });
+
+    it('the bare class form, and an object form without context, pass no context', async () => {
+      const { fixture, host, input } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      host.createPage.set(pageOf({ component: FakePage, title: 'New agent' }));
+      await settle(fixture);
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(lastPageData).not.toBeNull();
+      expect(Object.keys(lastPageData ?? {})).not.toContain('context');
+      (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      lastPageData = null;
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      actionRows()
+        .find((row) => row.textContent?.includes('Create…'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(lastPageData).not.toBeNull();
+      expect(Object.keys(lastPageData ?? {})).not.toContain('context');
       (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
       await settle(fixture);
     });

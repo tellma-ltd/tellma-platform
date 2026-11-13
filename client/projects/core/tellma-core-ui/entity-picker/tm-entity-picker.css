@@ -54,6 +54,8 @@
   background: transparent;
   color: var(--field-icon);
   cursor: pointer;
+  /* The magnifier glyph inside is a tm-icon, sized from the picker's token. */
+  --icon-size: var(--entity-picker-icon-size);
 }
 
 .tm-entity-picker__magnifier:hover:not(:disabled) {
@@ -64,11 +66,6 @@
 .tm-entity-picker__magnifier:disabled {
   cursor: default;
   color: var(--field-text-disabled);
-}
-
-.tm-entity-picker__magnifier > svg {
-  inline-size: var(--entity-picker-icon-size);
-  block-size: var(--entity-picker-icon-size);
 }
 
 /* The polite live region: visually hidden, never display:none (a hidden
@@ -127,7 +124,9 @@
 
 /* Option rows — entity results and the command footer rows share the
    geometry; rows are single-line, ellipsized, and follow the size ladder,
-   because this field is used dozens of times a minute. */
+   because this field is used dozens of times a minute. A picker with a
+   description binding draws its RESULT rows two-line (below); footer rows
+   stay single-line. */
 .tm-entity-picker__option {
   display: flex;
   align-items: center;
@@ -160,6 +159,9 @@
   font-weight: var(--weight-medium);
 }
 
+/* The label line. Its text sits in <bdi> runs (one, or one per label part),
+   so a label in another script than the page keeps its own order; the
+   line itself follows the page direction, which keeps parts in order. */
 .tm-entity-picker__option-label {
   flex: 1;
   min-inline-size: 0;
@@ -168,12 +170,54 @@
   white-space: nowrap;
 }
 
+/* The ", " between the label and the description: heard, never seen. It
+   stays inline, inside the label line, so the accessible name reads
+   "label, description" with no stray space before the comma. */
+.tm-entity-picker__option-separator {
+  clip-path: inset(50%);
+}
+
+/* Two-line rows: label over description, every row at the one two-line
+   height whether or not it has a description, the check spanning both
+   lines. Footer rows keep the one-line geometry. */
+.tm-entity-picker__option--two-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  column-gap: var(--entity-picker-option-gap);
+  block-size: var(--entity-picker-option-height-2line);
+}
+
+/* Both lines clip only along the line, never across it: a tighter leading
+   must not shave the marks above and below Arabic letters. */
+.tm-entity-picker__option--two-line .tm-entity-picker__option-label,
+.tm-entity-picker__option-description {
+  grid-column: 1;
+  overflow: clip visible;
+  line-height: var(--leading-snug);
+}
+
+.tm-entity-picker__option-description {
+  /* An empty description keeps its line, so labels align across rows. */
+  min-block-size: 1lh;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tm-entity-picker__check {
-  flex: none;
-  inline-size: var(--entity-picker-icon-size);
-  block-size: var(--entity-picker-icon-size);
   color: var(--color-primary);
   visibility: hidden;
+  /* A tm-icon, sized from the picker's token. */
+  --icon-size: var(--entity-picker-icon-size);
+}
+
+.tm-entity-picker__option--two-line .tm-entity-picker__check {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
 }
 
 .tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__check {
@@ -237,9 +281,8 @@
    template). The class is the field's, so the look stays identical; the
    rule has to live here because the element does. */
 .tm-form-field__error-icon {
-  flex: none;
-  inline-size: var(--field-error-icon-size);
-  block-size: var(--field-error-icon-size);
+  /* A tm-icon, at the field's error-icon size. */
+  --icon-size: var(--field-error-icon-size);
   color: var(--error);
   /* Transparent to the pointer, so a press on the glyph lands on the chrome
      beneath it and focuses the control — which is what shows the message.
@@ -274,7 +317,8 @@
   /* The glyph's own --color-primary would be forced to CanvasText, which
      can vanish against the Highlight row fill — repoint it at the row's
      honored system color. */
-  .tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__check {
+  .tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__check,
+  .tm-entity-picker__option[aria-selected='true'] .tm-entity-picker__option-description {
     color: HighlightText;
   }
 }

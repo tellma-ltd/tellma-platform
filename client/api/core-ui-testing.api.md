@@ -234,6 +234,8 @@ export class TmEntityPickerHarness extends ComponentHarness {
 // @public
 export class TmEntityPickerOptionHarness extends ComponentHarness {
     click(): Promise<void>;
+    getDescription(): Promise<string | null>;
+    getLabelParts(): Promise<string[]>;
     getText(): Promise<string>;
     static hostSelector: string;
     isAction(): Promise<boolean>;
