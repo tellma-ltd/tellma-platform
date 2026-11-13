@@ -19,7 +19,7 @@ namespace Tellma.Core.Data.Batches
     internal sealed class StatementDraft
     {
         /// <summary>The generic <see cref="Table{TRow}" />, closed per row type for a list a raw statement's hole holds.</summary>
-        private static readonly MethodInfo TableMethod = typeof(StatementDraft).GetMethod(nameof(Table))!;
+        private static readonly MethodInfo TableMethod = typeof(StatementDraft).GetMethods().Single(static method => method.Name == nameof(Table) && method.IsGenericMethodDefinition);
 
         /// <summary>The closed <see cref="Table{TRow}" /> methods, by row type.</summary>
         private static readonly ConcurrentDictionary<Type, MethodInfo> TableMethods = new();
@@ -112,6 +112,27 @@ namespace Tellma.Core.Data.Batches
 
             // Resolving the binding now refuses a type without a table type at append, not at send.
             TableTypeBinding binding = _binder.Binding(typeof(TRow));
+            string name = ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.TableValued(_tables));
+            _parameters.Add(new TableParameter(name, rows, rows.Count, parameterName => binding.Parameter(parameterName, rows)));
+            _declared.Add(name);
+            _tables++;
+            return name;
+        }
+
+        /// <summary>
+        ///     Binds rows of a type known only at run time as a table-valued parameter,
+        ///     <c>@tb{ordinal}_t{n}</c>: the rows of an entity with a table type.
+        /// </summary>
+        /// <param name="rowType">The row type.</param>
+        /// <param name="rows">The rows, each of <paramref name="rowType" />, enumerated anew each time the command is sent.</param>
+        /// <returns>The parameter's name.</returns>
+        /// <exception cref="InvalidOperationException">The row type has no table type.</exception>
+        public string Table(Type rowType, IReadOnlyList<object> rows)
+        {
+            ArgumentNullException.ThrowIfNull(rowType);
+            ArgumentNullException.ThrowIfNull(rows);
+
+            TableTypeBinding binding = _binder.Binding(rowType);
             string name = ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.TableValued(_tables));
             _parameters.Add(new TableParameter(name, rows, rows.Count, parameterName => binding.Parameter(parameterName, rows)));
             _declared.Add(name);
