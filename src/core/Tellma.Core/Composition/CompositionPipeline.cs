@@ -495,6 +495,7 @@ namespace Tellma.Core.Composition
                 new NotificationTypesCheck(_record),
                 new NotificationChannelsCheck(_record),
                 new ClientEventsCheck(_record),
+                new SecurablesCheck(_record),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
                 new ProvisioningStepsCheck(_record),
             ]);

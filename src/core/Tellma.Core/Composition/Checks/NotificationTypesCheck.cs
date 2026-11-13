@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Notifications;
@@ -16,12 +17,13 @@ namespace Tellma.Core.Composition.Checks
     ///     <c>core.notification-types</c>: every type's key and category match their grammars, keys
     ///     are unique, every severity is defined, a channel-only type is neither mutable nor a toast,
     ///     and every target names a stack resource (an entity a feature contributed, through its leaf)
-    ///     whose key a 64-bit target id holds.
+    ///     whose key a 64-bit target id holds, or a registered securable resource.
     /// </summary>
     /// <remarks>
-    ///     Reads the composition alone. The registry keeps the first type of a key, so that this check,
-    ///     and not a failing constructor, is where a mistake surfaces. A model that does not build is
-    ///     the entity-metadata check's to report; the targets are then not judged.
+    ///     Reads the composition and the securable registry. The type registry keeps the first type of
+    ///     a key, so that this check, and not a failing constructor, is where a mistake surfaces. A
+    ///     model that does not build is the entity-metadata check's to report; the targets are then
+    ///     not judged.
     /// </remarks>
     /// <param name="record">The realised composition.</param>
     internal sealed class NotificationTypesCheck(TellmaCompositionRecord record) : IStartupCheck
@@ -60,7 +62,7 @@ namespace Tellma.Core.Composition.Checks
             // --- The targets, against the model ---
             if (services.GetService<EntityMetadataSource>()?.Build.Provider is IEntityMetadataProvider metadata)
             {
-                CheckTargets(metadata, problems);
+                CheckTargets(metadata, services.GetService<ISecurableRegistry>(), problems);
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
@@ -110,16 +112,20 @@ namespace Tellma.Core.Composition.Checks
             }
         }
 
-        /// <summary>Checks that every target names a stack resource of the composition with an integer key.</summary>
+        /// <summary>
+        ///     Checks that every target names a stack resource of the composition with an integer key,
+        ///     or a registered securable resource, spelled as registered.
+        /// </summary>
         /// <param name="metadata">The model's entity metadata.</param>
+        /// <param name="securables">The securable registry; null when none is composed.</param>
         /// <param name="problems">Receives the problems.</param>
-        internal void CheckTargets(IEntityMetadataProvider metadata, List<CompositionProblem> problems)
+        internal void CheckTargets(IEntityMetadataProvider metadata, ISecurableRegistry? securables, List<CompositionProblem> problems)
         {
-            // A target is the resource the client routes to. The stack resources are the entities the
-            // features contributed as stacks, named by their leaves' metadata; an entity mapped
-            // without a stack (a child, a platform table) has no route. When the securable registry
-            // lands (spec 0021 §11 also accepts a registered securable resource), its resources join
-            // these.
+            // A target is the resource the client routes to (spec 0021 §11). The stack resources are
+            // the entities the features contributed as stacks, named by their leaves' metadata; an
+            // entity mapped without a stack (a child, a platform table) has no route of its own. A
+            // registered securable resource is a target too, matched as spelled, since the client
+            // maps it to a route by name.
             Dictionary<Type, EntityMetadata> byType = [];
             foreach (EntityMetadata entity in metadata.All)
             {
@@ -146,10 +152,14 @@ namespace Tellma.Core.Composition.Checks
                 string described = $"The notification type '{type.Key}' of the feature '{contributed.Owner.Name}'";
                 if (!resources.TryGetValue(target, out EntityMetadata? entity))
                 {
-                    problems.Add(new CompositionProblem(
-                        Name,
-                        $"{described} targets '{target}', which is not a stack resource of the composition.",
-                        "Target an entity a feature contributes as a stack (contribution.Entity<T>()) by its name, such as 'core.User', so the client can route to it; set the target to null for a type that points at nothing."));
+                    if (securables?.Resources.Contains(target, StringComparer.Ordinal) != true)
+                    {
+                        problems.Add(new CompositionProblem(
+                            Name,
+                            $"{described} targets '{target}', which is neither a stack resource nor a registered securable resource of the composition.",
+                            "Target an entity a feature contributes as a stack (contribution.Entity<T>()) or a registered securable resource, by its name as registered, such as 'core.User', so the client can route to it; set the target to null for a type that points at nothing."));
+                    }
+
                     continue;
                 }
 

@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
@@ -173,6 +174,21 @@ namespace Tellma.Core.Abstractions.Composition
         {
             ArgumentNullException.ThrowIfNull(name);
             return Add(new ClientEventContributionItem(name));
+        }
+
+        /// <summary>
+        ///     Registers securables no stack declares: settings categories, the pairs of hand-mapped
+        ///     endpoints, aliases of renamed resources and changes to the sensitive set. The platform
+        ///     runs <paramref name="configure" /> once, when it composes the securable registry, and
+        ///     the securables it adds belong to this feature unless they name another.
+        /// </summary>
+        /// <param name="configure">Registers the securables.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="configure" /> is null.</exception>
+        public FeatureContribution Securables(Action<SecurableRegistryBuilder> configure)
+        {
+            ArgumentNullException.ThrowIfNull(configure);
+            return Add(new SecurablesContributionItem(configure));
         }
 
         /// <summary>
