@@ -4,12 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Composition;
-using Tellma.Core.Composition;
 
 namespace Tellma.Testing.Entities
 {
     /// <summary>
-    ///     The feature that contributes the fixture schema and the stand-in core tables to a
+    ///     The feature that contributes the fixture schema and the stand-in core table to a
     ///     composition, so a test host's tenant model is the fixture database's.
     /// </summary>
     public sealed class FixtureFeature : ITellmaFeature
@@ -30,18 +29,17 @@ namespace Tellma.Testing.Entities
         {
             ArgumentNullException.ThrowIfNull(contribution);
 
-            // --- The stand-in core tables the fixture's foreign keys and the platform's statements name ---
-            // Core contributes the access tables and core.Blobs itself.
-            _ = contribution
-                .Entity<FixtureJob>()
-                .Model<FixtureVersionTagConfiguration>();
+            // --- The stand-in core table the fixture's job foreign keys name ---
+            // Core contributes the access tables, core.VersionTags and core.Blobs itself.
+            _ = contribution.Entity<FixtureJob>();
 
             // --- The fixture schema; children come with their parents ---
             _ = contribution
                 .Entity<Widget>()
                 .Entity<WidgetExtra>()
                 .Entity<Node>()
-                .Entity<Shipment>();
+                .Entity<Shipment>()
+                .Entity<Lookup>();
         }
     }
 }

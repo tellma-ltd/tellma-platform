@@ -64,6 +64,33 @@ namespace Tellma.Core.Abstractions.Data
         /// </summary>
         public const string ExpectedUserPermissionsTag = "@tm_ExpectedUserPermissionsTag";
 
+        /// <summary>The version-tag guard's copy of the expected tags, keyed in the binary name order its loop locks them in.</summary>
+        public const string GuardOrder = "@tm_guardOrder";
+
+        /// <summary>The name the version-tag guard's loop is locking.</summary>
+        public const string GuardName = "@tm_guardName";
+
+        /// <summary>The tag the batch expects of the name the version-tag guard's loop is locking.</summary>
+        public const string GuardExpected = "@tm_guardExpected";
+
+        /// <summary>Whether the batch bumps the name the version-tag guard's loop is locking.</summary>
+        public const string GuardBumped = "@tm_guardBumped";
+
+        /// <summary>The stored tag of the name the version-tag guard's loop is locking.</summary>
+        public const string GuardTag = "@tm_guardTag";
+
+        /// <summary>Whether the version-tag guard's loop found a moved tag.</summary>
+        public const string GuardStale = "@tm_guardStale";
+
+        /// <summary>The bump's copy of the names it moves, keyed in the binary name order its loop moves them in.</summary>
+        public const string BumpOrder = "@tm_bumpOrder";
+
+        /// <summary>The name the bump's loop is moving.</summary>
+        public const string BumpName = "@tm_bumpName";
+
+        /// <summary>The rows the bump's loop moved.</summary>
+        public const string BumpCount = "@tm_bumpCount";
+
         /// <summary>The new version tag a batch's bumps write.</summary>
         public const string Tag = "@tm_tag";
 

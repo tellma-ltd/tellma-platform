@@ -69,7 +69,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- Every table but the platform's own and the history tables is change-tracked ---
             Assert.Equal(
-                ["core.Blobs", "core.Jobs", "core.Permissions", "core.RoleMemberships", "core.Roles", "core.UserPreferences", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
+                ["core.Blobs", "core.Jobs", "core.Permissions", "core.RoleMemberships", "core.Roles", "core.UserPreferences", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Links", "fixture.Lookups", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
                 await TrackedTablesAsync(tenant.ConnectionString));
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant.ConnectionString, "SELECT CAST([temporal_type] AS int) FROM sys.tables WHERE [object_id] = OBJECT_ID(N'fixture.WidgetsHistory');"));
 
@@ -136,7 +136,8 @@ namespace Tellma.Core.IntegrationTests.Data
 
             BatchAssertionFailedException thrown = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
 
-            Assert.Equal((50600, "Fixture.Stop", 2), (thrown.Number, thrown.Code, thrown.StatementOrdinal));
+            // The version-tag prelude is statement 0 of every batch that carries no connect prologue.
+            Assert.Equal((50600, "Fixture.Stop", 3), (thrown.Number, thrown.Code, thrown.StatementOrdinal));
             _ = Assert.IsType<SqlException>(thrown.InnerException);
             Assert.Equal(7, Int(first.Value));
             Assert.Equal("eight", ((string[])second.Value.ResultSets[0].GetBuffer(0))[0]);
@@ -150,7 +151,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using AsyncServiceScope scope = tenant.CreateScope();
             ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
 
-            // --- A THROW from the statement at ordinal 3 ---
+            // --- A THROW from the statement at ordinal 4, after the version-tag prelude at 0 ---
             var throwing = (DataBatch)database.CreateBatch(BatchPurpose.Read);
             _ = throwing.Sql($"SELECT 0 AS [Zero];", new SqlOptions(resultSets: 1));
             _ = throwing.Sql($"DECLARE @x int = 1;\nSET @x += 1;", null);
@@ -159,9 +160,9 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = throwing.Sql($"SELECT 4 AS [Four];", new SqlOptions(resultSets: 1));
 
             BatchAssertionFailedException thrown = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => throwing.ExecuteAsync(Token));
-            Assert.Equal((3, "Fixture.Three"), (thrown.StatementOrdinal, thrown.Code));
+            Assert.Equal((4, "Fixture.Three"), (thrown.StatementOrdinal, thrown.Code));
 
-            // --- A foreign-key violation from the statement at ordinal 4 ---
+            // --- A foreign-key violation from the statement at ordinal 5 ---
             TableName extras = new("fixture", "WidgetExtras");
             var violating = (DataBatch)database.CreateBatch(BatchPurpose.Persist);
             _ = violating.Sql(CountJobs, new SqlOptions(resultSets: 1));
@@ -173,7 +174,7 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = violating.Sql($"INSERT INTO [fixture].[WidgetExtras] ([Id], [Note])\nVALUES ({123456}, N'orphan');", new SqlOptions(writes: Set(extras)));
 
             ForeignKeyViolationException violated = await Assert.ThrowsAsync<ForeignKeyViolationException>(() => violating.ExecuteAsync(Token));
-            Assert.Equal((4, "FK_WidgetExtras_Id"), (violated.StatementOrdinal, violated.ConstraintName));
+            Assert.Equal((5, "FK_WidgetExtras_Id"), (violated.StatementOrdinal, violated.ConstraintName));
             Assert.Equal(547, Assert.IsType<SqlException>(violated.InnerException).Number);
 
             // The in-text transaction rolled the earlier inserts back.
@@ -217,7 +218,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             Assert.Same(first, second);
             Assert.NotSame(first, other);
-            Assert.Equal(2, reads.Statements.Count);
+            Assert.Equal(3, reads.Statements.Count); // The version-tag prelude and the two distinct reads.
 
             // --- Two writes with one text both run ---
             IDataBatch writes = database.CreateBatch(BatchPurpose.Persist);
@@ -544,11 +545,11 @@ namespace Tellma.Core.IntegrationTests.Data
             FakeLogRecord record = Assert.Single(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "DataBatch.SlowRoundTrip");
             (string, string?)[] expected =
             [
-                ("TenantId", "1"), ("Operation", "fx-slow"), ("Purpose", "read"), ("Attempt", "1"), ("Statements", "1"), ("TableRows", "2"), ("RowsRead", "2"),
+                ("TenantId", "1"), ("Operation", "fx-slow"), ("Purpose", "read"), ("Attempt", "1"), ("Statements", "2"), ("TableRows", "2"), ("RowsRead", "2"),
             ];
             Assert.Equal(expected, expected.Select(field => (field.Item1, record.GetStructuredStateValue(field.Item1))));
             Assert.NotNull(record.GetStructuredStateValue("DurationMs"));
-            Assert.Contains("WHERE [Id] > @tb0_p0 AND @tb0_p1 <> N''", record.GetStructuredStateValue("Text"), StringComparison.Ordinal);
+            Assert.Contains("WHERE [Id] > @tb1_p0 AND @tb1_p1 <> N''", record.GetStructuredStateValue("Text"), StringComparison.Ordinal);
             Assert.DoesNotContain("fx-secret", record.Message, StringComparison.Ordinal);
         }
 
@@ -627,26 +628,27 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = divide.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
             _ = divide.Sql($"SELECT 1 / {0} AS [Quotient];", new SqlOptions(resultSets: 1));
             ArithmeticFailureException divided = await Assert.ThrowsAsync<ArithmeticFailureException>(() => divide.ExecuteAsync(Token));
-            Assert.Equal((ArithmeticFailureException.DivideByZero, 1), (divided.Reason, divided.StatementOrdinal));
+            // Each batch's statement 0 is the version-tag prelude.
+            Assert.Equal((ArithmeticFailureException.DivideByZero, 2), (divided.Reason, divided.StatementOrdinal));
 
             IDataBatch overflow = database.CreateBatch(BatchPurpose.Read);
             _ = overflow.Sql($"SELECT CAST(2147483647 AS int) + {1} AS [Sum];", new SqlOptions(resultSets: 1));
             ArithmeticFailureException overflowed = await Assert.ThrowsAsync<ArithmeticFailureException>(() => overflow.ExecuteAsync(Token));
-            Assert.Equal((ArithmeticFailureException.Overflow, 0), (overflowed.Reason, overflowed.StatementOrdinal));
+            Assert.Equal((ArithmeticFailureException.Overflow, 1), (overflowed.Reason, overflowed.StatementOrdinal));
 
             // --- 2627 names the primary key ---
             IDataBatch duplicate = database.CreateBatch(BatchPurpose.Persist);
             _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({5});", new SqlOptions(writes: Set(Jobs)));
             _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({5});", new SqlOptions(writes: Set(Jobs)));
             UniqueConstraintViolationException duplicated = await Assert.ThrowsAsync<UniqueConstraintViolationException>(() => duplicate.ExecuteAsync(Token));
-            Assert.Equal(("PK_Jobs", 1), (duplicated.IndexName, duplicated.StatementOrdinal));
+            Assert.Equal(("PK_Jobs", 2), (duplicated.IndexName, duplicated.StatementOrdinal));
 
             // --- 547 on a check constraint is no reference: the generic exception ---
             IDataBatch check = database.CreateBatch(BatchPurpose.Persist);
             _ = check.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({0});", new SqlOptions(writes: Set(Jobs)));
             DataAccessException checkFailed = await Assert.ThrowsAsync<DataAccessException>(() => check.ExecuteAsync(Token));
             Assert.Equal(typeof(DataAccessException), checkFailed.GetType());
-            Assert.Equal(0, checkFailed.StatementOrdinal);
+            Assert.Equal(1, checkFailed.StatementOrdinal);
 
             Assert.Equal(0, await JobCountAsync());
         }
@@ -682,7 +684,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             ConflictRow row = Assert.Single(conflict.Conflicts);
             Assert.Equal((7L, true, null), (row.Id, row.IsMissing, row.Name));
-            Assert.Equal(1, conflict.StatementOrdinal);
+            Assert.Equal(2, conflict.StatementOrdinal);
 
             // The statement before the guard completed; the failed batch hands out what it read.
             Assert.Equal(1, Int(before.Value));
@@ -742,8 +744,8 @@ namespace Tellma.Core.IntegrationTests.Data
                     .Where(static measurement => Equals(measurement.Tags[DataTelemetryNames.OperationTag], "fx-metrics"))
                     .Select(static measurement => (string?)measurement.Tags[DataTelemetryNames.OutcomeTag]));
 
-            // --- The batch's statements, once, and the one re-run with its class and number ---
-            Assert.Contains(statements.GetMeasurementSnapshot(), static measurement => measurement.Value == 1 && Equals(measurement.Tags[DataTelemetryNames.PurposeTag], "persist"));
+            // --- The batch's statements (the version-tag prelude and its own), once, and the one re-run with its class and number ---
+            Assert.Contains(statements.GetMeasurementSnapshot(), static measurement => measurement.Value == 2 && Equals(measurement.Tags[DataTelemetryNames.PurposeTag], "persist"));
             CollectedMeasurement<long> retry = Assert.Single(retries.GetMeasurementSnapshot());
             Assert.Equal(("reported", "50503"), ((string?)retry.Tags[DataTelemetryNames.ClassTag], (string?)retry.Tags[DataTelemetryNames.ErrorTag]));
         }

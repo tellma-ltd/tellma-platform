@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Reflection;
 using Tellma.Core.Composition;
 
@@ -49,6 +50,15 @@ namespace Tellma.Core.Migrator
         /// <summary>The actor every catalog write of the migrator names.</summary>
         public const string Actor = "migrator";
 
+        /// <summary>
+        ///     The configuration key of how long the version-tag move on the way out of a failed tenant
+        ///     run may take, a <see cref="TimeSpan" />.
+        /// </summary>
+        public const string VersionTagBumpTimeoutKey = "Tellma:Migrator:VersionTagBumpTimeout";
+
+        /// <summary>How long the version-tag move on the way out of a failed tenant run may take when the configuration does not say.</summary>
+        public static readonly TimeSpan DefaultVersionTagBumpTimeout = TimeSpan.FromSeconds(30);
+
         private readonly Lock _outputLock = new();
 
         /// <summary>The started host's root services.</summary>
@@ -68,6 +78,15 @@ namespace Tellma.Core.Migrator
 
         /// <summary>The host's configuration.</summary>
         public IConfiguration Configuration => Services.GetRequiredService<IConfiguration>();
+
+        /// <summary>
+        ///     How long the version-tag move on the way out of a failed tenant run may take: the
+        ///     configured positive <see cref="TimeSpan" />, or <see cref="DefaultVersionTagBumpTimeout" />.
+        /// </summary>
+        public TimeSpan VersionTagBumpTimeout =>
+            TimeSpan.TryParse(Configuration[VersionTagBumpTimeoutKey], CultureInfo.InvariantCulture, out TimeSpan configured) && configured > TimeSpan.Zero
+                ? configured
+                : DefaultVersionTagBumpTimeout;
 
         /// <summary>The host's environment.</summary>
         public IHostEnvironment Environment => Services.GetRequiredService<IHostEnvironment>();
