@@ -46,14 +46,14 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The logger.</summary>
         private readonly ILogger _logger;
 
-        /// <summary>The process's tenant snapshots, when the caching feature is composed.</summary>
-        private readonly IVersionTagSnapshots? _snapshots;
-
         /// <summary>The process's user snapshots, when the caching feature is composed.</summary>
         private readonly IUserVersionTagSnapshots? _userSnapshots;
 
         /// <summary>The version tags' instruments, when the caching feature is composed.</summary>
         private readonly VersionTagMetrics? _tagMetrics;
+
+        /// <summary>The cacheable entities' lists, when the caching feature is composed.</summary>
+        private readonly Lazy<CacheableEntityStore?> _cacheableEntities;
 
         /// <summary>Creates the executor.</summary>
         /// <param name="options">The execution settings.</param>
@@ -102,10 +102,13 @@ namespace Tellma.Core.Data.Batches
             Queries = queries;
             Allocator = allocator;
             Saves = saves;
-            _snapshots = services.GetService<IVersionTagSnapshots>();
+            Snapshots = services.GetService<IVersionTagSnapshots>();
             _userSnapshots = services.GetService<IUserVersionTagSnapshots>();
             VersionTags = services.GetService<IVersionTagRegistry>();
             _tagMetrics = services.GetService<VersionTagMetrics>();
+
+            // Resolved on first use: the store reads the cache limits, which the startup gate validates first.
+            _cacheableEntities = new Lazy<CacheableEntityStore?>(services.GetService<CacheableEntityStore>);
         }
 
         /// <summary>Where a failed attempt was when it failed.</summary>
@@ -132,6 +135,12 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Which version tags a batch's writes bump, when the caching feature is composed.</summary>
         public IVersionTagRegistry? VersionTags { get; }
+
+        /// <summary>The process's tenant snapshots, when the caching feature is composed.</summary>
+        public IVersionTagSnapshots? Snapshots { get; }
+
+        /// <summary>The cacheable entities' lists, when the caching feature is composed.</summary>
+        public CacheableEntityStore? CacheableEntities => _cacheableEntities.Value;
 
         /// <summary>What query statements compile and materialise with.</summary>
         public QueryServices Queries { get; }
@@ -255,7 +264,7 @@ namespace Tellma.Core.Data.Batches
             VersionTagSnapshot tags;
             if (batch.ReadVersionTags is not VersionTagSnapshot read)
             {
-                tags = _snapshots?.Current(tenantId) ?? VersionTagSnapshots.Empty(tenantId);
+                tags = Snapshots?.Current(tenantId) ?? VersionTagSnapshots.Empty(tenantId);
             }
             else
             {
@@ -287,7 +296,7 @@ namespace Tellma.Core.Data.Batches
                     tags = new VersionTagSnapshot(read.TenantId, overlaid, read.ReadAtUtc);
                 }
 
-                _snapshots?.Replace(tags);
+                Snapshots?.Replace(tags);
             }
 
             // --- The caller's tags, from a batch that carried the connect prologue ---

@@ -416,13 +416,6 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <inheritdoc />
-        public BatchResult<CacheResult<CachedEntitySet<TEntity>>> FromCache<TEntity>()
-            where TEntity : class
-        {
-            throw NotAvailable(nameof(FromCache));
-        }
-
-        /// <inheritdoc />
         public void BumpVersionTag(string name)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);

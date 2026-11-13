@@ -722,6 +722,58 @@ A version tag is a `Guid` a tenant database keeps per cached input, in `core.Ver
 `VersionTagMetrics` meters `tellma.versiontags.bumps` (by tag kind), `tellma.versiontags.stale` (by
 phase) and `tellma.versiontags.missing` (by tag kind), and logs a missing row once per process.
 
+## The versioned cache
+
+`VersionedCache<TKey, TValue>` is the process-wide store of one cache kind (`CacheKinds`:
+`settings`, `preferences`, `permissions`, `entities`): a private `MemoryCache` bounded in the kind's
+own unit (`SizeOf`, one per entry unless the kind counts otherwise), whose entries carry the version
+tag they are valid for. Every key begins with the tenant id (`ITenantCacheKey`: `TenantCacheKey`,
+`TenantUserCacheKey`, `CacheableEntityKey`). The store is a singleton and holds no scope; a scoped
+façade passes it the current tag from the process's snapshot and the scope's `ITenantDatabase`.
+
+- **Lookups.** `GetAsync` hits when the entry's tag equals the current tag; `VersionTag.None` never
+  matches. Otherwise it loads through the kind's `LoadAsync` (one read batch on the caller's
+  handle), stores the value under the tag that batch's prelude returned, and reports `Miss` or
+  `Stale`; a load whose prelude found no tag is `Uncached` (served, not stored) and an oversized one
+  is `Oversized` (no value). `Peek(key, tag)` and `Peek(key, isCurrent)` never load. `Set` stores a
+  value under a tag (`aged` meters the replaced entry as `age`); `Remove` drops one.
+- **Single flight.** Callers that miss one key under one current tag share one load, run on the
+  handle and token of the caller that started it. A failed load is forgotten before its exception
+  reaches anyone, so the next caller loads afresh; a caller still waiting when the starter cancels
+  starts its own load.
+- **Instruments.** On the `Tellma.Core` meter, shared by every store: `tellma.cache.requests`
+  (`cache.kind`, `cache.outcome`), `tellma.cache.load.duration`, the observable gauges
+  `tellma.cache.entries`, `tellma.cache.size` and `tellma.cache.limit` (one series per live store,
+  so each kind has one store per meter), and `tellma.cache.evictions` (`cache.reason`: `capacity`,
+  `replaced`, `removed`, `age`). No instrument carries a tenant, user, entity or key.
+
+### Cacheable entities
+
+`[Cacheable(MaxRows)]` marks a small reference list; `MaxRows = 0` resolves to
+`Tellma:Cache:EntityMaxRowsDefault`. `CacheableEntityStore` (the `entities` kind, sized in rows
+against `EntityRows`) keeps one `CachedEntitySet` per tenant and entity: every row, inactive ones
+included, in key order, with `ById`. A caller may ask by the leaf class or a base it replaces; a
+base reads one view of the same instances.
+
+- **The probe.** One entity query selecting every scalar property the tenant's query schema
+  declares (and the JSON columns), no filter, ordered by `Id`, taking `MaxRows + 1` rows, after the
+  prelude. More rows than `MaxRows` are an overflow: the rows are discarded, nothing is cached, the
+  result is `Oversized` with no value, and `CacheableEntityOverflow` is logged once per entity per
+  process.
+- **`ICacheableEntities`.** The scoped façade: `GetAsync<T>()` (a miss runs one read batch),
+  `Peek<T>()`, and `GetWireTagsAsync()`, each cacheable entity's `entity:<Name>` tag from the
+  snapshot in its wire form (`VersionTag.None`'s when absent).
+- **`IDataBatch.FromCache<T>()`.** A hit completes at once and declares the list's tag as a
+  dependency (`Refresh` on a read batch, `Rerun` on a validate or persist batch). A miss appends the
+  probe to the consumer's batch, so a cold lookup costs no round trip of its own; its rows are
+  stamped with the batch's prelude tag and stored when the batch's results complete, before the
+  handle does, and no dependency is declared. A batch that already writes the entity's table is
+  refused.
+
+`core.cacheable-entities` reports a cacheable entity that is not a `TopLevelEntity<int>`, declares a
+child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, or has a `Read`
+securable with a filter root.
+
 ## Notifications and client events
 
 The catalogue is composed per distribution, never per tenant. A feature registers each notification
@@ -795,6 +847,7 @@ declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Cor
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
 | `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root | no |
+| `core.cacheable-entities` | a `[Cacheable]` entity is not a `TopLevelEntity<int>`, declares a child collection, resolves to a row limit outside 1 to `Tellma:Cache:EntityMaxRowsCeiling` (judged only when the cache options validate), or has a `Read` securable with a filter root | no |
 
 The host's endpoint audit (`host.endpoint-audit`) refuses an endpoint whose
 `SecurableEndpointMetadata` names a pair the registry does not hold, or holds only through an alias.
@@ -825,7 +878,7 @@ share the notification type keys' grammar.
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
+| `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally, the composition step that binds the jobs' options. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, and the securables section of the client metadata. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
