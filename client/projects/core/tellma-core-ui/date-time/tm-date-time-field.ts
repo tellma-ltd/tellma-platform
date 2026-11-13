@@ -57,15 +57,21 @@ type PartError = ValidationError.WithoutFieldTree & { readonly part: Part };
 /** The error kinds this field's own parse raises (the bound field echoes them back). */
 const OWN_KINDS: ReadonlySet<string> = new Set(['dateTimeIncomplete', 'parse']);
 
-/** Milliseconds in a minute: instants are compared at the minute the parts show. */
-const MINUTE = 60_000;
+/**
+ * The widest zone label any zone shows (Chatham's summer "GMT+13:45"), read
+ * in the active locale: the zone slot is at least this wide, so a change of
+ * the label's text ("GMT" to "GMT+1") resizes nothing.
+ */
+const WIDEST_ZONE = 'Pacific/Chatham';
+/** A summer instant in `WIDEST_ZONE`, when its offset is widest. */
+const WIDEST_ZONE_AT = Date.UTC(2026, 0, 15);
 
 /**
  * Edits an instant as a date and a time of day in an explicit time zone,
  * and always names the zone: a `role="group"` holding a field with a
  * `tm-date-picker`, a field with a `tm-time-field`, and the zone's offset
- * ("GMT+3") at the inline end, where a change of its text moves nothing
- * before it.
+ * ("GMT+3") at the inline end, in a slot as wide as the widest label, so a
+ * change of its text moves nothing.
  *
  * The two parts are read as wall time in `timeZone`:
  *
@@ -80,10 +86,11 @@ const MINUTE = 60_000;
  * time while the value is empty; it never hides, because "2 pm" means
  * different instants to people in different zones.
  *
- * The value is written only when the instant the parts read differs from
- * the bound value at the minute the parts show: a blur, a reformat or a
- * calendar pick that re-reads the bound instant writes nothing, so a
- * server value such as `2026-11-20T11:00:00.0000000+00:00` stays as sent.
+ * The value is written only when the parts differ from the wall time the
+ * bound value shows in the zone: a blur, a reformat, a calendar pick or a
+ * zone change that re-reads the bound value writes nothing, so a server
+ * value such as `2026-11-20T11:00:00.0000000+00:00`, or one in the second
+ * occurrence of a repeated hour, stays as sent.
  * A write is always `yyyy-MM-ddTHH:mm:ss±HH:mm`: the zone's offset at that
  * instant, and no fraction.
  *
@@ -94,7 +101,8 @@ const MINUTE = 60_000;
  * @tmGroup form-control
  * @tmA11yNotes A labelled group of two native text inputs (one tab stop
  *   each, plus the date picker's button); the date picker keeps its keys;
- *   Up and Down step the time; the zone label is plain text in the group.
+ *   Up and Down step the time; the zone label is plain text in the group,
+ *   and the time input's description, so the zone is announced with it.
  */
 @Component({
   selector: 'tm-date-time-field',
@@ -137,11 +145,19 @@ const MINUTE = 60_000;
           [pending]="pending()"
           [errors]="timeErrors()"
           [ɵclockZone]="zone()"
+          [aria-describedby]="zoneId"
           (valueChange)="onPartChange('time', $event)"
           (touch)="syncParts()"
         />
       </tm-form-field>
-      <span class="tm-date-time-field__zone" [attr.data-zone]="zone()">{{ zoneLabel() }}</span>
+      <!-- The zone slot: the label over an invisible sizer holding the widest
+           label, so the slot's width never follows the label's text. -->
+      <span class="tm-date-time-field__zone-slot">
+        <span class="tm-date-time-field__zone" [id]="zoneId" [attr.data-zone]="zone()">{{
+          zoneLabel()
+        }}</span>
+        <span class="tm-date-time-field__zone-sizer" aria-hidden="true">{{ zoneSizer() }}</span>
+      </span>
     </div>
   `,
   styleUrl: './tm-date-time-field.css',
@@ -202,7 +218,9 @@ export class TmDateTimeField {
   readonly size = input<TmControlSize | undefined>(undefined);
 
   /** The group label's element id. */
-  protected readonly labelId = `tm-date-time-field-label-${nextUniqueId++}`;
+  protected readonly labelId = `tm-date-time-field-label-${nextUniqueId}`;
+  /** The zone label's element id: the time input's description. */
+  protected readonly zoneId = `tm-date-time-field-zone-${nextUniqueId++}`;
   /** The size both parts render at. */
   protected readonly resolvedSize = ɵtmControlSize(this.size);
   /** The zone in effect: the input, else the display zone. */
@@ -237,12 +255,20 @@ export class TmDateTimeField {
   /**
    * Every error the field shows: its own parse errors, then the bound
    * field's other errors (the bound field echoes the own ones back, which
-   * are dropped there by kind).
+   * are dropped there by kind). While one part is missing, the bound
+   * `required` failure is that same gap, already shown on the empty part,
+   * so it is dropped too: the part the user filled never reads as missing.
    */
-  private readonly allErrors = computed<readonly ValidationError.WithOptionalFieldTree[]>(() => [
-    ...this.parts.parseErrors(),
-    ...this.errors().filter((error) => !OWN_KINDS.has(error.kind)),
-  ]);
+  private readonly allErrors = computed<readonly ValidationError.WithOptionalFieldTree[]>(() => {
+    const own = this.parts.parseErrors();
+    const incomplete = own.some((error) => error.kind === 'dateTimeIncomplete');
+    return [
+      ...own,
+      ...this.errors().filter(
+        (error) => !OWN_KINDS.has(error.kind) && !(incomplete && error.kind === 'required'),
+      ),
+    ];
+  });
   /** The errors shown on the date part: its own, and every error not about the time. */
   protected readonly dateErrors = computed(() =>
     this.allErrors().filter((error) => (error as Partial<PartError>).part !== 'time'),
@@ -266,6 +292,10 @@ export class TmDateTimeField {
     const at = ɵtmReadInstant(this.value()) ?? this.now();
     return tmFormatZoneOffset(at, this.l10n.locale(), this.zone());
   });
+  /** The widest label in the locale's words, which sizes the zone slot. */
+  protected readonly zoneSizer = computed(() =>
+    tmFormatZoneOffset(WIDEST_ZONE_AT, this.l10n.locale(), WIDEST_ZONE),
+  );
 
   constructor() {
     // A part's unreadable text arrives after its value (the child resets
@@ -275,7 +305,7 @@ export class TmDateTimeField {
     // parts unprompted could rewrite a bound value nobody touched.
     let previous: readonly unknown[] | undefined;
     effect(() => {
-      const current = [this.datePicker().parseErrors(), this.timeField().parseErrors()];
+      const current = [this.datePicker().ɵparseErrors(), this.timeField().ɵparseErrors()];
       const changed =
         previous !== undefined && (current[0] !== previous[0] || current[1] !== previous[1]);
       previous = current;
@@ -284,7 +314,7 @@ export class TmDateTimeField {
       }
     });
     // A zone change shows the same instant on the new zone's clock; the
-    // value never changes.
+    // parts then show the bound value's own wall time, so nothing is written.
     let previousZone: string | undefined;
     effect(() => {
       const zone = this.zone();
@@ -344,13 +374,13 @@ export class TmDateTimeField {
   /**
    * The parts→instant read: a part's unreadable text is its own error;
    * both empty is `null`; one empty is `dateTimeIncomplete`, on the empty
-   * part; both present is the instant they name, written only when it
-   * differs from the bound value at the minute the parts show.
+   * part; both present is the instant they name, written only when the
+   * parts differ from the wall time the bound value shows in the zone.
    */
   private readParts(parts: DateTimeParts): ParseResult<string | null> {
     const partErrors: PartError[] = [
-      ...this.partErrors('date', untracked(this.datePicker).parseErrors()),
-      ...this.partErrors('time', untracked(this.timeField).parseErrors()),
+      ...this.partErrors('date', untracked(this.datePicker).ɵparseErrors()),
+      ...this.partErrors('time', untracked(this.timeField).ɵparseErrors()),
     ];
     if (partErrors.length > 0) {
       return { value: null, error: partErrors };
@@ -366,11 +396,17 @@ export class TmDateTimeField {
       return { value: null, error };
     }
     const zone = untracked(this.zone);
-    const at = ɵtmInstantOfWallTime({ date: parts.date, time: parts.time }, zone);
+    // Wall time, not instants: a bound value with seconds, a fraction, or
+    // in the second occurrence of a repeated hour shows the same parts but
+    // would read back as a different instant.
     const bound = ɵtmReadInstant(untracked(this.value));
-    if (bound !== null && Math.floor(bound / MINUTE) * MINUTE === at) {
-      return {}; // the bound instant, re-read: no write
+    if (bound !== null) {
+      const shown = ɵtmWallTimeOf(bound, zone);
+      if (shown.date === parts.date && shown.time === parts.time) {
+        return {}; // the bound value, re-read: no write
+      }
     }
+    const at = ɵtmInstantOfWallTime({ date: parts.date, time: parts.time }, zone);
     return { value: ɵtmFormatOffsetInstant(at, zone) };
   }
 

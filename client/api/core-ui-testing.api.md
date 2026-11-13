@@ -712,6 +712,7 @@ export class TmTabHarness extends ComponentHarness {
 export class TmTimeFieldHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
+    getDescribedBy(): Promise<string | null>;
     getText(): Promise<string>;
     static hostSelector: string;
     isInvalid(): Promise<boolean>;

@@ -6,8 +6,8 @@
  */
 
 /* tm-date-time-field — a labelled group: the date field, the time field
-   and the zone label in one row, the label at the inline end so a change
-   of its text moves nothing before it. */
+   and the zone label in one row, the label at the inline end in a slot as
+   wide as the widest label, so a change of its text moves nothing. */
 
 :host {
   /* The size ladder's field height, which the zone label matches so it
@@ -47,19 +47,32 @@
   min-inline-size: 0;
 }
 
-/* The time field's box holds the widest locale's time text. */
+/* The time field sizes itself to the time width (its own sheet); here it
+   only keeps that width in the row. */
 .tm-date-time-field__time {
   flex: none;
-  inline-size: var(--date-time-time-width);
 }
 
-.tm-date-time-field__zone {
-  display: inline-flex;
+/* The zone slot stacks the label over an invisible sizer that holds the
+   widest label: the slot is never narrower than that, whatever the label
+   says, and the label sits at the slot's inline start, next to the time. */
+.tm-date-time-field__zone-slot {
+  display: inline-grid;
   flex: none;
   align-items: center;
+  justify-items: start;
   block-size: var(--tm-date-time-box-height);
   font-size: var(--field-hint-font-size);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--text-secondary);
+}
+
+.tm-date-time-field__zone,
+.tm-date-time-field__zone-sizer {
+  grid-area: 1 / 1;
+}
+
+.tm-date-time-field__zone-sizer {
+  visibility: hidden;
 }

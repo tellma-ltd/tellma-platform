@@ -51,7 +51,9 @@ export class TmDateTimeField {
     protected readonly touchedShown: _angular_core.Signal<boolean>;
     readonly value: _angular_core.ModelSignal<string | null>;
     protected readonly zone: _angular_core.Signal<string>;
+    protected readonly zoneId: string;
     protected readonly zoneLabel: _angular_core.Signal<string>;
+    protected readonly zoneSizer: _angular_core.Signal<string>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDateTimeField, "tm-date-time-field", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "timeZone": { "alias": "timeZone"; "required": false; "isSignal": true; }; "calendar": { "alias": "calendar"; "required": false; "isSignal": true; }; "label": { "alias": "label"; "required": false; "isSignal": true; }; "dateLabel": { "alias": "dateLabel"; "required": false; "isSignal": true; }; "timeLabel": { "alias": "timeLabel"; "required": false; "isSignal": true; }; "minDate": { "alias": "minDate"; "required": false; "isSignal": true; }; "maxDate": { "alias": "maxDate"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDateTimeField, never>;
 }
@@ -77,7 +79,6 @@ export class TmTimeField implements TmFormFieldControl {
     protected onInput(): void;
     protected onKeydown(event: KeyboardEvent): void;
     readonly ownsChrome = false;
-    readonly parseErrors: Signal<readonly ValidationError.WithoutFieldTree[]>;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly placeholder: _angular_core.InputSignal<string | undefined>;
     readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
@@ -92,6 +93,7 @@ export class TmTimeField implements TmFormFieldControl {
     // @internal
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTimeField, "tm-time-field", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "step": { "alias": "step"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; "\u0275clockZone": { "alias": "\u0275clockZone"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTimeField, never>;
+    // @internal
 }
 
 ```

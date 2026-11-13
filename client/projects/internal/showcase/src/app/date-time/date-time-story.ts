@@ -12,7 +12,9 @@ import { TmFormField } from '@tellma/core-ui/form-field';
 /**
  * tm-time-field and tm-date-time-field demo host: a bound time in a field,
  * an unreadable time, an instant on Beirut's clock (whose offset changes
- * with daylight saving), a server instant with a fraction on UTC's clock,
+ * with daylight saving), one on Adelaide's in a fixed-width column (whose
+ * label changes width, "GMT+10:30" to "GMT+9:30"), a server instant with a fraction
+ * on UTC's clock,
  * a one-part instant showing `dateTimeIncomplete`, and the disabled and
  * readonly states. The model dump lets the battery assert the writes.
  */
@@ -37,6 +39,17 @@ import { TmFormField } from '@tellma/core-ui/form-field';
         [formField]="f.startsAt"
         data-testid="dt-beirut"
       />
+
+      <!-- Adelaide in a fixed-width column: the label changes width across
+           daylight saving, and the date and time boxes must not move. -->
+      <div class="fixed-column">
+        <tm-date-time-field
+          label="Call starts"
+          timeZone="Australia/Adelaide"
+          [formField]="f.callAt"
+          data-testid="dt-adelaide"
+        />
+      </div>
 
       <!-- A server value with a fraction, on UTC's clock: re-reads write nothing. -->
       <tm-date-time-field
@@ -74,6 +87,9 @@ import { TmFormField } from '@tellma/core-ui/form-field';
       justify-items: start;
       gap: 20px;
     }
+    .fixed-column {
+      inline-size: 480px;
+    }
     output {
       display: block;
       margin-block-start: 16px;
@@ -88,12 +104,14 @@ export class DateTimeStory {
     opens: string | null;
     closes: string | null;
     startsAt: string | null;
+    callAt: string | null;
     receivedAt: string | null;
     dueAt: string | null;
   }>({
     opens: '09:00',
     closes: null,
     startsAt: null,
+    callAt: null,
     receivedAt: '2026-11-20T11:00:00.0000000+00:00',
     dueAt: null,
   });

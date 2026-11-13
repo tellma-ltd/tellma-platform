@@ -73,7 +73,7 @@
       "./switch": 2.89,
       "./search-field": 3.36,
       "./date-range": 2.93,
-      "./date-time": 6.27,
+      "./date-time": 6.61,
       "./form-field": 5,
       "./private": 2.19,
       "./select": 9,
@@ -116,7 +116,7 @@
       "./switch": "Set to 2.89, the measured 2.79 plus 0.1 KB, above the spec's 1 KB. Every Signal Forms control here carries the same state surface as tm-checkbox (3.24 KB): the eight state inputs, the error resolution and display policy, the field-control wiring and its stylesheet, which the spec's ceiling did not count. The switch adds the track, the knob and its travel, label position, and forced-colors and reduced-motion rules.",
       "./search-field": "Set to 3.36, the measured 3.26 plus 0.1 KB, above the spec's 2 KB. Two exports: the input[tmSearch] directive (leading and trailing edges, held keys, IME, Enter, the undoable execCommand clear and Escape) and the composed field with its magnifier, reserved clear slot and invalid state.",
       "./date-range": "Set to 2.93, the measured 2.83 plus 0.1 KB, above the spec's 2 KB. Every Signal Forms control here carries the same state surface as tm-checkbox (3.24 KB): the eight state inputs, the error resolution and display policy, the field-control wiring and its stylesheet, which the spec's ceiling did not count. The range adds its own parse-error plumbing (each end's unreadable text as its own error), the per-end error routing and the coupled bounds; the pickers themselves are the date-picker entry point's.",
-      "./date-time": "Set to 6.27, the measured 6.17 plus 0.1 KB, above the spec's 3 KB. Two Signal Forms controls (see tm-checkbox's 3.24 KB for the shared state surface each carries) plus a time-of-day parser for any digit script, the locale's day-period words and literal words, wall time to instant across daylight-saving gaps and overlaps (a minute binary search), the offset instant writer, and the always-shown zone label.",
+      "./date-time": "Set to 6.61, the measured 6.51 plus 0.1 KB, above the spec's 3 KB: 6.17 when first set, +0.34 KB for the zone slot reserved by an invisible widest-label sizer, the zone label describing the time input, the wall-time no-write comparison, the required routing while a part is missing, and the time field sizing its own enclosing field. Two Signal Forms controls (see tm-checkbox's 3.24 KB for the shared state surface each carries) plus a time-of-day parser for any digit script, the locale's day-period words and literal words, wall time to instant across daylight-saving gaps and overlaps (a minute binary search), the offset instant writer, and the always-shown zone label.",
       "./private": "Raised from 2 to 2.19 for the radio-group arrow helper shared by tm-radio-group and tm-segmented (Up/Down, Left/Right mapped by the live direction, wrapping over enabled radios): measured 1.87 without it and 2.09 with it (+0.22 KB).",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
     },

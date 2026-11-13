@@ -15,13 +15,19 @@ import { TmFormFieldHarness, TmTimeFieldHarness } from '@tellma/core-ui-testing'
 
 import { TmTimeField } from './tm-time-field';
 
-/** A time field bound to a Signal Forms field inside a tm-form-field. */
+/**
+ * A time field bound to a Signal Forms field inside a tm-form-field, in a
+ * column wider than the time width (no token sheet loads in unit tests, so
+ * the column carries the token).
+ */
 @Component({
   imports: [FormField, TmFormField, TmTimeField],
   template: `
-    <tm-form-field label="Opens at">
-      <tm-time-field [formField]="shop.opens" [step]="step()" />
-    </tm-form-field>
+    <div style="inline-size: 400px; --date-time-time-width: 112px">
+      <tm-form-field label="Opens at">
+        <tm-time-field [formField]="shop.opens" [step]="step()" />
+      </tm-form-field>
+    </div>
   `,
 })
 class Host {
@@ -124,5 +130,11 @@ describe('tm-time-field', () => {
     expect(input.labels?.[0]?.textContent?.trim()).toBe('Opens at');
     expect(input.getAttribute('dir')).toBe('auto');
     expect(getComputedStyle(input).fontVariantNumeric).toBe('tabular-nums');
+  });
+
+  it('sizes its field to the time width, not the column', async () => {
+    const { fixture } = await setup();
+    const field = fixture.nativeElement.querySelector('tm-form-field') as HTMLElement;
+    expect(field.getBoundingClientRect().width).toBe(112);
   });
 });

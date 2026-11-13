@@ -41,6 +41,11 @@ export class TmTimeFieldHarness extends ComponentHarness {
     return (await this.input()).focus();
   }
 
+  /** The input's aria-describedby attribute (space-separated ids), or null when absent. */
+  async getDescribedBy(): Promise<string | null> {
+    return (await this.input()).getAttribute('aria-describedby');
+  }
+
   /** Whether the input announces itself as invalid (aria-invalid). */
   async isInvalid(): Promise<boolean> {
     return (await (await this.input()).getAttribute('aria-invalid')) === 'true';

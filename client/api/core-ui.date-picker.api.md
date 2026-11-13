@@ -55,7 +55,6 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     openPopup(): void;
     readonly ownsChrome = false;
     readonly ownsErrorIcon = true;
-    readonly parseErrors: Signal<readonly ValidationError.WithoutFieldTree[]>;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly picked: _angular_core.OutputEmitterRef<string | null>;
     readonly placeholder: _angular_core.InputSignal<string | undefined>;
@@ -74,6 +73,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly value: _angular_core.ModelSignal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDatePicker, "tm-date-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "minDate": { "alias": "minDate"; "required": false; "isSignal": true; }; "maxDate": { "alias": "maxDate"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "calendar": { "alias": "calendar"; "required": false; "isSignal": true; }; "dateStyle": { "alias": "dateStyle"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDatePicker, never>;
+    // @internal
 }
 
 ```

@@ -6,9 +6,11 @@
  */
 
 /* tm-time-field — a bare input; the bordered box, focus ring and labels
-   belong to the enclosing tm-form-field (ownsChrome: false). */
+   belong to the enclosing tm-form-field (ownsChrome: false).
+   Unencapsulated (it sizes the enclosing field), so every selector is
+   namespaced under .tm-time-field. */
 
-:host {
+.tm-time-field {
   display: flex;
   flex: 1;
   align-items: center;
@@ -16,17 +18,24 @@
 }
 
 /* Outside a field, the text takes the size step itself. */
-:host(.tm-time-field--sm) {
+.tm-time-field.tm-time-field--sm {
   --tm-field-font-size: var(--field-font-size-sm);
 }
 
-:host(.tm-time-field--lg) {
+.tm-time-field.tm-time-field--lg {
   --tm-field-font-size: var(--field-font-size-lg);
 }
 
-.tm-time-field__input {
+.tm-time-field .tm-time-field__input {
   flex: 1;
   min-inline-size: 0;
   /* A time's digits keep their width as they change. */
   font-variant-numeric: tabular-nums;
+}
+
+/* The field holding a time is the time width, which holds the widest
+   locale's time text: a time never spans a form's full column. */
+.tm-form-field:has(> .tm-form-field__box > .tm-time-field) {
+  inline-size: var(--date-time-time-width);
+  max-inline-size: 100%;
 }

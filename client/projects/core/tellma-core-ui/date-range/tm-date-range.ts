@@ -220,7 +220,7 @@ export class TmDateRange {
     // records the starting errors.
     let previous: readonly unknown[] | undefined;
     effect(() => {
-      const current = [this.fromPicker().parseErrors(), this.toPicker().parseErrors()];
+      const current = [this.fromPicker().ɵparseErrors(), this.toPicker().ɵparseErrors()];
       const changed =
         previous !== undefined && (current[0] !== previous[0] || current[1] !== previous[1]);
       previous = current;
@@ -256,8 +256,8 @@ export class TmDateRange {
    */
   private readParts(parts: TmDateRangeValue): ParseResult<TmDateRangeValue> {
     const errors: EndError[] = [
-      ...this.endErrors('from', untracked(this.fromPicker).parseErrors()),
-      ...this.endErrors('to', untracked(this.toPicker).parseErrors()),
+      ...this.endErrors('from', untracked(this.fromPicker).ɵparseErrors()),
+      ...this.endErrors('to', untracked(this.toPicker).ɵparseErrors()),
     ];
     const bound = untracked(this.value) ?? EMPTY;
     const unchanged = bound.from === parts.from && bound.to === parts.to;

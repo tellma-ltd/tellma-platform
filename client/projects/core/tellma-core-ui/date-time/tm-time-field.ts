@@ -17,6 +17,7 @@ import {
   signal,
   untracked,
   viewChild,
+  ViewEncapsulation,
   type Signal,
 } from '@angular/core';
 import { transformedValue, type ParseResult, type ValidationError } from '@angular/forms/signals';
@@ -63,7 +64,8 @@ const EXAMPLE_TIME = '14:30';
  * empty they start at the current time, rounded down to the step.
  *
  * Place it inside a `tm-form-field`, which supplies the box, the label and
- * the messages. Signal Forms native: implements
+ * the messages; that field takes the time width (`--date-time-time-width`),
+ * which holds the widest locale's time text. Signal Forms native: implements
  * `FormValueControl<string | null>`; reports touch on blur.
  *
  * @tmGroup form-control
@@ -74,6 +76,9 @@ const EXAMPLE_TIME = '14:30';
 @Component({
   selector: 'tm-time-field',
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmTimeField }],
+  // The stylesheet sizes the enclosing tm-form-field to the time width, so
+  // it is not encapsulated; every selector is namespaced under .tm-time-field.
+  encapsulation: ViewEncapsulation.None,
   template: `
     <input
       #textInput
@@ -181,8 +186,9 @@ export class TmTimeField implements TmFormFieldControl {
    * The parse errors of the typed text (the `parse` kind), whether or not
    * the field is bound: a composite that hosts this field reads them to
    * report them as its own.
+   * @internal Read by `tm-date-time-field` only.
    */
-  readonly parseErrors: Signal<readonly ValidationError.WithoutFieldTree[]> =
+  readonly ɵparseErrors: Signal<readonly ValidationError.WithoutFieldTree[]> =
     this.rawText.parseErrors;
 
   constructor() {

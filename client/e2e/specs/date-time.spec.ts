@@ -12,8 +12,9 @@ import { storyUrl } from '../support/story-map';
 /**
  * Browser battery for tm-time-field and tm-date-time-field: the axe floor
  * in both themes and directions, Up and Down stepping the time, the instant
- * written on the zone's clock, and the zone label changing across a
- * daylight-saving change without moving anything before it.
+ * written on the zone's clock and described by the zone label, and the
+ * label changing width across a daylight-saving change without moving
+ * anything.
  */
 
 /** An element's rendered box, which must exist. */
@@ -65,30 +66,31 @@ test('typed parts write the instant with the zone offset', async ({ page }) => {
     '"startsAt":"2026-07-15T14:00:00+03:00"',
   );
   await expect(field.locator('.tm-date-time-field__zone')).toHaveText('GMT+3');
+  // The zone is announced with the time it qualifies.
+  await expect(field.getByRole('textbox', { name: 'Time' })).toHaveAccessibleDescription('GMT+3');
 });
 
 for (const dir of ['ltr', 'rtl'] as const) {
-  test(`the zone label changes across a DST change and moves nothing before it (${dir})`, async ({
+  test(`the zone label changes width across a DST change and moves nothing (${dir})`, async ({
     page,
   }) => {
     await page.goto(storyUrl('date-time', { dir }));
-    const field = page.getByTestId('dt-beirut');
+    // Adelaide in a fixed-width column: "GMT+10:30" in its summer, "GMT+9:30" in its winter.
+    const field = page.getByTestId('dt-adelaide');
     const date = field.getByRole('combobox', { name: 'Date' });
     const time = field.getByRole('textbox', { name: 'Time' });
     const zone = field.locator('.tm-date-time-field__zone');
 
-    // Winter in Beirut: GMT+2.
     await date.fill('1/15/2026');
     await time.fill('10');
-    await expect(zone).toHaveText('GMT+2');
+    await expect(zone).toHaveText('GMT+10:30');
     await fontsLoaded(page);
     const dateBefore = await boxOf(date);
     const timeBefore = await boxOf(time);
     const zoneBefore = await boxOf(zone);
 
-    // Summer: GMT+3.
     await date.fill('7/15/2026');
-    await expect(zone).toHaveText('GMT+3');
+    await expect(zone).toHaveText('GMT+9:30');
     expect(await boxOf(date)).toEqual(dateBefore);
     expect(await boxOf(time)).toEqual(timeBefore);
     const zoneAfter = await boxOf(zone);
