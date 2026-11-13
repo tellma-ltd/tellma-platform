@@ -22,6 +22,10 @@
          type-forwards them). Must never be paired with Azure.Messaging.EventGrid < 5.0.0. -->
     <PackageVersion Include="Azure.Messaging.EventGrid.SystemEvents" Version="1.1.0" />
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
+    <!-- The exporter alone, for the Azure web bundle: a Tellma host composes its own OpenTelemetry
+         instrumentation (with SQL text stripped from spans), so it takes no distro that would add a
+         second set. The version the distro above depends on. -->
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.Exporter" Version="1.8.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.0" />
     <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
     <!-- axe-core bound for .NET and Playwright: the static accessibility floor for the

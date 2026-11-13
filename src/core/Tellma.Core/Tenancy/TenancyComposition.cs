@@ -32,6 +32,7 @@ namespace Tellma.Core.Tenancy
             // --- The options, through the gate's validation ---
             options.Bind<TellmaCatalogOptions>(TellmaCatalogOptions.SectionPath, CoreFeature.FeatureName);
             options.Bind<TellmaSqlOptions>(TellmaSqlOptions.SectionPath, CoreFeature.FeatureName);
+            options.Bind<TellmaSeedOptions>(TellmaSeedOptions.SectionPath, CoreFeature.FeatureName);
             _ = services.AddOptions<TenantRegistryStartupOptions>();
 
             // --- What the runtime needs of any host: a clock, logging and metrics ---

@@ -44,6 +44,21 @@
     <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/Tellma.Connector.SendGrid.Adapter.csproj" />
     <Project Path="src/connector/smtp/Tellma.Connector.Smtp.Adapter/Tellma.Connector.Smtp.Adapter.csproj" />
   </Folder>
+  <Folder Name="/src/defaults/">
+    <Project Path="src/defaults/Tellma.Defaults.Azure/Tellma.Defaults.Azure.csproj" />
+    <Project Path="src/defaults/Tellma.Defaults.Azure.AspNetCore/Tellma.Defaults.Azure.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/distributions/acme/src/">
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme/Tellma.Distro.Acme.csproj" />
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme.Migrator/Tellma.Distro.Acme.Migrator.csproj" />
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme.Web/Tellma.Distro.Acme.Web.csproj" />
+  </Folder>
+  <Folder Name="/distributions/acme/test/">
+    <File Path="distributions/acme/test/Directory.Build.props" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.E2E/Tellma.Distro.Acme.E2E.csproj" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.IntegrationTests/Tellma.Distro.Acme.IntegrationTests.csproj" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.Web.Tests/Tellma.Distro.Acme.Web.Tests.csproj" />
+  </Folder>
   <Folder Name="/test/">
     <File Path="test/Directory.Build.props" />
     <Project Path="test/apps/Tellma.Identity.Tests/Tellma.Identity.Tests.csproj" />
@@ -73,6 +88,9 @@
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.Adapter.Tests/Tellma.Connector.SendGrid.Adapter.Tests.csproj" />
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.IntegrationTests/Tellma.Connector.SendGrid.IntegrationTests.csproj" />
     <Project Path="test/connector/smtp/Tellma.Connector.Smtp.Adapter.Tests/Tellma.Connector.Smtp.Adapter.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/defaults/">
+    <Project Path="test/defaults/Tellma.Defaults.Azure.Tests/Tellma.Defaults.Azure.Tests.csproj" />
   </Folder>
   <Folder Name="/test/shared/">
     <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />

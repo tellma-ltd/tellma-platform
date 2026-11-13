@@ -61,6 +61,24 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             Assert.Contains("/{tenantId:int:min(1)}/api/v{version:apiVersion}/probe", routes);
         }
 
+        [Fact]
+        public async Task A_bundle_s_platform_route_is_mapped_anonymous_and_tenantless_and_passes_the_audit()
+        {
+            // A route under a reserved platform segment, which the audit refuses from a distribution.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+                options.ConfigureServices = static services => services.AddSingleton<IPlatformEndpointSource>(new ProbePlatformSource()));
+
+            RouteEndpoint endpoint = Assert.Single(
+                host.Services.GetRequiredService<MappedEndpoints>().Endpoints().OfType<RouteEndpoint>(),
+                static endpoint => endpoint.RoutePattern.RawText == ProbePlatformSource.Route);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+            Assert.Equal(ProbePlatformSource.TenantlessReason, endpoint.Metadata.GetMetadata<TenantlessEndpointMetadata>()?.Reason);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<PlatformEndpointMetadata>());
+
+            using HttpResponseMessage response = await host.Client.GetAsync(new Uri(ProbePlatformSource.Route, UriKind.Relative), TestContext.Current.CancellationToken);
+            Assert.Equal(System.Net.HttpStatusCode.NoContent, response.StatusCode);
+        }
+
         /// <summary>Each violation: the endpoint to map, the route and method the problem names, and what it says.</summary>
         public static TheoryData<string, string, string> Violations()
         {
@@ -306,6 +324,25 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 "tenant-short-circuit" => endpoints.Web.MapGet("/short", Nothing).WithMutation(false).AllowMember().ShortCircuit(),
                 _ => throw new ArgumentOutOfRangeException(nameof(violation), violation, "Not a violation of the suite."),
             };
+        }
+
+        /// <summary>A bundle's platform route: under a reserved segment, answering no content.</summary>
+        private sealed class ProbePlatformSource : IPlatformEndpointSource
+        {
+            /// <summary>The route.</summary>
+            public const string Route = "/api/webhooks/probe";
+
+            /// <summary>The tenantless reason.</summary>
+            public const string TenantlessReason = "probe-bundle";
+
+            /// <inheritdoc />
+            public string Reason => TenantlessReason;
+
+            /// <inheritdoc />
+            public IReadOnlyList<IEndpointConventionBuilder> Map(IEndpointRouteBuilder endpoints)
+            {
+                return [endpoints.MapGet(Route, static () => Results.NoContent())];
+            }
         }
 
         /// <summary>A stack registry reduced to its routes.</summary>

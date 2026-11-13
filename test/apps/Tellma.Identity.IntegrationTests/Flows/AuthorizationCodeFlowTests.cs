@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -27,7 +28,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "alice@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // 1. The BFF pushes the authorization parameters server-to-server (PAR), including

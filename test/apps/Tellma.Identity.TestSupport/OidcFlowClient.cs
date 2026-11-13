@@ -12,9 +12,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Tellma.Core.Testing.Email;
-using Tellma.Identity.TestSupport;
+using Xunit;
 
-namespace Tellma.Identity.IntegrationTests.Infrastructure
+namespace Tellma.Identity.TestSupport
 {
     /// <summary>
     ///     Drives OAuth/OIDC flows over raw HTTP the way a browser plus a confidential client
@@ -32,30 +32,19 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
         /// <summary>The path base the engine's protocol endpoints are mounted at.</summary>
         private readonly string _pathBase;
 
-        /// <summary>Creates the protocol driver over a booted standalone host.</summary>
-        /// <param name="factory">The host under test.</param>
-        public OidcFlowClient(StandaloneFactory factory)
-            : this(factory.CreateClient, factory.Emails, pathBase: string.Empty)
-        {
-        }
-
         /// <summary>
-        ///     Creates the protocol driver over a booted distribution host, whose engine is mounted
-        ///     at <see cref="InProcFactory.PathBase" />.
+        ///     Creates the protocol driver over the clients of a booted host: the identity server on
+        ///     its own, or a distribution's web host with the engine mounted in process.
         /// </summary>
-        /// <param name="factory">The host under test.</param>
-        public OidcFlowClient(InProcFactory factory)
-            : this(factory.CreateClient, factory.Emails, InProcFactory.PathBase)
-        {
-        }
-
-        /// <summary>Creates the protocol driver over the clients of a booted host.</summary>
-        /// <param name="createClient">Creates a client of the host under test.</param>
+        /// <param name="createClient">Creates a client of the host under test, such as a test server factory's <c>CreateClient</c>.</param>
         /// <param name="emails">The host's captured outbound email.</param>
         /// <param name="pathBase">The path base the engine is mounted at, or empty at the root.</param>
-        private OidcFlowClient(
+        public OidcFlowClient(
             Func<WebApplicationFactoryClientOptions, HttpClient> createClient, CapturingEmailSender emails, string pathBase)
         {
+            ArgumentNullException.ThrowIfNull(createClient);
+            ArgumentNullException.ThrowIfNull(emails);
+            ArgumentNullException.ThrowIfNull(pathBase);
             _emails = emails;
             _pathBase = pathBase;
             Browser = createClient(new WebApplicationFactoryClientOptions

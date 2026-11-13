@@ -80,7 +80,7 @@ migration grants it `EXECUTE`.
 | Item | Purpose |
 |---|---|
 | `TellmaMigrator` | The entry point: parses the command line, hosts the composition, runs one command. |
-| `Commands/` | One class per command, and the binding of `Tellma:Seed:Tenants`. |
+| `Commands/` | One class per command. The seed tenants and their administrator come from `Tellma:Seed` (`TellmaSeedOptions` in `Tellma.Core`, validated at startup). |
 | `CommandLine/` | The command line's parser and its usage errors. |
 | `Emit/` | The client metadata files: canonical JSON, the content hash in each file name, the loaders module. |
 | `Sql/` | The database statements: creation and collation checks, the migration locks, the grants, the schema fingerprint rows. |
@@ -130,4 +130,7 @@ Then point `CatalogMigrations.Latest` at the new migration's id.
 `Tellma.Core.Tests` covers the command line, the grant statements, the design-time connections,
 the emit's files and the entry point's exit codes without a database. `Tellma.Core.IntegrationTests`
 drives every command in process against a SQL Server through the test distribution in
-`test/core/assets/Tellma.Core.Migrator.TestDistribution`.
+`test/core/assets/Tellma.Core.Migrator.TestDistribution`. `TellmaMigrator.RunAsync` has a public
+overload taking `MigratorRunSettings` (the output writers, the environment, the content root and
+the configuration and service hooks), so a distribution's suite runs its own migrator in process
+the same way.
