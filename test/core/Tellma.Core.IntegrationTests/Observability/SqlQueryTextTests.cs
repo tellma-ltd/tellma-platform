@@ -29,6 +29,9 @@ namespace Tellma.Core.IntegrationTests.Observability
         /// </summary>
         private const string Marker = "TellmaQueryTextMarker";
 
+        /// <summary>The name of the activity source each run starts its command under.</summary>
+        private const string RunSourceName = "Tellma.Core.IntegrationTests.SqlQueryText";
+
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Fact]
@@ -55,9 +58,13 @@ namespace Tellma.Core.IntegrationTests.Observability
             Assert.Contains(spans, static span => span.GetTagItem("db.query.text")?.ToString()?.Contains(Marker, StringComparison.Ordinal) == true);
         }
 
-        /// <summary>Runs one command under the host's tracing and collects the ended spans.</summary>
+        /// <summary>
+        ///     Runs one command under the host's tracing, inside a parent activity of the run's own, and
+        ///     collects the ended spans of that parent's children: the instrumentation hands every
+        ///     provider the spans of every command in the process, other test classes' included.
+        /// </summary>
         /// <param name="withoutEnrichment">Whether to remove the host's enrichment afterwards.</param>
-        /// <returns>The spans.</returns>
+        /// <returns>The spans of the run's own command.</returns>
         private async Task<List<Activity>> RunAsync(bool withoutEnrichment)
         {
             ServiceCollection services = [];
@@ -67,26 +74,35 @@ namespace Tellma.Core.IntegrationTests.Observability
                 new DeploymentIdentity("acme", "Production"),
                 new DeploymentVersions("1.0.0", "1.0.0"));
 
+            // --- The host's tracing, plus the run's own source and a processor that keeps what ends ---
             List<Activity> spans = [];
-            _ = services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddProcessor(new Capture(spans)));
+            _ = services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddSource(RunSourceName).AddProcessor(new Capture(spans)));
             if (withoutEnrichment)
             {
                 _ = services.PostConfigure<SqlClientTraceInstrumentationOptions>(static options => options.EnrichWithSqlCommand = null);
             }
 
+            // --- One command, whose span the run's activity parents ---
+            using ActivitySource runs = new(RunSourceName);
+            ActivitySpanId parent;
             await using (ServiceProvider provider = services.BuildServiceProvider())
             {
                 _ = provider.GetRequiredService<TracerProvider>();
+                using Activity? run = runs.StartActivity("run");
+                Assert.NotNull(run);
+                parent = run.SpanId;
                 await using SqlConnection connection = new(sql.MasterConnectionString);
                 await connection.OpenAsync(Token);
                 await using SqlCommand command = new($"SELECT 1 AS [{Marker}];", connection);
                 _ = await command.ExecuteScalarAsync(Token);
             }
 
-            // Disposing the provider flushed the spans.
+            // --- Disposing the provider flushed the spans; only the run's children are its own ---
+            // A span of another class's command, started under a provider of its own and ending
+            // while this run's provider listens, reaches the processor too, and is left out here.
             lock (spans)
             {
-                return [.. spans];
+                return [.. spans.Where(span => span.ParentSpanId == parent)];
             }
         }
 
