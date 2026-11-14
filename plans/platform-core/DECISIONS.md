@@ -359,6 +359,18 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-076 (PC-044, 2026-11-13): cacheable-entity entries are keyed by the tenant's multilingual shape
+
+- Ruling: CacheableEntityKey (and so the single-flight key) carries the tenant's MultilingualShape. A language change gives a fresh key, and the old shape's entries age out. The `entities` and `entity:*` tags do not move on a language change. A Persist-batch FromCache miss takes a lock-only guard row on entity:<Name> (NULL expected tag), so a concurrent write is serialised as it is on a hit.
+- Why: the cached column list follows the shape, so a tag-only check would serve the old columns until someone wrote the table, and a mixed-shape single flight would hand one caller the other shape's rows. Keying is cheaper than bumping every entity tag tenant-wide.
+- For Ahmad: spec 0013 §6.3 is silent on language changes. The server side is closed by the key, but the client's entity wire tags do not move, so PC-049 (carry) must make the client notice. Spec 0013 §4.4 should also say that a Persist miss still guards the tag.
+
+### D-075 (PC-054, 2026-11-13): tree expansion moves into ./tree-grid now
+
+- Ruling: PC-054's fix round moves the tree-only expansion and batching machinery (about 0.80 KB linked) out of ./grid, behind the treeConfig seam, into ./tree-grid. The flash path stays in ./grid. Both ceilings are re-derived on the linked measure (+0.1). The budgetNotes entry states the headroom under the 42 KB cap in bytes.
+- Why: commit 1 left ./grid 168 B under spec 0010 §C.11's 42 KB hard cap, so every flat grid paid for tree code, and the next ./grid change would have forced D-057(2)'s re-split anyway. The seam already exists, so the move is cheap now and costs more later.
+- For Ahmad: none (within §C.11 and D-057).
+
 ### D-074 (PC-097, 2026-11-13): job owners are checked in SQL, and enqueue needs a transaction
 
 - Ruling: enqueue accepts any in-memory JobId. The owner UPDATE succeeds only when the owner row exists and its JobId is null or names an ended job, read under READCOMMITTEDLOCK; `@@ROWCOUNT` is compared with the owner count, and a mismatch throws 50422 `Jobs.OwnerUnavailable`. Enqueue outside a transaction throws `Jobs.EnqueueOutsideTransaction` (TransactionMode.None is refused). The codes are public in JobEnqueueCodes. This replaces the implementer's D-8 (an in-memory null-JobId check).

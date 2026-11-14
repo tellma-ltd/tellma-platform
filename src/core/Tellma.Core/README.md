@@ -776,7 +776,9 @@ contributor once, on first resolution (the realised gate resolves it), then free
   `core.Schedule` × `Save | Delete | Activate`; a default nobody registers changes nothing), or
   `MarkSensitive`, unless `MarkNotSensitive`. A mark of an unregistered pair, and a pair marked both
   ways, are problems; the latter stays sensitive.
-- **Aliases** resolve a renamed resource on `Find` alone, one step, to a registered resource.
+- **Aliases** resolve a renamed resource on `Find` and `FindResource` alone, one step, to a
+  registered resource. `FindResource` returns the resource's registered spelling, so a stored
+  permission naming a former name or another casing resolves to the pair as registered.
 - **Lookup.** `All` is ordered by resource, ignoring case, then by action: the platform's
   actions first, in the order `Read`, `Save`, `Delete`, `Activate`, `Invite`, `Preferences`,
   `Credentials`, `Retry`, `Cancel`, `Resume`, `Share`, `Publish`, `Transfer`, then any other action,
@@ -796,10 +798,56 @@ declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Cor
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
-| `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root | no |
+| `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root; the securables of one resource that take a filter take different filter roots (a permission on every action of the resource binds its filter against the one root they share) | no |
 
 The host's endpoint audit (`host.endpoint-audit`) refuses an endpoint whose
 `SecurableEndpointMetadata` names a pair the registry does not hold, or holds only through an alias.
+
+## Access evaluation
+
+A caller's permissions are a `UserAccess` (in `Tellma.Core.Abstractions`): the grants of every
+membership that has not ended, future ones included, each with its window, the grants of every
+active public role, and the stored permissions that grant nothing, each kept as an `AccessProblem`.
+`UserAccess.Decide` is a pure function of the set and the instant it is given, so a window opening or
+closing needs no reload; `AccessComposition.Compose` is the same composition over a list of grants,
+for "who holds this". The composition: a grant matches a securable `(R, A)` when its resource is `R`
+or `*` and its action is `A` or `*`; when `A` is `Read`, a grant of another action on `R` matches too,
+and so does one on `*`, but only when `R` registers that action (`ActionResourceMap`, frozen from the
+registry and shared by every set), so a grant holding an action on one resource never reads every
+other. A filtered grant never reaches a securable without a filter root; any unfiltered match is unrestricted; otherwise the filters union as
+one leaf per distinct text and stamp, sorted ordinally, then each bespoke criterion of the action
+(`IAccessCriteriaProvider`), then the owner's decision on the same action through the owner's
+navigation. Nothing to union is a denial. The system set is unrestricted on everything; a set without
+a user denies everything.
+
+`UserAccessBuilder` builds a set from the `PermissionRow`s the connect prologue loads. Each row is
+classified by `PermissionClassifier`, in the drift table's order, the first failing check deciding:
+
+| Problem | The row |
+|---|---|
+| `WildcardResourceOnPublicRole` | names the resource `*` on a public role, which reaches every user |
+| `UnknownResource` | names a resource the registry holds under no name or former name |
+| `UnknownAction` | names an action the resource does not register; with the resource `*`, an action no resource registers |
+| `FilterUnsupported` | carries a filter where none binds: the securable has no filter root, the resource is `*`, or the resource's securables that take a filter do not share one root (a filter on any action also reaches `Read`, so it must bind against the same entity there) |
+| `VersionUnsupported` | carries a filter without a Queryex version, or with one this engine does not compile |
+| `FilterInvalid` | carries a filter the engine does not validate against the tenant's schema, as a predicate over the root with a user, no parameters and the `QueryexProfiles.AccessLimits` |
+
+A grant carries its pair as registered, its filter text and role name interned across sets, and its
+window; a public role's grant has none, and a membership that has ended by the build grants nothing.
+`RoleAccessGrant` itself refuses a filter on `*` and a public role's grant on `*`, so a list of grants
+built anywhere else cannot hold either; the build drifts such rows before it would construct one. The
+interner holds at most 65,536 strings and 4 Mi characters, and the memory of reported problems at
+most 16,384; each starts over when full.
+Each distinct filter is validated once per root, text and stamp; exact duplicates are one grant; the
+grants are ordered by role, permission and window, the problems by permission, whatever order the
+rows arrived in. Each problem is counted (`tellma.access.permissions.unresolved`, by `problem`) and
+logged (`PermissionDrift`, event 3101, category `Tellma.Core.Access`) once per tenant, version of the
+tenant's permissions, permission and problem; each build records `tellma.access.set.build.duration`
+and `tellma.access.set.grants` and logs `AccessSetBuilt` (3106) at Debug.
+
+`AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
+`MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
+within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
 
 ## Background jobs
 
@@ -876,7 +924,7 @@ same in a `Persist` batch of its own.
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
-| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, and the securables section of the client metadata. |
+| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
