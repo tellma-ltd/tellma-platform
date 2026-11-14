@@ -763,6 +763,38 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
         public List<Tabled> Items { get; set; } = [];
     }
 
+    /// <summary>One side of a many-to-many pair of mapped collections, for which EF Core adds a join table.</summary>
+    [Table("Linking", Schema = "fixture")]
+    [TableType]
+    public class Linking : TopLevelEntity
+    {
+        public List<Linked> Links { get; set; } = [];
+    }
+
+    /// <summary>The other side of the many-to-many pair.</summary>
+    [Table("Linked", Schema = "fixture")]
+    [TableType]
+    public class Linked : TopLevelEntity
+    {
+        public List<Linking> Linkers { get; set; } = [];
+    }
+
+    /// <summary>A class EF Core maps as owned, stored in a table of shadow keys.</summary>
+    [Owned]
+    public class Home
+    {
+        [MaxLength(50)]
+        public string? Street { get; set; }
+    }
+
+    /// <summary>An entity that owns a collection of homes.</summary>
+    [Table("HomeOwners", Schema = "fixture")]
+    [TableType]
+    public class HomeOwner : TopLevelEntity
+    {
+        public List<Home> Homes { get; set; } = [];
+    }
+
     /// <summary>An entity a configuration gives a shadow column; which column is the test's.</summary>
     [Table("Shadowed", Schema = "fixture")]
     [TableType]

@@ -317,6 +317,32 @@ namespace Tellma.Core.Tests.Data.Metadata
             Assert.StartsWith("Mark Collecting.Items [NotMapped], as every child collection is, and declare CollectingId as a public property of Tabled", problem.Fix, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void A_many_to_many_pair_of_collections_is_refused_once_for_its_join_table()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(Linking), typeof(Linked)).Problems);
+
+            Assert.Equal(
+                "The model maps Linked.Linkers and Linking.Links of Tellma.Core.Tests.Data.Metadata.Malformed.Linked and Tellma.Core.Tests.Data.Metadata.Malformed.Linking as a many-to-many link, for which EF Core adds the join table LinkedLinking with columns no class carries.",
+                problem.Problem);
+            Assert.Equal(
+                "Mark Linked.Linkers and Linking.Links [NotMapped], and store the link as a child entity with a [ParentKey] to one side and a [References] to the other: an entity carries foreign keys, never navigations.",
+                problem.Fix);
+        }
+
+        [Fact]
+        public void An_owned_type_is_refused_once_naming_the_navigation_that_owns_it()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(HomeOwner)).Problems);
+
+            Assert.Equal(
+                "The entity Tellma.Core.Tests.Data.Metadata.Malformed.HomeOwner maps Tellma.Core.Tests.Data.Metadata.Malformed.Home as an owned type through HomeOwner.Homes, whose keys no class carries; the platform maps no owned types.",
+                problem.Problem);
+            Assert.Equal(
+                "Mark HomeOwner.Homes [NotMapped] and remove [Owned] or the OwnsOne/OwnsMany that makes Home owned; to store it, make Home a child entity with a [ParentKey] to its owner.",
+                problem.Fix);
+        }
+
         [Theory]
         [InlineData(typeof(ShadowedConfiguration), "Hidden")]
         [InlineData(typeof(ShadowedNodeConfiguration), "Node")]

@@ -219,7 +219,9 @@ a shadow property the platform does not declare. The declared ones are the perio
 `core.Jobs` (`StateJson`, `LeaseToken`, `ConfirmedKeys`) and `core.Blobs` (`StorageKey`,
 `Sha256`), which the query language withholds like the period columns. Any other is refused, naming the column: above all
 the shadow foreign key EF Core adds for a navigation without a foreign-key property, since an
-entity carries foreign keys and never navigations.
+entity carries foreign keys and never navigations. A many-to-many pair of mapped collections, whose
+join table no class carries, and an owned type, whose keys no class carries, are each refused once,
+naming the navigations behind them.
 
 ### The table-type binder
 
