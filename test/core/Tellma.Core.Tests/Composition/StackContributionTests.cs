@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Composition;
 using Tellma.Core.Data;
 using Tellma.Core.Tests.Data.Model;
@@ -31,10 +32,10 @@ namespace Tellma.Core.Tests.Composition
 
             // Core's own entities come first, each followed by the children its collections carry.
             Assert.Equal(
-                [typeof(User), typeof(RoleMembership), typeof(Role), typeof(Permission), typeof(Job), typeof(Schedule), typeof(TestUser), typeof(MyCenter), typeof(TestJob)],
+                [typeof(User), typeof(RoleMembership), typeof(Role), typeof(Permission), typeof(Notification), typeof(Job), typeof(Schedule), typeof(TestUser), typeof(MyCenter), typeof(TestJob)],
                 definition.EntityTypes);
             Assert.Equal(typeof(object), record.Entities.Single(static entity => entity.EntityType == typeof(Center)).ServiceType);
-            Assert.Equal(["core", "core", "core", "core", "first", "first", "second", "second"], record.Entities.Select(static entity => entity.Owner.Name));
+            Assert.Equal(["core", "core", "core", "core", "core", "first", "first", "second", "second"], record.Entities.Select(static entity => entity.Owner.Name));
         }
 
         [Fact]

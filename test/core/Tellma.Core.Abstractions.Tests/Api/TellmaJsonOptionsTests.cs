@@ -79,6 +79,7 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(ParentIdsRequest))]
         [InlineData(typeof(DeleteByQueryRequest))]
         [InlineData(typeof(AccessHoldersRequest))]
+        [InlineData(typeof(AccessCheckRequest))]
         [InlineData(typeof(AffectedResult))]
         [InlineData(typeof(JobAccepted))]
         [InlineData(typeof(SecurableSummary))]
