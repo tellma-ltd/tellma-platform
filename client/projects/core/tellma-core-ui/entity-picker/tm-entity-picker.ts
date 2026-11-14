@@ -2669,15 +2669,15 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.liveText.set('');
       const removeTask = this.pendingTasks.add();
       const timer = setTimeout(() => {
-        this.cancelAnnounceRestore = null;
         this.liveText.set(message); // schedules its render before the task ends
-        removeTask();
+        cancel(); // clearing a timer that already ran is a no-op
       });
-      this.cancelAnnounceRestore = () => {
+      const cancel = (): void => {
         this.cancelAnnounceRestore = null;
         clearTimeout(timer);
         removeTask();
       };
+      this.cancelAnnounceRestore = cancel;
       return;
     }
     this.liveText.set(message);
