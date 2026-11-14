@@ -4,8 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Access;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Crud.Checks;
@@ -141,6 +143,18 @@ namespace Tellma.Core.Tests.Crud
         }
 
         [Fact]
+        public async Task An_arguments_record_the_json_contract_refuses_fails()
+        {
+            IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync<CollidingGadgetService>(static contribution => contribution.Entity<SmGizmo>());
+
+            string problem = Assert.Single(Problems(problems, CoreCheckNames.StackActions));
+            Assert.StartsWith(
+                $"The entity action 'colliding' of {typeof(CollidingGadgetService).FullName}.CollidingAsync takes the arguments {typeof(CollidingArguments).FullName}, which the platform cannot read from JSON: ",
+                problem,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task An_export_action_passes_on_a_stack_without_export_and_fails_on_one_with_it()
         {
             const StackOperations NoExport = StackOperations.Query | StackOperations.Details | StackOperations.Save | StackOperations.Delete;
@@ -216,13 +230,35 @@ namespace Tellma.Core.Tests.Crud
         }
 
         [Fact]
-        public async Task A_persist_effect_for_an_entity_no_stack_owns_fails()
+        public async Task A_component_for_an_entity_no_stack_owns_fails()
         {
-            IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync<GadgetService<SmGadget>>(static contribution => contribution.PersistEffect<SmCeiling>(typeof(GadgetRules<>)));
+            IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync<GadgetService<SmGadget>>(static contribution => contribution
+                .PersistEffect<SmCeiling>(typeof(GadgetRules<>))
+                .Validator<SmCeiling>(typeof(GadgetRules<>))
+                .NamedFilters<SmCeiling>(typeof(GadgetFilters<>)));
 
-            Assert.Contains(
-                $"The feature 'sm' attaches the persist effect Tellma.Core.Tests.Crud.GadgetRules<TGadget> to {typeof(SmCeiling).FullName}, which no stack owns, so its ContributeAsync never runs.",
+            Assert.Equal(
+                [
+                    $"The feature 'sm' attaches the persist effect Tellma.Core.Tests.Crud.GadgetRules<TGadget> to {typeof(SmCeiling).FullName}, which no stack owns, so its ContributeAsync never runs.",
+                    $"The feature 'sm' attaches the validator Tellma.Core.Tests.Crud.GadgetRules<TGadget> to {typeof(SmCeiling).FullName}, which no stack owns, so it never runs.",
+                    $"The feature 'sm' attaches the named filter contributor Tellma.Core.Tests.Crud.GadgetFilters<TGadget> to {typeof(SmCeiling).FullName}, which no stack owns, so it never runs.",
+                ],
                 Problems(problems, CoreCheckNames.StackComponents));
+        }
+
+        [Fact]
+        public async Task A_non_generic_component_whose_entity_only_derived_stacks_own_fails()
+        {
+            // Every stack's leaf is a top-level entity, but none is the base itself.
+            IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync<GadgetService<SmGadget>>(static contribution => contribution
+                .Validator<TopLevelEntity, EveryEntityRules>());
+
+            string problem = Assert.Single(Problems(problems, CoreCheckNames.StackComponents));
+            Assert.StartsWith(
+                $"The validator {typeof(EveryEntityRules).FullName}, attached by the feature 'sm' to {typeof(TopLevelEntity).FullName}, is not generic and no stack runs that entity, so it runs on none of the stacks of its derived entities (",
+                problem,
+                StringComparison.Ordinal);
+            Assert.Contains(typeof(SmGadget).FullName!, problem, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -237,6 +273,11 @@ namespace Tellma.Core.Tests.Crud
             Assert.Equal(
                 [$"The service {typeof(PermissionsGadgetService).FullName} declares the extra 'permissions', which the platform produces itself."],
                 Problems(permissions, CoreCheckNames.StackComponents));
+
+            IReadOnlyList<CompositionProblem> contributed = await StackScenarios.CheckAsync(static contribution => contribution.DetailsContributor<SmGadget>(typeof(PermissionsDetails<>)));
+            Assert.Equal(
+                [$"The details contributor Tellma.Core.Tests.Crud.PermissionsDetails<{typeof(SmGadget).FullName}> declares the extra 'permissions', which the platform produces itself."],
+                Problems(contributed, CoreCheckNames.StackComponents));
         }
 
         [Fact]
@@ -266,13 +307,14 @@ namespace Tellma.Core.Tests.Crud
                 .NamedFilters<SmGadget>(typeof(BrokenFilters<>)));
             List<string> found = Problems(problems, CoreCheckNames.StackProjections);
 
-            Assert.Equal(6, found.Count);
+            Assert.Equal(7, found.Count);
             Assert.StartsWith("The named filter 'unknown' of the stack of sm.SmGadget, 'Nope = 1', does not validate against the query schema: ", found[0], StringComparison.Ordinal);
             Assert.Equal("The named filter 'nowhere' of the stack of sm.SmGadget goes via 'Nowhere', whose segment 'Nowhere' is not a navigation of the entity it has reached.", found[1]);
             Assert.Equal("The named filter 'sideways' of the stack of sm.SmGadget tests the existence of 'sm.SmGadgetPart' through 'Gizmo', which is not a navigation of sm.SmGadgetPart to sm.SmGadget.", found[2]);
             Assert.StartsWith("The default select of the stack of sm.SmProjection, 'Id, Nope', does not validate against the query schema: ", found[3], StringComparison.Ordinal);
-            Assert.StartsWith("The default ordering of the stack of sm.SmProjection, 'Missing desc', does not validate against the query schema: ", found[4], StringComparison.Ordinal);
-            Assert.Equal("The details expansion 'Nowhere.Else' of the stack of sm.SmProjection names 'Nowhere', which is neither a navigation nor a child collection of sm.SmProjection.", found[5]);
+            Assert.StartsWith("The related select of the stack of sm.SmProjection, 'Id, Absent', does not validate against the query schema: ", found[4], StringComparison.Ordinal);
+            Assert.StartsWith("The default ordering of the stack of sm.SmProjection, 'Missing desc', does not validate against the query schema: ", found[5], StringComparison.Ordinal);
+            Assert.Equal("The details expansion 'Nowhere.Else' of the stack of sm.SmProjection names 'Nowhere', which is neither a navigation nor a child collection of sm.SmProjection.", found[6]);
         }
 
         // --- core.confirmations ---
@@ -361,6 +403,37 @@ namespace Tellma.Core.Tests.Crud
             Assert.Contains("The securable 'sm.Inbox:Purge', which the action 'purge' of the routed service 'inbox' requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
             Assert.Contains("The securable 'sm.SmGadgetPartNote:Read', which the child query surface of sm.SmGadgetPartNote requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
             Assert.All(problems, static problem => Assert.Equal(CoreCheckNames.StackSecurables, problem.Source));
+        }
+
+        [Fact]
+        public async Task The_audit_derives_the_standard_operations_apart_from_the_contributor()
+        {
+            // A registry holding every securable the stacks' contributor registers except the
+            // gadget's Delete stands for a contributor that lost a standard operation: the audit,
+            // reading the stack's segments, still requires it.
+            await using ServiceProvider provider = StackScenarios.Gadgets().BuildServiceProvider(validateScopes: true);
+            IStackRegistry stacks = provider.GetRequiredService<IStackRegistry>();
+            SecurableDescriptor[] kept = [.. provider.GetRequiredService<ISecurableRegistry>().All
+                .Where(static securable => !(securable.Resource == StackModel.Gadgets && securable.Action == "Delete"))];
+            SecurableRegistry securables = SecurableRegistryTests.Compose(("sm", builder => Keep(builder, kept)));
+
+            List<CompositionProblem> problems = [];
+            new StackSecurablesCheck().Audit(stacks, securables, problems);
+
+            Assert.Equal(
+                ["The securable 'sm.SmGadget:Delete', which the stack of sm.SmGadget requires, is not registered, so no grant can name it."],
+                problems.Select(static problem => problem.Problem));
+        }
+
+        /// <summary>Registers securables as they were registered.</summary>
+        /// <param name="builder">The builder.</param>
+        /// <param name="securables">The securables.</param>
+        private static void Keep(SecurableRegistryBuilder builder, IEnumerable<SecurableDescriptor> securables)
+        {
+            foreach (SecurableDescriptor securable in securables)
+            {
+                _ = builder.Add(securable.Resource, securable.Action, securable.FilterRoot, owner: securable.Owner);
+            }
         }
 
         /// <summary>The problems of one check.</summary>

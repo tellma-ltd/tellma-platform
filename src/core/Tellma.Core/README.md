@@ -846,8 +846,9 @@ tenant scope:
 - **Routed services and enlistments.** Each routed service's `[ApiAction]` methods are its actions,
   each secured by a declared `Resource` and `Action`, or member-only; `Enlistments` is every declared
   `IEnlists<TTarget>` edge between stacks, from any registered writer.
-- **Ownership.** The registry owns every action descriptor and the method behind it; `OwnerOf`
-  maps a table, root or child, to its stack.
+- **Ownership.** The registry owns every action descriptor and the method behind it, matched by
+  reference; the method record says whether its last parameter is a `CancellationToken`, which
+  the invoker binds to the request's token. `OwnerOf` maps a table, root or child, to its stack.
 
 `StackSecurableContributor` registers each stack's securables: `Read` (filter root the resource,
 or none for a cacheable entity) when it queries, serves details or exports; `Save` when it saves or
@@ -860,12 +861,12 @@ feature.
 |---|---|---|
 | `core.stacks` | two features register a stack over one entity and neither requires the other, or one feature registers it twice differently; a stack is over a child entity, an abstract or keyless class, or an entity the tenant model does not map; its service does not derive from `EntityService<TLeaf, TKey>` or cannot close over the leaf; its operations include `Save` without `Details`, `Import` without `Query`, `Details` and `Save`, or `Export` without `Query`; a `[Stack]` ceiling is not positive (naming the stack and the ceiling); a resource segment, a child surface's or a routed service's first route segment, is not kebab-case or is taken twice, ignoring case; a child has no navigation through its parent key; an `EntityService` registered as a service, or one serving an entity whose stack runs the default service, that no stack runs | no |
 | `core.stack-actions` | an action's name is not kebab-case segments joined by `/`, is taken twice in a stack, or takes a segment the stack serves itself (`query`, `get`, `save`, `delete`, `export`, `import` and the rest its operations and capabilities give it); a method is not a public, non-generic instance method, has an unsupported signature or result, or carries both attributes; a single-target action returns nothing; an `[EntityAction]` is declared on a companion or a routed service; a companion has no `[ApiAction]`; an action of a stack or companion names another resource; a member-only action names a securable; a routed service has no `[ApiRoute]`, a malformed route, or an action with neither a `Resource` nor `MemberOnly`; an `[EntityRef]` argument names no stack with `Query` | no |
-| `core.stack-components` | a companion or component is attached to an entity no stack owns, cannot close over the stack's leaf, or does not implement its contract once closed; a service or details contributor declares an extra twice across its class and base classes, or declares `permissions`, which the platform produces; a named filter contributor cannot be created or read at startup, names a filter outside `^[a-z][a-z0-9-]*$`, gives one no tree, or shares a name with another | no |
+| `core.stack-components` | a companion or component is attached to an entity no stack owns, or, not generic, to an entity only derived entities' stacks own; it cannot close over the stack's leaf, or does not implement its contract once closed; a service or details contributor declares an extra twice across its class and base classes, or declares `permissions`, which the platform produces; a named filter contributor cannot be created or read at startup, names a filter outside `^[a-z][a-z0-9-]*$`, gives one no tree, or shares a name with another | no |
 | `core.stack-projections` | a stack's or child surface's default select, related select or default ordering, or a named filter's text, does not validate against the query schema; a details expansion names a segment that is neither a navigation nor a child collection; a named filter goes via a non-navigation, or tests the existence of an entity through a navigation that does not lead back to the filtered one | no |
 | `core.confirmations` | a confirmation key is not dotted PascalCase, a feature declares it twice, two features declare it, or no neutral shared `Strings` resource of a composed feature declares it | no |
 | `core.entity-pipeline` | `IEntityPipelineFactory` or an `IEntityPipeline<,>` is registered with a type, an instance or a factory that is not the platform's pipeline | no |
 | `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
-| `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered (judged only when the securable registry builds) | no |
+| `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
 
 ## Securables
 

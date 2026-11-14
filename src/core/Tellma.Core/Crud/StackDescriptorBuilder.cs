@@ -161,9 +161,10 @@ namespace Tellma.Core.Crud
             }
         }
 
+        // The segments follow spec 0015 §2.4's table.
+
         /// <summary>
-        ///     The standard segments a stack projects (spec 0015 §2.4's table), which its declared
-        ///     actions may not take.
+        ///     The standard segments a stack projects, which its declared actions may not take.
         /// </summary>
         /// <param name="operations">The stack's operations.</param>
         /// <param name="capabilities">The stack's capabilities.</param>
@@ -571,9 +572,11 @@ namespace Tellma.Core.Crud
             return string.Join(", ", columns.Distinct(StringComparer.Ordinal));
         }
 
+        // The derived related projection follows spec 0012 §2.5.
+
         /// <summary>
         ///     The related projection: the <see cref="RelatedSelectAttribute" /> columns, else the id,
-        ///     the display-name columns, the code and every avatar blob column (spec 0012 §2.5).
+        ///     the display-name columns, the code and every avatar blob column.
         /// </summary>
         /// <param name="metadata">The entity metadata.</param>
         /// <returns>The projection's columns, in order.</returns>
@@ -733,5 +736,12 @@ namespace Tellma.Core.Crud
     /// <summary>The method behind a declared action, and the class it is reached through.</summary>
     /// <param name="Handler">The class the invoker resolves: the stack's service, the closed companion or the routed service.</param>
     /// <param name="Method">The method.</param>
-    internal sealed record ActionMethod(Type Handler, MethodInfo Method);
+    internal sealed record ActionMethod(Type Handler, MethodInfo Method)
+    {
+        /// <summary>
+        ///     Whether the method's last parameter is a <see cref="CancellationToken" />, which the
+        ///     invoker binds to the request's own token, after the body when the method takes one.
+        /// </summary>
+        public bool TakesCancellationToken { get; } = Method.GetParameters() is [.., { ParameterType: var last }] && last == typeof(CancellationToken);
+    }
 }

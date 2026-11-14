@@ -6,6 +6,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
@@ -55,6 +56,7 @@ namespace Tellma.Core.Tests.Crud
     [Table("Projections", Schema = "sm")]
     [TableType]
     [DefaultSelect("Id, Nope")]
+    [RelatedSelect("Id, Absent")]
     [DetailsExpand("CreatedBy", "Nowhere.Else")]
     [Stack(DefaultOrderBy = "Missing desc")]
     public class SmProjection : TopLevelEntity
@@ -235,6 +237,50 @@ namespace Tellma.Core.Tests.Crud
     /// <param name="factory">The pipeline factory.</param>
     [DetailsExtras("permissions")]
     public sealed class PermissionsGadgetService(IEntityPipelineFactory factory) : EntityService<SmGadget>(factory);
+
+    /// <summary>A details contributor that declares the platform's own extra.</summary>
+    /// <typeparam name="TGadget">The gadget leaf.</typeparam>
+    [DetailsExtras("permissions")]
+    public sealed class PermissionsDetails<TGadget> : IDetailsContributor<TGadget>
+        where TGadget : SmGadget
+    {
+        /// <inheritdoc />
+        public void Contribute(DetailsPlan<TGadget> plan, IReadOnlySet<string> requested)
+        {
+        }
+    }
+
+    /// <summary>Arguments whose two properties take one JSON name, which no JSON contract can carry.</summary>
+    /// <param name="First">The first.</param>
+    /// <param name="Second">The second.</param>
+    public sealed record CollidingArguments([property: JsonPropertyName("value")] int First, [property: JsonPropertyName("value")] int Second);
+
+    /// <summary>A gadget service whose action takes arguments the JSON contract refuses.</summary>
+    /// <param name="factory">The pipeline factory.</param>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "The fixture's actions are instance methods by contract.")]
+    [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "The signature is what the fixture declares; the platform reads it, never runs it.")]
+    public sealed class CollidingGadgetService(IEntityPipelineFactory factory) : EntityService<SmGadget>(factory)
+    {
+        /// <summary>Arguments with two properties of one JSON name.</summary>
+        /// <param name="context">The context.</param>
+        /// <param name="arguments">The arguments.</param>
+        /// <returns>A task.</returns>
+        [EntityAction("colliding")]
+        public Task CollidingAsync(ActionContext<SmGadget, int> context, CollidingArguments arguments)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A validator written against every top-level entity, which no stack runs as its leaf.</summary>
+    public sealed class EveryEntityRules : IEntityValidator<TopLevelEntity>
+    {
+        /// <inheritdoc />
+        public Task ValidateAsync(SaveContext<TopLevelEntity> context)
+        {
+            return Task.CompletedTask;
+        }
+    }
 
     /// <summary>A companion that declares an entity action and collides with the service's action.</summary>
     /// <typeparam name="TGadget">The gadget leaf.</typeparam>

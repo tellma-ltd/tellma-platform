@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 using Tellma.Core.Tests.Infrastructure;
+using Tellma.Testing.Entities;
 
 namespace Tellma.Core.Tests.Crud
 {
@@ -235,6 +236,28 @@ namespace Tellma.Core.Tests.Crud
                 ],
                 securables.ForResource(StackModel.Gadgets).Concat(securables.ForResource(StackModel.Parts)).Concat(securables.ForResource(StackModel.Notes)));
             Assert.Equal(new SecurableDescriptor("sm.Inbox", "Purge", null, false, "sm", null), securables.Find("sm.Inbox", "Purge"));
+        }
+
+        [Fact]
+        public async Task A_cacheable_stack_reads_without_a_filter_and_a_read_only_stack_registers_its_read_alone()
+        {
+            ServiceCollection services = [];
+            _ = FixtureComposition.Compose(services);
+            await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+            ISecurableRegistry securables = provider.GetRequiredService<ISecurableRegistry>();
+
+            // --- One cached list serves every reader, so its read takes no filter root ---
+            Assert.Equal(
+                [
+                    new SecurableDescriptor("fixture.Lookup", "Read", null, false, "fixture", null),
+                    new SecurableDescriptor("fixture.Lookup", "Save", "fixture.Lookup", false, "fixture", null),
+                    new SecurableDescriptor("fixture.Lookup", "Delete", "fixture.Lookup", false, "fixture", null),
+                    new SecurableDescriptor("fixture.Lookup", "Activate", "fixture.Lookup", false, "fixture", null),
+                ],
+                securables.ForResource("fixture.Lookup"));
+
+            // --- Query and details only: the read and nothing else ---
+            Assert.Equal([new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null)], securables.ForResource("core.Job"));
         }
     }
 }

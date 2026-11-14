@@ -304,7 +304,8 @@ namespace Tellma.Core.Crud
 
         /// <summary>
         ///     Closes each component over the leaf of every stack it applies to, in registration order:
-        ///     the stacks whose leaf is the component's entity or derives from it.
+        ///     the stacks whose leaf is the component's entity or derives from it. A component that
+        ///     reaches no stack is a problem, since it would never run.
         /// </summary>
         /// <param name="record">The realised composition.</param>
         /// <param name="stacks">The stacks.</param>
@@ -317,16 +318,19 @@ namespace Tellma.Core.Crud
                 string named = TypeDisplay.Qualified(component.ComponentType);
                 List<ComposedStack> applicable = [.. stacks.Where(stack => component.EntityType.IsAssignableFrom(stack.Leaf))];
 
-                // --- A transactional participant over no stack would never run ---
-                if (applicable.Count == 0 && component.Kind == ComponentKind.PersistEffect)
+                // --- A component over no stack would never run ---
+                if (applicable.Count == 0)
                 {
+                    string never = component.Kind == ComponentKind.PersistEffect ? "its ContributeAsync never runs" : "it never runs";
                     problems.Add(new CompositionProblem(
                         CoreCheckNames.StackComponents,
-                        $"The feature '{component.Owner.Name}' attaches the {kind} {named} to {TypeDisplay.Qualified(component.EntityType)}, which no stack owns, so its ContributeAsync never runs.",
-                        "Register the entity's stack, or attach the effect to an entity a stack owns."));
+                        $"The feature '{component.Owner.Name}' attaches the {kind} {named} to {TypeDisplay.Qualified(component.EntityType)}, which no stack owns, so {never}.",
+                        "Register the entity's stack, or attach the component to an entity a stack owns."));
                     continue;
                 }
 
+                // Whether the component reached a stack, closed or refused with a problem of its own.
+                bool reached = false;
                 foreach (ComposedStack stack in applicable)
                 {
                     // A component that is not generic runs on its own entity's stack alone; on a
@@ -338,6 +342,8 @@ namespace Tellma.Core.Crud
                     {
                         continue;
                     }
+
+                    reached = true;
 
                     if (Close(component.ComponentType, component.EntityType, stack.Leaf, out string? refusal) is not Type closed)
                     {
@@ -362,6 +368,16 @@ namespace Tellma.Core.Crud
                     {
                         stack.Components.Add(new ComposedComponent(component.Kind, closed, component.Owner));
                     }
+                }
+
+                // --- A non-generic component whose entity only derived entities' stacks own ---
+                if (!reached)
+                {
+                    string stacked = string.Join(", ", applicable.Select(static stack => TypeDisplay.Qualified(stack.Leaf)));
+                    problems.Add(new CompositionProblem(
+                        CoreCheckNames.StackComponents,
+                        $"The {kind} {named}, attached by the feature '{component.Owner.Name}' to {TypeDisplay.Qualified(component.EntityType)}, is not generic and no stack runs that entity, so it runs on none of the stacks of its derived entities ({stacked}).",
+                        $"Attach the component to the entity of the stack it is for, or make it generic over one type parameter constrained to {TypeDisplay.Short(component.EntityType)}."));
                 }
             }
         }

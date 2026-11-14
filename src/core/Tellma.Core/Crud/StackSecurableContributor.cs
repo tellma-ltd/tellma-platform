@@ -46,10 +46,12 @@ namespace Tellma.Core.Crud
             }
         }
 
+        // The standard operations' actions follow spec 0015 §2.4's table.
+
         /// <summary>
         ///     The securable actions of a stack, each once with its filter root: the standard
-        ///     operations' (spec 0015 §2.4), each entity action's and each API action's of the service
-        ///     and its companions.
+        ///     operations', each entity action's and each API action's of the service and its
+        ///     companions.
         /// </summary>
         /// <param name="stack">The stack.</param>
         /// <returns>The distinct actions with their filter roots, in first-registered order.</returns>

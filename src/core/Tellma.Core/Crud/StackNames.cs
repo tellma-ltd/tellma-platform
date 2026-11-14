@@ -99,17 +99,17 @@ namespace Tellma.Core.Crud
 
         /// <summary>One kebab-case segment.</summary>
         /// <returns>The pattern.</returns>
-        [GeneratedRegex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+        [GeneratedRegex("^[a-z][a-z0-9]*(-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
         private static partial Regex SegmentPattern();
 
         /// <summary>A named filter's name.</summary>
         /// <returns>The pattern.</returns>
-        [GeneratedRegex("^[a-z][a-z0-9-]*$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+        [GeneratedRegex("^[a-z][a-z0-9-]*\\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
         private static partial Regex NamedFilterPattern();
 
         /// <summary>A dotted PascalCase key.</summary>
         /// <returns>The pattern.</returns>
-        [GeneratedRegex("^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)+$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+        [GeneratedRegex("^[A-Z][A-Za-z0-9]*(\\.[A-Z][A-Za-z0-9]*)+\\z", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
         private static partial Regex ConfirmationKeyPattern();
     }
 }

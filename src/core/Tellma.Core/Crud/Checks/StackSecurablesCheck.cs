@@ -72,16 +72,34 @@ namespace Tellma.Core.Crud.Checks
             ArgumentNullException.ThrowIfNull(problems);
             foreach (StackDescriptor stack in stacks.Stacks)
             {
-                foreach ((string action, _) in StackSecurableContributor.Securables(stack))
+                // --- The standard operations: each segment the stack projects, through the table of
+                // segments to securable actions (spec 0015 §2.4), kept apart from the mapping the
+                // stacks' contributor registers from, so a gap in either is caught ---
+                IEnumerable<string> standard = StackDescriptorBuilder.ProjectedSegments(stack.Operations, stack.Capabilities)
+                    .Select(segment => ActionOfSegment(stack, segment))
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal);
+                foreach (string action in standard)
                 {
                     Require(securables, stack.Resource, action, $"the stack of {stack.Resource}", problems);
                 }
 
-                foreach (ApiActionDescriptor action in stack.Actions.OfType<ApiActionDescriptor>())
+                // --- The declared actions: an entity action's own action, an API action's securable ---
+                foreach (ActionDescriptor action in stack.Actions)
                 {
-                    if (action.Securable is SecurableRef securable)
+                    switch (action)
                     {
-                        Require(securables, securable.Resource, securable.Action, $"the action '{action.Name}' of {stack.Resource}", problems);
+                        case EntityActionDescriptor entity:
+                            Require(securables, stack.Resource, entity.Action, $"the action '{action.Name}' of {stack.Resource}", problems);
+                            break;
+
+                        case ApiActionDescriptor { Securable: SecurableRef securable }:
+                            Require(securables, securable.Resource, securable.Action, $"the action '{action.Name}' of {stack.Resource}", problems);
+                            break;
+
+                        // A member-only API action requires no securable.
+                        default:
+                            break;
                     }
                 }
             }
@@ -103,6 +121,24 @@ namespace Tellma.Core.Crud.Checks
             }
         }
 
+        /// <summary>The securable action a standard segment requires.</summary>
+        /// <param name="stack">The stack projecting it, for a segment the table does not know.</param>
+        /// <param name="segment">The segment.</param>
+        /// <returns>The action.</returns>
+        /// <exception cref="InvalidOperationException">The segment has no securable action.</exception>
+        private static string ActionOfSegment(StackDescriptor stack, string segment)
+        {
+            return segment switch
+            {
+                "query" or "get" or "get-by-ids" or "all" or "get-by-parent-ids"
+                    or "export" or "export/start" or "export-for-import" or "export-for-import/start" => AccessActions.Read,
+                "save" or "inspect-import" or "import" or "import/start" => AccessActions.Save,
+                "delete" or "delete-by-query" or "delete-with-descendants" => AccessActions.Delete,
+                "activate" or "deactivate" => AccessActions.Activate,
+                _ => throw new InvalidOperationException($"The stack of {stack.Resource} projects the segment '{segment}', which has no securable action."),
+            };
+        }
+
         /// <summary>Reports a securable the registry does not hold.</summary>
         /// <param name="securables">The securable registry.</param>
         /// <param name="resource">The resource.</param>
@@ -116,7 +152,7 @@ namespace Tellma.Core.Crud.Checks
                 problems.Add(new CompositionProblem(
                     Name,
                     $"The securable '{resource}:{action}', which {requiredBy} requires, is not registered, so no grant can name it.",
-                    "Keep the stack registry's securable contributor composed; register a routed service's securable with contribution.Securables(...)."));
+                    "The stack registry registers every stack's, action's, routed service's and child surface's securable itself: keep its securable contributor composed and unreplaced, and check that no other registration contradicts the pair (another filter root, owner or feature), which the securables check reports."));
             }
         }
     }
