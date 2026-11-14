@@ -100,11 +100,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-058 | pc-f2 | pc/PC-058 | released (after PC-054 285e993): re-merge + integrate | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
 | PC-062 | pc-f | pc/PC-062 | held 2a34bc69 (fix1 924fcd3: R1-1..4 fixed; D7 reworded, D14 narrowed; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | held 11a57e0 (fix1 2de32d7 + responses f5174b3; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-031 | pc-3 | pc/PC-031 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 | PC-055 | pc-2 | pc/PC-055 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-040 | pc-f2 | pc/PC-040 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 
 ## Fix items
 
@@ -141,11 +141,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F30 | CI red on db81630 (every dotnet job): dotnet restore Tellma.slnx MSB3202, distributions/acme/test/Tellma.Distro.Acme.E2E/*.csproj missing; .gitignore *.e2e (VS trace files) matches the folder case-insensitively on Windows, so PC-085 never committed the project | done (integrated 9a1754d, CI 43488423725 green; fast-forward; negations !*.e2e/ and !*.E2E/ replace the single Identity one; Acme E2E csproj + README added (no sources); all 81 slnx paths tracked; clean-clone restore/build/format green) | 9a1754d (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-075 returns held |
 | PC-F31 | Core integration flake: SqlQueryTextTests.A_commands_span_carries_no_query_text asserts over every SqlClient span in the process, so other classes' CREATE/ALTER DATABASE spans fail it under the full suite (seen by PC-033 integrate, PC-038 R2, PC-043 R2); scope the listener to the test's own connection or activity | done: integrated a0e7adc (CI 43551466443 green); 1 block (refused chained sleep; notified) | e26a10b, 9ca33fb, e558648, a0e7adc (pc) |  |  |
 | PC-F32 | CI red on 8c086c4 and 70326bb (client unit, core chromium): tm-client-store.spec.ts:833 "the boot step sweeps every user first when the boot record names no user, then records the user" got 2 events, expected 1 store.changed (PC-075's test; no client change since green d316b10; both runs 23:39-23:45 UTC, suspect time/ordering) | done: integrated 362aabc (CI 43547014788 green) | 00fc427, 916ec2d, 1e81373, 362aabc (pc) |  | line restarted 2026-11-14; held merges released one at a time: PC-F31 → PC-030 → PC-044 → PC-054 → PC-058 |
-| PC-F33 | Client flake (CI twice: 3077eb7, a2ebe0a): tm-grid-header-nav.spec.ts:769 and :797, "tm-grid row-end column takes a right-click or a long-press …" (expected false to be true; both together; green on retry) | ready, waiting for release (80fdc8c pushed; slot pc-4 lent to PC-F35, so switch back before integrating) | d6e699d, 80fdc8c (pc/PC-F33) |  | impl = ae842da6eeee1e322 (resumed, Opus; the ledger had this id as PC-051's implementer, but it was the PC-F21 fix2 verifier); r1 ad783ba6a385139de |
+| PC-F33 | Client flake (CI twice: 3077eb7, a2ebe0a): tm-grid-header-nav.spec.ts:769 and :797, "tm-grid row-end column takes a right-click or a long-press …" (expected false to be true; both together; green on retry) | merge + integrate (held: line stopped on PC-F38), pc-4, ae842da6eeee1e322 | d6e699d, 80fdc8c (pc/PC-F33) |  | impl = ae842da6eeee1e322 (resumed, Opus; the ledger had this id as PC-051's implementer, but it was the PC-F21 fix2 verifier); r1 ad783ba6a385139de |
 | PC-F34 | Long-press observer (tellma-core-ui menu/internal/long-press.ts:130-132, 157) cancels a hold on any window scroll, including unrelated scrollers (an auto-scrolling log, a carousel), so a user's hold opens nothing; cancel only when the scrolled node is the document or an ancestor of the observed element, with a tm-menu.spec test for each case (PC-F33 R1-1) | todo (low) | | | |
 | PC-F35 | CI red on 6f87f63 (client, PR-tier e2e chromium; CI fails on flaky): search-field.spec.ts:32 "the clear button clears, emits and refocuses; Mod+Z brings the text back", expected the emit log to end "jed","" but got ["j",""] (5.4 s; the retry passed). PC-030's new test | done (integrated 8b39d28; its client CI jobs green; run 43567104257 red only on integration-windows, PC-F36) | 7dfcd25, f15c258, 8b39d28 (pc) | | stop the line; PC-044 holds; queue after it: PC-054, PC-058, PC-F33 |
 | PC-F36 | CI red on 8b39d28 (integration-windows; ubuntu integration green): Tellma.Core.IntegrationTests RegistryCatalogTests.A_missing_catalog_fails_startup_in_Development_and_starts_not_ready_elsewhere, Assert.Throws: no exception thrown (17 ms); PC-024's test, green on the 11 earlier runs; the change under test was client-only, so it is a flake | done (integrated 67d65bb, CI 43577169711 green on all jobs; R1 0/0/2 fixed: three-valued existence check, pure decision function; revoked-permission case has no integration test, LocalDB cannot create such a login) | 5fd775b, e854585, cbf3b03, 67d65bb (pc) | | stop the line; all-checks-passed stayed green because it does not cover integration-windows |
 | PC-F37 | tree-grid showcase story switches contentKey (a/b toggle, depth select) over one shared rows array, against the D-077 contract; it works only because its lazy children are already loaded; hand the story a fresh array per switch (PC-054 integrator note) | todo (low) | | | |
+| PC-F38 | CI red on 821a6cf (client e2e chromium + client-windows unit): entity-multi-picker.spec.ts:105 keyboard-only add/toggle-remove/chip removal (ltr failed twice, rtl flaky; active option "Supplier 03" where "Bob Stone"/"Supplier 01" was expected) and tm-entity-multi-picker.spec.ts maxItems "a refused message repeated is announced" (live region ''); PC-058's tests, green in its local gate | impl (2026-11-14), pc-f (borrowed from held PC-062), fix-PC-F38 = impl-PC-058 a12fa2f0561a8c281 (resumed, Opus) | | | stop the line; PC-F33 told to hold |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -279,7 +280,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-037 | 0012-e | 1 | done (integrated 620e2c9, CI 43438810750 green) | 79c94a2, 30c3508, e09c4db, 0b683ab, 491773d, 63479b9, 620e2c9 (pc) |  |  |
 | PC-038 | 0013-d | 1 | done (integrated c18780c, CI 43391353328 green) | 57575e0, b3ac84e, ac5c5b6, 9e82c32, c18780c (pc) |  |  |
 | PC-039 | 0014-b | 1 | done (integrated db62c09, CI 43447738414 green) | be9c828, 8447934, bcb367c, c251cc7, 609ee5e, db62c09 (pc) |  |  |
-| PC-040 | 0012-g | 1 | todo | | | |
+| PC-040 | 0012-g | 1 | impl | | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | done 8c086c4 (CI green at 362aabc after PC-F32; the red run on 8c086c4 was PC-F32's client flake) | 1ee46fa, 0af47f3, 8633134, 8c086c4 (pc) |  |  |
@@ -297,7 +298,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-055 | 0018-a | 1 | impl | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
-| PC-058 | 0010-e2 | 1 | held | 78a4afa, d435e7a, d36a847 (pc/PC-058) |  |  |
+| PC-058 | 0010-e2 | 1 | integrated 821a6cf (CI 43588563023 red: its multi-picker e2e and Windows unit, PC-F38) | 78a4afa, d435e7a, d36a847 (pc/PC-058), 7c113e2, 821a6cf (pc) |  |  |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
