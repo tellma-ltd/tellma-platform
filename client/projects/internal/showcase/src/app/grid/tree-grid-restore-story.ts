@@ -182,12 +182,16 @@ export class TreeGridRestoreStory {
   readonly remembered = signal<ReadonlySet<TmRowId>>(REMEMBERED);
   /** Each `loadChildren` call's row ids, in call order. */
   readonly batches = signal<readonly string[]>([]);
+  /** Whether the grid is mounted (the toolbar's Mounted toggle). */
   readonly mounted = signal(true);
+  /** Whether the child loader rejects (the toolbar's failure toggle). */
   readonly fail = signal(false);
   /** The latency gate of the child loader (see {@link HeldResponses}). */
   readonly heldLoads = new HeldResponses();
 
+  /** The row id the toolbar's `scrollToRow` reveals. */
   readonly scrollId = signal(212);
+  /** Whether the toolbar's `scrollToRow` flashes the row. */
   readonly scrollFlash = signal(true);
   /** What the last `scrollToRow` returned, or empty before the first. */
   readonly scrollResult = signal('');
@@ -200,8 +204,11 @@ export class TreeGridRestoreStory {
       .join(', '),
   );
 
+  /** Reads a unit's row id. */
   readonly unitId = (unit: Unit): number => unit.id;
+  /** Reads a unit's parent id; `null` marks a root. */
   readonly unitParentId = (unit: Unit): number | null => unit.parentId;
+  /** Marks the units whose children load on demand. */
   readonly hasChildren = (unit: Unit): boolean => unit.lazy;
 
   /**
@@ -241,14 +248,17 @@ export class TreeGridRestoreStory {
     this.mounted.set(mounted);
   }
 
+  /** Applies the failure toggle. */
   onFailChange(event: Event): void {
     this.fail.set((event.target as HTMLInputElement).checked);
   }
 
+  /** Applies the row id field. */
   onScrollIdChange(event: Event): void {
     this.scrollId.set(Number((event.target as HTMLInputElement).value));
   }
 
+  /** Applies the flash checkbox. */
   onScrollFlashChange(event: Event): void {
     this.scrollFlash.set((event.target as HTMLInputElement).checked);
   }

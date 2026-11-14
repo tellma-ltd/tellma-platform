@@ -547,8 +547,12 @@ export interface ɵTmGridRowVm {
   readonly activeRow: boolean;
   /** The row element's id: what a driver's `aria-activedescendant` names. */
   readonly elementId: string;
-  /** Whether the row flashes: `scrollToRow` marked it, by row id. */
-  readonly flash: boolean;
+  /**
+   * Whether the row flashes, by row id (`scrollToRow` marked it): `0` not,
+   * `1` or `2` the flash's alternating keyframes, so a re-flash of a row
+   * still flashing restarts its animation.
+   */
+  readonly flash: 0 | 1 | 2;
   /** The consumer's `rowClass` classes, space-separated (empty for none). */
   readonly rowClass: string;
   /** Whether the row is checkbox-checked (row tint + row-level aria-selected). */
@@ -607,14 +611,63 @@ export interface ɵTmGridTreeConfig<T> {
   readonly parentIdKey: SignalLike<string | undefined>;
   /** Marks rows whose children may not be loaded yet. */
   readonly hasChildren: SignalLike<((row: T) => boolean) | undefined>;
-  /** Loads the children of a batch of expanded rows (lazy loading). */
-  readonly loadChildren: SignalLike<((rows: readonly T[]) => Promise<void>) | undefined>;
   /** How deep the tree starts expanded; `undefined` = fully expanded. */
   readonly defaultExpandedDepth: SignalLike<number | undefined>;
-  /** Who keeps the expansion: the state store, or the `expandedIds` model. */
-  readonly expansionSource: SignalLike<'store' | 'model'>;
-  /** The two-way expanded-row set the `'model'` source reads and writes. */
-  readonly expandedIds: SignalLike<WritableSignal<ReadonlySet<TmRowId>>>;
+  /**
+   * Builds the tree's expansion controller over the core's tree face. It
+   * runs while the core constructs, so it must not read the shell's inputs
+   * yet; the controller reads them lazily.
+   */
+  readonly expansion: (host: ɵTmGridTreeHost<T>) => ɵTmGridTreeExpansion;
+}
+
+/**
+ * The narrow face of the core that a tree's expansion controller drives.
+ */
+export interface ɵTmGridTreeHost<T> {
+  /** The engine, created on first use. */
+  readonly engine: TmGridEngine<T>;
+  /** The bound rows. */
+  readonly rows: Signal<readonly T[]>;
+  /** The live-region announcer. */
+  readonly announcements: Pick<ɵTmGridAnnouncements, 'announce'>;
+  /**
+   * Reconciles the engine with the current rows array, once per array;
+   * unless `expansion` is false, the controller then re-applies the kept
+   * expansion over it.
+   */
+  syncRows(expansion?: boolean): void;
+}
+
+/**
+ * A tree's expansion controller, which the tree-grid shell supplies so a
+ * flat grid carries none of it. It keeps the expansion (the state store's
+ * slice or the `expandedIds` model) and loads lazy children in batches;
+ * the core calls it at its hook points.
+ */
+export interface ɵTmGridTreeExpansion {
+  /** Rows whose children are loading (the reserved-slot spinner). */
+  readonly loadingIds: Signal<ReadonlySet<TmRowId>>;
+  /** Expands or collapses a row at the user's request. */
+  setRowExpanded(rowId: TmRowId, expanded: boolean): void;
+  /** Expands a row's ancestors for a reveal, and remembers them. */
+  expandAncestorsOf(rowId: TmRowId): void;
+  /** Re-applies the kept expansion after the engine reconciled a new rows array. */
+  rowsChanged(): void;
+  /**
+   * Binds the expansion of the content being restored; `outgoingRows`
+   * marks a bind over the outgoing content's rows, whose loads wait for
+   * the content's first rows array.
+   */
+  bind(stored: ReadonlySet<TmRowId> | undefined, outgoingRows: boolean): void;
+  /** The expansion slice to persist, given the slice stored now. */
+  persisted(stored: ReadonlySet<TmRowId> | undefined): Pick<TmGridContentState, 'expandedRowIds'>;
+  /** Drops the outgoing content's loads on a content switch. */
+  reset(): void;
+  /** Creates the controller's effects. */
+  setupEffects(injector: Injector): void;
+  /** Disposes the controller. */
+  destroy(): void;
 }
 
 /**
@@ -919,10 +972,13 @@ export interface ɵTmGridViewCore {
  * reason only.
  */
 export class ɵTmGridCore<T>
-  implements ɵTmGridViewCore, ɵTmGridEditingHost<T>, ɵTmGridHeaderActivity
+  implements ɵTmGridViewCore, ɵTmGridEditingHost<T>, ɵTmGridHeaderActivity, ɵTmGridTreeHost<T>
 {
   private readonly deps: ɵTmGridCoreDeps<T>;
-  private readonly announcements: ɵTmGridAnnouncements;
+  /** The live-region announcer. */
+  readonly announcements: ɵTmGridAnnouncements;
+  /** The tree's expansion controller; absent for the flat grid. */
+  private readonly treeExpansion: ɵTmGridTreeExpansion | undefined;
   private readonly clipboardDom: ɵTmGridClipboardDom;
   /** The application, ticked to render an editor's outlet before it mounts. */
   readonly appRef: ApplicationRef;
@@ -975,26 +1031,12 @@ export class ɵTmGridCore<T>
   private handle: TmGridStateHandle | null = null;
   private lastContentKey: string | number | undefined;
   private pendingScroll: TmGridScrollPosition | null = null;
-  /**
-   * The tree expansion the grid keeps for the bound content: the
-   * `expandedIds` model's set, or the store's slice, never
-   * pruned — an id whose row is not loaded yet (a remembered grandchild, a
-   * row a search hides) waits here until its row arrives. The engine holds
-   * the present, expandable part of it. `null` until the content binds, and
-   * while a store-kept content without a remembered slice waits for rows to
-   * seed `defaultExpandedDepth` over.
-   */
-  private expansion: Set<TmRowId> | null = null;
-  /** Whether the bound content's expansion is the `expandedIds` model's (read at content bind). */
-  private expansionModel = false;
-  /** The set this grid last wrote to the `expandedIds` model. */
-  private expansionWritten: ReadonlySet<TmRowId> | null = null;
-  /** Expanded rows waiting for the microtask that loads their children in one batch. */
-  private loadQueue: TmRowId[] | null = null;
   /** The rows array the engine last reconciled against. */
   private reconciledRows: readonly T[] | undefined;
   /** The row `scrollToRow` reveals at the next reveal, and whether it centres. */
   private revealTarget: { readonly id: TmRowId; readonly center: boolean } | null = null;
+  /** The keyframes (`1` or `2`) the last flash used. */
+  private flashKeyframes: 1 | 2 = 2;
   /** Clears the flashing row once the flash has run its course. */
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
   /** A persisted selection to re-apply once the content's rows are present. */
@@ -1036,12 +1078,10 @@ export class ɵTmGridCore<T>
   private readonly pasteReadDenied = signal(false);
   private readonly transientNoticeSignal = signal<string | null>(null);
   private transientNoticeTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Rows whose lazy children are loading (reserved-slot spinner, §13.3). */
-  private readonly loadingChildrenIds = signal<ReadonlySet<TmRowId>>(new Set());
-  /** The row `scrollToRow` flashes, or `null`. */
-  private readonly flashRowId = signal<TmRowId | null>(null);
-  /** Kills in-flight lazy-child-load completions across a content switch/destroy. */
-  private lazyLoadGeneration = 0;
+  /** The row `scrollToRow` flashes and its keyframes (`1` or `2`), or `null`. */
+  private readonly flashRowId = signal<{ readonly id: TmRowId; readonly keyframes: 1 | 2 } | null>(
+    null,
+  );
   /** Guards stray async completions after destroy. */
   private destroyed = false;
   /** The last individually toggled checkbox row — the Shift+click anchor. */
@@ -1249,6 +1289,7 @@ export class ɵTmGridCore<T>
   constructor(deps: ɵTmGridCoreDeps<T>) {
     this.deps = deps;
     this.announcements = new ɵTmGridAnnouncements(deps.announcer, deps.translate);
+    this.treeExpansion = deps.tree?.expansion(this);
     this.appRef = deps.injector.get(ApplicationRef);
     this.errorDisplay = deps.injector.get(TM_ERROR_DISPLAY);
     this.fieldWriter = new ɵTmGridFieldWriter<T>({
@@ -2054,10 +2095,7 @@ export class ɵTmGridCore<T>
     if (engine.model.rowById(rowId) === undefined) {
       return false;
     }
-    if (engine.model.isTree) {
-      this.keepActiveRow(() => engine.expandAncestorsOf(rowId));
-      this.syncExpansion();
-    }
+    this.treeExpansion?.expandAncestorsOf(rowId);
     const row = untracked(() => engine.model.viewIndexOfRow(rowId));
     if (
       row !== -1 &&
@@ -2079,6 +2117,9 @@ export class ɵTmGridCore<T>
       engine.nav.setActive({ row, col });
       engine.selection.collapseTo({ row, col });
     }
+    // An explicit reveal supersedes a remembered scroll position still
+    // waiting for the rows (§C.8): the restore would land over it.
+    this.pendingScroll = null;
     this.revealTarget = { id: rowId, center: options.align !== 'nearest' };
     this.requestReveal();
     if (options.flash === true) {
@@ -2101,7 +2142,10 @@ export class ɵTmGridCore<T>
     if (Number.isFinite(value) && value >= 0) {
       ms = raw.endsWith('ms') ? value : value * 1000;
     }
-    this.flashRowId.set(rowId);
+    // Alternate the keyframes, so a row flashing again before its last
+    // flash ended restarts the animation instead of keeping its class.
+    this.flashKeyframes = this.flashKeyframes === 1 ? 2 : 1;
+    this.flashRowId.set({ id: rowId, keyframes: this.flashKeyframes });
     this.flashTimer = setTimeout(() => this.endFlash(), ms);
   }
 
@@ -3064,7 +3108,7 @@ export class ɵTmGridCore<T>
       const cell = cellElement === null ? null : this.cellFromElement(cellElement);
       const view = cell === null ? null : untracked(() => this.engine.model.rowAt(cell.row));
       if (view !== null && view.expandable) {
-        this.setRowExpanded(view.id, !view.expanded);
+        this.treeExpansion?.setRowExpanded(view.id, !view.expanded);
       }
       return;
     }
@@ -3974,8 +4018,8 @@ export class ɵTmGridCore<T>
 
     const hierarchyCol = isTree ? this.hierarchyColIndex() : -1;
     const treeAria = isTree ? this.treeAria() : null;
-    const loadingChildren = isTree ? this.loadingChildrenIds() : null;
-    const flashId = this.flashRowId();
+    const loadingChildren = this.treeExpansion?.loadingIds() ?? null;
+    const flashing = this.flashRowId();
 
     // Checked rows (§8.8) and find highlights (§8.7) for the window.
     const checkedIds = this.checkboxColumn() ? this.deps.selectedIds() : null;
@@ -4148,7 +4192,7 @@ export class ɵTmGridCore<T>
         viewIndex,
         activeRow: viewIndex === activeRow,
         elementId: `${this.scrollerId}-r${viewIndex}`,
-        flash: view !== null && view.id === flashId,
+        flash: view !== null && view.id === flashing?.id ? flashing.keyframes : 0,
         rowClass: classes === null ? '' : typeof classes === 'string' ? classes : classes.join(' '),
         ariaRowIndex: viewIndex + 2,
         isPlaceholder,
@@ -4334,7 +4378,7 @@ export class ɵTmGridCore<T>
         const active = untracked(() => engine.nav.activeCell());
         const view = active === null ? null : untracked(() => engine.model.rowAt(active.row));
         if (view !== null) {
-          this.setRowExpanded(view.id, intent.kind === 'expand');
+          this.treeExpansion?.setRowExpanded(view.id, intent.kind === 'expand');
           this.requestReveal();
           this.requestFocusActive();
         }
@@ -4363,127 +4407,16 @@ export class ɵTmGridCore<T>
     }
   }
 
-  // ---- tree expand/collapse + lazy loading (§13.3) ----
-
-  /**
-   * Expands or collapses a row at the user's request. An expand joins the
-   * kept expansion at once — a `hasChildren` row with no loaded children
-   * shows expanded with the reserved-slot spinner while its children load
-   * in the microtask's batch. A collapse removes that row only (the engine
-   * moves activation out of a collapsing subtree); descendants keep their
-   * remembered expansion.
-   */
-  private setRowExpanded(rowId: TmRowId, expanded: boolean): void {
-    this.syncRows();
-    const engine = this.engine;
-    engine.setExpanded(rowId, expanded);
-    if (expanded) {
-      this.syncExpansion();
-      this.queueLoads([rowId]);
-    } else if (this.expansion?.delete(rowId) === true) {
-      this.emitExpansion();
-    }
-  }
-
-  /**
-   * Folds the engine's expansion into the kept one, so an expansion the
-   * engine made itself (a find match, an error jump, an undo reveal, an
-   * inserted child) is remembered and, in the `'model'` source, emitted.
-   * The kept set only ever grows here; removals are explicit.
-   */
-  private syncExpansion(): void {
-    const kept = this.expansion;
-    if (kept === null) {
-      return;
-    }
-    let grew = false;
-    for (const id of untracked(() => this.engine.model.expandedIds())) {
-      if (!kept.has(id)) {
-        kept.add(id);
-        grew = true;
-      }
-    }
-    if (grew) {
-      this.emitExpansion();
-    }
-  }
-
-  /** Writes a copy of the kept expansion to the `expandedIds` model (the `'model'` source only). */
-  private emitExpansion(): void {
-    const config = this.deps.tree;
-    if (!this.expansionModel || config === undefined || this.expansion === null) {
-      return;
-    }
-    this.expansionWritten = new Set(this.expansion);
-    untracked(config.expandedIds).set(this.expansionWritten);
-  }
-
-  /**
-   * Applies the kept expansion to the engine, which keeps the present,
-   * expandable part of it, and queues the children loads it needs. `all`
-   * queues every expanded row (a content bind); otherwise only the rows
-   * this application newly expanded load (rows that arrived, a consumer
-   * write). A store-kept content without a remembered slice seeds
-   * `defaultExpandedDepth` on its first rows instead.
-   */
-  private applyExpansion(all: boolean): void {
-    const engine = this.engine;
-    if (!engine.model.isTree) {
-      return;
-    }
-    let before: ReadonlySet<TmRowId> | null = untracked(() => engine.model.expandedIds());
-    if (this.expansion === null) {
-      if (untracked(() => engine.model.dataRowCount()) === 0) {
-        return; // nothing to seed over yet; the first rows seed
-      }
-      this.keepActiveRow(() => engine.seedExpansion());
-      this.expansion = new Set(untracked(() => engine.model.expandedIds()));
-      before = null; // a first seed loads like a bind
-    } else {
-      const kept = this.expansion;
-      this.keepActiveRow(() => engine.restoreExpansion(kept));
-    }
-    const applied = untracked(() => engine.model.expandedIds());
-    const prior = all ? null : before;
-    this.queueLoads(prior === null ? applied : [...applied].filter((id) => !prior.has(id)));
-  }
-
-  /**
-   * Runs an expansion change and keeps the active cell on its row — or, when
-   * the row went under a collapsed ancestor, on the nearest visible
-   * ancestor — since a restore re-orders the view without remapping it.
-   */
-  private keepActiveRow(change: () => void): void {
-    const engine = this.engine;
-    const active = untracked(() => engine.nav.activeCell());
-    const rowId =
-      active === null ? null : (untracked(() => engine.model.rowAt(active.row))?.id ?? null);
-    change();
-    if (active === null || rowId === null) {
-      return;
-    }
-    for (const id of [rowId, ...engine.model.ancestorsOf(rowId)]) {
-      const row = untracked(() => engine.model.viewIndexOfRow(id));
-      if (row !== -1) {
-        if (row !== active.row) {
-          const cell = { row, col: active.col };
-          engine.nav.setActive(cell);
-          engine.selection.collapseTo(cell);
-        }
-        return;
-      }
-    }
-  }
+  // ---- rows reconcile ----
 
   /**
    * Reconciles the engine with the current rows array, once per array: the
    * rows effect runs it, and so do the paths that must see fresh rows before
    * they change the expansion (a user expand, a settled load, `scrollToRow`).
-   * Then, unless `expansion` is false, the kept expansion re-applies —
-   * remembered rows the new rows bring expand, and their children load —
-   * and a deferred selection lands.
+   * Then, unless `expansion` is false, a tree's kept expansion re-applies
+   * (the tree-grid's controller), and a deferred selection lands.
    */
-  private syncRows(expansion = true): void {
+  syncRows(expansion = true): void {
     const rows = untracked(this.rows);
     if (rows === this.reconciledRows) {
       return;
@@ -4494,11 +4427,9 @@ export class ɵTmGridCore<T>
       // The engine was built over these rows when nothing was reconciled yet.
       this.engine.reconcile();
     }
-    if (expansion && this.engine.model.isTree) {
-      // Remember what the reconcile itself expanded (an editor's row
-      // revealed) before the kept set re-applies over it.
-      this.syncExpansion();
-      this.applyExpansion(false);
+    if (expansion) {
+      // A tree's kept expansion re-applies over the new rows.
+      this.treeExpansion?.rowsChanged();
     }
     // Async-loaded content: apply the selection that the bind deferred
     // because the rows had not arrived yet.
@@ -4511,126 +4442,6 @@ export class ɵTmGridCore<T>
       this.applySelectionSnapshot(snapshot);
       this.requestReveal();
     }
-  }
-
-  /**
-   * Queues expanded rows for the next children batch: one microtask
-   * collects every row queued in the same task, so a restore, a level of
-   * loaded children, or a burst of user expands loads in one call.
-   */
-  private queueLoads(ids: Iterable<TmRowId>): void {
-    const config = this.deps.tree;
-    if (config === undefined || untracked(config.loadChildren) === undefined) {
-      return;
-    }
-    const queued = [...ids];
-    if (queued.length === 0) {
-      return;
-    }
-    if (this.loadQueue === null) {
-      this.loadQueue = queued;
-      const generation = this.lazyLoadGeneration;
-      queueMicrotask(() => this.flushLoads(generation));
-    } else {
-      this.loadQueue.push(...queued);
-    }
-  }
-
-  /**
-   * Calls `loadChildren` once with the queued rows that still need it —
-   * present, expanded, `hasChildren`, not loading, and without a loaded
-   * child — in model order, and shows their spinners until it settles.
-   */
-  private flushLoads(generation: number): void {
-    const queue = this.loadQueue;
-    this.loadQueue = null;
-    const config = this.deps.tree;
-    if (
-      queue === null ||
-      config === undefined ||
-      this.destroyed ||
-      generation !== this.lazyLoadGeneration
-    ) {
-      return; // disposed, or the content switched before the batch formed
-    }
-    const load = untracked(config.loadChildren);
-    const hasChildren = untracked(config.hasChildren);
-    if (load === undefined || hasChildren === undefined) {
-      return;
-    }
-    this.syncRows();
-    const engine = this.engine;
-    const expanded = untracked(() => engine.model.expandedIds());
-    const loading = untracked(this.loadingChildrenIds);
-    // One pass over the rows finds every row with a loaded child, rather
-    // than walking each candidate's subtree.
-    const parentId = untracked(config.parentId);
-    const parents = new Set<TmRowId>();
-    for (const row of untracked(this.rows)) {
-      const parent = parentId(row);
-      if (parent !== null) {
-        parents.add(parent);
-      }
-    }
-    const batch = new Map<TmRowId, T>();
-    for (const id of queue) {
-      if (batch.has(id) || loading.has(id) || parents.has(id) || !expanded.has(id)) {
-        continue;
-      }
-      const row = engine.model.rowById(id);
-      if (row !== undefined && hasChildren(row)) {
-        batch.set(id, row);
-      }
-    }
-    if (batch.size === 0) {
-      return;
-    }
-    const ids = [...batch.keys()].sort(
-      (a, b) => engine.model.modelIndexOfRow(a) - engine.model.modelIndexOfRow(b),
-    );
-    const next = new Set(loading);
-    for (const id of ids) {
-      next.add(id);
-    }
-    this.loadingChildrenIds.set(next);
-    const rows = ids.map((id) => batch.get(id)!);
-    Promise.resolve()
-      .then(() => load(rows))
-      .then(
-        () => this.settleLoads(ids, true, generation),
-        () => this.settleLoads(ids, false, generation),
-      );
-  }
-
-  /**
-   * The tail of a children batch: the spinners clear and the loaded rows
-   * reconcile — their remembered children expand and queue the next level.
-   * A rejected batch collapses its rows, drops them from the kept
-   * expansion, and announces the failure once.
-   */
-  private settleLoads(ids: readonly TmRowId[], resolved: boolean, generation: number): void {
-    if (this.destroyed || generation !== this.lazyLoadGeneration) {
-      return; // disposed, or the content switched out from under the load
-    }
-    const loading = new Set(untracked(this.loadingChildrenIds));
-    for (const id of ids) {
-      loading.delete(id);
-    }
-    this.loadingChildrenIds.set(loading);
-    this.syncRows();
-    if (resolved) {
-      return;
-    }
-    const engine = this.engine;
-    let removed = false;
-    for (const id of ids) {
-      engine.setExpanded(id, false);
-      removed = this.expansion?.delete(id) === true || removed;
-    }
-    if (removed) {
-      this.emitExpansion();
-    }
-    this.announcements.announce('grid.announce.lazyLoadFailed');
   }
 
   // ---- row checkbox selection (§8.8) ----
@@ -5792,11 +5603,7 @@ export class ɵTmGridCore<T>
    * content never lands on the incoming content's same-id row.
    */
   private resetContentTransientState(): void {
-    if (untracked(this.loadingChildrenIds).size > 0) {
-      this.loadingChildrenIds.set(new Set());
-    }
-    this.loadQueue = null; // a batch still forming belongs to the outgoing content
-    this.lazyLoadGeneration += 1; // in-flight child loads resolve into a no-op
+    this.treeExpansion?.reset();
     this.endFlash();
     this.findGeneration += 1; // in-flight find scans die quietly
   }
@@ -5814,10 +5621,10 @@ export class ɵTmGridCore<T>
     const content = this.handle.getContentState();
     const engine = this.engine;
     // The tree's expansion binds first, so the selection below resolves its
-    // row ids against the restored order.
-    if (engine.model.isTree) {
-      this.bindExpansion(content?.expandedRowIds);
-    }
+    // row ids against the restored order. Over the outgoing content's rows
+    // (the incoming rows not fetched yet), the bind's loads wait for the
+    // content's first rows (§C.9).
+    this.treeExpansion?.bind(content?.expandedRowIds, untracked(this.rows) === this.reconciledRows);
     if (content?.scroll !== undefined) {
       this.pendingScroll = content.scroll;
       this.scrollRestoreRequest.update((value) => value + 1);
@@ -5845,29 +5652,6 @@ export class ɵTmGridCore<T>
     } else if (!initial) {
       engine.history.clear();
     }
-  }
-
-  /**
-   * Binds the tree expansion of the content being restored, reading
-   * `expansionSource` now: the `expandedIds` model alone, or the store's
-   * slice — or, without one, `defaultExpandedDepth` seeded over the first
-   * rows. The kept set stays unpruned; the engine applies its present part,
-   * and every expanded row with unloaded children loads in one batch.
-   */
-  private bindExpansion(stored: ReadonlySet<TmRowId> | undefined): void {
-    const config = this.deps.tree;
-    if (config === undefined) {
-      return;
-    }
-    this.expansionModel = untracked(config.expansionSource) === 'model';
-    if (this.expansionModel) {
-      const bound = untracked(untracked(config.expandedIds));
-      this.expansion = new Set(bound);
-      this.expansionWritten = bound; // the bound value is not a consumer write
-    } else {
-      this.expansion = stored === undefined ? null : new Set(stored);
-    }
-    this.applyExpansion(true);
   }
 
   /** Applies a persisted selection snapshot with the active-cell fallback chain. */
@@ -5935,26 +5719,9 @@ export class ɵTmGridCore<T>
         engine.orderSnapshot,
       ),
       history: engine.history.toSnapshot(),
-      ...this.persistedExpansion(),
+      ...this.treeExpansion?.persisted(this.handle.getContentState()?.expandedRowIds),
     };
     this.handle.setContentState(state);
-  }
-
-  /**
-   * The tree expansion slice to persist: the kept set of a store-kept
-   * content, or — when the `expandedIds` model keeps it — the slice as
-   * stored, which the grid neither reads nor writes then.
-   */
-  private persistedExpansion(): Pick<TmGridContentState, 'expandedRowIds'> {
-    if (this.handle === null || this.engineInstance === null || !this.engineInstance.model.isTree) {
-      return {};
-    }
-    if (this.expansionModel) {
-      const stored = this.handle.getContentState()?.expandedRowIds;
-      return stored === undefined ? {} : { expandedRowIds: stored };
-    }
-    this.syncExpansion(); // an engine expansion the effect has not folded in yet
-    return this.expansion === null ? {} : { expandedRowIds: new Set(this.expansion) };
   }
 
   // ---- effects ----
@@ -6007,47 +5774,8 @@ export class ɵTmGridCore<T>
       { injector },
     );
 
-    const tree = this.deps.tree;
-    if (tree !== undefined) {
-      // The engine's own expansions (a find match, an error jump, an undo
-      // reveal, an inserted child) join the kept expansion.
-      effect(
-        () => {
-          this.engine.model.expandedIds();
-          untracked(() => this.syncExpansion());
-        },
-        { injector },
-      );
-
-      // A consumer write to the `expandedIds` model after the bind replaces
-      // the kept set and applies like a restore: rows it leaves out
-      // collapse, rows it adds expand and load. It is not echoed back.
-      effect(
-        () => {
-          const requested = tree.expandedIds()();
-          untracked(() => {
-            if (!this.expansionModel || requested === this.expansionWritten) {
-              return;
-            }
-            this.expansionWritten = requested;
-            const kept = this.expansion;
-            if (
-              kept !== null &&
-              kept.size === requested.size &&
-              [...requested].every((id) => kept.has(id))
-            ) {
-              return; // the same members: nothing to apply
-            }
-            // Reconcile first, so the active cell remaps; the write replaces
-            // the kept set, so the old one does not re-apply first.
-            this.syncRows(false);
-            this.expansion = new Set(requested);
-            this.applyExpansion(false);
-          });
-        },
-        { injector },
-      );
-    }
+    // A tree's expansion effects run after the reconcile above.
+    this.treeExpansion?.setupEffects(injector);
 
     // The two-way active row (spec 0010 §C.2). Created after the reconcile
     // effect above, so a data change has remapped the active cell before
@@ -6597,8 +6325,8 @@ export class ɵTmGridCore<T>
   }
 
   private onDestroy(): void {
-    this.destroyed = true; // in-flight lazy child loads complete silently
-    this.loadQueue = null;
+    this.destroyed = true;
+    this.treeExpansion?.destroy(); // in-flight lazy child loads complete silently
     if (this.flashTimer !== undefined) {
       clearTimeout(this.flashTimer);
       this.flashTimer = undefined;

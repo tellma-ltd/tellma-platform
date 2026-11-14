@@ -7,8 +7,10 @@
 
 /* tm-grid-view's row flash: the one-off pulse `scrollToRow` gives the row it
    brings into view. The class is keyed by row id and stays on for
-   --grid-flash-duration, so the animation below runs once per flash. The
-   view loads this sheet last, so these rules follow grid-view.css's. */
+   --grid-flash-duration, so the animation below runs once per flash; a
+   re-flash of a row still flashing toggles the --reflash modifier, whose
+   keyframes are the same under another name, so the animation restarts.
+   The view loads this sheet last, so these rules follow grid-view.css's. */
 
 /* The cells start on the flash tint and fade back to whatever their row
    paints (stripe, check, active tint). An animated value overrides the
@@ -17,7 +19,17 @@
   animation: tm-grid-flash var(--grid-flash-duration) ease-out;
 }
 
+.tm-grid__row--reflash > * {
+  animation-name: tm-grid-reflash;
+}
+
 @keyframes tm-grid-flash {
+  from {
+    background-color: var(--grid-flash-bg);
+  }
+}
+
+@keyframes tm-grid-reflash {
   from {
     background-color: var(--grid-flash-bg);
   }

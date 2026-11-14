@@ -8,6 +8,8 @@ import { Component, input, model } from '@angular/core';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { TmGridBase, ɵTmGridView, type ɵTmGridTreeConfig } from '@tellma/core-ui/grid';
 
+import { ɵTmTreeGridExpansion } from './internal/tree-expansion';
+
 /**
  * Hierarchical data grid over a **flat** rows array (an adjacency list —
  * the natural shape of Tellma models and SQL results): `parentId` derives
@@ -132,10 +134,11 @@ export class TmTreeGrid<T> extends TmGridBase<T> {
       parentId: () => this.parentId(),
       parentIdKey: () => this.parentIdKey(),
       hasChildren: () => this.hasChildren(),
-      loadChildren: () => this.loadChildren(),
       defaultExpandedDepth: () => this.defaultExpandedDepth(),
-      expansionSource: () => this.expansionSource(),
-      expandedIds: () => this.expandedIds,
+      // The expansion and lazy loading live here, not in the grid core, so
+      // a flat grid carries none of them. The controller reads this
+      // component's inputs lazily, once they exist.
+      expansion: (host) => new ɵTmTreeGridExpansion(host, this),
     };
   }
 }

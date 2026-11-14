@@ -3,7 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal, viewChild } from '@angular/core';
+import { Dir } from '@angular/cdk/bidi';
+import { Component, effect, input, signal, untracked, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
@@ -48,6 +49,80 @@ class Host {
   readonly rowId = (row: Row): number => row.id;
 }
 
+/**
+ * Reveals row 20 from an effect on the grid's rows, as a deep link does,
+ * once they hold any. It sits after the grid, so its effect runs once the
+ * grid's `data` holds the rows (an effect in the grid's host runs before
+ * the host's bindings update, and finds no row).
+ */
+@Component({ selector: 'tm-spec-deep-link', template: '' })
+class DeepLink {
+  readonly grid = input.required<TmGrid<Row>>();
+  readonly rows = input.required<readonly Row[]>();
+  /** What `scrollToRow` returned once the rows arrived. */
+  result: boolean | null = null;
+
+  constructor() {
+    effect(() => {
+      if (this.rows().length > 0 && this.result === null) {
+        this.result = untracked(() => this.grid().scrollToRow(20));
+      }
+    });
+  }
+}
+
+/** The same grid remounted with its rows fetched later, and a deep link to row 20. */
+@Component({
+  imports: [DeepLink, TmGrid, TmGridColumn],
+  template: `
+    <tm-grid
+      #grid
+      gridId="spec-grid-scroll-to-row"
+      [data]="rows()"
+      [rowId]="rowId"
+      style="block-size: 300px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="120" />
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="120" />
+    </tm-grid>
+    <tm-spec-deep-link [grid]="grid" [rows]="rows()" />
+  `,
+})
+class DeepLinkHost {
+  readonly link = viewChild.required(DeepLink);
+  readonly rows = signal<readonly Row[]>([]);
+  readonly rowId = (row: Row): number => row.id;
+}
+
+/**
+ * Twenty 150px columns in a 400px-wide grid, in either direction, with
+ * the row-header track's token, which a unit test's page does not load.
+ */
+@Component({
+  imports: [Dir, TmGrid, TmGridColumn],
+  template: `
+    <div [dir]="dir()" style="inline-size: 400px; --grid-row-header-width: 40px">
+      <tm-grid
+        gridId="spec-grid-scroll-wide"
+        [data]="rows"
+        [rowId]="rowId"
+        style="block-size: 300px"
+      >
+        @for (key of keys; track key) {
+          <tm-grid-column [key]="key" [header]="key" [width]="150" />
+        }
+      </tm-grid>
+    </div>
+  `,
+})
+class WideHost {
+  readonly grid = viewChild.required(TmGrid<Row>);
+  readonly dir = signal<'ltr' | 'rtl'>('ltr');
+  readonly keys = Array.from({ length: 20 }, (_, i) => `c${i}`);
+  readonly rows = makeRows(200);
+  readonly rowId = (row: Row): number => row.id;
+}
+
 async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -73,6 +148,18 @@ async function setup(): Promise<{
 /** The view row whose top edge sits at the body viewport's top. */
 function firstVisibleRow(scroller: HTMLElement): number {
   return Math.round(scroller.scrollTop / ROW_HEIGHT);
+}
+
+/** Whether an element's box lies inside the scroller's box. */
+function insideScroller(scroller: HTMLElement, element: Element): boolean {
+  const outer = scroller.getBoundingClientRect();
+  const inner = element.getBoundingClientRect();
+  return (
+    inner.left >= outer.left - 1 &&
+    inner.right <= outer.right + 1 &&
+    inner.top >= outer.top - 1 &&
+    inner.bottom <= outer.bottom + 1
+  );
 }
 
 describe('tm-grid scrollToRow', () => {
@@ -165,4 +252,77 @@ describe('tm-grid scrollToRow', () => {
     expect(await harness.isRowFlashing(196)).toBe(false);
     expect(Date.now() - started).toBeGreaterThanOrEqual(350);
   });
+
+  it('a flash of a row still flashing restarts its animation', async () => {
+    const { fixture, grid, scroller } = await setup();
+    // A long flash, so the first one is still running at the second.
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('tm-grid')!
+      .setAttribute('style', 'block-size: 300px; --grid-flash-duration: 5s');
+    const cellAnimation = (): CSSAnimation => {
+      const cell = scroller.querySelector('[role="row"][aria-rowindex="5"] [data-tm-cell]')!;
+      const animations = cell.getAnimations().filter((a) => a instanceof CSSAnimation);
+      expect(animations.length).toBe(1);
+      return animations[0] as CSSAnimation;
+    };
+    grid.scrollToRow(3, { flash: true });
+    await stable(fixture);
+    const first = cellAnimation();
+
+    grid.scrollToRow(3, { flash: true });
+    await stable(fixture);
+    const second = cellAnimation();
+    expect(second).not.toBe(first);
+    expect(second.animationName).not.toBe(first.animationName);
+  });
+
+  it('wins over a remembered scroll position restored in the same render', async () => {
+    // Visit the content once and leave it scrolled far down.
+    const { fixture, scroller } = await setup();
+    scroller.scrollTop = 150 * ROW_HEIGHT;
+    scroller.dispatchEvent(new Event('scroll'));
+    await stable(fixture);
+    expect(firstVisibleRow(scroller)).toBeGreaterThan(100);
+    fixture.destroy();
+
+    // Remount: the rows arrive later, and a deep link reveals row 20 then.
+    const linked = TestBed.createComponent(DeepLinkHost);
+    await stable(linked);
+    linked.componentInstance.rows.set(makeRows(200));
+    await stable(linked);
+    expect(linked.componentInstance.link().result).toBe(true);
+    const view = (linked.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    // Row 20 centred, not the remembered position.
+    const body = view.clientHeight - ROW_HEIGHT;
+    const expected = Math.round(20 * ROW_HEIGHT - (body - ROW_HEIGHT) / 2);
+    expect(Math.abs(view.scrollTop - expected)).toBeLessThanOrEqual(1);
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    it(`brings a far row's last column into view in a wide grid (${dir})`, async () => {
+      TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+      const fixture = TestBed.createComponent(WideHost);
+      fixture.componentInstance.dir.set(dir);
+      await stable(fixture);
+      const harness = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmGridHarness);
+      const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tm-grid__scroller',
+      ) as HTMLElement;
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+
+      // The row is not rendered when the reveal first runs, so its cell
+      // comes into view sideways on the next pass.
+      expect(fixture.componentInstance.grid().scrollToRow(180, { column: 'c19' })).toBe(true);
+      await stable(fixture);
+      expect(await harness.getActiveCell()).toEqual({ row: 180, col: 19 });
+      const cell = scroller.querySelector(
+        '[role="row"][aria-rowindex="182"] [data-tm-cell][aria-colindex="21"]',
+      );
+      expect(cell).not.toBeNull();
+      expect(Math.abs(scroller.scrollLeft)).toBeGreaterThan(0);
+      expect(insideScroller(scroller, cell!)).toBe(true);
+    });
+  }
 });

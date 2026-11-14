@@ -217,7 +217,8 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
               [class.tm-grid__row--checked]="row.checked"
               [class.tm-grid__row--placeholder]="row.isPlaceholder"
               [class.tm-grid__row--outlier]="row.outlier"
-              [class.tm-grid__row--flash]="row.flash"
+              [class.tm-grid__row--flash]="row.flash !== 0"
+              [class.tm-grid__row--reflash]="row.flash === 2"
               [attr.data-tm-key]="row.rowKey"
               [style.transform]="row.outlierTransform"
             >
