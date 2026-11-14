@@ -1,0 +1,128 @@
+public sealed record ExcelPage : IEquatable<ExcelPage>
+    public IReadOnlyList<ExcelPage> Dependents { get; init; }
+    public IReadOnlyList<IReadOnlyList<object?>> Rows { get; init; }
+    public bool Equals(ExcelPage? other)
+    public ctor(IReadOnlyList<IReadOnlyList<object?>> Rows, IReadOnlyList<ExcelPage> Dependents, int? Count)
+    public int? Count { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExcelPage? left, ExcelPage? right)
+    public static bool op_Inequality(ExcelPage? left, ExcelPage? right)
+    public void Deconstruct(out IReadOnlyList<IReadOnlyList<object?>> Rows, out IReadOnlyList<ExcelPage> Dependents, out int? Count)
+
+public sealed record ExcelQuery : IEquatable<ExcelQuery>
+    public IReadOnlyList<ExcelQuery>? Dependents { get; init; }
+    public IReadOnlyList<object>? RestrictionValues { get; init; }
+    public IReadOnlyList<string> SelectPaths { get; init; }
+    public KeySetRestriction? Restriction { get; init; }
+    public bool Equals(ExcelQuery? other)
+    public ctor(string RootEntity, IReadOnlyList<string> SelectPaths, string? OrderBy, KeySetRestriction? Restriction, IReadOnlyList<object>? RestrictionValues, int? Take, int? CountCap, IReadOnlyList<ExcelQuery>? Dependents)
+    public int? CountCap { get; init; }
+    public int? Take { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExcelQuery? left, ExcelQuery? right)
+    public static bool op_Inequality(ExcelQuery? left, ExcelQuery? right)
+    public string RootEntity { get; init; }
+    public string? OrderBy { get; init; }
+    public void Deconstruct(out string RootEntity, out IReadOnlyList<string> SelectPaths, out string? OrderBy, out KeySetRestriction? Restriction, out IReadOnlyList<object>? RestrictionValues, out int? Take, out int? CountCap, out IReadOnlyList<ExcelQuery>? Dependents)
+
+public abstract record ExportSource : IEquatable<ExportSource>
+    protected ctor(ExportSource original)
+    protected virtual Type EqualityContract { get; }
+    protected virtual bool PrintMembers(StringBuilder builder)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExportSource? left, ExportSource? right)
+    public static bool op_Inequality(ExportSource? left, ExportSource? right)
+    public virtual bool Equals(ExportSource? other)
+
+public sealed record ExportSource.All : ExportSource, IEquatable<ExportSource.All>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(ExportSource.All? other)
+    public ctor()
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.All? left, ExportSource.All? right)
+    public static bool op_Inequality(ExportSource.All? left, ExportSource.All? right)
+
+public sealed record ExportSource.ByIds : ExportSource, IEquatable<ExportSource.ByIds>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public IReadOnlyList<long> Ids { get; init; }
+    public bool Equals(ExportSource.ByIds? other)
+    public ctor(IReadOnlyList<long> Ids, string? OrderBy)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.ByIds? left, ExportSource.ByIds? right)
+    public static bool op_Inequality(ExportSource.ByIds? left, ExportSource.ByIds? right)
+    public string? OrderBy { get; init; }
+    public void Deconstruct(out IReadOnlyList<long> Ids, out string? OrderBy)
+
+public sealed record ExportSource.ByQuery : ExportSource, IEquatable<ExportSource.ByQuery>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
+    public IReadOnlyList<string>? Filters { get; init; }
+    public IReadOnlyList<string>? NamedFilters { get; init; }
+    public bool Equals(ExportSource.ByQuery? other)
+    public bool IncludeInactive { get; init; }
+    public ctor(IReadOnlyList<string>? Filters, IReadOnlyList<string>? NamedFilters, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments, bool IncludeInactive)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.ByQuery? left, ExportSource.ByQuery? right)
+    public static bool op_Inequality(ExportSource.ByQuery? left, ExportSource.ByQuery? right)
+    public string? OrderBy { get; init; }
+    public string? Search { get; init; }
+    public void Deconstruct(out IReadOnlyList<string>? Filters, out IReadOnlyList<string>? NamedFilters, out string? Search, out string? OrderBy, out IReadOnlyDictionary<string, JsonElement>? Arguments, out bool IncludeInactive)
+
+public interface IExcelRowSource
+    public IAsyncEnumerable<ExcelPage> Pages(ExcelQuery query, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<IReadOnlyList<IReadOnlyList<object?>>>> ReadAsync(IReadOnlyList<ExcelQuery> queries, CancellationToken cancellationToken = default)
+
+public sealed record ImportError : CodedError, IEquatable<CodedError>, IEquatable<ImportError>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(ImportError? other)
+    public ctor(string? Sheet, int? Row, string? Column, string? Header, string? Property, string Code, IReadOnlyDictionary<string, object?> Arguments)
+    public int? Row { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(CodedError? other)
+    public static bool op_Equality(ImportError? left, ImportError? right)
+    public static bool op_Inequality(ImportError? left, ImportError? right)
+    public string? Column { get; init; }
+    public string? Header { get; init; }
+    public string? Property { get; init; }
+    public string? Sheet { get; init; }
+    public void Deconstruct(out string? Sheet, out int? Row, out string? Column, out string? Header, out string? Property, out string Code, out IReadOnlyDictionary<string, object?> Arguments)
+
+public sealed class ImportException : TellmaException, ISerializable
+    public IReadOnlyList<ImportError> Errors { get; }
+    public IReadOnlyList<RowRange> CommittedRowRanges { get; }
+    public ctor(IReadOnlyList<ImportError> errors, int totalErrors, IReadOnlyList<RowRange> committedRowRanges)
+    public int TotalErrors { get; }
+
+public sealed record RowRange : IEquatable<RowRange>
+    public bool Equals(RowRange? other)
+    public ctor(int From, int To)
+    public int From { get; }
+    public int To { get; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(RowRange? left, RowRange? right)
+    public static bool op_Inequality(RowRange? left, RowRange? right)
+    public void Deconstruct(out int From, out int To)
+

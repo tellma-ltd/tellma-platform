@@ -254,8 +254,8 @@ async function openList(
   await settle(fixture);
 }
 
-/** Clicks the result row labelled `label`. */
-async function clickRow(fixture: ComponentFixture<unknown>, label: string): Promise<void> {
+/** The result row labelled `label`; throws when there is none. */
+function rowLabelled(label: string): HTMLElement {
   const row = Array.from(
     document.querySelectorAll<HTMLElement>(
       '.tm-entity-picker__option:not(.tm-entity-picker__action)',
@@ -264,7 +264,12 @@ async function clickRow(fixture: ComponentFixture<unknown>, label: string): Prom
   if (row === undefined) {
     throw new Error(`no row labelled ${label}`);
   }
-  row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return row;
+}
+
+/** Clicks the result row labelled `label`. */
+async function clickRow(fixture: ComponentFixture<unknown>, label: string): Promise<void> {
+  rowLabelled(label).dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await settle(fixture);
 }
 
@@ -685,13 +690,34 @@ describe('tm-entity-multi-picker', () => {
       const seen: string[] = [];
       const observer = new MutationObserver(() => seen.push(region.textContent?.trim() ?? ''));
       observer.observe(region, { childList: true, characterData: true, subtree: true });
-      await clickRow(fixture, 'Bob Stone');
-      await sleep(0);
-      await settle(fixture);
+      // One stability wait and no timer of its own: the restore is a pending
+      // task, so stability alone has to cover it (and its render).
+      rowLabelled('Bob Stone').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await fixture.whenStable();
       observer.disconnect();
       // Cleared, then read again: a changed region is what makes it speak.
       expect(seen[0]).toBe('');
+      expect(seen.at(-1)).toBe('You can choose up to 1');
       expect(liveText(fixture)).toBe('You can choose up to 1');
+    });
+
+    it('a newer message is not overwritten by a repeat waiting to be read again', async () => {
+      const { fixture, host, input } = await setup(Host);
+      host.displayWith.set(nameOf);
+      host.maxItems.set(1);
+      host.model.set({ agentIds: [1] });
+      await settle(fixture);
+      await openList(fixture, input);
+      await clickRow(fixture, 'Bob Stone');
+      expect(liveText(fixture)).toBe('You can choose up to 1');
+      // The repeated refusal clears the region and waits to restore it; the
+      // removal in the same task announces something newer meanwhile.
+      rowLabelled('Bob Stone').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      removeButtons(fixture)[0].click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(host.f.agentIds().value()).toEqual([]);
+      expect(liveText(fixture)).toBe('Adam Brown removed');
     });
   });
 
