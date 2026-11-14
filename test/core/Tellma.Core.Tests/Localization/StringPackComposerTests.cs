@@ -19,7 +19,7 @@ namespace Tellma.Core.Tests.Localization
     ///     every composed feature assembly's shared resources in that language, keys verbatim; a key
     ///     two assemblies declare refused; server-only resources never read.
     /// </summary>
-    public class StringPackComposerTests
+    public sealed class StringPackComposerTests
     {
         /// <summary>The version every in-memory composition's packs carry.</summary>
         private const string Version = "4.2.0+abc";
@@ -99,6 +99,34 @@ namespace Tellma.Core.Tests.Localization
             Assert.Equal(new StringKeyConflict("Shared_Invoice", "Acme.Resources.Strings", "Beta.Resources.Strings"), conflict);
             Assert.Equal("Invoice", composer.English["Shared_Invoice"]);
             Assert.Equal("فاتورة", composer.Strings("ar")!["Shared_Invoice"]);
+        }
+
+        [Fact]
+        public void A_translation_of_another_sources_key_is_a_conflict_and_never_merged()
+        {
+            StringPackComposer composer = new(
+                [
+                    Source("Core.Resources.Strings", ("", "Code", "Code")),
+                    Source("Beta.Resources.Strings", ("", "Beta_Item", "Item"), ("am", "Code", "ኮድ"), ("am", "Beta_Item", "ዕቃ")),
+                ],
+                ["am"],
+                Version);
+
+            StringKeyConflict conflict = Assert.Single(composer.Conflicts);
+            Assert.Equal(new StringKeyConflict("Code", "Core.Resources.Strings", "Beta.Resources.Strings"), conflict);
+            Assert.Equal(new Dictionary<string, string> { ["Beta_Item"] = "ዕቃ" }, Entries(composer.Get("am")!));
+        }
+
+        [Fact]
+        public void A_translation_of_a_key_no_neutral_set_declares_is_left_out_of_the_pack()
+        {
+            StringPackComposer composer = new(
+                [Source("Acme.Resources.Strings", ("", "Acme_Order", "Order"), ("ar", "Acme_Order", "طلب"), ("ar", "Acme_Stray", "شارد"))],
+                ["ar"],
+                Version);
+
+            Assert.Equal(new Dictionary<string, string> { ["Acme_Order"] = "طلب" }, Entries(composer.Get("ar")!));
+            Assert.Empty(composer.Conflicts);
         }
 
         [Fact]

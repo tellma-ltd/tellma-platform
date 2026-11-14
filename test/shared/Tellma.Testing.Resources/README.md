@@ -35,7 +35,7 @@ IReadOnlyList<ResourceAuditFinding> findings = ResourceAudit.Run(new ResourceAud
 {
     NeutralFiles = [RepositoryRoot.Combine("src", "acme", "Acme", "Resources", "Strings.resx")],
     DerivedKeys = ConventionalStringKeys.Of(provider),
-    Literals = SourceLiterals.Read([RepositoryRoot.Combine("src", "acme")]),
+    Literals = SourceLiterals.Read([RepositoryRoot.Combine("src", "acme")], [RepositoryRoot.Combine("src", "acme", "Acme.Testing")]),
     Pending = new Dictionary<string, string> { ["Acme_Order_Archive"] = "the archive action" },
 });
 
@@ -46,7 +46,7 @@ Assert.True(findings.Count == 0, ResourceAudit.Report(findings));
 |---|---|
 | [ResourceAudit](ResourceAudit.cs) | `Run`, `Report`, the request, the findings and their kinds. |
 | [LiteralKeyRules](LiteralKeyRules.cs) | The rules that turn a source literal into the keys it names, and the platform's list. |
-| [SourceLiterals](SourceLiterals.cs) | Every string literal of the C# and TypeScript files under the given folders, skipping build output (`bin`, `obj`, `dist`, `out-tsc`, `coverage`), `node_modules`, folders whose name starts with `.`, and TypeScript tests (`*.spec.ts`); a C# literal's interpolation holes and a template's `${…}` are read as source in their turn, and comments, character literals and regular expressions are skipped. |
+| [SourceLiterals](SourceLiterals.cs) | Every string literal of the C# and TypeScript files under the given folders, skipping build output (`bin`, `obj`, `dist`, `out-tsc`, `coverage`), `node_modules`, folders whose name starts with `.`, TypeScript tests (`*.spec.ts`) and any directory the caller excludes (test support, harnesses, fixtures, a showcase: code that never ships); a C# literal's interpolation holes and a template's `${…}` are read as source in their turn, and comments, character literals and regular expressions are skipped. |
 | [ResxFile](ResxFile.cs) | A `.resx` file's string entries, and the satellites beside a neutral file. |
 | [RepositoryRoot](RepositoryRoot.cs) | The repository root, the nearest folder above the build output that holds `Tellma.slnx`, and paths under it. |
 

@@ -154,7 +154,7 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Fact]
-        public void The_source_reader_skips_build_output_dependencies_and_typescript_tests()
+        public void The_source_reader_skips_build_output_dependencies_typescript_tests_and_excluded_directories()
         {
             Write("src/Shipped.cs", "class A { string s = \"Shipped_Key\"; }");
             Write("src/app.ts", "export const k = 'App_Key';");
@@ -162,11 +162,15 @@ namespace Tellma.Core.Tests.Localization
             Write("src/bin/Debug/Generated.cs", "class B { string s = \"Bin_Key\"; }");
             Write("src/node_modules/lib/index.ts", "export const k = 'Dependency_Key';");
             Write("src/.angular/cache.ts", "export const k = 'Cache_Key';");
+            Write("src/testing/Harness.ts", "export const k = 'Harness_Key';");
 
-            IReadOnlySet<string> literals = SourceLiterals.Read([Path.Combine(_folder.FullName, "src")]);
+            string source = Path.Combine(_folder.FullName, "src");
+            IReadOnlySet<string> literals = SourceLiterals.Read([source], [Path.Combine(source, "testing") + Path.DirectorySeparatorChar]);
 
             Assert.Equal(["App_Key", "Shipped_Key"], literals.Order(StringComparer.Ordinal));
+            Assert.Contains("Harness_Key", SourceLiterals.Read([source]));
             _ = Assert.Throws<DirectoryNotFoundException>(() => SourceLiterals.Read([Path.Combine(_folder.FullName, "missing")]));
+            _ = Assert.Throws<DirectoryNotFoundException>(() => SourceLiterals.Read([source], [Path.Combine(source, "missing")]));
         }
 
         [Fact]

@@ -24,14 +24,34 @@ namespace Tellma.Testing.Resources
             "bin", "obj", "node_modules", "dist", "out-tsc", "coverage",
         };
 
-        /// <summary>Every literal of the C# and TypeScript files under the roots.</summary>
+        /// <summary>The file system's comparison of paths: without regard to case on Windows only.</summary>
+        private static readonly StringComparer PathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+        /// <summary>Every literal of the C# and TypeScript files under the roots, except under the excluded directories.</summary>
         /// <param name="roots">The directories to read; a root that does not exist is an error, so a moved tree never audits nothing.</param>
+        /// <param name="excluded">
+        ///     Directories under the roots that hold code that never ships (test support, harnesses,
+        ///     fixtures, a showcase), whose literals use no key; one that does not exist is an error,
+        ///     so a moved tree is never read by accident.
+        /// </param>
         /// <returns>The literals' contents, compared ordinally.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="roots" /> is null.</exception>
-        /// <exception cref="DirectoryNotFoundException">A root does not exist.</exception>
-        public static IReadOnlySet<string> Read(IEnumerable<string> roots)
+        /// <exception cref="DirectoryNotFoundException">A root or an excluded directory does not exist.</exception>
+        public static IReadOnlySet<string> Read(IEnumerable<string> roots, IEnumerable<string>? excluded = null)
         {
             ArgumentNullException.ThrowIfNull(roots);
+
+            // --- The excluded directories, as full paths compared the way the file system does ---
+            HashSet<string> skipped = new(PathComparer);
+            foreach (string directory in excluded ?? [])
+            {
+                if (!Directory.Exists(directory))
+                {
+                    throw new DirectoryNotFoundException($"The excluded source directory '{directory}' does not exist.");
+                }
+
+                _ = skipped.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)));
+            }
 
             HashSet<string> literals = new(StringComparer.Ordinal);
             foreach (string root in roots)
@@ -41,7 +61,7 @@ namespace Tellma.Testing.Resources
                     throw new DirectoryNotFoundException($"The source root '{root}' does not exist.");
                 }
 
-                foreach (string file in Files(root))
+                foreach (string file in Files(Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)), skipped))
                 {
                     string text = File.ReadAllText(file).ReplaceLineEndings("\n");
                     literals.UnionWith(file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? InCSharp(text) : InTypeScript(text));
@@ -71,11 +91,17 @@ namespace Tellma.Testing.Resources
             return TypeScriptLiteralScanner.Scan(text);
         }
 
-        /// <summary>The source files under a directory, skipping the directories that hold none of the tree's own.</summary>
-        /// <param name="directory">The directory.</param>
+        /// <summary>The source files under a directory, skipping the directories that hold none of the tree's own and the excluded ones.</summary>
+        /// <param name="directory">The directory, as a full path.</param>
+        /// <param name="excluded">The excluded directories, as full paths.</param>
         /// <returns>The files.</returns>
-        private static IEnumerable<string> Files(string directory)
+        private static IEnumerable<string> Files(string directory, HashSet<string> excluded)
         {
+            if (excluded.Contains(directory))
+            {
+                yield break;
+            }
+
             foreach (string file in Directory.EnumerateFiles(directory))
             {
                 string name = Path.GetFileName(file);
@@ -94,7 +120,7 @@ namespace Tellma.Testing.Resources
                     continue;
                 }
 
-                foreach (string file in Files(child))
+                foreach (string file in Files(child, excluded))
                 {
                     yield return file;
                 }

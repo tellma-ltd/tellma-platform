@@ -30,16 +30,19 @@ namespace Tellma.Core.Localization
     ///     <list type="bullet">
     ///         <item>
     ///             each entity's <c>&lt;Schema&gt;_&lt;Entity&gt;</c>, <c>…_Plural</c> and <c>…_New</c>;
-    ///             each property's, navigation's and child collection's <c>…_&lt;Member&gt;</c> and
-    ///             the shared <c>&lt;Member&gt;</c> (a multilingual group's twins have none, as they
-    ///             take their primary's label); each enum member's
-    ///             <c>&lt;Schema&gt;_&lt;Enum&gt;_&lt;Value&gt;</c>; and <c>Entity_New</c>;
+    ///             each property's, navigation's and child collection's <c>…_&lt;Member&gt;</c>; each
+    ///             property's and navigation's shared <c>&lt;Member&gt;</c> (a collection's label
+    ///             falls back to its child entity's, and a multilingual group's twins take their
+    ///             primary's label, so neither has one); the shared member labels Core ships
+    ///             (<c>Name</c>, <c>Parent</c>, …) whichever entities are composed; each enum
+    ///             member's <c>&lt;Schema&gt;_&lt;Enum&gt;_&lt;Value&gt;</c>; and <c>Entity_New</c>;
     ///         </item>
     ///         <item>
-    ///             each securable's <c>Securable_&lt;resource&gt;</c>, its action's
-    ///             <c>&lt;Resource&gt;_Action_&lt;Name&gt;</c> and <c>Action_&lt;Name&gt;</c>, its
-    ///             feature's <c>Feature_&lt;feature&gt;</c>, and a settings resource's
-    ///             <c>SettingCategory_&lt;category&gt;</c>; and <c>Action_&lt;Name&gt;</c> of each of
+    ///             each securable's resource label by the chain the client metadata looks it up by
+    ///             (an entity's own labels, a settings category's <c>SettingCategory_&lt;category&gt;</c>,
+    ///             else <c>Securable_&lt;resource&gt;</c>), its action's
+    ///             <c>&lt;Resource&gt;_Action_&lt;Name&gt;</c> and <c>Action_&lt;Name&gt;</c>, and its
+    ///             feature's <c>Feature_&lt;feature&gt;</c>; and <c>Action_&lt;Name&gt;</c> of each of
     ///             the platform's own actions, which any resource may register;
     ///         </item>
     ///         <item>
@@ -95,7 +98,7 @@ namespace Tellma.Core.Localization
 
             HashSet<string> keys = new(StringComparer.Ordinal);
             AddEntities(keys, services.GetRequiredService<IEntityMetadataProvider>());
-            AddSecurables(keys, services.GetRequiredService<ISecurableRegistry>());
+            AddSecurables(keys, services.GetRequiredService<ISecurableRegistry>(), services.GetRequiredService<IEntityMetadataProvider>());
             AddStacks(keys, services.GetService<IStackRegistry>());
             AddSettings(keys, services.GetService<ISettingKeyRegistry>());
             AddNotifications(keys, services.GetRequiredService<INotificationTypeRegistry>(), services.GetRequiredService<INotificationChannelRegistry>());
@@ -112,25 +115,28 @@ namespace Tellma.Core.Localization
         private static void AddEntities(HashSet<string> keys, IEntityMetadataProvider metadata)
         {
             _ = keys.Add(StringKeyConventions.EntityNew);
+            keys.UnionWith(StringKeyConventions.SharedMemberLabels);
             foreach (EntityMetadata entity in metadata.All)
             {
                 // --- The entity: singular, plural, create ---
                 string prefix = StringKeyConventions.KeyPrefix(entity.Name);
                 keys.UnionWith([prefix, prefix + StringKeyConventions.PluralSuffix, prefix + StringKeyConventions.NewSuffix]);
 
-                // --- Its members: each with its own key and the shared fallback ---
+                // --- Its members: each with its own key; a property and a navigation also with the
+                // shared fallback, while a collection falls back to its child entity's labels ---
                 // A multilingual group's twins take the primary's label, so they have no key of their own.
                 HashSet<string> twins = [.. entity.MultilingualGroups
                     .SelectMany(static group => new[] { group.Secondary?.Name, group.Tertiary?.Name })
                     .OfType<string>()];
 
                 IEnumerable<string> members = entity.Properties.Select(static property => property.Name).Where(name => !twins.Contains(name))
-                    .Concat(entity.References.Select(static reference => reference.Navigation))
-                    .Concat(entity.Children.Select(static child => child.Property));
+                    .Concat(entity.References.Select(static reference => reference.Navigation));
                 foreach (string member in members)
                 {
                     keys.UnionWith([$"{prefix}_{member}", member]);
                 }
+
+                keys.UnionWith(entity.Children.Select(child => $"{prefix}_{child.Property}"));
 
                 // --- Its enums' values, under the entity's schema ---
                 string schema = StringKeyConventions.SchemaPrefix(entity.Name);
@@ -148,27 +154,21 @@ namespace Tellma.Core.Localization
         /// <summary>The securables' resource, action and feature labels.</summary>
         /// <param name="keys">The keys so far.</param>
         /// <param name="registry">The securable registry.</param>
-        private static void AddSecurables(HashSet<string> keys, ISecurableRegistry registry)
+        /// <param name="metadata">The model's entity metadata, which says which resources are entities.</param>
+        private static void AddSecurables(HashSet<string> keys, ISecurableRegistry registry, IEntityMetadataProvider metadata)
         {
             // The platform's actions share Core's labels, whichever resources register them.
             keys.UnionWith(SecurableRegistry.PlatformActionOrder.Select(static action => StringKeyConventions.ActionPrefix + StringKeyConventions.ActionSegment(action)));
             foreach (SecurableDescriptor securable in registry.All)
             {
+                // The resource's label by the client metadata's own chain, so a key it never looks
+                // up (an entity's or a settings category's Securable_ key) is never derived.
                 keys.UnionWith(
                 [
-                    StringKeyConventions.FromDottedKey("Securable_", securable.Resource),
+                    .. SecurablesClientAssetContributor.ResourceLabelChain(securable.Resource, metadata).Chain,
                     StringKeyConventions.FromDottedKey("Feature_", securable.Feature),
                     .. ActionKeys(securable.Resource, securable.Action),
                 ]);
-
-                // A settings resource is labelled as its category's tab.
-                if (securable.Resource.StartsWith(CoreResources.SettingsPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    string category = string.Equals(securable.Resource, CoreResources.SettingsGeneral, StringComparison.OrdinalIgnoreCase)
-                        ? GeneralCategory
-                        : securable.Resource[CoreResources.SettingsPrefix.Length..];
-                    _ = keys.Add($"SettingCategory_{category}");
-                }
             }
         }
 

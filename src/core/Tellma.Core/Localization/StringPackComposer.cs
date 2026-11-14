@@ -30,9 +30,12 @@ namespace Tellma.Core.Localization
     ///         offered or not, because it is every other pack's fallback.
     ///     </para>
     ///     <para>
-    ///         A key declared by two assemblies is a conflict: the first assembly in composition
-    ///         order keeps it, and the startup gate refuses the composition with every conflict
-    ///         listed. ServerStrings resources are never read.
+    ///         A key has one owner, the first assembly in composition order whose neutral set
+    ///         declares it, and only the owner's translations of it are merged. Another assembly
+    ///         declaring the key, in its neutral set or in a satellite, is a conflict: the startup
+    ///         gate refuses the composition with every conflict listed. A translation of a key no
+    ///         neutral set declares is left out, since no label reads it. ServerStrings resources
+    ///         are never read.
     ///     </para>
     ///     <para>Composed once, on first use, and never changed.</para>
     /// </remarks>
@@ -65,8 +68,8 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(offered);
             ArgumentException.ThrowIfNullOrWhiteSpace(version);
 
-            // English first, so a conflict is reported against the neutral text where there is one;
-            // then the offered languages in declaration order.
+            // English first, so every key's owner is known before any translation is merged; then
+            // the offered languages in declaration order.
             string[] languages = [.. new[] { LanguageSet.English }.Concat(offered).Distinct(StringComparer.OrdinalIgnoreCase)];
             _composition = new(() => Compose(sources, languages, version), LazyThreadSafetyMode.ExecutionAndPublication);
         }
@@ -114,30 +117,46 @@ namespace Tellma.Core.Localization
             List<StringKeyConflict> conflicts = [];
             HashSet<(string Key, string First, string Second)> reported = [];
 
+            // The owner of each key: the first source whose neutral (English) set declares it. The
+            // English pass fills it; every other language's pass only reads it.
+            Dictionary<string, string> owners = new(StringComparer.Ordinal);
+
             foreach (string language in languages)
             {
-                // --- Merge: each source's own entries for the language, the first source keeping a key ---
+                // --- Merge: each source's own entries for the language, each key from its owner alone ---
+                bool neutral = string.Equals(language, LanguageSet.English, StringComparison.OrdinalIgnoreCase);
                 CultureInfo? culture = Culture(language);
                 Dictionary<string, string> merged = new(StringComparer.Ordinal);
-                Dictionary<string, string> owners = new(StringComparer.Ordinal);
                 foreach (StringResourceSource source in sources)
                 {
                     IReadOnlyDictionary<string, string>? entries = culture is null ? null : source.Read(culture);
                     foreach ((string key, string value) in entries ?? FrozenDictionary<string, string>.Empty)
                     {
-                        if (owners.TryGetValue(key, out string? owner))
+                        if (neutral && owners.TryAdd(key, source.Name))
                         {
-                            // One conflict per key and pair of sources, whichever languages repeat it.
-                            if (reported.Add((key, owner, source.Name)))
-                            {
-                                conflicts.Add(new StringKeyConflict(key, owner, source.Name));
-                            }
-
+                            merged[key] = value;
                             continue;
                         }
 
-                        owners[key] = source.Name;
-                        merged[key] = value;
+                        if (!owners.TryGetValue(key, out string? owner))
+                        {
+                            // A translation of a key no neutral set declares: no label reads it, so
+                            // it stays out of the pack (a feature's resource audit names it).
+                            continue;
+                        }
+
+                        if (string.Equals(owner, source.Name, StringComparison.Ordinal))
+                        {
+                            merged[key] = value;
+                            continue;
+                        }
+
+                        // Another source's key, whether redeclared or translated: one conflict per
+                        // key and pair of sources, whichever languages repeat it.
+                        if (reported.Add((key, owner, source.Name)))
+                        {
+                            conflicts.Add(new StringKeyConflict(key, owner, source.Name));
+                        }
                     }
                 }
 
@@ -207,9 +226,12 @@ namespace Tellma.Core.Localization
             IReadOnlyList<StringKeyConflict> Conflicts);
     }
 
-    /// <summary>A shared string resource key two composed assemblies both declare.</summary>
+    /// <summary>
+    ///     A shared string resource key two composed assemblies both declare: in both neutral sets, or
+    ///     in one's neutral set and in the other's translation.
+    /// </summary>
     /// <param name="Key">The key.</param>
-    /// <param name="First">The resources that keep it: the earlier in composition order.</param>
+    /// <param name="First">The resources that keep it: the first in composition order whose neutral set declares it.</param>
     /// <param name="Second">The resources whose entry is dropped.</param>
     internal sealed record StringKeyConflict(string Key, string First, string Second);
 }

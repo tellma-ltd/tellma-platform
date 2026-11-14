@@ -27,9 +27,6 @@ namespace Tellma.Core.Tests.Localization
             // --- The stacks' built-in actions (spec 0015): no stack is composed yet ---
             ["Action_Deactivate"] = "The deactivate action of an activatable entity's stack.",
 
-            // --- Every tree entity's shared navigation label; Core declares no tree entity ---
-            ["Parent"] = "The shared label of a tree entity's parent navigation.",
-
             // --- The permissions editor's reasons (spec 0032 §12.4) ---
             ["Access_Reason_self"] = "The permissions editor's label of a grant over the user's own records.",
 
@@ -68,6 +65,19 @@ namespace Tellma.Core.Tests.Localization
             ["Notification_core_dashboard_shared"] = "The notification of a shared dashboard.",
         };
 
+        /// <summary>
+        ///     The trees under the scanned roots whose code never ships: the test support, the
+        ///     component harnesses, the build tools' fixtures and the showcase. A literal there uses no key.
+        /// </summary>
+        private static readonly string[] NeverShips =
+        [
+            RepositoryRoot.Combine("src", "core", "Tellma.Core.Testing"),
+            RepositoryRoot.Combine("client", "projects", "core", "tellma-core-testing"),
+            RepositoryRoot.Combine("client", "projects", "core", "tellma-core-ui-testing"),
+            RepositoryRoot.Combine("client", "projects", "core", "tellma-core-tools", "fixtures"),
+            RepositoryRoot.Combine("client", "projects", "internal", "showcase"),
+        ];
+
         [Fact]
         public async Task Every_core_resource_key_is_derived_from_the_model_spelled_in_the_source_or_pending()
         {
@@ -81,7 +91,7 @@ namespace Tellma.Core.Tests.Localization
                     RepositoryRoot.Combine("src", "core", "Tellma.Core", "Resources", "ServerStrings.resx"),
                 ],
                 DerivedKeys = ConventionalStringKeys.Of(provider),
-                Literals = SourceLiterals.Read([RepositoryRoot.Combine("src"), RepositoryRoot.Combine("client", "projects")]),
+                Literals = SourceLiterals.Read([RepositoryRoot.Combine("src"), RepositoryRoot.Combine("client", "projects")], NeverShips),
                 Pending = Pending,
             });
 

@@ -32,6 +32,14 @@ namespace Tellma.Core.Localization
         public const string EntityNew = "Entity_New";
 
         /// <summary>
+        ///     The bare member keys Core ships as the shared fallback of every entity's member of that
+        ///     name (<c>Name</c>, <c>Parent</c>, …), whichever entities a composition holds: a pack's
+        ///     tree entity finds <c>Parent</c> though Core declares no tree entity.
+        /// </summary>
+        public static IReadOnlyList<string> SharedMemberLabels { get; } =
+            ["Name", "Code", "Description", "IsActive", "CreatedAt", "CreatedBy", "ModifiedAt", "ModifiedBy", "Parent"];
+
+        /// <summary>
         ///     The prefix every key of an entity or resource starts with: its qualified name with the
         ///     schema, its first segment, capitalized and its dots written <c>_</c> (<c>gl.Center</c>
         ///     is <c>Gl_Center</c>).

@@ -88,17 +88,25 @@ namespace Tellma.Core.Access
                 featureFallback);
         }
 
-        /// <summary>The key of a resource's label, by the chain its kind takes, and its fallback.</summary>
+        /// <summary>
+        ///     The key chain of a resource's label, by the kind of resource, and its fallback. The
+        ///     conventional key list derives a resource's keys from the same chain, so the audit
+        ///     accepts exactly the keys this section looks up.
+        /// </summary>
         /// <param name="resource">The resource.</param>
-        /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
-        private (string Key, string? Fallback) ResourceLabel(string resource)
+        /// <param name="metadata">The model's entity metadata, which says which resources are entities.</param>
+        /// <returns>The keys, most specific first, and the label when no key is declared.</returns>
+        internal static (string[] Chain, string Fallback) ResourceLabelChain(string resource, IEntityMetadataProvider metadata)
         {
+            ArgumentNullException.ThrowIfNull(resource);
+            ArgumentNullException.ThrowIfNull(metadata);
+
             // --- An entity: its plural label, then its singular one; the fallback goes with the
             // plural key, so it is plural too ---
             if (metadata.All.Any(entity => string.Equals(entity.Name, resource, StringComparison.OrdinalIgnoreCase)))
             {
                 string prefix = StringKeyConventions.KeyPrefix(resource);
-                return Resolve([prefix + StringKeyConventions.PluralSuffix, prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource))));
+                return ([prefix + StringKeyConventions.PluralSuffix, prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource))));
             }
 
             // --- A settings category: its tab's label; the general settings are the general category ---
@@ -112,12 +120,21 @@ namespace Tellma.Core.Access
 
                 if (!category.Contains('.', StringComparison.Ordinal))
                 {
-                    return Resolve([$"SettingCategory_{category}"], NameHumanizer.Humanize(category));
+                    return ([$"SettingCategory_{category}"], NameHumanizer.Humanize(category));
                 }
             }
 
             // --- Any other resource: its own key ---
-            return Resolve([$"Securable_{resource.Replace('.', '_')}"], NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource)));
+            return ([$"Securable_{resource.Replace('.', '_')}"], NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource)));
+        }
+
+        /// <summary>The key of a resource's label, by the chain its kind takes, and its fallback.</summary>
+        /// <param name="resource">The resource.</param>
+        /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
+        private (string Key, string? Fallback) ResourceLabel(string resource)
+        {
+            (string[] chain, string fallback) = ResourceLabelChain(resource, metadata);
+            return Resolve(chain, fallback);
         }
 
         /// <summary>The first key of a chain a neutral shared resource declares; else the chain's first key with a fallback.</summary>

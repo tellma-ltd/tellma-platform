@@ -664,8 +664,11 @@ of every composed feature's assembly (each manifest ending `.Resources.Strings.r
 falls back to, then each language the distribution offers. Keys are kept verbatim, a satellite's
 value replaces the neutral one only in its own language, and the pack is its dictionary as JSON with
 the keys in ordinal order, versioned by `DeploymentVersions.DistributionVersion`. The dictionaries
-stay in memory for the server's own labels. A key two assemblies both declare fails startup: the
-`core.string-pack` check reports one problem per key and pair of resource sets.
+stay in memory for the server's own labels. A key belongs to the first assembly whose neutral set
+declares it, and only that assembly's translations of it are merged; a translation of a key no
+neutral set declares is left out. A key two assemblies both declare, neutrally or one of them in a
+satellite, fails startup: the `core.string-pack` check reports one problem per key and pair of
+resource sets.
 `StringPackClientAssetContributor` hands every pack to the client-asset emission, which writes
 `assets/strings-<language>-<hash>.json` and names each file in the module's `strings` map.
 
@@ -695,7 +698,10 @@ primary's, and null when none is.
 (entities and their members, securables and the platform's actions, stacks, settings,
 notifications, job handlers, calendars, value sets and the brand). A feature's resource audit takes
 it as the derived keys and fails a key no convention derives and no source literal names
-(`test/shared/Tellma.Testing.Resources`).
+(`test/shared/Tellma.Testing.Resources`). Each family derives exactly the keys a lookup reads: a
+collection has no bare key (its label falls back to its child entity's), an entity's securable reads
+the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
+derived whichever entities a composition holds.
 
 ### Value sets
 
@@ -1076,5 +1082,6 @@ runs batches against the data layer's fixture database (`test/shared/Tellma.Test
 holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
 (`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
-convention derives and no literal in `src/` or `client/projects/` names fails it, unless it is
+convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,
+fixtures and the showcase left out) fails it, unless it is
 listed as pending with the reason it waits.

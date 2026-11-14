@@ -199,7 +199,7 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Fact]
-        public void Outside_every_scope_a_label_renders_in_the_current_ui_culture_with_no_tenant_suffix()
+        public void Outside_every_scope_a_label_reads_the_current_ui_culture_and_the_requests_content_languages()
         {
             // The request's localization, as a front door applies it, carries the tenant's languages.
             using IDisposable request = LocalizationScope.ApplyRequest(Context("ar", "en", "ar"));

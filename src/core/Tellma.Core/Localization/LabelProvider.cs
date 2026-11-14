@@ -202,7 +202,10 @@ namespace Tellma.Core.Localization
             return plural ? [prefix + StringKeyConventions.PluralSuffix, prefix] : [prefix];
         }
 
-        /// <summary>A property's chain: the entity's key, then the shared key.</summary>
+        /// <summary>
+        ///     A property's chain: the entity's key, then the shared key, which Core ships for the
+        ///     members in <see cref="StringKeyConventions.SharedMemberLabels" />.
+        /// </summary>
         /// <param name="entity">The entity.</param>
         /// <param name="property">The property's name.</param>
         /// <returns>The keys, most specific first.</returns>
