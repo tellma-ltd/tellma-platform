@@ -161,6 +161,14 @@ namespace Tellma.Core.Notifications
 
             IDataBatch batch = _database.CreateBatch(BatchPurpose.Persist);
             Notify(batch, requests);
+
+            // Nothing appended, nothing to send: executing would still run the prologue's round trip,
+            // which does no work and could refuse the no-op on a frozen tenant or a deactivated caller.
+            if (((DataBatch)batch).Statements.Count == 0)
+            {
+                return;
+            }
+
             _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -212,6 +220,14 @@ namespace Tellma.Core.Notifications
 
             IDataBatch batch = _database.CreateBatch(BatchPurpose.Persist);
             Withdraw(batch, requests);
+
+            // Nothing appended, nothing to send: executing would still run the prologue's round trip,
+            // which does no work and could refuse the no-op on a frozen tenant or a deactivated caller.
+            if (((DataBatch)batch).Statements.Count == 0)
+            {
+                return;
+            }
+
             _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
 

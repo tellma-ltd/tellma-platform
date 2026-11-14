@@ -658,6 +658,42 @@ namespace Tellma.Core.Tests.Notifications
 
         // --- Helpers ---
 
+        [Fact]
+        public async Task A_call_of_its_own_that_appends_a_statement_sends_its_batch()
+        {
+            // The control for the empty forms below: the harness's connection refuses every send.
+            HarnessDatabase database = new(_plain);
+
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(
+                () => Notifier(_plain, database: database).NotifyAsync([Order([5])], TestContext.Current.CancellationToken));
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(
+                () => Notifier(_plain, database: database).WithdrawAsync([new WithdrawRequest("acme.Order:42")], TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task A_call_of_its_own_with_nothing_to_append_sends_nothing()
+        {
+            HarnessDatabase database = new(_plain);
+            Notifier notifier = Notifier(_plain, database: database);
+            CancellationToken token = TestContext.Current.CancellationToken;
+
+            // --- An empty recipient list, and a channel-only type no channel delivers on this instance ---
+            await notifier.NotifyAsync([Order([])], token);
+            await notifier.NotifyAsync([new NotificationRequest(SmsOnly, [5, 7], null, null, null, null, null)], token);
+
+            // --- A withdrawal for an empty recipient list ---
+            await notifier.WithdrawAsync([new WithdrawRequest("acme.Order:42", [])], token);
+
+            // Each call created its batch, appended nothing and never sent it, so no prologue ran.
+            Assert.Equal(3, database.Created.Count);
+            Assert.All(database.Created, static batch =>
+            {
+                Assert.Empty(batch.Statements);
+                Assert.Empty(batch.CommittedCallbacks);
+            });
+            Assert.Empty(_publisher.Published);
+        }
+
         /// <summary>A request of the targeted mutable type.</summary>
         /// <param name="recipients">The recipients.</param>
         /// <param name="dedupKey">The duplicate key.</param>
@@ -689,10 +725,11 @@ namespace Tellma.Core.Tests.Notifications
         /// <summary>A notifier over a harness's composition for one scope.</summary>
         /// <param name="harness">The harness.</param>
         /// <param name="context">The scope's context; a user scope when null.</param>
-        private Notifier Notifier(BatchHarness harness, RequestContext? context = null)
+        /// <param name="database">The scope's tenant database; one the test never reaches when null.</param>
+        private Notifier Notifier(BatchHarness harness, RequestContext? context = null, ITenantDatabase? database = null)
         {
             return new Notifier(
-                new UnusedDatabase(),
+                database ?? new UnusedDatabase(),
                 new FixedContext(context ?? UserScope),
                 harness.Services.GetRequiredService<INotificationTypeRegistry>(),
                 Options.Create(Limits),
@@ -801,6 +838,28 @@ namespace Tellma.Core.Tests.Notifications
         private sealed class FixedContext(RequestContext context) : IRequestContextAccessor
         {
             public RequestContext Current => context;
+        }
+
+        /// <summary>A tenant database whose batches are the harness's, whose connection refuses every send.</summary>
+        /// <param name="harness">The harness.</param>
+        private sealed class HarnessDatabase(BatchHarness harness) : ITenantDatabase
+        {
+            /// <summary>The batches created, in order.</summary>
+            public List<DataBatch> Created { get; } = [];
+
+            /// <inheritdoc />
+            public QueryexSchema Schema => throw new NotSupportedException();
+
+            /// <inheritdoc />
+            public QueryexContextValues Context => throw new NotSupportedException();
+
+            /// <inheritdoc />
+            public IDataBatch CreateBatch(BatchPurpose purpose)
+            {
+                DataBatch batch = harness.Batch(purpose);
+                Created.Add(batch);
+                return batch;
+            }
         }
 
         /// <summary>A tenant database the tests never reach: every request here rides a batch the test holds.</summary>
