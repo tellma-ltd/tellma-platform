@@ -6,7 +6,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting.Internal;
 using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
@@ -48,25 +47,27 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             }
         }
 
-        /// <summary>The identity check's verdicts: the mode, the environment, the secrets set, whether mail is composed, and the settings it names.</summary>
+        /// <summary>The identity check's verdicts: the mode, the secrets set, whether mail is composed, and the settings it names.</summary>
         /// <returns>The cases.</returns>
-        public static TheoryData<string, string, bool, bool, bool, string[]> IdentityCases()
+        public static TheoryData<string, bool, bool, bool, string[]> IdentityCases()
         {
-            return new TheoryData<string, string, bool, bool, bool, string[]>
+            // The service client's secret is never this check's: the identity-server client's options
+            // validate it, so a missing one is named by the options check alone.
+            return new TheoryData<string, bool, bool, bool, string[]>
             {
-                { "Standalone", "Production", true, false, false, [] },
-                { "Standalone", "Production", false, false, false, ["ClientSecret"] },
-                { "InProc", "Production", true, true, true, [] },
-                { "InProc", "Production", false, false, true, ["ClientSecret", "ServiceClientSecret"] },
-                { "InProc", "Production", true, true, false, ["IEmailSender"] },
-                { "InProc", "Development", true, false, true, [] },
+                { "Standalone", true, false, false, [] },
+                { "Standalone", false, false, false, ["ClientSecret"] },
+                { "InProc", true, true, true, [] },
+                { "InProc", false, false, true, ["ClientSecret"] },
+                { "InProc", true, true, false, ["IEmailSender"] },
+                { "InProc", true, false, true, [] },
             };
         }
 
         [Theory]
         [MemberData(nameof(IdentityCases))]
-        public async Task The_identity_check_requires_stable_secrets_and_in_proc_mail(
-            string mode, string environment, bool clientSecret, bool serviceSecret, bool mail, string[] named)
+        public async Task The_identity_check_requires_the_sign_in_secret_and_in_proc_mail(
+            string mode, bool clientSecret, bool serviceSecret, bool mail, string[] named)
         {
             IConfiguration configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["Tellma:Identity:Mode"] = mode })
@@ -80,8 +81,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             await using ServiceProvider provider = services.BuildServiceProvider();
             IdentityCheck check = new(
                 new IdentityClientSecrets(clientSecret ? "secret" : null, serviceSecret ? "service-secret" : null),
-                configuration,
-                new HostingEnvironment { EnvironmentName = environment });
+                configuration);
 
             IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 

@@ -123,6 +123,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 ["Tellma:Identity:Mode"] = "Standalone",
                 ["Tellma:Identity:Authority"] = Authority,
                 ["Tellma:Identity:ClientSecret"] = "test-client-secret",
+                ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = keyRing,
                 ["Tellma:Catalog:RefreshInterval"] = "00:00:01",
 

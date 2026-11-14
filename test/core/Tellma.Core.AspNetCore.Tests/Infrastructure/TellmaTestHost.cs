@@ -118,6 +118,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 ["Tellma:DisplayName"] = "Acme ERP",
                 ["Tellma:Identity:Authority"] = Issuer,
                 ["Tellma:Identity:ClientSecret"] = ClientSecret,
+                ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
             };
         }

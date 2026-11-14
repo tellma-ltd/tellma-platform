@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
@@ -19,6 +20,7 @@ using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
+using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
@@ -97,6 +99,10 @@ namespace Tellma.Core.Composition
                 .Model<UserStampConfiguration>()
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
+
+            // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
+            // Its options and named HTTP client are registered with the platform's options.
+            _ = contribution.Singleton<IIdentityServerClient, IdentityServerClient>();
 
             // --- Access: the securable registry, its client metadata section, and Core's own securables ---
             // spec 0014 §1.2, §4.2. The user stamps are a query root of their own, reached through

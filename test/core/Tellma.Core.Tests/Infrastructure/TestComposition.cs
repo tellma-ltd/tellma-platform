@@ -28,6 +28,8 @@ namespace Tellma.Core.Tests.Infrastructure
             ["Tellma:Catalog:ConnectionString"] = "Data Source=sql01.database.windows.net;Initial Catalog=tellma-acme-catalog;Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=10",
             ["Tellma:Sql:Profiles:default"] = "Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=20",
             ["Tellma:Sql:AllowedServers:0"] = ".database.windows.net",
+            ["Tellma:Identity:Authority"] = "https://id.tellma.com",
+            ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
         };
 
         /// <summary>The sound configuration with some values added, replaced or removed (a null value removes the key).</summary>

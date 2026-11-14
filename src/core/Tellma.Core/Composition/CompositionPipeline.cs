@@ -16,6 +16,7 @@ using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
@@ -162,6 +163,9 @@ namespace Tellma.Core.Composition
 
             // --- Access: the options, the permission classifier and the set builder (spec 0014 §6.2, §12.1) ---
             AccessRuntimeComposition.Register(services, options);
+
+            // --- The identity-server client: its options and the named HTTP client (spec 0018 §2) ---
+            IdentityComposition.Register(services, options, slug, configuration, environment);
 
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);

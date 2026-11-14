@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.ComponentModel.DataAnnotations;
+using Tellma.Core.Abstractions.Identity;
 
 namespace Tellma.Core.AspNetCore.Hosting
 {
@@ -15,11 +16,11 @@ namespace Tellma.Core.AspNetCore.Hosting
     /// </remarks>
     public sealed class IdentityHostOptions : IValidatableObject
     {
-        /// <summary>The configuration section the options bind from.</summary>
-        public const string SectionPath = "Tellma:Identity";
+        /// <summary>The configuration section the options bind from; the identity-server client's options bind from it too.</summary>
+        public const string SectionPath = IdentityServerClientOptions.SectionPath;
 
-        /// <summary>The path the in-proc identity engine is served under.</summary>
-        public const string InProcPath = "/id";
+        /// <summary>The path the in-proc identity engine is served under, the one the identity-server client derives its authority from.</summary>
+        public const string InProcPath = IdentityServerClientOptions.InProcPath;
 
         /// <summary>Where the identity server runs; <see cref="IdentityMode.Standalone" /> by default.</summary>
         public IdentityMode Mode { get; set; } = IdentityMode.Standalone;

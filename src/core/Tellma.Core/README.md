@@ -910,6 +910,46 @@ and `tellma.access.set.grants` and logs `AccessSetBuilt` (3106) at Debug.
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
 
+## The identity-server client
+
+`IdentityServerClient` is the distribution's client of its identity server's v1 management API:
+the bulk invite, the bulk delivery status, and creating and deleting service accounts. It is one
+singleton per host, tenant-agnostic, registered by `CoreFeature` for the web host and the migrator
+alike. Its options, `IdentityServerClientOptions`, bind from `Tellma:Identity` (the section the web
+host's sign-in options bind from too) and the platform settles them after binding: `ClientId` is
+`<slug>-svc`, and in in-proc identity mode `Authority` is the in-proc engine's issuer,
+`{Tellma:PublicOrigin}/id`, whatever the section says. `core.options` judges them: the authority
+absolute, `https` outside Development, with no trailing slash, query, fragment or user information;
+`ServiceClientSecret` set, except in in-proc Development, where the web host fills it with the secret
+it generates for its boot (the one the in-proc engine seeds) and the migrator has none, so a call
+there fails with `InvalidOperationException` before anything is sent.
+
+Each exchange goes through the named `HttpClient` `Tellma.Identity`, under a 30-second timeout on the
+injected `TimeProvider`, with `Accept: application/json` and `User-Agent: Tellma.Core/<version>`;
+the routes are relative to the authority, its path kept. The factory's own request logging is
+removed from that client: its structured header values would carry the bearer token verbatim. The
+service token is a `client_credentials` grant for the `tellma_identity` scope with no `resource`
+parameter, the secret posted in the form body; it is cached until 60 seconds before it expires, and
+concurrent callers without one await a single fetch. One `401` discards that token (unless a
+concurrent caller already replaced it), fetches one and retries the call once.
+
+The bulk members send chunks of at most `IIdentityServerClient.MaxChunkSize` (1,000), one call each,
+in input order. A chunk's answer is recorded only when it holds one result per item, each echoing its
+item's address or subject, with a known status or state, and either a status with its subject or a
+refusal. Before any chunk completed, a failure raises by cause: the server unreachable (a transport
+failure, a `5xx` or the timeout) as `DependencyUnavailableException` (`identity`, retry after 1 s),
+the server refusing the distribution (a token-endpoint `4xx`, a second `401`, any other `4xx`) or an
+answer it cannot record as `InvalidOperationException`, and the caller's cancellation as itself.
+After one, any failure or a cancellation answers the completed chunks' results, a prefix the caller
+tells apart by its length, and logs `IdentityChunkFailed` at Warning.
+
+Every call is counted on `tellma.identity.calls` and timed on `tellma.identity.call.duration`
+(meter `Tellma.Core`, tags `identity.endpoint` ∈ `invite | delivery | service-account` and `outcome`
+∈ `ok | partial | unavailable | error | cancelled`) and logged once as `IdentityCall` at Information;
+each chunk is an `identity.invite` or `identity.delivery` activity tagged `identity.count` and
+`identity.outcome`. No log, exception message or `ToString` carries a token, a secret, an
+Authorization header, an address or a subject.
+
 ## Background jobs
 
 The job contracts live in `Tellma.Core.Abstractions.Jobs`. Core binds `JobsOptions` from
@@ -986,6 +1026,7 @@ same in a `Persist` batch of its own.
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
+| `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
