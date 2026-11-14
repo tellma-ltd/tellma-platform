@@ -221,6 +221,27 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the collections’ geometry at the sizes they are drawn at', () => {
+    // The names tm-pager, tm-tree, tm-reorder-list and the drop target
+    // read: a 14px indent and a 13px chevron in a 24px twisty, a reserved
+    // 16px spinner slot, a 24px grab handle, a 2px insertion line, and the
+    // drop target's translucent wash.
+    for (const declaration of [
+      '--pager-gap: 4px;',
+      '--pager-select-gap: 8px;',
+      '--tree-indent: 14px;',
+      '--tree-twisty-size: 13px;',
+      '--tree-twisty-target: 24px;',
+      '--tree-spinner-slot: 16px;',
+      '--reorder-list-handle-size: 24px;',
+      '--reorder-list-indicator-size: 2px;',
+      '--drop-target-over-bg: rgba(76, 160, 182, 0.12);',
+      '--drop-target-border-width: 2px;',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role

@@ -988,5 +988,64 @@ export const tmTokensDefault: TmTokens = {
       maxInlineSize: '320px',
       shadow: '0 6px 16px -8px rgba(0, 23, 34, 0.28)',
     },
+    // tm-pager: the status, previous and next, then the size select, on one
+    // line. The controls follow the size ladder (button and formField);
+    // these are the spacing and the status ink.
+    pager: {
+      gap: '4px',
+      selectGap: '8px',
+      text: '{text.secondary}',
+    },
+    // tm-tree: rows at the option-row height (formField.optionHeight), a
+    // 14px indent per level and a 13px chevron in a 24px twisty, so the
+    // twisty meets the target minimum. A 16px slot beside it is reserved
+    // for the loading spinner whenever children load lazily, so a spinner
+    // coming and going moves nothing. Selection is the option rows' look: a
+    // tinted row under a 2px accent bar.
+    tree: {
+      indent: '14px',
+      twistySize: '13px',
+      twistyTarget: '24px',
+      spinnerSlot: '16px',
+      spinnerSize: '12px',
+      checkSize: '14px',
+      gap: '4px',
+      paddingX: '4px',
+      radius: '{radius.xs}',
+      text: '{text.body}',
+      contextText: '{text.secondary}',
+      twisty: '{text.secondary}',
+      hoverBg: '{surface.hover}',
+      selectedBg: '{surface.selected}',
+      selectedText: '{text.strong}',
+      selectedBar: '{action.accent}',
+      check: '{action.primary}',
+    },
+    // tm-reorder-list: rows at the option-row height, each led by a 24px
+    // grab handle. A grabbed row takes the selected tint; a 2px accent line
+    // marks where a drag will land, drawn over the gap so rows never move.
+    reorderList: {
+      handleSize: '24px',
+      handleIconSize: '14px',
+      gap: '4px',
+      paddingX: '4px',
+      radius: '{radius.xs}',
+      text: '{text.body}',
+      handle: '{text.secondary}',
+      handleHoverBg: '{surface.hover}',
+      grabbedBg: '{surface.selected}',
+      indicator: '{action.accent}',
+      indicatorSize: '2px',
+      emptyPaddingY: '12px',
+      emptyText: '{text.secondary}',
+    },
+    // [tmDropTarget]: while an accepted drag hovers, a translucent teal wash
+    // (the same in both schemes) under a dashed accent outline drawn inside
+    // the target's box.
+    dropTarget: {
+      overBg: 'rgba(76, 160, 182, 0.12)',
+      border: '{action.primary}',
+      borderWidth: '2px',
+    },
   },
 };

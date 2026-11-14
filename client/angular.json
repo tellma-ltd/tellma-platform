@@ -279,6 +279,7 @@
               "projects/core/tellma-core-ui/styles/tm-number.css",
               "projects/core/tellma-core-ui/styles/tm-search.css",
               "projects/core/tellma-core-ui/styles/tm-description-list.css",
+              "projects/core/tellma-core-ui/styles/tm-drop-target.css",
               "projects/locale/tellma-locale-ar/fonts/fonts.css",
               "projects/internal/showcase/src/styles.css"
             ]

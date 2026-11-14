@@ -61,6 +61,10 @@ disabled/readonly/required).
 | `@tellma/core-ui/page-header` | `tm-page-header` — a page's title row (crumb link, `h1`, extras, end slot) and toolbar row on one line each, and a band below them that wraps |
 | `@tellma/core-ui/description-list` | `dl[tmDescriptionList]` — label and value pairs, stacked or inline, in one, two or container-sized columns (global stylesheet) |
 | `@tellma/core-ui/splitter` | `tm-splitter` + `tmSplitterPane` — two panes divided by a bar dragged with any pointer or moved by keyboard, the primary pane's size clamped to the container in CSS while `size` keeps the user's intent |
+| `@tellma/core-ui/pager` | `tm-pager` — paging status and controls: range mode writes `page` and `pageSize`, item mode steps through single items; the status and the size select reserve their widest content, so paging never moves the buttons |
+| `@tellma/core-ui/tree` | `tm-tree` + `ng-template[tmTreeNode]` — a tree on the aria tree pattern whose children load lazily into a reserved spinner slot, with none, single or multiple selection, context rows and draggable rows |
+| `@tellma/core-ui/drag-drop` | `[tmDragSource]`, `[tmDropTarget]` and the `TmDragDrop` service — typed payloads over native drag and drop; a drag writes its text as `text/plain`, so text fields take it at the drop caret (global stylesheet) |
+| `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by pointer or by a grab handle's keys, each step announced, that also takes drops from other sources |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
@@ -72,9 +76,10 @@ Add to the application's `styles` array:
 - this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);
 - one stylesheet per BARE DIRECTIVE — `styles/tm-button.css`,
   `styles/tm-input.css`, `styles/tm-number.css`, `styles/tm-search.css`,
-  `styles/tm-description-list.css`. A directive has no view of its own to
-  carry styles, so its appearance ships as a global sheet; skipping these
-  leaves buttons, text/number/search inputs and description lists unstyled. The
+  `styles/tm-description-list.css`, `styles/tm-drop-target.css`. A
+  directive has no view of its own to carry styles, so its appearance ships
+  as a global sheet; skipping these leaves buttons, text/number/search
+  inputs, description lists and drop targets unstyled. The
   authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
   by the entry point that needs it.
 

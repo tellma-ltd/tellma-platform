@@ -20,6 +20,7 @@ import { DatePickerStory } from './date-picker/date-picker-story';
 import { DateRangeStory } from './date-range/date-range-story';
 import { DateTimeStory } from './date-time/date-time-story';
 import { DescriptionListStory } from './description-list/description-list-story';
+import { DragDropStory } from './drag-drop/drag-drop-story';
 import { EmptyStateStory } from './empty-state/empty-state-story';
 import { EntityPickerStory } from './entity-picker/entity-picker-story';
 import { ErrorDialogStory } from './error-dialog/error-dialog-story';
@@ -57,11 +58,14 @@ import { SegmentedStory } from './segmented/segmented-story';
 import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
 import { SkeletonStory } from './skeleton/skeleton-story';
+import { PagerStory } from './pager/pager-story';
+import { ReorderListStory } from './reorder-list/reorder-list-story';
 import { SplitterStory } from './splitter/splitter-story';
 import { SwitchStory } from './switch/switch-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 import { ToastStory } from './toast/toast-story';
+import { TreeStory } from './tree/tree-story';
 
 /**
  * The showcase story registry.
@@ -125,6 +129,15 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
     component: DescriptionListStory,
   },
   { id: 'splitter', title: 'Splitter (tm-splitter)', component: SplitterStory, wide: true },
+  { id: 'pager', title: 'Pager (tm-pager)', component: PagerStory },
+  { id: 'tree', title: 'Tree (tm-tree)', component: TreeStory },
+  { id: 'reorder-list', title: 'Reorder list (tm-reorder-list)', component: ReorderListStory },
+  {
+    id: 'drag-drop',
+    title: 'Drag and drop (tmDragSource + tmDropTarget)',
+    component: DragDropStory,
+    wide: true,
+  },
   { id: 'form-field', title: 'Form field (tm-form-field)', component: FormFieldStory },
   { id: 'alert', title: 'Alert (tm-alert)', component: AlertStory },
   { id: 'input', title: 'Text input (tmInput + tm-form-field)', component: InputStory },

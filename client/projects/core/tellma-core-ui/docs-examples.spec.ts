@@ -37,6 +37,7 @@ import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmDateRange } from '@tellma/core-ui/date-range';
 import { TmDateTimeField, TmTimeField } from '@tellma/core-ui/date-time';
 import { TmDescriptionList } from '@tellma/core-ui/description-list';
+import { TmDragSource, TmDropTarget, type TmDragPayload } from '@tellma/core-ui/drag-drop';
 import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
@@ -62,10 +63,12 @@ import { TmContextMenuTrigger, TmMenu, TmMenuHeaderDef, TmMenuTrigger } from '@t
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
+import { TmPager } from '@tellma/core-ui/pager';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
+import { TmReorderEmpty, TmReorderItem, TmReorderList } from '@tellma/core-ui/reorder-list';
 import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
 import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
 import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
@@ -75,6 +78,7 @@ import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
 import { TmSwitch } from '@tellma/core-ui/switch';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
+import { TmTree, TmTreeNode } from '@tellma/core-ui/tree';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import * as alertExamples from './alert/tm-alert.examples';
@@ -94,6 +98,7 @@ import * as dateRangeExamples from './date-range/tm-date-range.examples';
 import * as dateTimeFieldExamples from './date-time/tm-date-time-field.examples';
 import * as timeFieldExamples from './date-time/tm-time-field.examples';
 import * as descriptionListExamples from './description-list/tm-description-list.examples';
+import * as dragDropExamples from './drag-drop/tm-drag-drop.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
 import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
@@ -108,11 +113,13 @@ import * as menuTriggerExamples from './menu/tm-menu-trigger.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as pageHeaderExamples from './page-header/tm-page-header.examples';
+import * as pagerExamples from './pager/tm-pager.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
 import * as progressRingExamples from './progress/tm-progress-ring.examples';
 import * as radioGroupExamples from './radio/tm-radio-group.examples';
 import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
+import * as reorderListExamples from './reorder-list/tm-reorder-list.examples';
 import * as searchExamples from './search-field/tm-search.examples';
 import * as searchFieldExamples from './search-field/tm-search-field.examples';
 import * as segmentedExamples from './segmented/tm-segmented.examples';
@@ -124,6 +131,7 @@ import * as splitterExamples from './splitter/tm-splitter.examples';
 import * as switchExamples from './switch/tm-switch.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
+import * as treeExamples from './tree/tm-tree.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
 
 /**
@@ -154,6 +162,20 @@ interface ExampleTreeRow {
   readonly parentId: number | null;
   readonly name: string;
   readonly qty: number;
+}
+
+/** A field behind the tree examples' bindings: navigations carry children and a target. */
+interface ExampleField {
+  readonly key: string;
+  readonly label: string;
+  readonly target?: string;
+  readonly children?: readonly ExampleField[];
+}
+
+/** A column behind the reorder-list examples' bindings. */
+interface ExampleColumn {
+  readonly key: string;
+  readonly label: string;
 }
 
 /** A trivial modal page behind the entity-picker examples' page bindings. */
@@ -188,6 +210,8 @@ class ExamplePage {}
     TmDateRange,
     TmDateTimeField,
     TmDescriptionList,
+    TmDragSource,
+    TmDropTarget,
     TmDropzone,
     TmEmptyState,
     TmEntityPicker,
@@ -216,6 +240,7 @@ class ExamplePage {}
     TmOption,
     TmOptionGroup,
     TmPageHeader,
+    TmPager,
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
@@ -225,6 +250,9 @@ class ExamplePage {}
     TmRadioGroup,
     TmReference,
     TmRelativeTime,
+    TmReorderEmpty,
+    TmReorderItem,
+    TmReorderList,
     TmSearch,
     TmSearchField,
     TmSegment,
@@ -241,7 +269,9 @@ class ExamplePage {}
     TmTabLabel,
     TmTimeField,
     TmTooltip,
+    TmTree,
     TmTreeGrid,
+    TmTreeNode,
   ],
   template: `
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
@@ -313,6 +343,15 @@ class ExamplePage {}
       <div tmSplitterPane="start">placeholder</div>
       <div tmSplitterPane="end">placeholder</div>
     </tm-splitter>
+    <tm-pager />
+    <tm-tree [nodeKey]="fieldKey" [label]="fieldLabel" ariaLabel="placeholder">
+      <ng-template tmTreeNode>placeholder</ng-template>
+    </tm-tree>
+    <span [tmDragSource]="null" tmDropTarget>placeholder</span>
+    <tm-reorder-list [itemKey]="columnKey" [itemLabel]="columnLabel" ariaLabel="placeholder">
+      <ng-template tmReorderItem>placeholder</ng-template>
+      <ng-template tmReorderEmpty>placeholder</ng-template>
+    </tm-reorder-list>
     <tm-image src="" alt="" [width]="24" [height]="24">
       <ng-template tmImagePlaceholder>placeholder</ng-template>
     </tm-image>
@@ -389,6 +428,52 @@ class ExampleHost {
   protected readonly addressOpen = signal(true);
   protected readonly addressInvalid = false;
   protected readonly listWidth = signal<number | null>(null);
+
+  // The pager examples' two-way page and size, the item position, and the
+  // item-mode step handlers.
+  protected readonly page = signal(1);
+  protected readonly pageSize = signal(20);
+  protected readonly index = signal(3);
+  protected readonly stepBack = (): void => undefined;
+  protected readonly stepOn = (): void => undefined;
+
+  // The tree and drag-drop examples' members: a field tree with one
+  // navigation, its accessors, the two-way sets, and the drag payloads.
+  protected readonly fields: readonly ExampleField[] = [
+    {
+      key: 'Agent',
+      label: 'Agent',
+      target: 'Agent',
+      children: [{ key: 'Agent.Code', label: 'Code' }],
+    },
+    { key: 'Code', label: 'Code' },
+  ];
+  protected readonly field = this.fields[1];
+  protected readonly fieldKey = (node: ExampleField): string => node.key;
+  protected readonly fieldLabel = (node: ExampleField): string => node.label;
+  protected readonly fieldChildren = (node: ExampleField): readonly ExampleField[] | null =>
+    node.children ?? null;
+  protected readonly fieldDrag = (node: ExampleField): TmDragPayload => ({
+    kind: 'tm.path',
+    data: node,
+    text: node.key,
+    label: node.label,
+  });
+  protected readonly openFields = signal<ReadonlySet<string>>(new Set());
+  protected readonly shownFields = signal<ReadonlySet<string>>(new Set());
+  protected readonly pickField = (node: ExampleField): void => void node;
+  protected readonly addColumn = (payload: TmDragPayload): void => void payload;
+
+  // The reorder-list examples' members: the two-way columns, their
+  // accessors, and the external-drop handler.
+  protected readonly columns = signal<readonly ExampleColumn[]>([
+    { key: 'name', label: 'Name' },
+    { key: 'code', label: 'Code' },
+  ]);
+  protected readonly columnKey = (column: ExampleColumn): string => column.key;
+  protected readonly columnLabel = (column: ExampleColumn): string => column.label;
+  protected readonly insertColumn = (payload: TmDragPayload, index: number): void =>
+    void [payload, index];
 
   // The entity-picker examples' members: an in-memory directory search plus
   // the accessor closures and a trivial modal page.
@@ -551,6 +636,63 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmSplitterPane)).length > 0,
   },
   {
+    name: 'TmDragSource',
+    pattern: /\btmDragSource\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmDragSource)).length > 0,
+  },
+  {
+    name: 'TmDropTarget',
+    pattern: /\btmDropTarget\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmDropTarget)).length > 0,
+  },
+  {
+    // The row ng-template is unprojected content of tm-tree (the tm-option
+    // caveat), so the marker reads the component's content-query signal.
+    name: 'TmTreeNode',
+    pattern: /\btmTreeNode\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmTree))
+        .some(
+          (el) =>
+            (el.componentInstance as unknown as { nodeTemplate(): unknown }).nodeTemplate() !==
+            undefined,
+        ),
+  },
+  {
+    name: 'TmReorderItem',
+    pattern: /\btmReorderItem\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmReorderList))
+        .some(
+          (el) =>
+            (el.componentInstance as unknown as { itemTemplate(): unknown }).itemTemplate() !==
+            undefined,
+        ),
+  },
+  {
+    name: 'TmReorderEmpty',
+    pattern: /\btmReorderEmpty\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmReorderList))
+        .some(
+          (el) =>
+            (el.componentInstance as unknown as { emptyTemplate(): unknown }).emptyTemplate() !==
+            undefined,
+        ),
+  },
+  {
+    // A bare boolean attribute is legal HTML with or without the input.
+    name: 'totalIsLowerBound',
+    pattern: /\btotalIsLowerBound\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmPager))
+        .some((el) => (el.componentInstance as TmPager).totalIsLowerBound()),
+  },
+  {
     name: 'TmFilePicker',
     pattern: /\btmFilePicker\b/,
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
@@ -711,6 +853,10 @@ const SUITES = [
     examples: descriptionListExamples,
   },
   { source: 'splitter/tm-splitter.examples.ts', examples: splitterExamples },
+  { source: 'pager/tm-pager.examples.ts', examples: pagerExamples },
+  { source: 'tree/tm-tree.examples.ts', examples: treeExamples },
+  { source: 'drag-drop/tm-drag-drop.examples.ts', examples: dragDropExamples },
+  { source: 'reorder-list/tm-reorder-list.examples.ts', examples: reorderListExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
   { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },

@@ -316,4 +316,40 @@ export const TM_UI_STRINGS_EN = {
     date: 'Date',
     time: 'Time',
   },
+  pager: {
+    // The visible status: a fraction set left to right in every language.
+    range: '{from, number}–{to, number} / {total, number}',
+    rangeAtLeast: '{from, number}–{to, number} / {total, number}+',
+    item: '{index, number} / {total, number}',
+    itemAtLeast: '{index, number} / {total, number}+',
+    // The sentence a screen reader reads in place of the status.
+    rangeSentence: 'Items {from, number} to {to, number} of {total, number}',
+    rangeSentenceAtLeast: 'Items {from, number} to {to, number} of {total, number} or more',
+    itemSentence: 'Item {index, number} of {total, number}',
+    itemSentenceAtLeast: 'Item {index, number} of {total, number} or more',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
+    previousItem: 'Previous item',
+    nextItem: 'Next item',
+    pageSize: 'Page size',
+    // A page-size option with the long label.
+    perPage: '{size, number} per page',
+  },
+  tree: {
+    // Read with a node's name while its children load.
+    loading: 'Loading',
+    // Announced when a node's children fail to load; the node collapses.
+    loadFailed: "Couldn't load {label}",
+  },
+  reorderList: {
+    // The grab handle's accessible name.
+    handle: 'Reorder {label}',
+    // The handle's description.
+    instructions:
+      'Press Space to pick up. Use the arrow keys to move, Space to drop, and Escape to cancel.',
+    grabbed: '{label} picked up. Position {index, number} of {count, number}.',
+    position: 'Position {index, number} of {count, number}',
+    dropped: '{label} dropped at position {index, number} of {count, number}.',
+    cancelled: 'Move cancelled. {label} is back at position {index, number}.',
+  },
 } as const;

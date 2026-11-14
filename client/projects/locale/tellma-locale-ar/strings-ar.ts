@@ -19,6 +19,8 @@ const enter = '{gender, select, female {أدخلي} other {أدخل}}';
 const copyVerb = '{gender, select, female {انسخي} other {انسخ}}';
 const insertVerb = '{gender, select, female {أدرجي} other {أدرج}}';
 const pressVerb = '{gender, select, female {اضغطي} other {اضغط}}';
+/** "Use", for the reorder handle's instructions, same {gender} pattern. */
+const useVerb = '{gender, select, female {استخدمي} other {استخدم}}';
 
 /**
  * Counted rows with full Arabic plural categories. `rowsObject` is the
@@ -330,5 +332,35 @@ export const TM_LOCALE_AR_STRINGS = {
   dateTime: {
     date: 'التاريخ',
     time: 'الوقت',
+  },
+  pager: {
+    // The status stays a left-to-right fraction, as in English.
+    range: '{from, number}–{to, number} / {total, number}',
+    rangeAtLeast: '{from, number}–{to, number} / {total, number}+',
+    item: '{index, number} / {total, number}',
+    itemAtLeast: '{index, number} / {total, number}+',
+    rangeSentence: 'العناصر من {from, number} إلى {to, number} من أصل {total, number}',
+    rangeSentenceAtLeast:
+      'العناصر من {from, number} إلى {to, number} من أصل {total, number} أو أكثر',
+    itemSentence: 'العنصر {index, number} من أصل {total, number}',
+    itemSentenceAtLeast: 'العنصر {index, number} من أصل {total, number} أو أكثر',
+    previousPage: 'الصفحة السابقة',
+    nextPage: 'الصفحة التالية',
+    previousItem: 'العنصر السابق',
+    nextItem: 'العنصر التالي',
+    pageSize: 'حجم الصفحة',
+    perPage: '{size, number} لكل صفحة',
+  },
+  tree: {
+    loading: 'جار التحميل',
+    loadFailed: 'تعذر تحميل {label}',
+  },
+  reorderList: {
+    handle: 'إعادة ترتيب {label}',
+    instructions: `${pressVerb} مفتاح المسافة للالتقاط. ${useVerb} مفاتيح الأسهم للنقل، والمسافة للإفلات، وEscape للإلغاء.`,
+    grabbed: 'تم التقاط {label}. الموضع {index, number} من {count, number}.',
+    position: 'الموضع {index, number} من {count, number}',
+    dropped: 'تم إفلات {label} في الموضع {index, number} من {count, number}.',
+    cancelled: 'ألغي النقل. عاد {label} إلى الموضع {index, number}.',
   },
 } as const;
