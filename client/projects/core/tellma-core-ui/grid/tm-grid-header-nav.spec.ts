@@ -360,6 +360,9 @@ async function longPress(fixture: ComponentFixture<unknown>, target: Element): P
     target.contains(document.elementFromPoint(point.clientX, point.clientY)),
     'the press point hit-tests the pressed element',
   ).toBe(true);
+  // A menu still open from an earlier step would satisfy the wait below at
+  // once, so this press must start with every menu closed.
+  expect(menuOpen(), 'no menu is open before the press').toBe(false);
   pointer(target, 'pointerdown', { pointerType: 'touch', pointerId: 7, ...point });
   // Hold until the menu is open, rather than for a fixed time past the
   // press threshold.
