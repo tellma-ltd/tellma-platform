@@ -98,8 +98,10 @@ namespace Tellma.Core.IntegrationTests.Observability
             }
 
             // --- Disposing the provider flushed the spans; only the run's children are its own ---
-            // A span of another class's command, started under a provider of its own and ending
-            // while this run's provider listens, reaches the processor too, and is left out here.
+            // The instrumentation traces every command in the process while any provider is alive,
+            // and merges its enrichment across providers: while the control run's provider lives
+            // the merged enrichment is none, so another class's command started then carries its
+            // text. Such a span can end while this run's provider listens, and is left out here.
             lock (spans)
             {
                 return [.. spans.Where(span => span.ParentSpanId == parent)];
