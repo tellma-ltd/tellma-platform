@@ -70,8 +70,14 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
   readonly gridId = input.required<string>();
   /**
    * Identity of the bound content (an invoice id, …). Scroll, selection,
-   * and undo state are remembered per `gridId` + `contentKey`; a different
-   * key starts fresh at the origin.
+   * and undo state (and a tree's expansion) are remembered per `gridId` +
+   * `contentKey`; a different key starts fresh at the origin.
+   *
+   * A new key comes with its own rows array: change `contentKey` together
+   * with the bound rows, never over the same array. In a tree, the
+   * remembered rows whose children load lazily load them only once a new
+   * rows array arrives after the key changes; until then they show
+   * expanded, with no children and no spinner.
    */
   readonly contentKey = input<string | number | undefined>(undefined);
   /** The readonly rows binding. Exactly one of `data`/`field` must be bound. */
