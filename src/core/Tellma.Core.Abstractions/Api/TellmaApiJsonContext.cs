@@ -36,6 +36,7 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(ParentIdsRequest))]
     [JsonSerializable(typeof(DeleteByQueryRequest))]
     [JsonSerializable(typeof(AccessHoldersRequest))]
+    [JsonSerializable(typeof(AccessCheckRequest))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]

@@ -508,6 +508,7 @@ namespace Tellma.Core.Composition
                 new NotificationChannelsCheck(_record),
                 new ClientEventsCheck(_record),
                 new SecurablesCheck(_record),
+                new CacheableEntitiesCheck(),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),
                 new ProvisioningStepsCheck(_record),
                 new JobHandlersCheck(_record),

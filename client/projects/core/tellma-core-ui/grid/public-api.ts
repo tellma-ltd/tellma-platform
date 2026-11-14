@@ -40,6 +40,8 @@ export {
   type ɵTmGridHeaderSortVm,
   type ɵTmGridRowVm,
   type ɵTmGridTreeConfig,
+  type ɵTmGridTreeExpansion,
+  type ɵTmGridTreeHost,
   type ɵTmGridViewCore,
 } from './internal/grid-core';
 export { ɵTmGridView } from './internal/grid-view';

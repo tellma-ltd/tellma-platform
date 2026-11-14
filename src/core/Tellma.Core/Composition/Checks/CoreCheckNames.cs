@@ -79,6 +79,12 @@ namespace Tellma.Core.Composition.Checks
         /// </summary>
         public const string Securables = "core.securables";
 
+        /// <summary>
+        ///     Every cacheable entity is a top-level entity with an int key and no child collection, its
+        ///     resolved row limit is within the ceiling, and its read securable has no row filter.
+        /// </summary>
+        public const string CacheableEntities = "core.cacheable-entities";
+
         /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
         public const string TimeZones = "core.time-zones";
 
