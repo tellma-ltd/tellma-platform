@@ -8,16 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
-using System.Text.Json;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Caching;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
-using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data
@@ -145,7 +142,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using SideTransaction side = await SideTransaction.HoldGateAsync(fixture.Database.Tenant.ConnectionString);
 
             // --- A reads the cold list through its own probe, writes elsewhere, and pauses at the gate inside its transaction ---
-            await using AsyncServiceScope scopeA = SettledScope();
+            await using AsyncServiceScope scopeA = fixture.Database.CreateSettledScope();
             var a = (DataBatch)scopeA.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
             a.MarkConnectPrologue(DataBatchDatabase.Premises);
             BatchResult<CacheResult<CachedEntitySet<Lookup>>> cold = a.FromCache<Lookup>();
@@ -380,29 +377,6 @@ namespace Tellma.Core.IntegrationTests.Data
             batch.MarkConnectPrologue(DataBatchDatabase.Premises);
             _ = batch.Sql($"DELETE FROM [core].[UserPreferences] WHERE [UserId] = {DataBatchDatabase.CallerId};", SqlOptions.ForCaller(Set(UserPreferences)));
             return batch;
-        }
-
-        /// <summary>A scope of the fixture tenant whose context carries settings of one language, as the settings load leaves it.</summary>
-        /// <returns>The scope.</returns>
-        private AsyncServiceScope SettledScope()
-        {
-            AsyncServiceScope scope = fixture.Database.Tenant.CreateScope();
-            IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-            TenantSettings settings = new()
-            {
-                TenantId = FixtureTenant.TenantId,
-                Tag = VersionTag.New(),
-                Names = ["Fixture", null, null],
-                Languages = [new LanguageInfo("en", "English", "E", false)],
-                Shape = MultilingualShape.Primary,
-                Calendars = [],
-                TimeZone = TimeZoneInfo.Utc,
-                SqlServerTimeZoneName = "UTC",
-                ModifiedAt = DateTimeOffset.UnixEpoch,
-                Entries = new Dictionary<string, JsonElement>(),
-            };
-            holder.Set(holder.Current with { TenantSettings = settings });
-            return scope;
         }
 
         /// <summary>A statement that inserts one row into the list, audited to the system user.</summary>

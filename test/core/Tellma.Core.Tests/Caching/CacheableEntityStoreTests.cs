@@ -20,6 +20,7 @@ using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Data.Batches;
@@ -263,7 +264,7 @@ namespace Tellma.Core.Tests.Caching
             using VersionTagSnapshots snapshots = new(Options.Create(new CacheOptions()));
             snapshots.Replace(new VersionTagSnapshot(17, new Dictionary<string, VersionTag> { ["entity:cm.CmCurrency"] = First }, Now));
             _ = store.Settle<CmCurrency>(store.TypeOf(typeof(CmCurrency)), 17, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(1));
-            CacheableEntities facade = new(store, snapshots, new FixedContext(17), new RefusedDatabase());
+            CacheableEntities facade = new(store, snapshots, new FixedContext(17), new RefusedDatabase(), new DataCancellation());
 
             Assert.Equal("C1", Assert.Single(facade.Peek<CmCurrency>()!.Items).Code);
             Assert.Null(facade.Peek<CmUnit>());
@@ -278,6 +279,73 @@ namespace Tellma.Core.Tests.Caching
             // A hit loads nothing, so the refusing handle is never asked for a batch.
             CacheResult<CachedEntitySet<CmCurrency>> hit = await facade.GetAsync<CmCurrency>();
             Assert.Equal(CacheOutcome.Hit, hit.Outcome);
+        }
+
+        [Fact]
+        public async Task The_facade_refuses_a_list_before_the_scopes_settings_load_and_still_reports_the_wire_tags()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            using VersionTagSnapshots snapshots = new(Options.Create(new CacheOptions()));
+            snapshots.Replace(new VersionTagSnapshot(17, new Dictionary<string, VersionTag> { ["entity:cm.CmCurrency"] = First }, Now));
+            CacheableEntities facade = new(store, snapshots, new FixedContext(17, settled: false), new RefusedDatabase(), new DataCancellation());
+
+            // A list's columns follow the shape the settings carry, so neither read can be keyed yet.
+            Assert.Contains("settings are not loaded", (await Assert.ThrowsAsync<InvalidOperationException>(facade.GetAsync<CmCurrency>)).Message, StringComparison.Ordinal);
+            Assert.Contains("settings are not loaded", Assert.Throws<InvalidOperationException>(facade.Peek<CmCurrency>).Message, StringComparison.Ordinal);
+
+            // The wire tags need no shape: they come from the snapshot alone.
+            Assert.Equal(First.ToWire(CachedEntitySet<CmCurrency>.FormatVersion), (await facade.GetWireTagsAsync())[CacheModel.Currencies]);
+        }
+
+        [Fact]
+        public async Task A_load_whose_starters_scope_is_cancelled_stores_nothing_and_a_joining_scope_loads_on_its_own_handle()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            using VersionTagSnapshots snapshots = Snapshots();
+            using CancellationTokenSource aborted = new();
+            TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            GatedDatabase starterHandle = new(_harness, MultilingualShape.Primary, gate.Task);
+            GatedDatabase joinerHandle = new(_harness, MultilingualShape.Primary, gate.Task);
+            CacheableEntities starter = new(store, snapshots, new FixedContext(1), starterHandle, new DataCancellation { Token = aborted.Token });
+            CacheableEntities joiner = new(store, snapshots, new FixedContext(1), joinerHandle, new DataCancellation());
+
+            // --- One load, on the starter's handle; the starter's scope is then cancelled ---
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> started = starter.GetAsync<CmCurrency>();
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> joined = joiner.GetAsync<CmCurrency>();
+            Assert.Equal((1, 0), (starterHandle.Batches.Count, joinerHandle.Batches.Count));
+            await aborted.CancelAsync();
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => started.WaitAsync(Bound, Token));
+
+            // --- The joining scope was not cancelled: it loads on its own handle, and nothing was stored ---
+            await joinerHandle.Created.WaitAsync(Bound, Token);
+            Assert.Null(store.Peek<CmCurrency>(1, MultilingualShape.Primary, First));
+            gate.SetResult();
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(() => joined.WaitAsync(Bound, Token));
+            Assert.Equal((1, 1), (starterHandle.Batches.Count, joinerHandle.Batches.Count));
+        }
+
+        [Fact]
+        public async Task A_joining_scopes_cancellation_ends_its_own_wait_and_the_starters_load_runs_on()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            using VersionTagSnapshots snapshots = Snapshots();
+            using CancellationTokenSource aborted = new();
+            TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            GatedDatabase starterHandle = new(_harness, MultilingualShape.Primary, gate.Task);
+            GatedDatabase joinerHandle = new(_harness, MultilingualShape.Primary, gate.Task);
+            CacheableEntities starter = new(store, snapshots, new FixedContext(1), starterHandle, new DataCancellation());
+            CacheableEntities joiner = new(store, snapshots, new FixedContext(1), joinerHandle, new DataCancellation { Token = aborted.Token });
+
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> started = starter.GetAsync<CmCurrency>();
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> joined = joiner.GetAsync<CmCurrency>();
+            await aborted.CancelAsync();
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => joined.WaitAsync(Bound, Token));
+
+            // The starter's load was not cancelled: it runs to its own end, the refusing connection's.
+            Assert.False(started.IsCompleted);
+            gate.SetResult();
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(() => started.WaitAsync(Bound, Token));
+            Assert.Equal((1, 0), (starterHandle.Batches.Count, joinerHandle.Batches.Count));
         }
 
         // ===================== FromCache =====================
@@ -462,15 +530,25 @@ namespace Tellma.Core.Tests.Caching
             return Composed.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, tag, Currencies(2)).Value!;
         }
 
-        /// <summary>A request context accessor whose context names one tenant, its settings of one language loaded.</summary>
+        /// <summary>A snapshot store holding the currencies' tag for tenant 1.</summary>
+        /// <returns>The store.</returns>
+        private static VersionTagSnapshots Snapshots()
+        {
+            VersionTagSnapshots snapshots = new(Options.Create(new CacheOptions()));
+            snapshots.Replace(new VersionTagSnapshot(1, new Dictionary<string, VersionTag> { ["entity:cm.CmCurrency"] = First }, Now));
+            return snapshots;
+        }
+
+        /// <summary>A request context accessor whose context names one tenant, its settings of one language loaded unless asked otherwise.</summary>
         /// <param name="tenantId">The tenant.</param>
-        private sealed class FixedContext(int tenantId) : IRequestContextAccessor
+        /// <param name="settled">Whether the context carries the tenant's settings.</param>
+        private sealed class FixedContext(int tenantId, bool settled = true) : IRequestContextAccessor
         {
             /// <inheritdoc />
             public RequestContext Current { get; } = RequestContext.Tenantless(new GregorianCalendarSystem(), Now) with
             {
                 Tenant = new TenantDescriptor(tenantId, "Acme", null, null, ["en"], TenantCategory.Live, TenantState.Active, null),
-                TenantSettings = new TenantSettings
+                TenantSettings = !settled ? null : new TenantSettings
                 {
                     TenantId = tenantId,
                     Tag = First,
@@ -495,8 +573,26 @@ namespace Tellma.Core.Tests.Caching
         /// <param name="gate">What each batch waits for before it refuses.</param>
         private sealed class GatedDatabase(BatchHarness harness, MultilingualShape shape, Task gate) : ITenantDatabase, IBatchConnection
         {
-            /// <summary>The batches created, in order.</summary>
-            public List<DataBatch> Batches { get; } = [];
+            /// <summary>The batches created, in order; created on whichever thread runs the load.</summary>
+            private readonly List<DataBatch> _batches = [];
+
+            /// <summary>Completes when the first batch is created.</summary>
+            private readonly TaskCompletionSource _created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <summary>The batches created so far, in order.</summary>
+            public IReadOnlyList<DataBatch> Batches
+            {
+                get
+                {
+                    lock (_batches)
+                    {
+                        return [.. _batches];
+                    }
+                }
+            }
+
+            /// <summary>Completes when the handle's first batch is created.</summary>
+            public Task Created => _created.Task;
 
             /// <inheritdoc />
             public QueryexSchema Schema => harness.Services.GetRequiredService<IQueryexSchemaProvider>().GetSchema(shape);
@@ -517,7 +613,12 @@ namespace Tellma.Core.Tests.Caching
             public IDataBatch CreateBatch(BatchPurpose purpose)
             {
                 DataBatch batch = new(harness.Executor, this, new ServiceCollection().BuildServiceProvider(), purpose);
-                Batches.Add(batch);
+                lock (_batches)
+                {
+                    _batches.Add(batch);
+                }
+
+                _ = _created.TrySetResult();
                 return batch;
             }
 

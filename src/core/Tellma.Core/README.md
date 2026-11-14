@@ -739,8 +739,10 @@ façade passes it the current tag from the process's snapshot and the scope's `I
   value under a tag (`aged` meters the replaced entry as `age`); `Remove` drops one.
 - **Single flight.** Callers that miss one key under one current tag share one load, run on the
   handle and token of the caller that started it. A failed load is forgotten before its exception
-  reaches anyone, so the next caller loads afresh; a caller still waiting when the starter cancels
-  starts its own load.
+  reaches anyone, so the next caller loads afresh. A load cancelled under its starter, by the
+  starter's token or by any token its batch links (the starter's scope's `DataCancellation`), stores
+  nothing, and each caller still waiting starts its own load; a waiting caller's own cancellation
+  ends only its wait. The entities façade passes the scope's `DataCancellation` token.
 - **Instruments.** On the `Tellma.Core` meter, shared by every store: `tellma.cache.requests`
   (`cache.kind`, `cache.outcome`), `tellma.cache.load.duration`, the observable gauges
   `tellma.cache.entries`, `tellma.cache.size` and `tellma.cache.limit` (one series per live store,
@@ -771,7 +773,9 @@ it replaces; a base reads one view of the same instances.
   stamped with the batch's prelude tag and stored when the batch's results complete, before the
   handle does, and no dependency is declared. On a writing persist batch the guard still locks the
   list's tag row to the commit without comparing it, so a concurrent write of the table waits for
-  the batch. A batch that already writes the entity's table is refused.
+  the batch. A batch that already writes the entity's table is refused. Storing the list is best
+  effort: it runs after the batch committed, so a store already disposed (the host stopping) skips
+  and logs it (`CacheableEntityNotStored`) rather than failing the write.
 
 `core.cacheable-entities` reports a cacheable entity that is not a `TopLevelEntity<int>`, declares a
 child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, or has a `Read`

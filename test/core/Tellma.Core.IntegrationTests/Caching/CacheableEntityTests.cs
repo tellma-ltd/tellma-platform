@@ -7,15 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
-using System.Text.Json;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
-using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Caching;
 using Tellma.Core.IntegrationTests.Data;
-using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Caching
@@ -230,27 +227,11 @@ namespace Tellma.Core.IntegrationTests.Caching
             return moved;
         }
 
-        /// <summary>A scope of the fixture tenant whose context carries settings of one language, as the settings load leaves it.</summary>
+        /// <summary>A scope of the fixture tenant whose context carries settings of one language.</summary>
         /// <returns>The scope.</returns>
         private AsyncServiceScope CreateScope()
         {
-            AsyncServiceScope scope = fixture.Tenant.CreateScope();
-            IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-            TenantSettings settings = new()
-            {
-                TenantId = FixtureTenant.TenantId,
-                Tag = VersionTag.New(),
-                Names = ["Fixture", null, null],
-                Languages = [new LanguageInfo("en", "English", "E", false)],
-                Shape = MultilingualShape.Primary,
-                Calendars = [],
-                TimeZone = TimeZoneInfo.Utc,
-                SqlServerTimeZoneName = "UTC",
-                ModifiedAt = DateTimeOffset.UnixEpoch,
-                Entries = new Dictionary<string, JsonElement>(),
-            };
-            holder.Set(holder.Current with { TenantSettings = settings });
-            return scope;
+            return fixture.CreateSettledScope();
         }
     }
 }

@@ -132,9 +132,11 @@ namespace Tellma.Core.Caching
         /// <remarks>
         ///     Callers that miss one key under one current tag together share one load. The load runs
         ///     on the handle and token of the caller that started it; another caller cancelling its
-        ///     own wait never cancels the load, and when the starter cancels, a caller still waiting
-        ///     starts a load of its own. A failed load is forgotten before its exception reaches the
-        ///     callers that shared it, so the next caller loads afresh.
+        ///     own wait ends only that wait, never the load. A load cancelled under its starter, by
+        ///     the token passed here or by any token its batch links (the scope's, say), stores
+        ///     nothing, and a caller still waiting on it starts a load of its own. A failed load is
+        ///     forgotten before its exception reaches the callers that shared it, so the next caller
+        ///     loads afresh.
         /// </remarks>
         /// <param name="key">The key.</param>
         /// <param name="currentTag">The tag the caller's snapshot holds; <see cref="VersionTag.None" /> always loads.</param>
@@ -385,11 +387,13 @@ namespace Tellma.Core.Caching
                     _ = mine.Completion.TrySetResult(load);
                     return load;
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException exception)
                 {
-                    // The starter gave up: the callers that joined and still wait start a load of their own.
+                    // The starter's load was cancelled, by its own token or by one its batch linked
+                    // (the starter's scope): no caller that joined was, so each still waiting starts
+                    // a load of its own rather than failing with the starter's cancellation.
                     _ = _flights.TryRemove(new KeyValuePair<(TKey, VersionTag), Flight>(flightKey, mine));
-                    _ = mine.Completion.TrySetCanceled(cancellationToken);
+                    _ = mine.Completion.TrySetCanceled(exception.CancellationToken);
                     throw;
                 }
                 catch (Exception exception)

@@ -8,29 +8,36 @@ using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Caching
 {
     // The façade is spec 0013 §4.3's ICacheableEntities; the scoped-over-singleton split is §3.2's.
     /// <summary>
     ///     The scope's view of the cacheable entities' lists: the scope's tenant and its multilingual
-    ///     shape, the current tag from the process's snapshot of it, and the scope's database handle,
-    ///     passed to the process-wide store.
+    ///     shape, the current tag from the process's snapshot of it, the scope's database handle and
+    ///     the scope's data cancellation, passed to the process-wide store.
     /// </summary>
     /// <param name="store">The process-wide store.</param>
     /// <param name="snapshots">The process's tag snapshots.</param>
     /// <param name="accessor">The scope's request context, which names the tenant and holds its settings.</param>
     /// <param name="database">The scope's database handle, on which a miss loads.</param>
+    /// <param name="cancellation">The scope's data cancellation, which ends the scope's wait and a load it started.</param>
     internal sealed class CacheableEntities(
-        CacheableEntityStore store, IVersionTagSnapshots snapshots, IRequestContextAccessor accessor, ITenantDatabase database) : ICacheableEntities
+        CacheableEntityStore store,
+        IVersionTagSnapshots snapshots,
+        IRequestContextAccessor accessor,
+        ITenantDatabase database,
+        DataCancellation cancellation) : ICacheableEntities
     {
         /// <inheritdoc />
         public Task<CacheResult<CachedEntitySet<TEntity>>> GetAsync<TEntity>()
             where TEntity : class
         {
-            // The batch a miss runs links the scope's cancellation itself.
+            // The scope's token, read now since the scope's opener sets it after the façade is created:
+            // it ends this scope's wait on a load another scope started, and a load this scope starts.
             int tenantId = TenantId;
-            return store.GetAsync<TEntity>(tenantId, Shape, CurrentTag<TEntity>(tenantId), database);
+            return store.GetAsync<TEntity>(tenantId, Shape, CurrentTag<TEntity>(tenantId), database, cancellation.Token);
         }
 
         /// <inheritdoc />

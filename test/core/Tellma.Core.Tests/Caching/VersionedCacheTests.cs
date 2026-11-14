@@ -275,6 +275,42 @@ namespace Tellma.Core.Tests.Caching
             Assert.Equal(1, cache.LoadCount);
         }
 
+        [Fact]
+        public async Task A_load_cancelled_by_a_token_its_starter_never_passed_stores_nothing_and_a_joiner_loads_its_own()
+        {
+            using TestCache cache = Cache();
+            using CancellationTokenSource scope = new();
+            TaskCompletionSource<CacheLoad<Box>> first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<CacheLoad<Box>> second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            cache.Loads = (_, _, _) =>
+            {
+                if (cache.LoadCount == 1)
+                {
+                    return first.Task;
+                }
+
+                secondStarted.SetResult();
+                return second.Task;
+            };
+
+            // --- The starter's load is cancelled by a token its batch linked (its scope's), not the one it passed ---
+            Task<CacheResult<Box>> starter = cache.GetAsync(Key, First, NoDatabase.Instance, Token);
+            Task<CacheResult<Box>> joiner = cache.GetAsync(Key, First, NoDatabase.Instance, Token);
+            Assert.Equal(1, cache.LoadCount);
+            await scope.CancelAsync();
+            _ = first.TrySetCanceled(scope.Token);
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starter.WaitAsync(Bound, Token));
+
+            // --- The joiner was not cancelled: it starts its own load, and the cancelled one stored nothing ---
+            await secondStarted.Task.WaitAsync(Bound, Token);
+            Assert.Null(cache.Peek(Key, First));
+            second.SetResult(CacheLoad.Loaded(new Box("reloaded"), First));
+            CacheResult<Box> result = await joiner.WaitAsync(Bound, Token);
+            Assert.Equal(("reloaded", CacheOutcome.Miss), (result.Value!.Name, result.Outcome));
+            Assert.Equal(2, cache.LoadCount);
+        }
+
         // ===================== Set, Remove, bounds and eviction reasons =====================
 
         [Fact]

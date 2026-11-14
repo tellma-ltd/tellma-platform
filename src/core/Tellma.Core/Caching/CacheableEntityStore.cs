@@ -204,6 +204,10 @@ namespace Tellma.Core.Caching
         ///     under a tag the batch's prelude did not find are served and not stored; otherwise the
         ///     list is stored under the prelude's tag. Counts the request with the settled outcome.
         /// </summary>
+        /// <remarks>
+        ///     Storing is best effort: a store already disposed (the host stopping) logs and skips the
+        ///     list, and the rows are still returned, since a batch's completions run after its commit.
+        /// </remarks>
         /// <typeparam name="TEntity">The class the caller asks by.</typeparam>
         /// <param name="type">The entity.</param>
         /// <param name="tenantId">The tenant.</param>
@@ -224,7 +228,16 @@ namespace Tellma.Core.Caching
             CacheOutcome outcome = load.IsOversized ? CacheOutcome.Oversized : tag == VersionTag.None ? CacheOutcome.Uncached : missed;
             if (outcome is not CacheOutcome.Oversized and not CacheOutcome.Uncached)
             {
-                Set(type.Key(tenantId, shape), load.Value!, tag);
+                // Best effort: this runs among a batch's completions, after a persist batch committed,
+                // so a store disposed at host stop skips the list rather than failing a committed write.
+                try
+                {
+                    Set(type.Key(tenantId, shape), load.Value!, tag);
+                }
+                catch (ObjectDisposedException)
+                {
+                    CachingLog.CacheableEntityNotStored(_logger, type.Name);
+                }
             }
 
             RecordRequest(outcome);

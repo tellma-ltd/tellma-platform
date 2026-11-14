@@ -11,10 +11,13 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Caching;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
@@ -210,6 +213,32 @@ namespace Tellma.Core.IntegrationTests.Data
             await SqlServerFixture.ExecuteAsync(
                 Tenant.ConnectionString,
                 $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) SELECT n.[Name], NEWID() FROM (VALUES {names}) AS n ([Name]) WHERE NOT EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WHERE t.[Name] = n.[Name]);");
+        }
+
+        /// <summary>
+        ///     A scope of the fixture tenant whose context carries settings of one language, as the
+        ///     settings load leaves it, so what reads the tenant's multilingual shape can.
+        /// </summary>
+        /// <returns>The scope.</returns>
+        public AsyncServiceScope CreateSettledScope()
+        {
+            AsyncServiceScope scope = Tenant.CreateScope();
+            IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+            TenantSettings settings = new()
+            {
+                TenantId = FixtureTenant.TenantId,
+                Tag = VersionTag.New(),
+                Names = ["Fixture", null, null],
+                Languages = [new LanguageInfo("en", "English", "E", false)],
+                Shape = MultilingualShape.Primary,
+                Calendars = [],
+                TimeZone = TimeZoneInfo.Utc,
+                SqlServerTimeZoneName = "UTC",
+                ModifiedAt = DateTimeOffset.UnixEpoch,
+                Entries = new Dictionary<string, JsonElement>(),
+            };
+            holder.Set(holder.Current with { TenantSettings = settings });
+            return scope;
         }
 
         /// <summary>Reads the database's version tags.</summary>
