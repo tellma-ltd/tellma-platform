@@ -23,6 +23,9 @@
     <!-- AddMetrics(), which registers the IMeterFactory the runtime's instruments (the blob store's
          among them) are created from. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics" />
+    <!-- ConfigureHttpClientDefaults and RemoveAllLoggers: the composition removes the HTTP client
+         factory's default loggers, which carry raw header values, from every host's clients. -->
+    <PackageReference Include="Microsoft.Extensions.Http" />
     <!-- Referenced directly for its [LoggerMessage] source generator, which a transitive
          reference does not bring. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

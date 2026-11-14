@@ -44,8 +44,11 @@ namespace Tellma.Identity.Web
             // each header's raw value into the event's structured state (only the rendered message
             // is redacted), so a credential any client sends would reach a structured sink that a
             // Trace level for System.Net.Http enables. As a default it covers every client, the
-            // engine's and the email adapters' included, whenever it is registered; the
-            // HttpClient instrumentation below still traces every request, without its headers.
+            // engine's and the email adapters' included, whenever it is registered. The trade is
+            // deliberate: the per-request "Start/End processing HTTP request" lines are no longer
+            // logged. Outbound requests stay observable through the HttpClient instrumentation
+            // below, as spans and metrics, once Azure Monitor export is configured; each sender
+            // logs its own failures.
             builder.Services.ConfigureHttpClientDefaults(static http => http.RemoveAllLoggers());
 
             builder.Services.AddTellmaIdentity(builder.Configuration.GetSection("TellmaIdentity"));

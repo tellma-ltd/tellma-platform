@@ -55,8 +55,13 @@ returning event attributable under shared credentials.
 The named client (`tellma-sendgrid`) has **no factory loggers**, whatever the host composes. Every
 request carries the API key as its bearer credential, and the HTTP client factory's default logger
 puts each header's raw value into the structured state of its Trace events (only the rendered message
-is redacted), so a structured sink at Trace would otherwise receive the key. The sender logs each
-failure itself, and the HttpClient instrumentation traces every request without its headers.
+is redacted), so a structured sink at Trace would otherwise receive the key.
+
+**What operators see:** no per-request `Start/End processing HTTP request` lines for SendGrid calls.
+A refusal (any non-2xx answer) is logged by the sender at **Warning** with the status and SendGrid's
+error text, never the key, so it shows at the shipped Information level. Successful calls are
+visible only as HttpClient spans and metrics, where the host configures an exporter, and in the
+pipeline's per-batch line.
 
 `ExpectsDeliveryEvents` is true only when a verification key is configured *and* the message carries
 a correlation — without a key no event would be accepted, and without a correlation none could be

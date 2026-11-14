@@ -68,10 +68,12 @@ namespace Tellma.Connector.SendGrid.Adapter
             //
             // No factory loggers either, whatever the host composes: every request carries the API
             // key as its bearer credential, and the factory's default logger puts each request
-            // header's raw value into the structured state of its Trace events — only the rendered
-            // message is redacted — so any structured sink enabled at Trace would receive the key.
-            // Nothing is lost: the sender logs each failure itself, and the HttpClient
-            // instrumentation traces each request without its headers.
+            // header's raw value into the structured state of its Trace events (only the rendered
+            // message is redacted), so any structured sink enabled at Trace would receive the key.
+            // The trade is deliberate: the per-request "Start/End processing HTTP request" lines
+            // are no longer logged. A refusal is still logged, at Warning, by the sender itself, and
+            // each request is still traced and metered by the HttpClient instrumentation, without
+            // its headers, where the host configures an exporter.
             services.AddHttpClient(SendGridEmailSender.HttpClientName).RemoveAllLoggers();
 
             services.AddSingleton(new EmailTransportRegistration(

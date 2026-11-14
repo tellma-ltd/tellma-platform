@@ -57,9 +57,6 @@ feature or entity added there would diverge the web host's model from the migrat
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
   static `Log.Logger` is left alone), replacing the framework's default logger providers: each event
   goes to Serilog's sinks and to OpenTelemetry's logger provider, once;
-- no HTTP client logging through the factory's default loggers, as a default for every client —
-  including one registered later or by a connector — because at Trace they carry each request
-  header's raw value (a bearer token, an API key) in the event's structured state;
 - OpenTelemetry over the platform's meters and activity sources and the ASP.NET Core, HttpClient
   and SqlClient instrumentation. SQL spans carry no batch text. No exporter is added here.
 
