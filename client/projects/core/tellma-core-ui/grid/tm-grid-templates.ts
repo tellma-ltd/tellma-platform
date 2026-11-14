@@ -52,6 +52,12 @@ export interface TmGridEditorContext<T = unknown, V = unknown> {
    * its absence.
    */
   readonly row: T | undefined;
+  /**
+   * Whether the editor shows the cell without editing it: a popup column's
+   * pane opened with F2 on a cell the user cannot edit. Bind it to the
+   * hosted control's `readonly`; nothing the pane holds is committed.
+   */
+  readonly readonly: boolean;
 }
 
 /**

@@ -46,6 +46,7 @@ import {
   TmGridColumn,
   TmGridDisplayDef,
   TmGridDriver,
+  TmGridEditorDef,
   TmGridEmptyDef,
   TmGridHeaderAction,
   TmGridHeaderEndDef,
@@ -199,6 +200,7 @@ class ExamplePage {}
     TmGridColumn,
     TmGridDisplayDef,
     TmGridDriver,
+    TmGridEditorDef,
     TmGridEmptyDef,
     TmGridHeaderAction,
     TmGridHeaderEndDef,
@@ -454,6 +456,9 @@ function grids(fixture: ComponentFixture<ExampleHost>): TmGrid<unknown>[] {
     .map((element) => element.componentInstance as TmGrid<unknown>);
 }
 
+/** An element carrying `*tmGridEditor`, with its content: a cell editor's template. */
+const EDITOR_TEMPLATE = /<([a-z][a-z0-9-]*)\b[^>]*\*tmGridEditor\b[^>]*>(?:[\s\S]*?<\/\1>)?/g;
+
 /**
  * Element selectors are covered by `errorOnUnknownElements` (an unmatched
  * `<tm-select>` throws NG0304), but an attribute DIRECTIVE that quietly
@@ -615,6 +620,20 @@ const MARKERS: {
       grids(fixture).some((grid) =>
         grid.columns().some((column) => column.displayDef() !== undefined),
       ),
+  },
+  {
+    name: 'TmGridEditorDef',
+    pattern: /\btmGridEditor\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) =>
+        grid.columns().some((column) => column.editorDef() !== undefined),
+      ),
+  },
+  {
+    name: 'editorPopup',
+    pattern: /\beditorPopup\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.columns().some((column) => column.editorPopup() !== null)),
   },
   {
     name: 'TmGridEmptyDef',
@@ -779,8 +798,12 @@ describe('co-located docs examples compile against the live API (§11)', () => {
           expect(fixture.nativeElement.children.length, 'example rendered nothing').toBeGreaterThan(
             0,
           );
+          // A `*tmGridEditor` element renders only while its cell is edited,
+          // so what it hosts is not expected on first render; the directive
+          // itself still counts.
+          const rendered = template.replace(EDITOR_TEMPLATE, '*tmGridEditor');
           for (const { name, pattern, instantiated } of MARKERS.filter((m) =>
-            m.pattern.test(template),
+            m.pattern.test(rendered),
           )) {
             expect(
               instantiated(fixture),

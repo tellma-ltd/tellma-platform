@@ -369,6 +369,15 @@ export type TmGridEditorCommitVia = 'enter' | 'tab';
 export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
 
 // @public
+export class TmGridEditorPopupHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+    isGroup(): Promise<boolean>;
+    isHidden(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+}
+
+// @public
 export class TmGridHarness extends ComponentHarness {
     activateRow(rowIndex: number): Promise<void>;
     cancelEditor(): Promise<void>;
@@ -382,6 +391,7 @@ export class TmGridHarness extends ComponentHarness {
     getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
     getCellText(rowIndex: number, colIndex: number): Promise<string>;
     getColCount(): Promise<number>;
+    getEditorPopup(): Promise<TmGridEditorPopupHarness | null>;
     getEditorText(): Promise<string>;
     getEmptyText(): Promise<string | null>;
     getErrorCount(): Promise<number>;

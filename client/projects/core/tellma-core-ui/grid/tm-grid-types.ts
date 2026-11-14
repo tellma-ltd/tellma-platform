@@ -34,3 +34,27 @@ export interface TmGridSort {
   /** The sort direction. */
   readonly direction: 'asc' | 'desc';
 }
+
+/**
+ * How a column's editor opens when it is taller than a row: in a pane over
+ * its cell that spills past the grid's edge while every row keeps its
+ * height. The pane covers the cell and grows toward the block end (or
+ * upward when the viewport has no room below), as wide as the cell or
+ * `minWidth`, whichever is wider. Bind it to `tm-grid-column`'s
+ * `editorPopup`. The editor is the column's `*tmGridEditor` template, a
+ * control that implements `TmCellEditor`; on a cell the user cannot edit,
+ * F2 opens the pane with the template's `readonly` context set.
+ *
+ * @example
+ * ```html
+ * <tm-grid-column key="filter" header="Filter" [editorPopup]="{ minWidth: 480 }">
+ *   <app-filter-editor *tmGridEditor="let value; let readonly = readonly" [readonly]="readonly" />
+ * </tm-grid-column>
+ * ```
+ */
+export interface TmGridEditorPopup {
+  /** The pane's least inline size in px; default 320. */
+  readonly minWidth?: number;
+  /** The pane's greatest block size in px; default 360. The content scrolls inside beyond it. */
+  readonly maxHeight?: number;
+}
