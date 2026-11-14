@@ -127,14 +127,37 @@ namespace Tellma.Core.IntegrationTests.Catalog
             Assert.Equal(CatalogHistoryState.Behind, await ReadHistoryAsync(migrated));
         }
 
+        [Fact]
+        public async Task The_catalog_connection_asks_master_whether_its_database_exists()
+        {
+            // What decides a login the server cut off before saying why.
+            string existing = await sql.CreateEmptyCatalogAsync("catalog_exists");
+
+            Assert.True(await Connection(existing).DatabaseExistsAsync(Token));
+            Assert.False(await Connection(sql.ConnectionString(sql.NewDatabaseName("catalog_exists_absent"))).DatabaseExistsAsync(Token));
+
+            // A string that names no database leaves the login's default, which nothing can check.
+            Microsoft.Data.SqlClient.SqlConnectionStringBuilder unnamed = new(sql.MasterConnectionString);
+            _ = unnamed.Remove("Initial Catalog");
+            Assert.Null(await Connection(unnamed.ConnectionString).DatabaseExistsAsync(Token));
+        }
+
+        /// <summary>The catalog connection over a database.</summary>
+        /// <param name="connectionString">The database.</param>
+        /// <returns>The connection.</returns>
+        private static CatalogConnection Connection(string connectionString)
+        {
+            return new CatalogConnection(
+                Microsoft.Extensions.Options.Options.Create(new TellmaCatalogOptions { ConnectionString = connectionString }),
+                new DeploymentIdentity("acme", "Development"));
+        }
+
         /// <summary>Reads a database's migration state with the registry's own reader.</summary>
         /// <param name="connectionString">The database.</param>
         /// <returns>The state.</returns>
         private static Task<CatalogHistoryState> ReadHistoryAsync(string connectionString)
         {
-            SqlCatalogReader reader = new(new CatalogConnection(
-                Microsoft.Extensions.Options.Options.Create(new TellmaCatalogOptions { ConnectionString = connectionString }),
-                new DeploymentIdentity("acme", "Development")));
+            SqlCatalogReader reader = new(Connection(connectionString));
             return reader.ReadHistoryAsync(Token);
         }
     }

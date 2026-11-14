@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* input[tmSearch] — a directive has no view to carry styles, so its rules
+   ship as this global sheet. The engines' own search chrome goes: their
+   cancel button clears outside the undo history (the directive's clear is
+   an undoable edit), and the rounded search-field appearance would fight
+   whatever chrome the input sits in. */
+
+.tm-search {
+  appearance: none;
+}
+
+.tm-search::-webkit-search-cancel-button,
+.tm-search::-webkit-search-decoration {
+  appearance: none;
+  display: none;
+}

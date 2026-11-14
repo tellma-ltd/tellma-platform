@@ -212,6 +212,10 @@ export interface TmGridContentState {
    * and never serialized.
    */
   readonly history?: unknown;
-  /** Expanded row ids of a tree grid; unknown ids are pruned on restore. */
+  /**
+   * Expanded row ids of a tree grid that keeps its expansion in the store.
+   * Kept whole: an id whose row is not present yet stays, and expands when
+   * its row arrives. Absent, the tree starts at its default depth.
+   */
   readonly expandedRowIds?: ReadonlySet<TmRowId>;
 }

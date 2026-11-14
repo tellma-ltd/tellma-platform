@@ -198,6 +198,29 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the form controls’ geometry at the sizes they are drawn at', () => {
+    // The names tm-radio-group, tm-segmented, tm-switch and the date-time
+    // fields read: a 16px circle, segments inset 2px from their track, a
+    // 28×16 switch track with a 12px knob, and a 112px time input.
+    for (const declaration of [
+      '--radio-circle-size: 16px;',
+      '--radio-dot-size: 8px;',
+      '--radio-gap: 8px;',
+      '--radio-inline-gap: 16px;',
+      '--segmented-inset: 2px;',
+      '--segmented-icon-gap: 4px;',
+      '--segmented-icon-size: 16px;',
+      '--switch-track-width: 28px;',
+      '--switch-track-height: 16px;',
+      '--switch-knob-size: 12px;',
+      '--switch-gap: 8px;',
+      '--date-time-time-width: 112px;',
+      '--date-time-gap: 8px;',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('carries the focus halo as a semantic role, so it flips with the scheme', () => {
     // The brand sheet gets its dark halo by re-mapping the teal-50 PRIMITIVE.
     // Primitives are scheme-invariant here, so the halo is a field role

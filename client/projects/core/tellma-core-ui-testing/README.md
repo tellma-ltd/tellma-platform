@@ -18,7 +18,12 @@ located with a document-root loader. The dialogs `TmConfirmHarness` and
 same way. The layout pieces have `TmCardHarness` (the disclosure, the error
 dot and its name) and `TmSplitterHarness` (the bar's value, range and keys);
 `tm-page-header` and `dl[tmDescriptionList]` impose no behaviour of their
-own.
+own. The choice controls have `TmRadioGroupHarness` (with `TmRadioHarness`
+for one radio), `TmSegmentedHarness` and `TmSwitchHarness`; the search box
+has `TmSearchFieldHarness`; and the date and time controls have
+`TmDateRangeHarness`, `TmTimeFieldHarness` and `TmDateTimeFieldHarness`,
+whose parts are reached as `TmDatePickerHarness`, `TmTimeFieldHarness` and
+`TmFormFieldHarness` (for each part's messages).
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

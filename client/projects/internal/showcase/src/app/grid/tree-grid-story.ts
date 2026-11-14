@@ -114,8 +114,8 @@ const LAZY_CHILDREN: readonly Account[] = [
 /**
  * Editable tm-tree-grid demo host: a ~4-level accounts tree over a Signal
  * Forms field tree (name required), the new-row placeholder plus
- * insert-child through `newRow(parent)`, lazy loading behind a
- * configurable delay, a held-response gate and a failure toggle, the
+ * insert-child through `newRow(parent)`, a lazy root whose children load
+ * at the first bind (it starts expanded) behind a configurable delay, a held-response gate and a failure toggle, the
  * readonly flip, a default-depth select, contentKey switching and
  * unmount/remount buttons to exercise expansion-state persistence,
  * `searchable` (the find bar's tree deep-search), and a live JSON model
@@ -299,18 +299,20 @@ export class TreeGridStory {
   });
 
   /**
-   * The lazy loader: waits the configured delay (or, while the gate holds,
-   * for its release), rejects while the failure toggle is on, and otherwise
-   * appends the lazy children to the model array (once) — the grid
-   * re-derives the tree and expands over them.
+   * The lazy loader: takes each batch of expanded lazy rows in one call (the
+   * lazy root, at the first bind of a content that expands it), waits the
+   * configured delay (or, while the gate holds, for its release), rejects
+   * while the failure toggle is on, and otherwise appends the lazy children
+   * to the model array (once) — the grid re-derives the tree beneath the
+   * already expanded root.
    */
-  readonly loadChildren = async (account: Account): Promise<void> => {
+  readonly loadChildren = async (accounts: readonly Account[]): Promise<void> => {
     await this.heldLoads.wait(this.lazyDelay());
     if (this.lazyFail()) {
       throw new Error('lazy load failed (story toggle)');
     }
     if (
-      account.id === LAZY_ROOT_ID &&
+      accounts.some((account) => account.id === LAZY_ROOT_ID) &&
       !this.model().accounts.some((candidate) => candidate.parentId === LAZY_ROOT_ID)
     ) {
       this.model.update((m) => ({ accounts: [...m.accounts, ...LAZY_CHILDREN] }));

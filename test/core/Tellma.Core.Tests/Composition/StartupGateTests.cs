@@ -191,6 +191,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.notification-channels"] = false,
                 ["core.client-events"] = false,
                 ["core.securables"] = false,
+                ["core.cacheable-entities"] = false,
                 ["core.time-zones"] = true,
                 ["core.provisioning-steps"] = false,
                 ["jobs.handlers"] = false,

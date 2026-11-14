@@ -34,9 +34,9 @@ namespace Tellma.Core.Data.Batches
         public static readonly TableName Users = new("core", "Users");
 
         /// <summary>
-        ///     The expected tag of a name the batch bumps without depending on it: null, so the guard
-        ///     locks the row and never compares it. <see cref="VersionTag.None" /> is an expectation
-        ///     like any other.
+        ///     The expected tag of a name the batch bumps or locks without depending on it: null, so
+        ///     the guard locks the row and never compares it. <see cref="VersionTag.None" /> is an
+        ///     expectation like any other.
         /// </summary>
         public static readonly Guid? NoExpectation;
 
@@ -115,17 +115,23 @@ namespace Tellma.Core.Data.Batches
         /// <param name="premises">What the connect prologue confirmed.</param>
         /// <param name="dependencies">The cached inputs the batch declared.</param>
         /// <param name="bumps">What the batch bumps, which the bump epilogue moves before the commit.</param>
+        /// <param name="locks">
+        ///     The names the batch locks to the commit without expecting a tag: the tags of the cached
+        ///     lists it read for itself, whose tables a concurrent write must not change under it.
+        /// </param>
         /// <param name="binder">The table-type binder.</param>
         /// <returns>The checks.</returns>
         public static PersistChecks Compose(
             GuardPremises premises,
             IReadOnlyList<VersionTagDependency> dependencies,
             VersionTagBumpPlan bumps,
+            IReadOnlySet<string> locks,
             TableTypeBinder binder)
         {
             ArgumentNullException.ThrowIfNull(premises);
             ArgumentNullException.ThrowIfNull(dependencies);
             ArgumentNullException.ThrowIfNull(bumps);
+            ArgumentNullException.ThrowIfNull(locks);
             ArgumentNullException.ThrowIfNull(binder);
 
             // --- The names the batch bumps, which the guard reads under an exclusive lock ---
@@ -146,8 +152,8 @@ namespace Tellma.Core.Data.Batches
                 Expect(expected, dependency.Name, dependency.ExpectedTag);
             }
 
-            // --- The names the batch bumps without expecting a tag: locked in the same pass, never compared ---
-            foreach (string name in bumps.TenantNames)
+            // --- The names the batch bumps or locks without expecting a tag: locked in the same pass, never compared ---
+            foreach (string name in bumps.TenantNames.Concat(locks))
             {
                 _ = expected.TryAdd(name, NoExpectation);
             }

@@ -16,9 +16,11 @@ import {
   Columns3,
   Funnel,
   Inbox,
+  LayoutGrid,
   Plus,
   Search,
   SearchX,
+  Table2,
 } from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
@@ -32,6 +34,8 @@ import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
+import { TmDateRange } from '@tellma/core-ui/date-range';
+import { TmDateTimeField, TmTimeField } from '@tellma/core-ui/date-time';
 import { TmDescriptionList } from '@tellma/core-ui/description-list';
 import { TmEntityMultiPicker, TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
@@ -60,11 +64,15 @@ import { TmNumber } from '@tellma/core-ui/number';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
+import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
+import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
 import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
+import { TmSwitch } from '@tellma/core-ui/switch';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
@@ -82,6 +90,9 @@ import * as chipSetExamples from './chip/tm-chip-set.examples';
 import * as copyButtonExamples from './copy/tm-copy-button.examples';
 import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as dateRangeExamples from './date-range/tm-date-range.examples';
+import * as dateTimeFieldExamples from './date-time/tm-date-time-field.examples';
+import * as timeFieldExamples from './date-time/tm-time-field.examples';
 import * as descriptionListExamples from './description-list/tm-description-list.examples';
 import * as entityMultiPickerExamples from './entity-picker/tm-entity-multi-picker.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
@@ -101,12 +112,17 @@ import * as pageHeaderExamples from './page-header/tm-page-header.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
 import * as progressRingExamples from './progress/tm-progress-ring.examples';
+import * as radioGroupExamples from './radio/tm-radio-group.examples';
 import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
+import * as searchExamples from './search-field/tm-search.examples';
+import * as searchFieldExamples from './search-field/tm-search-field.examples';
+import * as segmentedExamples from './segmented/tm-segmented.examples';
 import * as multiSelectExamples from './select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as splitterExamples from './splitter/tm-splitter.examples';
+import * as switchExamples from './switch/tm-switch.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -170,6 +186,8 @@ class ExamplePage {}
     TmCopyButton,
     TmCounter,
     TmDatePicker,
+    TmDateRange,
+    TmDateTimeField,
     TmDescriptionList,
     TmDropzone,
     TmEmptyState,
@@ -205,17 +223,25 @@ class ExamplePage {}
     TmPopoverTrigger,
     TmProgressBar,
     TmProgressRing,
+    TmRadio,
+    TmRadioGroup,
     TmReference,
     TmRelativeTime,
+    TmSearch,
+    TmSearchField,
+    TmSegment,
+    TmSegmented,
     TmSelect,
     TmSkeleton,
     TmSpinner,
     TmSplitter,
     TmSplitterPane,
+    TmSwitch,
     TmTab,
     TmTabContent,
     TmTabGroup,
     TmTabLabel,
+    TmTimeField,
     TmTooltip,
     TmTreeGrid,
   ],
@@ -223,6 +249,18 @@ class ExamplePage {}
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
     <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
+    <tm-form-field label="placeholder"><tm-time-field /></tm-form-field>
+    <tm-form-field label="placeholder"><input tmInput tmSearch /></tm-form-field>
+    <tm-date-range label="placeholder" />
+    <tm-date-time-field label="placeholder" />
+    <tm-search-field ariaLabel="placeholder" />
+    <tm-radio-group ariaLabel="placeholder"
+      ><tm-radio value="a" label="placeholder"
+    /></tm-radio-group>
+    <tm-segmented ariaLabel="placeholder"
+      ><tm-segment value="a" label="placeholder"
+    /></tm-segmented>
+    <tm-switch>placeholder</tm-switch>
     <tm-entity-picker
       [search]="searchAgents"
       [itemId]="agentId"
@@ -273,7 +311,12 @@ class ExamplePage {}
     <div tmModalFooter>placeholder</div>
     <tm-card heading="placeholder">placeholder</tm-card>
     <tm-page-header><h1 tmPageTitle>placeholder</h1></tm-page-header>
-    <dl tmDescriptionList><div><dt>placeholder</dt><dd>placeholder</dd></div></dl>
+    <dl tmDescriptionList>
+      <div>
+        <dt>placeholder</dt>
+        <dd>placeholder</dd>
+      </div>
+    </dl>
     <tm-splitter [defaultSize]="100">
       <div tmSplitterPane="start">placeholder</div>
       <div tmSplitterPane="end">placeholder</div>
@@ -342,6 +385,8 @@ class ExampleHost {
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+  // The remembered-expansion example's two-way expanded set.
+  protected readonly treeExpandedIds = signal<ReadonlySet<number | string>>(new Set([1]));
   // The chip and banner examples' event handlers.
   protected readonly onRemove = (label: string): void => void label;
   protected readonly onActivate = (key: string): void => void key;
@@ -433,6 +478,11 @@ const MARKERS: {
     name: 'TmInput',
     pattern: /\btmInput\b/,
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmInput)).length > 0,
+  },
+  {
+    name: 'TmSearch',
+    pattern: /\btmSearch\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmSearch)).length > 0,
   },
   {
     name: 'TmButton',
@@ -641,6 +691,14 @@ const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
   { source: 'number/tm-number.examples.ts', examples: numberExamples },
   { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
+  { source: 'date-time/tm-time-field.examples.ts', examples: timeFieldExamples },
+  { source: 'date-time/tm-date-time-field.examples.ts', examples: dateTimeFieldExamples },
+  { source: 'date-range/tm-date-range.examples.ts', examples: dateRangeExamples },
+  { source: 'radio/tm-radio-group.examples.ts', examples: radioGroupExamples },
+  { source: 'segmented/tm-segmented.examples.ts', examples: segmentedExamples },
+  { source: 'switch/tm-switch.examples.ts', examples: switchExamples },
+  { source: 'search-field/tm-search.examples.ts', examples: searchExamples },
+  { source: 'search-field/tm-search-field.examples.ts', examples: searchFieldExamples },
   { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
   {
     source: 'entity-picker/tm-entity-multi-picker.examples.ts',
@@ -704,6 +762,8 @@ describe('co-located docs examples compile against the live API (§11)', () => {
                 'circle-x': CircleX,
                 inbox: Inbox,
                 'search-x': SearchX,
+                'table-2': Table2,
+                'layout-grid': LayoutGrid,
                 'chevron-right': { node: ChevronRight, mirrorInRtl: true },
               }),
             ],
