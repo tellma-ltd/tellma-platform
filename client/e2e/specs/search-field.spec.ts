@@ -37,13 +37,17 @@ test('the clear button clears, emits and refocuses; Mod+Z brings the text back @
   await input.click();
   await page.keyboard.type('jed');
   await expect(page.getByTestId('search-value')).toHaveText('jed');
+  // The burst's trailing edge searches "jed" (a keystroke slower than the
+  // window may also lead with "je"). A clear inside the window would close
+  // the burst without it, so the clear waits for that emit to show.
+  await expect(page.getByTestId('search-emitted')).toHaveText(/^\["j",.*"jed"\]$/);
 
   await page.getByTestId('search-main').getByRole('button', { name: 'Clear search' }).click();
   await expect(input).toHaveValue('');
   await expect(input).toBeFocused();
   await expect(page.getByTestId('search-value')).toHaveText('');
-  // The clear emitted the empty query.
-  await expect(page.getByTestId('search-emitted')).toHaveText(/"jed",""\]$/);
+  // The clear emitted the empty query, once, right after "jed".
+  await expect(page.getByTestId('search-emitted')).toHaveText(/^\["j",.*"jed",""\]$/);
 
   await page.keyboard.press('ControlOrMeta+z');
   await expect(input).toHaveValue('jed');

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Tellma.Core.Caching
 {
-    /// <summary>Source-generated log messages of the version tags. No message carries a tag's value.</summary>
+    /// <summary>Source-generated log messages of the version tags and the caches. No message carries a tag's value.</summary>
     internal static partial class CachingLog
     {
         /// <summary>
@@ -52,5 +52,32 @@ namespace Tellma.Core.Caching
             Level = LogLevel.Information,
             Message = "Moved every version tag in the database of tenant {TenantId}, since this run changed it.")]
         public static partial void VersionTagsBumped(ILogger logger, int tenantId);
+
+        /// <summary>
+        ///     A cacheable entity's list came back longer than its row limit: the rows were discarded,
+        ///     nothing was cached, and the entity is read uncached until an operator raises the limit
+        ///     or removes the attribute. Logged once per entity per process.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="entity">The entity's name.</param>
+        /// <param name="rows">How many rows the capped read returned.</param>
+        /// <param name="maxRows">The entity's row limit.</param>
+        [LoggerMessage(
+            EventName = "CacheableEntityOverflow",
+            Level = LogLevel.Warning,
+            Message = "The cacheable entity {Entity} has more than its limit of {MaxRows} rows (the capped read returned {Rows}), so its list is not cached; raise the limit or remove [Cacheable].")]
+        public static partial void CacheableEntityOverflow(ILogger logger, string entity, int rows, int maxRows);
+
+        /// <summary>
+        ///     A cacheable entity's list a batch read was not stored because the store was already
+        ///     disposed, as it is while the host stops; the batch's rows were still served.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="entity">The entity's name.</param>
+        [LoggerMessage(
+            EventName = "CacheableEntityNotStored",
+            Level = LogLevel.Information,
+            Message = "The list of the cacheable entity {Entity} was read but not stored: the cache is already disposed, as it is while the host stops.")]
+        public static partial void CacheableEntityNotStored(ILogger logger, string entity);
     }
 }

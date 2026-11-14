@@ -416,13 +416,6 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <inheritdoc />
-        public BatchResult<CacheResult<CachedEntitySet<TEntity>>> FromCache<TEntity>()
-            where TEntity : class
-        {
-            throw NotAvailable(nameof(FromCache));
-        }
-
-        /// <inheritdoc />
         public void BumpVersionTag(string name)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -831,7 +824,7 @@ namespace Tellma.Core.Data.Batches
 
             // --- The re-checks: on a writing persist batch that carries the connect prologue, whatever its transaction mode ---
             PersistChecks? checks = Purpose == BatchPurpose.Persist && Premises is GuardPremises premises && _written.Count > 0
-                ? PersistChecks.Compose(premises, _dependencies, Bumps, _executor.Binder)
+                ? PersistChecks.Compose(premises, _dependencies, Bumps, _lockedTags, _executor.Binder)
                 : null;
 
             return BatchAssembly.Create(_statements, _executor.Fingerprint, CarriesConnectPrologue, inTextTransaction, checks);

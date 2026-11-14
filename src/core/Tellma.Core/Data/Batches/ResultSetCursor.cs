@@ -109,6 +109,21 @@ namespace Tellma.Core.Data.Batches
             _completions.Add(() => result.Complete(value));
         }
 
+        /// <summary>
+        ///     Stages a statement's result whose value is settled only when the attempt counts: a
+        ///     result whose settling has effects beyond the batch, such as storing what was read in a
+        ///     cache, has them once, and never for an attempt the executor re-runs or discards.
+        /// </summary>
+        /// <typeparam name="T">The result's type.</typeparam>
+        /// <param name="result">The statement's handle.</param>
+        /// <param name="settle">Settles the value, when the results complete.</param>
+        public void Settle<T>(BatchResult<T> result, Func<T> settle)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+            ArgumentNullException.ThrowIfNull(settle);
+            _completions.Add(() => result.Complete(settle()));
+        }
+
         /// <summary>Completes every result the attempt's readers staged, in the order they were read.</summary>
         public void ApplyCompletions()
         {

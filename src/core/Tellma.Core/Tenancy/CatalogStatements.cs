@@ -41,6 +41,22 @@ namespace Tellma.Core.Tenancy
         /// <summary>SQL Server's "cannot open database" error: the database is missing, or the login has no access to it.</summary>
         public const int CannotOpenDatabase = 4060;
 
+        /// <summary>
+        ///     The client's "no process is on the other end of the pipe" error: the server ended the
+        ///     session during the login, and the client never read why. Over named pipes and shared
+        ///     memory, LocalDB's only transports, a login refused for a missing database sometimes
+        ///     arrives as this error alone.
+        /// </summary>
+        public const int LoginInterrupted = 233;
+
+        /// <summary>
+        ///     Whether a database exists on the server, asked of <c>master</c>: 1 when the caller sees
+        ///     it, 0 when the caller may see every database and this one is not among them, and NULL
+        ///     when the caller may not see every database, so its absence proves nothing.
+        /// </summary>
+        public const string DatabaseExists =
+            "SELECT CASE WHEN DB_ID(@database) IS NOT NULL THEN 1 WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'VIEW ANY DATABASE') = 1 THEN 0 END;";
+
         /// <summary>The refresh probe, every refresh interval per instance.</summary>
         public const string Probe = "SELECT [Version] FROM [catalog].[CatalogState] WHERE [Id] = 1;";
 

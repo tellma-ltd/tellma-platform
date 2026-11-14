@@ -222,3 +222,21 @@ export const HeaderFiltersAndColumnEditor = {
     </tm-grid>
   `,
 };
+
+/**
+ * Bringing a row into view from code — after a save, or from a link to a
+ * record: `scrollToRow` centres the row, moves the active cell to it (in
+ * the named column) without taking focus, and `flash` pulses it once so
+ * the eye lands on it. It returns `false` when the row is not in the data.
+ */
+export const ScrollToRowWithFlash = {
+  template: `
+    <button type="button" (click)="products.scrollToRow(2, { flash: true, column: 'qty' })">
+      Show item 2
+    </button>
+    <tm-grid #products gridId="products-scroll" [data]="rows" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" />
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="90" />
+    </tm-grid>
+  `,
+};

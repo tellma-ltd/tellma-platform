@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, type Type } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { form, FormField, required } from '@angular/forms/signals';
@@ -18,6 +18,7 @@ import { TmEntityPickerHarness } from '@tellma/core-ui-testing';
 
 import { TmEntityPicker } from './tm-entity-picker';
 import type {
+  TmEntityMultiPick,
   TmEntityPick,
   TmEntityPicked,
   TmEntityPickerPageData,
@@ -208,6 +209,47 @@ class RequiredHost {
   readonly label = (item: Agent): string => item.name;
 }
 
+/**
+ * The form-path host in emit mode: the picker hands every commit to its host
+ * (as a multi-picker composes it) instead of keeping it, against the host's
+ * chosen ids.
+ */
+@Component({
+  imports: [TmEntityPicker, TmFormField, FormField],
+  template: `
+    <tm-form-field label="Agent" data-testid="ff">
+      <tm-entity-picker
+        [formField]="f.agentId"
+        [ɵcommitMode]="'emit'"
+        [ɵchosenIds]="chosen()"
+        [ɵmaxItems]="maxItems()"
+        [ɵnotice]="notice()"
+        [search]="search()"
+        [itemId]="itemId"
+        [itemLabel]="itemLabel()"
+        [itemDescription]="itemDescription()"
+        [itemLabelParts]="itemLabelParts()"
+        [displayWith]="displayWith()"
+        [advancedSearch]="advancedPage()"
+        [create]="createPage()"
+        [edit]="editPage()"
+        [searchDebounce]="debounce()"
+        (picked)="picks.push($event)"
+        (ɵdeselect)="deselects.push($event)"
+        (ɵmultiPick)="multiPicks.push($event)"
+      />
+    </tm-form-field>
+    <input data-testid="outside" aria-label="Outside" />
+  `,
+})
+class EmitHost extends Host {
+  readonly chosen = signal<readonly number[]>([]);
+  readonly maxItems = signal<number | undefined>(undefined);
+  readonly notice = signal<string | null>(null);
+  readonly deselects: number[] = [];
+  readonly multiPicks: TmEntityMultiPick<number, Agent>[] = [];
+}
+
 /** Identity helper so the host signals can hold page configs of any shape. */
 function pageOf(component: unknown): { component: never } | never {
   return component as never;
@@ -242,16 +284,36 @@ class FakePage {
   }
 }
 
-async function setup(): Promise<{
-  fixture: ComponentFixture<Host>;
-  host: Host;
+/** A fake whole-selection page, as a multi-picker's advanced search closes. */
+@Component({
+  template: `
+    <button data-testid="page-set" (click)="set()">set</button>
+    <button data-testid="page-close" (click)="ref.close()">close</button>
+  `,
+})
+class FakeMultiPage {
+  readonly ref = inject(TmModalRef) as TmModalRef<TmEntityMultiPick<number, Agent> | null>;
+  readonly data = inject(TM_MODAL_DATA) as TmEntityPickerPageData<number>;
+  constructor() {
+    lastPageData = this.data;
+  }
+  set(): void {
+    this.ref.close({ ids: [5, 3], picks: [{ id: 3, label: 'Alice Green' }] });
+  }
+}
+
+async function setup<H extends Host = Host>(
+  hostType: Type<H> = Host as Type<H>,
+): Promise<{
+  fixture: ComponentFixture<H>;
+  host: H;
   input: HTMLInputElement;
   outside: HTMLInputElement;
 }> {
   TestBed.configureTestingModule({
     providers: [provideTellmaUi({ availableLangs: ['en', 'ar'] })],
   });
-  const fixture = TestBed.createComponent(Host);
+  const fixture = TestBed.createComponent(hostType);
   await settle(fixture);
   const input = fixture.nativeElement.querySelector(
     '.tm-entity-picker__input',
@@ -507,284 +569,291 @@ describe('tm-entity-picker', () => {
     });
   });
 
-  describe('search lifecycle', () => {
-    it('re-opening on unchanged text re-uses the answer instead of re-fetching', async () => {
-      const { fixture, host, input, outside } = await setup();
-      const search = syncSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Adam');
-      expect(optionRows()).toHaveLength(2);
-      outside.focus(); // the departure fails: 'Adam' names two
-      await settle(fixture);
-      expect(errorText(fixture)).toContain('matches more than one');
-      const settledCalls = search.calls.length;
-
-      input.focus();
-      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await settle(fixture);
-      expect(optionRows()).toHaveLength(2); // the rows are back…
-      expect(search.calls).toHaveLength(settledCalls); // …at no cost
-    });
-
-    it('a departure that CONSUMES the response still records it', async () => {
-      // Leaving before the response lands is the case that matters most:
-      // there is no row to commit, so the resolution takes the answer for
-      // itself and nothing ever renders it. That is exactly the state the
-      // user re-opens from — to look at the rows the error is about.
-      const { fixture, host, input, outside } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Adam');
-      outside.focus(); // departs while the request is still in flight
-      await settle(fixture);
-      search.responders[0].resolve(filterAgents('Adam'));
-      await settle(fixture);
-      expect(errorText(fixture)).toContain('matches more than one');
-      const settledCalls = search.calls.length;
-
-      input.focus();
-      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await settle(fixture);
-      expect(optionRows()).toHaveLength(2); // the rows the error is about
-      expect(search.calls).toHaveLength(settledCalls); // fetched once, in total
-    });
-
-    it('ANY change to the text retires the answer — Adam, Ada, Adam re-asks', async () => {
-      // Keyed on more than the query string. The middle keystroke retires
-      // the answer stored for the FIRST 'Adam', so returning to that text
-      // asks again — and it has to, because the intermediate search never
-      // came back and nothing since has spoken for what is on screen.
-      const { fixture, host, input, outside } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      host.debounce.set(0); // every keystroke is its own request
-      await settle(fixture);
-      await type(fixture, input, 'Adam');
-      search.responders[0].resolve(filterAgents('Adam')); // the only one that lands
-      await settle(fixture);
-      await type(fixture, input, 'Ada');
-      await type(fixture, input, 'Adam');
-      outside.focus();
-      await settle(fixture);
-      const before = search.calls.length;
-
-      input.focus();
-      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await settle(fixture);
-      expect(search.calls.length).toBe(before + 1);
-      expect(search.calls[search.calls.length - 1].query).toBe('Adam');
-      expect(optionRows()).toHaveLength(0); // and the OLD rows are not shown
-    });
-
-    it('a different search function retires the answer — it is a different question', async () => {
-      const { fixture, host, input, outside } = await setup();
-      const first = syncSearch();
-      host.search.set(first.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Adam');
-      outside.focus();
-      await settle(fixture);
-
-      const second = syncSearch();
-      host.search.set(second.fn); // a new source: a tenant, a filter, a scope
-      await settle(fixture);
-      input.focus();
-      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await settle(fixture);
-      expect(second.calls.map((c) => c.query)).toEqual(['Adam']);
-    });
-
-    it('typing opens the dropdown and renders sync results in the same settle with no spinner', async () => {
-      const { fixture, host, input } = await setup();
-      const search = syncSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      expect(input.getAttribute('aria-expanded')).toBe('true');
-      expect(panel()).not.toBeNull();
-      expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Alice Green', 'Alan Grey']);
-      expect(document.querySelector('.tm-entity-picker__status')).toBeNull();
-      expect(search.calls.map((c) => c.query)).toEqual(['Al']);
-    });
-
-    it('an async search shows the immediate spinner, then results, and announces the count', async () => {
-      const { fixture, host, input } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      expect(document.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
-      expect(optionRows()).toHaveLength(0);
-      search.answer();
-      await settle(fixture);
-      expect(optionRows()).toHaveLength(2);
-      expect(document.querySelector('.tm-entity-picker__status')).toBeNull();
-      expect(liveText(fixture)).toBe('2 results');
-    });
-
-    it('every async text change clears stale rows immediately and discards superseded responses', async () => {
-      const { fixture, host, input } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      host.debounce.set(0);
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      // Supersede while the first request is still in flight.
-      await type(fixture, input, 'Bob');
-      expect(optionRows()).toHaveLength(0);
-      expect(document.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
-      expect(search.calls[0].signal.aborted).toBe(true);
-      // A consumer ignoring the signal answers anyway — discarded on arrival.
-      search.responders[0].resolve(filterAgents('Al'));
-      await settle(fixture);
-      expect(optionRows()).toHaveLength(0);
-      search.answer(1);
-      await settle(fixture);
-      expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Bob Stone']);
-    });
-
-    it('coalesces a simultaneous burst into two requests (leading + trailing)', async () => {
-      const { fixture, host, input } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      input.focus();
-      for (const text of ['A', 'Ad', 'Ada', 'Adam']) {
-        input.value = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      await sleep(120); // past the 50ms window
-      await settle(fixture);
-      expect(search.calls.map((c) => c.query)).toEqual(['A', 'Adam']);
-    });
-
-    it('a held key costs ONE trailing request however long it repeats', async () => {
-      const { fixture, host, input } = await setup(); // the default 50ms window
-      const search = manualSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      input.focus();
-      // Autorepeat: each keystroke lands well inside the window, but the
-      // burst runs across SEVERAL windows' worth of time. A fixed window
-      // fires once per window here; a sliding one fires once, at the end.
-      for (let i = 1; i <= 16; i++) {
-        input.value = 'a'.repeat(i);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(15);
-      }
-      await sleep(140);
-      await settle(fixture);
-      expect(search.calls.length).toBeLessThanOrEqual(3);
-      expect(search.calls[0].query).toBe('a');
-      expect(search.calls.at(-1)?.query).toBe('a'.repeat(16));
-    });
-
-    it('a known-synchronous source skips the window: every keystroke searches instantly', async () => {
-      const { fixture, host, input } = await setup();
-      const search = syncSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      input.focus();
-      for (const text of ['A', 'Ad', 'Ada']) {
-        input.value = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      await settle(fixture);
-      expect(search.calls.map((c) => c.query)).toEqual(['A', 'Ad', 'Ada']);
-    });
-
-    it('a fresh empty result set shows the reserved-height "No results" status', async () => {
-      // The tokens stylesheet is not part of the unit environment — pin the
-      // shared option-height token so the reserved-height calc resolves.
-      document.documentElement.style.setProperty('--field-option-height', '36px');
-      try {
-        const { fixture, host, input } = await setup();
-        host.search.set(syncSearch().fn);
+  // The search lifecycle runs before any commit, so emit mode — whose only
+  // difference is the post-commit step — must pass it unchanged.
+  for (const [title, hostType] of [
+    ['search lifecycle', Host],
+    ['search lifecycle in emit mode', EmitHost],
+  ] as const) {
+    describe(title, () => {
+      it('re-opening on unchanged text re-uses the answer instead of re-fetching', async () => {
+        const { fixture, host, input, outside } = await setup(hostType);
+        const search = syncSearch();
+        host.search.set(search.fn);
         await settle(fixture);
-        await type(fixture, input, 'zzz');
+        await type(fixture, input, 'Adam');
+        expect(optionRows()).toHaveLength(2);
+        outside.focus(); // the departure fails: 'Adam' names two
+        await settle(fixture);
+        expect(errorText(fixture)).toContain('matches more than one');
+        const settledCalls = search.calls.length;
+
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(optionRows()).toHaveLength(2); // the rows are back…
+        expect(search.calls).toHaveLength(settledCalls); // …at no cost
+      });
+
+      it('a departure that CONSUMES the response still records it', async () => {
+        // Leaving before the response lands is the case that matters most:
+        // there is no row to commit, so the resolution takes the answer for
+        // itself and nothing ever renders it. That is exactly the state the
+        // user re-opens from — to look at the rows the error is about.
+        const { fixture, host, input, outside } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        await type(fixture, input, 'Adam');
+        outside.focus(); // departs while the request is still in flight
+        await settle(fixture);
+        search.responders[0].resolve(filterAgents('Adam'));
+        await settle(fixture);
+        expect(errorText(fixture)).toContain('matches more than one');
+        const settledCalls = search.calls.length;
+
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(optionRows()).toHaveLength(2); // the rows the error is about
+        expect(search.calls).toHaveLength(settledCalls); // fetched once, in total
+      });
+
+      it('ANY change to the text retires the answer — Adam, Ada, Adam re-asks', async () => {
+        // Keyed on more than the query string. The middle keystroke retires
+        // the answer stored for the FIRST 'Adam', so returning to that text
+        // asks again — and it has to, because the intermediate search never
+        // came back and nothing since has spoken for what is on screen.
+        const { fixture, host, input, outside } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0); // every keystroke is its own request
+        await settle(fixture);
+        await type(fixture, input, 'Adam');
+        search.responders[0].resolve(filterAgents('Adam')); // the only one that lands
+        await settle(fixture);
+        await type(fixture, input, 'Ada');
+        await type(fixture, input, 'Adam');
+        outside.focus();
+        await settle(fixture);
+        const before = search.calls.length;
+
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(search.calls.length).toBe(before + 1);
+        expect(search.calls[search.calls.length - 1].query).toBe('Adam');
+        expect(optionRows()).toHaveLength(0); // and the OLD rows are not shown
+      });
+
+      it('a different search function retires the answer — it is a different question', async () => {
+        const { fixture, host, input, outside } = await setup(hostType);
+        const first = syncSearch();
+        host.search.set(first.fn);
+        await settle(fixture);
+        await type(fixture, input, 'Adam');
+        outside.focus();
+        await settle(fixture);
+
+        const second = syncSearch();
+        host.search.set(second.fn); // a new source: a tenant, a filter, a scope
+        await settle(fixture);
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(second.calls.map((c) => c.query)).toEqual(['Adam']);
+      });
+
+      it('typing opens the dropdown and renders sync results in the same settle with no spinner', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = syncSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        expect(input.getAttribute('aria-expanded')).toBe('true');
+        expect(panel()).not.toBeNull();
+        expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Alice Green', 'Alan Grey']);
+        expect(document.querySelector('.tm-entity-picker__status')).toBeNull();
+        expect(search.calls.map((c) => c.query)).toEqual(['Al']);
+      });
+
+      it('an async search shows the immediate spinner, then results, and announces the count', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        expect(document.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
+        expect(optionRows()).toHaveLength(0);
+        search.answer();
+        await settle(fixture);
+        expect(optionRows()).toHaveLength(2);
+        expect(document.querySelector('.tm-entity-picker__status')).toBeNull();
+        expect(liveText(fixture)).toBe('2 results');
+      });
+
+      it('every async text change clears stale rows immediately and discards superseded responses', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0);
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        // Supersede while the first request is still in flight.
+        await type(fixture, input, 'Bob');
+        expect(optionRows()).toHaveLength(0);
+        expect(document.querySelector('.tm-entity-picker__status tm-spinner')).not.toBeNull();
+        expect(search.calls[0].signal.aborted).toBe(true);
+        // A consumer ignoring the signal answers anyway — discarded on arrival.
+        search.responders[0].resolve(filterAgents('Al'));
+        await settle(fixture);
+        expect(optionRows()).toHaveLength(0);
+        search.answer(1);
+        await settle(fixture);
+        expect(optionRows().map((r) => r.textContent?.trim())).toEqual(['Bob Stone']);
+      });
+
+      it('coalesces a simultaneous burst into two requests (leading + trailing)', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        input.focus();
+        for (const text of ['A', 'Ad', 'Ada', 'Adam']) {
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        await sleep(120); // past the 50ms window
+        await settle(fixture);
+        expect(search.calls.map((c) => c.query)).toEqual(['A', 'Adam']);
+      });
+
+      it('a held key costs ONE trailing request however long it repeats', async () => {
+        const { fixture, host, input } = await setup(hostType); // the default 50ms window
+        const search = manualSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        input.focus();
+        // Autorepeat: each keystroke lands well inside the window, but the
+        // burst runs across SEVERAL windows' worth of time. A fixed window
+        // fires once per window here; a sliding one fires once, at the end.
+        for (let i = 1; i <= 16; i++) {
+          input.value = 'a'.repeat(i);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          await sleep(15);
+        }
+        await sleep(140);
+        await settle(fixture);
+        expect(search.calls.length).toBeLessThanOrEqual(3);
+        expect(search.calls[0].query).toBe('a');
+        expect(search.calls.at(-1)?.query).toBe('a'.repeat(16));
+      });
+
+      it('a known-synchronous source skips the window: every keystroke searches instantly', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = syncSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        input.focus();
+        for (const text of ['A', 'Ad', 'Ada']) {
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        await settle(fixture);
+        expect(search.calls.map((c) => c.query)).toEqual(['A', 'Ad', 'Ada']);
+      });
+
+      it('a fresh empty result set shows the reserved-height "No results" status', async () => {
+        // The tokens stylesheet is not part of the unit environment — pin the
+        // shared option-height token so the reserved-height calc resolves.
+        document.documentElement.style.setProperty('--field-option-height', '36px');
+        try {
+          const { fixture, host, input } = await setup(hostType);
+          host.search.set(syncSearch().fn);
+          await settle(fixture);
+          await type(fixture, input, 'zzz');
+          const status = document.querySelector('.tm-entity-picker__status') as HTMLElement;
+          expect(status.textContent?.trim()).toBe('No results');
+          const height = parseFloat(getComputedStyle(status).blockSize);
+          expect(height).toBe(72); // 2 × the 36px option-height token
+          expect(liveText(fixture)).toBe('No results');
+        } finally {
+          document.documentElement.style.removeProperty('--field-option-height');
+        }
+      });
+
+      it('a rejected search shows the failure status, keeps footer rows, and the next change retries', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        host.createPage.set(pageOf(FakePage));
+        const search = manualSearch();
+        host.search.set(search.fn);
+        host.debounce.set(0); // retry timing is under test, not coalescing
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        search.responders[0].reject(new Error('boom'));
+        await settle(fixture);
         const status = document.querySelector('.tm-entity-picker__status') as HTMLElement;
-        expect(status.textContent?.trim()).toBe('No results');
-        const height = parseFloat(getComputedStyle(status).blockSize);
-        expect(height).toBe(72); // 2 × the 36px option-height token
-        expect(liveText(fixture)).toBe('No results');
-      } finally {
-        document.documentElement.style.removeProperty('--field-option-height');
-      }
-    });
+        expect(status.textContent?.trim()).toBe('Search failed');
+        expect(liveText(fixture)).toBe('Search failed'); // announced on completion
+        expect(actionRows().length).toBeGreaterThan(0);
+        await type(fixture, input, 'Ali');
+        expect(search.calls).toHaveLength(2);
+      });
 
-    it('a rejected search shows the failure status, keeps footer rows, and the next change retries', async () => {
-      const { fixture, host, input } = await setup();
-      host.createPage.set(pageOf(FakePage));
-      const search = manualSearch();
-      host.search.set(search.fn);
-      host.debounce.set(0); // retry timing is under test, not coalescing
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      search.responders[0].reject(new Error('boom'));
-      await settle(fixture);
-      const status = document.querySelector('.tm-entity-picker__status') as HTMLElement;
-      expect(status.textContent?.trim()).toBe('Search failed');
-      expect(liveText(fixture)).toBe('Search failed'); // announced on completion
-      expect(actionRows().length).toBeGreaterThan(0);
-      await type(fixture, input, 'Ali');
-      expect(search.calls).toHaveLength(2);
-    });
-
-    it('announcements fire on fetch completion only — never per keystroke', async () => {
-      const { fixture, host, input } = await setup();
-      const search = manualSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      expect(liveText(fixture)).toBe(''); // nothing announced while loading
-      search.answer();
-      await settle(fixture);
-      expect(liveText(fixture)).toBe('2 results');
-    });
-
-    it('warns in dev mode when a search returns more than 200 results', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      try {
-        const { fixture, host, input } = await setup();
-        host.search.set(() =>
-          Array.from({ length: 201 }, (_, i) => ({ id: i + 1000, name: `Agent ${i}` })),
-        );
+      it('announcements fire on fetch completion only — never per keystroke', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = manualSearch();
+        host.search.set(search.fn);
         await settle(fixture);
-        await type(fixture, input, 'A');
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('201 results'));
-      } finally {
-        warn.mockRestore();
-      }
-    });
+        await type(fixture, input, 'Al');
+        expect(liveText(fixture)).toBe(''); // nothing announced while loading
+        search.answer();
+        await settle(fixture);
+        expect(liveText(fixture)).toBe('2 results');
+      });
 
-    it('the hasMore object form renders the truncation hint and the open-ended announcement', async () => {
-      const { fixture, host, input } = await setup();
-      host.search.set((q) => ({ items: [...filterAgents(q)], hasMore: true }));
-      await settle(fixture);
-      await type(fixture, input, 'Al');
-      const hint = document.querySelector('.tm-entity-picker__hint') as HTMLElement;
-      // The hint names how many results are on screen and stays out of the
-      // accessibility tree (the count announcement carries it for AT).
-      expect(hint.textContent?.trim()).toBe('Showing 2 matches. Type to refine.');
-      expect(hint.getAttribute('aria-hidden')).toBe('true');
-      expect(liveText(fixture)).toBe('2+ results — more available');
-    });
+      it('warns in dev mode when a search returns more than 200 results', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          const { fixture, host, input } = await setup(hostType);
+          host.search.set(() =>
+            Array.from({ length: 201 }, (_, i) => ({ id: i + 1000, name: `Agent ${i}` })),
+          );
+          await settle(fixture);
+          await type(fixture, input, 'A');
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('201 results'));
+        } finally {
+          warn.mockRestore();
+        }
+      });
 
-    it('pointer click on the input opens a pristine browse list via search("")', async () => {
-      const { fixture, host, input } = await setup();
-      const search = syncSearch();
-      host.search.set(search.fn);
-      await settle(fixture);
-      input.focus();
-      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await settle(fixture);
-      expect(panel()).not.toBeNull();
-      expect(search.calls.map((c) => c.query)).toEqual(['']);
-      expect(optionRows()).toHaveLength(DIRECTORY.length);
+      it('the hasMore object form renders the truncation hint and the open-ended announcement', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        host.search.set((q) => ({ items: [...filterAgents(q)], hasMore: true }));
+        await settle(fixture);
+        await type(fixture, input, 'Al');
+        const hint = document.querySelector('.tm-entity-picker__hint') as HTMLElement;
+        // The hint names how many results are on screen and stays out of the
+        // accessibility tree (the count announcement carries it for AT).
+        expect(hint.textContent?.trim()).toBe('Showing 2 matches. Type to refine.');
+        expect(hint.getAttribute('aria-hidden')).toBe('true');
+        expect(liveText(fixture)).toBe('2+ results — more available');
+      });
+
+      it('pointer click on the input opens a pristine browse list via search("")', async () => {
+        const { fixture, host, input } = await setup(hostType);
+        const search = syncSearch();
+        host.search.set(search.fn);
+        await settle(fixture);
+        input.focus();
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await settle(fixture);
+        expect(panel()).not.toBeNull();
+        expect(search.calls.map((c) => c.query)).toEqual(['']);
+        expect(optionRows()).toHaveLength(DIRECTORY.length);
+      });
     });
-  });
+  }
 
   describe('keyboard model', () => {
     it('a reopened dropdown never re-applies the previous open highlight request', async () => {
@@ -2673,6 +2742,394 @@ describe('tm-entity-picker', () => {
       expect(host.model().agentId).toBeNull();
       expect(input.value).toBe('Zebra');
       expect(errorText(fixture)).toBe('No match for ‘Zebra’');
+    });
+  });
+
+  describe('emit mode', () => {
+    /** The listbox element of the open panel. */
+    function listbox(): HTMLElement | null {
+      return document.querySelector('.tm-entity-picker__listbox');
+    }
+
+    /** The entity rows' labels, in order. */
+    function rowLabels(): string[] {
+      return optionRows().map((row) => row.textContent?.trim() ?? '');
+    }
+
+    /** The row labelled `label`. */
+    function rowFor(label: string): HTMLElement {
+      const row = optionRows().find((r) => r.textContent?.trim() === label);
+      if (row === undefined) {
+        throw new Error(`no row labelled ${label}`);
+      }
+      return row;
+    }
+
+    it('a list pick emits it, leaves the value null and the text empty, and stays open on the browse list', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      const search = syncSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      await type(fixture, input, 'Al');
+      rowFor('Alan Grey').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(host.picks).toEqual([
+        { id: 4, label: 'Alan Grey', item: DIRECTORY[3], source: 'list' },
+      ]);
+      expect(host.model().agentId).toBeNull();
+      expect(input.value).toBe('');
+      expect(document.activeElement).toBe(input);
+      // Open on the browse list, with nothing highlighted and no error.
+      expect(panel()).not.toBeNull();
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      expect(search.calls.at(-1)?.query).toBe('');
+      expect(rowLabels()).toHaveLength(DIRECTORY.length);
+      expect(activeRow()).toBeNull();
+      expect(errorText(fixture)).toBe('');
+      expect(host.f.agentId().invalid()).toBe(false);
+    });
+
+    it('a pick from the browse list keeps its rows and their highlight, at no second request', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      const search = syncSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await press(fixture, input, 'ArrowDown');
+      await press(fixture, input, 'ArrowDown');
+      const calls = search.calls.length;
+      await press(fixture, input, 'Enter');
+      expect(host.picks.map((p) => p.id)).toEqual([2]);
+      expect(search.calls).toHaveLength(calls);
+      expect(panel()).not.toBeNull();
+      // The next row is one arrow away.
+      await press(fixture, input, 'ArrowDown');
+      await press(fixture, input, 'Enter');
+      expect(host.picks.map((p) => p.id)).toEqual([2, 3]);
+    });
+
+    it('the browse list a pick re-opens on lands without a count announcement', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'Bob');
+      search.answer();
+      await settle(fixture);
+      expect(liveText(fixture)).toBe('1 result');
+      await press(fixture, input, 'Enter');
+      expect(host.picks.map((p) => p.id)).toEqual([5]);
+      search.answer(); // the browse list
+      await settle(fixture);
+      expect(rowLabels()).toHaveLength(DIRECTORY.length);
+      expect(liveText(fixture)).toBe('1 result'); // unchanged: the host announces the pick
+      // The user's own next query is announced again.
+      await type(fixture, input, 'Al');
+      search.answer();
+      await settle(fixture);
+      expect(liveText(fixture)).toBe('2 results');
+    });
+
+    it('chosen rows show the check in an aria-multiselectable listbox', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.chosen.set([3, 5]);
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(listbox()?.getAttribute('aria-multiselectable')).toBe('true');
+      const selected = optionRows()
+        .filter((row) => row.getAttribute('aria-selected') === 'true')
+        .map((row) => row.textContent?.trim());
+      expect(selected).toEqual(['Alice Green', 'Bob Stone']);
+      host.chosen.set([5]);
+      await settle(fixture);
+      expect(rowFor('Alice Green').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('a pointer pick on a chosen row deselects it, and the panel stays open', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.chosen.set([3]);
+      await settle(fixture);
+      await type(fixture, input, 'Ali');
+      rowFor('Alice Green').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(host.deselects).toEqual([3]);
+      expect(host.picks).toHaveLength(0);
+      expect(input.value).toBe('');
+      expect(panel()).not.toBeNull();
+      expect(rowLabels()).toHaveLength(DIRECTORY.length);
+    });
+
+    it('Enter on a highlighted chosen row deselects it, and the panel stays open', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.chosen.set([5]);
+      await settle(fixture);
+      await type(fixture, input, 'Bob'); // the first row is highlighted
+      await press(fixture, input, 'Enter');
+      expect(host.deselects).toEqual([5]);
+      expect(host.picks).toHaveLength(0);
+      expect(input.value).toBe('');
+      expect(panel()).not.toBeNull();
+    });
+
+    it('a host that refuses a pick leaves the row unchecked', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      rowFor('Bob Stone').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(host.picks.map((p) => p.id)).toEqual([5]);
+      // The host did not take it (chosen stays empty): no row is ticked.
+      expect(optionRows().some((row) => row.getAttribute('aria-selected') === 'true')).toBe(false);
+    });
+
+    it('auto-resolution on departure that lands on a chosen id emits it and clears the text', async () => {
+      const { fixture, host, input, outside } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.chosen.set([5]);
+      await settle(fixture);
+      await type(fixture, input, 'Bob');
+      outside.focus();
+      await settle(fixture);
+      // A pick, never a deselect: the host keeps the chip it already has.
+      expect(host.picks).toEqual([
+        { id: 5, label: 'Bob Stone', item: DIRECTORY[4], source: 'auto' },
+      ]);
+      expect(host.deselects).toHaveLength(0);
+      expect(input.value).toBe('');
+      expect(panel()).toBeNull();
+      expect(host.model().agentId).toBeNull();
+      // The host announces its own outcome; the picker says nothing.
+      expect(liveText(fixture)).not.toContain('selected');
+    });
+
+    it('a Tab commit that lands on a chosen id emits it, clears the text and closes', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.chosen.set([5]);
+      await settle(fixture);
+      await type(fixture, input, 'Bob');
+      await press(fixture, input, 'Tab');
+      expect(host.picks).toEqual([
+        { id: 5, label: 'Bob Stone', item: DIRECTORY[4], source: 'list' },
+      ]);
+      expect(host.deselects).toHaveLength(0);
+      expect(input.value).toBe('');
+      expect(panel()).toBeNull();
+    });
+
+    it('an Enter commit that resolves while loading keeps the panel open on the browse list', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      const search = manualSearch();
+      host.search.set(search.fn);
+      host.debounce.set(0);
+      await settle(fixture);
+      await type(fixture, input, 'Bob');
+      await press(fixture, input, 'Enter'); // still loading: the answer decides
+      search.answer(0);
+      await settle(fixture);
+      expect(host.picks.map((p) => [p.id, p.source])).toEqual([[5, 'auto']]);
+      expect(input.value).toBe('');
+      expect(panel()).not.toBeNull();
+      expect(search.calls.at(-1)?.query).toBe('');
+    });
+
+    it('the panel stays open after a list or Enter commit and closes after a departure, Tab or create', async () => {
+      const { fixture, host, input, outside } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.createPage.set(pageOf(FakePage));
+      await settle(fixture);
+
+      // List (pointer).
+      await type(fixture, input, 'Al');
+      rowFor('Alice Green').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(panel()).not.toBeNull();
+
+      // Enter.
+      await type(fixture, input, 'Carol');
+      await press(fixture, input, 'Enter');
+      expect(panel()).not.toBeNull();
+
+      // Tab.
+      await type(fixture, input, 'Alan');
+      await press(fixture, input, 'Tab');
+      expect(panel()).toBeNull();
+
+      // Departure.
+      await type(fixture, input, 'Bob');
+      outside.focus();
+      await settle(fixture);
+      expect(panel()).toBeNull();
+
+      // Create.
+      await type(fixture, input, 'Zed');
+      actionRows()
+        .find((row) => row.textContent?.includes('Create…'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(lastPageData?.query).toBe('Zed');
+      (document.querySelector('[data-testid="page-pick"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(panel()).toBeNull();
+      expect(input.value).toBe('');
+      expect(document.activeElement).toBe(input);
+
+      expect(host.picks.map((p) => [p.id, p.source])).toEqual([
+        [3, 'list'],
+        [6, 'list'],
+        [4, 'list'],
+        [5, 'auto'],
+        [3, 'create'],
+      ]);
+      expect(host.model().agentId).toBeNull();
+    });
+
+    it('a commit retires the answer settled for the old text', async () => {
+      // A Tab commit from the browse list closes the popup with the browse
+      // answer in hand. Re-opening must ask again: the answer described a
+      // field the commit has since reset.
+      const { fixture, host, input } = await setup(EmitHost);
+      const search = syncSearch();
+      host.search.set(search.fn);
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      await press(fixture, input, 'ArrowDown');
+      await press(fixture, input, 'Tab');
+      expect(host.picks.map((p) => p.id)).toEqual([1]);
+      expect(search.calls.map((c) => c.query)).toEqual(['']);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      expect(search.calls.map((c) => c.query)).toEqual(['', '']);
+    });
+
+    it('a failed resolution keeps the text and its error, as the single picker does', async () => {
+      const { fixture, host, input, outside } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      await settle(fixture);
+      await type(fixture, input, 'Adam');
+      outside.focus();
+      await settle(fixture);
+      expect(host.picks).toHaveLength(0);
+      expect(input.value).toBe('Adam');
+      expect(errorText(fixture)).toContain('matches more than one');
+    });
+
+    it('never offers Edit…, never marks the input natively required, and draws the in-field input', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.editPage.set(pageOf(FakePage));
+      await settle(fixture);
+      await type(fixture, input, 'Bob');
+      await press(fixture, input, 'Enter');
+      expect(actionRows().map((r) => r.textContent?.trim())).not.toContain('Edit…');
+      expect(input.required).toBe(false);
+      expect(input.classList.contains('tm-input--in-field')).toBe(true);
+    });
+
+    it('the host notice renders under the rows, out of the accessibility tree', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.notice.set('You can choose up to 2');
+      await settle(fixture);
+      input.focus();
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(fixture);
+      const notice = document.querySelector('.tm-entity-picker__notice') as HTMLElement;
+      expect(notice.textContent?.trim()).toBe('You can choose up to 2');
+      expect(notice.getAttribute('aria-hidden')).toBe('true');
+      host.notice.set(null);
+      await settle(fixture);
+      expect(document.querySelector('.tm-entity-picker__notice')).toBeNull();
+    });
+
+    it('advanced search opens on the chosen ids and the cap, and hands a whole selection to the host', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakeMultiPage));
+      host.chosen.set([3, 1]);
+      host.maxItems.set(4);
+      await settle(fixture);
+      await type(fixture, input, 'Bo');
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(lastPageData).toEqual({ query: 'Bo', multiple: true, ids: [3, 1], maxItems: 4 });
+      (document.querySelector('[data-testid="page-set"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(host.multiPicks).toEqual([
+        { ids: [5, 3], picks: [{ id: 3, label: 'Alice Green' }] },
+      ]);
+      expect(host.picks).toHaveLength(0);
+      expect(input.value).toBe('');
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('advanced search with no cap passes none, and a dismissal changes nothing', async () => {
+      const { fixture, host, input } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakeMultiPage));
+      await settle(fixture);
+      await type(fixture, input, 'Bo');
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(lastPageData).toEqual({ query: 'Bo', multiple: true, ids: [] });
+      (document.querySelector('[data-testid="page-close"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(host.multiPicks).toHaveLength(0);
+      expect(input.value).toBe('Bo');
+    });
+
+    it('a single pick from a page that ignores multiple is added like any other pick', async () => {
+      const { fixture, host } = await setup(EmitHost);
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakePage));
+      await settle(fixture);
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      (document.querySelector('[data-testid="page-pick"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(host.picks.map((p) => [p.id, p.source])).toEqual([[3, 'advanced']]);
+      expect(host.model().agentId).toBeNull();
+    });
+
+    it('a whole selection closing a value-mode picker is ignored', async () => {
+      const { fixture, host } = await setup();
+      host.search.set(syncSearch().fn);
+      host.advancedPage.set(pageOf(FakeMultiPage));
+      await settle(fixture);
+      (
+        fixture.nativeElement.querySelector('.tm-entity-picker__magnifier') as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(lastPageData?.multiple).toBeUndefined();
+      (document.querySelector('[data-testid="page-set"]') as HTMLButtonElement).click();
+      await settle(fixture);
+      await settle(fixture);
+      expect(host.model().agentId).toBeNull();
+      expect(host.picks).toHaveLength(0);
     });
   });
 

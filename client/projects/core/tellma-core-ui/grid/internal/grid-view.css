@@ -734,4 +734,5 @@
 }
 
 /* No transitions or animations are used in the grid chrome itself, so no
-   prefers-reduced-motion block is needed; tm-spinner handles its own. */
+   prefers-reduced-motion block is needed; tm-spinner handles its own, and
+   grid-flash.css holds the row flash with its reduced-motion rule. */

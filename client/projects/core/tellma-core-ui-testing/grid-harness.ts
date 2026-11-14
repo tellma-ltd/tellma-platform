@@ -234,6 +234,16 @@ export class TmGridHarness extends ComponentHarness {
     return (await this.locatorForAll('[role="rowgroup"] [role="row"]')()).length;
   }
 
+  /**
+   * Whether the rendered row at a view-space row index is flashing — the
+   * pulse `scrollToRow` gives with `flash`. `false` when the row is not
+   * rendered.
+   */
+  async isRowFlashing(rowIndex: number): Promise<boolean> {
+    const row = await this.locatorForOptional(`[role="row"][aria-rowindex="${rowIndex + 2}"]`)();
+    return row !== null && (await row.hasClass('tm-grid__row--flash'));
+  }
+
   /** Gets the column header labels, in display order (row-header corner excluded). */
   async getHeaderTexts(): Promise<string[]> {
     const headers = await this.locatorForAll('[role="columnheader"][data-col]')();

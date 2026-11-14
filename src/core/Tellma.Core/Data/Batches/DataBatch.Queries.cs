@@ -226,6 +226,29 @@ namespace Tellma.Core.Data.Batches
                 return (BatchResult<EntityQueryResult<TEntity>>)shared;
             }
 
+            BatchResult<EntityQueryResult<TEntity>> result = new();
+            SqlIdentifier? keys = PlanEntityQuery(query, (cursor, value) => cursor.Complete(result, value));
+
+            _sharedQueries[key] = result;
+            if (keys is SqlIdentifier remembered)
+            {
+                _capturedKeys[result] = remembered;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        ///     Plans and appends an entity query's statements, the last reader handing the
+        ///     materialised result to <paramref name="complete" />; shares nothing.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity type.</typeparam>
+        /// <param name="query">The query, its arguments checked.</param>
+        /// <param name="complete">Takes the result, while the batch's result sets are read.</param>
+        /// <returns>The table the roots' keys were captured into, or null when none was.</returns>
+        internal SqlIdentifier? PlanEntityQuery<TEntity>(EntityQuery<TEntity> query, Action<ResultSetCursor, EntityQueryResult<TEntity>> complete)
+            where TEntity : class
+        {
             // --- The root, its select completed with the keys the materializer needs, and its collections ---
             QueryServices services = _executor.Queries;
             EntityMetadata metadata = services.Metadata.Get(typeof(TEntity));
@@ -278,7 +301,6 @@ namespace Tellma.Core.Data.Batches
             PlanCollections(plan, collections, parentSource, query.AllProperties, state);
 
             // --- After the last statement: materialise the roots, stitch the collections, gather the related ---
-            BatchResult<EntityQueryResult<TEntity>> result = new();
             EntityMaterializer materializer = services.Materializer;
             plan.Append(cursor =>
             {
@@ -291,16 +313,10 @@ namespace Tellma.Core.Data.Batches
                     EntityMaterializer.AddWhole(related, metadata, ancestors.Instances, ancestors.Carried);
                 }
 
-                cursor.Complete(result, new EntityQueryResult<TEntity>([.. roots.Instances.Cast<TEntity>()], materializer.Build(related)));
+                complete(cursor, new EntityQueryResult<TEntity>([.. roots.Instances.Cast<TEntity>()], materializer.Build(related)));
             });
 
-            _sharedQueries[key] = result;
-            if (keys is SqlIdentifier remembered)
-            {
-                _capturedKeys[result] = remembered;
-            }
-
-            return result;
+            return keys;
         }
 
         /// <summary>

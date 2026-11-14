@@ -8,7 +8,9 @@ have `TmCounterHarness`, `TmAvatarHarness`, `TmProgressBarHarness`,
 `TmRelativeTimeHarness`, `TmCopyButtonHarness`, `TmReferenceHarness` and
 `TmEmptyStateHarness`; `tm-badge`, `tm-progress-ring` and `tm-skeleton` carry
 no behaviour a harness would add to a locator. Chips have `TmChipHarness` and
-`TmChipSetHarness`, and the feedback surfaces `TmBannerBarHarness`, plus
+`TmChipSetHarness`; the foreign-key selectors have `TmEntityPickerHarness`
+and `TmEntityMultiPickerHarness` (chips, the count badge, search and pick);
+and the feedback surfaces `TmBannerBarHarness`, plus
 `TmToastHarness` (one toast), `TmToastStackHarness` (the overflow pill and the
 live regions) and `TmBusyOverlayHarness`, which render on `<body>` and are
 located with a document-root loader. The dialogs `TmConfirmHarness` and
