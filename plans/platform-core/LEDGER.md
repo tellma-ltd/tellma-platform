@@ -100,11 +100,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-044 | pc-3 | pc/PC-044 | released (2026-11-14, after green 67d65bb): re-merge + integrate | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
 | PC-058 | pc-f2 | pc/PC-058 | held, in the release queue after PC-054 (merge d36a847 on pc/PC-058; R1 fixes d435e7a; ./entity-picker 13.90 (14,234 B), ceiling 13.97 → 14.0, which is the spec cap: 0.1 KB headroom; e2e 961) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
 | PC-062 | pc-f | pc/PC-062 | held 2a34bc69 (fix1 924fcd3: R1-1..4 fixed; D7 reworded, D14 narrowed; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | held 11a57e0 (fix1 2de32d7 + responses f5174b3; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
-| PC-054 | pc-2 | pc/PC-054 | held (merge 6a24f16 on pc/PC-054, over cf6ed37; R1 fixes 5b36220; e2e 965/965; D-075: ./grid 40.91/41.01 (1,115 B under the 42 cap), ./tree-grid 2.10/2.2; contentKey TSDoc per D-077 to add at release) | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
+| PC-031 | pc-3 | pc/PC-031 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-054 | pc-2 | pc/PC-054 | released (after PC-044 018f0fd): contentKey TSDoc (D-077), re-merge + integrate | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
 
 ## Fix items
 
@@ -269,7 +269,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
 | PC-030 | 0023-e | 1 | done (integrated 6f87f63; its e2e flake fixed by PC-F35 at 8b39d28, whose client CI is green) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
-| PC-031 | 0023-f | 1 | todo | | | |
+| PC-031 | 0023-f | 1 | impl | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
@@ -282,7 +282,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | done 8c086c4 (CI green at 362aabc after PC-F32; the red run on 8c086c4 was PC-F32's client flake) | 1ee46fa, 0af47f3, 8633134, 8c086c4 (pc) |  |  |
-| PC-044 | 0013-e | 1 | held | 0855b68, 9336510, a4181b7, 45f91c4 (pc/PC-044) |  |  |
+| PC-044 | 0013-e | 1 | done (integrated 018f0fd, CI 43579957646 green) | 0855b68, 9336510, a4181b7, 45f91c4 (pc/PC-044), 018f0fd (pc) |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
 | PC-046 | 0013-g | 1 | todo | | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
