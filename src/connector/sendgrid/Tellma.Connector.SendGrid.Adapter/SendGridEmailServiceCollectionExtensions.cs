@@ -65,7 +65,14 @@ namespace Tellma.Connector.SendGrid.Adapter
 
             // No resilience handler by design: durable retry policy belongs to the caller, and a
             // retry here would silently duplicate mail the caller believes failed.
-            services.AddHttpClient(SendGridEmailSender.HttpClientName);
+            //
+            // No factory loggers either, whatever the host composes: every request carries the API
+            // key as its bearer credential, and the factory's default logger puts each request
+            // header's raw value into the structured state of its Trace events — only the rendered
+            // message is redacted — so any structured sink enabled at Trace would receive the key.
+            // Nothing is lost: the sender logs each failure itself, and the HttpClient
+            // instrumentation traces each request without its headers.
+            services.AddHttpClient(SendGridEmailSender.HttpClientName).RemoveAllLoggers();
 
             services.AddSingleton(new EmailTransportRegistration(
                 TransportName,

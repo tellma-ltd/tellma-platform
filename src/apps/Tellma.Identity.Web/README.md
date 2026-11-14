@@ -2,7 +2,10 @@
 
 The **standalone host** for the Tellma Identity Server: a thin ASP.NET Core app that composes the
 [`Tellma.Identity`](../Tellma.Identity/README.md) engine with hosting concerns — configuration,
-Serilog logging, and the OpenTelemetry pipeline (Azure Monitor export is config-gated). All identity
+Serilog logging, and the OpenTelemetry pipeline (Azure Monitor export is config-gated). No outbound
+HTTP client logs through the factory's default loggers, which at Trace carry each request header's
+raw value in the event's structured state; the HttpClient instrumentation still traces every request,
+without its headers. All identity
 behavior lives in the engine; this project must stay composition-only (an architecture test asserts
 it references no OpenIddict types directly).
 

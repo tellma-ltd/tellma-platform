@@ -52,6 +52,12 @@ A message over SendGrid's 1,000-recipient cap is rejected without a request rath
 The correlation rides in `custom_args` prefixed with this deployment's id, which is what makes a
 returning event attributable under shared credentials.
 
+The named client (`tellma-sendgrid`) has **no factory loggers**, whatever the host composes. Every
+request carries the API key as its bearer credential, and the HTTP client factory's default logger
+puts each header's raw value into the structured state of its Trace events (only the rendered message
+is redacted), so a structured sink at Trace would otherwise receive the key. The sender logs each
+failure itself, and the HttpClient instrumentation traces every request without its headers.
+
 `ExpectsDeliveryEvents` is true only when a verification key is configured *and* the message carries
 a correlation — without a key no event would be accepted, and without a correlation none could be
 routed. The sandbox channel always reports false: sandbox mode emits no events at all.

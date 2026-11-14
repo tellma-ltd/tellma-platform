@@ -81,6 +81,17 @@ namespace Tellma.Core.AspNetCore.Observability
                 preserveStaticLogger: true,
                 writeToProviders: true);
 
+            // --- Outbound HTTP: no client logs through the factory's default loggers ---
+            // At Trace those loggers put each request and response header's raw value into the
+            // event's structured state (only the rendered message is redacted), so a bearer token,
+            // API key or basic credential would reach any structured sink — Serilog's properties,
+            // OpenTelemetry's log attributes — that a Trace level for System.Net.Http enables.
+            // Applied as a default, it covers every client, including one registered after this
+            // call or by a connector; a client that removes them itself is unaffected, and one that
+            // adds a logger of its own still can. The HttpClient instrumentation below still traces
+            // and meters every request, and records no header.
+            _ = services.ConfigureHttpClientDefaults(static http => http.RemoveAllLoggers());
+
             // --- Trace context: a browser's ids adopted, its flags, state and baggage not ---
             // The framework parents the request activity through the registered propagator; the
             // instrumentation re-extracts through OpenTelemetry's unless that is the plain W3C one.
