@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows
+
+- Ruling: keep PC-054's R1-8 deferral. A contentKey change runs the remembered lazy rows' loads only when a new rows array arrives (array identity), so a switch never loads children for the outgoing content's rows. The contentKey TSDoc states the contract: a new contentKey comes with its own rows array. Until that array arrives, remembered lazy rows show expanded with no children and no spinner.
+- Why: loading at the bind fetched children of the outgoing content whenever row ids overlapped between the two contents, which is a wrong read and not only wasted work. Keeping the same rows array across a deliberate content switch is caller misuse, and documenting it costs nothing.
+- For Ahmad: (1) spec 0010 §C.9 should state that contentKey and rows change together; (2) spec 0031's deep-link timing (§C.8 cites it) should name afterRenderEffect, because an effect in the grid's own host runs before the grid's bindings update and scrollToRow returns false (carried to PC-135).
+
 ### D-076 (PC-044, 2026-11-13): cacheable-entity entries are keyed by the tenant's multilingual shape
 
 - Ruling: CacheableEntityKey (and so the single-flight key) carries the tenant's MultilingualShape. A language change gives a fresh key, and the old shape's entries age out. The `entities` and `entity:*` tags do not move on a language change. A Persist-batch FromCache miss takes a lock-only guard row on entity:<Name> (NULL expected tag), so a concurrent write is serialised as it is on a hit.
