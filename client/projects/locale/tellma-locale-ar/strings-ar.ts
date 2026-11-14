@@ -362,5 +362,10 @@ export const TM_LOCALE_AR_STRINGS = {
     position: 'الموضع {index, number} من {count, number}',
     dropped: 'تم إفلات {label} في الموضع {index, number} من {count, number}.',
     cancelled: 'ألغي النقل. عاد {label} إلى الموضع {index, number}.',
+    moveMenu: 'نقل {label}',
+    moveUp: 'نقل لأعلى',
+    moveDown: 'نقل لأسفل',
+    moveToTop: 'نقل إلى البداية',
+    moveToBottom: 'نقل إلى النهاية',
   },
 } as const;

@@ -4,10 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { Tree } from '@angular/aria/tree';
 import { Dir } from '@angular/cdk/bidi';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import type { TmDragPayload } from '@tellma/core-ui/drag-drop';
@@ -236,6 +238,20 @@ describe('tm-tree', () => {
     expect(host.activated).toEqual([]);
   });
 
+  for (const selection of ['none', 'single'] as const) {
+    it(`does not expand a branch on a click on its content (${selection})`, async () => {
+      const { fixture, host, tree } = await setup((h) => h.selection.set(selection));
+      const pattern = fixture.debugElement.query(By.directive(Tree)).injector.get(Tree)._pattern;
+      // The tree's own click handler replaces aria's, which expands on any click.
+      expect(Object.hasOwn(pattern, 'onClick')).toBe(true);
+      const onClick = vi.spyOn(pattern, 'onClick');
+      await (await tree.getNode({ key: 'Agent' })).click();
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(host.expanded()).toEqual(new Set());
+      expect(await (await tree.getNode({ key: 'Agent' })).isExpanded()).toBe(false);
+    });
+  }
+
   it('does not select when the twisty is clicked', async () => {
     const { host, tree } = await setup((h) => h.selection.set('single'));
     await (await tree.getNode({ key: 'Agent' })).toggle();
@@ -351,6 +367,26 @@ describe('tm-tree', () => {
       expect(await tree.getNodeTexts()).toEqual(['Agent', 'Code', 'Name', 'Code', 'Date']);
     });
 
+    it('loads again when the host opens a node whose quiet load failed, and says if it fails again', async () => {
+      let load = deferred<readonly Field[]>();
+      const { fixture, host, tree } = await setup((h) =>
+        h.children.set((node) => (node.key === 'Agent' ? load.promise : null)),
+      );
+      const announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce');
+      load.reject(new Error('offline'));
+      await fixture.whenStable();
+      // The host restores an expansion over the failed prefetch: it loads again.
+      load = deferred<readonly Field[]>();
+      host.expanded.set(new Set(['Agent']));
+      await fixture.whenStable();
+      const agent = await tree.getNode({ key: 'Agent' });
+      expect(await agent.isLoading()).toBe(true);
+      load.reject(new Error('offline'));
+      await fixture.whenStable();
+      expect(host.expanded()).toEqual(new Set());
+      expect(announce).toHaveBeenCalledWith("Couldn't load Agent", 'polite');
+    });
+
     it('fails quietly for a node nobody opened', async () => {
       const load = deferred<readonly Field[]>();
       const { fixture, tree } = await setup((h) =>
@@ -362,6 +398,23 @@ describe('tm-tree', () => {
       expect(announce).not.toHaveBeenCalled();
       expect(await (await tree.getNode({ key: 'Agent' })).isExpandable()).toBe(true);
     });
+  });
+
+  it('warns when an expansion opens more than 500 nodes, after the rows render', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const children: Field[] = Array.from({ length: 501 }, (_, index) => ({
+      key: `Agent.F${index}`,
+      label: `Field ${index}`,
+    }));
+    const { fixture, tree } = await setup((h) =>
+      h.nodes.set([{ key: 'Agent', label: 'Agent', children }]),
+    );
+    expect(warn).not.toHaveBeenCalled();
+    await (await tree.getNode({ key: 'Agent' })).toggle();
+    await fixture.whenStable();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('502 nodes are open');
+    warn.mockRestore();
   });
 
   it('warns once in a dev build when more than 500 nodes are open', async () => {

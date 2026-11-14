@@ -366,6 +366,11 @@ export const TM_UI_STRINGS_EN: {
         readonly position: "Position {index, number} of {count, number}";
         readonly dropped: "{label} dropped at position {index, number} of {count, number}.";
         readonly cancelled: "Move cancelled. {label} is back at position {index, number}.";
+        readonly moveMenu: "Move {label}";
+        readonly moveUp: "Move up";
+        readonly moveDown: "Move down";
+        readonly moveToTop: "Move to top";
+        readonly moveToBottom: "Move to bottom";
     };
 };
 

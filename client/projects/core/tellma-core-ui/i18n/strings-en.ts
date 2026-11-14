@@ -351,5 +351,11 @@ export const TM_UI_STRINGS_EN = {
     position: 'Position {index, number} of {count, number}',
     dropped: '{label} dropped at position {index, number} of {count, number}.',
     cancelled: 'Move cancelled. {label} is back at position {index, number}.',
+    // The menu a click on the handle opens: its name, then its four moves.
+    moveMenu: 'Move {label}',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    moveToTop: 'Move to top',
+    moveToBottom: 'Move to bottom',
   },
 } as const;

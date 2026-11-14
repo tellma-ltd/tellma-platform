@@ -64,7 +64,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/pager` | `tm-pager` — paging status and controls: range mode writes `page` and `pageSize`, item mode steps through single items; the status and the size select reserve their widest content, so paging never moves the buttons |
 | `@tellma/core-ui/tree` | `tm-tree` + `ng-template[tmTreeNode]` — a tree on the aria tree pattern whose children load lazily into a reserved spinner slot, with none, single or multiple selection, context rows and draggable rows |
 | `@tellma/core-ui/drag-drop` | `[tmDragSource]`, `[tmDropTarget]` and the `TmDragDrop` service — typed payloads over native drag and drop; a drag writes its text as `text/plain`, so text fields take it at the drop caret (global stylesheet) |
-| `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by pointer or by a grab handle's keys, each step announced, that also takes drops from other sources |
+| `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by dragging, by a grab handle's keys or by the move menu its click opens, each step announced, that also takes drops from other sources |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 

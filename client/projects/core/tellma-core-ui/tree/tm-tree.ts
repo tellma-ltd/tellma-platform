@@ -7,10 +7,11 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Tree, TreeItem, TreeItemGroup } from '@angular/aria/tree';
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  afterRenderEffect,
+  afterEveryRender,
   Component,
   computed,
   contentChild,
+  effect,
   ElementRef,
   inject,
   input,
@@ -324,19 +325,19 @@ export class TmTree<T> {
 
   constructor() {
     // Dev builds warn once when the open nodes pass what an unvirtualized
-    // tree should hold.
+    // tree should hold. The count runs after every render, not after the
+    // render an input change starts: an opened group's rows render one
+    // pass after the group itself.
     if (isDevMode()) {
-      afterRenderEffect({
+      const counter = afterEveryRender({
         read: () => {
-          this.cacheVersion();
-          this.expanded();
-          this.nodes();
           if (this.warned) {
             return;
           }
           const open = this.host.querySelectorAll('[role="treeitem"]').length;
           if (open > OPEN_NODE_WARNING) {
             this.warned = true;
+            counter.destroy();
             console.warn(
               `tm-tree: ${open} nodes are open. The tree does not virtualize; keep open nodes under ${OPEN_NODE_WARNING}.`,
             );
@@ -344,6 +345,25 @@ export class TmTree<T> {
         },
       });
     }
+    // A node opened by any writer of `expanded` (aria, a double-click, or
+    // the host restoring an expansion) whose load failed loads again; if it
+    // fails again, it collapses and says so.
+    effect(() => {
+      const expanded = this.expanded();
+      untracked(() => {
+        let retried = false;
+        for (const key of expanded) {
+          const entry = this.cache.get(key);
+          if (entry?.kind === 'failed') {
+            this.cache.set(key, this.load(entry.node, key));
+            retried = true;
+          }
+        }
+        if (retried) {
+          this.cacheVersion.update((version) => version + 1);
+        }
+      });
+    });
   }
 
   // ---- Template helpers ----
@@ -444,7 +464,8 @@ export class TmTree<T> {
 
   /**
    * A node expanded or collapsed (aria, or a double-click). Expanding a
-   * node whose load failed tries the load again.
+   * node whose load failed tries the load again (through the expansion
+   * effect, as for any writer of `expanded`).
    */
   protected setExpanded(key: string, open: boolean): void {
     const current = this.expanded();
@@ -458,11 +479,6 @@ export class TmTree<T> {
       next.delete(key);
     }
     this.expanded.set(next);
-    const entry = this.cache.get(key);
-    if (open && entry?.kind === 'failed') {
-      this.cache.set(key, this.load(entry.node, key));
-      this.cacheVersion.update((version) => version + 1);
-    }
   }
 
   /** Enter on a row emits `activate`, except in `multiple`, where it toggles. */

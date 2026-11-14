@@ -134,8 +134,8 @@ export class TmDropTarget {
    * The drag a drop delivers, when it is the drag in flight: named by the
    * drag id it carries, or, from an engine that delivers only the standard
    * types (WebKit can drop the id on the way), carrying the in-flight
-   * drag's text. A file, a drag from another window or a stale drag is
-   * `null`.
+   * drag's non-empty text with neither a drag id nor files. A file, a drag
+   * from another window or a stale drag is `null`.
    */
   private droppedDrag(data: DataTransfer | null): { id: string; payload: TmDragPayload } | null {
     if (data === null) {
@@ -146,10 +146,19 @@ export class TmDropTarget {
       const payload = this.dragDrop.ɵpayloadOf(id);
       return payload === null ? null : { id, payload };
     }
-    // No id: only the drag in flight with the very text this drop carries.
+    // No id: only a drop with no id type and no files at all, carrying the
+    // very text of the drag in flight (never an empty one, which a file
+    // drop would match).
+    const types = Array.from(data.types);
+    if (types.includes(ɵTM_DRAG_TYPE) || types.includes('Files')) {
+      return null;
+    }
     const current = this.dragDrop.current();
     const currentId = this.dragDrop.ɵcurrentId();
-    return current !== null && currentId !== null && data.getData('text/plain') === current.text
+    return current !== null &&
+      currentId !== null &&
+      current.text !== '' &&
+      data.getData('text/plain') === current.text
       ? { id: currentId, payload: current }
       : null;
   }

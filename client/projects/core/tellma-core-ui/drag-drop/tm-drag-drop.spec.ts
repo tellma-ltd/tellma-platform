@@ -47,11 +47,14 @@ class Host {
  * A drag's data, as a plain object: outside a real drag the browser's own
  * DataTransfer ignores writes to its effects, which these tests read.
  */
-function transfer(): DataTransfer {
+function transfer(extraTypes: readonly string[] = []): DataTransfer {
   const data = new Map<string, string>();
   const fake = {
     effectAllowed: 'none',
     dropEffect: 'none',
+    get types(): string[] {
+      return [...data.keys(), ...extraTypes];
+    },
     setData: (type: string, value: string): void => void data.set(type, value),
     getData: (type: string): string => data.get(type) ?? '',
   };
@@ -125,6 +128,19 @@ describe('tmDragSource', () => {
     expect(dragDrop.current()).toBe(path);
     window.dispatchEvent(new PointerEvent('pointermove'));
     expect(dragDrop.current()).toBeNull();
+  });
+
+  it('ends a drag whose own dragend is lost at the first drag end or drop the window sees', () => {
+    const { host, at } = setup();
+    const dragDrop = TestBed.inject(TmDragDrop);
+    for (const type of ['dragend', 'drop']) {
+      start(at('source'));
+      expect(dragDrop.current()).toBe(path);
+      window.dispatchEvent(new DragEvent(type));
+      expect(dragDrop.current()).toBeNull();
+    }
+    // The source never saw its dragend: it reports nothing.
+    expect(host.ends).toEqual([]);
   });
 });
 
@@ -222,6 +238,23 @@ describe('tmDropTarget', () => {
     at('inner').dispatchEvent(drop);
     expect(drop.defaultPrevented).toBe(true);
     expect(host.innerDrops.map((entry) => entry.payload)).toEqual([path]);
+  });
+
+  it('refuses the id-less match for a drop that carries files, or for a drag with no text', () => {
+    const { fixture, host, at } = setup();
+    start(at('source'));
+    const files = transfer(['Files']);
+    files.setData('text/plain', 'Code');
+    at('inner').dispatchEvent(drag('drop', files));
+    expect(host.innerDrops).toEqual([]);
+    // A drag whose text is empty would otherwise match every file drop.
+    host.payload.set({ ...path, text: '' });
+    fixture.detectChanges();
+    start(at('source'));
+    const empty = drag('drop', transfer());
+    at('inner').dispatchEvent(empty);
+    expect(empty.defaultPrevented).toBe(false);
+    expect(host.innerDrops).toEqual([]);
   });
 
   it('ignores a drop without a drag id whose text is not the drag in flight', () => {

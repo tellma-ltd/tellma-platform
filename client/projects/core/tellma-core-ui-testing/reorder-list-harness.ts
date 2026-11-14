@@ -10,6 +10,8 @@ import {
   type TestElement,
 } from '@angular/cdk/testing';
 
+import { TmMenuHarness } from './menu-harness';
+
 /** The keys a reorder handle answers to. */
 export type TmReorderKey =
   'Space' | 'Enter' | 'Escape' | 'Tab' | 'ArrowUp' | 'ArrowDown' | 'Home' | 'End';
@@ -26,7 +28,10 @@ const TEST_KEYS: Record<TmReorderKey, TestKey | string> = {
   End: TestKey.END,
 };
 
-/** Harness for `tm-reorder-list`: its rows, handles and the grab model's keys. */
+/**
+ * Harness for `tm-reorder-list`: its rows, handles, the grab model's keys
+ * and the move menu a handle's click opens.
+ */
 export class TmReorderListHarness extends ComponentHarness {
   /** The selector for the `tm-reorder-list` host element. */
   static hostSelector = 'tm-reorder-list';
@@ -109,6 +114,25 @@ export class TmReorderListHarness extends ComponentHarness {
       throw new Error('No reorder handle has focus.');
     }
     return (await this.handleAt(index)).sendKeys(modifiers, TEST_KEYS[key]);
+  }
+
+  /** Clicks the handle of the row at a 0-based position, which opens its move menu. */
+  async clickHandle(index: number): Promise<void> {
+    return (await this.handleAt(index)).click();
+  }
+
+  /** Whether the handle of the row at a 0-based position shows its move menu as open. */
+  async isMoveMenuOpen(index: number): Promise<boolean> {
+    return (await (await this.handleAt(index)).getAttribute('aria-expanded')) === 'true';
+  }
+
+  /**
+   * Opens the move menu of the row at a 0-based position by clicking its
+   * handle, and returns the menu, which renders in the overlay.
+   */
+  async openMoveMenu(index: number): Promise<TmMenuHarness> {
+    await this.clickHandle(index);
+    return this.documentRootLocatorFactory().locatorFor(TmMenuHarness)();
   }
 
   /** The handle of the row at a 0-based position. */

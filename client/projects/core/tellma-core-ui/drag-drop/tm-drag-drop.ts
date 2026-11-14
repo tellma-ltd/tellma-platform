@@ -83,6 +83,16 @@ export class TmDragDrop {
   /** The drag in flight, or `null`. */
   private readonly active = signal<TmActiveDrag | null>(null);
 
+  /**
+   * The drag that ended last, and whether a target accepted it: a drop
+   * that reaches the window ends the drag before its source's `dragend`
+   * asks.
+   */
+  private lastEnded: { readonly id: string; readonly dropped: boolean } | null = null;
+
+  /** Removes the window listeners of the drag in flight. */
+  private releaseWindow: (() => void) | null = null;
+
   /** The payload of the drag in flight, or `null` while no `tmDragSource` drags. */
   readonly current: Signal<TmDragPayload | null> = computed(() => this.active()?.payload ?? null);
 
@@ -102,6 +112,7 @@ export class TmDragDrop {
     nextDragId += 1;
     const id = `tm-drag-${nextDragId}-${Math.random().toString(36).slice(2, 10)}`;
     this.active.set({ id, payload, source, dropped: false });
+    this.endOnWindow(id);
     return id;
   }
 
@@ -114,9 +125,12 @@ export class TmDragDrop {
   ɵend(id: string): boolean {
     const active = this.active();
     if (active === null || active.id !== id) {
-      return false;
+      return this.lastEnded?.id === id && this.lastEnded.dropped;
     }
     this.active.set(null);
+    this.lastEnded = { id, dropped: active.dropped };
+    this.releaseWindow?.();
+    this.releaseWindow = null;
     return active.dropped;
   }
 
@@ -152,10 +166,10 @@ export class TmDragDrop {
 
   /**
    * Called by a drag source destroyed while its drag is in flight. The
-   * source's `dragend` can no longer arrive, so the drag ends at the first
-   * sign that no drag runs any more: a pointer that moves or presses (the
-   * engines send no pointer events during a drag), or a drop or drag end
-   * that reaches the window.
+   * source's `dragend` can no longer arrive, so besides the drop or drag
+   * end that reaches the window (as for every drag), the drag ends at the
+   * first pointer that moves or presses: the engines send no pointer events
+   * during a drag.
    * @internal
    */
   ɵorphan(id: string): void {
@@ -165,23 +179,42 @@ export class TmDragDrop {
       return;
     }
     const capture = ['pointermove', 'pointerdown'] as const;
-    const bubble = ['drop', 'dragend'] as const;
     const finish = (): void => {
       for (const type of capture) {
         window.removeEventListener(type, finish, true);
-      }
-      for (const type of bubble) {
-        window.removeEventListener(type, finish);
       }
       this.ɵend(id);
     };
     for (const type of capture) {
       window.addEventListener(type, finish, true);
     }
-    // In the bubble phase, so a drop target handles a drop before the drag
-    // it accepts is forgotten.
-    for (const type of bubble) {
+  }
+
+  /**
+   * Ends the drag `id` at the first drop or drag end that reaches the
+   * window, so a drag ends however its source fares (a `dragend` lost to a
+   * source moved in the document, or a drag that never had one). In the
+   * bubble phase, so a drop target handles a drop before the drag it
+   * accepts is forgotten, and a source reads its own `dragend` first.
+   */
+  private endOnWindow(id: string): void {
+    this.releaseWindow?.();
+    this.releaseWindow = null;
+    const window = this.document.defaultView;
+    if (window === null) {
+      return;
+    }
+    const types = ['drop', 'dragend'] as const;
+    const finish = (): void => {
+      this.ɵend(id);
+    };
+    for (const type of types) {
       window.addEventListener(type, finish);
     }
+    this.releaseWindow = () => {
+      for (const type of types) {
+        window.removeEventListener(type, finish);
+      }
+    };
   }
 }

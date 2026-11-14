@@ -59,23 +59,34 @@ export function ɵtmPagerStatus(state: ɵTmPagerState): ɵTmPagerStatus | null {
 }
 
 /**
- * The widest status a total can produce: "{total}–{total} / {total}" in
- * range mode and "{total} / {total}" in item mode, with the lower bound's
- * "+" when it applies. Every position the pager can reach formats no wider
- * than this, digit for digit, so reserving its width keeps the buttons
- * still while the user pages.
+ * The widest status a total can produce: "{n}–{n} / {total}" in range mode
+ * and "{n} / {total}" in item mode, with the lower bound's "+" when it
+ * applies, where `n` is the furthest position the pager can show. Every
+ * position up to `n` formats no wider than this, digit for digit, so
+ * reserving its width keeps the buttons still while the user pages.
+ *
+ * With an exact total, `n` is the total. A lower-bound total does not cap
+ * the positions, so `n` is the larger of the total and `reach` (in range
+ * mode, the last row of `maxPage`); with no `reach`, `n` is ten times the
+ * total, one digit more, and the buttons stay still for positions up to
+ * that.
  */
 export function ɵtmPagerWidestStatus(
   mode: ɵTmPagerMode,
   total: number,
   totalIsLowerBound: boolean,
+  reach: number | null = null,
 ): ɵTmPagerStatus {
+  const furthest = totalIsLowerBound ? Math.max(total, reach ?? Math.max(total, 1) * 10) : total;
   if (mode === 'item') {
-    return { key: totalIsLowerBound ? 'itemAtLeast' : 'item', params: { index: total, total } };
+    return {
+      key: totalIsLowerBound ? 'itemAtLeast' : 'item',
+      params: { index: furthest, total },
+    };
   }
   return {
     key: totalIsLowerBound ? 'rangeAtLeast' : 'range',
-    params: { from: total, to: total, total },
+    params: { from: furthest, to: furthest, total },
   };
 }
 

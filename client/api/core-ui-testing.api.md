@@ -640,6 +640,7 @@ export type TmReorderKey = 'ArrowDown' | 'ArrowUp' | 'End' | 'Enter' | 'Escape' 
 
 // @public
 export class TmReorderListHarness extends ComponentHarness {
+    clickHandle(index: number): Promise<void>;
     focusHandle(index: number): Promise<void>;
     getFocusedHandleIndex(): Promise<number>;
     getGrabbedIndex(): Promise<number>;
@@ -648,6 +649,8 @@ export class TmReorderListHarness extends ComponentHarness {
     getItemTexts(): Promise<string[]>;
     getLabel(): Promise<string | null>;
     static hostSelector: string;
+    isMoveMenuOpen(index: number): Promise<boolean>;
+    openMoveMenu(index: number): Promise<TmMenuHarness>;
     press(index: number, key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
     pressFocused(key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
 }

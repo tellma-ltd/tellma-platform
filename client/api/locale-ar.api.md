@@ -316,6 +316,11 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly position: "الموضع {index, number} من {count, number}";
         readonly dropped: "تم إفلات {label} في الموضع {index, number} من {count, number}.";
         readonly cancelled: "ألغي النقل. عاد {label} إلى الموضع {index, number}.";
+        readonly moveMenu: "نقل {label}";
+        readonly moveUp: "نقل لأعلى";
+        readonly moveDown: "نقل لأسفل";
+        readonly moveToTop: "نقل إلى البداية";
+        readonly moveToBottom: "نقل إلى النهاية";
     };
 };
 

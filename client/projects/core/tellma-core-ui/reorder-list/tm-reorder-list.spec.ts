@@ -50,6 +50,7 @@ const FIELD: TmDragPayload = {
       @if (custom()) {
         <ng-template tmReorderItem [tmReorderItemOf]="items()" let-column let-index="index">
           {{ index + 1 }}. {{ column.label }}
+          <button class="row-action" type="button" aria-label="Edit"></button>
         </ng-template>
       }
       <ng-template tmReorderEmpty>Nothing shown</ng-template>
@@ -223,6 +224,53 @@ describe('tm-reorder-list', () => {
     expect(host.moves).toEqual([]);
   });
 
+  it('ends a grab when focus moves into its own row, so a later Escape is not its own', async () => {
+    const { host, list, element, announce } = await setup((h) => h.custom.set(true));
+    await list.press(1, 'Space');
+    await list.pressFocused('ArrowDown');
+    element.querySelectorAll<HTMLElement>('.row-action')[2].focus();
+    expect(await list.getGrabbedIndex()).toBe(-1);
+    expect(labels(host.items())).toEqual(['Name', 'Date', 'Code', 'Amount', 'Status']);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(said(announce).at(-1)).toBe('Code dropped at position 3 of 5.');
+  });
+
+  describe('the move menu', () => {
+    it('opens on a click on a handle, with each move disabled where it moves nothing', async () => {
+      const { list } = await setup();
+      const menu = await list.openMoveMenu(0);
+      expect(await list.isMoveMenuOpen(0)).toBe(true);
+      expect(await menu.getItemLabels()).toEqual([
+        'Move up',
+        'Move down',
+        'Move to top',
+        'Move to bottom',
+      ]);
+      const disabled = await Promise.all((await menu.getItems()).map((item) => item.isDisabled()));
+      expect(disabled).toEqual([true, false, true, false]);
+    });
+
+    it('moves the item, announces it and puts focus back on its handle', async () => {
+      const { fixture, host, list, announce } = await setup();
+      const menu = await list.openMoveMenu(1);
+      await menu.clickItem('Move to bottom');
+      await fixture.whenStable();
+      expect(labels(host.items())).toEqual(['Name', 'Date', 'Amount', 'Status', 'Code']);
+      expect(host.moves).toEqual([{ item: COLUMNS[1], from: 1, to: 4 }]);
+      expect(said(announce)).toEqual(['Code dropped at position 5 of 5.']);
+      expect(await list.getFocusedHandleIndex()).toBe(4);
+      expect(await list.isMoveMenuOpen(4)).toBe(false);
+    });
+
+    it('moves one place up from the menu', async () => {
+      const { fixture, host, list } = await setup();
+      await (await list.openMoveMenu(2)).clickItem('Move up');
+      await fixture.whenStable();
+      expect(labels(host.items())).toEqual(['Name', 'Date', 'Code', 'Amount', 'Status']);
+      expect(await list.getFocusedHandleIndex()).toBe(1);
+    });
+  });
+
   it('ends a grab quietly when the items change from outside', async () => {
     const { fixture, host, list } = await setup();
     await list.press(1, 'Space');
@@ -282,6 +330,23 @@ describe('tm-reorder-list', () => {
       await fixture.whenStable();
       expect(labels(host.items())).toEqual(['Code', 'Date', 'Name', 'Amount', 'Status']);
       expect(host.moves).toEqual([{ item: COLUMNS[0], from: 0, to: 2 }]);
+    });
+
+    it('never leaves a row lifted after its source is destroyed mid-drag', async () => {
+      const { fixture, host, element } = await setup();
+      const row = (key: string) =>
+        element.querySelector<HTMLElement>(`.tm-reorder-list__row[data-key="${key}"]`);
+      row('code')!.dispatchEvent(drag('dragstart', new DataTransfer()));
+      await fixture.whenStable();
+      expect(row('code')!.classList).toContain('tm-reorder-list__row--dragging');
+      // The row goes mid-drag, so its dragend never comes; the drag ends at
+      // the next sign of none, and the row comes back unlifted.
+      host.items.set(COLUMNS.filter((column) => column.key !== 'code'));
+      await fixture.whenStable();
+      window.dispatchEvent(new PointerEvent('pointermove'));
+      host.items.set(COLUMNS);
+      await fixture.whenStable();
+      expect(row('code')!.classList).not.toContain('tm-reorder-list__row--dragging');
     });
 
     it('draws no line where its own row would not move', async () => {

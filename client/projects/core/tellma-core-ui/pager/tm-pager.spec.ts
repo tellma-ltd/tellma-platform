@@ -70,12 +70,38 @@ describe('the pager width reservation', () => {
     expect(ɵtmPagerReservedCh('120–120 / 120')).toBe(13);
   });
 
-  it('reserves "{total} / {total}" in item mode, with the lower bound\'s "+"', () => {
-    expect(ɵtmPagerWidestStatus('item', 293, true)).toEqual({
-      key: 'itemAtLeast',
+  it('reserves "{total} / {total}" in item mode', () => {
+    expect(ɵtmPagerWidestStatus('item', 293, false)).toEqual({
+      key: 'item',
       params: { index: 293, total: 293 },
     });
-    expect(ɵtmPagerReservedCh('293 / 293+')).toBe(10);
+    expect(ɵtmPagerReservedCh('293 / 293')).toBe(9);
+  });
+
+  it('reserves past a lower-bound total up to the last row of maxPage', () => {
+    // A cap of 1,000+ with pages of 20 up to page 500 reaches row 10,000.
+    expect(ɵtmPagerWidestStatus('range', 1000, true, 500 * 20)).toEqual({
+      key: 'rangeAtLeast',
+      params: { from: 10000, to: 10000, total: 1000 },
+    });
+    // A reach inside the total keeps the total.
+    expect(ɵtmPagerWidestStatus('range', 1000, true, 50 * 20).params).toEqual({
+      from: 1000,
+      to: 1000,
+      total: 1000,
+    });
+  });
+
+  it('reserves one more digit past a lower-bound total that nothing caps', () => {
+    expect(ɵtmPagerWidestStatus('range', 1000, true).params).toEqual({
+      from: 10000,
+      to: 10000,
+      total: 1000,
+    });
+    expect(ɵtmPagerWidestStatus('item', 293, true)).toEqual({
+      key: 'itemAtLeast',
+      params: { index: 2930, total: 293 },
+    });
   });
 
   it('counts characters, not UTF-16 units', () => {
@@ -240,6 +266,24 @@ describe('tm-pager', () => {
     await fixture.whenStable();
     expect(status.textContent).toContain('101–120 / 120');
     expect(next.getBoundingClientRect()).toEqual(before);
+  });
+
+  it('keeps the buttons still past a lower-bound total, up to maxPage', async () => {
+    const { fixture, host, element } = await setup((h) => {
+      h.total.set(1000);
+      h.lowerBound.set(true);
+      h.maxPage.set(500);
+    });
+    const next = element.querySelector('.tm-pager__next')!;
+    const before = next.getBoundingClientRect();
+    for (const page of [51, 500]) {
+      host.page.set(page);
+      await fixture.whenStable();
+      expect(next.getBoundingClientRect()).toEqual(before);
+    }
+    expect(element.querySelector('.tm-pager__status')!.textContent).toContain(
+      '9,981–10,000 / 1,000+',
+    );
   });
 
   it('writes the size and the page that keeps the first row in view', async () => {

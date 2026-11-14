@@ -36,7 +36,7 @@ export class TmReorderList<T> {
     protected readonly acceptedKinds: _angular_core.Signal<string[]>;
     readonly accepts: _angular_core.InputSignal<readonly string[]>;
     readonly ariaLabel: _angular_core.InputSignal<string>;
-    protected readonly draggingKey: _angular_core.WritableSignal<string | null>;
+    protected readonly draggingKey: _angular_core.Signal<string | null>;
     protected readonly emptyTemplate: _angular_core.Signal<TmReorderEmpty | undefined>;
     protected readonly grab: _angular_core.WritableSignal<Grab<T> | null>;
     protected readonly gripGlyph: lucide.IconNode;
@@ -52,9 +52,13 @@ export class TmReorderList<T> {
     protected readonly itemTemplate: _angular_core.Signal<TmReorderItem<T> | undefined>;
     protected keyOf(item: T): string;
     protected labelOf(item: T): string;
+    protected readonly menuKey: _angular_core.WritableSignal<string | null>;
     readonly moved: _angular_core.OutputEmitterRef<TmReorderMove<T>>;
+    protected readonly moveItems: _angular_core.Signal<readonly TmMenuItem[]>;
+    protected readonly moveMenuLabel: _angular_core.Signal<string | null>;
     protected onDragOver(event: DragEvent): void;
     protected onDropped(drop: TmDrop): void;
+    protected onHandleClick(event: MouseEvent, key: string): void;
     protected onHandleFocusOut(event: FocusEvent, key: string): void;
     protected onHandleKeydown(event: KeyboardEvent, item: T, key: string): void;
     protected onHandleKeyup(event: KeyboardEvent): void;

@@ -113,6 +113,31 @@ test('Alt+Up and Alt+Down move an item one place at once', async ({ page }) => {
   );
 });
 
+test('a click on a handle opens a move menu that reorders with no drag and no key', async ({
+  page,
+}) => {
+  await page.goto(storyUrl('reorder-list'));
+  await handle(page, 'Code').click();
+  const menu = page.getByRole('menu', { name: 'Move Code' });
+  await expect(menu.getByRole('menuitem', { name: 'Move up' })).toBeEnabled();
+  await menu.getByRole('menuitem', { name: 'Move to bottom' }).click();
+  await expect(page.getByTestId('reorder-order')).toHaveText(
+    'Order: Name, Date, Amount, Status, Code',
+  );
+  await expect(page.getByTestId('reorder-last-move')).toHaveText('Last move: Code 2→5');
+  await expect(liveRegion(page)).toHaveText('Code dropped at position 5 of 5.');
+  await expect(handle(page, 'Code')).toBeFocused();
+  // At the end of the list, the moves that would go further are disabled.
+  await handle(page, 'Code').click();
+  const again = page.getByRole('menu', { name: 'Move Code' });
+  await expect(again.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
+  await expect(again.getByRole('menuitem', { name: 'Move to bottom' })).toBeDisabled();
+  await again.getByRole('menuitem', { name: 'Move to top' }).click();
+  await expect(page.getByTestId('reorder-order')).toHaveText(
+    'Order: Code, Name, Date, Amount, Status',
+  );
+});
+
 test('a pointer drag lands a row on the insertion line', async ({ page }) => {
   await page.goto(storyUrl('reorder-list'));
   const list = page.getByTestId('reorder-columns');

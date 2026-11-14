@@ -201,7 +201,11 @@ export class TmPager {
     if (total === null) {
       return 0;
     }
-    const widest = ɵtmPagerWidestStatus(this.mode(), total, this.totalIsLowerBound());
+    // Past a lower-bound total, range mode reaches the last row of maxPage.
+    const maxPage = this.maxPage();
+    const reach =
+      this.mode() === 'range' && maxPage !== null ? maxPage * Math.max(1, this.pageSize()) : null;
+    const widest = ɵtmPagerWidestStatus(this.mode(), total, this.totalIsLowerBound(), reach);
     return ɵtmPagerReservedCh(this.text(widest));
   });
 
