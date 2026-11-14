@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Tellma's contract surface: the interfaces, records, attributes, exceptions and constants every layer above Core consumes, and the only Tellma package a module, industry, compliance, locale or connector library references. No package references; its one edge is Tellma.Core.Queryex.</Description>
+    <Description>Tellma's contract surface: the interfaces, records, attributes, exceptions and constants every layer above Core consumes, and the only Tellma package a module, industry, compliance, locale or connector library references. No package references; its one edge is Tellma.Core.Queryex. Ships the platform analyzers, TELLMA0001 to TELLMA0006, as its analyzer asset.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -10,6 +10,27 @@
          Queryex itself references nothing, so the edge carries no weight. Every other dependency is
          forbidden here (see the README). -->
     <ProjectReference Include="..\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The platform's analyzers, TELLMA0001 to TELLMA0006, shipped as this package's analyzer
+         asset so every project that references the contract runs them. A build-order edge only:
+         nothing of the analyzer is referenced, copied or listed as a package dependency. In-repo
+         project references load the same two assemblies from the analyzer's output folder
+         (Directory.Build.targets). -->
+    <ProjectReference Include="..\Tellma.Core.Analyzers\Tellma.Core.Analyzers.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+    <!-- The analyzer and the T-SQL parser it loads, side by side under analyzers/dotnet/cs, which
+         is where the compiler resolves an analyzer's dependencies from. -->
+    <None Include="$(TellmaAnalyzerOutputDirectory)Tellma.Core.Analyzers.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+    <None Include="$(TellmaAnalyzerOutputDirectory)Microsoft.SqlServer.TransactSql.ScriptDom.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

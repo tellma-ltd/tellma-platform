@@ -35,6 +35,24 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
+      # The platform analyzers load on this OS in a project that reaches the contract only through
+      # project references: the probe holds one violation of each rule, so its build must fail
+      # with all six errors. It is not in the solution, whose build stays clean.
+      - name: Analyzer probe
+        shell: bash
+        run: |
+          if dotnet build test/core/assets/Tellma.Core.Analyzers.Probe -c Release > analyzer-probe.log 2>&1; then
+            cat analyzer-probe.log
+            echo "The analyzer probe built, so the platform analyzers did not run."
+            exit 1
+          fi
+          for id in TELLMA0001 TELLMA0002 TELLMA0003 TELLMA0004 TELLMA0005 TELLMA0006; do
+            if ! grep -q "error $id:" analyzer-probe.log; then
+              cat analyzer-probe.log
+              echo "The analyzer probe did not report $id."
+              exit 1
+            fi
+          done
       # The Linux runner carries the ICU release the pinned culture data was generated from
       # (eng/culture-data), so the test that regenerates the data must run there. The variable
       # turns its skip on any other ICU release into a failure: a runner image that moves on is
@@ -174,10 +192,20 @@ jobs:
           dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
+      # The contract package carries the platform analyzers and the parser they load, side by side.
+      - name: Verify the analyzer asset of the contract package
+        run: |
+          unzip -l artifacts/pkg/Tellma.Core.Abstractions.1.0.0.nupkg > artifacts/abstractions-nupkg.txt
+          grep -q "analyzers/dotnet/cs/Tellma.Core.Analyzers.dll" artifacts/abstractions-nupkg.txt
+          grep -q "analyzers/dotnet/cs/Microsoft.SqlServer.TransactSql.ScriptDom.dll" artifacts/abstractions-nupkg.txt
       - name: Scaffold against the packages (package flow)
         # The variant's own nuget.config routes Tellma.* to artifacts/pkg.
         run: |
           dotnet build "$PKG_HOST"
+          # The package consumer loads the analyzer once, from the package, not from the repository.
+          dotnet msbuild "$PKG_HOST" -t:ResolveAssemblyReferences -getItem:Analyzer > artifacts/pkg-host-analyzers.json
+          test "$(grep -c '"Identity": .*Tellma.Core.Analyzers.dll' artifacts/pkg-host-analyzers.json)" = 1
+          grep -q '"Identity": .*tellma.core.abstractions.1.0.0.analyzers.dotnet.cs.Tellma.Core.Analyzers.dll' artifacts/pkg-host-analyzers.json
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 

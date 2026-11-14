@@ -7,6 +7,13 @@ project reference to `Tellma.Core.Queryex`, which itself references nothing: the
 types contract members name are Queryex types, so the edge carries no weight. Everything else here is
 BCL, which is what keeps the dependency graph of the packages built on top of it honest.
 
+The package also ships the platform's Roslyn analyzers, `TELLMA0001` to `TELLMA0006`
+([Tellma.Core.Analyzers](../Tellma.Core.Analyzers/README.md)), as its analyzer asset: the analyzer
+and the T-SQL parser it loads sit under `analyzers/dotnet/cs`, so every project that references the
+contract runs the rules. The project reference to the analyzer only orders the build; it adds no
+dependency and nothing of the analyzer is referenced at run time. In-repo consumers load the same
+two assemblies through the root `Directory.Build.targets`.
+
 Nothing in this project has an implementation worth speaking of. Behaviour lives in `Tellma.Core`
 and its optional siblings (`Tellma.Core.Email`, `Tellma.Core.Webhooks`, `Tellma.Core.Imaging`), and only a composition root
 picks which implementations to register.

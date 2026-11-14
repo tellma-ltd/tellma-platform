@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The analyzers under test, referenced as a library so the suite instantiates them. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Analyzers\Tellma.Core.Analyzers.csproj" />
+    <!-- The real contract and runtime: the suite's compilations reference their assemblies, and the
+         name pins read their types, so a rename on either side fails here. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The analyzer loads the parser from beside itself; the suite's output folder is that place. -->
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

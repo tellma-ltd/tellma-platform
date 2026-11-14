@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- The suite drives the data layer directly, the way only the runtime does: its raw
+         statements are held in fields or built to provoke the batch's own run-time refusals
+         (TELLMA0003), and its test classes, which own no stack, write the fixture's and the
+         platform's entity tables (TELLMA0006). The analyzer suite pins both rules instead. -->
+    <NoWarn>$(NoWarn);TELLMA0003;TELLMA0006</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <Using Include="Tellma.Testing.Support.Sql" />
   </ItemGroup>
