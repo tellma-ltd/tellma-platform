@@ -45,7 +45,7 @@ namespace Tellma.Core.Identity
         IOptions<IdentityServerClientOptions> options,
         TimeProvider time,
         IMeterFactory meterFactory,
-        ILogger<IdentityServerClient> logger) : IIdentityServerClient, IDisposable
+        ILogger<IdentityServerClient> logger) : IIdentityServerClient
     {
         /// <summary>The name of the <see cref="HttpClient" /> the client sends through.</summary>
         public const string HttpClientName = IdentityTransport.HttpClientName;
@@ -162,12 +162,6 @@ namespace Tellma.Core.Identity
                     return true;
                 },
                 cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            _transport.Dispose();
         }
 
         // ------------------------------------------------------------------------------------------

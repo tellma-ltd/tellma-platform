@@ -98,7 +98,6 @@ namespace Tellma.Core.Tests.Identity
         /// <inheritdoc />
         public void Dispose()
         {
-            Client.Dispose();
             Server.Dispose();
             _services.Dispose();
         }

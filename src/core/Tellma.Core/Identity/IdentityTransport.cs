@@ -17,7 +17,8 @@ namespace Tellma.Core.Identity
 {
     // Spec 0018 §2.2: the transport and the token. One HTTP exchange at a time, each under its own
     // 30-second timeout on the injected clock; a client_credentials token for the tellma_identity
-    // scope, cached until 60 seconds before it expires under a single-flight gate; one 401 on an API
+    // scope, cached until 60 seconds before it expires, fetched by one shared flight that every
+    // concurrent caller awaits and that no caller's cancellation stops; one 401 on an API
     // call discards the token, fetches a fresh one and retries that call once. Every failure leaves
     // as one of three exceptions: DependencyUnavailableException (unreachable), InvalidOperation-
     // Exception (refused or unreadable), or the caller's own OperationCanceledException.
@@ -33,7 +34,7 @@ namespace Tellma.Core.Identity
     internal sealed class IdentityTransport(
         IHttpClientFactory httpClients,
         Func<IdentityServerClientOptions> settings,
-        TimeProvider time) : IDisposable
+        TimeProvider time)
     {
         /// <summary>The name of the <see cref="HttpClient" /> every exchange uses.</summary>
         public const string HttpClientName = "Tellma.Identity";
@@ -56,23 +57,23 @@ namespace Tellma.Core.Identity
         /// <summary>What an unreachable identity server tells the edge to wait before a retry.</summary>
         public static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(1);
 
+        /// <summary>The longest a token is reused, whatever lifetime the server claims for it.</summary>
+        public static readonly TimeSpan MaxTokenLifetime = TimeSpan.FromDays(1);
+
         /// <summary>The media type every exchange accepts and every body is sent as.</summary>
         private static readonly MediaTypeWithQualityHeaderValue Json = new("application/json");
 
         /// <summary>The <c>User-Agent</c> of every exchange: <c>Tellma.Core/&lt;version&gt;</c>.</summary>
         private static readonly ProductInfoHeaderValue UserAgent = CreateUserAgent();
 
-        /// <summary>Admits one token fetch at a time; the others wait for its token.</summary>
-        private readonly SemaphoreSlim _gate = new(1, 1);
+        /// <summary>Guards the start and the end of a token flight.</summary>
+        private readonly Lock _gate = new();
 
         /// <summary>The cached token, or null when none is held.</summary>
         private volatile CachedToken? _token;
 
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            _gate.Dispose();
-        }
+        /// <summary>The token fetch in flight, which every caller without a fresh token awaits; null when none is.</summary>
+        private Task<CachedToken>? _flight;
 
         // ------------------------------------------------------------------------------------------
         // The management API
@@ -164,12 +165,17 @@ namespace Tellma.Core.Identity
         // ------------------------------------------------------------------------------------------
 
         /// <summary>
-        ///     The service token: the cached one while it is fresh, otherwise one fetch that every
-        ///     concurrent caller awaits.
+        ///     The service token: the cached one while it is fresh, otherwise the one fetch in flight,
+        ///     started by the first caller that needs it and awaited by every caller until it ends.
         /// </summary>
+        /// <remarks>
+        ///     The flight runs under its own exchange timeout and no caller's cancellation, so a caller
+        ///     that gives up stops waiting without stopping the others' fetch. Its failure reaches every
+        ///     caller awaiting it, and the next call starts a fresh flight.
+        /// </remarks>
         /// <param name="options">The options of the call.</param>
         /// <param name="authority">The authority, with a trailing slash.</param>
-        /// <param name="cancellationToken">The caller's cancellation.</param>
+        /// <param name="cancellationToken">The caller's cancellation, which ends only its own wait.</param>
         /// <returns>The token.</returns>
         private async Task<CachedToken> GetTokenAsync(IdentityServerClientOptions options, Uri authority, CancellationToken cancellationToken)
         {
@@ -179,22 +185,67 @@ namespace Tellma.Core.Identity
                 return cached;
             }
 
-            // --- Stale or absent: one fetch at a time, and whoever waited reads its token ---
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            // --- Stale or absent: join the flight in progress, or start one ---
+            Task<CachedToken> flight;
+            TaskCompletionSource<CachedToken>? started = null;
+            lock (_gate)
             {
                 if (Fresh() is CachedToken fetched)
                 {
                     return fetched;
                 }
 
-                CachedToken token = await FetchTokenAsync(options, authority, cancellationToken).ConfigureAwait(false);
-                _token = token;
-                return token;
+                if (_flight is null)
+                {
+                    started = new TaskCompletionSource<CachedToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _flight = started.Task;
+                }
+
+                flight = _flight;
             }
-            finally
+
+            // The fetch starts outside the lock: it may run synchronously up to its first wait.
+            if (started is not null)
             {
-                _ = _gate.Release();
+                _ = FlyAsync(started, options, authority);
+            }
+
+            return await flight.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     Runs one token flight to its end: caches the token or fails, clears the flight, and only
+        ///     then completes it, so a caller it releases already sees the outcome.
+        /// </summary>
+        /// <param name="flight">The flight's completion, which its callers await.</param>
+        /// <param name="options">The options of the call that started it.</param>
+        /// <param name="authority">The authority, with a trailing slash.</param>
+        /// <returns>A task that never faults; the outcome is the flight's.</returns>
+        private async Task FlyAsync(TaskCompletionSource<CachedToken> flight, IdentityServerClientOptions options, Uri authority)
+        {
+            try
+            {
+                // No caller's cancellation: the exchange's own timeout bounds the fetch.
+                CachedToken token = await FetchTokenAsync(options, authority, CancellationToken.None).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    _token = token;
+                    _flight = null;
+                }
+
+                _ = flight.TrySetResult(token);
+            }
+            catch (Exception exception)
+            {
+                lock (_gate)
+                {
+                    _flight = null;
+                }
+
+                _ = flight.TrySetException(exception);
+
+                // Observed here, so a flight every caller stopped awaiting is not reported as unobserved.
+                _ = flight.Task.Exception;
             }
         }
 
@@ -262,9 +313,10 @@ namespace Tellma.Core.Identity
                     }
 
                     // Measured from the request, so the token is replaced no later than the margin
-                    // before the server's own expiry; a token without a lifetime is used once.
+                    // before the server's own expiry; a token without a lifetime is used once, and a
+                    // lifetime beyond a day, which no sound server issues, counts as a day.
                     DateTimeOffset refreshAt = body.ExpiresIn is long seconds and > 0
-                        ? requested + TimeSpan.FromSeconds(seconds) - RefreshMargin
+                        ? requested + TimeSpan.FromSeconds(Math.Min(seconds, (long)MaxTokenLifetime.TotalSeconds)) - RefreshMargin
                         : requested;
                     return new CachedToken(body.AccessToken, refreshAt);
                 },

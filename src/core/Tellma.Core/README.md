@@ -929,8 +929,10 @@ injected `TimeProvider`, with `Accept: application/json` and `User-Agent: Tellma
 the routes are relative to the authority, its path kept. The factory's own request logging is
 removed from that client: its structured header values would carry the bearer token verbatim. The
 service token is a `client_credentials` grant for the `tellma_identity` scope with no `resource`
-parameter, the secret posted in the form body; it is cached until 60 seconds before it expires, and
-concurrent callers without one await a single fetch. One `401` discards that token (unless a
+parameter, the secret posted in the form body; it is cached until 60 seconds before it expires (a
+claimed lifetime beyond a day counts as a day). Callers without a fresh token await one shared
+fetch, which runs under its own timeout whatever its callers' cancellation; its failure reaches every
+one of them, and the next call starts a fresh fetch. One `401` discards that token (unless a
 concurrent caller already replaced it), fetches one and retries the call once.
 
 The bulk members send chunks of at most `IIdentityServerClient.MaxChunkSize` (1,000), one call each,

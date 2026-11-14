@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -12,9 +13,10 @@ using Tellma.Core.Abstractions.Identity;
 namespace Tellma.Core.Tests.Identity
 {
     /// <summary>
-    ///     The service token: cached until sixty seconds before it expires, fetched once for every
-    ///     concurrent caller, discarded and refetched once on a <c>401</c> without discarding a fresher
-    ///     one, and every token-endpoint failure classified.
+    ///     The service token: cached until sixty seconds before it expires (a day at most), fetched by
+    ///     one flight that every concurrent caller awaits, its failure shared and its run untouched by
+    ///     a caller that gives up, discarded and refetched once on a <c>401</c> without discarding a
+    ///     fresher one, and every token-endpoint failure classified.
     /// </summary>
     public sealed class IdentityServerClientTokenTests : IDisposable
     {
@@ -91,6 +93,115 @@ namespace Tellma.Core.Tests.Identity
 
             Assert.Single(_harness.Server.TokenRequests);
             Assert.Equal(Enumerable.Repeat("Bearer token-1", 8), Bearers());
+        }
+
+        [Fact]
+        public async Task A_failed_fetch_fails_every_caller_awaiting_it_with_one_request()
+        {
+            // The first caller's fetch is held at the server and then refused with a 503.
+            TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _harness.Server.Token = async (_, number, cancellationToken) =>
+            {
+                if (number > 1)
+                {
+                    return FakeIdentityServer.TokenAnswer("token-" + number, 3600);
+                }
+
+                fetching.TrySetResult();
+                await answer.Task.WaitAsync(cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            };
+
+            List<Task<IReadOnlyList<IdentityInvitationResult>>> calls = [.. Enumerable.Range(0, 8).Select(_ => Invite())];
+            await fetching.Task.WaitAsync(Guard, Cancellation);
+            answer.SetResult();
+
+            // Every caller fails with the one fetch's outage; none fetched again.
+            foreach (Task<IReadOnlyList<IdentityInvitationResult>> call in calls)
+            {
+                _ = await Assert.ThrowsAsync<DependencyUnavailableException>(() => call.WaitAsync(Guard, Cancellation));
+            }
+
+            Assert.Single(_harness.Server.TokenRequests);
+            Assert.Empty(_harness.Server.ApiRequests);
+
+            // The failed flight is over: the next call starts a fresh one.
+            _ = await Invite();
+            Assert.Equal(2, _harness.Server.TokenRequests.Count);
+        }
+
+        [Fact]
+        public async Task A_hung_token_endpoint_fails_every_caller_at_thirty_seconds()
+        {
+            TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _harness.Server.Token = async (_, _, cancellationToken) =>
+            {
+                fetching.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                throw new UnreachableException();
+            };
+
+            List<Task<IReadOnlyList<IdentityInvitationResult>>> calls = [.. Enumerable.Range(0, 3).Select(_ => Invite())];
+            await fetching.Task.WaitAsync(Guard, Cancellation);
+
+            _harness.Time.Advance(TimeSpan.FromSeconds(30) - TimeSpan.FromTicks(1));
+            Assert.DoesNotContain(calls, static call => call.IsCompleted);
+
+            // One timeout, at thirty seconds, fails all three: none waits for a fetch of its own.
+            _harness.Time.Advance(TimeSpan.FromTicks(1));
+            foreach (Task<IReadOnlyList<IdentityInvitationResult>> call in calls)
+            {
+                DependencyUnavailableException exception = await Assert.ThrowsAsync<DependencyUnavailableException>(() => call.WaitAsync(Guard, Cancellation));
+                _ = Assert.IsType<TimeoutException>(exception.InnerException);
+            }
+
+            Assert.Single(_harness.Server.TokenRequests);
+        }
+
+        [Fact]
+        public async Task The_starting_caller_s_cancellation_ends_only_its_own_wait()
+        {
+            // The fetch the first caller starts is held at the server until released.
+            TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource issue = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _harness.Server.Token = async (_, number, cancellationToken) =>
+            {
+                fetching.TrySetResult();
+                await issue.Task.WaitAsync(cancellationToken);
+                return FakeIdentityServer.TokenAnswer("token-" + number, 3600);
+            };
+            using CancellationTokenSource starter = new();
+
+            Task<IReadOnlyList<IdentityInvitationResult>> first = _harness.Client.InviteAsync(IdentityClientHarness.Invitations(1), starter.Token);
+            await fetching.Task.WaitAsync(Guard, Cancellation);
+            List<Task<IReadOnlyList<IdentityInvitationResult>>> others = [Invite(), Invite()];
+
+            // The starter gives up: it alone is cancelled, and the fetch goes on.
+            await starter.CancelAsync();
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(Guard, Cancellation));
+            Assert.DoesNotContain(others, static call => call.IsCompleted);
+
+            issue.SetResult();
+            _ = await Task.WhenAll(others).WaitAsync(Guard, Cancellation);
+
+            Assert.Single(_harness.Server.TokenRequests);
+            Assert.Equal(["Bearer token-1", "Bearer token-1"], Bearers());
+        }
+
+        [Fact]
+        public async Task A_lifetime_beyond_a_day_is_reused_for_a_day_at_most()
+        {
+            _harness.Server.Token = static (_, number, _) => Task.FromResult(FakeIdentityServer.TokenAnswer("token-" + number, 99999999999999));
+
+            _ = await Invite();
+            _harness.Time.Advance(TimeSpan.FromDays(1) - TimeSpan.FromSeconds(60) - TimeSpan.FromTicks(1));
+            _ = await Invite();
+            Assert.Single(_harness.Server.TokenRequests);
+
+            _harness.Time.Advance(TimeSpan.FromTicks(1));
+            _ = await Invite();
+            Assert.Equal(["Bearer token-1", "Bearer token-1", "Bearer token-2"], Bearers());
         }
 
         [Fact]
