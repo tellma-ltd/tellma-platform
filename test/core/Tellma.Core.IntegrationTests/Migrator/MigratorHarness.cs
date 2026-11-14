@@ -67,6 +67,8 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 ["Tellma:Sql:Profiles:default"] = credential.ConnectionString,
                 ["Tellma:Sql:DatabasePrefix"] = DatabasePrefix,
                 ["Tellma:DisplayName"] = "Probe",
+                ["Tellma:Identity:Authority"] = "https://localhost:5100",
+                ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
             };
         }
 

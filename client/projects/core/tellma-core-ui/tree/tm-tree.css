@@ -1,0 +1,189 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-tree — nested lists of rows at the option-row height. Each row is an
+   indent, a twisty, the reserved spinner slot, the multiple-selection
+   glyph, then the content. The list items carry the semantics and focus;
+   the rows carry every visual state, so a nested item never paints its
+   parent. */
+
+:host {
+  /* The size ladder, re-pointed once per step. */
+  --tm-tree-row-height: var(--field-option-height);
+  --tm-tree-font-size: var(--field-font-size);
+
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--tm-tree-font-size);
+  color: var(--tree-text);
+}
+
+:host([data-size='sm']) {
+  --tm-tree-row-height: var(--field-option-height-sm);
+  --tm-tree-font-size: var(--field-font-size-sm);
+}
+
+:host([data-size='lg']) {
+  --tm-tree-row-height: var(--field-option-height-lg);
+  --tm-tree-font-size: var(--field-font-size-lg);
+}
+
+/* ---- Lists ---- */
+
+.tm-tree__root,
+.tm-tree__group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The list item takes focus; its row shows it. */
+.tm-tree__item {
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     the focused item's row draws the focus ring (below); an outline on the
+     item would also wrap its open children. */
+  outline: none;
+}
+
+/* ---- The row ---- */
+
+.tm-tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--tree-gap);
+  box-sizing: border-box;
+  block-size: var(--tm-tree-row-height);
+  /* One indent per level below the roots, after the row's own padding. */
+  padding-inline: calc(var(--tree-padding-x) + (var(--tm-tree-level, 1) - 1) * var(--tree-indent))
+    var(--tree-padding-x);
+  border-radius: var(--tree-radius);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.tm-tree__row:hover {
+  background: var(--tree-hover-bg);
+}
+
+/* A context node: drawn muted around the nodes that matter. */
+.tm-tree__row--context {
+  color: var(--tree-context-text);
+}
+
+/* The selected row: the option rows' tint under an accent bar. */
+.tm-tree__item[aria-selected='true'] > .tm-tree__row {
+  background: var(--tree-selected-bg);
+  box-shadow: inset var(--focus-ring-width) 0 0 var(--tree-selected-bar);
+  color: var(--tree-selected-text);
+}
+
+/* Keyboard focus on the item draws the ring on its row. */
+.tm-tree__item:focus-visible > .tm-tree__row {
+  outline: var(--focus-ring-width) solid transparent;
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+.tm-tree__item[aria-selected='true']:focus-visible > .tm-tree__row {
+  box-shadow:
+    inset var(--focus-ring-width) 0 0 var(--tree-selected-bar),
+    inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+/* ---- Twisty, spinner slot and check ---- */
+
+/* The twisty is a 24px target around a 13px chevron; on a leaf the slot
+   stays, empty, so labels align across levels. */
+.tm-tree__twisty {
+  --icon-size: var(--tree-twisty-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tree-twisty-target);
+  block-size: var(--tree-twisty-target);
+  color: var(--tree-twisty);
+  cursor: pointer;
+}
+
+/* Reserved whenever children load lazily, so a spinner that comes and goes
+   moves nothing. */
+.tm-tree__spinner-slot {
+  --spinner-size: var(--tree-spinner-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tree-spinner-slot);
+}
+
+/* The decorative checkbox of multiple selection: a box, checked when the
+   row is selected. The list item's aria-selected carries the state. */
+.tm-tree__check {
+  --icon-size: calc(var(--tree-check-size) - 4px);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: var(--tree-check-size);
+  block-size: var(--tree-check-size);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  color: var(--color-on-primary);
+}
+
+.tm-tree__check tm-icon {
+  visibility: hidden;
+}
+
+.tm-tree__item[aria-selected='true'] > .tm-tree__row .tm-tree__check {
+  border-color: var(--tree-check);
+  background: var(--tree-check);
+}
+
+.tm-tree__item[aria-selected='true'] > .tm-tree__row .tm-tree__check tm-icon {
+  visibility: visible;
+}
+
+/* ---- Content ---- */
+
+.tm-tree__content {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--tree-gap);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Forced colors ---- */
+
+/* The tint and the bar drop out; an outline keeps the selected row, and
+   the box keeps its check. */
+@media (forced-colors: active) {
+  .tm-tree__item[aria-selected='true'] > .tm-tree__row {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-tree__item:focus-visible > .tm-tree__row {
+    outline: var(--focus-ring-width) solid CanvasText;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-tree__item[aria-selected='true'] > .tm-tree__row .tm-tree__check {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}

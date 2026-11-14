@@ -18,6 +18,20 @@ sink when no transport is named — writes invitation and recovery mail to the c
 sending it. Configuration schema: see the `TellmaIdentity` section in `appsettings.json` and the
 options documentation in the engine README.
 
+## Outbound HTTP logging
+
+No outbound HTTP client of this host logs through the HTTP client factory's default loggers: the
+host registers `ConfigureHttpClientDefaults(http => http.RemoveAllLoggers())`, which covers the
+engine's back-channel logout client, the email adapters' clients and any client added later. At
+Trace those loggers write each request and response header into the event's structured state with
+its raw value (only the rendered message reads `Authorization: *`), so a credential would reach any
+Serilog sink that writes properties as soon as Trace is enabled for `System.Net.Http`.
+
+**What operators see change:** the per-request `Start processing HTTP request` / `End processing
+HTTP request` lines are gone, at every level. Outbound requests stay observable as HttpClient spans
+and metrics once Azure Monitor export is configured, and each sender logs its own failures (a
+back-channel logout failure at Warning, a SendGrid refusal at Warning).
+
 ## The store
 
 The store is a SQL Server database in the platform collation, `Latin1_General_100_CI_AS`. At every

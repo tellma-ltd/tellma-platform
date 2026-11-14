@@ -16,10 +16,14 @@ namespace Tellma.Core.Abstractions.Tests.Repository
     {
         // The package-flow migrator asset is built by its own dedicated CI job against a local
         // package feed, with a nuget.config the rest of the solution must not inherit; it is left
-        // out of the solution on purpose.
+        // out of the solution on purpose. The analyzer probes hold one violation of each platform
+        // analyzer rule, so their builds fail by design; CI builds each on its own and expects the
+        // failure, the package-flow probe against the same local feed.
         private static readonly string[] DeliberatelyExcluded =
         [
             "test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package/Tellma.Core.EntityFrameworkCore.MigrationsHost.Package.csproj",
+            "test/core/assets/Tellma.Core.Analyzers.Probe/Tellma.Core.Analyzers.Probe.csproj",
+            "test/core/assets/Tellma.Core.Analyzers.Probe.Package/Tellma.Core.Analyzers.Probe.Package.csproj",
         ];
 
         [Fact]

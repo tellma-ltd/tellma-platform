@@ -24,6 +24,7 @@ namespace Tellma.Distro.Acme.Web.Tests.Infrastructure
             ["Tellma:Sql:Profiles:default"] = "Authentication=Active Directory Managed Identity;Encrypt=True",
             ["Tellma:Sql:AllowedServers:0"] = ".database.windows.net",
             ["Tellma:Identity:Authority"] = "https://identity.tellma.com",
+            ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
         };
 
         /// <summary>Builds the host and maps its routes, which runs the endpoint audit.</summary>

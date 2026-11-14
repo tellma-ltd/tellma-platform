@@ -1,0 +1,31 @@
+<Project>
+
+  <!-- The platform analyzers ship in this package's analyzers/dotnet/cs folder. NuGet hands that
+       folder only to a project that references the package directly: a package that depends on
+       this one excludes its analyzer assets by default, so a distribution that references only
+       Tellma.Core would run no rule. This file flows through that exclusion, so every project
+       that reaches the contract, directly or through another package, runs the rules. -->
+
+  <PropertyGroup>
+    <_TellmaPackageAnalyzerDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'analyzers', 'dotnet', 'cs'))</_TellmaPackageAnalyzerDirectory>
+  </PropertyGroup>
+
+  <!-- Runs after NuGet's own analyzer assets are added, so a direct consumer, which already has
+       both assemblies from analyzers/dotnet/cs, keeps one copy of each. -->
+  <Target Name="TellmaAddTransitivePlatformAnalyzers"
+          AfterTargets="ResolveLockFileAnalyzers"
+          Condition="'$(Language)' == 'C#'">
+    <ItemGroup>
+      <!-- The two assemblies, keyed by file name, with their full path beside the key. -->
+      <_TellmaPackageAnalyzerName Include="Tellma.Core.Analyzers.dll" AnalyzerPath="$(_TellmaPackageAnalyzerDirectory)Tellma.Core.Analyzers.dll" />
+      <_TellmaPackageAnalyzerName Include="Microsoft.SqlServer.TransactSql.ScriptDom.dll" AnalyzerPath="$(_TellmaPackageAnalyzerDirectory)Microsoft.SqlServer.TransactSql.ScriptDom.dll" />
+
+      <!-- Drop each one the project already loads, from this package or from anywhere else. -->
+      <_TellmaPackageAnalyzerName Remove="@(Analyzer->'%(Filename)%(Extension)')" />
+
+      <Analyzer Include="@(_TellmaPackageAnalyzerName->'%(AnalyzerPath)')" />
+      <_TellmaPackageAnalyzerName Remove="@(_TellmaPackageAnalyzerName)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

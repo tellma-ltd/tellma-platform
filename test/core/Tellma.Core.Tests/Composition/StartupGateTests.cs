@@ -90,8 +90,10 @@ namespace Tellma.Core.Tests.Composition
             Assert.Contains("could not be created, so only the built-in ones ran", exception.Problems[0].Problem, StringComparison.Ordinal);
             Assert.Contains("ArgumentException", exception.Problems[0].Problem, StringComparison.Ordinal);
 
-            // The empty configuration then fails the built-in checks that read configuration.
-            string[] builtIn = ["core.options", "core.sql-profiles", "core.sql-profiles", "core.public-origin"];
+            // The empty configuration then fails the built-in checks that read configuration: the
+            // options check once for the catalog and twice for the identity server's authority and
+            // service secret.
+            string[] builtIn = ["core.options", "core.options", "core.options", "core.sql-profiles", "core.sql-profiles", "core.public-origin"];
             Assert.Equal(builtIn, exception.Problems.Skip(1).Select(static p => p.Source));
         }
 
@@ -106,7 +108,7 @@ namespace Tellma.Core.Tests.Composition
             TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
                 () => host.StartAsync(TestContext.Current.CancellationToken));
 
-            string[] expected = ["core.options", "core.deployment-identity", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "test.failing"];
+            string[] expected = ["core.options", "core.options", "core.options", "core.deployment-identity", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "test.failing"];
             Assert.Equal(expected, exception.Problems.Select(static p => p.Source));
         }
 
