@@ -91,7 +91,15 @@ dotnet format Tellma.slnx --verify-no-changes
 dotnet test Tellma.slnx --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
 ```
 
-On Linux, CI runs this command with `TELLMA_REQUIRE_PINNED_ICU=1`. The test that regenerates the
+CI also builds the analyzer probe on Linux and Windows and expects it to fail with exactly the six
+platform analyzer errors, `TELLMA0001` to `TELLMA0006`, and no other error. The probe holds one
+violation of each rule and is not in the solution, so the solution's build stays clean:
+
+```bash
+bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh test/core/assets/Tellma.Core.Analyzers.Probe artifacts/analyzer-probe.log
+```
+
+On Linux, CI runs the unit-suite command with `TELLMA_REQUIRE_PINNED_ICU=1`. The test that regenerates the
 pinned culture data (`eng/culture-data`) needs the ICU release the data came from and skips on any
 other; with the variable set it fails instead, so a CI runner that moves to another ICU release is
 noticed. Leave the variable unset on a development machine.
