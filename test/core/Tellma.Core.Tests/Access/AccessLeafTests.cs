@@ -8,8 +8,10 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using System.ComponentModel.DataAnnotations;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
+using Tellma.Core.Jobs;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Access
@@ -34,10 +36,11 @@ namespace Tellma.Core.Tests.Access
         [Fact]
         public void Every_access_configuration_is_closed_over_the_registered_leaf()
         {
+            // Core's other open configuration, the schedules', is closed over its own default.
             Assert.Equal(
-                [typeof(UserConfiguration<AcmeUser>), typeof(RoleConfiguration<AcmeRole>), typeof(RoleMembershipConfiguration<AcmeMembership>), typeof(PermissionConfiguration<AcmeGrant>)],
+                [typeof(UserConfiguration<AcmeUser>), typeof(RoleConfiguration<AcmeRole>), typeof(RoleMembershipConfiguration<AcmeMembership>), typeof(PermissionConfiguration<AcmeGrant>), typeof(ScheduleConfiguration<Schedule>)],
                 _model.Definition.Configurations.Where(static configuration => configuration.IsGenericType));
-            Assert.Equal([typeof(AcmeUser), typeof(AcmeMembership), typeof(AcmeRole), typeof(AcmeGrant)], _model.Definition.EntityTypes);
+            Assert.Equal([typeof(AcmeUser), typeof(AcmeMembership), typeof(AcmeRole), typeof(AcmeGrant), typeof(Job), typeof(Schedule)], _model.Definition.EntityTypes);
         }
 
         [Fact]

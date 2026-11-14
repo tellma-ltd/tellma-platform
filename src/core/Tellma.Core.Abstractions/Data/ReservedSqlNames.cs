@@ -224,6 +224,9 @@ namespace Tellma.Core.Abstractions.Data
             /// <summary>The job ids a job statement addresses.</summary>
             public const string JobIds = "jobIds";
 
+            /// <summary>The number of rows a statement counted, such as the size of an id range to reserve.</summary>
+            public const string Count = "n";
+
             /// <summary>The name of the statement's <paramref name="index" />th table-valued parameter, <c>t{i}</c>.</summary>
             /// <param name="index">The parameter's index within the statement.</param>
             /// <returns>The name within the statement's namespace.</returns>

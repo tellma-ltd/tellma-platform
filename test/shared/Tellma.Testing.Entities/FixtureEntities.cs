@@ -198,6 +198,22 @@ namespace Tellma.Testing.Entities
     }
 
     /// <summary>
+    ///     A job entity with an <see cref="int" /> key, the second job entity type, so a call can
+    ///     name rows of two types.
+    /// </summary>
+    [Table("Exports", Schema = FixtureSchema.Name)]
+    [TableType]
+    public class Export : TopLevelEntity, IJobEntity
+    {
+        /// <summary>The export's name.</summary>
+        [MaxLength(255)]
+        public string? Name { get; set; }
+
+        /// <inheritdoc />
+        public int? JobId { get; set; }
+    }
+
+    /// <summary>
     ///     A small cacheable list: a write to it moves its own version tag,
     ///     <c>entity:fixture.Lookup</c>, and the tenant's <c>entities</c> tag.
     /// </summary>

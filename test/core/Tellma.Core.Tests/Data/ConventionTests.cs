@@ -227,7 +227,6 @@ namespace Tellma.Core.Tests.Data
         public void An_entity_without_the_attribute_has_no_table_type()
         {
             Assert.Null(model.Entity<WidgetExtra>().GetTableType());
-            Assert.Null(model.Entity<TestJob>().GetTableType());
         }
 
         [Fact]

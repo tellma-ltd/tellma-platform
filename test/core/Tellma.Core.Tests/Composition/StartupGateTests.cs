@@ -194,6 +194,8 @@ namespace Tellma.Core.Tests.Composition
                 ["core.cacheable-entities"] = false,
                 ["core.time-zones"] = true,
                 ["core.provisioning-steps"] = false,
+                ["jobs.handlers"] = false,
+                ["jobs.schedules"] = false,
             };
 
             Assert.Equal(expected, checks);

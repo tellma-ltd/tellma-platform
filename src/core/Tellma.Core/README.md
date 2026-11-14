@@ -81,6 +81,8 @@ every problem `AddTellma` would throw.
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
+| `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
+| `jobs.schedules` | a built-in schedule's cron expression does not parse as five-field Unix cron (Cronos, `CronFormat.Standard`), or has no next occurrence in its zone (the host's resolution of its `TimeZoneId`, else UTC) | no |
 
 Options a feature declares are validated by `core.options` rather than by the host's
 `ValidateOnStart`, which would stop startup at the first failing options type before the gate could
@@ -834,7 +836,9 @@ contributor once, on first resolution (the realised gate resolves it), then free
   `core.Schedule` × `Save | Delete | Activate`; a default nobody registers changes nothing), or
   `MarkSensitive`, unless `MarkNotSensitive`. A mark of an unregistered pair, and a pair marked both
   ways, are problems; the latter stays sensitive.
-- **Aliases** resolve a renamed resource on `Find` alone, one step, to a registered resource.
+- **Aliases** resolve a renamed resource on `Find` and `FindResource` alone, one step, to a
+  registered resource. `FindResource` returns the resource's registered spelling, so a stored
+  permission naming a former name or another casing resolves to the pair as registered.
 - **Lookup.** `All` is ordered by resource, ignoring case, then by action: the platform's
   actions first, in the order `Read`, `Save`, `Delete`, `Activate`, `Invite`, `Preferences`,
   `Credentials`, `Retry`, `Cancel`, `Resume`, `Share`, `Publish`, `Transfer`, then any other action,
@@ -854,19 +858,112 @@ declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Cor
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
-| `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root | no |
-| `core.cacheable-entities` | a `[Cacheable]` entity is not a `TopLevelEntity<int>`, declares a child collection, resolves to a row limit outside 1 to `Tellma:Cache:EntityMaxRowsCeiling` (judged only when the cache options validate), or has a `Read` securable with a filter root | no |
+| `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root; the securables of one resource that take a filter take different filter roots (a permission on every action of the resource binds its filter against the one root they share) | no |
+| `core.cacheable-entities` | a `[Cacheable]` entity is not a `TopLevelEntity<int>`, declares a child collection, resolves to a row limit outside 1 to `Tellma:Cache:EntityMaxRowsCeiling` (judged only when the cache options validate), or has a `Read` securable with a filter root; the entities store cannot be created (another live `entities` cache on the host's meter) | no |
 
 The host's endpoint audit (`host.endpoint-audit`) refuses an endpoint whose
 `SecurableEndpointMetadata` names a pair the registry does not hold, or holds only through an alias.
 
+## Access evaluation
+
+A caller's permissions are a `UserAccess` (in `Tellma.Core.Abstractions`): the grants of every
+membership that has not ended, future ones included, each with its window, the grants of every
+active public role, and the stored permissions that grant nothing, each kept as an `AccessProblem`.
+`UserAccess.Decide` is a pure function of the set and the instant it is given, so a window opening or
+closing needs no reload; `AccessComposition.Compose` is the same composition over a list of grants,
+for "who holds this". The composition: a grant matches a securable `(R, A)` when its resource is `R`
+or `*` and its action is `A` or `*`; when `A` is `Read`, a grant of another action on `R` matches too,
+and so does one on `*`, but only when `R` registers that action (`ActionResourceMap`, frozen from the
+registry and shared by every set), so a grant holding an action on one resource never reads every
+other. A filtered grant never reaches a securable without a filter root; any unfiltered match is unrestricted; otherwise the filters union as
+one leaf per distinct text and stamp, sorted ordinally, then each bespoke criterion of the action
+(`IAccessCriteriaProvider`), then the owner's decision on the same action through the owner's
+navigation. Nothing to union is a denial. The system set is unrestricted on everything; a set without
+a user denies everything.
+
+`UserAccessBuilder` builds a set from the `PermissionRow`s the connect prologue loads. Each row is
+classified by `PermissionClassifier`, in the drift table's order, the first failing check deciding:
+
+| Problem | The row |
+|---|---|
+| `WildcardResourceOnPublicRole` | names the resource `*` on a public role, which reaches every user |
+| `UnknownResource` | names a resource the registry holds under no name or former name |
+| `UnknownAction` | names an action the resource does not register; with the resource `*`, an action no resource registers |
+| `FilterUnsupported` | carries a filter where none binds: the securable has no filter root, the resource is `*`, or the resource's securables that take a filter do not share one root (a filter on any action also reaches `Read`, so it must bind against the same entity there) |
+| `VersionUnsupported` | carries a filter without a Queryex version, or with one this engine does not compile |
+| `FilterInvalid` | carries a filter the engine does not validate against the tenant's schema, as a predicate over the root with a user, no parameters and the `QueryexProfiles.AccessLimits` |
+
+A grant carries its pair as registered, its filter text and role name interned across sets, and its
+window; a public role's grant has none, and a membership that has ended by the build grants nothing.
+`RoleAccessGrant` itself refuses a filter on `*` and a public role's grant on `*`, so a list of grants
+built anywhere else cannot hold either; the build drifts such rows before it would construct one. The
+interner holds at most 65,536 strings and 4 Mi characters, and the memory of reported problems at
+most 16,384; each starts over when full.
+Each distinct filter is validated once per root, text and stamp; exact duplicates are one grant; the
+grants are ordered by role, permission and window, the problems by permission, whatever order the
+rows arrived in. Each problem is counted (`tellma.access.permissions.unresolved`, by `problem`) and
+logged (`PermissionDrift`, event 3101, category `Tellma.Core.Access`) once per tenant, version of the
+tenant's permissions, permission and problem; each build records `tellma.access.set.build.duration`
+and `tellma.access.set.grants` and logs `AccessSetBuilt` (3106) at Debug.
+
+`AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
+`MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
+within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
+
 ## Background jobs
 
-The job contracts live in `Tellma.Core.Abstractions.Jobs`. So far Core binds `JobsOptions` from
+The job contracts live in `Tellma.Core.Abstractions.Jobs`. Core binds `JobsOptions` from
 `Tellma:Jobs` and validates it with `core.options`: the poll intervals between one and 30 seconds
 (the maximum at least the minimum), at most 256 parallel batches, a drain timeout of at least a
 second, a gap threshold from an hour to 100 years and retention periods of at least a day. Handler keys
 share the notification type keys' grammar.
+
+### The tables
+
+`CoreFeature` contributes the queue and the scheduler's tables to every tenant model:
+
+| Table | Holds |
+|---|---|
+| `core.Jobs` | One row per job, ids from `core.sq_Jobs`. A `Running` job holds a lease (`LeaseToken` and `LeaseExpiresAt`) and no other status does (`CK_Jobs_Lease`); a `PendingConfirmation` job holds what it waits for and no other status does (`CK_Jobs_PendingConfirmations`). Lock escalation is disabled on it, so claiming and updating many rows never escalates to a table lock that would stall the enqueues riding user saves. |
+| `core.Schedules` | The schedules, system-versioned into `core.SchedulesHistory`, ids from `core.sq_Schedules`; a feature's built-in schedules are seeded into it under their declared ids. Deleting a schedule deletes its state and leaves its jobs without a schedule. |
+| `core.ScheduleStates` | Each schedule's firing state and lease, one row per schedule. Deleting its last job leaves the state without one. |
+| `core.JobWorkerState` | The single row (`Id = 1`, seeded) the worker's tick records. |
+
+A job entity's `JobId` references `core.Jobs` and is cleared when the job row is deleted.
+
+### Handlers, built-in schedules and retired keys
+
+A feature registers `contribution.JobHandler<THandler>()`, declares
+`contribution.BuiltInSchedule(id, handlerKey, cron, ...)` and retires a key with
+`contribution.RetiredJobKey(key)`. Composition checks each handler's attribute and shape (one of
+`IJobHandler` or `IEntityJobHandler<TEntity>`, concrete, a well-formed key outside the `core.` prefix
+unless Core registers it, a batch size in range), each built-in's id (within the reserved band, outside
+the platform's own), key, expression width, time zone and arguments, and
+across features refuses a key registered twice, a built-in id or key declared twice, and a retired key
+that is still registered or that a built-in names. The startup checks above then hold the handlers to
+the realised model and the built-ins' expressions to Cronos. `JobHandlerRegistry` is the singleton
+the queue and the later worker read: each key's handler type, options, entity leaf and owning feature.
+
+### Enqueueing
+
+`IJobQueue` (scoped) appends one statement to a caller's `Persist` or `Maintenance` batch, in `Auto`
+or `Explicit` transaction mode (an autocommit batch is refused, so the jobs and the stamps commit
+together): it takes a contiguous id range from `core.sq_Jobs`, inserts every job in request order
+and, for an entity-backed handler, stamps each named row's `JobId` in one `UPDATE` of the owner
+table; the statement returns the ids in request order. Before anything is appended every request is
+checked: its key is registered here, its `Entity` matches the handler's shape, every row is of one
+entity type, saved (a positive id) and named once. Whether a row may take a job is the database's
+call, not the in-memory member's: the `UPDATE` skips a row whose stored `JobId` names a job that has
+not ended (`Pending`, `Running`, `Held`, `PendingConfirmation`, read with `READCOMMITTEDLOCK` so a
+concurrent enqueue's committed job is seen), and when it stamps fewer rows than the requests name, a
+row being missing or held, the statement throws `50422` with `JobEnqueueCodes.OwnerUnavailable` and
+the batch rolls back; a statement that finds no open transaction throws
+`JobEnqueueCodes.OutsideTransaction`. `RunAsUserId` defaults to the request's, else the system user
+in a system scope, else the scope's user. The scope's confirmed keys, the current W3C trace parent,
+the label and the arguments (at most 64 KB of JSON) are stored with each job. Once the batch
+commits, the in-memory rows take their job ids and this host's pollers for the tenant are woken
+(`TenantPollerWake`); a batch that fails stores nothing and wakes nothing. `EnqueueAsync` does the
+same in a `Persist` batch of its own.
 
 ## Layout
 
@@ -887,8 +984,8 @@ share the notification type keys' grammar.
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
-| `Jobs/` | Internally, the composition step that binds the jobs' options. |
-| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, and the securables section of the client metadata. |
+| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
+| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
@@ -898,4 +995,5 @@ share the notification type keys' grammar.
 `test/core/Tellma.Core.Tests` (`dotnet test test/core/Tellma.Core.Tests`) runs without a database.
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
-runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`).
+runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
+holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.

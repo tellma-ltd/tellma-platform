@@ -8,13 +8,16 @@ using Tellma.Core.Abstractions.Composition;
 namespace Tellma.Testing.Entities
 {
     /// <summary>
-    ///     The feature that contributes the fixture schema and the stand-in core table to a
-    ///     composition, so a test host's tenant model is the fixture database's.
+    ///     The feature that contributes the fixture schema, its job handlers and a built-in schedule
+    ///     to a composition, so a test host's tenant model is the fixture database's.
     /// </summary>
     public sealed class FixtureFeature : ITellmaFeature
     {
         /// <summary>The feature's name.</summary>
         public const string FeatureName = "fixture";
+
+        /// <summary>The id of the built-in schedule that runs the probe handler at 01:00 each day.</summary>
+        public const int ProbeScheduleId = 500;
 
         /// <inheritdoc />
         public string Name => FeatureName;
@@ -29,17 +32,23 @@ namespace Tellma.Testing.Entities
         {
             ArgumentNullException.ThrowIfNull(contribution);
 
-            // --- The stand-in core table the fixture's job foreign keys name ---
-            // Core contributes the access tables, core.VersionTags and core.Blobs itself.
-            _ = contribution.Entity<FixtureJob>();
-
             // --- The fixture schema; children come with their parents ---
             _ = contribution
                 .Entity<Widget>()
                 .Entity<WidgetExtra>()
                 .Entity<Node>()
                 .Entity<Shipment>()
+                .Entity<Export>()
                 .Entity<Lookup>();
+
+            // --- The job handlers, one per shape: arguments only, over a long key, over an int key ---
+            _ = contribution
+                .JobHandler<ProbeJobHandler>()
+                .JobHandler<ShipJobHandler>()
+                .JobHandler<ExportJobHandler>();
+
+            // --- One built-in schedule, so the migrations seed a schedule row and its state ---
+            _ = contribution.BuiltInSchedule(ProbeScheduleId, FixtureJobKeys.Probe, "0 1 * * *");
         }
     }
 }

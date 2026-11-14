@@ -118,6 +118,19 @@ namespace Tellma.Core.IntegrationTests.Migrator
             }
         }
 
+        /// <summary>
+        ///     Runs one command and asserts it converged, failing with everything the command printed
+        ///     so a run that did not converge explains itself.
+        /// </summary>
+        /// <param name="args">The command line.</param>
+        /// <returns>What it printed and returned.</returns>
+        public async Task<MigratorResult> RunConvergedAsync(params string[] args)
+        {
+            MigratorResult result = await RunAsync(args);
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            return result;
+        }
+
         /// <summary>Runs one command.</summary>
         /// <param name="args">The command line.</param>
         /// <returns>What it printed and returned.</returns>

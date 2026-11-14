@@ -87,5 +87,14 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
         public const string TimeZones = "core.time-zones";
+
+        /// <summary>
+        ///     Every entity-backed job handler processes an entity the model maps as a job entity, and a
+        ///     warning for each built-in schedule whose key no handler on this host registers.
+        /// </summary>
+        public const string JobHandlers = "jobs.handlers";
+
+        /// <summary>Every built-in schedule's cron expression parses and has a next occurrence.</summary>
+        public const string JobSchedules = "jobs.schedules";
     }
 }

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,7 +62,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         }
 
         /// <summary>
-        ///     Installs the table-types services. <c>Replace</c> keeps the result independent of
+        ///     Installs the table-types services: the differ, the SQL generator and the relational
+        ///     annotation provider, the last two also carrying a table's lock escalation option
+        ///     (<see cref="LockEscalation.LockEscalationExtensions" />). <c>Replace</c> keeps the result independent of
         ///     whether this runs before or after the provider's own <c>ApplyServices</c> (extension
         ///     application order is not contractual): running first, the provider's later
         ///     <c>TryAdd</c> is a no-op against our registration; running second, <c>Replace</c>
@@ -74,6 +77,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
 
             services.Replace(ServiceDescriptor.Scoped<IMigrationsModelDiffer, TableTypesMigrationsModelDiffer>());
             services.Replace(ServiceDescriptor.Scoped<IMigrationsSqlGenerator, TableTypesSqlServerMigrationsSqlGenerator>());
+            services.Replace(ServiceDescriptor.Singleton<IRelationalAnnotationProvider, TableTypesSqlServerAnnotationProvider>());
             new EntityFrameworkServicesBuilder(services).TryAdd<IConventionSetPlugin, TableTypesConventionSetPlugin>();
         }
 

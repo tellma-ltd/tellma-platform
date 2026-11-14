@@ -53,7 +53,6 @@ namespace Tellma.Core.Tests.Composition.Checks
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
-                    .Entity<MdJob>()
                     .Entity<Account>()
                     .Entity<Region>()
                     .Entity<Shipment>()

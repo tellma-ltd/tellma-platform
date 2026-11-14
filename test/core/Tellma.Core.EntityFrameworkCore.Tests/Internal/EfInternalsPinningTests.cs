@@ -8,6 +8,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
@@ -58,12 +59,29 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Internal
         }
 
         [Fact]
-        public void UseTableTypes_replaces_the_differ_and_sql_generator()
+        public void SqlServerAnnotationProvider_base_and_constructor_are_unchanged()
+        {
+            // The lock escalation annotation reaches the table operations through a subclass of the
+            // provider's internal annotation provider; a change here means EfCoreInternalsAdapter.cs
+            // needs updating.
+            Type providerType = typeof(TableTypesSqlServerAnnotationProvider).BaseType!;
+
+            Assert.Equal("Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal.SqlServerAnnotationProvider", providerType.FullName);
+
+            ConstructorInfo constructor = Assert.Single(providerType.GetConstructors());
+            string[] parameterTypes = [.. constructor.GetParameters().Select(p => p.ParameterType.FullName!)];
+
+            Assert.Equal(["Microsoft.EntityFrameworkCore.Metadata.RelationalAnnotationProviderDependencies"], parameterTypes);
+        }
+
+        [Fact]
+        public void UseTableTypes_replaces_the_differ_the_sql_generator_and_the_annotation_provider()
         {
             using ModelTestContext context = TestModel.CreateContext(mb => mb.Entity<Plain>());
 
             Assert.IsType<TableTypesMigrationsModelDiffer>(context.GetService<IMigrationsModelDiffer>());
             Assert.IsType<TableTypesSqlServerMigrationsSqlGenerator>(context.GetService<IMigrationsSqlGenerator>());
+            Assert.IsType<TableTypesSqlServerAnnotationProvider>(context.GetService<IRelationalAnnotationProvider>());
         }
 
         [Fact]
@@ -73,6 +91,7 @@ namespace Tellma.Core.EntityFrameworkCore.Tests.Internal
 
             Assert.IsNotType<TableTypesMigrationsModelDiffer>(context.GetService<IMigrationsModelDiffer>());
             Assert.IsNotType<TableTypesSqlServerMigrationsSqlGenerator>(context.GetService<IMigrationsSqlGenerator>());
+            Assert.IsNotType<TableTypesSqlServerAnnotationProvider>(context.GetService<IRelationalAnnotationProvider>());
         }
 
         [Fact]

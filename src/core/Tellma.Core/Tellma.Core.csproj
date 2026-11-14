@@ -44,6 +44,8 @@
     <PackageReference Include="Microsoft.Extensions.Localization" />
     <!-- ICU MessageFormat: plural, select and selectordinal in every resource string. -->
     <PackageReference Include="MessageFormat" />
+    <!-- The scheduler's cron dialect: five-field Unix cron, CronFormat.Standard. -->
+    <PackageReference Include="Cronos" />
   </ItemGroup>
 
   <ItemGroup>
