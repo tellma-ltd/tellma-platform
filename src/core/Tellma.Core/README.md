@@ -378,7 +378,7 @@ connection string and no secret: a tenant row names a server, a database and a c
 |---|---|
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
 | `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. |
-| The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development; an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
+| The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development (a login the server cuts off before saying why is settled by asking `master` whether the database exists); an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
 | `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
 | `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
 | `ITenantCatalog` | Registration (`Provisioning`, the sequence's id or a requested one in 1–999), state transitions against the state table, renames and relocations of frozen or provisioning tenants. Each is one transaction that bumps the catalog version and whose own precondition settles a race (`THROW 50409` translated to `TenantStateException`), then refreshes the local registry. |
@@ -724,6 +724,66 @@ A version tag is a `Guid` a tenant database keeps per cached input, in `core.Ver
 `VersionTagMetrics` meters `tellma.versiontags.bumps` (by tag kind), `tellma.versiontags.stale` (by
 phase) and `tellma.versiontags.missing` (by tag kind), and logs a missing row once per process.
 
+## The versioned cache
+
+`VersionedCache<TKey, TValue>` is the process-wide store of one cache kind (`CacheKinds`:
+`settings`, `preferences`, `permissions`, `entities`): a private `MemoryCache` bounded in the kind's
+own unit (`SizeOf`, one per entry unless the kind counts otherwise), whose entries carry the version
+tag they are valid for. Every key begins with the tenant id (`ITenantCacheKey`: `TenantCacheKey`,
+`TenantUserCacheKey`, `CacheableEntityKey`). The store is a singleton and holds no scope; a scoped
+façade passes it the current tag from the process's snapshot and the scope's `ITenantDatabase`.
+
+- **Lookups.** `GetAsync` hits when the entry's tag equals the current tag; `VersionTag.None` never
+  matches. Otherwise it loads through the kind's `LoadAsync` (one read batch on the caller's
+  handle), stores the value under the tag that batch's prelude returned, and reports `Miss` or
+  `Stale`; a load whose prelude found no tag is `Uncached` (served, not stored) and an oversized one
+  is `Oversized` (no value). `Peek(key, tag)` and `Peek(key, isCurrent)` never load. `Set` stores a
+  value under a tag (`aged` meters the replaced entry as `age`); `Remove` drops one.
+- **Single flight.** Callers that miss one key under one current tag share one load, run on the
+  handle and token of the caller that started it. A failed load is forgotten before its exception
+  reaches anyone, so the next caller loads afresh. A load cancelled under its starter, by the
+  starter's token or by any token its batch links (the starter's scope's `DataCancellation`), stores
+  nothing, and each caller still waiting starts its own load; a waiting caller's own cancellation
+  ends only its wait. The entities façade passes the scope's `DataCancellation` token.
+- **Instruments.** On the `Tellma.Core` meter, shared by every store: `tellma.cache.requests`
+  (`cache.kind`, `cache.outcome`), `tellma.cache.load.duration`, the observable gauges
+  `tellma.cache.entries`, `tellma.cache.size` and `tellma.cache.limit` (one series per live store,
+  so each kind has one store per meter), and `tellma.cache.evictions` (`cache.reason`: `capacity`,
+  `replaced`, `removed`, `age`). No instrument carries a tenant, user, entity or key.
+
+### Cacheable entities
+
+`[Cacheable(MaxRows)]` marks a small reference list; `MaxRows = 0` resolves to
+`Tellma:Cache:EntityMaxRowsDefault`. `CacheableEntityStore` (the `entities` kind, sized in rows
+against `EntityRows`) keeps one `CachedEntitySet` per tenant, entity and multilingual shape: every
+row, inactive ones included, in key order, with `ById`. The shape is part of the key because the
+list's columns follow it and a language change moves no entity tag; a list read under an old shape
+is never served under the new one and simply ages out. A caller may ask by the leaf class or a base
+it replaces; a base reads one view of the same instances.
+
+- **The probe.** One entity query selecting every scalar property the tenant's query schema
+  declares (and the JSON columns), no filter, ordered by `Id`, taking `MaxRows + 1` rows, after the
+  prelude. More rows than `MaxRows` are an overflow: the rows are discarded, nothing is cached, the
+  result is `Oversized` with no value, and `CacheableEntityOverflow` is logged once per entity per
+  process.
+- **`ICacheableEntities`.** The scoped façade: `GetAsync<T>()` (a miss runs one read batch),
+  `Peek<T>()`, and `GetWireTagsAsync()`, each cacheable entity's `entity:<Name>` tag from the
+  snapshot in its wire form (`VersionTag.None`'s when absent).
+- **`IDataBatch.FromCache<T>()`.** A hit completes at once and declares the list's tag as a
+  dependency (`Refresh` on a read batch, `Rerun` on a validate or persist batch). A miss appends the
+  probe to the consumer's batch, so a cold lookup costs no round trip of its own; its rows are
+  stamped with the batch's prelude tag and stored when the batch's results complete, before the
+  handle does, and no dependency is declared. On a writing persist batch the guard still locks the
+  list's tag row to the commit without comparing it, so a concurrent write of the table waits for
+  the batch. A batch that already writes the entity's table is refused. Storing the list is best
+  effort: it runs after the batch committed, so a store already disposed (the host stopping) skips
+  and logs it (`CacheableEntityNotStored`) rather than failing the write.
+
+`core.cacheable-entities` reports a cacheable entity that is not a `TopLevelEntity<int>`, declares a
+child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, or has a `Read`
+securable with a filter root. It also creates the store, so a store that cannot be created (another
+live `entities` cache on the host's meter) fails the host at startup rather than at its first read.
+
 ## Notifications and client events
 
 The catalogue is composed per distribution, never per tenant. A feature registers each notification
@@ -799,6 +859,7 @@ declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Cor
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
 | `core.securables` | a resource is not two or more dotted segments of an ASCII letter and letters or digits within 128 characters, an action not a PascalCase identifier within 32, or either is `*`; any merging, alias or mark problem above; a securable belongs to a feature that is not composed; an owner is not a registered resource, or its securable has no filter root; an owner chain (each pair to the same action of its owner) is a cycle; a filter root is not an entity of the query schema; a child entity's securable has no owner; an owner's navigation is not a path of navigations from the filter root, or ends elsewhere than the owner's filter root; the securables of one resource that take a filter take different filter roots (a permission on every action of the resource binds its filter against the one root they share) | no |
+| `core.cacheable-entities` | a `[Cacheable]` entity is not a `TopLevelEntity<int>`, declares a child collection, resolves to a row limit outside 1 to `Tellma:Cache:EntityMaxRowsCeiling` (judged only when the cache options validate), or has a `Read` securable with a filter root; the entities store cannot be created (another live `entities` cache on the host's meter) | no |
 
 The host's endpoint audit (`host.endpoint-audit`) refuses an endpoint whose
 `SecurableEndpointMetadata` names a pair the registry does not hold, or holds only through an alias.
@@ -922,7 +983,7 @@ same in a `Persist` batch of its own.
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
+| `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |

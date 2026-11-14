@@ -17,8 +17,14 @@ disabled/readonly/required).
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
 | `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
-| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`) |
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`); `tm-entity-multi-picker` — several FKs as one-line scrolling chips over the same search, with whole-selection advanced search and `maxItems` |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
+| `@tellma/core-ui/radio` | `tm-radio-group` + `tm-radio` — one value from a visible list of native radios, with arrow keys mapped to the live direction |
+| `@tellma/core-ui/segmented` | `tm-segmented` + `tm-segment` — the same native radios as a compact track of segments; icon segments drop their labels below a container width |
+| `@tellma/core-ui/switch` | `tm-switch` — an on/off setting: a native checkbox with `role="switch"` |
+| `@tellma/core-ui/search-field` | `tm-search-field` + `input[tmSearch]` — search-as-you-type with leading and trailing edges and an undoable clear (global stylesheet) |
+| `@tellma/core-ui/date-range` | `tm-date-range` + `tmDateRangeOrder` — a from–to pair of coupled date pickers |
+| `@tellma/core-ui/date-time` | `tm-time-field` + `tm-date-time-field` — a typed time of day, and an instant as a date and a time in an explicit zone that is always named |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
 | `@tellma/core-ui/select` | `tm-select` and `tm-multi-select` over `tm-option` and `tm-option-group` — overlay single- and multiple-choice selects with option headings |
 | `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
@@ -65,10 +71,10 @@ Add to the application's `styles` array:
 - `@tellma/core-ui-tokens`' emitted stylesheet (the token variables);
 - this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);
 - one stylesheet per BARE DIRECTIVE — `styles/tm-button.css`,
-  `styles/tm-input.css`, `styles/tm-number.css`,
+  `styles/tm-input.css`, `styles/tm-number.css`, `styles/tm-search.css`,
   `styles/tm-description-list.css`. A directive has no view of its own to
   carry styles, so its appearance ships as a global sheet; skipping these
-  leaves buttons, text/number inputs and description lists unstyled. The
+  leaves buttons, text/number/search inputs and description lists unstyled. The
   authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
   by the entry point that needs it.
 

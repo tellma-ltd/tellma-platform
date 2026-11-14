@@ -15,6 +15,8 @@ import {
   CircleX,
   HandCoins,
   Inbox,
+  LayoutGrid,
+  List,
   LogIn,
   LogOut,
   PanelLeftClose,
@@ -23,6 +25,7 @@ import {
   Redo,
   Search,
   SearchX,
+  Table2,
   Undo,
   X,
 } from 'lucide';
@@ -46,6 +49,10 @@ export const SHOWCASE_ICONS: Readonly<Record<string, TmIconSource>> = {
   inbox: Inbox,
   'search-x': SearchX,
   'hand-coins': HandCoins,
+  // The segmented story's view toggle.
+  'table-2': Table2,
+  'layout-grid': LayoutGrid,
+  list: List,
   // Directional glyphs: they point along the reading direction, so they flip
   // in right-to-left text.
   'chevron-left': { node: ChevronLeft, mirrorInRtl: true },

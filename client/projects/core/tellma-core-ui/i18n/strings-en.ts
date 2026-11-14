@@ -26,6 +26,9 @@ export const TM_UI_STRINGS_EN = {
     numberPrecision:
       'Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}',
     parseDate: 'Enter a date like {example}',
+    parseTime: 'Enter a time like {example}',
+    dateRangeOrder: 'The end date must be on or after the start date',
+    dateTimeIncomplete: 'Enter both a date and a time',
   },
   datePicker: {
     chooseDate: 'Choose date',
@@ -59,12 +62,18 @@ export const TM_UI_STRINGS_EN = {
     searchFailed: 'Search failed',
     moreResults:
       '{count, plural, one {Showing 1 match. Type to refine.} other {Showing # matches. Type to refine.}}',
+    // The multi-picker: the refused pick at the cap, and the hidden summary
+    // of the chosen entities its input is described by.
+    maxItems: 'You can choose up to {max, number}',
+    selectedSummary: '{count, plural, one {# selected} other {# selected}}: {labels}',
     announce: {
       results: '{count, plural, one {1 result} other {# results}}',
       resultsMore: '{count, number}+ results — more available',
       noResults: 'No results',
       searchFailed: 'Search failed',
       picked: '{label} selected',
+      added: '{label} added',
+      removed: '{label} removed',
     },
     errors: {
       unresolved: 'Select an item from the list',
@@ -299,5 +308,18 @@ export const TM_UI_STRINGS_EN = {
   },
   splitter: {
     label: 'Resize panels',
+  },
+  searchField: {
+    placeholder: 'Search',
+    // The clear button's accessible name.
+    clear: 'Clear search',
+  },
+  dateRange: {
+    from: 'From',
+    to: 'To',
+  },
+  dateTime: {
+    date: 'Date',
+    time: 'Time',
   },
 } as const;

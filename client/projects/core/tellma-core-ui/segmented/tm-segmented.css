@@ -1,0 +1,174 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-segmented — native radios as segments in a sunken track at the field
+   height. Segments are inset from the track's edge; the checked one is a
+   raised card with a hairline. */
+
+:host {
+  /* The size ladder, re-pointed once per step. */
+  --tm-segmented-height: var(--field-height);
+  --tm-segmented-font-size: var(--field-font-size);
+  --tm-segmented-padding-x: var(--field-padding-x);
+
+  /* The host is NOT a query container: its width is its content's. The
+     label rules below query the nearest enclosing container instead. */
+  display: inline-block;
+  vertical-align: middle;
+  font-family: var(--font-ui);
+}
+
+:host(.tm-segmented--sm) {
+  --tm-segmented-height: var(--field-height-sm);
+  --tm-segmented-font-size: var(--field-font-size-sm);
+  --tm-segmented-padding-x: var(--field-padding-xsm);
+}
+
+:host(.tm-segmented--lg) {
+  --tm-segmented-height: var(--field-height-lg);
+  --tm-segmented-font-size: var(--field-font-size-lg);
+  --tm-segmented-padding-x: var(--field-padding-xlg);
+}
+
+.tm-segmented__track {
+  display: inline-flex;
+  gap: var(--segmented-inset);
+  block-size: var(--tm-segmented-height);
+  box-sizing: border-box;
+  padding: var(--segmented-inset);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--field-radius);
+  background: var(--surface-sunken);
+}
+
+/* One segment: icon then label, the native radio stretched over it. */
+.tm-segmented__segment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--segmented-icon-gap);
+  padding-inline: var(--tm-segmented-padding-x);
+  box-sizing: border-box;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-xs);
+  font-size: var(--tm-segmented-font-size);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tm-segmented__segment:hover:not(
+    .tm-segmented__segment--disabled,
+    .tm-segmented__segment--checked
+  ) {
+  color: var(--text-strong);
+}
+
+.tm-segmented__segment--checked {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-xs);
+}
+
+.tm-segmented__segment--disabled {
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+:host(.tm-segmented--invalid) .tm-segmented__track {
+  border-color: var(--field-border-invalid);
+}
+
+/* Visually hidden, semantically present, covering the whole segment. */
+.tm-segmented__native {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  opacity: 0.0001;
+  cursor: inherit;
+}
+
+/* The token ring on the segment the keyboard is on, with a transparent
+   real outline beneath it for forced colors. */
+.tm-segmented__segment:has(.tm-segmented__native:focus-visible) {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-segmented__icon {
+  --icon-size: var(--segmented-icon-size);
+  pointer-events: none;
+}
+
+.tm-segmented__label {
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Icon segments drop their label: always under `never`, and under a
+   breakpoint while the nearest query container is narrower than it. With
+   no enclosing container the queries never match, and the labels show. */
+:host([data-labels='never']) .tm-segmented__label--collapsible {
+  display: none;
+}
+
+@container (width < 576px) {
+  :host([data-labels='sm']) .tm-segmented__label--collapsible {
+    display: none;
+  }
+}
+
+@container (width < 768px) {
+  :host([data-labels='md']) .tm-segmented__label--collapsible {
+    display: none;
+  }
+}
+
+@container (width < 992px) {
+  :host([data-labels='lg']) .tm-segmented__label--collapsible {
+    display: none;
+  }
+}
+
+@container (width < 1200px) {
+  :host([data-labels='xl']) .tm-segmented__label--collapsible {
+    display: none;
+  }
+}
+
+@container (width < 1440px) {
+  :host([data-labels='xxl']) .tm-segmented__label--collapsible {
+    display: none;
+  }
+}
+
+/* Forced colors flatten the card fill, so the checked segment keeps a
+   system border and fill of its own. */
+@media (forced-colors: active) {
+  .tm-segmented__track {
+    border-color: CanvasText;
+  }
+
+  .tm-segmented__segment--checked {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .tm-segmented__segment--disabled {
+    color: GrayText;
+  }
+}

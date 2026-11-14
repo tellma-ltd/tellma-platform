@@ -123,6 +123,13 @@ namespace Tellma.Core.Composition
                 .Scoped<IDataBatchContributor, VersionTagBumpContributor>()
                 .ClientEvent(VersionTagBumpContributor.CacheChangedEvent);
 
+            // --- The cacheable entities' lists: the process's store, the scope's view of it ---
+            // spec 0013 §3.2 and §4. The store is the entities kind of the versioned cache; the
+            // façade passes it the scope's tenant, tag and database handle.
+            _ = contribution
+                .Singleton<CacheableEntityStore, CacheableEntityStore>()
+                .Scoped<ICacheableEntities, CacheableEntities>();
+
             // --- Blobs: the table every blob reference resolves to; never a stack ---
             _ = contribution.Model<BlobConfiguration>();
 

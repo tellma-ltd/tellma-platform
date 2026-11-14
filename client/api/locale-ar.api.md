@@ -24,6 +24,9 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
         readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
         readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
+        readonly parseTime: "{gender, select, female {أدخلي} other {أدخل}} وقتا مثل {example}";
+        readonly dateRangeOrder: "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده";
+        readonly dateTimeIncomplete: "{gender, select, female {أدخلي} other {أدخل}} التاريخ والوقت معا";
     };
     readonly datePicker: {
         readonly chooseDate: "اختيار التاريخ";
@@ -54,12 +57,16 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly noResults: "لا توجد نتائج";
         readonly searchFailed: "فشل البحث";
         readonly moreResults: "يتم عرض {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {اكتبي} other {اكتب}} للتصفية.";
+        readonly maxItems: "يمكنك اختيار {max, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرا} other {# عنصر}} كحد أقصى";
+        readonly selectedSummary: "{count, plural, zero {# عنصر محدد} one {عنصر واحد محدد} two {عنصران محددان} few {# عناصر محددة} many {# عنصرا محددا} other {# عنصر محدد}}: {labels}";
         readonly announce: {
             readonly results: "{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}";
             readonly resultsMore: "أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد";
             readonly noResults: "لا توجد نتائج";
             readonly searchFailed: "فشل البحث";
             readonly picked: "تم اختيار {label}";
+            readonly added: "تمت إضافة {label}";
+            readonly removed: "تمت إزالة {label}";
         };
         readonly errors: {
             readonly unresolved: "{gender, select, female {حددي} other {حدد}} عنصرا من القائمة";
@@ -273,6 +280,18 @@ export const TM_LOCALE_AR_STRINGS: {
     };
     readonly splitter: {
         readonly label: "تغيير حجم اللوحتين";
+    };
+    readonly searchField: {
+        readonly placeholder: "بحث";
+        readonly clear: "مسح البحث";
+    };
+    readonly dateRange: {
+        readonly from: "من";
+        readonly to: "إلى";
+    };
+    readonly dateTime: {
+        readonly date: "التاريخ";
+        readonly time: "الوقت";
     };
 };
 

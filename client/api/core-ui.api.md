@@ -74,6 +74,9 @@ export const TM_UI_STRINGS_EN: {
         readonly parse: "Enter a valid number, like {example}";
         readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
         readonly parseDate: "Enter a date like {example}";
+        readonly parseTime: "Enter a time like {example}";
+        readonly dateRangeOrder: "The end date must be on or after the start date";
+        readonly dateTimeIncomplete: "Enter both a date and a time";
     };
     readonly datePicker: {
         readonly chooseDate: "Choose date";
@@ -104,12 +107,16 @@ export const TM_UI_STRINGS_EN: {
         readonly noResults: "No results";
         readonly searchFailed: "Search failed";
         readonly moreResults: "{count, plural, one {Showing 1 match. Type to refine.} other {Showing # matches. Type to refine.}}";
+        readonly maxItems: "You can choose up to {max, number}";
+        readonly selectedSummary: "{count, plural, one {# selected} other {# selected}}: {labels}";
         readonly announce: {
             readonly results: "{count, plural, one {1 result} other {# results}}";
             readonly resultsMore: "{count, number}+ results — more available";
             readonly noResults: "No results";
             readonly searchFailed: "Search failed";
             readonly picked: "{label} selected";
+            readonly added: "{label} added";
+            readonly removed: "{label} removed";
         };
         readonly errors: {
             readonly unresolved: "Select an item from the list";
@@ -323,6 +330,18 @@ export const TM_UI_STRINGS_EN: {
     };
     readonly splitter: {
         readonly label: "Resize panels";
+    };
+    readonly searchField: {
+        readonly placeholder: "Search";
+        readonly clear: "Clear search";
+    };
+    readonly dateRange: {
+        readonly from: "From";
+        readonly to: "To";
+    };
+    readonly dateTime: {
+        readonly date: "Date";
+        readonly time: "Time";
     };
 };
 

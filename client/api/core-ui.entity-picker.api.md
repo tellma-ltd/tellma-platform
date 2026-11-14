@@ -19,6 +19,80 @@ import { ValidationError } from '@angular/forms/signals';
 export type TmEntityId = number | string;
 
 // @public
+export interface TmEntityMultiPick<Id extends TmEntityId = TmEntityId, T = unknown> {
+    readonly ids: readonly Id[];
+    readonly picks: readonly TmEntityPick<Id, T>[];
+}
+
+// @public
+export class TmEntityMultiPicker<T, Id extends TmEntityId = TmEntityId> implements TmFormFieldControl {
+    constructor();
+    readonly advancedSearch: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
+    readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
+    readonly ariaLabel: _angular_core.InputSignal<string | null>;
+    protected readonly chips: Signal<{
+        id: Id;
+        label: string;
+    }[]>;
+    protected readonly chipSize: Signal<TmControlSize>;
+    protected readonly chosen: Signal<Id[]>;
+    readonly controlId: Signal<string>;
+    readonly create: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
+    readonly createLabel: _angular_core.InputSignal<string | undefined>;
+    readonly describedByIds: Signal<readonly string[]>;
+    readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly displayWith: _angular_core.InputSignal<((id: Id) => string | null) | undefined>;
+    protected readonly editable: Signal<boolean>;
+    readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
+    readonly fieldInvalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly fieldPending: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly fieldTouched: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    focus(options?: FocusOptions): void;
+    readonly invalid: Signal<boolean>;
+    readonly itemDescription: _angular_core.InputSignal<((item: T) => string | null) | undefined>;
+    readonly itemId: _angular_core.InputSignal<(item: T) => Id>;
+    readonly itemLabel: _angular_core.InputSignal<(item: T) => string>;
+    readonly itemLabelParts: _angular_core.InputSignal<((item: T) => readonly string[] | null) | undefined>;
+    readonly localizedErrors: Signal<readonly TmFieldError[]>;
+    readonly maxItems: _angular_core.InputSignal<number | undefined>;
+    protected readonly notice: Signal<string | null>;
+    protected onChipExit(edge: 'end' | 'start'): void;
+    onContainerClick(): void;
+    protected onDeselect(id: Id): void;
+    protected onFocusout(event: FocusEvent): void;
+    protected onHostClick(event: MouseEvent): void;
+    protected onMultiPick(pick: TmEntityMultiPick<Id, T>): void;
+    protected onPicked(event: TmEntityPicked<T, Id>): void;
+    protected onTouch(): void;
+    openDropdown(): void;
+    readonly ownsChrome = false;
+    readonly ownsErrorIcon = true;
+    readonly pending: Signal<boolean>;
+    readonly picked: _angular_core.OutputEmitterRef<TmEntityPicked<T, Id>>;
+    protected readonly pickerDescribedBy: Signal<string | null>;
+    readonly placeholder: _angular_core.InputSignal<string>;
+    readonly readonly: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    protected remove(id: Id): void;
+    readonly removed: _angular_core.OutputEmitterRef<Id>;
+    readonly required: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    readonly search: _angular_core.InputSignal<TmEntitySearchFn<T>>;
+    readonly searchDebounce: _angular_core.InputSignal<number>;
+    setDescribedByIds(ids: readonly string[]): void;
+    setFieldError(showsError: boolean): void;
+    protected readonly showsInvalid: Signal<boolean>;
+    protected readonly standalone: boolean;
+    protected readonly summaryId: string;
+    protected readonly summaryText: Signal<string>;
+    readonly touch: _angular_core.OutputEmitterRef<void>;
+    readonly touched: Signal<boolean>;
+    readonly value: _angular_core.ModelSignal<readonly Id[]>;
+    protected readonly widestCount = 1000;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityMultiPicker<any, any>, "tm-entity-multi-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "fieldInvalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "fieldTouched": { "alias": "touched"; "required": false; "isSignal": true; }; "fieldPending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": true; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "itemDescription": { "alias": "itemDescription"; "required": false; "isSignal": true; }; "itemLabelParts": { "alias": "itemLabelParts"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "createLabel": { "alias": "createLabel"; "required": false; "isSignal": true; }; "maxItems": { "alias": "maxItems"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "searchDebounce": { "alias": "searchDebounce"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; "removed": "removed"; }, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityMultiPicker<any, any>, never>;
+}
+
+// @public
 export interface TmEntityPick<Id extends TmEntityId = TmEntityId, T = unknown> {
     readonly id: Id;
     readonly item?: T;
@@ -54,6 +128,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly displayWith: _angular_core.InputSignal<((id: Id) => string | null) | undefined>;
     readonly edit: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly editLabel: _angular_core.InputSignal<string | undefined>;
+    protected readonly emits: Signal<boolean>;
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
     readonly fieldInvalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
@@ -87,6 +162,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     protected readonly moreResultsText: Signal<string>;
     protected readonly namesEntity: Signal<boolean>;
     protected readonly noResultsText: Signal<string>;
+    protected readonly noticeText: Signal<string | null>;
     onContainerClick(): void;
     protected onExpandedChange(open: boolean): void;
     protected onFocusin(): void;
@@ -124,8 +200,15 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly value: _angular_core.ModelSignal<Id | null>;
     // @internal
     // @internal
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityPicker<any, any>, "tm-entity-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "fieldInvalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "fieldTouched": { "alias": "touched"; "required": false; "isSignal": true; }; "fieldPending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": true; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "itemDescription": { "alias": "itemDescription"; "required": false; "isSignal": true; }; "itemLabelParts": { "alias": "itemLabelParts"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "edit": { "alias": "edit"; "required": false; "isSignal": true; }; "createLabel": { "alias": "createLabel"; "required": false; "isSignal": true; }; "editLabel": { "alias": "editLabel"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "searchDebounce": { "alias": "searchDebounce"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; "\u0275cellActivate": "\u0275cellActivate"; }, never, never, true, never>;
+    // @internal
+    // @internal
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityPicker<any, any>, "tm-entity-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "fieldInvalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "fieldTouched": { "alias": "touched"; "required": false; "isSignal": true; }; "fieldPending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": true; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "itemDescription": { "alias": "itemDescription"; "required": false; "isSignal": true; }; "itemLabelParts": { "alias": "itemLabelParts"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "edit": { "alias": "edit"; "required": false; "isSignal": true; }; "createLabel": { "alias": "createLabel"; "required": false; "isSignal": true; }; "editLabel": { "alias": "editLabel"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "searchDebounce": { "alias": "searchDebounce"; "required": false; "isSignal": true; }; "\u0275commitMode": { "alias": "\u0275commitMode"; "required": false; "isSignal": true; }; "\u0275chosenIds": { "alias": "\u0275chosenIds"; "required": false; "isSignal": true; }; "\u0275maxItems": { "alias": "\u0275maxItems"; "required": false; "isSignal": true; }; "\u0275notice": { "alias": "\u0275notice"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; "\u0275cellActivate": "\u0275cellActivate"; "\u0275deselect": "\u0275deselect"; "\u0275multiPick": "\u0275multiPick"; }, never, never, true, never>;
+    // @internal
+    // @internal
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityPicker<any, any>, never>;
+    // @internal
+    // @internal
+    // @internal
     // @internal
 }
 

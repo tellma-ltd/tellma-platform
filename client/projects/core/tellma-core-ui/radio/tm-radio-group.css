@@ -1,0 +1,188 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-radio-group — rows of visually hidden native radios over drawn
+   circles. Rows sit at the option-row height of the resolved size; the
+   whole row is the pointer target. */
+
+:host {
+  /* The size ladder, re-pointed once per step. */
+  --tm-radio-row-height: var(--field-option-height);
+  --tm-radio-font-size: var(--field-font-size);
+
+  display: block;
+  font-family: var(--font-ui);
+}
+
+:host(.tm-radio-group--sm) {
+  --tm-radio-row-height: var(--field-option-height-sm);
+  --tm-radio-font-size: var(--field-font-size-sm);
+}
+
+:host(.tm-radio-group--lg) {
+  --tm-radio-row-height: var(--field-option-height-lg);
+  --tm-radio-font-size: var(--field-font-size-lg);
+}
+
+.tm-radio-group__list {
+  display: flex;
+  flex-direction: column;
+}
+
+:host(.tm-radio-group--horizontal) .tm-radio-group__list {
+  flex-flow: row wrap;
+  column-gap: var(--radio-inline-gap);
+}
+
+/* One row: circle, then label and hint. A row with a hint grows; the
+   circle stays centred on the label's line. */
+.tm-radio-group__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--radio-gap);
+  min-block-size: var(--tm-radio-row-height);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tm-radio-group__row--disabled {
+  cursor: default;
+}
+
+/* The circle's box is one row tall, so the circle centres on the label's
+   first line whatever the size step. */
+.tm-radio-group__control {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  block-size: var(--tm-radio-row-height);
+}
+
+/* Visually hidden, semantically present, stretched over the circle's box. */
+.tm-radio-group__native {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  opacity: 0.0001;
+  cursor: inherit;
+}
+
+.tm-radio-group__circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--radio-circle-size);
+  block-size: var(--radio-circle-size);
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-full);
+  background: var(--field-bg);
+  pointer-events: none;
+}
+
+/* The dot: present but transparent while unchecked, so checking paints a
+   mark that was always laid out. */
+.tm-radio-group__circle::after {
+  content: '';
+  inline-size: var(--radio-dot-size);
+  block-size: var(--radio-dot-size);
+  border-radius: var(--radius-full);
+  background: var(--color-on-primary);
+  opacity: 0;
+}
+
+.tm-radio-group__native:checked ~ .tm-radio-group__circle {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.tm-radio-group__native:checked ~ .tm-radio-group__circle::after {
+  opacity: 1;
+}
+
+/* The fields' soft glow, with a transparent real outline beneath it for
+   forced colors. */
+.tm-radio-group__native:focus-visible ~ .tm-radio-group__circle {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+:host(.tm-radio-group--invalid) .tm-radio-group__native:not(:checked) ~ .tm-radio-group__circle {
+  border-color: var(--field-border-invalid);
+}
+
+:host(.tm-radio-group--invalid) .tm-radio-group__native:focus-visible ~ .tm-radio-group__circle {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
+.tm-radio-group__native:disabled ~ .tm-radio-group__circle {
+  border-color: var(--border-default);
+  background: var(--field-bg-disabled);
+}
+
+/* A disabled checked radio still reads as checked: a dead fill. */
+.tm-radio-group__native:disabled:checked ~ .tm-radio-group__circle {
+  background: var(--border-default);
+}
+
+.tm-radio-group__text {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* The label's box is one row tall, so its line centres on the circle; a
+   hint then runs below it. */
+.tm-radio-group__label {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--tm-radio-row-height);
+  font-size: var(--tm-radio-font-size);
+  line-height: var(--leading-snug);
+  color: var(--text-body);
+  user-select: none;
+}
+
+.tm-radio-group__hint {
+  padding-block-end: var(--space-1);
+  font-size: var(--field-hint-font-size);
+  line-height: var(--leading-snug);
+  color: var(--text-secondary);
+}
+
+.tm-radio-group__row--disabled .tm-radio-group__label,
+.tm-radio-group__row--disabled .tm-radio-group__hint {
+  color: var(--field-text-disabled);
+}
+
+@media (forced-colors: active) {
+  .tm-radio-group__circle {
+    border-color: FieldText;
+  }
+
+  .tm-radio-group__native:checked ~ .tm-radio-group__circle {
+    border-color: Highlight;
+    background: Canvas;
+  }
+
+  .tm-radio-group__circle::after {
+    background: Highlight;
+  }
+
+  .tm-radio-group__native:disabled ~ .tm-radio-group__circle {
+    border-color: GrayText;
+  }
+
+  .tm-radio-group__native:disabled ~ .tm-radio-group__circle::after {
+    background: GrayText;
+  }
+}

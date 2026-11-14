@@ -35,7 +35,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
@@ -72,6 +72,33 @@ const UNLINKED = /ngDeclare/;
  *   unlinked declaration
  */
 export async function createBundleMeasurer(clientDir) {
+  const bundle = await createProductionBundler(clientDir);
+  return async (fesm) => gzipSync((await bundle(fesm)).contents).length;
+}
+
+/**
+ * Creates the production bundler the measure runs on (see the file
+ * comment): it links, bundles and minifies one FESM with the app baseline
+ * and the sibling entry points external, and fails when a declaration is
+ * left unlinked.
+ *
+ * With `imports`, the bundle's entry is an app module that imports only
+ * those names from the FESM, so the output is what an app using just them
+ * ships — the tree-shaking check reads it. That bundle also runs the
+ * optimizations the measure leaves out, because they are what make an
+ * unused component removable at all: a linked component is a class whose
+ * static definitions call into @angular/core, which a bundler must keep
+ * unless the class is wrapped in a pure expression, and that wrapping is
+ * `@angular/build`'s. Its plugins are loaded from the installed package by
+ * file path (they are not exported), with the options a production build
+ * gives a `sideEffects: false` library; an upgrade that moves them fails
+ * the check loudly instead of letting it pass on a weaker pipeline.
+ *
+ * @param {string} clientDir absolute path of the client workspace
+ * @returns {Promise<(fesm: string, imports?: readonly string[]) =>
+ *   Promise<{ text: string; contents: Uint8Array }>>} the minified bundle
+ */
+export async function createProductionBundler(clientDir) {
   const require = createRequire(join(clientDir, 'package.json'));
   const esbuild = require('esbuild');
   const compilerCli = require.resolve('@angular/compiler-cli/package.json');
@@ -80,34 +107,82 @@ export async function createBundleMeasurer(clientDir) {
     pathToFileURL(require.resolve('@angular/compiler-cli/linker/babel')).href
   );
 
+  // The production build's advanced optimizations, loaded on first use: the
+  // plugin list an app build runs over a `sideEffects: false` package.
+  let optimizations = null;
+  const advancedOptimizations = () => {
+    if (optimizations === null) {
+      const buildPackage = require.resolve('@angular/build/package.json');
+      const plugins = createRequire(buildPackage)('./src/tools/babel/plugins/index.js');
+      const { markTopLevelPure, elideAngularMetadata, adjustTypeScriptEnums, adjustStaticMembers } =
+        plugins;
+      if (
+        ![markTopLevelPure, elideAngularMetadata, adjustTypeScriptEnums, adjustStaticMembers].every(
+          (plugin) => typeof plugin === 'function',
+        )
+      ) {
+        throw new Error(
+          'bundle-measure: @angular/build no longer exposes its optimization plugins where the tree-shaking check loads them.',
+        );
+      }
+      optimizations = [
+        [markTopLevelPure, { topLevelSafeMode: true }],
+        elideAngularMetadata,
+        adjustTypeScriptEnums,
+        [adjustStaticMembers, { wrapDecorators: true }],
+      ];
+    }
+    return optimizations;
+  };
+
   // Links every module esbuild loads that holds a partial declaration: the
-  // entry FESM and the chunks it imports, `@defer` chunks included.
-  const link = {
+  // entry FESM and the chunks it imports, `@defer` chunks included. With
+  // `optimize`, every module also runs the production build's optimizations.
+  const link = (optimize) => ({
     name: 'tellma-link',
     setup(build) {
       build.onLoad({ filter: /\.m?js$/ }, async (args) => {
         const source = readFileSync(args.path, 'utf8');
-        if (!source.includes('ɵɵngDeclare')) {
+        const linking = source.includes('ɵɵngDeclare');
+        if (!linking && !optimize) {
           return { contents: source, loader: 'js' };
         }
-        const linked = await babel.transformAsync(source, {
+        const plugins = [
+          ...(linking ? [linkerPlugin] : []),
+          ...(optimize ? advancedOptimizations() : []),
+        ];
+        const transformed = await babel.transformAsync(source, {
           filename: args.path,
           configFile: false,
           babelrc: false,
           compact: false,
           sourceMaps: false,
-          plugins: [linkerPlugin],
+          plugins,
         });
-        return { contents: linked.code, loader: 'js' };
+        return { contents: transformed.code, loader: 'js' };
       });
     },
-  };
+  });
 
-  return async (fesm) => {
+  return async (fesm, imports) => {
+    // The entry: the FESM itself, or an app module that imports only the
+    // given names from it and keeps them alive.
+    const entry =
+      imports === undefined
+        ? { entryPoints: [fesm] }
+        : {
+            stdin: {
+              contents:
+                `import { ${imports.join(', ')} } from ${JSON.stringify(fesm)};\n` +
+                `globalThis.tmKeep = [${imports.join(', ')}];\n`,
+              resolveDir: dirname(fesm),
+              loader: 'js',
+            },
+          };
     // Bundle and minify with the production options, so dev-mode branches
     // (the class metadata among them) fall away.
     const result = await esbuild.build({
-      entryPoints: [fesm],
+      ...entry,
       bundle: true,
       minify: true,
       format: 'esm',
@@ -117,7 +192,7 @@ export async function createBundleMeasurer(clientDir) {
       pure: ['forwardRef'],
       define: PRODUCTION_DEFINES,
       external: BUNDLE_EXTERNALS,
-      plugins: [link],
+      plugins: [link(imports !== undefined)],
     });
     const output = result.outputFiles[0];
     // Fail loudly rather than count a metadata copy the linker never saw.
@@ -126,6 +201,6 @@ export async function createBundleMeasurer(clientDir) {
         `bundle-measure: ${fesm} still holds an unlinked Angular declaration after linking.`,
       );
     }
-    return gzipSync(output.contents).length;
+    return { text: output.text, contents: output.contents };
   };
 }

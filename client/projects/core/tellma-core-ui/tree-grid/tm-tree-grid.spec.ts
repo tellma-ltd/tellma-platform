@@ -3,12 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, form, required } from '@angular/forms/signals';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import type { TmRowId } from '@tellma/core-ui/contracts';
 import { TmGridColumn } from '@tellma/core-ui/grid';
 import { TmTreeGridHarness } from '@tellma/core-ui-testing';
 
@@ -49,12 +52,16 @@ function makeNodes(): readonly Node[] {
   template: `
     <tm-tree-grid
       [gridId]="gridId()"
+      [contentKey]="contentKey()"
       [data]="rows()"
       [rowId]="rowId"
       [parentId]="parentId"
       [hasChildren]="hasChildren"
       [loadChildren]="loadChildren"
       [defaultExpandedDepth]="depth()"
+      [expansionSource]="source()"
+      [expandedIds]="expanded()"
+      (expandedIdsChange)="onExpandedIds($event)"
       style="block-size: 300px"
     >
       <tm-grid-column key="name" header="Name" [width]="200" />
@@ -64,22 +71,47 @@ function makeNodes(): readonly Node[] {
 })
 class DataHost {
   readonly gridId = signal('spec-tree');
+  readonly contentKey = signal<string | undefined>(undefined);
   readonly rows = signal<readonly Node[]>(makeNodes());
   readonly depth = signal<number | undefined>(undefined);
+  readonly source = signal<'store' | 'model'>('store');
+  readonly expanded = signal<ReadonlySet<TmRowId>>(new Set());
+  /** Every set the grid emitted through `expandedIdsChange`. */
+  readonly emitted: Array<ReadonlySet<TmRowId>> = [];
+  /** The rows whose children load on demand. */
+  readonly lazyIds = signal<ReadonlySet<number>>(new Set([6]));
   readonly rowId = (row: Node): number => row.id;
   readonly parentId = (row: Node): number | null => row.parentId;
-  readonly hasChildren = (row: Node): boolean => row.id === 6;
+  readonly hasChildren = (row: Node): boolean => this.lazyIds().has(row.id);
 
-  /** Settle hooks of the CURRENT in-flight lazy load (one at a time). */
-  resolveLoad: (() => void) | null = null;
-  rejectLoad: ((reason: Error) => void) | null = null;
-  loadCalls = 0;
-  readonly loadChildren = (): Promise<void> =>
-    new Promise<void>((resolve, reject) => {
-      this.loadCalls += 1;
-      this.resolveLoad = resolve;
-      this.rejectLoad = reject;
-    });
+  /** The row ids of every `loadChildren` call, in call order. */
+  readonly batches: number[][] = [];
+  /** The settle hooks of the calls still in flight, oldest first. */
+  private readonly pending: Array<{
+    readonly resolve: () => void;
+    readonly reject: (reason: Error) => void;
+  }> = [];
+  readonly loadChildren = (rows: readonly Node[]): Promise<void> => {
+    this.batches.push(rows.map((row) => row.id));
+    return new Promise<void>((resolve, reject) => this.pending.push({ resolve, reject }));
+  };
+
+  /** Records an emitted set and keeps it, as a two-way binding would. */
+  onExpandedIds(ids: ReadonlySet<TmRowId>): void {
+    this.emitted.push(ids);
+    this.expanded.set(ids);
+  }
+
+  /** Settles the oldest call in flight: appends `children` and resolves, or rejects. */
+  settle(children: readonly Node[], error?: Error): void {
+    const call = this.pending.shift()!;
+    if (error !== undefined) {
+      call.reject(error);
+      return;
+    }
+    this.rows.update((rows) => [...rows, ...children]);
+    call.resolve();
+  }
 }
 
 @Component({
@@ -123,13 +155,38 @@ async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
-async function setup(): Promise<{
+/** What a `DataHost` starts with, applied before its first render. */
+interface HostOptions {
+  readonly gridId?: string;
+  readonly contentKey?: string;
+  readonly depth?: number;
+  readonly source?: 'store' | 'model';
+  readonly expanded?: ReadonlySet<TmRowId>;
+  readonly rows?: readonly Node[];
+  readonly lazyIds?: ReadonlySet<number>;
+}
+
+async function setup(options: HostOptions = {}): Promise<{
   fixture: ComponentFixture<DataHost>;
   grid: TmTreeGridHarness;
   scroller: HTMLElement;
 }> {
   TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
   const fixture = TestBed.createComponent(DataHost);
+  const host = fixture.componentInstance;
+  if (options.gridId !== undefined) {
+    host.gridId.set(options.gridId);
+  }
+  host.contentKey.set(options.contentKey);
+  host.depth.set(options.depth);
+  host.source.set(options.source ?? 'store');
+  host.expanded.set(options.expanded ?? new Set());
+  if (options.rows !== undefined) {
+    host.rows.set(options.rows);
+  }
+  if (options.lazyIds !== undefined) {
+    host.lazyIds.set(options.lazyIds);
+  }
   await stable(fixture);
   const grid = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmTreeGridHarness);
   const scroller = (fixture.nativeElement as HTMLElement).querySelector(
@@ -219,67 +276,70 @@ describe('tm-tree-grid', () => {
     expect(await grid.getActiveCell()).toEqual({ row: 0, col: 0 });
   });
 
-  it('lazy loading: spinner in the reserved slot, expansion once the load resolves', async () => {
-    const { fixture, grid } = await setup();
+  it('lazy loading: the row expands at once with a spinner, and its children show once the load resolves', async () => {
+    // Collapsed to the roots (1, 5, 6), so nothing loads at the bind.
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-lazy', depth: 0 });
     const host = fixture.componentInstance;
+    expect(host.batches).toEqual([]);
 
     // The lazy root is expandable BEFORE any child exists (hasChildren).
-    expect(await grid.isExpanded(5)).toBe(false);
-    await grid.expand(5);
-    expect(host.loadCalls).toBe(1);
-    expect(await grid.isLoadingChildren(5)).toBe(true);
-    expect(await grid.isExpanded(5)).toBe(false); // not expanded while loading
-    expect(await grid.getVisibleRowCount()).toBe(6);
+    expect(await grid.isExpanded(2)).toBe(false);
+    await grid.expand(2);
+    expect(host.batches).toEqual([[6]]);
+    expect(await grid.isLoadingChildren(2)).toBe(true);
+    expect(await grid.isExpanded(2)).toBe(true); // expanded while loading
+    expect(await grid.getVisibleRowCount()).toBe(3);
 
     // The consumer appends the children, then the promise resolves.
-    host.rows.update((rows) => [...rows, node(7, 6, 'Lazy child'), node(8, 6, 'Lazy child 2')]);
-    await stable(fixture);
-    host.resolveLoad!();
+    host.settle([node(7, 6, 'Lazy child'), node(8, 6, 'Lazy child 2')]);
     await stable(fixture);
 
-    expect(await grid.isLoadingChildren(5)).toBe(false);
-    expect(await grid.isExpanded(5)).toBe(true);
-    expect(await grid.getVisibleRowCount()).toBe(8);
-    expect(await grid.getCellText(6, 0)).toBe('Lazy child');
-    expect(await grid.getLevel(6)).toBe(2);
+    expect(await grid.isLoadingChildren(2)).toBe(false);
+    expect(await grid.isExpanded(2)).toBe(true);
+    expect(await grid.getVisibleRowCount()).toBe(5);
+    expect(await grid.getCellText(3, 0)).toBe('Lazy child');
+    expect(await grid.getLevel(3)).toBe(2);
   });
 
-  it('a rejected lazy load restores the collapsed state', async () => {
-    const { fixture, grid } = await setup();
+  it('a rejected lazy load collapses the row and announces the failure', async () => {
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-lazy-fail', depth: 0 });
     const host = fixture.componentInstance;
+    const announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce');
 
-    await grid.expand(5);
-    expect(await grid.isLoadingChildren(5)).toBe(true);
-    host.rejectLoad!(new Error('nope'));
+    await grid.expand(2);
+    expect(await grid.isLoadingChildren(2)).toBe(true);
+    host.settle([], new Error('nope'));
     await stable(fixture);
 
-    expect(await grid.isLoadingChildren(5)).toBe(false);
-    expect(await grid.isExpanded(5)).toBe(false);
-    expect(await grid.getVisibleRowCount()).toBe(6);
+    expect(await grid.isLoadingChildren(2)).toBe(false);
+    expect(await grid.isExpanded(2)).toBe(false);
+    expect(await grid.getVisibleRowCount()).toBe(3);
+    expect(announce.mock.calls.map((call) => String(call[0]))).toContain(
+      'Could not load child rows',
+    );
   });
 
   it('re-collapsing during a lazy load wins: no expansion on resolve, instant expand after', async () => {
-    const { fixture, grid } = await setup();
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-lazy-recollapse', depth: 0 });
     const host = fixture.componentInstance;
 
-    await grid.expand(5);
-    expect(await grid.isLoadingChildren(5)).toBe(true);
-    await grid.collapse(5); // while the load is in flight
+    await grid.expand(2);
+    expect(await grid.isLoadingChildren(2)).toBe(true);
+    await grid.collapse(2); // while the load is in flight
+    expect(await grid.isExpanded(2)).toBe(false);
 
-    host.rows.update((rows) => [...rows, node(7, 6, 'Lazy child')]);
-    await stable(fixture);
-    host.resolveLoad!();
+    host.settle([node(7, 6, 'Lazy child')]);
     await stable(fixture);
 
     // The load landed, but the node honors the user's collapse.
-    expect(await grid.isExpanded(5)).toBe(false);
-    expect(await grid.getVisibleRowCount()).toBe(6);
+    expect(await grid.isExpanded(2)).toBe(false);
+    expect(await grid.getVisibleRowCount()).toBe(3);
 
     // Children are loaded now — expanding again is synchronous, no new call.
-    await grid.expand(5);
-    expect(host.loadCalls).toBe(1);
-    expect(await grid.isExpanded(5)).toBe(true);
-    expect(await grid.getCellText(6, 0)).toBe('Lazy child');
+    await grid.expand(2);
+    expect(host.batches).toEqual([[6]]);
+    expect(await grid.isExpanded(2)).toBe(true);
+    expect(await grid.getCellText(3, 0)).toBe('Lazy child');
   });
 
   it('defaultExpandedDepth seeds the expansion: 0 = collapsed, 1 = roots expanded', async () => {
@@ -355,6 +415,324 @@ describe('tm-tree-grid', () => {
     await stable(fixture);
     const duplicate = TestBed.createComponent(DataHost);
     expect(() => duplicate.detectChanges()).toThrowError(/already live/);
+  });
+});
+describe('tm-tree-grid remembered expansion', () => {
+  it('a content bind loads every expanded row with unloaded children in one call', async () => {
+    // Fully expanded by default: the lazy roots 5 and 6 load at the bind,
+    // together, rather than starting collapsed.
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-bind', lazyIds: new Set([5, 6]) });
+    const host = fixture.componentInstance;
+    expect(host.batches).toEqual([[5, 6]]);
+    expect(await grid.isExpanded(4)).toBe(true);
+    expect(await grid.isLoadingChildren(4)).toBe(true);
+    expect(await grid.isLoadingChildren(5)).toBe(true);
+  });
+
+  it('user expands in one task load in one call, in data order', async () => {
+    const { fixture, scroller } = await setup({
+      gridId: 'spec-tree-coalesce',
+      depth: 0,
+      lazyIds: new Set([5, 6]),
+    });
+    const host = fixture.componentInstance;
+    const expanderOf = (index: number): HTMLElement =>
+      scroller.querySelector(
+        `[role="row"][aria-rowindex="${index + 2}"] [data-tm-expander]`,
+      ) as HTMLElement;
+    // Lazy root 6 first, then Root B (5): one batch, in the data's order.
+    expanderOf(2).click();
+    expanderOf(1).click();
+    await stable(fixture);
+    expect(host.batches).toEqual([[5, 6]]);
+  });
+
+  it('a restore loads one batch per level and keeps ids it cannot place yet', async () => {
+    const { fixture, grid } = await setup({
+      gridId: 'spec-tree-restore',
+      source: 'model',
+      rows: [node(10, null, 'Ledger'), node(20, null, 'Assets')],
+      lazyIds: new Set([10, 12, 20]),
+      expanded: new Set([10, 12, 20, 999]),
+    });
+    const host = fixture.componentInstance;
+    expect(host.batches).toEqual([[10, 20]]);
+
+    host.settle([node(11, 10, 'Cash'), node(12, 10, 'Banks'), node(21, 20, 'Land')]);
+    await stable(fixture);
+    // 12 arrived and was remembered: the next level loads on its own.
+    expect(host.batches).toEqual([[10, 20], [12]]);
+
+    host.settle([node(13, 12, 'Main bank')]);
+    await stable(fixture);
+    expect(host.batches).toEqual([[10, 20], [12]]);
+    expect(await grid.getVisibleRowCount()).toBe(6);
+    expect(await grid.getCellText(3, 0)).toBe('Main bank');
+    // The bound set stays whole across the batches, the unknown id included,
+    // and restoring it is not a change the grid emits.
+    expect(host.emitted).toEqual([]);
+    expect([...host.expanded()]).toEqual([10, 12, 20, 999]);
+  });
+
+  it('a 500-id restore issues one batch per level', async () => {
+    const roots = Array.from({ length: 100 }, (_, i) => node(i + 1, null, `Root ${i + 1}`));
+    const children = roots.flatMap((root) => [
+      node(1000 + root.id * 2, root.id, 'Child'),
+      node(1001 + root.id * 2, root.id, 'Child'),
+    ]);
+    const grandchildren = children.map((child) => node(10_000 + child.id, child.id, 'Grandchild'));
+    const leaves = grandchildren.map((grand) => node(100_000 + grand.id, grand.id, 'Leaf'));
+    const expandable = [...roots, ...children, ...grandchildren].map((row) => row.id);
+    expect(expandable.length).toBe(500);
+
+    const { fixture } = await setup({
+      gridId: 'spec-tree-restore-500',
+      source: 'model',
+      rows: roots,
+      lazyIds: new Set(expandable),
+      expanded: new Set(expandable),
+    });
+    const host = fixture.componentInstance;
+    host.settle(children);
+    await stable(fixture);
+    host.settle(grandchildren);
+    await stable(fixture);
+    host.settle(leaves);
+    await stable(fixture);
+    expect(host.batches.map((batch) => batch.length)).toEqual([100, 200, 200]);
+    expect(host.batches[0]).toEqual(roots.map((row) => row.id));
+  });
+
+  it("the 'store' source ignores expandedIds and never writes it", async () => {
+    const { fixture, grid } = await setup({
+      gridId: 'spec-tree-store-source',
+      depth: 0,
+      expanded: new Set([1]),
+    });
+    expect(await grid.getVisibleRowCount()).toBe(3); // the depth, not the model
+    await grid.expand(0);
+    expect(await grid.getVisibleRowCount()).toBe(5); // 1, 2, 3, 5, 6
+    expect(fixture.componentInstance.emitted).toEqual([]);
+  });
+
+  it("the 'model' source ignores defaultExpandedDepth and leaves the store slice alone", async () => {
+    const first = await setup({
+      gridId: 'spec-tree-model-source',
+      depth: 3,
+      source: 'model',
+      expanded: new Set([1]),
+    });
+    // Only Root A expanded: 1, 2, 3, 5, 6 (4 sits under the collapsed 2).
+    expect(await first.grid.getVisibleRowCount()).toBe(5);
+    await first.grid.collapse(0);
+    expect(await first.grid.getVisibleRowCount()).toBe(3);
+    first.fixture.destroy();
+
+    // The same grid and content in the 'store' source: no slice was
+    // written, so the default depth (fully expanded) seeds.
+    const second = TestBed.createComponent(DataHost);
+    second.componentInstance.gridId.set('spec-tree-model-source');
+    await stable(second);
+    const grid = await TestbedHarnessEnvironment.loader(second).getHarness(TmTreeGridHarness);
+    expect(await grid.getVisibleRowCount()).toBe(6);
+  });
+
+  it('a collapse removes that row only; an expand brings back what it remembered', async () => {
+    const { fixture, grid } = await setup({
+      gridId: 'spec-tree-model-gestures',
+      source: 'model',
+      expanded: new Set([1, 2]),
+    });
+    const host = fixture.componentInstance;
+    expect(await grid.getVisibleRowCount()).toBe(6);
+
+    await grid.collapse(0);
+    expect([...host.emitted.at(-1)!]).toEqual([2]);
+    expect(await grid.getVisibleRowCount()).toBe(3);
+
+    await grid.expand(0);
+    expect([...host.emitted.at(-1)!].sort()).toEqual([1, 2]);
+    expect(await grid.getVisibleRowCount()).toBe(6);
+    // Every emission is a fresh set.
+    expect(host.emitted[0]).not.toBe(host.emitted[1]);
+  });
+
+  it('a consumer write after the bind applies like a restore and is not echoed', async () => {
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-model-write', source: 'model' });
+    const host = fixture.componentInstance;
+    expect(await grid.getVisibleRowCount()).toBe(3);
+
+    // Rows it adds expand, and the lazy one among them loads.
+    host.expanded.set(new Set([1, 6]));
+    await stable(fixture);
+    expect(await grid.getVisibleRowCount()).toBe(5);
+    expect(host.batches).toEqual([[6]]);
+
+    // Rows it leaves out collapse; 2 is kept under its collapsed parent.
+    host.expanded.set(new Set([2]));
+    await stable(fixture);
+    expect(await grid.getVisibleRowCount()).toBe(3);
+    expect(host.emitted).toEqual([]);
+
+    await grid.expand(0);
+    expect(await grid.getVisibleRowCount()).toBe(6); // 2 was remembered
+  });
+
+  it('a failed batch drops its rows from the bound set and announces once', async () => {
+    const { fixture } = await setup({
+      gridId: 'spec-tree-model-fail',
+      source: 'model',
+      lazyIds: new Set([5, 6]),
+      expanded: new Set([1, 5, 6]),
+    });
+    const host = fixture.componentInstance;
+    const announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce');
+    expect(host.batches).toEqual([[5, 6]]);
+
+    host.settle([], new Error('offline'));
+    await stable(fixture);
+    expect([...host.expanded()]).toEqual([1]);
+    const failures = announce.mock.calls.filter(
+      (call) => String(call[0]) === 'Could not load child rows',
+    );
+    expect(failures.length).toBe(1);
+  });
+
+  it("the 'store' source restores a remembered lazy grandchild one batch per level", async () => {
+    const options: HostOptions = {
+      gridId: 'spec-tree-store-lazy',
+      depth: 0,
+      lazyIds: new Set([6, 7]),
+    };
+    const first = await setup(options);
+    const host = first.fixture.componentInstance;
+    await first.grid.expand(2); // the lazy root 6
+    host.settle([node(7, 6, 'Lazy child')]);
+    await stable(first.fixture);
+    await first.grid.expand(3); // its lazy child 7
+    host.settle([node(8, 7, 'Lazy grandchild')]);
+    await stable(first.fixture);
+    expect(host.batches).toEqual([[6], [7]]);
+    first.fixture.destroy();
+
+    // Remounted over the roots alone: the slice brings 6 back, and the
+    // remembered 7 loads in the next level's batch once it arrives.
+    const second = TestBed.createComponent(DataHost);
+    const again = second.componentInstance;
+    again.gridId.set('spec-tree-store-lazy');
+    again.depth.set(0);
+    again.lazyIds.set(new Set([6, 7]));
+    await stable(second);
+    expect(again.batches).toEqual([[6]]);
+    again.settle([node(7, 6, 'Lazy child')]);
+    await stable(second);
+    expect(again.batches).toEqual([[6], [7]]);
+    again.settle([node(8, 7, 'Lazy grandchild')]);
+    await stable(second);
+    const grid = await TestbedHarnessEnvironment.loader(second).getHarness(TmTreeGridHarness);
+    expect(await grid.getVisibleRowCount()).toBe(5); // 1, 5, 6, 7, 8
+    expect(await grid.getExpandedIds()).toEqual([6, 7]);
+    expect(again.emitted).toEqual([]);
+    second.destroy();
+
+    // The slice kept the grandchild throughout: a third mount restores it
+    // before any child has loaded.
+    const third = TestBed.createComponent(DataHost);
+    third.componentInstance.gridId.set('spec-tree-store-lazy');
+    third.componentInstance.depth.set(0);
+    third.componentInstance.lazyIds.set(new Set([6, 7]));
+    await stable(third);
+    third.componentInstance.settle([node(7, 6, 'Lazy child'), node(8, 7, 'Lazy grandchild')]);
+    await stable(third);
+    const last = await TestbedHarnessEnvironment.loader(third).getHarness(TmTreeGridHarness);
+    expect(await last.getExpandedIds()).toEqual([6, 7]);
+  });
+
+  it("the 'model' source never reads a store slice the content already has", async () => {
+    const first = await setup({ gridId: 'spec-tree-model-slice', lazyIds: new Set() });
+    // Fully expanded by default, and the store keeps that as the slice.
+    expect(await first.grid.getVisibleRowCount()).toBe(6);
+    first.fixture.destroy();
+
+    const second = TestBed.createComponent(DataHost);
+    second.componentInstance.gridId.set('spec-tree-model-slice');
+    second.componentInstance.lazyIds.set(new Set());
+    second.componentInstance.source.set('model');
+    await stable(second);
+    const grid = await TestbedHarnessEnvironment.loader(second).getHarness(TmTreeGridHarness);
+    // The empty model, not the slice: every row collapsed.
+    expect(await grid.getVisibleRowCount()).toBe(3);
+    await grid.expand(0);
+    expect([...second.componentInstance.expanded()]).toEqual([1]);
+    second.destroy();
+
+    // Nor did it write the slice: the 'store' source finds it unchanged.
+    const third = TestBed.createComponent(DataHost);
+    third.componentInstance.gridId.set('spec-tree-model-slice');
+    third.componentInstance.lazyIds.set(new Set());
+    third.componentInstance.depth.set(0);
+    await stable(third);
+    const last = await TestbedHarnessEnvironment.loader(third).getHarness(TmTreeGridHarness);
+    expect(await last.getVisibleRowCount()).toBe(6);
+  });
+
+  it("a content switch in the task a batch formed in loads the incoming content's batch", async () => {
+    const { fixture, scroller } = await setup({
+      gridId: 'spec-tree-switch-batch',
+      contentKey: 'a',
+      source: 'model',
+    });
+    const host = fixture.componentInstance;
+    // A user expand queues the lazy root 6, and before that batch forms
+    // the content switches to one that remembers 6 expanded, its rows
+    // arriving with the switch.
+    const expander = scroller.querySelector(
+      '[role="row"][aria-rowindex="4"] [data-tm-expander]',
+    ) as HTMLElement;
+    expander.click();
+    host.contentKey.set('b');
+    host.rows.set(makeNodes());
+    host.expanded.set(new Set([6]));
+    fixture.detectChanges();
+    await stable(fixture);
+    expect(host.batches).toEqual([[6]]);
+  });
+
+  it('a content bound over the outgoing rows loads nothing until its own rows arrive', async () => {
+    const { fixture, grid } = await setup({
+      gridId: 'spec-tree-switch-rows',
+      contentKey: 'a',
+      source: 'model',
+    });
+    const host = fixture.componentInstance;
+    // The incoming content remembers 6 expanded; its rows are still being
+    // fetched, so the rows bound now are the outgoing content's.
+    host.contentKey.set('b');
+    host.expanded.set(new Set([6]));
+    await stable(fixture);
+    expect(host.batches).toEqual([]);
+
+    host.rows.set(makeNodes());
+    await stable(fixture);
+    expect(host.batches).toEqual([[6]]);
+    expect(await grid.isLoadingChildren(2)).toBe(true);
+  });
+
+  it('scrollToRow expands the ancestors into the bound set and activates the row', async () => {
+    const { fixture, grid } = await setup({ gridId: 'spec-tree-scroll', source: 'model' });
+    const host = fixture.componentInstance;
+    const tree = fixture.debugElement.query(By.directive(TmTreeGrid))
+      .componentInstance as TmTreeGrid<Node>;
+
+    expect(tree.scrollToRow(4)).toBe(true);
+    await stable(fixture);
+    expect([...host.expanded()].sort()).toEqual([1, 2]);
+    expect(host.emitted.length).toBe(1);
+    expect(await grid.getActiveRowIndex()).toBe(2);
+    expect(await grid.getCellText(2, 0)).toBe('Grand A1a');
+
+    // A lazy child that has not loaded is not in the data yet.
+    expect(tree.scrollToRow(7)).toBe(false);
   });
 });
 

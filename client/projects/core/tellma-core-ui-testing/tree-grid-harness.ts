@@ -83,6 +83,29 @@ export class TmTreeGridHarness extends TmGridHarness {
     return (await this.getRowCount()) - 1;
   }
 
+  /**
+   * The ids of the expanded rows that are rendered, in view order. A
+   * virtualized tree renders only the rows near the viewport, so this
+   * covers what is in view, not the whole expansion.
+   */
+  async getExpandedIds(): Promise<Array<string | number>> {
+    const rows = await this.locatorForAll('[role="row"][aria-expanded="true"][data-tm-key]')();
+    const ids: Array<{ readonly index: number; readonly id: string | number }> = [];
+    for (const row of rows) {
+      const key = (await row.getAttribute('data-tm-key')) ?? '';
+      const index = Number(await row.getAttribute('aria-rowindex'));
+      // The key carries the id's type: `#` a number, `$` a string.
+      if (key.startsWith('#')) {
+        ids.push({ index, id: Number(key.slice(1)) });
+      } else if (key.startsWith('$')) {
+        ids.push({ index, id: key.slice(1) });
+      }
+    }
+    // An outlier row (the active row kept rendered off-window) need not sit
+    // in DOM order; the row index restores view order.
+    return ids.sort((a, b) => a.index - b.index).map((entry) => entry.id);
+  }
+
   /** Presses Alt+Arrow on the active cell (or the container). */
   private async sendAltArrow(key: TestKey): Promise<void> {
     const active = await this.locatorForOptional('[role="gridcell"][tabindex="0"]')();

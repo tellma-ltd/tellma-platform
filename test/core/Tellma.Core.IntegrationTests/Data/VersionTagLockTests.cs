@@ -10,7 +10,9 @@ using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Caching;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Testing.Entities;
@@ -19,7 +21,8 @@ namespace Tellma.Core.IntegrationTests.Data
 {
     /// <summary>
     ///     Version tags under overlapping batches, each pause a real lock wait: the tag read before the
-    ///     rows under a concurrent bump, a tag the persist guard read held until commit, two bumps of
+    ///     rows under a concurrent bump, a tag the persist guard read held until commit, the tag of a
+    ///     cached list a persist batch probed held until commit so a deactivation waits, two bumps of
     ///     one read tag serialised on the guard instead of deadlocking, two writes of one caller's
     ///     stamp serialised, two bumps of different tags each read by the other serialised with no
     ///     deadlock, a settings save and a write of the saver's stamp waiting at the tags with no
@@ -126,6 +129,46 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = await bumping;
             Assert.True(a.GuardPassed);
             Assert.Equal(b.Tag, (await fixture.Database.TagsAsync())[LookupTag]);
+        }
+
+        [Fact]
+        public async Task A_cached_list_a_writing_persist_batch_probed_keeps_its_tag_locked_until_commit_so_a_deactivation_waits()
+        {
+            await SqlServerFixture.ExecuteAsync(
+                fixture.Database.Tenant.ConnectionString,
+                "INSERT INTO [fixture].[Lookups] ([Id], [Code], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (1, 'L1', N'Lookup 1', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);");
+            Guid before = (await fixture.Database.TagsAsync())[LookupTag];
+            fixture.Database.Tenant.Services.GetRequiredService<CacheableEntityStore>().Remove(new CacheableEntityKey(FixtureTenant.TenantId, "fixture.Lookup", MultilingualShape.Primary));
+            await using SideTransaction side = await SideTransaction.HoldGateAsync(fixture.Database.Tenant.ConnectionString);
+
+            // --- A reads the cold list through its own probe, writes elsewhere, and pauses at the gate inside its transaction ---
+            await using AsyncServiceScope scopeA = fixture.Database.CreateSettledScope();
+            var a = (DataBatch)scopeA.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            a.MarkConnectPrologue(DataBatchDatabase.Premises);
+            BatchResult<CacheResult<CachedEntitySet<Lookup>>> cold = a.FromCache<Lookup>();
+            _ = a.Sql($"DELETE FROM [core].[Jobs] WHERE [Id] = 0;", new SqlOptions(writes: Set(Jobs)));
+            _ = a.Sql(Gate, null);
+            Task<BatchOutcome> running = a.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(1, running);
+
+            // --- B deactivates the row A read: its guard's exclusive lock on the list's tag waits for A's shared one ---
+            await using AsyncServiceScope scopeB = fixture.Database.Tenant.CreateScope();
+            var b = (DataBatch)scopeB.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            b.MarkConnectPrologue(DataBatchDatabase.Premises);
+            _ = b.Sql($"UPDATE [fixture].[Lookups] SET [IsActive] = 0 WHERE [Id] = 1;", new SqlOptions(writes: Set(Lookups)));
+            Task<BatchOutcome> deactivating = b.ExecuteAsync(Token);
+            await WaitForLockWaitersAsync(2, running, deactivating);
+            Assert.False(deactivating.IsCompleted);
+
+            // --- A commits on the active row it read, under the tag its prologue read; B's deactivation lands after ---
+            await side.ReleaseAsync();
+            _ = await running;
+            _ = await deactivating;
+            Assert.True(a.GuardPassed);
+            Assert.Equal((CacheOutcome.Miss, new VersionTag(before)), (cold.Value.Outcome, cold.Value.Tag));
+            Assert.True(cold.Value.Value!.ById[1].IsActive);
+            Assert.Equal(b.Tag, (await fixture.Database.TagsAsync())[LookupTag]);
+            Assert.False(await SqlServerFixture.ScalarAsync<bool>(fixture.Database.Tenant.ConnectionString, "SELECT [IsActive] FROM [fixture].[Lookups] WHERE [Id] = 1;"));
         }
 
         [Fact]

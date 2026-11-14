@@ -49,6 +49,9 @@ export const TM_LOCALE_AR_STRINGS = {
     parse: `${enter} رقما صالحا، مثل {example}`,
     numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
     parseDate: `${enter} تاريخا مثل {example}`,
+    parseTime: `${enter} وقتا مثل {example}`,
+    dateRangeOrder: 'يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده',
+    dateTimeIncomplete: `${enter} التاريخ والوقت معا`,
   },
   datePicker: {
     chooseDate: 'اختيار التاريخ',
@@ -82,6 +85,10 @@ export const TM_LOCALE_AR_STRINGS = {
     searchFailed: 'فشل البحث',
     moreResults:
       'يتم عرض {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {اكتبي} other {اكتب}} للتصفية.',
+    maxItems:
+      'يمكنك اختيار {max, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرا} other {# عنصر}} كحد أقصى',
+    selectedSummary:
+      '{count, plural, zero {# عنصر محدد} one {عنصر واحد محدد} two {عنصران محددان} few {# عناصر محددة} many {# عنصرا محددا} other {# عنصر محدد}}: {labels}',
     announce: {
       results:
         '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
@@ -90,6 +97,8 @@ export const TM_LOCALE_AR_STRINGS = {
       noResults: 'لا توجد نتائج',
       searchFailed: 'فشل البحث',
       picked: 'تم اختيار {label}',
+      added: 'تمت إضافة {label}',
+      removed: 'تمت إزالة {label}',
     },
     errors: {
       unresolved: '{gender, select, female {حددي} other {حدد}} عنصرا من القائمة',
@@ -315,5 +324,17 @@ export const TM_LOCALE_AR_STRINGS = {
   },
   splitter: {
     label: 'تغيير حجم اللوحتين',
+  },
+  searchField: {
+    placeholder: 'بحث',
+    clear: 'مسح البحث',
+  },
+  dateRange: {
+    from: 'من',
+    to: 'إلى',
+  },
+  dateTime: {
+    date: 'التاريخ',
+    time: 'الوقت',
   },
 } as const;
