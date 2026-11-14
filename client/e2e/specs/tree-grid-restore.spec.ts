@@ -67,6 +67,8 @@ interface FlashRecord {
   readonly tint: string;
   /** The flash animation's name on the row's first cell, or `null` for none. */
   readonly animationName: string | null;
+  /** The flash animation's own duration, in milliseconds, or `null` for none. */
+  readonly animationDuration: number | null;
   /** The first cell's background as the flash began. */
   readonly atStart: string;
   /** The first cell's background with its flash animation sought to 90 %, or `null` for none. */
@@ -142,9 +144,10 @@ async function watchFlash(page: Page, rowId: number, triggerTestId: string): Pro
           const animation =
             cell.getAnimations().find((a): a is CSSAnimation => a instanceof CSSAnimation) ?? null;
           let nearEnd: string | null = null;
+          let total: number | null = null;
           if (animation !== null) {
             // Seek, read, and put the animation back at its start.
-            const total = Number(animation.effect!.getComputedTiming().duration);
+            total = Number(animation.effect!.getComputedTiming().duration);
             animation.pause();
             animation.currentTime = total * 0.9;
             nearEnd = getComputedStyle(cell).backgroundColor;
@@ -155,6 +158,7 @@ async function watchFlash(page: Page, rowId: number, triggerTestId: string): Pro
             duration: parseTime(getComputedStyle(host).getPropertyValue('--grid-flash-duration')),
             tint,
             animationName: animation?.animationName ?? null,
+            animationDuration: total,
             atStart,
             nearEnd,
             outline: getComputedStyle(row).outlineStyle,
@@ -322,6 +326,9 @@ for (const dir of ['ltr', 'rtl'] as const) {
       const flash = await flashRecord(page);
       // Emulated encapsulation prefixes the keyframes' name with the scope.
       expect(flash.animationName).toMatch(/tm-grid-(re)?flash$/);
+      // The tint holds for the token's whole duration: the animation runs
+      // exactly that long, so 90 % of it is 90 % of the flash.
+      expect(flash.animationDuration).toBe(flash.duration);
       expect(flash.atStart).toBe(flash.tint);
       expect(flash.nearEnd).toBe(flash.tint);
       // The class stayed on for at least --grid-flash-duration, then left.
