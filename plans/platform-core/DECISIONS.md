@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-080 (2026-11-14): identity service-client secret placement and outcome tags (PC-055)
+
+- **Ruling.** The `<slug>-svc` client secret (Tellma:Identity:ServiceClientSecret) is required in every Production host that calls the identity server: the migrator and the standalone web hosts, since invite and issue-credentials run in the web host. It is exempt only in in-process Development, where the web host fills it from the per-boot IdentityClientSecrets. Its validation moves from the `host.identity` startup check to the `core.options` validator. The `tellma.identity.*` instruments gain the outcome tag `cancelled`, for a caller's own cancellation, so that it is not counted as `error`.
+- **Why.** Spec 0018 §2.1 and 0011 §6.1 need the secret where the calls are made. Counting a caller's cancellation as a server error would page on user behaviour.
+- **For Ahmad:** spec 0011 §5.7 still names `host.identity` as the owner of the check. Spec 0018 §2.2's closed outcome-tag set lacks `cancelled`. Deployment templates and onboarding must supply the secret to both hosts.
+
 ### D-079 (2026-11-14): PC-062 contract placement and signature conventions
 
 - **Golden placement.** The pipeline public-API goldens live in Tellma.Core.Abstractions.Tests/PublicApi, beside the existing Abstractions goldens. They do not live in Tellma.Core.Tests/Crud, which spec 0015 §1.1/§18.1 names: the contracts ship in Tellma.Core.Abstractions, so their surface is pinned where the assembly is tested.
