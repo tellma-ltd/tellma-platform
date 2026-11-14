@@ -125,6 +125,7 @@ namespace Tellma.Core.Tests.Tenancy
             {
                 Asked++;
                 await Task.Yield();
+                cancellationToken.ThrowIfCancellationRequested();
                 return _failure is null ? _answer : throw _failure;
             }
         }
