@@ -13,7 +13,6 @@ import {
   ElementRef,
   inject,
   input,
-  isDevMode,
   model,
   output,
   signal,
@@ -54,6 +53,7 @@ import { TmSpinner } from '@tellma/core-ui/spinner';
 import type {
   ɵTmEntityAdoptedSearch,
   TmEntityId,
+  TmEntityMultiPick,
   TmEntityPick,
   TmEntityPicked,
   TmEntityPickerPage,
@@ -62,6 +62,15 @@ import type {
   TmEntitySearchResult,
 } from './tm-entity-picker-types';
 import { ɵtmNormalizeEntityResult } from './tm-entity-search';
+
+/**
+ * Angular's development-mode flag (a production build replaces it with
+ * `false`, which removes the development warnings and their text from the
+ * bundle — `isDevMode()`, a call into @angular/core, cannot be folded away).
+ * Read through `typeof`, so code running where nothing defines it never
+ * throws.
+ */
+declare const ngDevMode: unknown;
 
 let nextUniqueId = 0;
 
@@ -125,6 +134,20 @@ const TRANSIENT = 'ɵtmTransient';
 /** Whether a validation error is a pass-through state, not a mistake. */
 function isTransient(error: ValidationError.WithOptionalFieldTree): boolean {
   return (error as unknown as Record<string, unknown>)[TRANSIENT] === true;
+}
+
+/**
+ * What a launched page can close with: a single pick, a whole selection (a
+ * page opened from a multi-picker), `null` (an edit page's "the entity is
+ * gone"), or nothing at all.
+ */
+type PageOutcome<Id extends TmEntityId, T> = TmEntityPick<Id, T> | TmEntityMultiPick<Id, T> | null;
+
+/** Whether a page outcome is a whole selection rather than a single pick. */
+function isMultiPick<Id extends TmEntityId, T>(
+  outcome: TmEntityPick<Id, T> | TmEntityMultiPick<Id, T>,
+): outcome is TmEntityMultiPick<Id, T> {
+  return Array.isArray((outcome as { readonly ids?: unknown }).ids);
 }
 
 /** The gap the panel keeps from the viewport edge when its height is capped. */
@@ -197,14 +220,15 @@ function isThenable<T>(
       spellcheck="false"
       dir="auto"
       [id]="controlId()"
-      [class.tm-input--in-field]="!!formField"
+      [class.tm-input--in-field]="!!formField || emits()"
       [expanded]="expanded()"
       (expandedChange)="onExpandedChange($event)"
       [(value)]="comboText"
       [disabled]="disabled()"
       [softDisabled]="readonly() && !disabled()"
       [readOnly]="readonly()"
-      [required]="required()"
+      [required]="required() && !emits()"
+      [attr.aria-required]="required() && emits() ? 'true' : null"
       [placeholder]="placeholder()"
       [attr.aria-label]="ariaLabel()"
       [attr.aria-describedby]="describedByAttr()"
@@ -263,6 +287,7 @@ function isThenable<T>(
             [tabindex]="-1"
             focusMode="activedescendant"
             selectionMode="explicit"
+            [multi]="emits()"
             [(value)]="listboxValue"
             [activeDescendant]="lb.activeDescendant()"
             (click)="onListboxClick($event)"
@@ -300,6 +325,11 @@ function isThenable<T>(
             }
             @if (showsHasMore()) {
               <li class="tm-entity-picker__hint" aria-hidden="true">{{ moreResultsText() }}</li>
+            }
+            @if (noticeText(); as notice) {
+              <li class="tm-entity-picker__hint tm-entity-picker__notice" aria-hidden="true">
+                {{ notice }}
+              </li>
             }
             @if (statusKind() !== null) {
               <li class="tm-entity-picker__status" aria-hidden="true">
@@ -474,6 +504,47 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   readonly ɵcellActivate = output<void>();
 
+  // ---- The emit-mode seam (a host that keeps the selection itself) ----
+  /**
+   * What a commit does: `'value'` (the default) writes the picked id into
+   * `value`; `'emit'` leaves `value` at `null`, emits `picked`, and returns
+   * the input to empty and pristine for the next pick. Search, debounce,
+   * abort, resolution and the footer rows are the same in both modes.
+   * @internal
+   */
+  readonly ɵcommitMode = input<'value' | 'emit'>('value');
+  /**
+   * Emit mode: the ids the host already holds. Their rows show the check and
+   * `aria-selected`, and an explicit list pick on one (a pointer press, or
+   * Enter on its highlighted row) emits `ɵdeselect` instead of `picked`.
+   * @internal
+   */
+  readonly ɵchosenIds = input<readonly Id[]>([]);
+  /**
+   * Emit mode: the most entities the host may hold, handed to the
+   * advanced-search page with the chosen ids.
+   * @internal
+   */
+  readonly ɵmaxItems = input<number | undefined>(undefined);
+  /**
+   * A status line the panel shows under the result rows (a host's reached
+   * cap), or `null` for none. Presentational: the host announces it.
+   * @internal
+   */
+  readonly ɵnotice = input<string | null>(null);
+  /**
+   * Emit mode: an explicit list pick landed on a chosen row — the host
+   * removes that id.
+   * @internal
+   */
+  readonly ɵdeselect = output<Id>();
+  /**
+   * Emit mode: the advanced-search page closed with the whole selection it
+   * edited — the host replaces its ids with these.
+   * @internal
+   */
+  readonly ɵmultiPick = output<TmEntityMultiPick<Id, T>>();
+
   /** Accessible name for a picker used WITHOUT tm-form-field. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
   /**
@@ -552,7 +623,13 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    */
   private editedSinceFocus = false;
   /** The picker-launched modal currently open, if any (destroy closes it). */
-  private openModal: TmModalRef<TmEntityPick<Id, T> | null> | null = null;
+  private openModal: TmModalRef<PageOutcome<Id, T>> | null = null;
+  /**
+   * Whether the next browse result set lands without its count announcement:
+   * set by an emit-mode commit that keeps the panel open, whose host
+   * announces the pick itself — a count read over it would bury the news.
+   */
+  private quietBrowse = false;
 
   // ---- Search lifecycle state ----
   /** The dropdown's search state machine. */
@@ -679,9 +756,12 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * cell's editor host. Falls back to this bare host standalone.
    */
   private originElement(): HTMLElement {
+    // `data-tm-field-box` marks a host control that draws the field's box
+    // around this picker itself (a standalone multi-picker).
     return (
-      this.hostElement.closest<HTMLElement>('.tm-form-field__box, [data-tm-editor]') ??
-      this.hostElement
+      this.hostElement.closest<HTMLElement>(
+        '.tm-form-field__box, [data-tm-editor], [data-tm-field-box]',
+      ) ?? this.hostElement
     );
   }
 
@@ -722,6 +802,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * descriptions replace one another.
    */
   protected readonly twoLine = computed(() => this.itemDescription() !== undefined);
+  /** Whether commits emit rather than write the value (see `ɵcommitMode`). */
+  protected readonly emits = computed(() => this.ɵcommitMode() === 'emit');
+  /** The host's status line under the rows (see `ɵnotice`); templates cannot read `ɵ` names. */
+  protected readonly noticeText = computed(() => this.ɵnotice());
   /** The entity rows currently rendered (empty outside the results state). */
   protected readonly resultItems: Signal<readonly T[]> = computed(() => {
     const state = this.searchState();
@@ -1003,22 +1087,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     });
 
     // Effect 5: the ONE-DIRECTIONAL value bridge — mirror the committed id
-    // into aria's listbox, re-applied whenever the option set changes.
-    // Defeats aria's unmatched-value auto-prune AND corrects any selection
-    // the bare listbox toggles on its own (a press on a footer row) before
-    // paint; commits ride activation only (see the mouse-bug guard around
-    // angular/components#32504).
+    // (in emit mode, the host's chosen ids) into aria's listbox, re-applied
+    // whenever the option set changes. Defeats aria's unmatched-value
+    // auto-prune AND corrects any selection the bare listbox toggles on its
+    // own (a press on a footer row, or on a row the host then refuses)
+    // before paint; commits ride activation only (see the mouse-bug guard
+    // around angular/components#32504).
     effect(() => {
-      const id = this.value();
-      // A cleared field ticks nothing: the model still holds the old id
-      // until the commit gesture, but the box no longer names it.
-      const names = this.namesEntity();
       this.resultItems(); // re-apply on option turnover
       this.footerRows(); // …including footer-row turnover
       const current = this.listboxValue();
-      const desired: unknown[] = id === null || !names ? [] : [id];
-      if (current.length !== desired.length || current[0] !== desired[0]) {
-        this.listboxValue.set(desired);
+      const desired = this.listboxSelection();
+      if (current.length !== desired.length || current.some((key, i) => key !== desired[i])) {
+        this.listboxValue.set([...desired]);
       }
     });
 
@@ -1173,7 +1254,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (memoized !== undefined) {
       return memoized;
     }
-    if (isDevMode() && !this.warnedMissingDisplay) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && !this.warnedMissingDisplay) {
       this.warnedMissingDisplay = true;
       console.warn(
         `tm-entity-picker: no display text for committed id "${String(id)}" — ` +
@@ -1182,6 +1263,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       );
     }
     return String(id);
+  }
+
+  /**
+   * The keys aria's listbox should hold selected: the host's chosen ids in
+   * emit mode; otherwise the committed id while the field names it (a
+   * cleared field ticks nothing — the model still holds the old id until
+   * the commit gesture, but the box no longer names it).
+   */
+  private listboxSelection(): readonly unknown[] {
+    if (this.emits()) {
+      return this.ɵchosenIds();
+    }
+    const id = this.value();
+    return id === null || !this.namesEntity() ? [] : [id];
   }
 
   /** The entity id of a search result (template + track helper). */
@@ -1226,7 +1321,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // separator) would show and name one thing and commit another.
     const label = this.labelOf(item);
     if (parts.join(' - ') !== label) {
-      if (isDevMode() && !this.warnedLabelPartsDrift) {
+      if (typeof ngDevMode !== 'undefined' && ngDevMode && !this.warnedLabelPartsDrift) {
         this.warnedLabelPartsDrift = true;
         console.warn(
           `tm-entity-picker: itemLabelParts do not join (" - ") to itemLabel "${label}"; ` +
@@ -1348,17 +1443,26 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * the id through the pin, and emits `picked` LAST — a host may treat the
    * pick as a finished edit and tear this control down, so nothing may
    * touch instance state after the emits.
+   *
+   * In emit mode the value is not written: the input returns to empty and
+   * pristine (the popup staying open on the browse list when `keepOpen`),
+   * and `picked` hands the pick to the host.
    */
   private applyPick(
     id: Id,
     label: string,
     item: T | undefined,
     source: TmEntityPicked<T, Id>['source'],
-    opts?: { readonly suppressCellActivate?: boolean },
+    opts?: { readonly suppressCellActivate?: boolean; readonly keepOpen?: boolean },
   ): void {
     this.memo.set(id, label);
     this.resolutionFailure.set(null);
     this.resolving.set(false);
+    if (untracked(this.emits)) {
+      this.resetForNextPick(opts?.keepOpen === true);
+      this.picked.emit({ id, label, item, source });
+      return;
+    }
     // Same rule as `displayFor`: `null` AND the empty string defer to the
     // label the pick itself carries.
     const resolved = untracked(() => this.displayWith()?.(id) ?? null);
@@ -1370,6 +1474,29 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (emitActivate) {
       this.ɵcellActivate.emit();
     }
+  }
+
+  /**
+   * Emit mode's post-commit step: the value stays `null`, the text returns
+   * to empty and pristine, and the answer settled for the old text is
+   * retired. With `keepOpen` (a list pick or an Enter commit, focus still in
+   * the input) the popup stays open on the browse list — the rows already
+   * on screen when they ARE the browse list, highlight included, so the
+   * next pick is one key away; otherwise the popup closes.
+   */
+  private resetForNextPick(keepOpen: boolean): void {
+    this.settledResult = null;
+    this.setCanonicalText('', null);
+    if (!keepOpen) {
+      this.setExpanded(false);
+      return;
+    }
+    const state = untracked(this.searchState);
+    if (state.kind === 'results' && state.query === '') {
+      return;
+    }
+    this.quietBrowse = true;
+    this.queueSearch('');
   }
 
   // ---- The search lifecycle ----
@@ -1512,7 +1639,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /** Renders a fresh result set and schedules the highlight protocol. */
   private applyResults(query: string, result: NormalizedResult<T>): void {
     const items = result.items; // already de-duplicated by `normalizeResult`
-    if (isDevMode() && items.length > 200) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && items.length > 200) {
       console.warn(
         `tm-entity-picker: the search returned ${items.length} results — the search ` +
           `contract expects the implementation to impose a result limit (the dropdown ` +
@@ -1520,15 +1647,23 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       );
     }
     this.rememberResult(query, { items, hasMore: result.hasMore });
+    // The browse list an emit-mode commit re-opens on lands quietly (see
+    // `quietBrowse`); any other set is announced.
+    const quiet = this.quietBrowse && query === '';
+    this.quietBrowse = false;
     if (items.length === 0) {
       this.searchState.set({ kind: 'empty', query });
-      this.announceKey('entityPicker.announce.noResults');
+      if (!quiet) {
+        this.announceKey('entityPicker.announce.noResults');
+      }
     } else {
       this.searchState.set({ kind: 'results', query, items, hasMore: result.hasMore });
-      this.announceKey(
-        result.hasMore ? 'entityPicker.announce.resultsMore' : 'entityPicker.announce.results',
-        { count: items.length },
-      );
+      if (!quiet) {
+        this.announceKey(
+          result.hasMore ? 'entityPicker.announce.resultsMore' : 'entityPicker.announce.results',
+          { count: items.length },
+        );
+      }
     }
     // The highlight protocol: a typed (non-pristine) query auto-highlights
     // the FIRST result so type-then-Enter is the zero-arrow happy path; a
@@ -1682,6 +1817,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.inFlight = null;
     }
     this.searchState.set({ kind: 'idle' });
+    this.quietBrowse = false;
     // A request left over from this open must not re-apply against the
     // NEXT open's fresh listbox (it would auto-highlight whatever renders
     // first — footer rows included — before the browse results arrive).
@@ -1794,12 +1930,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (outcome.items.length === 1 && !outcome.hasMore) {
       const item = outcome.items[0];
       this.resolving.set(false);
+      // In emit mode an Enter commit keeps the popup open for the next pick
+      // (unless the user closed it while the answer was on its way), and
+      // the host announces the pick: nothing is left to do here.
       this.applyPick(
         untracked(this.itemId)(item),
         untracked(this.itemLabel)(item),
         item,
         'auto',
+        { keepOpen: this.popupOwnsStatus(keepPopup) },
       );
+      if (untracked(this.emits)) {
+        return;
+      }
       if (keepPopup) {
         this.setExpanded(false); // the Enter path: a pick closes the popup
       } else {
@@ -2028,6 +2171,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.setExpanded(true);
     }
     this.editedSinceFocus = true;
+    this.quietBrowse = false; // the user's own query is announced
     this.authoredText = null; // whatever is on screen is the user's now
     this.settledResult = null; // …and the stored answer described the old text
     this.supersedeResolution(); // editing resumes ownership from any pending resolution
@@ -2265,11 +2409,30 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       const item = untracked(this.resultItems).find(
         (i) => untracked(this.itemId)(i) === key,
       );
-      if (item !== undefined) {
-        this.focus();
-        this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list');
-        this.setExpanded(false);
+      if (item === undefined) {
+        return;
       }
+      this.focus();
+      if (untracked(this.emits)) {
+        // An explicit list pick toggles: a chosen row comes off, any other
+        // row goes on. Either way the popup stays open for the next pick.
+        if (untracked(this.ɵchosenIds).includes(key as Id)) {
+          this.resolutionFailure.set(null);
+          this.resetForNextPick(true);
+          // The browse rows stay, but not the highlight on the row just
+          // taken off: Tab commits a highlighted row, and would put it
+          // straight back.
+          this.clearHighlight();
+          this.ɵdeselect.emit(key as Id);
+          return;
+        }
+        this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list', {
+          keepOpen: true,
+        });
+        return;
+      }
+      this.applyPick(key as Id, untracked(this.itemLabel)(item), item, 'list');
+      this.setExpanded(false);
       return;
     }
     if (!enterFallbacks || this.cellHost !== null) {
@@ -2375,11 +2538,22 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       context?: unknown;
     } = typeof page === 'function' ? { component: page } : page;
     const text = this.currentText();
+    // Advanced search from an emit-mode host edits the host's whole
+    // selection: it opens on the chosen ids and the host's cap.
+    const multiple = source === 'advanced' && untracked(this.emits);
+    const maxItems = untracked(this.ɵmaxItems);
     const data: TmEntityPickerPageData<Id> = {
       // Pristine text is a browse intent, not a query — a create page must
       // not prefill the OLD entity's label as the new entity's name.
       query: this.isBrowseText(text) ? '' : text,
       ...(source === 'edit' ? { id: untracked(this.value) ?? undefined } : {}),
+      ...(multiple
+        ? {
+            multiple: true as const,
+            ids: [...untracked(this.ɵchosenIds)],
+            ...(maxItems !== undefined ? { maxItems } : {}),
+          }
+        : {}),
       // The page's context rides through unread (spec 0010 §E.3); the bare
       // class form, and a config without one, pass none at all.
       ...(config.context !== undefined ? { context: config.context } : {}),
@@ -2410,9 +2584,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     // would retire this control's departure handling for good — no touch
     // reporting, no empty commit, no blur resolution, and a reformat effect
     // stuck standing down for a field it still believes is focused.
-    let result: Awaited<TmModalRef<TmEntityPick<Id, T> | null>['closed']>;
+    let result: Awaited<TmModalRef<PageOutcome<Id, T>>['closed']>;
     try {
-      const ref = this.modal.open<TmEntityPick<Id, T> | null>(config.component, {
+      const ref = this.modal.open<PageOutcome<Id, T>>(config.component, {
         size,
         title: config.title ?? untracked(this.translate(titleKey)),
         data,
@@ -2446,6 +2620,19 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       }
       return;
     }
+    if (isMultiPick(pick)) {
+      // A whole selection is the emit-mode host's to apply; it is not a pick
+      // this control could commit as its one value.
+      if (untracked(this.emits)) {
+        this.settledResult = null;
+        this.setCanonicalText('', null);
+        this.ɵmultiPick.emit(pick);
+        this.focus();
+      }
+      return;
+    }
+    // A single pick from a page that does not edit whole selections adds,
+    // in emit mode, like any other pick.
     this.applyPick(pick.id, pick.label, pick.item, source);
     this.focus();
   }
@@ -2456,7 +2643,16 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (!untracked(this.expanded) && !key.endsWith('.picked')) {
       return; // count/failure announcements belong to the open popup only
     }
-    const message = untracked(this.translate(key, params));
+    this.ɵannounce(untracked(this.translate(key, params)));
+  }
+
+  /**
+   * Announces a message through the polite live region, whatever the
+   * popup's state; an identical repeat is cleared first so it is read
+   * again. The multi-picker announces its additions and removals here.
+   * @internal
+   */
+  ɵannounce(message: string): void {
     if (untracked(this.liveText) === message) {
       // Re-announce an identical message: clear first, restore a beat later
       // (an unchanged live region announces nothing).

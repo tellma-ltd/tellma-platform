@@ -55,6 +55,26 @@ export interface TmEntityPick<Id extends TmEntityId = TmEntityId, T = unknown> {
 }
 
 /**
+ * What a page opened from a multi-picker (`multiple` in its
+ * {@link TmEntityPickerPageData}) closes with: the whole selection it
+ * edited, which replaces the picker's value. Closing with no result leaves
+ * the value as it was.
+ */
+export interface TmEntityMultiPick<Id extends TmEntityId = TmEntityId, T = unknown> {
+  /**
+   * The whole selection: the ids the page kept, in the picker's order, then
+   * the ones it added. An empty list clears the selection.
+   */
+  readonly ids: readonly Id[];
+  /**
+   * Label memos for the rows the page showed — they seed the chip labels
+   * where `displayWith` has none. An id with no pick here keeps the label
+   * the picker already knew.
+   */
+  readonly picks: readonly TmEntityPick<Id, T>[];
+}
+
+/**
  * A consumer page the picker launches in a modal: the component class alone,
  * or a config object adding a size bucket, a title and a context (defaults:
  * size `lg` for advanced search, `md` for create and edit; localized default
