@@ -503,6 +503,9 @@
   <data name="Notification_core_dashboard_shared" xml:space="preserve">
     <value>{actorName} shared the dashboard {title} with you</value>
   </data>
+  <data name="Notification_core_user_added" xml:space="preserve">
+    <value>{actorName} added you to {tenantName}</value>
+  </data>
   <data name="Core_Report_Synonyms" xml:space="preserve">
     <value>report, analysis, list, summary, pivot, chart</value>
   </data>

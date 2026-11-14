@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
@@ -19,6 +20,7 @@ using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
+using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
@@ -98,6 +100,10 @@ namespace Tellma.Core.Composition
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
 
+            // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
+            // Its options and named HTTP client are registered with the platform's options.
+            _ = contribution.Singleton<IIdentityServerClient, IdentityServerClient>();
+
             // --- Access: the securable registry, its client metadata section, and Core's own securables ---
             // spec 0014 §1.2, §4.2. The user stamps are a query root of their own, reached through
             // the caller's grants on the users along the stamp's User navigation. core.User × Read,
@@ -133,11 +139,21 @@ namespace Tellma.Core.Composition
             // --- Blobs: the table every blob reference resolves to; never a stack ---
             _ = contribution.Model<BlobConfiguration>();
 
-            // --- Notifications: the registries, the client metadata and the catalogue Core owns ---
-            // spec 0021 §11. Each type is declared by the feature code that raises it; core.user.added
-            // is the one this contribution declares for the users' invitation. The two baseline
-            // channels and the two client events the notifications and the hub publish come first.
+            // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
+            // spec 0021 §11. Notification is an entity without a service until its stack lands; the
+            // preferences are a platform table, never a stack. Each type is declared by the feature
+            // code that raises it; core.user.added is the one this contribution declares for the
+            // users' invitation. The two baseline channels and the two client events the
+            // notifications and the hub publish come first.
             _ = contribution
+                .Entity<Notification>()
+                .Model<NotificationConfiguration>()
+                .Model<NotificationPreferenceRowConfiguration>()
+                .TableType<NotificationRowList>()
+                .TableType<NotificationSliceList>()
+                .TableType<NotificationPreferenceList>()
+                .Scoped<INotifier, Notifier>()
+                .Scoped<INotificationRenderer, NotificationRenderer>()
                 .Singleton<INotificationTypeRegistry, NotificationTypeRegistry>()
                 .Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()
                 .Singleton<IClientEventRegistry, ClientEventRegistry>()

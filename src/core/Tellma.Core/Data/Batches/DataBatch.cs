@@ -201,6 +201,13 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The appended statements, in append order.</summary>
         internal IReadOnlyList<BatchStatement> Statements => _statements;
 
+        /// <summary>
+        ///     How many parameters the batch declares so far, the schema fingerprint included: what a
+        ///     caller appending several statements measures against <see cref="BatchAssembly.MaxParameters" />
+        ///     before appending the first, so a call that would overflow the cap leaves the batch as it was.
+        /// </summary>
+        internal int ParameterCount => _parameterNames.Count;
+
         /// <summary>Whether the batch carries the connect prologue, and so the guard wrapper.</summary>
         internal bool CarriesConnectPrologue => Premises is not null;
 

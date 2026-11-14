@@ -38,7 +38,7 @@ import { TmDateRange } from '@tellma/core-ui/date-range';
 import { TmDateTimeField, TmTimeField } from '@tellma/core-ui/date-time';
 import { TmDescriptionList } from '@tellma/core-ui/description-list';
 import { TmDragSource, TmDropTarget, type TmDragPayload } from '@tellma/core-ui/drag-drop';
-import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
+import { TmEntityMultiPicker, TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
@@ -99,6 +99,7 @@ import * as dateTimeFieldExamples from './date-time/tm-date-time-field.examples'
 import * as timeFieldExamples from './date-time/tm-time-field.examples';
 import * as descriptionListExamples from './description-list/tm-description-list.examples';
 import * as dragDropExamples from './drag-drop/tm-drag-drop.examples';
+import * as entityMultiPickerExamples from './entity-picker/tm-entity-multi-picker.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
 import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
@@ -214,6 +215,7 @@ class ExamplePage {}
     TmDropTarget,
     TmDropzone,
     TmEmptyState,
+    TmEntityMultiPicker,
     TmEntityPicker,
     TmFilePicker,
     TmFormField,
@@ -290,6 +292,12 @@ class ExamplePage {}
     /></tm-segmented>
     <tm-switch>placeholder</tm-switch>
     <tm-entity-picker
+      [search]="searchAgents"
+      [itemId]="agentId"
+      [itemLabel]="agentName"
+      aria-label="placeholder"
+    />
+    <tm-entity-multi-picker
       [search]="searchAgents"
       [itemId]="agentId"
       [itemLabel]="agentName"
@@ -416,6 +424,8 @@ class ExampleHost {
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+  // The remembered-expansion example's two-way expanded set.
+  protected readonly treeExpandedIds = signal<ReadonlySet<number | string>>(new Set([1]));
   // The chip and banner examples' event handlers.
   protected readonly onRemove = (label: string): void => void label;
   protected readonly onActivate = (key: string): void => void key;
@@ -832,6 +842,10 @@ const SUITES = [
   { source: 'search-field/tm-search.examples.ts', examples: searchExamples },
   { source: 'search-field/tm-search-field.examples.ts', examples: searchFieldExamples },
   { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
+  {
+    source: 'entity-picker/tm-entity-multi-picker.examples.ts',
+    examples: entityMultiPickerExamples,
+  },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'image/tm-image.examples.ts', examples: imageExamples },

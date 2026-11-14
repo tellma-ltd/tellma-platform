@@ -300,9 +300,12 @@ namespace Tellma.Core.Jobs
                     $"The job '{request.HandlerKey}' names no user to run as, and the scope has no user to default to. Name the user in the request's RunAsUserId.");
         }
 
-        /// <summary>The enqueuing activity's W3C trace parent; null when there is none.</summary>
+        /// <summary>
+        ///     The enqueuing activity's W3C trace parent; null when there is none. Every statement that
+        ///     inserts jobs copies it, so a job's spans link to the operation that enqueued it.
+        /// </summary>
         /// <returns>The trace parent.</returns>
-        private static string? TraceParent()
+        internal static string? TraceParent()
         {
             // Only a W3C id is a traceparent; a hierarchical one would link nothing (spec 0020 §4.3).
             return Activity.Current is { IdFormat: ActivityIdFormat.W3C, Id: string id } && id.Length <= JobConfiguration.TraceParentLength ? id : null;

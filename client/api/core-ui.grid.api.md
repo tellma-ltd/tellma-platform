@@ -72,6 +72,12 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     readonly rowEndHeaderDef: Signal<TmGridRowEndHeaderDef | undefined>;
     readonly rowHeaders: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly rowId: _angular_core.InputSignal<(row: T) => TmRowId>;
+    scrollToRow(rowId: TmRowId, options?: {
+        flash?: boolean;
+        activate?: boolean;
+        align?: 'center' | 'nearest';
+        column?: string;
+    }): boolean;
     readonly searchable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly selectable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly selectedIds: _angular_core.ModelSignal<ReadonlySet<number | string>>;

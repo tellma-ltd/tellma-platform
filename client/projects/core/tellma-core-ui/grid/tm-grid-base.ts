@@ -70,8 +70,14 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
   readonly gridId = input.required<string>();
   /**
    * Identity of the bound content (an invoice id, …). Scroll, selection,
-   * and undo state are remembered per `gridId` + `contentKey`; a different
-   * key starts fresh at the origin.
+   * and undo state (and a tree's expansion) are remembered per `gridId` +
+   * `contentKey`; a different key starts fresh at the origin.
+   *
+   * A new key comes with its own rows array: change `contentKey` together
+   * with the bound rows, never over the same array. In a tree, the
+   * remembered rows whose children load lazily load them only once a new
+   * rows array arrives after the key changes; until then they show
+   * expanded, with no children and no spinner.
    */
   readonly contentKey = input<string | number | undefined>(undefined);
   /** The readonly rows binding. Exactly one of `data`/`field` must be bound. */
@@ -370,5 +376,32 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    */
   activateRow(rowId?: TmRowId, options?: { newTab?: boolean }): boolean {
     return this.core.activateRow(rowId, 'keyboard', options?.newTab === true);
+  }
+
+  /**
+   * Brings a row into view. A tree grid expands the row's ancestors first
+   * (remembered like a user expand; with `expansionSource="model"` they
+   * join `expandedIds`, which emits). Returns `false` when the row is not
+   * in the data — a lazy row whose parent has not loaded it yet included.
+   *
+   * Never moves focus into the grid. By default the active cell moves to
+   * the row (`activate: false` leaves it), in the column with key `column`
+   * or else the current one; an unknown key keeps the current column and
+   * warns in dev mode. `align` places the row in the middle of the view
+   * (`'center'`, the default) or just inside its nearest edge
+   * (`'nearest'`). `flash` pulses the row's cells once with
+   * `--grid-flash-bg` for `--grid-flash-duration`: a still tint for the same
+   * time under reduced motion, an outline under forced colors.
+   */
+  scrollToRow(
+    rowId: TmRowId,
+    options?: {
+      flash?: boolean;
+      activate?: boolean;
+      align?: 'nearest' | 'center';
+      column?: string;
+    },
+  ): boolean {
+    return this.core.scrollToRow(rowId, options ?? {});
   }
 }

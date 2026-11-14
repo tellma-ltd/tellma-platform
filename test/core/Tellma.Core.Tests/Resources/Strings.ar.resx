@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The Arabic notification texts the renderer tests render; the other types fall back to English. -->
+  <data name="Notification_acme_order_shipped" xml:space="preserve">
+    <value>شُحن الطلب {number} إلى {customer} في {shippedAt, date}</value>
+  </data>
+  <data name="Notification_acme_order_shipped_Detail" xml:space="preserve">
+    <value>{boxes, plural, one {صندوق واحد} other {# صناديق}}، {express, select, true {سريع} other {عادي}}</value>
+  </data>
+</root>

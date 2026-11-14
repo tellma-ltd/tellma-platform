@@ -1,0 +1,137 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-entity-multi-picker — one line, at the field's fixed height: the chips
+   (scrolling sideways), the count badge, then the search input. Inside a
+   tm-form-field the field draws the bordered box (ownsChrome: false);
+   standalone the host draws the same box itself. Every size rides a token
+   and every property is logical, so RTL mirrors for free. */
+
+:host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* The chips give way first: they shrink (and scroll) down to nothing
+   before the input drops below its floor. */
+.tm-entity-multi-picker__chips {
+  flex: 0 1 auto;
+}
+
+/* Nothing chosen: the set leaves the line and the accessibility tree, but
+   stays mounted so it can hand focus back when its last chip goes. */
+.tm-entity-multi-picker__chips--empty {
+  display: none;
+}
+
+/* The count badge: the visible count and its widest form share one cell,
+   so the badge's width never changes with the count. */
+.tm-entity-multi-picker__count {
+  display: inline-grid;
+  flex: none;
+}
+
+.tm-entity-multi-picker__count-value,
+.tm-entity-multi-picker__count-probe {
+  grid-area: 1 / 1;
+  justify-self: center;
+}
+
+.tm-entity-multi-picker__count-probe {
+  visibility: hidden;
+}
+
+/* The input keeps a floor wide enough to type into, however many chips
+   there are. */
+.tm-entity-multi-picker__search {
+  flex: 1 1 0;
+  min-inline-size: var(--space-20);
+}
+
+/* Standalone: the field's box, drawn by the host — the size ladder's
+   fixed height, the field border, the field's focus glow and invalid
+   border, as tm-form-field draws them. */
+:host(.tm-entity-multi-picker--standalone) {
+  --tm-field-block-size: var(--field-height);
+  --tm-field-padding-x: var(--field-padding-x);
+  --tm-field-font-size: var(--field-font-size);
+  --tm-field-option-height: var(--field-option-height);
+
+  box-sizing: border-box;
+  block-size: var(--tm-field-block-size);
+  padding-inline: var(--tm-field-padding-x);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+:host(.tm-entity-multi-picker--standalone[data-size='sm']) {
+  --tm-field-block-size: var(--field-height-sm);
+  --tm-field-padding-x: var(--field-padding-xsm);
+  --tm-field-font-size: var(--field-font-size-sm);
+  --tm-field-option-height: var(--field-option-height-sm);
+}
+
+:host(.tm-entity-multi-picker--standalone[data-size='lg']) {
+  --tm-field-block-size: var(--field-height-lg);
+  --tm-field-padding-x: var(--field-padding-xlg);
+  --tm-field-font-size: var(--field-font-size-lg);
+  --tm-field-option-height: var(--field-option-height-lg);
+}
+
+:host(.tm-entity-multi-picker--standalone:hover) {
+  border-color: var(--field-border-hover);
+}
+
+/* A transparent real outline under the glow, as on the field: forced
+   colours strip the glow and repaint the outline. */
+:host(.tm-entity-multi-picker--standalone:focus-within) {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+:host(.tm-entity-multi-picker--standalone.tm-entity-multi-picker--invalid) {
+  border-color: var(--field-border-invalid);
+}
+
+:host(.tm-entity-multi-picker--standalone.tm-entity-multi-picker--invalid:focus-within) {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
+:host(.tm-entity-multi-picker--standalone.tm-entity-multi-picker--disabled) {
+  background: var(--field-bg-disabled);
+  color: var(--field-text-disabled);
+}
+
+:host(.tm-entity-multi-picker--standalone.tm-entity-multi-picker--readonly) {
+  background: var(--field-bg-filled);
+  border-color: var(--border-subtle);
+}
+
+@media (forced-colors: active) {
+  :host(.tm-entity-multi-picker--standalone) {
+    border-color: FieldText;
+  }
+}
+
+/* The standalone box's border and glow change at once under reduced
+   motion. */
+@media (prefers-reduced-motion: reduce) {
+  :host(.tm-entity-multi-picker--standalone) {
+    transition: none;
+  }
+}

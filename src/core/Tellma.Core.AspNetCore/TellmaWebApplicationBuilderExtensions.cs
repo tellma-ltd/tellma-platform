@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
@@ -120,6 +121,17 @@ namespace Tellma.Core.AspNetCore
             // --- Sessions: the catalog-backed store, refresh, the sweep, and the termination listeners ---
             var secrets = IdentityClientSecrets.From(configuration, environment);
             _ = services.AddSingleton(secrets);
+
+            // The identity-server client authenticates as the service client with the secret this host
+            // resolved, so in in-proc Development it uses the one generated for the boot, which the
+            // engine's seed registers.
+            _ = services.AddOptions<IdentityServerClientOptions>().PostConfigure(options =>
+            {
+                if (string.IsNullOrWhiteSpace(options.ServiceClientSecret))
+                {
+                    options.ServiceClientSecret = secrets.ServiceClientSecret;
+                }
+            });
             _ = services.AddSingleton(SessionCookieSecurity.From(configuration));
             _ = services.AddSingleton<ISessionRows, SqlSessionRows>();
             _ = services.AddSingleton<SessionTerminationNotifier>();
