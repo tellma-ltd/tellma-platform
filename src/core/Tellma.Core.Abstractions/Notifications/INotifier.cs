@@ -44,7 +44,8 @@ namespace Tellma.Core.Abstractions.Notifications
         /// <summary>
         ///     Raises the requests in a persist batch of their own on the current scope's tenant
         ///     database, for a caller with no batch in flight, such as a hosted service or a post-commit
-        ///     effect.
+        ///     effect. A call whose requests append nothing, such as one whose recipient lists are
+        ///     all empty, sends nothing.
         /// </summary>
         /// <param name="requests">The requests.</param>
         /// <param name="cancellationToken">Cancels the call before the batch is sent.</param>
@@ -63,7 +64,11 @@ namespace Tellma.Core.Abstractions.Notifications
         /// <exception cref="InvalidOperationException">A request breaks a rule.</exception>
         void Withdraw(IDataBatch batch, IReadOnlyList<WithdrawRequest> requests);
 
-        /// <summary>Withdraws in a persist batch of its own on the current scope's tenant database, as <see cref="NotifyAsync" /> raises.</summary>
+        /// <summary>
+        ///     Withdraws in a persist batch of its own on the current scope's tenant database, as
+        ///     <see cref="NotifyAsync" /> raises; a call whose withdrawals all name empty recipient
+        ///     lists sends nothing.
+        /// </summary>
         /// <param name="requests">The requests.</param>
         /// <param name="cancellationToken">Cancels the call before the batch is sent.</param>
         /// <returns>A task that completes once the batch committed.</returns>

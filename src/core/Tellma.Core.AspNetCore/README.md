@@ -32,8 +32,12 @@ feature or entity added there would diverge the web host's model from the migrat
   distribution endpoint under it;
 - the session store, the token refresh, the session sweep and the membership reconciliation (see
   [Sessions](#sessions));
-- the `host.identity` check: the distribution's client secret, and in-proc outside Development the
-  service client's secret and an `IEmailSender`;
+- the `host.identity` check: the distribution's client secret, and in-proc an `IEmailSender` (the
+  service client's secret is the identity-server client's option, which `core.options` judges in
+  every host);
+- the identity-server client's service secret, when none is configured, from the secret the host
+  resolved for its boot, so in in-proc Development the client authenticates with the one the engine
+  seeds;
 - with `Tellma:Identity:Mode = InProc`, the identity engine (`Tellma.Identity`, which the web host
   references), configured from the `TellmaIdentity` section overlaid with what the distribution
   dictates: the `/id` path base, the issuer, the catalog as its store, and the distribution's own
