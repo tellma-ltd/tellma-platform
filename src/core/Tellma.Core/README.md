@@ -213,7 +213,13 @@ prefixes and `[RelatedSelect]` projections render; unique and natural keys sit o
 that is not JSON or binary, natural keys on a key-list type; navigation names collide with nothing;
 blob references are `int?` with a valid kind declared once; enums are stored by name in a sized
 `varchar`; one ownership per property, never on a parent key or a computed column; column
-annotations decorate mapped properties of the right type.
+annotations decorate mapped properties of the right type; and no mapped type, entity or not, holds
+a shadow property the platform does not declare. The declared ones are the period columns
+`ValidFrom`/`ValidTo` of a temporal entity, the `Node` of a tree, and the model-only columns of
+`core.Jobs` (`StateJson`, `LeaseToken`, `ConfirmedKeys`) and `core.Blobs` (`StorageKey`,
+`Sha256`), which the query language withholds like the period columns. Any other is refused, naming the column: above all
+the shadow foreign key EF Core adds for a navigation without a foreign-key property, since an
+entity carries foreign keys and never navigations.
 
 ### The table-type binder
 
