@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-078 (2026-11-14): the tellma-core-tools shim-test timeout does not block an integration
+
+- Ruling: while CI stays green, an integrator's local lint:test failure caused only by `tellma-core-tools/src/common/common.spec.ts` "starts a package manager's shim … and fails a missing program" timing out at about 5 s does not block a push, provided the file passes when run alone. PC-F29 is raised to medium and takes the next free fix slot. If the test fails in CI, it becomes a stop-the-line item as usual.
+- Why: the test spawns a real pnpm shim and exceeds its 5 s limit only when parallel slots load the machine. PC-030's change touches no tools code, and holding integrations on a known local timing flake would stall the line for nothing.
+- For Ahmad: none.
+
 ### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows
 
 - Ruling: keep PC-054's R1-8 deferral. A contentKey change runs the remembered lazy rows' loads only when a new rows array arrives (array identity), so a switch never loads children for the outgoing content's rows. The contentKey TSDoc states the contract: a new contentKey comes with its own rows array. Until that array arrives, remembered lazy rows show expanded with no children and no spinner.
