@@ -101,11 +101,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-031 | pc-3 | pc/PC-031 | integrated 5bb33a0 (merge of 2b60476, no conflicts, no client delta; build + format green); CI pending | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-063 | pc-2 | pc/PC-063 | fix1 + merge (held) (R1 0/1/7: list all integration suites; XML spec cites; $→\z; non-leaf component attach; self-referential securables check; unlisted deviations; remedy text; §2.6 fixtures. No R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-046 | pc-1 | pc/PC-046 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 | PC-056 | pc-4 | pc/PC-056 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
-| PC-040 | pc-f2 | pc/PC-040 | integrated 2b60476 (merge 4be918e4 of c4acf1f7, no conflicts; analyzers clean on PC-099/PC-055 code, suppression counts unchanged; all gates + integration green); CI pending | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-F39 | pc-f2 | pc/PC-F39 | integrate (released 2026-11-14 after PC-031 push; re-merge 5bb33a0) | fix (Opus, high) | | 2026-11-14 |
 | PC-F41 | pc-f | pc/PC-F41 | impl | fix (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 
@@ -279,7 +277,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
 | PC-030 | 0023-e | 1 | done (integrated 6f87f63; its e2e flake fixed by PC-F35 at 8b39d28, whose client CI is green) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
-| PC-031 | 0023-f | 1 | integrated 5bb33a0 (CI pending) | 646fde1, 2aa76e1, a2a651d, 5bb33a0 (pc/PC-031) | | |
+| PC-031 | 0023-f | 1 | done (CI 43635004461) | 646fde1, 2aa76e1, a2a651d, 5bb33a0 (pc/PC-031) | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
@@ -288,7 +286,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-037 | 0012-e | 1 | done (integrated 620e2c9, CI 43438810750 green) | 79c94a2, 30c3508, e09c4db, 0b683ab, 491773d, 63479b9, 620e2c9 (pc) |  |  |
 | PC-038 | 0013-d | 1 | done (integrated c18780c, CI 43391353328 green) | 57575e0, b3ac84e, ac5c5b6, 9e82c32, c18780c (pc) |  |  |
 | PC-039 | 0014-b | 1 | done (integrated db62c09, CI 43447738414 green) | be9c828, 8447934, bcb367c, c251cc7, 609ee5e, db62c09 (pc) |  |  |
-| PC-040 | 0012-g | 1 | integrated 2b60476 (CI pending) | 30dda44, 3abcebe, 355e82d, 4be918e, 2b60476 (pc/PC-040) | | |
+| PC-040 | 0012-g | 1 | done (CI 43633786930) | 30dda44, 3abcebe, 355e82d, 4be918e, 2b60476 (pc/PC-040) | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | done 8c086c4 (CI green at 362aabc after PC-F32; the red run on 8c086c4 was PC-F32's client flake) | 1ee46fa, 0af47f3, 8633134, 8c086c4 (pc) |  |  |
