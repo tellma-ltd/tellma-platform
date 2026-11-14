@@ -40,6 +40,10 @@ namespace Tellma.Core.Analyzers.Tests
             { KnownNames.CrudNamespace, KnownNames.StackAttribute, typeof(StackAttribute) },
             { KnownNames.CrudNamespace, KnownNames.ApiActionAttribute, typeof(ApiActionAttribute) },
             { KnownNames.CrudNamespace, KnownNames.EntityActionAttribute, typeof(EntityActionAttribute) },
+            { KnownNames.CrudNamespace, KnownNames.EntityService, typeof(EntityService<,>) },
+            { KnownNames.CrudNamespace, KnownNames.EntityServiceExtensions, typeof(EntityServiceExtensions) },
+            { KnownNames.CrudNamespace, KnownNames.EntityValidator, typeof(IEntityValidator<>) },
+            { KnownNames.CrudNamespace, KnownNames.PersistEffect, typeof(IPersistEffect<>) },
             { KnownNames.RuntimeDataNamespace, KnownNames.TellmaDbContext, typeof(TellmaDbContext) },
             { KnownNames.EfNamespace, KnownNames.DbContext, typeof(DbContext) },
             { KnownNames.EfNamespace, KnownNames.DbSet, typeof(DbSet<>) },
@@ -49,15 +53,6 @@ namespace Tellma.Core.Analyzers.Tests
             { KnownNames.SchemaNamespace, KnownNames.TableAttribute, typeof(TableAttribute) },
             { KnownNames.SchemaNamespace, KnownNames.NotMappedAttribute, typeof(NotMappedAttribute) },
         };
-
-        /// <summary>
-        ///     The service pipeline's contract types the suite and the analyzer probes declare as
-        ///     stand-ins, by metadata name, until the contract ships them.
-        /// </summary>
-        public static TheoryData<string> StubbedPipelineTypes =>
-        [
-            KnownNames.EntityService, "EntityService`1", KnownNames.EntityServiceExtensions, KnownNames.EntityValidator, KnownNames.PersistEffect,
-        ];
 
         /// <summary>Names a reserved-name rule must agree on, either way.</summary>
         public static TheoryData<string> Names =>
@@ -77,21 +72,6 @@ namespace Tellma.Core.Analyzers.Tests
         public void A_matched_name_is_the_real_types(string ns, string metadataName, Type type)
         {
             Assert.Equal((type.Namespace, type.Name), (ns, metadataName));
-        }
-
-        /// <summary>
-        ///     A stand-in fails here as soon as the real type ships: a stand-in would otherwise keep
-        ///     shadowing the contract's type, with only a warning, and the rules would go on being
-        ///     tested against shapes that are no longer the contract's.
-        /// </summary>
-        /// <param name="metadataName">The stubbed type's metadata name.</param>
-        [Theory]
-        [MemberData(nameof(StubbedPipelineTypes))]
-        public void A_stubbed_pipeline_type_has_not_shipped(string metadataName)
-        {
-            string fullName = $"{KnownNames.CrudNamespace}.{metadataName}";
-            bool shipped = typeof(SqlOptions).Assembly.GetType(fullName) is not null || typeof(TellmaDbContext).Assembly.GetType(fullName) is not null;
-            Assert.False(shipped, $"The platform now ships {fullName}. Delete its stand-in from Infrastructure/PlatformStubs.cs and from the analyzer probe's PipelineStubs.cs, pin the name to the real type in MatchedTypes, and re-run the probe.");
         }
 
         /// <summary>The analyzers' reserved-name rule is the contract's.</summary>

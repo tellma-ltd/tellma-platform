@@ -150,22 +150,25 @@ test.describe('keyboard paths', () => {
       await input(page).focus();
       await input(page).press('ArrowDown');
       await expect(options(page).first()).toBeVisible();
-      const active = page.locator(
-        '.tm-entity-picker__option[data-active="true"] .tm-entity-picker__option-label',
-      );
-      const activeText = (): Promise<string | null> =>
-        page.evaluate(
-          () =>
-            document
-              .querySelector(
-                '.tm-entity-picker__option[data-active="true"] .tm-entity-picker__option-label',
-              )
-              ?.textContent?.trim() ?? null,
-        );
-      for (let step = 0; step < 10 && (await activeText()) !== 'Bob Stone'; step++) {
+      await appStable(page);
+      // The browse list opens with nothing highlighted, so Bob Stone's row is
+      // (its index + 1) ArrowDown presses away. The picker steps from its own
+      // state, not from the rows on screen, so the presses need no wait in
+      // between; the highlight is painted by a later render, which the
+      // assertions below wait for. (Reading the highlight right after each
+      // press reads the frame before it, and can step past the row.)
+      const highlighted = page.locator('.tm-entity-picker__option[data-active="true"]');
+      await expect(highlighted).toHaveCount(0);
+      const labels = (
+        await options(page).locator('.tm-entity-picker__option-label').allTextContents()
+      ).map((label) => label.trim());
+      const bob = labels.indexOf('Bob Stone');
+      expect(bob).toBeGreaterThanOrEqual(0);
+      for (let step = 0; step <= bob; step++) {
         await input(page).press('ArrowDown');
       }
-      await expect(active).toHaveText('Bob Stone');
+      await expect(options(page).nth(bob)).toHaveAttribute('data-active', 'true');
+      await expect(highlighted.locator('.tm-entity-picker__option-label')).toHaveText('Bob Stone');
       await input(page).press('Enter');
       await expect(chips(page)).toHaveText(['Alice Green']);
       await input(page).press('Tab');

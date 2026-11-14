@@ -102,16 +102,17 @@ namespace Tellma.Core.Analyzers.Tests
                 using System.Threading.Tasks;
                 using Tellma.Core.Abstractions.Crud;
                 using Tellma.Core.Abstractions.Entities;
+                using Tellma.Core.Abstractions.Validation;
 
                 public class Center : TopLevelEntity;
 
                 public class Unit : TopLevelEntity;
 
-                public class UnitService : EntityService<Unit>;
+                public class UnitService(IEntityPipelineFactory factory) : EntityService<Unit>(factory);
 
                 public class CenterRules(UnitService units) : IEntityValidator<Center>
                 {
-                    public Task ValidateAsync(IReadOnlyList<Center> entities) => {|TELLMA0005:units.SaveAsync([])|};
+                    public Task ValidateAsync(SaveContext<Center> context) => {|TELLMA0005:units.SaveAsync([], new SaveOptions())|};
                 }
                 """);
         }

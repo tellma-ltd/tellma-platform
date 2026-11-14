@@ -18,6 +18,7 @@ namespace Tellma.Core.Analyzers.Tests
             using Tellma.Core.Abstractions.Crud;
             using Tellma.Core.Abstractions.Data;
             using Tellma.Core.Abstractions.Entities;
+            using Tellma.Core.Abstractions.Validation;
 
             [Table("Centers", Schema = "gl")]
             public class Center : TopLevelEntity
@@ -78,7 +79,7 @@ namespace Tellma.Core.Analyzers.Tests
         public Task Another_stack_writing_the_table_is_refused()
         {
             return AnalyzerHarness.VerifyAsync<DataBatchAnalyzer>(Model + """
-                public class UnitService : EntityService<Unit>
+                public class UnitService(IEntityPipelineFactory factory) : EntityService<Unit>(factory)
                 {
                     public void Run(IDataBatch batch)
                     {
@@ -95,7 +96,7 @@ namespace Tellma.Core.Analyzers.Tests
         public Task The_owning_stack_writes_its_tables()
         {
             return AnalyzerHarness.VerifyAsync<DataBatchAnalyzer>(Model + """
-                public class CenterService<TCenter> : EntityService<TCenter>
+                public class CenterService<TCenter>(IEntityPipelineFactory factory) : EntityService<TCenter>(factory)
                     where TCenter : Center
                 {
                     public void Run(IDataBatch batch)
@@ -109,14 +110,14 @@ namespace Tellma.Core.Analyzers.Tests
 
                 public class CenterRules : IEntityValidator<AcmeCenter>
                 {
-                    public Task ValidateAsync(IReadOnlyList<AcmeCenter> entities) => Task.CompletedTask;
+                    public Task ValidateAsync(SaveContext<AcmeCenter> context) => Task.CompletedTask;
 
                     public void Run(IDataBatch batch) => batch.Sql($"UPDATE [gl].[Centers] SET [Code] = N'x';", Writes.Declared);
                 }
 
                 public class CenterEffect : IPersistEffect<Center>
                 {
-                    public Task ContributeAsync(IReadOnlyList<Center> entities) => Task.CompletedTask;
+                    public Task ContributeAsync(PersistContext<Center> context) => Task.CompletedTask;
 
                     public void Run(IDataBatch batch) => batch.Save<CenterLine>([]);
                 }

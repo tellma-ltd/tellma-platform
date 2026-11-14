@@ -17,15 +17,13 @@ is therefore pinned as silence.
 
 The runtime itself is left out, so a test compilation may take the runtime's assembly name
 (`Tellma.Core`) to check the exemptions. [PlatformStubs](Infrastructure/PlatformStubs.cs) declares
-the few types a rule matches that the referenced assemblies do not supply: the tenant context and
-the service pipeline's contract types. The rules match by namespace and metadata name, which the
-stubs share with the real types.
+the one type a rule matches that the referenced assemblies do not supply, the runtime's tenant
+context. The rules match by namespace and metadata name, which the stub shares with the real type.
+The service pipeline's types come from the real contract.
 
 [NamePinTests](NamePinTests.cs) holds every matched name to the real type it stands for. It also
 holds the analyzer's reserved-name rule to the contract's `ReservedSqlNames.IsReserved`, so a
-rename or a rule change on either side fails here. Each pipeline stand-in also has a test there that
-fails once the platform ships the real type, which is the moment to delete the stand-in and pin the
-name instead.
+rename or a rule change on either side fails here.
 
 [GeneratedCodeTests](GeneratedCodeTests.cs) checks that each rule fires in a file marked
 auto-generated, as in hand-written code.

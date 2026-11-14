@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data;
 
 namespace Tellma.Core.Analyzers.Probe
@@ -18,22 +19,23 @@ namespace Tellma.Core.Analyzers.Probe
     public class ProbeEntity : TopLevelEntity;
 
     /// <summary>The probe entity's service, whose actions and hooks the rules guard.</summary>
-    public class ProbeService : EntityService<ProbeEntity>
+    /// <param name="factory">The pipeline factory.</param>
+    public class ProbeService(IEntityPipelineFactory factory) : EntityService<ProbeEntity>(factory)
     {
         /// <summary>An action, reached only through the invoker; an action may run the front door.</summary>
         /// <returns>A task.</returns>
         [ApiAction("ping")]
         public Task PingAsync()
         {
-            return SaveAsync([]);
+            return SaveAsync([], new SaveOptions());
         }
 
         /// <summary>TELLMA0005: a hook override running a nested pipeline.</summary>
-        /// <param name="entities">The entities.</param>
+        /// <param name="context">The save's context.</param>
         /// <returns>A task.</returns>
-        protected override Task ValidateAsync(IReadOnlyList<ProbeEntity> entities)
+        protected override Task ValidateAsync(SaveContext<ProbeEntity> context)
         {
-            return SaveAsync(entities);
+            return SaveAsync(context.Entities, context.Options);
         }
     }
 

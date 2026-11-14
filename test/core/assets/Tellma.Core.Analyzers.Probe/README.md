@@ -16,7 +16,4 @@ bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh test/core/asse
 Its package-flow twin, [Tellma.Core.Analyzers.Probe.Package](../Tellma.Core.Analyzers.Probe.Package),
 compiles the same sources against the `Tellma.Core` package alone.
 
-The service pipeline's contract types that `TELLMA0005` matches are declared in
-[PipelineStubs.cs](PipelineStubs.cs) until the contract ships them.
-
 The suite that pins each rule's conditions and negatives is `test/core/Tellma.Core.Analyzers.Tests`.
