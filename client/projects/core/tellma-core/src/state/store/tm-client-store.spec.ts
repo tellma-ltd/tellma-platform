@@ -198,8 +198,21 @@ function eventsNamed(telemetry: TmRecordingTelemetry, name: string): unknown[] {
   return telemetry.events.filter((event) => event.name === name).map((event) => event.props);
 }
 
+/** Holds the idle callbacks the boot step schedules, which run only when the spec runs them. */
+function holdIdleCallbacks(): IdleRequestCallback[] {
+  const held: IdleRequestCallback[] = [];
+  vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => held.push(callback));
+  return held;
+}
+
 describe('TmClientStore', () => {
   beforeEach(tmDeleteStoreDatabase);
+  // The boot step sweeps the user's other sessions at the browser's next idle
+  // period after the first render. Left to the browser, that sweep lands at
+  // an arbitrary point: inside a test's assertions (a second store.changed),
+  // or after the test, in the next test's database. Only a spec that runs a
+  // held callback sees it.
+  beforeEach(() => void holdIdleCallbacks());
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -799,18 +812,10 @@ describe('TmClientStore', () => {
     /** The vector documents with tenant 17 synced now. */
     const warmRecords = (): TmRawRecord[] => [...vectorRecords(), syncRecord('u:0b4f/t17')];
 
-    /** Holds the idle callbacks the boot step schedules, which run only when the spec runs them. */
-    function holdIdleCallbacks(): IdleRequestCallback[] {
-      const held: IdleRequestCallback[] = [];
-      vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => held.push(callback));
-      return held;
-    }
-
     it('reads a warm launch in one readonly transaction, and nothing else', async () => {
       const { store, bus, local } = setUp();
       await tmWriteRawRecords(warmRecords());
       local.setItem('tm.boot', JSON.stringify({ v: 1, theme: 'system', lang: 'en', dir: 'ltr', sub: FARAH, lastTenantId: 17 }));
-      holdIdleCallbacks();
       const transactions = spyTransactions();
       await store.ɵstart(17);
       expect(transactions()).toEqual(['readonly']);
