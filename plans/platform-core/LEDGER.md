@@ -103,7 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-063 | pc-2 | pc/PC-063 | fix1 + merge (held) (R1 0/1/7: list all integration suites; XML spec cites; $→\z; non-leaf component attach; self-referential securables check; unlisted deviations; remedy text; §2.6 fixtures. No R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-046 | pc-1 | pc/PC-046 | fix1 + merge (held) (R1 0/0/7: Parent pending forever; over-broad key families; satellite ownership bypass; ContentLanguages untested; stack/setting families untested; literal scan reads test code; misnamed test. No R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
-| PC-056 | pc-4 | pc/PC-056 | R1 (commit1 ea33ed1: 8 deviations; pane in new ./grid-editing entry: grid 41.93/42.03, grid-editing 7.24/7.34; popover parent = editor box; e2e 1038/1038; blocks=1 pgrep loop denied, notified) | impl (Opus, high, launched 2026-11-14) | R1 (Opus, high, launched 2026-11-14) | 2026-11-14 |
+| PC-056 | pc-4 | pc/PC-056 | fix1 + merge (held) (R1 0/3/3: hidden pane takes clicks; page scroll detaches pane; press on pane content breaks edit mode; composite sub-form docs; test gaps; margin twice. No R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F41 | pc-f | pc/PC-F41 | fix1 + merge (held) (R1 0/1/1: skip-navigation join entity escapes the gate; owned-type remedies) | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F29 | pc-f2 | pc/PC-F29 | R1 (commit1 6a5ebb3: two vitest projects, cold ng build alone last; tmProcessLaunch pure; real spawns 120 s; build.spec 60 s; lint:test 3/3 (601-630 s, one under dotnet build)) | fix (Opus, high, launched 2026-11-14) | R1 (Opus, high, launched 2026-11-14) | 2026-11-14 |
 
@@ -303,7 +303,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
 | PC-055 | 0018-a | 1 | done (CI 43625011160) | 9dce959, 166c532, 10bbca4, abd9413, c4acf1f (pc/PC-055) | | |
-| PC-056 | 0010-c6 | 1 | R1 | ea33ed1 (pc/PC-056) | | |
+| PC-056 | 0010-c6 | 1 | fix1 + merge (held) | ea33ed1 (pc/PC-056) | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
 | PC-058 | 0010-e2 | 1 | done (integrated 821a6cf; its races fixed by PC-F38 at 7c5d82e, CI 43606208615 green) | 78a4afa, d435e7a, d36a847 (pc/PC-058), 7c113e2, 821a6cf (pc) |  |  |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
