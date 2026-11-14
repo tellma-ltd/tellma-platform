@@ -16,21 +16,55 @@
       "p": "u:0b4f/sY4kQ1x-_"
     }
   ],
+  "storedNames": [
+    { "name": "settings", "format": 1, "n": "settings@1" },
+    { "name": "settings", "format": 2, "n": "settings@2" },
+    { "name": "entity:acme.Currency", "format": 1, "n": "entity:acme.Currency@1" },
+    { "name": "tree:/17/centers", "format": 1, "n": "tree:/17/centers@1" }
+  ],
   "documents": [
     ["device", "zone@1"],
     ["u:0b4e/", "tenants@1"],
     ["u:0b4e/t17", "me@1"],
     ["u:0b4f/", "distribution@1"],
     ["u:0b4f/", "tenants@1"],
-    ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+    ["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"],
+    ["u:0b4f/sY4kQ1x-_X", "tree:/17/centers@1"],
+    ["u:0b4f/sZ9", "tree:/17/centers@1"],
     ["u:0b4f/t1000", "settings@2"],
     ["u:0b4f/t17", "entity:acme.Currency@1"],
     ["u:0b4f/t17", "me@1"],
     ["u:0b4f/t17", "settings@1"],
+    ["u:0b4f/t170", "me@1"],
     ["u:0b4f9/", "tenants@1"],
     ["u:0b4f9/t17", "settings@1"],
     ["u:7c1e/", "tenants@1"],
     ["u:7c1e/t17", "me@1"]
+  ],
+  "partitionReads": [
+    { "name": "the device", "partition": { "kind": "device" }, "documents": [["device", "zone@1"]] },
+    {
+      "name": "a user, without the user's tenants and sessions",
+      "partition": { "kind": "user", "sub": "0b4f" },
+      "documents": [
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"]
+      ]
+    },
+    {
+      "name": "a tenant, without a tenant whose id starts with its id",
+      "partition": { "kind": "tenant", "sub": "0b4f", "tenantId": 17 },
+      "documents": [
+        ["u:0b4f/t17", "entity:acme.Currency@1"],
+        ["u:0b4f/t17", "me@1"],
+        ["u:0b4f/t17", "settings@1"]
+      ]
+    },
+    {
+      "name": "a session, without a session whose handle starts with its handle",
+      "partition": { "kind": "session", "sub": "0b4f", "sessionHandle": "Y4kQ1x-_" },
+      "documents": [["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"]]
+    }
   ],
   "userDeletes": [
     {
@@ -55,11 +89,14 @@
         ["u:0b4e/t17", "me@1"],
         ["u:0b4f/", "distribution@1"],
         ["u:0b4f/", "tenants@1"],
-        ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"],
+        ["u:0b4f/sY4kQ1x-_X", "tree:/17/centers@1"],
+        ["u:0b4f/sZ9", "tree:/17/centers@1"],
         ["u:0b4f/t1000", "settings@2"],
         ["u:0b4f/t17", "entity:acme.Currency@1"],
         ["u:0b4f/t17", "me@1"],
         ["u:0b4f/t17", "settings@1"],
+        ["u:0b4f/t170", "me@1"],
         ["u:7c1e/", "tenants@1"],
         ["u:7c1e/t17", "me@1"]
       ]
@@ -73,11 +110,91 @@
         ["u:0b4e/t17", "me@1"],
         ["u:0b4f/", "distribution@1"],
         ["u:0b4f/", "tenants@1"],
-        ["u:0b4f/sY4kQ1x-_", "tree:centers@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"],
+        ["u:0b4f/sY4kQ1x-_X", "tree:/17/centers@1"],
+        ["u:0b4f/sZ9", "tree:/17/centers@1"],
         ["u:0b4f/t1000", "settings@2"],
         ["u:0b4f/t17", "entity:acme.Currency@1"],
         ["u:0b4f/t17", "me@1"],
         ["u:0b4f/t17", "settings@1"],
+        ["u:0b4f/t170", "me@1"],
+        ["u:0b4f9/", "tenants@1"],
+        ["u:0b4f9/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    }
+  ],
+  "sweeps": [
+    {
+      "name": "a session's end deletes every user's partitions and keeps the device's",
+      "sub": "0b4f",
+      "rule": "session-ended",
+      "prefix": "u:",
+      "remaining": [["device", "zone@1"]]
+    },
+    {
+      "name": "the user's other sessions go, a handle that starts with the current one's included",
+      "sub": "0b4f",
+      "rule": { "sessionOtherThan": "Y4kQ1x-_" },
+      "prefix": "u:0b4f/s",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"],
+        ["u:0b4f/t1000", "settings@2"],
+        ["u:0b4f/t17", "entity:acme.Currency@1"],
+        ["u:0b4f/t17", "me@1"],
+        ["u:0b4f/t17", "settings@1"],
+        ["u:0b4f/t170", "me@1"],
+        ["u:0b4f9/", "tenants@1"],
+        ["u:0b4f9/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    },
+    {
+      "name": "the user's other sessions go, a handle the current one starts with included",
+      "sub": "0b4f",
+      "rule": { "sessionOtherThan": "Y4kQ1x-_X" },
+      "prefix": "u:0b4f/s",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"],
+        ["u:0b4f/sY4kQ1x-_X", "tree:/17/centers@1"],
+        ["u:0b4f/t1000", "settings@2"],
+        ["u:0b4f/t17", "entity:acme.Currency@1"],
+        ["u:0b4f/t17", "me@1"],
+        ["u:0b4f/t17", "settings@1"],
+        ["u:0b4f/t170", "me@1"],
+        ["u:0b4f9/", "tenants@1"],
+        ["u:0b4f9/t17", "settings@1"],
+        ["u:7c1e/", "tenants@1"],
+        ["u:7c1e/t17", "me@1"]
+      ]
+    },
+    {
+      "name": "one tenant of the user goes, and a tenant whose id starts with its id stays",
+      "sub": "0b4f",
+      "rule": { "tenant": 17 },
+      "prefix": "u:0b4f/t17",
+      "remaining": [
+        ["device", "zone@1"],
+        ["u:0b4e/", "tenants@1"],
+        ["u:0b4e/t17", "me@1"],
+        ["u:0b4f/", "distribution@1"],
+        ["u:0b4f/", "tenants@1"],
+        ["u:0b4f/sY4kQ1x-_", "tree:/17/centers@1"],
+        ["u:0b4f/sY4kQ1x-_X", "tree:/17/centers@1"],
+        ["u:0b4f/sZ9", "tree:/17/centers@1"],
+        ["u:0b4f/t1000", "settings@2"],
+        ["u:0b4f/t170", "me@1"],
         ["u:0b4f9/", "tenants@1"],
         ["u:0b4f9/t17", "settings@1"],
         ["u:7c1e/", "tenants@1"],

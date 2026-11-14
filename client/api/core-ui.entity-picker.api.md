@@ -48,6 +48,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly createLabel: _angular_core.InputSignal<string | undefined>;
     protected readonly describedByAttr: Signal<string | null>;
     readonly describedByIds: Signal<readonly string[]>;
+    protected descriptionOf(item: T): string | null;
     readonly dirty: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly displayWith: _angular_core.InputSignal<((id: Id) => string | null) | undefined>;
@@ -64,12 +65,20 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
         readonly label: string;
     }[]>;
     protected readonly formField: TmFormField | null;
+    protected readonly glyphs: {
+        readonly error: lucide.IconNode;
+        readonly search: lucide.IconNode;
+        readonly check: lucide.IconNode;
+    };
     protected idOf(item: T): Id;
     readonly invalid: Signal<boolean>;
     isDropdownOpen(): boolean;
+    readonly itemDescription: _angular_core.InputSignal<((item: T) => string | null) | undefined>;
     readonly itemId: _angular_core.InputSignal<(item: T) => Id>;
     readonly itemLabel: _angular_core.InputSignal<(item: T) => string>;
+    readonly itemLabelParts: _angular_core.InputSignal<((item: T) => readonly string[] | null) | undefined>;
     protected labelOf(item: T): string;
+    protected labelPartsOf(item: T): readonly string[] | null;
     protected readonly listboxMaxHeight: Signal<string>;
     protected readonly listboxValue: _angular_core.WritableSignal<unknown[]>;
     protected readonly liveText: _angular_core.WritableSignal<string>;
@@ -111,10 +120,11 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId> implements Tm
     readonly text: SignalLike<string | null>;
     readonly touch: _angular_core.OutputEmitterRef<void>;
     readonly touched: Signal<boolean>;
+    protected readonly twoLine: Signal<boolean>;
     readonly value: _angular_core.ModelSignal<Id | null>;
     // @internal
     // @internal
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityPicker<any, any>, "tm-entity-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "fieldInvalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "fieldTouched": { "alias": "touched"; "required": false; "isSignal": true; }; "fieldPending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": true; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "edit": { "alias": "edit"; "required": false; "isSignal": true; }; "createLabel": { "alias": "createLabel"; "required": false; "isSignal": true; }; "editLabel": { "alias": "editLabel"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "searchDebounce": { "alias": "searchDebounce"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; "\u0275cellActivate": "\u0275cellActivate"; }, never, never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityPicker<any, any>, "tm-entity-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "fieldInvalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "fieldTouched": { "alias": "touched"; "required": false; "isSignal": true; }; "fieldPending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "search": { "alias": "search"; "required": true; "isSignal": true; }; "itemId": { "alias": "itemId"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "itemDescription": { "alias": "itemDescription"; "required": false; "isSignal": true; }; "itemLabelParts": { "alias": "itemLabelParts"; "required": false; "isSignal": true; }; "displayWith": { "alias": "displayWith"; "required": false; "isSignal": true; }; "advancedSearch": { "alias": "advancedSearch"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "edit": { "alias": "edit"; "required": false; "isSignal": true; }; "createLabel": { "alias": "createLabel"; "required": false; "isSignal": true; }; "editLabel": { "alias": "editLabel"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "searchDebounce": { "alias": "searchDebounce"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; "\u0275cellActivate": "\u0275cellActivate"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityPicker<any, any>, never>;
     // @internal
 }
@@ -124,11 +134,16 @@ export type TmEntityPickerPage = Type<unknown> | {
     component: Type<unknown>;
     size?: 'lg' | 'md' | 'sm';
     title?: string;
+    context?: unknown;
 };
 
 // @public
 export interface TmEntityPickerPageData<Id extends TmEntityId = TmEntityId> {
+    readonly context?: unknown;
     readonly id?: Id;
+    readonly ids?: readonly Id[];
+    readonly maxItems?: number;
+    readonly multiple?: true;
     readonly query: string;
 }
 

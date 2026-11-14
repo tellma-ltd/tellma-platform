@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmClientStore } from '../state/store/tm-client-store';
 import { TM_LOGIN_MARK_KEY, type TmLoginMark } from './tm-login-mark';
 import { tmParseProfileCookie } from './tm-profile';
 import { tmProfileCookies, tmProfileCookieValue } from './tm-profile.testing.util';
@@ -225,36 +226,94 @@ describe('TmSessionPaths', () => {
     expect(telemetry.flushes).toEqual([1]);
   });
 
-  it("takes an expired tab off the user's data: the stale cookie is deleted and the page reloads, once", () => {
-    const { host } = setUp();
+  it("takes an expired tab off the user's data: every user's stored data goes, the stale cookie too, and the tab signs in again, once", async () => {
+    const { host, telemetry } = setUp();
+    const store = TestBed.inject(TmClientStore);
+    const tenant = { kind: 'tenant', sub: FARAH, tenantId: 17 } as const;
+    await store.put(tenant, 'me', { tag: null, savedAt: NOW, data: { name: 'Farah' } });
+    store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+    const sweep = vi.spyOn(store, 'sweep');
     const paths = TestBed.inject(TmSessionPaths);
     paths.expired('401');
     paths.expired('cookie');
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(sweep.mock.calls).toEqual([['session-ended']]);
+    expect(store.doc(tenant, 'me')()).toBeUndefined();
     expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
-    expect(host.reloads).toBe(1);
-    expect(host.assigned).toEqual([]);
-    expect(host.replaced).toEqual([]);
+    expect(host.assigned).toEqual(['/bff/login?returnUrl=%2F17%2Fcenters%3Fx%3D1&ui_locales=ar']);
+    expect(host.reloads).toBe(0);
+    // The sign-in reports nothing again when the tab comes back: the mark
+    // says no expiry, and names the user whose session ended.
+    expect(host.sessionStorage.json(TM_LOGIN_MARK_KEY)).toMatchObject({ expired: false, sub: FARAH, returnUrl: '/17/centers?x=1' });
+    expect(telemetry.events.map((event) => event.name)).toEqual(['tm.session.expired']);
+    // The expiry keeps the boot record's user and last tenant (spec 0024 §8.6).
+    expect(store.boot.read()).toMatchObject({ sub: FARAH, lastTenantId: 17 });
   });
 
-  it('shows the sign-in-failed page instead of reloading within a minute of coming back from a sign-in', () => {
+  it('lets the next launch sweep when the expiry sweep runs past its time box', async () => {
+    vi.useFakeTimers();
+    try {
+      const { host } = setUp();
+      const store = TestBed.inject(TmClientStore);
+      store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+      vi.spyOn(store, 'sweep').mockReturnValue(new Promise<boolean>(() => undefined));
+      TestBed.inject(TmSessionPaths).expired('cookie');
+      await vi.advanceTimersByTimeAsync(999);
+      expect(host.assigned).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(host.assigned).toHaveLength(1);
+      expect(store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets the next launch sweep when the expiry sweep could not reach the stored data', async () => {
+    const { host } = setUp();
+    const store = TestBed.inject(TmClientStore);
+    store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+    vi.spyOn(store, 'sweep').mockResolvedValue(false);
+    TestBed.inject(TmSessionPaths).expired('cookie');
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
+  });
+
+  it('lets the next launch sweep when the expiry sweep fails', async () => {
+    const { host } = setUp();
+    const store = TestBed.inject(TmClientStore);
+    store.boot.patch({ sub: FARAH, lastTenantId: 17 });
+    vi.spyOn(store, 'sweep').mockRejectedValue(new DOMException('The write was aborted.', 'AbortError'));
+    TestBed.inject(TmSessionPaths).expired('cookie');
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
+  });
+
+  it('shows the sign-in-failed page instead of signing in again within a minute of coming back from a sign-in', async () => {
     const host = new TmFakeSessionHost();
     host.cookieJar = tmProfileCookies(FARAH);
     const mark: TmLoginMark = { at: NOW - 59_999, expired: false, returnUrl: '/17', auto: false, sub: null, hash: '' };
     let retry: (() => void) | undefined;
     const showPage = vi.fn((_reason: string, again?: () => void) => void (retry = again));
     TestBed.configureTestingModule({ providers: tmSessionTestingProviders(host, { mark, showPage }, NOW) });
+    const store = TestBed.inject(TmClientStore);
+    const tenant = { kind: 'tenant', sub: FARAH, tenantId: 17 } as const;
+    await store.put(tenant, 'me', { tag: null, savedAt: NOW, data: { name: 'Farah' } });
+    const sweep = vi.spyOn(store, 'sweep');
     TestBed.inject(TmSessionPaths).expired('401');
     expect(TestBed.inject(TmSession).state()).toBe('expired');
     expect(showPage).toHaveBeenCalledWith('sign-in-failed', expect.any(Function));
-    expect(host.reloads).toBe(0);
-    expect(host.cookieWrites).toEqual([]);
-    // Try again starts the next round: the cookie goes and the page reloads.
+    // The user's data goes before Try again: a tab closed on this page leaves none.
+    expect(sweep.mock.calls).toEqual([['session-ended']]);
+    expect(store.doc(tenant, 'me')()).toBeUndefined();
+    await Promise.resolve();
+    expect([host.assigned, host.reloads, host.cookieWrites]).toEqual([[], 0, []]);
+    // Try again starts the next round: the cookie goes and the tab signs in.
     retry?.();
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
     expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
-    expect(host.reloads).toBe(1);
   });
 
-  it('reloads as usual once the sign-in is a minute old', () => {
+  it('signs in again as usual once the sign-in is a minute old', async () => {
     const host = new TmFakeSessionHost();
     host.cookieJar = tmProfileCookies(FARAH);
     const mark: TmLoginMark = { at: NOW - 60_000, expired: false, returnUrl: '/17', auto: false, sub: null, hash: '' };
@@ -262,18 +321,19 @@ describe('TmSessionPaths', () => {
     TestBed.configureTestingModule({ providers: tmSessionTestingProviders(host, { mark, showPage }, NOW) });
     TestBed.inject(TmSessionPaths).expired('401');
     expect(showPage).not.toHaveBeenCalled();
-    expect(host.reloads).toBe(1);
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
   });
 
-  it('runs nothing for a 401 to a request sent under a session the cookie no longer names', () => {
+  it('runs nothing for a 401 to a request sent under a session the cookie no longer names', async () => {
     const { host, session, telemetry } = setUp();
     const paths = TestBed.inject(TmSessionPaths);
     paths.expired('401', 'sh-of-an-older-session');
+    await Promise.resolve();
     expect(session().state()).toBe('active');
-    expect([host.cookieWrites, host.reloads, telemetry.events]).toEqual([[], 0, []]);
+    expect([host.cookieWrites, host.assigned, telemetry.events]).toEqual([[], [], []]);
     paths.expired('401', `sh-${FARAH}`);
     expect(session().state()).toBe('expired');
-    expect(host.reloads).toBe(1);
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
   });
 
   it('restarts the app at the root for a changed user, after sending the telemetry', () => {

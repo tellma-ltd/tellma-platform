@@ -4,17 +4,25 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Component, computed, signal } from '@angular/core';
+import { Columns3, Funnel } from 'lucide';
 
+import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import {
   TmGrid,
   TmGridColumn,
   TmGridDisplayDef,
   TmGridDriver,
+  TmGridEmptyDef,
+  TmGridHeaderAction,
+  TmGridHeaderEndDef,
+  TmGridRowEndHeaderDef,
   type TmGridRowActivation,
   type TmGridSort,
 } from '@tellma/core-ui/grid';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmInput } from '@tellma/core-ui/input';
+import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 
 import { makeRow, type DemoRow } from './grid-readonly-story';
 
@@ -27,6 +35,12 @@ const SOURCE_SIZE = 230;
 /** The id of the synthetic totals row. */
 const TOTALS_ID = -1;
 
+/** The regions the Region filter offers. */
+const REGIONS = ['North', 'South', 'East', 'West', 'Central'] as const;
+
+/** The columns the column editor shows and hides. */
+type ToggleableColumn = 'qty' | 'region' | 'manager';
+
 /**
  * The search-page shape: a search field driving a readonly list that opens
  * rows. The field moves the active row (ArrowUp/Down, PageUp/Down) and opens
@@ -36,11 +50,29 @@ const TOTALS_ID = -1;
  * orders the rows; the source is paged, so checked rows survive paging and
  * select-all works on the current page only. Rows of inactive records render
  * muted, an optional totals row is emphasized, and the list carries no row
- * numbers. The toolbar readouts mirror the
- * grid's models for the Playwright battery.
+ * numbers. Header actions open filter popovers — Region is sortable and
+ * filterable, Manager filter-only — and the row-end header holds the column
+ * editor; a filter matching nothing shows the empty template under the
+ * headers that undo it. The toolbar readouts mirror the grid's models for
+ * the Playwright battery.
  */
 @Component({
-  imports: [TmGrid, TmGridColumn, TmGridDisplayDef, TmGridDriver, TmInput],
+  imports: [
+    TmCheckbox,
+    TmGrid,
+    TmGridColumn,
+    TmGridDisplayDef,
+    TmGridDriver,
+    TmGridEmptyDef,
+    TmGridHeaderAction,
+    TmGridHeaderEndDef,
+    TmGridRowEndHeaderDef,
+    TmIcon,
+    TmInput,
+    TmPopover,
+    TmPopoverContent,
+    TmPopoverTrigger,
+  ],
   template: `
     <h2>Grid (search page)</h2>
 
@@ -92,6 +124,10 @@ const TOTALS_ID = -1;
       <dd data-testid="selected-count">{{ selectedIds().size }} selected</dd>
       <dt>Link</dt>
       <dd data-testid="link-clicked">{{ linkClicked() ?? 'none' }}</dd>
+      <dt>Filters</dt>
+      <dd data-testid="filters">{{ filtersText() }}</dd>
+      <dt>Columns</dt>
+      <dd data-testid="columns">{{ columnsText() }}</dd>
     </dl>
 
     <tm-grid
@@ -121,9 +157,108 @@ const TOTALS_ID = -1;
           >{{ value }}</a
         >
       </tm-grid-column>
-      <tm-grid-column key="qty" type="number" header="Qty" [width]="90" sortable />
-      <tm-grid-column key="region" header="Region" [width]="110" sortable />
-      <tm-grid-column key="manager" header="Manager" [flex]="1" [minWidth]="150" />
+      @if (shown().has('qty')) {
+        <tm-grid-column key="qty" type="number" header="Qty" [width]="90" sortable />
+      }
+      @if (shown().has('region')) {
+        <tm-grid-column key="region" header="Region" [width]="150" sortable>
+          <!-- Sortable and filterable: Enter sorts, Alt+ArrowDown filters. -->
+          <ng-template tmGridHeaderEnd>
+            <button
+              tmGridHeaderAction
+              data-testid="region-filter"
+              aria-label="Filter Region"
+              [active]="regionFilter() !== ''"
+              [tmPopoverTriggerFor]="regionPopover"
+            >
+              <tm-icon [svg]="funnelIcon" />
+            </button>
+            <tm-popover #regionPopover aria-label="Filter Region">
+              <ng-template tmPopoverContent>
+                <label class="filter-field">
+                  Region
+                  <select
+                    data-testid="region-filter-select"
+                    [value]="regionFilter()"
+                    (change)="onRegionFilter($event)"
+                  >
+                    <option value="">Any region</option>
+                    @for (region of regions; track region) {
+                      <option [value]="region">{{ region }}</option>
+                    }
+                  </select>
+                </label>
+              </ng-template>
+            </tm-popover>
+          </ng-template>
+        </tm-grid-column>
+      }
+      @if (shown().has('manager')) {
+        <tm-grid-column key="manager" header="Manager" [flex]="1" [minWidth]="170">
+          <!-- Filter-only: the header's Enter opens the filter. -->
+          <ng-template tmGridHeaderEnd>
+            <button
+              tmGridHeaderAction
+              data-testid="manager-filter"
+              aria-label="Filter Manager"
+              [active]="managerFilter() !== ''"
+              [tmPopoverTriggerFor]="managerPopover"
+            >
+              <tm-icon [svg]="funnelIcon" />
+            </button>
+            <tm-popover #managerPopover aria-label="Filter Manager">
+              <ng-template tmPopoverContent>
+                <label class="filter-field">
+                  Manager contains
+                  <input
+                    tmInput
+                    type="search"
+                    data-testid="manager-filter-input"
+                    [value]="managerFilter()"
+                    (input)="onManagerFilter($event)"
+                  />
+                </label>
+              </ng-template>
+            </tm-popover>
+          </ng-template>
+        </tm-grid-column>
+      }
+
+      <!-- The row-end column: the list's column editor. -->
+      <ng-template tmGridRowEndHeader>
+        <button
+          tmGridHeaderAction
+          data-testid="column-editor"
+          aria-label="Choose columns"
+          [active]="shown().size < toggleable.length"
+          [tmPopoverTriggerFor]="columnsPopover"
+        >
+          <tm-icon [svg]="columnsIcon" />
+        </button>
+        <tm-popover #columnsPopover aria-label="Choose columns">
+          <ng-template tmPopoverContent>
+            <div class="column-list">
+              @for (column of toggleable; track column.key) {
+                <tm-checkbox
+                  [attr.data-testid]="'column-' + column.key"
+                  [checked]="shown().has(column.key)"
+                  (checkedChange)="toggleColumn(column.key, $event)"
+                  >{{ column.label }}</tm-checkbox
+                >
+              }
+            </div>
+          </ng-template>
+        </tm-popover>
+      </ng-template>
+
+      <!-- The empty state keeps the headers, so the filters that emptied
+           the list stay in reach. -->
+      <div *tmGridEmpty class="empty" data-testid="empty-state">
+        <span>No items match.</span>
+        <button type="button" data-testid="clear-filters" (click)="clearFilters()">
+          Clear filters
+        </button>
+      </div>
     </tm-grid>
   `,
   styles: `
@@ -137,9 +272,10 @@ const TOTALS_ID = -1;
     .search {
       inline-size: 240px;
     }
+    /* Two readouts a line, so the grid's lower rows stay above the fold. */
     .readouts {
       display: grid;
-      grid-template-columns: max-content 1fr;
+      grid-template-columns: repeat(2, max-content 1fr);
       gap: 2px 12px;
       margin: 0 0 12px;
       font-size: 13px;
@@ -150,6 +286,16 @@ const TOTALS_ID = -1;
     .demo-grid {
       display: block;
       block-size: 50vh;
+    }
+    .filter-field,
+    .column-list {
+      display: grid;
+      gap: 4px;
+    }
+    .empty {
+      display: flex;
+      gap: 12px;
+      align-items: center;
     }
   `,
 })
@@ -174,6 +320,25 @@ export class GridSearchPageStory {
   readonly activationCount = signal(0);
   /** The id of the last clicked Name link. */
   readonly linkClicked = signal<TmRowId | null>(null);
+  /** The Region filter: the one region shown, or `''` for any. */
+  readonly regionFilter = signal('');
+  /** The Manager filter: text the manager's name contains, or `''`. */
+  readonly managerFilter = signal('');
+  /** The columns the column editor shows. */
+  readonly shown = signal<ReadonlySet<ToggleableColumn>>(new Set(['qty', 'region', 'manager']));
+
+  /** The regions the Region filter offers. */
+  protected readonly regions = REGIONS;
+  /** The columns the column editor lists, in grid order. */
+  protected readonly toggleable: readonly { key: ToggleableColumn; label: string }[] = [
+    { key: 'qty', label: 'Qty' },
+    { key: 'region', label: 'Region' },
+    { key: 'manager', label: 'Manager' },
+  ];
+  /** The filter actions' glyph. */
+  protected readonly funnelIcon = Funnel;
+  /** The column editor's glyph. */
+  protected readonly columnsIcon = Columns3;
 
   /** The matching rows of the whole source, ordered by the sort. */
   private readonly matches = computed<readonly DemoRow[]>(() => {
@@ -181,8 +346,13 @@ export class GridSearchPageStory {
       return [];
     }
     const query = this.query().trim().toLowerCase();
+    const region = this.regionFilter();
+    const manager = this.managerFilter().trim().toLowerCase();
     const rows = Array.from({ length: SOURCE_SIZE }, (_, i) => makeRow(i)).filter(
-      (row) => query === '' || row.name.toLowerCase().includes(query),
+      (row) =>
+        (query === '' || row.name.toLowerCase().includes(query)) &&
+        (region === '' || row.region === region) &&
+        (manager === '' || row.manager.toLowerCase().includes(manager)),
     );
     const sort = this.orderBy();
     if (sort === null) {
@@ -235,6 +405,23 @@ export class GridSearchPageStory {
     return sort === null ? 'none' : `${sort.key} ${sort.direction}`;
   });
 
+  /** The filters, as the readout shows them. */
+  readonly filtersText = computed(() => {
+    const parts = [
+      this.regionFilter() === '' ? null : `region=${this.regionFilter()}`,
+      this.managerFilter() === '' ? null : `manager~${this.managerFilter()}`,
+    ].filter((part) => part !== null);
+    return parts.length === 0 ? 'none' : parts.join(', ');
+  });
+
+  /** The shown toggleable columns, as the readout shows them. */
+  readonly columnsText = computed(() =>
+    this.toggleable
+      .filter((column) => this.shown().has(column.key))
+      .map((column) => column.key)
+      .join(', '),
+  );
+
   /** Row identity. */
   readonly rowId = (row: DemoRow): number => row.id;
 
@@ -246,6 +433,36 @@ export class GridSearchPageStory {
   onQuery(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
     this.page.set(0);
+  }
+
+  /** Applies the Region filter from the first page. */
+  onRegionFilter(event: Event): void {
+    this.regionFilter.set((event.target as HTMLSelectElement).value);
+    this.page.set(0);
+  }
+
+  /** Applies the Manager filter from the first page. */
+  onManagerFilter(event: Event): void {
+    this.managerFilter.set((event.target as HTMLInputElement).value);
+    this.page.set(0);
+  }
+
+  /** Clears both header filters. */
+  clearFilters(): void {
+    this.regionFilter.set('');
+    this.managerFilter.set('');
+    this.page.set(0);
+  }
+
+  /** Shows or hides a column from the column editor. */
+  toggleColumn(key: ToggleableColumn, shown: boolean): void {
+    const next = new Set(this.shown());
+    if (shown) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    this.shown.set(next);
   }
 
   /** Turns the page. */

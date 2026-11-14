@@ -10,6 +10,7 @@ import { TM_GRID_KEYS } from '../tm-grid-keys';
 import {
   TM_GRID_KEY_BINDINGS,
   tmResolveGridKey,
+  tmResolveHeaderKey,
   type TmGridIntent,
   type TmGridKeyBinding,
   type TmGridKeyCondition,
@@ -121,6 +122,20 @@ function everything(apple: boolean): TmGridKeyContext {
   };
 }
 
+/**
+ * Resolves a binding's keydown where it applies: on a navigable header for
+ * a header binding, in the rows otherwise.
+ */
+function resolveWhereBound(
+  binding: TmGridKeyBinding,
+  event: KeyboardEvent,
+  apple: boolean,
+): TmGridIntent | null {
+  return binding.when === 'header'
+    ? tmResolveHeaderKey(event, { apple, searchable: true })
+    : tmResolveGridKey(event, everything(apple));
+}
+
 /** Every condition met except the binding's own (each of them, for a list). */
 function without(
   when: TmGridKeyCondition | readonly TmGridKeyCondition[],
@@ -155,7 +170,7 @@ describe('tmResolveGridKey (binding table)', () => {
       it.each(TM_GRID_KEY_BINDINGS.map((binding) => [binding.keys, binding] as const))(
         'resolves %s to its binding',
         (_keys, binding) => {
-          expect(tmResolveGridKey(pressBinding(binding.keys, apple), everything(apple))).toEqual(
+          expect(resolveWhereBound(binding, pressBinding(binding.keys, apple), apple)).toEqual(
             binding.intent,
           );
         },
@@ -178,12 +193,19 @@ describe('tmResolveGridKey (binding table)', () => {
           (binding) => [binding.keys, String(binding.when), binding] as const,
         ),
       )('does not act on %s unless the grid is %s', (_keys, _when, binding) => {
-        // A bare Space falls through to type-to-edit without row checkboxes.
+        // A bare Space falls through to type-to-edit without row checkboxes,
+        // and a combination two bindings share resolves to the other one.
         const intent = tmResolveGridKey(
           pressBinding(binding.keys, apple),
           without(binding.when!, apple),
         );
-        expect(intent === null || isTypeToEdit(intent), JSON.stringify(intent)).toBe(true);
+        const others = TM_GRID_KEY_BINDINGS.filter(
+          (other) => other !== binding && other.keys === binding.keys,
+        ).map((other) => JSON.stringify(other.intent));
+        expect(
+          intent === null || isTypeToEdit(intent) || others.includes(JSON.stringify(intent)),
+          JSON.stringify(intent),
+        ).toBe(true);
       });
     });
   }
@@ -411,9 +433,15 @@ describe('TM_GRID_KEYS', () => {
     expect(TM_GRID_KEYS.every((entry) => Object.isFrozen(entry))).toBe(true);
   });
 
-  it('names each combination once', () => {
-    const keys = TM_GRID_KEYS.map((entry) => entry.keys);
+  it('names each combination once per state it applies in', () => {
+    const keys = TM_GRID_KEY_BINDINGS.map((entry) => `${entry.keys} ${String(entry.when)}`);
     expect(new Set(keys).size).toBe(keys.length);
+    // Alt+ArrowDown alone means two things: a cell's dropdown and a header's action.
+    const shared = TM_GRID_KEYS.filter((entry) => entry.keys === 'Alt+ArrowDown');
+    expect(shared.map((entry) => entry.labelKey)).toEqual([
+      'tmUi.grid.keys.openDropdown',
+      'tmUi.grid.keys.headerAction',
+    ]);
   });
 
   it('labels every entry with an English string under the grid keys', () => {
@@ -429,5 +457,65 @@ describe('TM_GRID_KEYS', () => {
       TM_GRID_KEYS.map((entry) => entry.labelKey.slice('tmUi.grid.keys.'.length)),
     );
     expect(Object.keys(labels).sort()).toEqual([...used].sort());
+  });
+});
+
+describe('tmResolveHeaderKey', () => {
+  /** Resolves a named key on a header, with the given modifiers. */
+  function resolve(
+    key: string,
+    init: KeyboardEventInit = {},
+    ctx: { apple: boolean; searchable: boolean } = { apple: false, searchable: true },
+  ): TmGridIntent | null {
+    return tmResolveHeaderKey(new KeyboardEvent('keydown', { key, ...init }), ctx);
+  }
+
+  it('moves between headers and down to the rows on plain arrows, Home and End', () => {
+    expect(resolve('ArrowLeft')).toEqual({ kind: 'headerMove', motion: 'left' });
+    expect(resolve('ArrowRight')).toEqual({ kind: 'headerMove', motion: 'right' });
+    expect(resolve('Home')).toEqual({ kind: 'headerMove', motion: 'first' });
+    expect(resolve('End')).toEqual({ kind: 'headerMove', motion: 'last' });
+    expect(resolve('ArrowUp')).toEqual({ kind: 'headerMove', motion: 'up' });
+    expect(resolve('ArrowDown')).toEqual({ kind: 'headerMove', motion: 'down' });
+  });
+
+  it('activates on Enter and Space and opens the action on Alt+ArrowDown alone', () => {
+    expect(resolve('Enter')).toEqual({ kind: 'headerActivate' });
+    expect(resolve(' ')).toEqual({ kind: 'headerActivate' });
+    expect(resolve('ArrowDown', { altKey: true })).toEqual({ kind: 'headerAction' });
+    expect(resolve('ArrowDown', { altKey: true, shiftKey: true })).toBeNull();
+    expect(resolve('ArrowDown', { altKey: true, ctrlKey: true })).toBeNull();
+    expect(resolve('ArrowUp', { altKey: true })).toBeNull();
+  });
+
+  it('leaves chords, Tab and typing to the page, keeping Escape and the find key', () => {
+    expect(resolve('Tab')).toBeNull();
+    expect(resolve('a')).toBeNull();
+    expect(resolve('ArrowRight', { shiftKey: true })).toBeNull();
+    expect(resolve('Home', { ctrlKey: true })).toBeNull();
+    expect(resolve('Enter', { metaKey: true })).toBeNull();
+    expect(resolve('Escape')).toEqual({ kind: 'escape' });
+    expect(resolve('f', { ctrlKey: true, code: 'KeyF' })).toEqual({ kind: 'find' });
+    expect(resolve('f', { metaKey: true, code: 'KeyF' }, { apple: true, searchable: true })).toEqual(
+      { kind: 'find' },
+    );
+    expect(resolve('f', { ctrlKey: true, code: 'KeyF' }, { apple: false, searchable: false })).toBeNull();
+  });
+});
+
+describe('tmResolveGridKey (header-only bindings)', () => {
+  it('never resolves the header action in the rows', () => {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true });
+    expect(
+      tmResolveGridKey(event, {
+        apple: false,
+        editable: false,
+        searchable: false,
+        selectable: false,
+        isTree: false,
+        activeIsBoolean: false,
+        rowActivation: false,
+      }),
+    ).toBeNull();
   });
 });

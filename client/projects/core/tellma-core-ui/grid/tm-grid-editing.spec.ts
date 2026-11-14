@@ -2120,3 +2120,239 @@ describe('tm-grid entity columns (built-in tm-entity-picker editor)', () => {
     expect(host.model()[0].agentId).toBe(5); // nothing was written
   });
 });
+
+describe('tm-grid entity columns (descriptions, label parts, display parts)', () => {
+  interface Center {
+    readonly id: number;
+    readonly code: string;
+    readonly name: string;
+    readonly parent: string | null;
+  }
+  // Two Centers share a name; a Latin code sits beside an Arabic name.
+  const CENTERS: readonly Center[] = [
+    { id: 1, code: 'JED-01', name: 'Jeddah', parent: 'Western Region' },
+    { id: 2, code: 'JED-02', name: 'Jeddah', parent: 'Logistics' },
+    { id: 3, code: 'INV-0011', name: 'نقد', parent: null },
+  ];
+  const findCenter = (id: number | null): Center | undefined =>
+    CENTERS.find((center) => center.id === id);
+
+  interface CenterLine {
+    readonly id: number;
+    readonly centerId: number | null;
+    readonly otherId: number | null;
+  }
+
+  @Component({
+    imports: [TmGrid, TmGridColumn],
+    template: `
+      <tm-grid gridId="entity-parts-grid" [field]="f" [rowId]="rowId" style="block-size: 300px">
+        <tm-grid-column
+          key="centerId"
+          type="entity"
+          header="Center"
+          [search]="search"
+          [itemId]="centerId"
+          [itemLabel]="centerLabel"
+          [itemDescription]="centerDescription"
+          [itemLabelParts]="centerParts"
+          [format]="format"
+          [formatParts]="formatParts"
+          [width]="220"
+        />
+        <tm-grid-column
+          key="otherId"
+          type="entity"
+          header="Other"
+          [search]="search"
+          [itemId]="centerId"
+          [itemLabel]="centerLabel"
+          [format]="format"
+          [width]="220"
+        />
+      </tm-grid>
+    `,
+  })
+  class PartsHost {
+    readonly model = signal<CenterLine[]>([
+      { id: 1, centerId: 3, otherId: 3 },
+      { id: 2, centerId: 99, otherId: null },
+      { id: 3, centerId: null, otherId: null },
+    ]);
+    readonly f = form(this.model);
+    readonly rowId = (row: CenterLine): number => row.id;
+    readonly search = (query: string): readonly Center[] => {
+      const q = query.trim().toLowerCase();
+      return CENTERS.filter((c) => `${c.code} ${c.name}`.toLowerCase().includes(q));
+    };
+    readonly centerId = (item: Center): number => item.id;
+    readonly centerLabel = (item: Center): string => `${item.code} - ${item.name}`;
+    readonly centerDescription = (item: Center): string | null => item.parent;
+    readonly centerParts = (item: Center): readonly string[] => [item.code, item.name];
+    readonly format = (value: number | null): string => {
+      if (value === null) {
+        return '';
+      }
+      const center = findCenter(value);
+      return center === undefined ? `#${String(value)}` : `${center.code} - ${center.name}`;
+    };
+    readonly formatParts = (value: number | null): readonly string[] | null => {
+      const center = findCenter(value);
+      return center === undefined ? null : [center.code, center.name];
+    };
+  }
+
+  async function setupParts(): Promise<{
+    fixture: ComponentFixture<PartsHost>;
+    scroller: HTMLElement;
+  }> {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(PartsHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    return { fixture, scroller };
+  }
+
+  /** The text span of a display cell. */
+  function textOf(scroller: HTMLElement, row: number, col: number): HTMLElement {
+    return cellAt(scroller, row, col)!.querySelector('.tm-grid__text') as HTMLElement;
+  }
+
+  /** The isolated runs of a display cell's text, in order. */
+  function runsOf(scroller: HTMLElement, row: number, col: number): string[] {
+    return Array.from(textOf(scroller, row, col).querySelectorAll(':scope > bdi')).map(
+      (run) => run.textContent ?? '',
+    );
+  }
+
+  /** The dropdown's entity rows (footer rows excluded). */
+  function optionRows(): HTMLElement[] {
+    return Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.tm-entity-picker__option:not(.tm-entity-picker__action)',
+      ),
+    );
+  }
+
+  /** Bidirectional control characters: none may reach the rendered text. */
+  const BIDI_CONTROLS = /[؜‎‏‪-‮⁦-⁩]/;
+
+  it('formatParts draws each part of a display cell in its own <bdi>, joined by plain " - "', async () => {
+    const { scroller } = await setupParts();
+    expect(runsOf(scroller, 0, 0)).toEqual(['INV-0011', 'نقد']);
+    expect(textOf(scroller, 0, 0).textContent?.trim()).toBe('INV-0011 - نقد');
+    expect(BIDI_CONTROLS.test(textOf(scroller, 0, 0).textContent ?? '')).toBe(false);
+    // Parts that stand for no text of format's (an unknown id) draw that
+    // text as one isolated run; an empty cell draws nothing.
+    expect(runsOf(scroller, 1, 0)).toEqual(['#99']);
+    expect(runsOf(scroller, 2, 0)).toEqual([]);
+    expect(textOf(scroller, 2, 0).textContent?.trim()).toBe('');
+  });
+
+  it('an entity column without formatParts draws its display text as one isolated run', async () => {
+    const { scroller } = await setupParts();
+    expect(runsOf(scroller, 0, 1)).toEqual(['INV-0011 - نقد']);
+    expect(textOf(scroller, 0, 1).textContent?.trim()).toBe('INV-0011 - نقد');
+    // An empty cell draws no run.
+    expect(runsOf(scroller, 1, 1)).toEqual([]);
+  });
+
+  it('in a right-to-left page, an unbound entity cell and its dropdown row order a mixed label alike', async () => {
+    // The whole page turns right-to-left, so the portaled dropdown does too.
+    const pageDir = document.documentElement.dir;
+    document.documentElement.dir = 'rtl';
+    try {
+      const { fixture, scroller } = await setupParts();
+
+      /** Whether the code's text sits left of the name's within one run. */
+      const codeLeftOfName = (run: Element): boolean => {
+        const text = run.firstChild as Text;
+        const box = (word: string): DOMRect => {
+          const range = document.createRange();
+          range.setStart(text, text.data.indexOf(word));
+          range.setEnd(text, text.data.indexOf(word) + word.length);
+          return range.getBoundingClientRect();
+        };
+        return box('INV-0011').left < box('نقد').left;
+      };
+
+      const cellRun = textOf(scroller, 0, 1).querySelector(':scope > bdi')!;
+      // Activate the unbound column's empty cell (row 1, the row's last
+      // column) and search for the same Center.
+      await activateOrigin(fixture, scroller);
+      keydown(scroller, 'ArrowDown');
+      keydown(scroller, 'End');
+      await stable(fixture);
+      expect(cellAt(scroller, 1, 1)!.getAttribute('tabindex')).toBe('0');
+      keydown(scroller, 'I');
+      await stable(fixture);
+      const input = scroller.querySelector<HTMLInputElement>('.tm-entity-picker__input')!;
+      expect(input.getAttribute('dir')).toBe('auto');
+      typeInto(input, 'INV');
+      await stable(fixture);
+      const rows = optionRows();
+      expect(rows.length).toBe(1);
+      const optionRun = rows[0].querySelector('.tm-entity-picker__option-label > bdi')!;
+      expect(optionRun.textContent).toBe('INV-0011 - نقد');
+      // The dropdown row and the display cell agree: both take the label's
+      // own first-strong direction, as the picker's input does.
+      expect(codeLeftOfName(cellRun)).toBe(true);
+      expect(codeLeftOfName(optionRun)).toBe(true);
+    } finally {
+      document.documentElement.dir = pageDir;
+    }
+  });
+
+  it("a copied display-parts cell carries format's plain text", async () => {
+    const { fixture, scroller } = await setupParts();
+    await activateOrigin(fixture, scroller);
+    const data = new DataTransfer();
+    scroller.dispatchEvent(
+      new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+    expect(data.getData('text/plain').trim()).toBe('INV-0011 - نقد');
+  });
+
+  it("the cell editor hands the column's description and label parts to its picker", async () => {
+    const { fixture, scroller } = await setupParts();
+    await activateOrigin(fixture, scroller);
+    keydown(scroller, 'J');
+    await stable(fixture);
+    const rows = optionRows();
+    expect(rows.length).toBe(2);
+    for (const row of rows) {
+      expect(row.classList.contains('tm-entity-picker__option--two-line')).toBe(true);
+    }
+    expect(
+      rows.map((row) =>
+        Array.from(row.querySelectorAll('.tm-entity-picker__option-label > bdi')).map(
+          (run) => run.textContent,
+        ),
+      ),
+    ).toEqual([
+      ['JED-01', 'Jeddah'],
+      ['JED-02', 'Jeddah'],
+    ]);
+    expect(
+      rows.map((row) => row.querySelector('.tm-entity-picker__option-description')?.textContent),
+    ).toEqual(['Western Region', 'Logistics']);
+    keydown(scroller.querySelector('.tm-entity-picker__input')!, 'Escape');
+    await stable(fixture);
+    await stable(fixture);
+
+    // The neighbouring column binds neither: its dropdown rows are one line.
+    keydown(scroller, 'ArrowRight');
+    await stable(fixture);
+    keydown(scroller, 'J');
+    await stable(fixture);
+    const plainRows = optionRows();
+    expect(plainRows.length).toBe(2);
+    for (const row of plainRows) {
+      expect(row.classList.contains('tm-entity-picker__option--two-line')).toBe(false);
+      expect(row.querySelector('.tm-entity-picker__option-description')).toBeNull();
+      expect(row.querySelectorAll('.tm-entity-picker__option-label > bdi').length).toBe(1);
+    }
+  });
+});

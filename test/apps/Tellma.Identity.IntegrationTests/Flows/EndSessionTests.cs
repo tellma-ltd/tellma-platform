@@ -10,6 +10,7 @@ using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -32,7 +33,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idendrefuse");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(factory, flow, distribution, "ellen@example.com");
 
             string endSessionUrl = "/connect/endsession?client_id=acme&post_logout_redirect_uri="
@@ -53,7 +54,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idendconfirm");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(factory, flow, distribution, "fiona@example.com");
 
             // A bare request — any page can navigate a browser to it — only asks.
@@ -95,7 +96,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idendhint");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             string idToken = await SignInAsync(factory, flow, distribution, "gwen@example.com");
 
             using HttpResponseMessage response = await flow.Browser.GetAsync(
@@ -115,12 +116,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             // Another user's valid id token, such as one a hostile relying party holds.
             string otherIdToken;
-            using (OidcFlowClient other = new(factory))
+            using (OidcFlowClient other = factory.CreateFlowClient())
             {
                 otherIdToken = await SignInAsync(factory, other, distribution, "hank@example.com");
             }
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(factory, flow, distribution, "iris@example.com");
 
             using HttpResponseMessage response = await flow.Browser.GetAsync(

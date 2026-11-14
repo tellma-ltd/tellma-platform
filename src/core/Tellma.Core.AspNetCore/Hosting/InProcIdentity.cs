@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -62,6 +63,17 @@ namespace Tellma.Core.AspNetCore.Hosting
 
         /// <summary>The engine's middleware method.</summary>
         private const string UseMethod = "UseTellmaIdentity";
+
+        /// <summary>
+        ///     The policy an anonymous engine endpoint carries: it authenticates the engine's own sign-in
+        ///     cookie and requires nothing. Without it the platform's fallback policy, which names the
+        ///     platform's session scheme, would still be evaluated for the endpoint, and its principal
+        ///     would replace the engine's: a page that reads the signed-in user, such as the sign-out
+        ///     page, would see the platform's session or nobody.
+        /// </summary>
+        internal static readonly AuthorizationPolicy AnonymousEnginePolicy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme)
+            .RequireAssertion(static _ => true)
+            .Build();
 
         /// <summary>The route prefix of every engine endpoint, without slashes.</summary>
         private static readonly string RoutePrefix = IdentityHostOptions.InProcPath.Trim('/');
@@ -217,7 +229,8 @@ namespace Tellma.Core.AspNetCore.Hosting
 
         /// <summary>
         ///     Maps the engine's controllers and pages, and stamps every engine endpoint tenantless and the
-        ///     platform's; an engine endpoint that states no authorization of its own is made anonymous, so
+        ///     platform's; an engine endpoint that states no authorization of its own is made anonymous, an
+        ///     anonymous one authenticates the engine's own sign-in rather than the platform's session, so
         ///     the platform's fallback policy never applies to it, and one with <c>[Authorize]</c> keeps its
         ///     own policy and scheme.
         /// </summary>
@@ -271,14 +284,23 @@ namespace Tellma.Core.AspNetCore.Hosting
                 || path.StartsWith(RoutePrefix + "/", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>Stamps an engine endpoint tenantless and the platform's, and anonymous when it states no authorization.</summary>
+        /// <summary>
+        ///     Stamps an engine endpoint tenantless and the platform's, and anonymous when it states no
+        ///     authorization; an anonymous one authenticates the engine's own sign-in.
+        /// </summary>
         /// <param name="metadata">The endpoint's metadata.</param>
         /// <param name="anonymousUnlessStated">Whether to make it anonymous when it carries neither authorization nor anonymity.</param>
         private static void Stamp(IList<object> metadata, bool anonymousUnlessStated)
         {
-            if (anonymousUnlessStated && !metadata.OfType<IAuthorizeData>().Any() && !metadata.OfType<IAllowAnonymous>().Any())
+            bool authorizes = metadata.OfType<IAuthorizeData>().Any();
+            if (anonymousUnlessStated && !authorizes && !metadata.OfType<IAllowAnonymous>().Any())
             {
                 metadata.Add(new AllowAnonymousAttribute());
+            }
+
+            if (!authorizes && metadata.OfType<IAllowAnonymous>().Any() && !metadata.Contains(AnonymousEnginePolicy))
+            {
+                metadata.Add(AnonymousEnginePolicy);
             }
 
             metadata.Add(new TenantlessEndpointMetadata(TenantlessReason));
@@ -310,7 +332,8 @@ namespace Tellma.Core.AspNetCore.Hosting
 
         /// <summary>
         ///     Makes an engine page anonymous when its model states neither <c>[Authorize]</c> nor
-        ///     <c>[AllowAnonymous]</c>; a page that states <c>[Authorize]</c> keeps it.
+        ///     <c>[AllowAnonymous]</c>, and has every anonymous page authenticate the engine's own sign-in;
+        ///     a page that states <c>[Authorize]</c> keeps it.
         /// </summary>
         private sealed class EnginePageConvention : IPageApplicationModelConvention
         {
@@ -324,11 +347,20 @@ namespace Tellma.Core.AspNetCore.Hosting
                     return;
                 }
 
-                bool stated = model.HandlerTypeAttributes.Any(static attribute => attribute is IAuthorizeData or IAllowAnonymous)
-                    || model.EndpointMetadata.Any(static item => item is IAuthorizeData or IAllowAnonymous);
-                if (!stated)
+                // --- Anonymous unless the model states its own authorization ---
+                bool authorizes = model.HandlerTypeAttributes.OfType<IAuthorizeData>().Any()
+                    || model.EndpointMetadata.OfType<IAuthorizeData>().Any();
+                bool anonymous = model.HandlerTypeAttributes.OfType<IAllowAnonymous>().Any()
+                    || model.EndpointMetadata.OfType<IAllowAnonymous>().Any();
+                if (!authorizes && !anonymous)
                 {
                     model.EndpointMetadata.Add(new AllowAnonymousAttribute());
+                }
+
+                // --- An anonymous page still sees the engine's sign-in, not the platform's session ---
+                if (!authorizes && !model.EndpointMetadata.Contains(AnonymousEnginePolicy))
+                {
+                    model.EndpointMetadata.Add(AnonymousEnginePolicy);
                 }
             }
         }

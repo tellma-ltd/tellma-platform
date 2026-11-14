@@ -35,6 +35,10 @@ describe('tmRefToVarName', () => {
     expect(tmRefToVarName('categorical.3.onTint')).toBe('--categorical-3-on-tint');
     expect(tmRefToVarName('categorical.8.mark')).toBe('--categorical-8-mark');
     expect(tmRefToVarName('sequential.4')).toBe('--sequential-4');
+    // A digit run after a letter starts a word of its own, as a capital does.
+    expect(tmRefToVarName('entityPicker.optionHeight2line')).toBe(
+      '--entity-picker-option-height-2line',
+    );
   });
 
   it('turns refs into var() and passes literals through', () => {

@@ -1,0 +1,60 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tmGridHeaderAction — a square icon target sized by the header-action
+   token, which fits inside every density's header row. It draws on the
+   header's own surface, so its tints are mixes of the ink rather than
+   surface tokens, and read the same in both schemes. */
+
+:host {
+  /* Projected tm-icon children read their box from here. */
+  --icon-size: var(--icon-size-md);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: var(--grid-header-action-size);
+  block-size: var(--grid-header-action-size);
+  margin: 0;
+  padding: 0;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--grid-header-text);
+  font: inherit;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  :host(:hover) {
+    background: color-mix(in srgb, currentcolor 10%, transparent);
+  }
+}
+
+/* The on state: the accent ink, and the hidden "Active" description. */
+:host(.tm-grid-header-action--active) {
+  color: var(--color-primary);
+}
+
+/* A transparent real outline beneath the token ring: forced colors strip
+   box-shadows but repaint the outline in a system color. */
+:host(:focus-visible) {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+@media (forced-colors: active) {
+  /* The on state never relies on a tint the system palette replaces. */
+  :host(.tm-grid-header-action--active) {
+    color: Highlight;
+    border-color: Highlight;
+  }
+}

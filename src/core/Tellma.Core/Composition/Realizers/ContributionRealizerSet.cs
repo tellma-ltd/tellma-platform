@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Jobs;
 
 namespace Tellma.Core.Composition.Realizers
 {
@@ -33,7 +34,10 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new ClientEventContributionRealizer())
                 .Add(new SecurablesContributionRealizer())
                 .Add(new StackContributionRealizer())
-                .Add(new ProvisioningStepContributionRealizer());
+                .Add(new ProvisioningStepContributionRealizer())
+                .Add(new JobHandlerContributionRealizer())
+                .Add(new BuiltInScheduleContributionRealizer())
+                .Add(new RetiredJobKeyContributionRealizer());
         }
 
         /// <summary>Adds the realizer of <typeparamref name="TItem" />.</summary>

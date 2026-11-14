@@ -1,9 +1,10 @@
 # Tellma.Core.EntityFrameworkCore
 
-The runtime home of Tellma's EF Core extensions. Today it ships one feature, **table types**
-(namespace `Tellma.Core.EntityFrameworkCore.TableTypes`): SQL Server user-defined table types
-(UDTTs) as first-class citizens of EF Core migrations. Future EF Core extensions get sibling
-namespaces.
+The runtime home of Tellma's EF Core extensions. It ships two features, each in its own namespace:
+**table types** (`Tellma.Core.EntityFrameworkCore.TableTypes`), SQL Server user-defined table types
+(UDTTs) as first-class citizens of EF Core migrations, and **lock escalation**
+(`Tellma.Core.EntityFrameworkCore.LockEscalation`), a table's `LOCK_ESCALATION` option declared on
+its entity type and kept by the same migrations. Future EF Core extensions get sibling namespaces.
 
 ## Why this exists
 
@@ -77,6 +78,19 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    of its own, shapes a class-derived type. Both match names case-insensitively and fail the
    registration for an unknown one.
 
+## Lock escalation
+
+`entity.HasLockEscalation(LockEscalationMode.Disable)` (or `Table`, `Auto`) records the option as the
+annotation `Tellma:LockEscalation` on the entity type
+([LockEscalationExtensions](LockEscalation/LockEscalationExtensions.cs)); `GetLockEscalation()`
+reads it back as the SQL Server keyword. It rides `UseTableTypes`: the extension replaces EF's
+SQL Server annotation provider with a subclass (in the quarantined adapter) that carries the
+annotation onto the table, so the differ surfaces it on `CreateTableOperation` and, when it changes,
+on `AlterTableOperation`, and the snapshot round-trips it. The SQL generator then emits
+`ALTER TABLE … SET (LOCK_ESCALATION = …);` as a statement of its own after the table is created,
+and again whenever the option changes; removing the declaration restores the server default,
+`TABLE`. A keyword other than `TABLE`, `AUTO` or `DISABLE` fails generation.
+
 ## Rules this project lives by
 
 - **Never references `Microsoft.EntityFrameworkCore.Design`** (directly or transitively) and
@@ -84,8 +98,9 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
   references, the transitive dependency closure (what a host's publish output ships), and a
   ground-truth scan of a Design-free app's output directory.
 - **Internal EF APIs are quarantined** in a single file,
-  [TableTypes/Internal/EfCoreInternalsAdapter.cs](TableTypes/Internal/EfCoreInternalsAdapter.cs),
-  pinned by tests that fail loudly on EF upgrades. The EF version is pinned centrally in
+  [TableTypes/Internal/EfCoreInternalsAdapter.cs](TableTypes/Internal/EfCoreInternalsAdapter.cs)
+  (the differ splice and the annotation provider subclass), pinned by tests that fail loudly on EF
+  upgrades. The EF version is pinned centrally in
   `Directory.Packages.props`.
 - **Admission rule**: code belongs here only if it extends EF Core's own surface (options
   extensions, migration operations, conventions, metadata/annotations) and is generic over any

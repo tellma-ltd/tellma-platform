@@ -9,7 +9,12 @@ import {
   TM_STORE_DOCS,
   TM_STORE_KEY_PATH,
   TM_STORE_VERSION,
+  TM_USERS_PREFIX,
   tmPartitionKey,
+  tmPartitionKeyBounds,
+  tmPrefixKeyBounds,
+  tmSessionsPrefix,
+  tmStoredName,
   tmUserKeyBounds,
   type TmPartition,
 } from './tm-store-layout';
@@ -35,9 +40,33 @@ describe('the client store layout', () => {
     });
   }
 
+  for (const vector of vectors.storedNames) {
+    it(`stores ${vector.name} at format ${vector.format} as ${vector.n}`, () => {
+      expect(tmStoredName(vector.name, vector.format)).toBe(vector.n);
+    });
+  }
+
   it('lists the vector documents in the order IndexedDB sorts their keys', () => {
     const sorted = [...vectors.documents].sort((a, b) => indexedDB.cmp(a, b));
     expect(sorted).toEqual(vectors.documents);
+  });
+
+  for (const vector of vectors.partitionReads) {
+    it(`bounds one partition's documents: ${vector.name}`, () => {
+      const range = IDBKeyRange.bound(...tmPartitionKeyBounds(vector.partition as TmPartition));
+      expect(vectors.documents.filter((key) => range.includes(key))).toEqual(vector.documents);
+    });
+  }
+
+  it("bounds every user's documents, and a user's sessions, by their key prefixes", () => {
+    const users = IDBKeyRange.bound(...tmPrefixKeyBounds(TM_USERS_PREFIX));
+    expect(vectors.documents.filter((key) => !users.includes(key))).toEqual([['device', 'zone@1']]);
+    const sessions = IDBKeyRange.bound(...tmPrefixKeyBounds(tmSessionsPrefix('0b4f')));
+    expect(vectors.documents.filter((key) => sessions.includes(key)).map(([p]) => p)).toEqual([
+      'u:0b4f/sY4kQ1x-_',
+      'u:0b4f/sY4kQ1x-_X',
+      'u:0b4f/sZ9',
+    ]);
   });
 
   for (const vector of vectors.userDeletes) {

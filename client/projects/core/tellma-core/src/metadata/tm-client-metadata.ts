@@ -144,6 +144,16 @@ export class TmClientMetadataStore {
   /** The loaded Core chunk, or `null` before the boot sequence loads it. */
   #core: TmClientMetadata | null = null;
 
+  /** Resolves {@link TmClientMetadataStore.loaded}. */
+  #resolve!: (core: TmClientMetadata) => void;
+
+  /**
+   * Resolves with the Core chunk once the boot sequence has loaded it, for a
+   * service that starts before then, such as the tab bus, whose channel
+   * names carry the distribution's slug.
+   */
+  readonly loaded: Promise<TmClientMetadata> = new Promise((resolve) => (this.#resolve = resolve));
+
   /**
    * Keeps the loaded Core chunk.
    *
@@ -151,6 +161,19 @@ export class TmClientMetadataStore {
    */
   set(core: TmClientMetadata): void {
     this.#core = core;
+    this.#resolve(core);
+  }
+
+  /**
+   * The loaded Core chunk, or `null` before the boot sequence loads it. A
+   * service that may run before then reads the chunk here, never through
+   * `TM_CLIENT_METADATA`: a failed injection of that token leaves it failing
+   * for the rest of the app, even once the chunk is loaded.
+   *
+   * @returns The chunk, or `null`.
+   */
+  peek(): TmClientMetadata | null {
+    return this.#core;
   }
 
   /**

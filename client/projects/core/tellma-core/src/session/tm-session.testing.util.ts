@@ -9,6 +9,8 @@ import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmTelemetry, type TmTelemetryItem, type TmTelemetryProps } from '../observe/tm-telemetry';
+import { TM_STORE_HOST } from '../state/store/tm-store-host';
+import { tmMemoryStoreHost } from '../state/store/tm-store.testing.util';
 import { TmFakeStorage } from '../state/tm-storage.testing.util';
 import { tmParseProfileCookie } from './tm-profile';
 import { TM_SESSION_HOST, type TmSessionHost } from './tm-session-host';
@@ -105,7 +107,8 @@ export class TmRecordingTelemetry extends TmTelemetry {
 
 /**
  * The providers of a session spec: the faked browser, a fixed clock, the
- * recording telemetry and the boot script's result.
+ * recording telemetry, the boot script's result and a client store that runs
+ * in memory.
  *
  * @param host - The faked browser.
  * @param boot - The boot script's result, or `null` for none. Without a
@@ -119,5 +122,6 @@ export function tmSessionTestingProviders(host: TmFakeSessionHost, boot: Partial
     { provide: TM_NOW, useValue: () => now },
     { provide: TmTelemetry, useClass: TmRecordingTelemetry },
     { provide: TM_BOOT_RESULT, useValue: boot === null ? null : { profile: tmParseProfileCookie(host.cookieJar), ...boot } },
+    { provide: TM_STORE_HOST, useFactory: () => tmMemoryStoreHost() },
   ];
 }

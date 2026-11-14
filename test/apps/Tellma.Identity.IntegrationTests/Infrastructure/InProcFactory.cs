@@ -12,6 +12,7 @@ using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Testing.Email;
 using Tellma.Identity.TestInProcHost;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Infrastructure
 {
@@ -30,6 +31,13 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
 
         /// <summary>The captured outbound email (codes, links).</summary>
         public CapturingEmailSender Emails { get; } = new CapturingEmailSender();
+
+        /// <summary>Creates a protocol driver over this host, with the engine at <see cref="PathBase" />.</summary>
+        /// <returns>The driver; the caller disposes it.</returns>
+        public OidcFlowClient CreateFlowClient()
+        {
+            return new OidcFlowClient(CreateClient, Emails, PathBase);
+        }
 
         /// <inheritdoc />
         protected override void ConfigureWebHost(IWebHostBuilder builder)

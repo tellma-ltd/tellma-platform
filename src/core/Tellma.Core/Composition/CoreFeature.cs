@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
@@ -18,6 +19,7 @@ using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Data;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Provisioning;
@@ -138,6 +140,23 @@ namespace Tellma.Core.Composition
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
                 .ClientEvent("inbox.changed")
                 .ClientEvent("session.ended");
+
+            // --- Background jobs: the job and schedule tables, their machinery's tables and table types ---
+            // spec 0020 §2, §7, §15. Job and Schedule are entities without services until their
+            // services land; the schedule state and the worker heartbeat are platform tables, never
+            // stacks. The handlers and built-in schedules Core owns are contributed with their handlers.
+            _ = contribution
+                .Entity<Job>()
+                .Entity<Schedule>()
+                .Model<JobConfiguration>()
+                .Model(typeof(ScheduleConfiguration<>))
+                .Model<ScheduleStateConfiguration>()
+                .Model<JobWorkerStateConfiguration>()
+                .TableType<JobRequestList>()
+                .TableType<JobOutcomeList>()
+                .TableType<JobProgressList>()
+                .TableType<JobLeaseList>()
+                .TableType<ScheduleNextList>();
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

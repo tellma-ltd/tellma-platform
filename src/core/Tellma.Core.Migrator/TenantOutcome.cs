@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Globalization;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Migrator
@@ -88,17 +89,21 @@ namespace Tellma.Core.Migrator
         }
 
         /// <summary>
-        ///     The text a failure prints: the message alone for the failures the migrator and the
-        ///     tenancy raise for an operator to read, else the exception's type and message.
+        ///     The text a failure prints: the code and the message for the tenancy's refusals, which a
+        ///     script matches by code; the message alone for the migrator's own failures; else the
+        ///     exception's type and message.
         /// </summary>
         /// <param name="exception">The failure.</param>
         /// <returns>The text.</returns>
         public static string Describe(Exception exception)
         {
             ArgumentNullException.ThrowIfNull(exception);
-            return exception is MigratorFailureException or TenantStateException or TenantUnavailableException or TenantNotFoundException
-                ? exception.Message
-                : $"{exception.GetType().Name}: {exception.Message}";
+            return exception switch
+            {
+                TellmaException coded when coded is TenantStateException or TenantUnavailableException or TenantNotFoundException => $"{coded.Code}: {coded.Message}",
+                MigratorFailureException => exception.Message,
+                _ => $"{exception.GetType().Name}: {exception.Message}",
+            };
         }
 
         /// <summary>The report's lines for this tenant: its outcome, then each drift line.</summary>

@@ -117,6 +117,8 @@ export class ɵTmGridDateEditor {
       [search]="search()"
       [itemId]="itemId()"
       [itemLabel]="itemLabel()"
+      [itemDescription]="itemDescription()"
+      [itemLabelParts]="itemLabelParts()"
       [displayWith]="displayWith()"
       [advancedSearch]="advancedSearch()"
       [create]="create()"
@@ -139,6 +141,12 @@ export class ɵTmGridEntityEditor {
   readonly itemId = input.required<(item: unknown) => TmEntityId>();
   /** Maps a search result to its display text. */
   readonly itemLabel = input.required<(item: unknown) => string>();
+  /** Maps a search result to its description line (two-line rows), if bound. */
+  readonly itemDescription = input<((item: unknown) => string | null) | undefined>(undefined);
+  /** Maps a search result to its label parts, if bound. */
+  readonly itemLabelParts = input<((item: unknown) => readonly string[] | null) | undefined>(
+    undefined,
+  );
   /** The committed-id display resolver (the column's `format`, adapted). */
   readonly displayWith = input<((id: unknown) => string | null) | undefined>(undefined);
   /** The column's advanced-search page, if any. */

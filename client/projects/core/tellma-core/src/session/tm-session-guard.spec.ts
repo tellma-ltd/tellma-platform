@@ -34,14 +34,15 @@ describe('tmSessionGuard', () => {
     expect(guard()).toBe(true);
   });
 
-  it('denies a missing session and runs the expiry path', () => {
+  it('denies a missing session and runs the expiry path', async () => {
     host.cookieJar = '';
     expect(guard()).toBe(false);
     expect(TestBed.inject(TmSession).state()).toBe('expired');
     expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).events).toEqual([
       { name: 'tm.session.expired', props: { source: 'cookie' } },
     ]);
-    expect(host.reloads).toBe(1);
+    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
+    expect(host.reloads).toBe(0);
   });
 
   it('denies another user and runs the changed-user path', () => {

@@ -7,7 +7,7 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the boot script's result types and the app clock (`TM_NOW`) | eager |
+| `@tellma/core` | The distribution API: `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`) | eager |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -60,17 +60,68 @@ again on every `check()`, never the network: `same`, `missing` (the expiry path)
 the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out`. `signIn()` writes
 the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
-reports an expiry that led there and drops a previous user's drafts. Until the tab bus and the
-client store arrive, the paths beyond the tab's own state are tab-local: an expiry deletes the
-stale profile cookie and reloads, so the boot leads to the sign-in and the user's data leaves the
-screen. An expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page
-instead, so a server that keeps refusing fresh sessions cannot loop the tab through sign-ins.
+reports an expiry that led there and drops a previous user's drafts. Until the drafts and the
+session-ended dialog arrive, the paths beyond the tab's own state are tab-local: an expiry sweeps
+every user's stored data (in a 1 s box; a sweep cut short, failed or unable to reach the disk
+clears the boot record's user, so the next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
+same page, so the user's data leaves the disk and the screen and the expiry is reported once. An
+expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page instead, so
+a server that keeps refusing fresh sessions cannot loop the tab through sign-ins; the sweep runs at
+the expiry either way.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into
 another tenant, or when a `404 tenant-not-found` takes it. `tmSingleLiveTenant` is the
 single-membership rule, run over `src/launch/launch-landing-vectors.json`, which the server's
 landing test links too.
+
+## Client state
+
+`TmClientStore` (`src/state/store/`) is the only owner of IndexedDB and of the boot record. One
+database, `tm-app`, holds every cached document in one object store, `docs`, keyed `[p, n]`: the
+partition's key (`device`, `u:<sub>/`, `u:<sub>/t<tenantId>` or `u:<sub>/s<sessionHandle>`) and the
+stored name `<name>@<format>`, whose format comes from `TM_DOC_FORMATS`. A partition is a key
+range, so a user's, a tenant's or a session's data goes in one delete, and each build reads and
+writes only its own formats' copies, so tabs of two builds run side by side after a deployment.
+The layout is frozen: the boot script's expiry delete uses it too, and both test against
+`tm-store-layout-vectors.json`.
+
+- **The mirror.** `doc()` returns a signal over this tab's copy, which `readAll` (one readonly
+  transaction over the partitions' ranges), `put` and `patch` fill. A tenant's documents read as
+  absent unless its `sync` document is within the idle window (the stored distribution's
+  `session.idleDays`, else 7 days), and the user's `tenants` and `distribution` once older than it.
+- **Writes.** `put` keeps a stored copy saved later; `patch` reads and writes in one readwrite
+  transaction, and `undefined` deletes. Each commit posts `store.changed` with the stored name, and
+  other tabs re-read what they mirror of it. A write is refused with `TmStoreRefusedError`
+  (`other-user`, `cookie` or `session`) unless the session is the partition's user's and active.
+- **Sweeps.** `session-ended` deletes every user's partitions and the image cache;
+  `{ sessionOtherThan }` the user's other sessions; `{ tenant }` one tenant. The device partition,
+  which holds only `zone`, survives every sweep. A sweep posts its key prefix, and every tab
+  re-reads its mirror under it. A sweep wins over every write called before it, on disk and in the
+  mirror; a write called after it lands after the delete. It resolves `true` once its delete
+  committed (or nothing is on disk), and `false` when the store runs in memory while a database it
+  could not reach may hold documents.
+- **The boot step**, `ɵstart(tenantId)`, an initializer of the app's start: it waits for the tab
+  bus, sweeps every user when the boot record names none or another user, reads the device, user
+  and routed tenant partitions in one readonly transaction (a warm launch's only store access),
+  records the user in the boot record (unless its sweep could not reach the disk, so the next launch
+  sweeps again), and sweeps the user's other sessions at idle after the first render. It never
+  rejects: a storage fault after the open puts the tab in memory, cold.
+- **Fallbacks.** A quota refusal drops the write and keeps it in the mirror. When IndexedDB fails to
+  open within 3 s, or a transaction fails later for a cause other than the caller's (a lost
+  connection, a failing backing store), the store reports it and runs in memory (`mode` is
+  `memory`): the write stays in the mirror and reads resolve with what the mirror holds, so no read
+  or write rejects for the storage's sake. When local storage refuses, the boot record lives in
+  memory. Each reports `tm.store.unavailable` once. A store host marked
+  `memory`, as in tests, runs in memory by design and reports nothing. A `versionchange` closes the connection, which reopens on next use.
+
+`TmTabBus` (`src/state/bus/`) carries every cross-tab message over two `BroadcastChannel`s: the
+device channel `tm:<slug>` carries the `session.*` messages, which every user of the browser hears,
+and the user channel `tm:<slug>:<sub>` the rest. Each message travels in envelope `v: 1` with the
+posting tab's id; a tab ignores an unknown version or type and never hears its own posts. The
+channels open once the Core chunk names the slug (earlier posts wait for them), close while the
+page sits in the back-forward cache, and reopen when it comes back, when the store re-reads every
+mirrored document.
 
 ## The HTTP layer
 
@@ -183,5 +234,6 @@ enforces the graph, and ng-packagr refuses a cycle between entry points.
 
 ## Budgets
 
-Each entry point's gzipped weight has a ceiling in `package.json` (`"tellma".budgetsInKb`),
-checked by `pnpm run size:check`; every raise carries a note beside it.
+Each entry point's gzipped weight, as a production app ships it after the Angular linker, has a
+ceiling in `package.json` (`"tellma".budgetsInKb`), checked by `pnpm run size:check`; every raise
+carries a note beside it.

@@ -7,9 +7,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Reflection;
 using Tellma.Core.Composition;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Migrator
 {
@@ -37,12 +39,6 @@ namespace Tellma.Core.Migrator
 
         /// <summary>The identity mode that keeps the identity store in the catalog.</summary>
         public const string InProcIdentityMode = "InProc";
-
-        /// <summary>The configuration key of the seed tenants.</summary>
-        public const string SeedTenantsKey = "Tellma:Seed:Tenants";
-
-        /// <summary>The configuration key of the Development administrator's email address.</summary>
-        public const string SeedAdminEmailKey = "Tellma:Seed:AdminEmail";
 
         /// <summary>The fixed subject of the Development administrator a seeded email address names.</summary>
         public const string DevelopmentAdminSubject = "00000000-0000-0000-0000-000000000001";
@@ -131,7 +127,7 @@ namespace Tellma.Core.Migrator
                 return new ProvisioningAdministrator(email, null);
             }
 
-            string? seeded = Configuration[SeedAdminEmailKey] is { Length: > 0 } value && !string.IsNullOrWhiteSpace(value) ? value : null;
+            string? seeded = Services.GetRequiredService<IOptions<TellmaSeedOptions>>().Value.AdminEmail is { } value && !string.IsNullOrWhiteSpace(value) ? value : null;
             return email is not null
                 ? new ProvisioningAdministrator(email, subject)
                 : new ProvisioningAdministrator(seeded, subject ?? (seeded is null ? null : DevelopmentAdminSubject));

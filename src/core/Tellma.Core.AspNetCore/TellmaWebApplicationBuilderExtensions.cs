@@ -58,6 +58,10 @@ namespace Tellma.Core.AspNetCore
             ArgumentNullException.ThrowIfNull(slug);
             ArgumentNullException.ThrowIfNull(compose);
 
+            // In Development, the worktree's ports file sets the listening port and the public origin,
+            // before anything reads either.
+            DevelopmentPorts.Apply(builder, slug);
+
             // The distribution's version is read from the assembly that declares its composition, not
             // from the composer this method wraps it in.
             builder.Services.TryAddSingleton(DeploymentVersionsReader.Read(compose));
@@ -92,6 +96,7 @@ namespace Tellma.Core.AspNetCore
             _ = services.AddSingleton<IValidateOptions<IdentityHostOptions>, IdentityHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<ForwardedHeadersHostOptions>, ForwardedHeadersHostOptionsValidator>();
+            _ = services.AddSingleton<IValidateOptions<DataProtectionHostOptions>, DataProtectionHostOptionsValidator>();
 
             // --- Hosting: the shutdown drain ---
             _ = services.Configure<HostOptions>(static options => options.ShutdownTimeout = ShutdownTimeout);

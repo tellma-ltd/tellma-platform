@@ -52,7 +52,11 @@ namespace Tellma.Core.Migrator
             return RunAsync(args, slug, compose, migrateIdentityStore, new MigratorRunSettings(), CancellationToken.None);
         }
 
-        /// <summary>Runs one migrator command, hosted as the settings say.</summary>
+        /// <summary>
+        ///     Runs one migrator command, hosted as the settings say: a distribution's suites run its
+        ///     migrator in process this way, with their own configuration, output and migrations
+        ///     assembly.
+        /// </summary>
         /// <param name="args">The command line.</param>
         /// <param name="slug">The distribution slug.</param>
         /// <param name="compose">The distribution's composition method.</param>
@@ -61,7 +65,7 @@ namespace Tellma.Core.Migrator
         /// <param name="cancellationToken">Stops the command.</param>
         /// <returns>The exit code.</returns>
         /// <exception cref="ArgumentNullException">An argument other than <paramref name="migrateIdentityStore" /> is null.</exception>
-        internal static async Task<int> RunAsync(
+        public static async Task<int> RunAsync(
             IReadOnlyList<string> args,
             string slug,
             Action<TellmaBuilder> compose,

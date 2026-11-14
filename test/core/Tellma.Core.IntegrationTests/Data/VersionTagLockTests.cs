@@ -33,7 +33,7 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The fixture's cacheable list.</summary>
         private static readonly TableName Lookups = new(FixtureSchema.Name, "Lookups");
 
-        /// <summary>The stand-in jobs table, written where a batch must write something.</summary>
+        /// <summary>The jobs table, written where a batch must write something.</summary>
         private static readonly TableName Jobs = new("core", "Jobs");
 
         /// <summary>The users' preference bags, whose writes bump each named user's preferences tag.</summary>
@@ -264,7 +264,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using SqlConnection rival = new(fixture.Database.Tenant.ConnectionString);
             await rival.OpenAsync(Token);
             await using var rivalTransaction = (SqlTransaction)await rival.BeginTransactionAsync(Token);
-            _ = await ExecuteInAsync(rival, rivalTransaction, "SET DEADLOCK_PRIORITY HIGH; INSERT INTO [core].[Jobs] ([Id]) VALUES (1001);");
+            _ = await ExecuteInAsync(rival, rivalTransaction, "SET DEADLOCK_PRIORITY HIGH; INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (1001, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());");
 
             // --- A holds a shared lock on the list's tag and waits at the gate the rival holds ---
             await using AsyncServiceScope scope = fixture.Database.Tenant.CreateScope();
@@ -421,7 +421,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 var transaction = (SqlTransaction)await connection.BeginTransactionAsync(Token);
                 await using SqlCommand command = connection.CreateCommand();
                 command.Transaction = transaction;
-                command.CommandText = "INSERT INTO [core].[Jobs] ([Id]) VALUES (1001);";
+                command.CommandText = "INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (1001, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());";
                 _ = await command.ExecuteNonQueryAsync(Token);
                 return new SideTransaction(connection, transaction);
             }

@@ -7,10 +7,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
-using Tellma.Core.Tests.Data.Metadata;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition.Checks
@@ -138,19 +138,13 @@ namespace Tellma.Core.Tests.Composition.Checks
         public async Task A_target_naming_a_stack_that_is_not_a_top_level_entity_passes()
         {
             // A system-written stack derives from Entity<int>, not TopLevelEntity; it is still a
-            // routable resource.
-            static void Compose(TellmaBuilder tellma)
-            {
-                _ = tellma.AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Entity<MdJob>()));
-            }
-
-            await using ServiceProvider provider = TestComposition.Compose(Compose).BuildServiceProvider(validateScopes: true);
-            EntityMetadata job = provider.GetRequiredService<IEntityMetadataProvider>().Get(typeof(MdJob));
+            // routable resource. Core's jobs are one.
+            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            EntityMetadata job = provider.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Job));
             Assert.False(job.IsTopLevel);
 
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution => contribution
-                    .Entity<MdJob>()
                     .NotificationType(new NotificationTypeDescriptor("fixture.job.failed", "jobs", false, job.Name)))));
 
             Assert.Empty(problems.From(Check));

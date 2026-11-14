@@ -6,7 +6,11 @@
 
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
+import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
+
+// @public
+export function provideTellmaStateTesting(): EnvironmentProviders;
 
 // @public
 export function provideTellmaTesting(): EnvironmentProviders;
@@ -45,6 +49,32 @@ export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'u
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
+export class TmFakeSession implements TmSessionSurface {
+    check(): TmSessionCheck;
+    readonly profile: Signal<TmProfile | null>;
+    setCheck(check: TmSessionCheck | null): void;
+    setProfile(profile: TmProfile | null): void;
+    setState(state: TmSessionState): void;
+    signIn(options?: TmSignInOptions): Promise<never>;
+    readonly signIns: Signal<readonly TmSignInOptions[]>;
+    readonly state: Signal<TmSessionState>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeSession, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeSession>;
+}
+
+// @public
+export class TmFakeTabBus extends TmTabBus {
+    clear(): void;
+    readonly messages: Observable<TmBusMessage>;
+    post(message: TmBusMessage): void;
+    readonly posted: Signal<readonly TmBusMessage[]>;
+    receive(message: TmBusMessage): void;
+    readonly tabId: string;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTabBus, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTabBus>;
+}
+
+// @public
 export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;
@@ -63,5 +93,8 @@ export function tmTestEntitiesChunk(patch?: Partial<TmEntitiesChunk>): TmEntitie
 
 // @public
 export function tmTestMetadata(patch?: Partial<TmClientMetadata>): TmClientMetadata;
+
+// @public
+export function tmTestProfile(patch?: Partial<Omit<TmProfile, 'v'>>): TmProfile;
 
 ```

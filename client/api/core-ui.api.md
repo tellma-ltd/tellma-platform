@@ -128,6 +128,9 @@ export const TM_UI_STRINGS_EN: {
         readonly selectAll: "Select all rows";
         readonly selectRow: "Select row";
         readonly rowActivationHint: "Press Enter to open a row. Press F2 to reach a link in a cell.";
+        readonly headerNavHint: "{filter, select, true {Enter to sort. {filterKeys} to filter.} other {Enter to sort.}}";
+        readonly headerActionHint: "Press Enter to open.";
+        readonly headerActionActive: "Active";
         readonly menu: {
             readonly cut: "Cut";
             readonly copy: "Copy";
@@ -230,6 +233,7 @@ export const TM_UI_STRINGS_EN: {
             readonly deleteRows: "Delete the selected rows";
             readonly expand: "Expand the row";
             readonly collapse: "Collapse the row";
+            readonly headerAction: "Open the column header’s action, such as its filter";
         };
     };
     readonly menu: {

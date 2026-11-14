@@ -44,7 +44,14 @@ feature or entity added there would diverge the web host's model from the migrat
   other send outside a tenant still fails;
 - Data Protection under the application name `tellma-{slug}`, persisted to
   `Tellma:DataProtection:KeyRingPath` when set; outside Development a host with no persistent key
-  repository fails `host.data-protection`;
+  repository fails `host.data-protection`. The section's `BlobUri` and `KeyId` (a key ring in a
+  blob under a Key Vault key, which the Azure web defaults wire) are checked here: both or neither,
+  each an absolute https URL, and never beside `KeyRingPath`;
+- in Development, the worktree's ports: the gitignored `.dev-ports.local`, looked for from the
+  content root up to the repository's root, whose `<SLUG>_WEB` line sets both `urls` and
+  `Tellma:PublicOrigin` (`https://localhost:<web>`, the host's own origin while no client dev server
+  fronts it) just above the configuration files, so environment variables and the command line still
+  win;
 - forwarded headers from the configured proxies alone;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
@@ -86,8 +93,14 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `POST /bff/logout` | `Tellma.Web`; the sign-out, `global` or `local` |
 | `GET /bff/user` | `Tellma.Web`; the user and the tenants the membership hints list |
 | `POST /bff/backchannel-logout` | anonymous; the identity server's logout tokens |
-| `/id/...` | the engine's own, in in-proc mode |
+| `/id/...` | the engine's own, in in-proc mode; an engine endpoint that states no authorization is anonymous, and an anonymous one authenticates the engine's sign-in cookie, never the platform's session |
+| `POST /api/webhooks/{key}` | anonymous; the webhook receivers, when the Azure web defaults compose them |
 | the SPA's files and the navigation fallback | anonymous |
+
+A defaults bundle contributes routes of its own through the internal `IPlatformEndpointSource`
+seam: `MapTellma` maps each source's endpoints anonymous and tenantless, stamped as the platform's,
+so they may sit under the `api` words the audit reserves. A build's static web assets also map a
+development endpoint that serves files from disk; it is stamped like the published files.
 
 | Group | Route | Policy | Guard |
 |---|---|---|---|

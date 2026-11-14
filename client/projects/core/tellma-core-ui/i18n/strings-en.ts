@@ -83,6 +83,14 @@ export const TM_UI_STRINGS_EN = {
     selectAll: 'Select all rows',
     selectRow: 'Select row',
     rowActivationHint: 'Press Enter to open a row. Press F2 to reach a link in a cell.',
+    // A navigable column header's description: a sortable header, with or
+    // without an action (filterKeys is the action's key, such as Alt+↓), and
+    // a header whose only interaction is its action.
+    headerNavHint:
+      '{filter, select, true {Enter to sort. {filterKeys} to filter.} other {Enter to sort.}}',
+    headerActionHint: 'Press Enter to open.',
+    // A header action's description while its state is on (a filter applied).
+    headerActionActive: 'Active',
     menu: {
       cut: 'Cut',
       copy: 'Copy',
@@ -193,6 +201,7 @@ export const TM_UI_STRINGS_EN = {
       deleteRows: 'Delete the selected rows',
       expand: 'Expand the row',
       collapse: 'Collapse the row',
+      headerAction: 'Open the column header’s action, such as its filter',
     },
   },
   menu: {

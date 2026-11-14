@@ -50,7 +50,7 @@ namespace Tellma.Core.Tests.Data.Metadata
         public string? Nickname { get; set; }
     }
 
-    /// <summary>A stand-in for <c>core.Jobs</c>.</summary>
+    /// <summary>A stand-in for <c>core.Jobs</c> in models built without Core.</summary>
     [Table("Jobs", Schema = "core")]
     public class MdJob : Entity<int>
     {

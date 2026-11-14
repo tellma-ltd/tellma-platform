@@ -57,6 +57,58 @@ namespace Tellma.Core.AspNetCore.Hosting
     }
 
     /// <summary>
+    ///     Refuses a Data Protection key ring configured by halves: a blob without the Key Vault key
+    ///     that wraps it (which would persist the keys unencrypted, or not at all), a key without its
+    ///     blob, a location that is not an absolute https URL, and a shared folder named beside the
+    ///     blob, of which only one could hold the ring.
+    /// </summary>
+    internal sealed class DataProtectionHostOptionsValidator : IValidateOptions<DataProtectionHostOptions>
+    {
+        /// <inheritdoc />
+        public ValidateOptionsResult Validate(string? name, DataProtectionHostOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            string section = DataProtectionHostOptions.SectionPath;
+            bool hasBlob = !string.IsNullOrWhiteSpace(options.BlobUri);
+            bool hasKey = !string.IsNullOrWhiteSpace(options.KeyId);
+            List<string> failures = [];
+
+            // --- The cloud ring comes in pairs ---
+            if (hasBlob != hasKey)
+            {
+                failures.Add(hasBlob
+                    ? $"{section}:{nameof(options.BlobUri)} is set without {nameof(options.KeyId)}; the key ring in Blob storage is always wrapped by a Key Vault key."
+                    : $"{section}:{nameof(options.KeyId)} is set without {nameof(options.BlobUri)}; a Key Vault key wraps a key ring kept in Blob storage.");
+            }
+
+            // --- Each location an absolute https URL: the ring holds every session's keys ---
+            foreach ((string key, string? value) in new[] { (nameof(options.BlobUri), options.BlobUri), (nameof(options.KeyId), options.KeyId) })
+            {
+                if (!string.IsNullOrWhiteSpace(value) && !IsHttpsUrl(value))
+                {
+                    failures.Add($"{section}:{key} is '{value}', which is not an absolute https URL.");
+                }
+            }
+
+            // --- One ring: a shared folder and a blob would each hold keys the other never reads ---
+            if (hasBlob && !string.IsNullOrWhiteSpace(options.KeyRingPath))
+            {
+                failures.Add($"{section}:{nameof(options.KeyRingPath)} and {nameof(options.BlobUri)} are both set; keep the key ring in one of them.");
+            }
+
+            return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+        }
+
+        /// <summary>Whether a value is an absolute https URL.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>True when it is.</returns>
+        private static bool IsHttpsUrl(string value)
+        {
+            return Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps;
+        }
+    }
+
+    /// <summary>
     ///     Refuses the framework's own forwarded-headers switch, which trusts the headers of every
     ///     caller: <c>Tellma:ForwardedHeaders</c>, with its known proxies, is the one way in.
     /// </summary>

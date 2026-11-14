@@ -17,7 +17,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
 | `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
-| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages |
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`) |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/radio` | `tm-radio-group` + `tm-radio` — one value from a visible list of native radios, with arrow keys mapped to the live direction |
 | `@tellma/core-ui/segmented` | `tm-segmented` + `tm-segment` — the same native radios as a compact track of segments; icon segments drop their labels below a container width |

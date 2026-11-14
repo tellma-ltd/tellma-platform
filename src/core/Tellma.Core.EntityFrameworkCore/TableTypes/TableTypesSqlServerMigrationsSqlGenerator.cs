@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
+using Tellma.Core.EntityFrameworkCore.LockEscalation;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
@@ -66,6 +67,86 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                     base.Generate(operation, model, builder);
                     break;
             }
+        }
+
+        /// <summary>
+        ///     Generates the provider's <c>CREATE TABLE</c>, then, when the table declares a lock
+        ///     escalation option, the <c>ALTER TABLE ... SET (LOCK_ESCALATION = ...)</c> that applies it.
+        /// </summary>
+        /// <param name="operation">The operation.</param>
+        /// <param name="model">The target model, when available.</param>
+        /// <param name="builder">The command builder.</param>
+        /// <param name="terminate">Whether to terminate the command; a table with a lock escalation option is always terminated.</param>
+        /// <exception cref="InvalidOperationException">
+        ///     The table declares a lock escalation option and the caller asked for an unterminated command.
+        /// </exception>
+        protected override void Generate(CreateTableOperation operation, IModel? model, MigrationCommandListBuilder builder, bool terminate = true)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            ArgumentNullException.ThrowIfNull(builder);
+
+            string? mode = operation[LockEscalationAnnotationNames.LockEscalation] as string;
+            if (mode is not null && !terminate)
+            {
+                throw new InvalidOperationException(
+                    $"The table {operation.Schema}.{operation.Name} declares a lock escalation option, which is set by a statement of its own, so its creation cannot be left unterminated.");
+            }
+
+            base.Generate(operation, model, builder, terminate);
+            if (mode is not null)
+            {
+                GenerateLockEscalation(operation.Name, operation.Schema, mode, builder);
+            }
+        }
+
+        /// <summary>
+        ///     Generates the provider's table alteration, then the <c>ALTER TABLE ... SET
+        ///     (LOCK_ESCALATION = ...)</c> when the declared option changed; a dropped declaration
+        ///     restores SQL Server's default, <c>TABLE</c>.
+        /// </summary>
+        /// <param name="operation">The operation.</param>
+        /// <param name="model">The target model, when available.</param>
+        /// <param name="builder">The command builder.</param>
+        protected override void Generate(AlterTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            ArgumentNullException.ThrowIfNull(builder);
+
+            base.Generate(operation, model, builder);
+
+            string? mode = operation[LockEscalationAnnotationNames.LockEscalation] as string;
+            string? previous = operation.OldTable[LockEscalationAnnotationNames.LockEscalation] as string;
+            if (!string.Equals(mode, previous, StringComparison.Ordinal))
+            {
+                GenerateLockEscalation(operation.Name, operation.Schema, mode ?? LockEscalationExtensions.Keyword(LockEscalationMode.Table), builder);
+            }
+        }
+
+        /// <summary>Generates <c>ALTER TABLE ... SET (LOCK_ESCALATION = ...)</c> as a command of its own.</summary>
+        /// <param name="name">The table's name.</param>
+        /// <param name="schema">The table's schema, or null for the default.</param>
+        /// <param name="mode">The option's SQL keyword.</param>
+        /// <param name="builder">The command builder.</param>
+        /// <exception cref="InvalidOperationException">The keyword is not one of SQL Server's options.</exception>
+        protected virtual void GenerateLockEscalation(string name, string? schema, string mode, MigrationCommandListBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+
+            // The keyword is spliced into the text, so only SQL Server's three are accepted.
+            if (mode is not ("TABLE" or "AUTO" or "DISABLE"))
+            {
+                throw new InvalidOperationException(
+                    $"The table {schema}.{name} declares the lock escalation option '{mode}'; SQL Server accepts TABLE, AUTO or DISABLE.");
+            }
+
+            _ = builder
+                .Append("ALTER TABLE ")
+                .Append(Dependencies.SqlGenerationHelper.DelimitIdentifier(name, schema))
+                .Append(" SET (LOCK_ESCALATION = ")
+                .Append(mode)
+                .Append(")")
+                .AppendLine(Dependencies.SqlGenerationHelper.StatementTerminator);
+            builder.EndCommand();
         }
 
         /// <summary>

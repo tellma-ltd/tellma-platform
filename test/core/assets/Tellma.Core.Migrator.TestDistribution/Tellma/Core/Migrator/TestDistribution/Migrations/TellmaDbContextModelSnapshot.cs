@@ -31,6 +31,9 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
             modelBuilder.HasSequence<int>("sq_Gadgets", "probe")
                 .StartsAt(1000L);
 
+            modelBuilder.HasSequence<int>("sq_Jobs", "core")
+                .StartsAt(1000L);
+
             modelBuilder.HasSequence<int>("sq_Permissions", "core")
                 .StartsAt(1000L);
 
@@ -38,6 +41,9 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Roles", "core")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_Schedules", "core")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Users", "core")
@@ -604,6 +610,315 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Job", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ArgumentsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Attempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTimeOffset?>("CancelRequestedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("ConfirmedKeys")
+                        .HasMaxLength(2000)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(2000)")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset>("DueAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("ErrorArgumentsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ErrorTraceId")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("HandlerKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("LabelArgumentsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("LabelKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uniqueidentifier")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<string>("PendingConfirmationsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ProgressArgumentsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("ProgressKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte?>("ProgressPercent")
+                        .HasColumnType("tinyint");
+
+                    b.Property<int?>("RequestedById")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RunAsUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ScheduleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ScheduledFor")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("StateJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(19)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(19)");
+
+                    b.Property<string>("TraceParent")
+                        .HasMaxLength(55)
+                        .HasColumnType("nvarchar(55)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Jobs");
+
+                    b.HasIndex("DueAt")
+                        .HasDatabaseName("IX_Jobs_PendingConfirmation")
+                        .HasFilter("[Status] = 'PendingConfirmation'");
+
+                    b.HasIndex("LeaseToken")
+                        .HasDatabaseName("IX_Jobs_Lease")
+                        .HasFilter("[LeaseToken] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("LeaseToken"), new[] { "Status" });
+
+                    b.HasIndex("RequestedById")
+                        .HasDatabaseName("IX_Jobs_Held")
+                        .HasFilter("[Status] = 'Held'");
+
+                    b.HasIndex("ScheduleId")
+                        .HasDatabaseName("IX_Jobs_ScheduleActive")
+                        .HasFilter("[Status] IN ('Pending', 'Running', 'Held', 'PendingConfirmation') AND [ScheduleId] IS NOT NULL");
+
+                    b.HasIndex("RequestedById", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Jobs_RequestedBy")
+                        .HasFilter("[RequestedById] IS NOT NULL");
+
+                    b.HasIndex("Status", "CompletedAt")
+                        .HasDatabaseName("IX_Jobs_Retention")
+                        .HasFilter("[Status] IN ('Succeeded', 'Failed', 'Cancelled')");
+
+                    b.HasIndex("HandlerKey", "DueAt", "Id")
+                        .HasDatabaseName("IX_Jobs_Available")
+                        .HasFilter("[Status] IN ('Pending', 'Running')");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("HandlerKey", "DueAt", "Id"), new[] { "LeaseExpiresAt" });
+
+                    b.HasIndex("RequestedById", "CreatedAt", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("IX_Jobs_RequestedActive")
+                        .HasFilter("[Status] IN ('Pending', 'Running', 'Held', 'PendingConfirmation') AND [RequestedById] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("RequestedById", "CreatedAt", "Id"), new[] { "ScheduledFor" });
+
+                    b.ToTable("Jobs", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_Jobs_Id", "[Id] > 0");
+
+                            t.HasCheckConstraint("CK_Jobs_Lease", "([Status] = 'Running' AND [LeaseToken] IS NOT NULL AND [LeaseExpiresAt] IS NOT NULL) OR ([Status] <> 'Running' AND [LeaseToken] IS NULL AND [LeaseExpiresAt] IS NULL)");
+
+                            t.HasCheckConstraint("CK_Jobs_PendingConfirmations", "([Status] = 'PendingConfirmation' AND [PendingConfirmationsJson] IS NOT NULL) OR ([Status] <> 'PendingConfirmation' AND [PendingConfirmationsJson] IS NULL)");
+
+                            t.HasCheckConstraint("CK_Jobs_Progress", "[ProgressPercent] <= 100");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:LockEscalation", "DISABLE")
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Schedule", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ArgumentsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CatchUpWindowMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1440);
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("HandlerKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true, "DF_Schedules_IsActive");
+
+                    b.Property<string>("MissedPolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(9)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(9)")
+                        .HasDefaultValue("Coalesce");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Name2")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Name3")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("OverlapPolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)")
+                        .HasDefaultValue("Skip");
+
+                    b.Property<string>("PausedReason")
+                        .HasMaxLength(14)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(14)");
+
+                    b.Property<int>("RunAsUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("ValidFrom")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("ValidFrom")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<DateTime>("ValidTo")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("ValidTo")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.HasKey("Id")
+                        .HasName("PK_Schedules");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Schedules_Code")
+                        .HasFilter("[Code] IS NOT NULL");
+
+                    b.HasIndex("HandlerKey")
+                        .HasDatabaseName("IX_Schedules_HandlerKey");
+
+                    b.ToTable("Schedules", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_Schedules_CatchUp", "[CatchUpWindowMinutes] > 0");
+
+                            t.HasCheckConstraint("CK_Schedules_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .ToTable(tb => tb.IsTemporal(ttb =>
+                            {
+                                ttb.UseHistoryTable("SchedulesHistory", "core");
+                                ttb
+                                    .HasPeriodStart("ValidFrom")
+                                    .HasColumnName("ValidFrom");
+                                ttb
+                                    .HasPeriodEnd("ValidTo")
+                                    .HasColumnName("ValidTo");
+                            }))
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
             modelBuilder.Entity("Tellma.Core.Access.UserPreference", b =>
                 {
                     b.Property<int>("UserId")
@@ -742,6 +1057,81 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                     b.ToTable("__TellmaSchema", "dbo");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Jobs.JobWorkerState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LastTickAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("LastTickOwner")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_JobWorkerState");
+
+                    b.ToTable("JobWorkerState", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_JobWorkerState_Id", "[Id] > 0");
+
+                            t.HasCheckConstraint("CK_JobWorkerState_SingleRow", "[Id] = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1
+                        });
+                });
+
+            modelBuilder.Entity("Tellma.Core.Jobs.ScheduleState", b =>
+                {
+                    b.Property<int>("ScheduleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LastFiredAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<int?>("LastJobId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LastScheduledFor")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset?>("LastSkippedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("NextDueAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.HasKey("ScheduleId")
+                        .HasName("PK_ScheduleStates");
+
+                    b.HasIndex("LeaseToken")
+                        .HasDatabaseName("IX_ScheduleStates_Lease")
+                        .HasFilter("[LeaseToken] IS NOT NULL");
+
+                    b.HasIndex("NextDueAt")
+                        .HasDatabaseName("IX_ScheduleStates_Due")
+                        .HasFilter("[NextDueAt] IS NOT NULL");
+
+                    b.ToTable("ScheduleStates", "core");
+                });
+
             modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
                 {
                     b.Property<int>("Id")
@@ -862,6 +1252,52 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasConstraintName("FK_Blobs_CreatedById");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Job", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Jobs_RequestedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("RunAsUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Jobs_RunAsUserId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Schedule", null)
+                        .WithMany()
+                        .HasForeignKey("ScheduleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Jobs_ScheduleId");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Schedule", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Schedules_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Schedules_ModifiedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("RunAsUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Schedules_RunAsUserId");
+                });
+
             modelBuilder.Entity("Tellma.Core.Access.UserPreference", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -882,6 +1318,22 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasConstraintName("FK_UserStamps_UserId");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Jobs.ScheduleState", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Job", null)
+                        .WithMany()
+                        .HasForeignKey("LastJobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_ScheduleStates_LastJobId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Schedule", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Jobs.ScheduleState", "ScheduleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_ScheduleStates_ScheduleId");
+                });
+
             modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -898,6 +1350,37 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_Gadgets_ModifiedById");
                 });
+
+            modelBuilder.HasTableTypeDefinition("JobsList", "core", type => type
+                .ForTable("Jobs", "core")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "HandlerKey", storeType: "nvarchar(64)", maxLength: 64)
+                .Column(name: "LabelKey", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "LabelArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "Status", storeType: "varchar(19)", maxLength: 19)
+                .Column(name: "DueAt", storeType: "datetimeoffset(3)", precision: 3)
+                .Column(name: "Attempts", storeType: "int")
+                .Column(name: "LeaseExpiresAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "LeaseOwner", storeType: "nvarchar(128)", nullable: true, maxLength: 128)
+                .Column(name: "StartedAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "CompletedAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "CancelRequestedAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "ArgumentsJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "ProgressPercent", storeType: "tinyint", nullable: true)
+                .Column(name: "ProgressKey", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ProgressArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "ErrorCode", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ErrorArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "ErrorTraceId", storeType: "varchar(32)", nullable: true, maxLength: 32)
+                .Column(name: "PendingConfirmationsJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "TraceParent", storeType: "nvarchar(55)", nullable: true, maxLength: 55)
+                .Column(name: "RunAsUserId", storeType: "int")
+                .Column(name: "RequestedById", storeType: "int", nullable: true)
+                .Column(name: "ScheduleId", storeType: "int", nullable: true)
+                .Column(name: "ScheduledFor", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(3)", precision: 3)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
 
             modelBuilder.HasTableTypeDefinition("PermissionsList", "core", type => type
                 .ForTable("Permissions", "core")
@@ -930,6 +1413,30 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
                 .Column(name: "Code", storeType: "nvarchar(50)", nullable: true, maxLength: 50)
                 .Column(name: "IsPublic", storeType: "bit")
+                .Column(name: "IsActive", storeType: "bit")
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("SchedulesList", "core", type => type
+                .ForTable("Schedules", "core")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Code", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "Name2", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "HandlerKey", storeType: "nvarchar(64)", maxLength: 64)
+                .Column(name: "ArgumentsJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "CronExpression", storeType: "nvarchar(128)", maxLength: 128)
+                .Column(name: "TimeZoneId", storeType: "varchar(64)", nullable: true)
+                .Column(name: "MissedPolicy", storeType: "varchar(9)", maxLength: 9)
+                .Column(name: "OverlapPolicy", storeType: "varchar(8)", maxLength: 8)
+                .Column(name: "CatchUpWindowMinutes", storeType: "int")
+                .Column(name: "RunAsUserId", storeType: "int")
+                .Column(name: "PausedReason", storeType: "varchar(14)", nullable: true, maxLength: 14)
                 .Column(name: "IsActive", storeType: "bit")
                 .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
                 .Column(name: "CreatedById", storeType: "int")
@@ -993,6 +1500,56 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Column(name: "Id", storeType: "int")
                 .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)")
                 .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("JobLeaseList", "dbo", type => type
+                .Column(name: "Id", storeType: "uniqueidentifier")
+                .Column(name: "LeaseSeconds", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("JobOutcomeList", "dbo", type => type
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Status", storeType: "varchar(19)", maxLength: 19)
+                .Column(name: "Released", storeType: "bit")
+                .Column(name: "RetryAfterSeconds", storeType: "int", nullable: true)
+                .Column(name: "ErrorCode", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ErrorArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "ErrorTraceId", storeType: "varchar(32)", nullable: true)
+                .Column(name: "StateJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "PendingConfirmationsJson", storeType: "nvarchar(max)", nullable: true)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("JobProgressList", "dbo", type => type
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "ProgressPercent", storeType: "tinyint", nullable: true)
+                .Column(name: "ProgressKey", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ProgressArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "StateJson", storeType: "nvarchar(max)", nullable: true)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("JobRequestList", "dbo", type => type
+                .Column(name: "Ordinal", storeType: "int")
+                .Column(name: "HandlerKey", storeType: "nvarchar(64)", maxLength: 64)
+                .Column(name: "LabelKey", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "LabelArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "DueAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "ArgumentsJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "TraceParent", storeType: "nvarchar(55)", nullable: true, maxLength: 55)
+                .Column(name: "ConfirmedKeys", storeType: "varchar(2000)", nullable: true)
+                .Column(name: "RunAsUserId", storeType: "int")
+                .Column(name: "RequestedById", storeType: "int", nullable: true)
+                .Column(name: "OwnerId", storeType: "bigint", nullable: true)
+                .HasKey("Ordinal")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("ScheduleNextList", "dbo", type => type
+                .Column(name: "ScheduleId", storeType: "int")
+                .Column(name: "NextDueAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "LastScheduledFor", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .HasKey("ScheduleId")
                 .HasGrants("tellma_app"));
 
             modelBuilder.HasTableTypeDefinition("StringList", "dbo", type => type

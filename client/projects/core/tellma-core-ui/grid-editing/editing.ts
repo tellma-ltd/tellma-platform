@@ -94,6 +94,10 @@ export interface ɵTmGridEditingColumn<T> {
   readonly entityItemId: ((item: unknown) => TmEntityId) | undefined;
   /** Maps an entity search result to its display text. */
   readonly entityItemLabel: ((item: unknown) => string) | undefined;
+  /** Maps an entity search result to its description line, if bound. */
+  readonly entityItemDescription: ((item: unknown) => string | null) | undefined;
+  /** Maps an entity search result to its label parts, if bound. */
+  readonly entityItemLabelParts: ((item: unknown) => readonly string[] | null) | undefined;
   /** An entity column's advanced-search page. */
   readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
   /** An entity column's create page. */
@@ -467,6 +471,10 @@ export class ɵTmGridEditing<T> {
         // picker's required inputs, and its branch is unreachable.
         itemId: column.entityItemId ?? ((item: unknown) => String(item)),
         itemLabel: column.entityItemLabel ?? ((item: unknown) => String(item)),
+        // Two-line rows and label parts reach the dropdown as the column
+        // binds them (spec 0010 §E.4).
+        itemDescription: column.entityItemDescription,
+        itemLabelParts: column.entityItemLabelParts,
         // The column's `format` doubles as the picker's committed-id display
         // resolver; an empty string defers to the picker's own fallbacks
         // (label memo, then String(id) with the dev warning). On the

@@ -6,6 +6,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -22,7 +23,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_protocol_error_shows_its_code_and_a_reference()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iderrproto");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // An unknown client cannot be answered by redirecting to it — there is no registration
             // to take a callback from — so the error comes back through this page.
@@ -44,7 +45,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         public async Task A_request_that_matches_nothing_still_shows_a_reference()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iderr404");
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             using HttpResponseMessage response = await flow.Browser.GetAsync(
                 new Uri("/Identity/Account/NoSuchPage", UriKind.Relative), TestContext.Current.CancellationToken);

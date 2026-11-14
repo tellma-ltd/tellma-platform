@@ -54,7 +54,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // account's — so nothing about it points at the session below.
             await TestData.AddExternalLoginAsync(factory, theirs, "Google", GoogleSubject);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, mine);
             Assert.Equal(mine, await SignedInEmailAsync(flow));
 
@@ -83,7 +83,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.CreateActiveUserAsync(factory, theirs);
             await TestData.AddExternalLoginAsync(factory, theirs, "Google", GoogleSubject);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, mine);
 
             using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, theirs, linkForEmail: mine);
@@ -104,7 +104,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using StandaloneFactory factory = CreateFactory("idlinkfresh");
             await TestData.CreateActiveUserAsync(factory, mine);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, mine);
 
             // The ordinary case, which must keep working: an identity nobody holds attaches to
@@ -126,7 +126,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.CreateActiveUserAsync(factory, mine);
             await TestData.AddExternalLoginAsync(factory, mine, "Google", GoogleSubject);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, mine);
 
             // Same account, same identity — the conflict rule must not catch this, or a user
@@ -148,7 +148,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.CreateActiveUserAsync(factory, owner);
             await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // No session and no declared link: the ordinary federated sign-in, which the conflict
             // rule must leave exactly as it was — a redirect onward, signed in as the owner.
@@ -169,7 +169,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             await TestData.AddExternalLoginAsync(factory, owner, "Google", GoogleSubject);
             await TestData.SetLifecycleStateAsync(factory, user, UserLifecycleState.Disabled);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             using HttpResponseMessage callback = await CompleteExternalCallbackAsync(flow, owner);
 
             // Refused with the generic failure: an account that cannot sign in does not sign in
@@ -189,7 +189,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, signedIn);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, signedIn);
 
             // Someone else's invitation, opened on a browser already signed in as the bystander —
@@ -224,7 +224,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, signedIn);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await SignInAsync(flow, signedIn);
 
             // Somebody else's invitation is open on this browser, exactly as above.

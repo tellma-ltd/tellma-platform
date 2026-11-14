@@ -38,7 +38,12 @@ import { ɵTmGridCore, type ɵTmGridTreeConfig } from './internal/grid-core';
 import { TmGridColumn } from './tm-grid-column';
 import { TM_GRID_CONTEXT } from './tm-grid-context';
 import type { TmGridDriverTarget } from './tm-grid-driver';
-import { TmGridEmptyDef, TmGridLoadingDef } from './tm-grid-templates';
+import {
+  TmGridEmptyDef,
+  TmGridLoadingDef,
+  TmGridRowEndDef,
+  TmGridRowEndHeaderDef,
+} from './tm-grid-templates';
 import { TmGridStateStore } from './tm-grid-state-store';
 import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
 
@@ -169,6 +174,10 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
   readonly emptyDef = contentChild(TmGridEmptyDef);
   /** The projected loading-state template, if any. */
   readonly loadingDef = contentChild(TmGridLoadingDef);
+  /** The projected row-end column header template, if any. */
+  readonly rowEndHeaderDef = contentChild(TmGridRowEndHeaderDef);
+  /** The projected row-end cell template, if any. */
+  readonly rowEndDef = contentChild(TmGridRowEndDef);
 
   /** The composition root the view renders from. */
   protected readonly core: ɵTmGridCore<T>;
@@ -255,6 +264,8 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
       columns: this.columns as Signal<ReadonlyArray<TmGridColumn<T, unknown>>>,
       emptyDef: this.emptyDef,
       loadingDef: this.loadingDef,
+      rowEndHeaderDef: this.rowEndHeaderDef,
+      rowEndDef: this.rowEndDef,
       tree: this.treeConfig(),
     });
     this.errorCount = this.core.errorCount;

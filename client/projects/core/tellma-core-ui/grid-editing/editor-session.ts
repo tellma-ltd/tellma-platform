@@ -101,6 +101,10 @@ export type ɵTmGridEditorMountConfig =
       readonly itemId: (item: unknown) => TmEntityId;
       /** Maps a search result to its display text. */
       readonly itemLabel: (item: unknown) => string;
+      /** Maps a search result to its description line, if the column binds one. */
+      readonly itemDescription: ((item: unknown) => string | null) | undefined;
+      /** Maps a search result to its label parts, if the column binds them. */
+      readonly itemLabelParts: ((item: unknown) => readonly string[] | null) | undefined;
       /** The committed-id display resolver (the column's `format`, adapted). */
       readonly displayWith: ((id: unknown) => string | null) | undefined;
       /** The column's advanced-search page, if any. */
@@ -243,6 +247,8 @@ export class ɵTmGridEditorSession {
       ref.setInput('search', config.search);
       ref.setInput('itemId', config.itemId);
       ref.setInput('itemLabel', config.itemLabel);
+      ref.setInput('itemDescription', config.itemDescription);
+      ref.setInput('itemLabelParts', config.itemLabelParts);
       ref.setInput('displayWith', config.displayWith);
       ref.setInput('advancedSearch', config.advancedSearch);
       ref.setInput('create', config.create);
