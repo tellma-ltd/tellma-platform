@@ -503,6 +503,9 @@
   <data name="Notification_core_dashboard_shared" xml:space="preserve">
     <value>شارك {actorName} معك لوحة المعلومات {title}</value>
   </data>
+  <data name="Notification_core_user_added" xml:space="preserve">
+    <value>أضافك {actorName} إلى {tenantName}</value>
+  </data>
   <data name="Core_Report_Synonyms" xml:space="preserve">
     <value>تقرير، تحليل، قائمة، ملخص، جدول محوري، مخطط</value>
   </data>

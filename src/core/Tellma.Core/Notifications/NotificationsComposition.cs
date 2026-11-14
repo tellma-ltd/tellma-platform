@@ -13,12 +13,12 @@ namespace Tellma.Core.Notifications
 {
     /// <summary>
     ///     Registers what notifications need beyond <see cref="CoreFeature" />'s contribution: the
-    ///     options, and the hub-less defaults of the client event publisher and the real-time status,
-    ///     which a host that maps the hub replaces.
+    ///     options, the hub-less defaults of the client event publisher and the real-time status,
+    ///     which a host that maps the hub replaces, and the notifier's process-wide machinery.
     /// </summary>
     internal static class NotificationsComposition
     {
-        /// <summary>Registers the options and the hub-less defaults.</summary>
+        /// <summary>Registers the options, the hub-less defaults and the notifier's machinery.</summary>
         /// <param name="services">The composition's services.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
         public static void Register(IServiceCollection services, OptionsRegistrar options)
@@ -35,6 +35,10 @@ namespace Tellma.Core.Notifications
             _ = services.AddLogging();
             services.TryAddScoped<IClientEventPublisher, NullClientEventPublisher>();
             services.TryAddSingleton<IRealtimeStatus, NullRealtimeStatus>();
+
+            // --- The notifier's machinery: the channels that deliver and the instruments, one per process ---
+            _ = services.AddSingleton<NotificationDeliveryChannels>();
+            _ = services.AddSingleton<NotificationsMetrics>();
         }
     }
 }

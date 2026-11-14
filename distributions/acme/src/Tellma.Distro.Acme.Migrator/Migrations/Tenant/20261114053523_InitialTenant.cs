@@ -30,6 +30,11 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
+                name: "sq_Notifications",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
                 name: "sq_Permissions",
                 schema: "core",
                 startValue: 1000L);
@@ -219,6 +224,64 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "NotificationPreferences",
+                schema: "core",
+                columns: table => new
+                {
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    Type = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Channel = table.Column<string>(type: "varchar(16)", unicode: false, maxLength: 16, nullable: false),
+                    Enabled = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NotificationPreferences", x => new { x.UserId, x.Type, x.Channel });
+                    table.ForeignKey(
+                        name: "FK_NotificationPreferences_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Notifications",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    Type = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Severity = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    ArgumentsJson = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    TargetResource = table.Column<string>(type: "varchar(128)", unicode: false, maxLength: 128, nullable: true),
+                    TargetId = table.Column<long>(type: "bigint", nullable: true),
+                    ActorUserId = table.Column<int>(type: "int", nullable: true),
+                    DedupKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: false),
+                    ReadAt = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Notifications", x => x.Id);
+                    table.CheckConstraint("CK_Notifications_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Notifications_ActorUserId",
+                        column: x => x.ActorUserId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Notifications_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                })
+                .Annotation("Tellma:LockEscalation", "DISABLE");
 
             migrationBuilder.CreateTable(
                 name: "Roles",
@@ -673,6 +736,35 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 filter: "[Status] IN ('Pending', 'Running', 'Held', 'PendingConfirmation') AND [ScheduleId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Notifications_Dedup",
+                schema: "core",
+                table: "Notifications",
+                columns: new[] { "DedupKey", "UserId" },
+                filter: "[DedupKey] IS NOT NULL")
+                .Annotation("SqlServer:Include", new[] { "ReadAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Notifications_Retention",
+                schema: "core",
+                table: "Notifications",
+                columns: new[] { "ReadAt", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Notifications_Unread",
+                schema: "core",
+                table: "Notifications",
+                column: "UserId",
+                filter: "[ReadAt] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Notifications_User",
+                schema: "core",
+                table: "Notifications",
+                columns: new[] { "UserId", "CreatedAt", "Id" },
+                descending: new[] { false, true, true })
+                .Annotation("SqlServer:Include", new[] { "ReadAt", "Type", "Severity" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Permissions_RoleId",
                 schema: "core",
                 table: "Permissions",
@@ -840,6 +932,29 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                     new TableTypeColumnDefinition { Name = "ScheduleId", StoreType = "int", IsNullable = true },
                     new TableTypeColumnDefinition { Name = "ScheduledFor", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
                     new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(3)", Precision = 3 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "NotificationsList",
+                physicalName: "NotificationsList_45bbd83e",
+                schema: "core",
+                scope: "tellma.tenant",
+                definitionHash: "45bbd83e1111f0cd04ee2c2dbf07eb231f4e76281f56259e03d55ea4365b4eac",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "UserId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Type", StoreType = "nvarchar(64)", MaxLength = 64 },
+                    new TableTypeColumnDefinition { Name = "Severity", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "ArgumentsJson", StoreType = "nvarchar(4000)", IsNullable = true, MaxLength = 4000 },
+                    new TableTypeColumnDefinition { Name = "TargetResource", StoreType = "varchar(128)", IsNullable = true, MaxLength = 128 },
+                    new TableTypeColumnDefinition { Name = "TargetId", StoreType = "bigint", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "ActorUserId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "DedupKey", StoreType = "nvarchar(128)", IsNullable = true, MaxLength = 128 },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(3)", Precision = 3 },
+                    new TableTypeColumnDefinition { Name = "ReadAt", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
                 },
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
@@ -1115,6 +1230,51 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "NotificationPreferenceList",
+                physicalName: "NotificationPreferenceList_61bf7917",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "61bf79173291955493c1496b972fdea59abb45b742a0177d947351f1430660aa",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Type", StoreType = "nvarchar(64)", MaxLength = 64 },
+                    new TableTypeColumnDefinition { Name = "Channel", StoreType = "varchar(16)" },
+                    new TableTypeColumnDefinition { Name = "Enabled", StoreType = "bit" },
+                },
+                primaryKey: new[] { "Type", "Channel" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "NotificationRowList",
+                physicalName: "NotificationRowList_2c2b24d8",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "2c2b24d8c87ca20cd830850e4eba8d0b1bbc7be30c3f4a9c5400fae6205b8005",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Ordinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "UserId", StoreType = "int" },
+                },
+                primaryKey: new[] { "Ordinal" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "NotificationSliceList",
+                physicalName: "NotificationSliceList_29aa6852",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "29aa6852aae5ba536b3aa31a3a88fd10a00e27cb6e30776904f7980ec7e91ae5",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "SliceOrdinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "FirstOrdinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "LastOrdinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ArgumentsJson", StoreType = "nvarchar(max)" },
+                },
+                primaryKey: new[] { "SliceOrdinal" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "ScheduleNextList",
                 physicalName: "ScheduleNextList_e422990c",
                 schema: "dbo",
@@ -1171,7 +1331,7 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 primaryKey: new[] { "Name" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8" });
         }
 
         /// <inheritdoc />
@@ -1193,6 +1353,15 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.DropTable(
                 name: "JobWorkerState",
                 schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "NotificationPreferences",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "Notifications",
+                schema: "core")
+                .Annotation("Tellma:LockEscalation", "DISABLE");
 
             migrationBuilder.DropTable(
                 name: "Permissions",
@@ -1270,6 +1439,10 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
 
             migrationBuilder.DropSequence(
                 name: "sq_Jobs",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Notifications",
                 schema: "core");
 
             migrationBuilder.DropSequence(

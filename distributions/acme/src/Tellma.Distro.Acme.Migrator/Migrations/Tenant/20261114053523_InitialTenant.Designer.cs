@@ -10,11 +10,11 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 #nullable disable
 
-namespace Tellma.Core.Migrator.TestDistribution.Migrations
+namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261113155824_Initial")]
-    partial class Initial
+    [Migration("20261114053523_InitialTenant")]
+    partial class InitialTenant
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -31,10 +31,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
             modelBuilder.HasSequence<int>("sq_Blobs", "core")
                 .StartsAt(1000L);
 
-            modelBuilder.HasSequence<int>("sq_Gadgets", "probe")
+            modelBuilder.HasSequence<int>("sq_Jobs", "core")
                 .StartsAt(1000L);
 
-            modelBuilder.HasSequence<int>("sq_Jobs", "core")
+            modelBuilder.HasSequence<int>("sq_Notifications", "core")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Permissions", "core")
@@ -922,6 +922,85 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Abstractions.Notifications.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ArgumentsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("DedupKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<long?>("TargetId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TargetResource")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Notifications");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_Notifications_Unread")
+                        .HasFilter("[ReadAt] IS NULL");
+
+                    b.HasIndex("DedupKey", "UserId")
+                        .HasDatabaseName("IX_Notifications_Dedup")
+                        .HasFilter("[DedupKey] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("DedupKey", "UserId"), new[] { "ReadAt" });
+
+                    b.HasIndex("ReadAt", "CreatedAt")
+                        .HasDatabaseName("IX_Notifications_Retention");
+
+                    b.HasIndex("UserId", "CreatedAt", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("IX_Notifications_User");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("UserId", "CreatedAt", "Id"), new[] { "ReadAt", "Type", "Severity" });
+
+                    b.ToTable("Notifications", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_Notifications_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:LockEscalation", "DISABLE")
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
             modelBuilder.Entity("Tellma.Core.Access.UserPreference", b =>
                 {
                     b.Property<int>("UserId")
@@ -1135,41 +1214,27 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                     b.ToTable("ScheduleStates", "core");
                 });
 
-            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+            modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("UserId")
                         .HasColumnType("int");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
+                    b.Property<string>("Type")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
-                    b.Property<int>("CreatedById")
-                        .HasColumnType("int");
+                    b.Property<string>("Channel")
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)");
 
-                    b.Property<DateTimeOffset>("ModifiedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
 
-                    b.Property<int>("ModifiedById")
-                        .HasColumnType("int");
+                    b.HasKey("UserId", "Type", "Channel")
+                        .HasName("PK_NotificationPreferences");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.HasKey("Id")
-                        .HasName("PK_Gadgets");
-
-                    b.ToTable("Gadgets", "probe", t =>
-                        {
-                            t.HasCheckConstraint("CK_Gadgets_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                    b.ToTable("NotificationPreferences", "core");
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Access.Permission", b =>
@@ -1301,6 +1366,22 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasConstraintName("FK_Schedules_RunAsUserId");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Abstractions.Notifications.Notification", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Notifications_ActorUserId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notifications_UserId");
+                });
+
             modelBuilder.Entity("Tellma.Core.Access.UserPreference", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -1337,21 +1418,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasConstraintName("FK_ScheduleStates_ScheduleId");
                 });
 
-            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+            modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
                         .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("FK_Gadgets_CreatedById");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ModifiedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Gadgets_ModifiedById");
+                        .HasConstraintName("FK_NotificationPreferences_UserId");
                 });
 
             modelBuilder.HasTableTypeDefinition("JobsList", "core", type => type
@@ -1382,6 +1456,22 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Column(name: "ScheduleId", storeType: "int", nullable: true)
                 .Column(name: "ScheduledFor", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
                 .Column(name: "CreatedAt", storeType: "datetimeoffset(3)", precision: 3)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("NotificationsList", "core", type => type
+                .ForTable("Notifications", "core")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "UserId", storeType: "int")
+                .Column(name: "Type", storeType: "nvarchar(64)", maxLength: 64)
+                .Column(name: "Severity", storeType: "varchar(8)", maxLength: 8)
+                .Column(name: "ArgumentsJson", storeType: "nvarchar(4000)", nullable: true, maxLength: 4000)
+                .Column(name: "TargetResource", storeType: "varchar(128)", nullable: true, maxLength: 128)
+                .Column(name: "TargetId", storeType: "bigint", nullable: true)
+                .Column(name: "ActorUserId", storeType: "int", nullable: true)
+                .Column(name: "DedupKey", storeType: "nvarchar(128)", nullable: true, maxLength: 128)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(3)", precision: 3)
+                .Column(name: "ReadAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
@@ -1548,6 +1638,27 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .HasKey("Ordinal")
                 .HasGrants("tellma_app"));
 
+            modelBuilder.HasTableTypeDefinition("NotificationPreferenceList", "dbo", type => type
+                .Column(name: "Type", storeType: "nvarchar(64)", maxLength: 64)
+                .Column(name: "Channel", storeType: "varchar(16)")
+                .Column(name: "Enabled", storeType: "bit")
+                .HasKey("Type", "Channel")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("NotificationRowList", "dbo", type => type
+                .Column(name: "Ordinal", storeType: "int")
+                .Column(name: "UserId", storeType: "int")
+                .HasKey("Ordinal")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("NotificationSliceList", "dbo", type => type
+                .Column(name: "SliceOrdinal", storeType: "int")
+                .Column(name: "FirstOrdinal", storeType: "int")
+                .Column(name: "LastOrdinal", storeType: "int")
+                .Column(name: "ArgumentsJson", storeType: "nvarchar(max)")
+                .HasKey("SliceOrdinal")
+                .HasGrants("tellma_app"));
+
             modelBuilder.HasTableTypeDefinition("ScheduleNextList", "dbo", type => type
                 .Column(name: "ScheduleId", storeType: "int")
                 .Column(name: "NextDueAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
@@ -1571,17 +1682,6 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
-                .HasGrants("tellma_app"));
-
-            modelBuilder.HasTableTypeDefinition("GadgetsList", "probe", type => type
-                .ForTable("Gadgets", "probe")
-                .Column(name: "Id", storeType: "int")
-                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
-                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "CreatedById", storeType: "int")
-                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "ModifiedById", storeType: "int")
-                .HasKey("Id")
                 .HasGrants("tellma_app"));
 #pragma warning restore 612, 618
         }

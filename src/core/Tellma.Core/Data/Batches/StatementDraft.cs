@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Collections.Concurrent;
+using System.Data;
 using System.Globalization;
 using System.Reflection;
 using Tellma.Core.Abstractions.Data;
@@ -96,6 +97,23 @@ namespace Tellma.Core.Data.Batches
         {
             string name = ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.Scalar(_scalars));
             _parameters.Add(ScalarValues.Describe(name, value));
+            _scalars++;
+            return name;
+        }
+
+        /// <summary>
+        ///     Binds a scalar parameter, <c>@tb{ordinal}_p{n}</c>, of an explicit SQL type: for a
+        ///     fixed statement whose parameters match the columns they are compared with, so a null
+        ///     or a short value binds as the column's type rather than as the CLR type's default.
+        /// </summary>
+        /// <param name="type">The parameter's SQL type.</param>
+        /// <param name="value">The value, or null for SQL <c>NULL</c>.</param>
+        /// <param name="size">The length of a text or binary type; null for any other type.</param>
+        /// <returns>The parameter's name.</returns>
+        public string Scalar(SqlDbType type, object? value, int? size = null)
+        {
+            string name = ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.Scalar(_scalars));
+            _parameters.Add(new ScalarParameter(name, type, value, size));
             _scalars++;
             return name;
         }

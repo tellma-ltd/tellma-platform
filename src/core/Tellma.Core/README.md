@@ -751,6 +751,41 @@ anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
 users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
 
+### Raising, withdrawing and rendering
+
+Core maps the inbox to `core.Notifications` (ids from `core.sq_Notifications`, lock escalation
+disabled, an index per read path: a user's rows newest first, the unread count, the duplicate
+lookup and the retention sweep) and the preferences to `core.NotificationPreferences` (one row per
+user, type and channel that differs from the channel's default). `Notification` is a read-only
+stack.
+
+`Notifier` (scoped `INotifier`) checks and shapes every request in C# before it appends anything,
+refusing a rule broken with `InvalidOperationException`, then appends one statement per request to
+the caller's persist batch. The statement reserves one id range for the request's distinct
+recipients and inserts a row for each one who is active, has not muted a mutable type, and holds no
+duplicate (an unread row of the key, or any row under `Ongoing`); under `Replace` it first refreshes
+each unread duplicate in place. It then enqueues one `core.notification-delivery` job per slice of
+`DeliverySliceSize` recipients in which an active recipient receives a channel other than the inbox,
+by the user's preference or the channel's default. The delivering channels are the registered ones
+an `INotificationChannel` sender serves, resolved once by `NotificationDeliveryChannels`; with none,
+or for an `InboxOnly` request, nothing is enqueued. A statement that enqueues refuses to run outside
+a transaction, and the notifier refuses a batch in `None` mode. A withdrawal deletes the rows of a key,
+for everyone or for named recipients. After the commit, one callback per batch counts what each
+statement did (`tellma.notifications.created`, `suppressed`, `replaced`, `withdrawn` and
+`delivery_enqueued`, by type), wakes the tenant's pollers when a delivery job was enqueued, and
+publishes one `inbox.changed` to the users whose inbox changed, logging a failure as
+`InboxEventFailed` without throwing it.
+
+`NotificationRenderer` (scoped `INotificationRenderer`) renders a row's text server-side: the
+resource `Notification_<type key, dots as underscores>` of the package whose feature registered the
+type, formatted as an ICU message in the reader's language, calendar and zone, then the
+`…_Detail` line on a new line when the neutral resources declare one. Each top-level argument
+formats by its JSON kind: an ISO 8601 date-time with an offset as an instant, an ISO 8601 date as a
+calendar date, numbers as numbers, booleans as `true`/`false`, null as nothing, a localized text in
+the reader's content slot, and anything else as its JSON text. A missing resource renders the type
+key; arguments that are not a JSON object render the message without them and log
+`NotificationArgumentsInvalid` once per scope.
+
 ## Securables
 
 A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
@@ -925,7 +960,7 @@ same in a `Persist` batch of its own.
 | `Caching/` | Internally, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
-| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
+| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 

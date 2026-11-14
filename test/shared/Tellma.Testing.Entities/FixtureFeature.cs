@@ -4,12 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Notifications;
 
 namespace Tellma.Testing.Entities
 {
     /// <summary>
-    ///     The feature that contributes the fixture schema, its job handlers and a built-in schedule
-    ///     to a composition, so a test host's tenant model is the fixture database's.
+    ///     The feature that contributes the fixture schema, its job handlers, a built-in schedule, and
+    ///     its notification types and channel to a composition, so a test host's tenant model is the
+    ///     fixture database's.
     /// </summary>
     public sealed class FixtureFeature : ITellmaFeature
     {
@@ -49,6 +51,14 @@ namespace Tellma.Testing.Entities
 
             // --- One built-in schedule, so the migrations seed a schedule row and its state ---
             _ = contribution.BuiltInSchedule(ProbeScheduleId, FixtureJobKeys.Probe, "0 1 * * *");
+
+            // --- The notification types and the channel the notifier suites raise and deliver to ---
+            foreach (NotificationTypeDescriptor type in FixtureNotifications.Types)
+            {
+                _ = contribution.NotificationType(type);
+            }
+
+            _ = contribution.NotificationChannel(FixtureNotifications.Sms);
         }
     }
 }

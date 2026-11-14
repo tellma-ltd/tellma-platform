@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The neutral (English) notification texts the renderer tests render. -->
+  <data name="Notification_acme_order_shipped" xml:space="preserve">
+    <value>Order {number} shipped to {customer} on {shippedAt, date}</value>
+  </data>
+  <data name="Notification_acme_order_shipped_Detail" xml:space="preserve">
+    <value>{boxes, plural, one {# box} other {# boxes}}, {express, select, true {express} other {standard}}</value>
+  </data>
+  <data name="Notification_acme_report_due" xml:space="preserve">
+    <value>The report is due on {dueOn, date}</value>
+  </data>
+  <data name="Notification_acme_order_held" xml:space="preserve">
+    <value>Order {number} is held</value>
+  </data>
+  <data name="Notification_acme_raw" xml:space="preserve">
+    <value>{payload} | {list} | {note} | {ratio} | {stamp}</value>
+  </data>
+</root>
