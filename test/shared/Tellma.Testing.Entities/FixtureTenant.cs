@@ -56,6 +56,7 @@ namespace Tellma.Testing.Entities
         /// <param name="databaseName">The new database's name; the caller drops it.</param>
         /// <param name="configureServices">Adds services after the composition, such as batch contributors.</param>
         /// <param name="audit">Whether every batch's writes are checked against change tracking.</param>
+        /// <param name="readCommittedSnapshot">Whether the database reads committed rows from row versions, as provisioning sets it.</param>
         /// <param name="cancellationToken">Cancels the creation.</param>
         /// <returns>The host.</returns>
         public static async Task<FixtureTenant> CreateAsync(
@@ -63,6 +64,7 @@ namespace Tellma.Testing.Entities
             string databaseName,
             Action<IServiceCollection>? configureServices = null,
             bool audit = true,
+            bool readCommittedSnapshot = true,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
@@ -94,7 +96,7 @@ namespace Tellma.Testing.Entities
             try
             {
                 FixtureTenant tenant = new(provider, info);
-                _ = await FixtureDatabase.CreateAsync(masterConnectionString, databaseName, tenant.Fingerprint, cancellationToken).ConfigureAwait(false);
+                _ = await FixtureDatabase.CreateAsync(masterConnectionString, databaseName, tenant.Fingerprint, readCommittedSnapshot, cancellationToken).ConfigureAwait(false);
                 return tenant;
             }
             catch
