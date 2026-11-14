@@ -12,12 +12,20 @@ namespace Tellma.Core.Abstractions.Excel
     ///     clauses select, or every row the caller may read. One case per request; the row source
     ///     composes the caller's read filter with each.
     /// </summary>
+    /// <remarks>
+    ///     The set is closed by construction: a record's copy constructor is always reachable by a
+    ///     derived type, but <see cref="Case" /> is an internal abstract member, which a type outside
+    ///     this assembly cannot implement. A row source can therefore switch on the three cases.
+    /// </remarks>
     public abstract record ExportSource
     {
-        /// <summary>Initialises a case; private protected so the three cases stay the only ones.</summary>
+        /// <summary>Initialises a case.</summary>
         private protected ExportSource()
         {
         }
+
+        /// <summary>The case's name in diagnostics: <c>ids</c>, <c>query</c> or <c>all</c>.</summary>
+        internal abstract string Case { get; }
 
         /// <summary>The rows named by id, inactive rows included.</summary>
         /// <param name="Ids">The rows' ids, as the wire carries them; narrowed to the stack's key type by the row source.</param>
@@ -28,6 +36,9 @@ namespace Tellma.Core.Abstractions.Excel
             /// <inheritdoc cref="ByIds(IReadOnlyList{long}, string?)" />
             public IReadOnlyList<long> Ids { get; init => field = value ?? throw new ArgumentNullException(nameof(Ids)); } =
                 Ids ?? throw new ArgumentNullException(nameof(Ids));
+
+            /// <inheritdoc />
+            internal override string Case => "ids";
         }
 
         /// <summary>
@@ -48,9 +59,17 @@ namespace Tellma.Core.Abstractions.Excel
             string? OrderBy,
             IReadOnlyDictionary<string, JsonElement>? Arguments,
             bool IncludeInactive)
-            : ExportSource;
+            : ExportSource
+        {
+            /// <inheritdoc />
+            internal override string Case => "query";
+        }
 
         /// <summary>Every row the caller may read: no clause, no ordering and no activatable conjunct, so the read filter alone applies.</summary>
-        public sealed record All : ExportSource;
+        public sealed record All : ExportSource
+        {
+            /// <inheritdoc />
+            internal override string Case => "all";
+        }
     }
 }

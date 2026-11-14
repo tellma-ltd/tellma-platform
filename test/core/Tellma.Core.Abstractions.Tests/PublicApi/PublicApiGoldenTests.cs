@@ -5,14 +5,16 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Text;
 using Tellma.Core.Abstractions.Crud;
 
 namespace Tellma.Core.Abstractions.Tests.PublicApi
 {
     /// <summary>
-    ///     Pins the public surface of the CRUD pipeline's contract namespaces against stored goldens,
-    ///     and keeps them free of the data-access and web frameworks a module must never reference.
+    ///     Pins the public surface of the CRUD pipeline's contract namespaces, and of the workbook and
+    ///     assignment contracts other features build against, to stored goldens, and keeps them free of
+    ///     the data-access and web frameworks a module must never reference.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -43,6 +45,8 @@ namespace Tellma.Core.Abstractions.Tests.PublicApi
             "Tellma.Core.Abstractions.Crud",
             "Tellma.Core.Abstractions.Validation",
             "Tellma.Core.Abstractions.Errors",
+            "Tellma.Core.Abstractions.Excel",
+            "Tellma.Core.Abstractions.Assignments",
         ];
 
         /// <summary>The contract assembly.</summary>
@@ -80,10 +84,37 @@ namespace Tellma.Core.Abstractions.Tests.PublicApi
         }
 
         [Fact]
-        public void The_contract_assembly_references_no_data_access_or_web_framework()
+        public void The_contract_assembly_reaches_no_data_access_or_web_framework_and_no_library_but_queryex()
         {
-            // Stronger than the surface check: no type anywhere in the assembly can name one either.
-            Assert.DoesNotContain(Contracts.GetReferencedAssemblies(), static reference => IsForbidden(reference.Name));
+            // Stronger than the surface check: nothing a module pulls in by referencing the contracts,
+            // directly or through a library they reference, may be one of those frameworks.
+            string runtime = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+            HashSet<string> visited = new(StringComparer.Ordinal);
+            Queue<Assembly> pending = new([Contracts]);
+            List<string> libraries = [];
+
+            // Breadth-first over the reference graph; the shared framework's own assemblies are
+            // checked by name but not walked, since they are not the contracts' dependencies to pin.
+            while (pending.TryDequeue(out Assembly? assembly))
+            {
+                foreach (AssemblyName reference in assembly.GetReferencedAssemblies())
+                {
+                    if (!visited.Add(reference.Name!))
+                    {
+                        continue;
+                    }
+
+                    Assert.False(IsForbidden(reference.Name), assembly.GetName().Name + " references " + reference.Name + ".");
+                    Assembly loaded = AssemblyLoadContext.Default.LoadFromAssemblyName(reference);
+                    if (!string.Equals(Path.GetDirectoryName(loaded.Location), runtime, StringComparison.OrdinalIgnoreCase))
+                    {
+                        libraries.Add(reference.Name!);
+                        pending.Enqueue(loaded);
+                    }
+                }
+            }
+
+            Assert.Equal(["Tellma.Core.Queryex"], libraries);
         }
 
         [Fact]

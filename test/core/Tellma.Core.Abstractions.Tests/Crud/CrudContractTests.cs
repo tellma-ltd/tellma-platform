@@ -43,8 +43,6 @@ namespace Tellma.Core.Abstractions.Tests.Crud
         }
 
         [Theory]
-        [InlineData(typeof(ActionDescriptor))]
-        [InlineData(typeof(ExportSource))]
         [InlineData(typeof(PersistContext<Widget>))]
         [InlineData(typeof(PersistOutcome<Widget>))]
         [InlineData(typeof(DeletePersistOutcome<Widget>))]
@@ -52,15 +50,29 @@ namespace Tellma.Core.Abstractions.Tests.Crud
         [InlineData(typeof(DetailsPlan<Widget>))]
         [InlineData(typeof(DeleteContext<Widget>))]
         [InlineData(typeof(ActionContext<Widget>))]
-        public void A_closed_kind_offers_another_assembly_no_constructor_but_a_record_copy(Type type)
+        public void A_closed_class_kind_offers_another_assembly_no_constructor(Type type)
         {
-            // A record's copy constructor must stay protected; it needs an existing instance, so it
-            // adds no new way to make one.
             IEnumerable<ConstructorInfo> reachable = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Where(static constructor => constructor.IsPublic || constructor.IsFamily || constructor.IsFamilyOrAssembly)
-                .Where(constructor => !(constructor.GetParameters() is [{ } only] && only.ParameterType == type));
+                .Where(static constructor => constructor.IsPublic || constructor.IsFamily || constructor.IsFamilyOrAssembly);
 
             Assert.Empty(reachable);
+        }
+
+        [Theory]
+        [InlineData(typeof(ActionDescriptor), new[] { typeof(ApiActionDescriptor), typeof(EntityActionDescriptor) })]
+        [InlineData(typeof(ExportSource), new[] { typeof(ExportSource.All), typeof(ExportSource.ByIds), typeof(ExportSource.ByQuery) })]
+        public void A_closed_record_kind_has_an_abstract_member_only_its_assembly_can_implement(Type type, Type[] kinds)
+        {
+            // A record's copy constructor is always reachable by a derived record, so a constructor
+            // cannot close it; an internal abstract member is what no outside type can implement.
+            Assert.Contains(
+                type.GetMembers(BindingFlags.Instance | BindingFlags.NonPublic),
+                static member => member is PropertyInfo { GetMethod: { IsAbstract: true, IsAssembly: true } }
+                    or MethodInfo { IsAbstract: true, IsAssembly: true });
+
+            Type[] found = [.. type.Assembly.GetTypes().Where(candidate => candidate.IsSubclassOf(type))];
+            Assert.Equal(kinds, [.. found.OrderBy(static kind => kind.Name, StringComparer.Ordinal)]);
+            Assert.All(found, static kind => Assert.True(kind.IsSealed));
         }
 
         [Fact]

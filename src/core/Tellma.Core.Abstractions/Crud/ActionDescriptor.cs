@@ -15,6 +15,11 @@ namespace Tellma.Core.Abstractions.Crud
     ///     service's action operation, and an <see cref="ApiActionDescriptor" /> for an API action,
     ///     reached through the action invoker.
     /// </summary>
+    /// <remarks>
+    ///     The set is closed by construction: a record's copy constructor is always reachable by a
+    ///     derived type, but <see cref="Kind" /> is an internal abstract member, which a type outside
+    ///     this assembly cannot implement. A switch over the two kinds is therefore exhaustive.
+    /// </remarks>
     public abstract record ActionDescriptor
     {
         /// <summary>Initialises the members both kinds share.</summary>
@@ -42,8 +47,7 @@ namespace Tellma.Core.Abstractions.Crud
             int contractRevision,
             Type resultType)
         {
-            // The constructor is private protected so the two kinds stay the only ones: a switch
-            // over a descriptor's kind is exhaustive.
+            // Only the two kinds call this; the internal abstract Kind keeps them the only ones.
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(resultType);
             Name = name;
@@ -98,6 +102,9 @@ namespace Tellma.Core.Abstractions.Crud
         ///     the method's result type.
         /// </summary>
         public Type ResultType { get; }
+
+        /// <summary>The kind's name in diagnostics: <c>entity</c> or <c>api</c>.</summary>
+        internal abstract string Kind { get; }
     }
 
     /// <summary>
@@ -144,7 +151,11 @@ namespace Tellma.Core.Abstractions.Crud
         bool SingleTarget,
         bool IsBuiltIn,
         Type? ArgumentsType)
-        : ActionDescriptor(Name, Description, Mutation, AllowWhenReadOnly, Idempotent, Long, Destructive, Mcp, ContractRevision, ResultType);
+        : ActionDescriptor(Name, Description, Mutation, AllowWhenReadOnly, Idempotent, Long, Destructive, Mcp, ContractRevision, ResultType)
+    {
+        /// <inheritdoc />
+        internal override string Kind => "entity";
+    }
 
     /// <summary>
     ///     A method marked as an API action on an entity service, a stack companion or a routed
@@ -186,5 +197,9 @@ namespace Tellma.Core.Abstractions.Crud
         SecurableRef? Securable,
         Type? RequestType,
         Type HandlerType)
-        : ActionDescriptor(Name, Description, Mutation, AllowWhenReadOnly, Idempotent, Long, Destructive, Mcp, ContractRevision, ResultType);
+        : ActionDescriptor(Name, Description, Mutation, AllowWhenReadOnly, Idempotent, Long, Destructive, Mcp, ContractRevision, ResultType)
+    {
+        /// <inheritdoc />
+        internal override string Kind => "api";
+    }
 }

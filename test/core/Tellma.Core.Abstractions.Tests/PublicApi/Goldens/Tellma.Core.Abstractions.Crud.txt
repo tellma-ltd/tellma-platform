@@ -364,7 +364,6 @@ public interface IEntityPipeline<TEntity, TKey>
     public Task<RowPage> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     public Task<TResult> ExecuteActionAsync<TResult>(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken)
 
-[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IEntityPipelineFactory
     public IEntityPipeline<TEntity, TKey> Create<TEntity, TKey>(IEntityBehavior<TEntity, TKey> behavior) where TEntity : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
 

@@ -60,8 +60,10 @@ picks which implementations to register.
   binding on every implementation and are pinned by an executable conformance suite in
   `Tellma.Core.Testing`; so are `IBlobStore`'s (create-only writes, null for a missing object,
   success for a missing delete, whole-segment listing prefixes).
-- **The pipeline's contract namespaces are pinned.** The public surface of `Crud`, `Validation`
-  and `Errors` is compared against goldens in the test project, so a member is never renamed or
-  removed without a reviewed diff, and those namespaces name no data-access or web framework type.
+- **The pipeline's contract namespaces are pinned.** The public surface of `Crud`, `Validation`,
+  `Errors`, `Excel` and `Assignments` is compared against goldens in the test project, so a member
+  is never renamed or removed without a reviewed diff. Those namespaces name no data-access or web
+  framework type, and the assembly reaches none, directly or through `Tellma.Core.Queryex`, its one
+  library reference.
 - **Nothing here decides anything at runtime.** Selection, policy, and telemetry emission belong to
   the pipeline packages; this project only names the shapes they agree on.

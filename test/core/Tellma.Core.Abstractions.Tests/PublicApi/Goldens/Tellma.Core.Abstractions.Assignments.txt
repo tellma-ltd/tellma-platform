@@ -1,0 +1,43 @@
+public sealed record AssignmentCaption : IEquatable<AssignmentCaption>
+    public bool Equals(AssignmentCaption? other)
+    public ctor(string? Code = null, decimal? Amount = null, string? Currency = null, object? Detail = null)
+    public decimal? Amount { get; init; }
+    public object? Detail { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(AssignmentCaption? left, AssignmentCaption? right)
+    public static bool op_Inequality(AssignmentCaption? left, AssignmentCaption? right)
+    public string? Code { get; init; }
+    public string? Currency { get; init; }
+    public void Deconstruct(out string? Code, out decimal? Amount, out string? Currency, out object? Detail)
+
+public sealed record AssignmentRequest : IEquatable<AssignmentRequest>
+    public AssignmentCaption? Caption { get; init; }
+    public bool Equals(AssignmentRequest? other)
+    public ctor(string Resource, long TargetId, int AssigneeId, string? Comment = null, AssignmentCaption? Caption = null, int? AssignedById = null)
+    public int AssigneeId { get; init; }
+    public int? AssignedById { get; init; }
+    public long TargetId { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(AssignmentRequest? left, AssignmentRequest? right)
+    public static bool op_Inequality(AssignmentRequest? left, AssignmentRequest? right)
+    public string Resource { get; init; }
+    public string? Comment { get; init; }
+    public void Deconstruct(out string Resource, out long TargetId, out int AssigneeId, out string? Comment, out AssignmentCaption? Caption, out int? AssignedById)
+
+public sealed class BatchAssignments
+    public void Assign(long targetId, int assigneeId, string? comment = null, AssignmentCaption? caption = null)
+    public void Complete(IReadOnlyList<long> targetIds)
+    public void Withdraw(IReadOnlyList<long> targetIds)
+
+public interface IAssignments
+    public Task AssignAsync(IReadOnlyList<AssignmentRequest> requests, CancellationToken cancellationToken = default)
+    public Task CompleteAsync(string resource, IReadOnlyList<long> targetIds, CancellationToken cancellationToken = default)
+    public Task WithdrawAsync(string resource, IReadOnlyList<long> targetIds, CancellationToken cancellationToken = default)
+    public void Assign(IDataBatch batch, IReadOnlyList<AssignmentRequest> requests)
+    public void Complete(IDataBatch batch, string resource, IReadOnlyList<long> targetIds)
+    public void Withdraw(IDataBatch batch, string resource, IReadOnlyList<long> targetIds)
+

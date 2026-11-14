@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.ComponentModel;
 using System.Numerics;
 using Tellma.Core.Abstractions.Entities;
 
@@ -15,7 +14,6 @@ namespace Tellma.Core.Abstractions.Crud
     ///     Not for distributions to implement: a startup check refuses any registration that is not the
     ///     platform's.
     /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
     public interface IEntityPipelineFactory
     {
         /// <summary>Creates a pipeline bound to a service's hooks.</summary>
