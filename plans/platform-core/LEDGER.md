@@ -102,8 +102,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-044 | pc-3 | pc/PC-044 | held (merge 8449758 of 6f87f63 on pc/PC-044; gates green: Core unit 3788, integration Core 268, Acme 11); first in the queue once PC-F35 lands | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
 | PC-058 | pc-f2 | pc/PC-058 | held, in the release queue after PC-054 (merge d36a847 on pc/PC-058; R1 fixes d435e7a; ./entity-picker 13.90 (14,234 B), ceiling 13.97 → 14.0, which is the spec cap: 0.1 KB headroom; e2e 961) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
-| PC-062 | pc-f | pc/PC-062 | fix1 + integrate (held; R1 0/0/4, D-079) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
-| PC-099 | pc-1 | pc/PC-099 | impl (high; R1) | impl (Opus, launched 2026-11-14) | | 2026-11-14 |
+| PC-062 | pc-f | pc/PC-062 | held 2a34bc69 (fix1 924fcd3: R1-1..4 fixed; D7 reworded, D14 narrowed; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
+| PC-099 | pc-1 | pc/PC-099 | r1 (impl 2e7dfd1: 12 deviations; Notify refuses TransactionMode.None per D-074; Acme InitialTenant regenerated; Notification read-only, access criteria left to PC-146) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-054 | pc-2 | pc/PC-054 | held (merge 6a24f16 on pc/PC-054, over cf6ed37; R1 fixes 5b36220; e2e 965/965; D-075: ./grid 40.91/41.01 (1,115 B under the 42 cap), ./tree-grid 2.10/2.2; contentKey TSDoc per D-077 to add at release) | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
 
 ## Fix items
@@ -143,7 +143,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F32 | CI red on 8c086c4 and 70326bb (client unit, core chromium): tm-client-store.spec.ts:833 "the boot step sweeps every user first when the boot record names no user, then records the user" got 2 events, expected 1 store.changed (PC-075's test; no client change since green d316b10; both runs 23:39-23:45 UTC, suspect time/ordering) | done: integrated 362aabc (CI 43547014788 green) | 00fc427, 916ec2d, 1e81373, 362aabc (pc) |  | line restarted 2026-11-14; held merges released one at a time: PC-F31 → PC-030 → PC-044 → PC-054 → PC-058 |
 | PC-F33 | Client flake (CI twice: 3077eb7, a2ebe0a): tm-grid-header-nav.spec.ts:769 and :797, "tm-grid row-end column takes a right-click or a long-press …" (expected false to be true; both together; green on retry) | ready, waiting for release (80fdc8c pushed; slot pc-4 lent to PC-F35, so switch back before integrating) | d6e699d, 80fdc8c (pc/PC-F33) |  | impl = ae842da6eeee1e322 (resumed, Opus; the ledger had this id as PC-051's implementer, but it was the PC-F21 fix2 verifier); r1 ad783ba6a385139de |
 | PC-F34 | Long-press observer (tellma-core-ui menu/internal/long-press.ts:130-132, 157) cancels a hold on any window scroll, including unrelated scrollers (an auto-scrolling log, a carousel), so a user's hold opens nothing; cancel only when the scrolled node is the document or an ancestor of the observed element, with a tm-menu.spec test for each case (PC-F33 R1-1) | todo (low) | | | |
-| PC-F35 | CI red on 6f87f63 (client, PR-tier e2e chromium; CI fails on flaky): search-field.spec.ts:32 "the clear button clears, emits and refocuses; Mod+Z brings the text back", expected the emit log to end "jed","" but got ["j",""] (5.4 s; the retry passed). PC-030's new test | impl (2026-11-14), pc-4, fix-PC-F35 = impl-PC-030 afa920119d3e8d01d (resumed, Opus) | | | stop the line; PC-044 holds; queue after it: PC-054, PC-058, PC-F33 |
+| PC-F35 | CI red on 6f87f63 (client, PR-tier e2e chromium; CI fails on flaky): search-field.spec.ts:32 "the clear button clears, emits and refocuses; Mod+Z brings the text back", expected the emit log to end "jed","" but got ["j",""] (5.4 s; the retry passed). PC-030's new test | done (integrated 8b39d28; its client CI jobs green; run 43567104257 red only on integration-windows, PC-F36) | 7dfcd25, f15c258, 8b39d28 (pc) | | stop the line; PC-044 holds; queue after it: PC-054, PC-058, PC-F33 |
+| PC-F36 | CI red on 8b39d28 (integration-windows; ubuntu integration green): Tellma.Core.IntegrationTests RegistryCatalogTests.A_missing_catalog_fails_startup_in_Development_and_starts_not_ready_elsewhere, Assert.Throws: no exception thrown (17 ms); PC-024's test, green on the 11 earlier runs; the change under test was client-only, so it is a flake | impl (2026-11-14), pc-4, fix-PC-F36 = impl-PC-021 a71dae021826abce3 (resumed, Opus) | | | stop the line; all-checks-passed stayed green because it does not cover integration-windows |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -267,7 +268,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
-| PC-030 | 0023-e | 1 | integrated 6f87f63 (CI 43558788125 red: its search-field.spec.ts:32 e2e flaked, PC-F35) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
+| PC-030 | 0023-e | 1 | done (integrated 6f87f63; its e2e flake fixed by PC-F35 at 8b39d28, whose client CI is green) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
 | PC-031 | 0023-f | 1 | todo | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
@@ -299,7 +300,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
-| PC-062 | 0015-a | 1 | fix1 + integrate (held) | e97c3f3 |  |  |
+| PC-062 | 0015-a | 1 | held 2a34bc69 | e97c3f3, 924fcd3, 2a34bc69 (pc) |  |  |
 | PC-063 | 0015-b | 1 | todo | | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
@@ -336,7 +337,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
-| PC-099 | 0021-b | 1 | impl |  |  |  |
+| PC-099 | 0021-b | 1 | r1 | 2e7dfd1 |  |  |
 | PC-100 | 0020-d | 1 | todo | | | |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
 | PC-102 | 0029-f | 1 | todo | | | |
