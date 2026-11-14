@@ -6,6 +6,8 @@
          file-system store. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The fixture schema, whose stacks the descriptor goldens pin. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />
     <!-- The platform-owned catalog migrations and their design-time factory, which the collation
          and latest-migration pins and the catalog model's column pin read. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />

@@ -171,6 +171,18 @@
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>Roles</value>
   </data>
+  <data name="Core_RoleMembership_Plural" xml:space="preserve">
+    <value>Role memberships</value>
+  </data>
+  <data name="Core_Permission_Plural" xml:space="preserve">
+    <value>Permissions</value>
+  </data>
+  <data name="Core_Job_Plural" xml:space="preserve">
+    <value>Jobs</value>
+  </data>
+  <data name="Core_Schedule_Plural" xml:space="preserve">
+    <value>Schedules</value>
+  </data>
   <data name="Securable_core_UserStamp" xml:space="preserve">
     <value>User activity</value>
   </data>

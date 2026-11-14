@@ -196,6 +196,14 @@ namespace Tellma.Core.Tests.Composition
                 ["core.provisioning-steps"] = false,
                 ["jobs.handlers"] = false,
                 ["jobs.schedules"] = false,
+                ["core.stacks"] = false,
+                ["core.stack-actions"] = false,
+                ["core.stack-components"] = false,
+                ["core.stack-projections"] = false,
+                ["core.confirmations"] = false,
+                ["core.entity-pipeline"] = false,
+                ["core.enlistments"] = false,
+                ["core.stack-securables"] = false,
             };
 
             Assert.Equal(expected, checks);

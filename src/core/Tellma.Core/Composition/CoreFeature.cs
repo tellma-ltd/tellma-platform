@@ -100,14 +100,12 @@ namespace Tellma.Core.Composition
 
             // --- Access: the securable registry, its client metadata section, and Core's own securables ---
             // spec 0014 §1.2, §4.2. The user stamps are a query root of their own, reached through
-            // the caller's grants on the users along the stamp's User navigation. core.User × Read,
-            // the owner it needs, is also the users' stack's to register once stacks register their
-            // securables; the same registration twice is one.
+            // the caller's grants on the users along the stamp's User navigation; core.User × Read,
+            // the owner it needs, is the users' stack's, which the stack registry registers.
             _ = contribution
                 .Singleton<ISecurableRegistry, SecurableRegistry>()
                 .Singleton<IClientAssetContributor, SecurablesClientAssetContributor>()
                 .Securables(static securables => securables
-                    .Add(CoreResources.User, AccessActions.Read, CoreResources.User)
                     .Add(UserStampConfiguration.QueryexName, AccessActions.Read, UserStampConfiguration.QueryexName, owner: new SecurableOwner(CoreResources.User, "User")));
 
             // --- Version tags: the table, the registry, the process's snapshots, the prelude and the bump ---

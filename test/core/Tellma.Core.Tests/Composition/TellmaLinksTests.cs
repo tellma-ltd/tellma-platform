@@ -8,6 +8,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Composition;
+using Tellma.Core.Crud;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition
@@ -140,7 +141,7 @@ namespace Tellma.Core.Tests.Composition
         {
             TellmaLinks links = new(
                 new TellmaCompositionRecord(TestComposition.Slug, TestComposition.Configuration(TestComposition.Sound(("Tellma:PublicOrigin", origin))), new TestEnvironment()),
-                new NoStackRoutes());
+                new FakeStackRoutes());
 
             InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => links.Tenant(42));
 
@@ -158,8 +159,9 @@ namespace Tellma.Core.Tests.Composition
             Assert.Same(links, provider.GetRequiredService<ITellmaLinks>());
             Assert.Equal("https://acme.app.tellma.com/42", links.Tenant(42));
 
-            // Until a stack registry is composed, no resource names a stack.
-            Assert.IsType<NoStackRoutes>(provider.GetRequiredService<IStackRouteSource>());
+            // The stack registry answers the routes: a resource with no stack links to the tenant.
+            Assert.IsType<StackRegistry>(provider.GetRequiredService<IStackRouteSource>());
+            Assert.Equal("https://acme.app.tellma.com/42/users/17", links.Target(42, "core.User", 17));
             Assert.Equal("https://acme.app.tellma.com/42", links.Target(42, "acme.SalesInvoice", 17));
         }
 

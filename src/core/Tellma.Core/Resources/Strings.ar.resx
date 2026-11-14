@@ -171,6 +171,18 @@
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>الأدوار</value>
   </data>
+  <data name="Core_RoleMembership_Plural" xml:space="preserve">
+    <value>عضويات الأدوار</value>
+  </data>
+  <data name="Core_Permission_Plural" xml:space="preserve">
+    <value>الأذونات</value>
+  </data>
+  <data name="Core_Job_Plural" xml:space="preserve">
+    <value>المهام</value>
+  </data>
+  <data name="Core_Schedule_Plural" xml:space="preserve">
+    <value>الجداول الزمنية</value>
+  </data>
   <data name="Securable_core_UserStamp" xml:space="preserve">
     <value>نشاط المستخدمين</value>
   </data>
