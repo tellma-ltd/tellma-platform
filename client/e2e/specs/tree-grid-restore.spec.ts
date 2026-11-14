@@ -59,6 +59,139 @@ async function restored(page: Page): Promise<void> {
   await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
 }
 
+/** What the page saw of one row's flash, recorded in the page as it happened. */
+interface FlashRecord {
+  /** `--grid-flash-duration` on the grid host, in milliseconds. */
+  readonly duration: number;
+  /** `--grid-flash-bg` resolved to a colour. */
+  readonly tint: string;
+  /** The flash animation's name on the row's first cell, or `null` for none. */
+  readonly animationName: string | null;
+  /** The first cell's background as the flash began. */
+  readonly atStart: string;
+  /** The first cell's background with its flash animation sought to 90 %, or `null` for none. */
+  readonly nearEnd: string | null;
+  /** The row's outline style as the flash began. */
+  readonly outline: string;
+  /** Milliseconds from the trigger's click to the flash class leaving the row. */
+  readonly heldFor: number;
+}
+
+/**
+ * Watches one row's flash from inside the page, so no sample races the
+ * flash's clock: the flash is a timed animation, and a sample taken over a
+ * separate round trip can land after it ends on a loaded machine. A
+ * mutation observer samples the row the moment it gains the flash class
+ * (its animation then sits at its start), seeks the cell's animation to
+ * 90 % to read how it looks late in its run, and times the class leaving
+ * against the trigger's click. Install it before clicking the trigger,
+ * then read it with {@link flashRecord}.
+ */
+async function watchFlash(page: Page, rowId: number, triggerTestId: string): Promise<void> {
+  await page.evaluate(
+    ({ key, trigger }) => {
+      /** The watch's state, kept on `window` for {@link flashRecord}. */
+      interface Watch {
+        /** When the trigger was clicked, or `null` before. */
+        clickedAt: number | null;
+        /** The samples taken as the flash began, or `null` before. */
+        record: Record<string, unknown> | null;
+        /** Milliseconds from the click to the flash ending, or `null` before. */
+        heldFor: number | null;
+      }
+      const watch: Watch = { clickedAt: null, record: null, heldFor: null };
+      (window as unknown as { tmFlashWatch: Watch }).tmFlashWatch = watch;
+
+      // The click that triggers the flash, timed before any handler runs.
+      document.addEventListener(
+        'click',
+        (event) => {
+          if ((event.target as Element).closest(`[data-testid="${trigger}"]`) !== null) {
+            watch.clickedAt ??= performance.now();
+          }
+        },
+        { capture: true },
+      );
+
+      // A CSS time (`1200ms` or `1.2s`) in milliseconds.
+      const parseTime = (value: string): number => {
+        const number = Number.parseFloat(value);
+        return value.trim().endsWith('ms') ? number : number * 1000;
+      };
+
+      // Samples the row the moment the flash class appears, and times its
+      // removal. Observer callbacks run before the next frame, so the
+      // animation has not advanced past its start when sampled.
+      const observer = new MutationObserver(() => {
+        const row = document.querySelector(`.tm-grid__row[data-tm-key="${key}"]`);
+        if (row === null) {
+          return;
+        }
+        const flashing = row.classList.contains('tm-grid__row--flash');
+        if (flashing && watch.record === null) {
+          const scroller = row.closest('.tm-grid__scroller')!;
+          const host = scroller.closest('tm-tree-grid, tm-grid')!;
+          const cell = row.querySelector('[data-tm-cell]')!;
+          // The token's colour, resolved by a probe in the grid's scope.
+          const probe = document.createElement('div');
+          probe.style.backgroundColor = 'var(--grid-flash-bg)';
+          scroller.append(probe);
+          const tint = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const atStart = getComputedStyle(cell).backgroundColor;
+          const animation =
+            cell.getAnimations().find((a): a is CSSAnimation => a instanceof CSSAnimation) ?? null;
+          let nearEnd: string | null = null;
+          if (animation !== null) {
+            // Seek, read, and put the animation back at its start.
+            const total = Number(animation.effect!.getComputedTiming().duration);
+            animation.pause();
+            animation.currentTime = total * 0.9;
+            nearEnd = getComputedStyle(cell).backgroundColor;
+            animation.currentTime = 0;
+            animation.play();
+          }
+          watch.record = {
+            duration: parseTime(getComputedStyle(host).getPropertyValue('--grid-flash-duration')),
+            tint,
+            animationName: animation?.animationName ?? null,
+            atStart,
+            nearEnd,
+            outline: getComputedStyle(row).outlineStyle,
+          };
+        } else if (!flashing && watch.record !== null && watch.heldFor === null) {
+          watch.heldFor = performance.now() - (watch.clickedAt ?? Number.NaN);
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['class'],
+      });
+    },
+    { key: `#${rowId}`, trigger: triggerTestId },
+  );
+}
+
+/** Waits until the watched flash has begun and ended, and returns what the page saw. */
+async function flashRecord(page: Page): Promise<FlashRecord> {
+  const read = (): Promise<FlashRecord | null> =>
+    page.evaluate(() => {
+      const watch = (
+        window as unknown as {
+          tmFlashWatch: { record: Record<string, unknown> | null; heldFor: number | null };
+        }
+      ).tmFlashWatch;
+      return watch.record === null || watch.heldFor === null
+        ? null
+        : ({ ...watch.record, heldFor: watch.heldFor } as unknown as FlashRecord);
+    });
+  await expect.poll(read).not.toBeNull();
+  return (await read())!;
+}
+
 for (const dir of ['ltr', 'rtl'] as const) {
   test.describe(`expansion restore (${dir})`, () => {
     test.beforeEach(async ({ page }) => {
@@ -173,41 +306,34 @@ for (const dir of ['ltr', 'rtl'] as const) {
       await expect(rowById(page, 212)).toHaveCount(0);
 
       const go = page.getByTestId('scroll-go');
+      await watchFlash(page, 212, 'scroll-go');
       await go.click(); // row 212, flash on
       await expect(page.getByTestId('scroll-result')).toHaveText('true');
       await expect(remembered(page)).toHaveText('1, 2, 11, 21, 404');
 
-      const target = rowById(page, 212);
-      await expect(target).toHaveClass(/tm-grid__row--flash/);
-      // Reduced motion holds the tint still: the cell paints the token's
-      // colour itself rather than a frame of a fade.
-      const flashColour = await gridScroller(page).evaluate((scroller) => {
-        const probe = document.createElement('div');
-        probe.style.backgroundColor = 'var(--grid-flash-bg)';
-        scroller.append(probe);
-        const colour = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return colour;
-      });
-      const cellColour = await target
-        .locator('[data-tm-cell]')
-        .first()
-        .evaluate((el) => getComputedStyle(el).backgroundColor);
-      expect(cellColour).toBe(flashColour);
-
       // Activation moved to the row; focus stayed on the button.
+      const target = rowById(page, 212);
       await expect(target.locator('[data-tm-cell][tabindex="0"]')).toHaveCount(1);
       await expect(go).toBeFocused();
-      // The flash ends after --grid-flash-duration.
+
+      // The flash ran its animation, and reduced motion held the tint still:
+      // the cell painted the token's colour at the start and still at 90 %,
+      // rather than a frame of a fade.
+      const flash = await flashRecord(page);
+      // Emulated encapsulation prefixes the keyframes' name with the scope.
+      expect(flash.animationName).toMatch(/tm-grid-(re)?flash$/);
+      expect(flash.atStart).toBe(flash.tint);
+      expect(flash.nearEnd).toBe(flash.tint);
+      // The class stayed on for at least --grid-flash-duration, then left.
+      expect(flash.heldFor).toBeGreaterThanOrEqual(flash.duration);
       await expect(target).not.toHaveClass(/tm-grid__row--flash/);
     });
 
     test('scrollToRow outlines the flashing row under forced colors', async ({ page }) => {
       await page.emulateMedia({ forcedColors: 'active' });
+      await watchFlash(page, 212, 'scroll-go');
       await page.getByTestId('scroll-go').click();
-      const target = rowById(page, 212);
-      await expect(target).toHaveClass(/tm-grid__row--flash/);
-      expect(await target.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+      expect((await flashRecord(page)).outline).toBe('solid');
     });
 
     test('scrollToRow reports a row that has not loaded', async ({ page }) => {
