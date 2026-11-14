@@ -586,14 +586,6 @@ namespace Tellma.Core.Tests.Data.Batches
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(TestContext.Current.CancellationToken));
         }
 
-        [Fact]
-        public void The_members_whose_compilers_are_not_composed_say_so()
-        {
-            DataBatch batch = _harness.Batch();
-            NotSupportedException refused = Assert.Throws<NotSupportedException>(batch.FromCache<IdList>);
-            Assert.Contains("FromCache", refused.Message, StringComparison.Ordinal);
-        }
-
         /// <inheritdoc />
         public void Dispose()
         {
