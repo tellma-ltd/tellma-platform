@@ -19,7 +19,8 @@ namespace Tellma.Core.Composition.Checks
     ///     <c>core.securables</c>: composes the securable registry and reports what composition found
     ///     (malformed names, conflicting registrations, aliases and marks naming nothing registered),
     ///     then judges the composed securables: each belongs to a composed feature; an owner is a
-    ///     registered resource, reached from a filter root, and owner chains end; and, against the
+    ///     registered resource, reached from a filter root, and owner chains end; the securables of a
+    ///     resource that take a filter share one filter root; and, against the
     ///     model, every filter root is a query entity, a child entity's securable declares its owner,
     ///     and the owner's navigation leads to the owner's filter root.
     /// </summary>
@@ -74,6 +75,7 @@ namespace Tellma.Core.Composition.Checks
             CheckFeatures(registry, problems);
             CheckOwners(registry, problems);
             CheckOwnerChains(registry, problems);
+            CheckSharedFilterRoots(registry, problems);
 
             // --- The filter roots, against the model ---
             if (services.GetService<EntityMetadataSource>()?.Build.Provider is IEntityMetadataProvider metadata
@@ -172,6 +174,38 @@ namespace Tellma.Core.Composition.Checks
                         $"The owners of the securables form a cycle: {path}.",
                         "Break the cycle: an owner chain ends at a securable without an owner."));
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Checks that the filterable securables of each resource share one filter root, which a
+        ///     stored permission on every action of the resource binds its filter against. Each
+        ///     resource is reported once.
+        /// </summary>
+        /// <param name="registry">The registry.</param>
+        /// <param name="problems">Receives the problems.</param>
+        internal void CheckSharedFilterRoots(ISecurableRegistry registry, List<CompositionProblem> problems)
+        {
+            // spec 0014 §3.7 rule 2: a wildcard-action filter binds against the root the resource's
+            // filterable securables share; two roots would leave it judged against one and applied
+            // to the actions of the other.
+            foreach (string resource in registry.Resources)
+            {
+                List<SecurableDescriptor> filterable = [.. registry.ForResource(resource).Where(static securable => securable.FilterRoot is not null)];
+                if (filterable.Count == 0 || SecurableFilterRoots.Shared(filterable) is not null)
+                {
+                    continue;
+                }
+
+                string roots = string.Join(
+                    ", ",
+                    filterable
+                        .GroupBy(static securable => securable.FilterRoot, StringComparer.OrdinalIgnoreCase)
+                        .Select(static root => $"'{root.Key}' ({string.Join(", ", root.Select(static securable => $"'{securable}'"))})"));
+                problems.Add(new CompositionProblem(
+                    Name,
+                    $"The securables of the resource '{resource}' take different filter roots: {roots}.",
+                    "Give every securable of a resource that takes a filter the same filter root, normally the resource's own entity: a permission on every action of the resource binds its filter against that one root."));
             }
         }
 

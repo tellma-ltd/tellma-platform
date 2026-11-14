@@ -11,8 +11,9 @@ namespace Tellma.Core.Abstractions.Access
     /// </summary>
     /// <remarks>
     ///     Resources and actions compare ordinal-ignore-case and keep the spelling they were registered
-    ///     with. An alias resolves on <see cref="Find" /> alone: <see cref="All" />,
-    ///     <see cref="Resources" /> and <see cref="ForResource" /> list registered names only.
+    ///     with. An alias resolves on <see cref="Find" /> and <see cref="FindResource" /> alone:
+    ///     <see cref="All" />, <see cref="Resources" /> and <see cref="ForResource" /> list registered
+    ///     names only.
     /// </remarks>
     public interface ISecurableRegistry
     {
@@ -41,6 +42,14 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="action">The action.</param>
         /// <returns>The securable, or null for an unknown pair.</returns>
         SecurableDescriptor? Find(string resource, string action);
+
+        /// <summary>
+        ///     Finds a registered resource by name, ignoring case, resolving a renamed resource through
+        ///     its alias: what a stored permission on every action of a resource names.
+        /// </summary>
+        /// <param name="resource">The resource, or a former name of one.</param>
+        /// <returns>The resource as registered, or null for a name that is neither registered nor an alias.</returns>
+        string? FindResource(string resource);
 
         /// <summary>The securables of one registered resource, ignoring case, in action order; empty for any other name.</summary>
         /// <param name="resource">The resource.</param>

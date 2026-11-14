@@ -359,6 +359,30 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows
+
+- Ruling: keep PC-054's R1-8 deferral. A contentKey change runs the remembered lazy rows' loads only when a new rows array arrives (array identity), so a switch never loads children for the outgoing content's rows. The contentKey TSDoc states the contract: a new contentKey comes with its own rows array. Until that array arrives, remembered lazy rows show expanded with no children and no spinner.
+- Why: loading at the bind fetched children of the outgoing content whenever row ids overlapped between the two contents, which is a wrong read and not only wasted work. Keeping the same rows array across a deliberate content switch is caller misuse, and documenting it costs nothing.
+- For Ahmad: (1) spec 0010 §C.9 should state that contentKey and rows change together; (2) spec 0031's deep-link timing (§C.8 cites it) should name afterRenderEffect, because an effect in the grid's own host runs before the grid's bindings update and scrollToRow returns false (carried to PC-135).
+
+### D-076 (PC-044, 2026-11-13): cacheable-entity entries are keyed by the tenant's multilingual shape
+
+- Ruling: CacheableEntityKey (and so the single-flight key) carries the tenant's MultilingualShape. A language change gives a fresh key, and the old shape's entries age out. The `entities` and `entity:*` tags do not move on a language change. A Persist-batch FromCache miss takes a lock-only guard row on entity:<Name> (NULL expected tag), so a concurrent write is serialised as it is on a hit.
+- Why: the cached column list follows the shape, so a tag-only check would serve the old columns until someone wrote the table, and a mixed-shape single flight would hand one caller the other shape's rows. Keying is cheaper than bumping every entity tag tenant-wide.
+- For Ahmad: spec 0013 §6.3 is silent on language changes. The server side is closed by the key, but the client's entity wire tags do not move, so PC-049 (carry) must make the client notice. Spec 0013 §4.4 should also say that a Persist miss still guards the tag.
+
+### D-075 (PC-054, 2026-11-13): tree expansion moves into ./tree-grid now
+
+- Ruling: PC-054's fix round moves the tree-only expansion and batching machinery (about 0.80 KB linked) out of ./grid, behind the treeConfig seam, into ./tree-grid. The flash path stays in ./grid. Both ceilings are re-derived on the linked measure (+0.1). The budgetNotes entry states the headroom under the 42 KB cap in bytes.
+- Why: commit 1 left ./grid 168 B under spec 0010 §C.11's 42 KB hard cap, so every flat grid paid for tree code, and the next ./grid change would have forced D-057(2)'s re-split anyway. The seam already exists, so the move is cheap now and costs more later.
+- For Ahmad: none (within §C.11 and D-057).
+
+### D-074 (PC-097, 2026-11-13): job owners are checked in SQL, and enqueue needs a transaction
+
+- Ruling: enqueue accepts any in-memory JobId. The owner UPDATE succeeds only when the owner row exists and its JobId is null or names an ended job, read under READCOMMITTEDLOCK; `@@ROWCOUNT` is compared with the owner count, and a mismatch throws 50422 `Jobs.OwnerUnavailable`. Enqueue outside a transaction throws `Jobs.EnqueueOutsideTransaction` (TransactionMode.None is refused). The codes are public in JobEnqueueCodes. This replaces the implementer's D-8 (an in-memory null-JobId check).
+- Why: spec 0022 §7.1's outbox retry re-enqueues an owner with a terminal JobId. An in-memory check also misses stale or partly loaded entities and races between concurrent enqueuers, which the UPDATE's locks serialise. Without a transaction, the job INSERT and the owner UPDATE are not atomic, and the retry rules could duplicate jobs.
+- For Ahmad: spec 0020's enqueue contract should state that the null-or-terminal JobId rule is enforced in SQL, and that enqueue requires a transaction; spec 0022 §7.1 relies on it.
+
 ### D-073 (PC-043, 2026-11-13): a wildcard-resource grant implies Read only where its action is registered
 
 - Ruling: `(*, A')` with A' ≠ Read matches `(R, Read)` only when R registers A'. `(R, A')` is unchanged. UserAccess keeps a per-action resource set built from the registry. This is narrower than spec 0014 §5.2 step 2 and fails closed. Spec §8's delegation coverage of `(R, Read)` by `(*, A')` should follow the same rule (PC-078 carry). PC-043 D5 stays: `(*, A)` with an action no resource registers is UnknownAction drift, and PC-078's §3.7 rule 1 save check must refuse it.

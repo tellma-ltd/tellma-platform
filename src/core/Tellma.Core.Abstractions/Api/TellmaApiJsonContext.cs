@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Errors;
 
 namespace Tellma.Core.Abstractions.Api
@@ -41,6 +42,7 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(JobAccepted))]
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
+    [JsonSerializable(typeof(AccessGrant))]
 
     // --- The records a problem body's details carry ---
     [JsonSerializable(typeof(ConcurrencyConflict))]

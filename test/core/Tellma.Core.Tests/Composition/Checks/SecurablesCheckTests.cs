@@ -139,6 +139,40 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public void The_securables_of_a_resource_that_take_a_filter_share_one_filter_root()
+        {
+            // Report shares its root, spelt two ways, beside an action that takes none; Export does not.
+            SecurableRegistry registry = SecurableRegistryTests.Compose(("fixture", static builder => builder
+                .Add("fixture.Report", "Read", "core.User")
+                .Add("fixture.Report", "Save", "CORE.USER")
+                .Add("fixture.Report", "Approve", null)
+                .Add("fixture.Export", "Read", "core.User")
+                .Add("fixture.Export", "Save", "core.Role")
+                .Add("fixture.Export", "Delete", "core.Role")
+                .Add("fixture.Audit", "Approve", null)));
+
+            List<CompositionProblem> problems = [];
+            new SecurablesCheck(Record()).CheckSharedFilterRoots(registry, problems);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Equal(
+                "The securables of the resource 'fixture.Export' take different filter roots: 'core.User' ('fixture.Export:Read'), 'core.Role' ('fixture.Export:Save', 'fixture.Export:Delete').",
+                problem.Problem);
+            Assert.Equal(Check, problem.Source);
+        }
+
+        [Fact]
+        public async Task Two_filter_roots_on_one_resource_fail_the_gate()
+        {
+            IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
+                .Add(CoreResources.User, "Save", CoreResources.Role));
+
+            Assert.Equal(
+                ["The securables of the resource 'core.User' take different filter roots: 'core.User' ('core.User:Read'), 'core.Role' ('core.User:Save')."],
+                problems.Select(static problem => problem.Problem));
+        }
+
+        [Fact]
         public async Task A_contributor_registered_by_type_is_attributed_to_its_feature()
         {
             await using ServiceProvider provider = TestComposition.Compose(static tellma => tellma
