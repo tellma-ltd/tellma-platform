@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-083 (2026-11-14): outbound HTTP logging default and SendGrid refusal level (PC-F39)
+
+- **One default, in core.** `AddTellma` removes IHttpClientFactory's default loggers for every named and typed client, so no host that composes a distribution (web, migrator commands, emit-client-assets) can log request headers such as bearer tokens or API keys at Trace. The standalone identity host keeps its own call because it does not compose a distribution; PC-055's per-client call on the identity client stays as a harmless duplicate. Trade-off, documented in the Tellma.Core, Tellma.Identity.Web and SendGrid adapter READMEs: the per-request "Start/End processing HTTP request" lines are gone; outbound calls stay visible as HttpClient spans and metrics where an exporter is configured, and each sender logs its own failures.
+- **SendGrid refusal at Warning.** `RequestFailed` moves from Debug to Warning (status + provider error text, never the key), matching spec 0007 §9.2's table ("Message failed" at Warning) and its PII rule.
+- **For Ahmad:** spec 0007 (around line 1801) still says the adapters record a refusal's status and error code at Debug; it should say Warning.
+
 ### D-082 (2026-11-14): reorder-list single-pointer path, drop fallback, tree prefetch and budgets (PC-031)
 
 - **Reorder handle.** The handle's keyboard grab does not satisfy WCAG 2.5.7, which needs a single-pointer alternative to dragging; screen-reader activation also sends a click. A click on the handle therefore opens a menu: Move up, Move down, Move to top, Move to bottom, disabled at the ends. Each choice moves the item, emits `moved`, announces, and returns focus to the handle. The keyboard grab model stays.
