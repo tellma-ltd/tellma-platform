@@ -67,14 +67,25 @@ namespace Tellma.Core.Tenancy
         /// <summary>
         ///     Asks the catalog's server, through <c>master</c> and with the catalog's own credential,
         ///     whether the catalog database exists. A login the server cut off before saying why
-        ///     cannot tell a missing database from a transient fault; this question can.
+        ///     cannot tell a missing database from a transient fault; this question can, when the
+        ///     credential may see every database.
         /// </summary>
         /// <param name="cancellationToken">Cancels the question.</param>
-        /// <returns>Whether the server knows the database; <see langword="false" /> also when the login may not see it.</returns>
+        /// <returns>
+        ///     <see langword="true" /> when the database exists; <see langword="false" /> when the
+        ///     credential may see every database and this one is not among them;
+        ///     <see langword="null" /> when that cannot be told: the credential may not see every
+        ///     database, or the connection string names no database and so leaves the login's default.
+        /// </returns>
         /// <exception cref="InvalidOperationException">The catalog connection string is not configured.</exception>
         /// <exception cref="SqlException">The server cannot be reached, or the credential may not log in to <c>master</c>.</exception>
-        public async Task<bool> DatabaseExistsAsync(CancellationToken cancellationToken)
+        public async Task<bool?> DatabaseExistsAsync(CancellationToken cancellationToken)
         {
+            if (Database.Length == 0)
+            {
+                return null;
+            }
+
             SqlConnectionStringBuilder builder = new(ConnectionString) { InitialCatalog = "master", ConnectRetryCount = 0 };
             SqlConnection connection = await OpenAsync(builder.ConnectionString, cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
@@ -83,7 +94,7 @@ namespace Tellma.Core.Tenancy
                 command.CommandText = CatalogStatements.DatabaseExists;
                 _ = command.Parameters.Add(new SqlParameter("@database", System.Data.SqlDbType.NVarChar, 128) { Value = Database });
                 object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
+                return result is int known ? known == 1 : null;
             }
         }
 

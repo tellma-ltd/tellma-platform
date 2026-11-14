@@ -20,22 +20,19 @@ namespace Tellma.Core.Tenancy
             {
                 connection = await catalog.OpenWithoutRetryAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (SqlException exception) when (HasError(exception, CatalogStatements.CannotOpenDatabase))
+            catch (SqlException exception)
             {
-                // A login to a missing database fails with two errors, 4060 and the login failure
-                // 18456, and which one the exception reports first is not to be relied on.
-                return CatalogHistoryState.MissingDatabase;
-            }
-            catch (SqlException exception) when (HasError(exception, CatalogStatements.LoginInterrupted))
-            {
-                // The server ended the login without the client reading why, which a missing
-                // database can cause as well as a transient fault: the server itself decides which.
-                if (!await DatabaseExistsAsync(cancellationToken).ConfigureAwait(false))
+                // A failure the classification cannot call a missing database stands as it is.
+                CatalogHistoryState? state = await ClassifyLoginFailureAsync(
+                    exception.Errors.Cast<SqlError>().Select(static error => error.Number),
+                    catalog.DatabaseExistsAsync,
+                    cancellationToken).ConfigureAwait(false);
+                if (state is not CatalogHistoryState missing)
                 {
-                    return CatalogHistoryState.MissingDatabase;
+                    throw;
                 }
 
-                throw;
+                return missing;
             }
 
             await using (connection.ConfigureAwait(false))
@@ -98,29 +95,47 @@ namespace Tellma.Core.Tenancy
             }
         }
 
-        /// <summary>Whether an exception carries a SQL Server error number.</summary>
-        /// <param name="exception">The exception.</param>
-        /// <param name="number">The error number.</param>
-        /// <returns>Whether any of the exception's errors has the number.</returns>
-        private static bool HasError(SqlException exception, int number)
-        {
-            return exception.Errors.Cast<SqlError>().Any(error => error.Number == number);
-        }
-
-        /// <summary>Whether the catalog database exists, when the server can be asked; a failure to ask counts as yes.</summary>
+        /// <summary>
+        ///     Classifies a failed login to the catalog: <see cref="CatalogHistoryState.MissingDatabase" />
+        ///     when the failure shows the database is missing, or <see langword="null" /> when the
+        ///     failure must stand as a reachability fault.
+        /// </summary>
+        /// <param name="errorNumbers">The SQL Server error numbers the failure carries.</param>
+        /// <param name="databaseExists">Asks the server whether the catalog database exists; <see langword="null" /> when it cannot tell.</param>
         /// <param name="cancellationToken">Cancels the question.</param>
-        /// <returns><see langword="false" /> only when the server says the database is missing.</returns>
-        private async Task<bool> DatabaseExistsAsync(CancellationToken cancellationToken)
+        /// <returns>The state, or <see langword="null" /> to keep the failure.</returns>
+        internal static async Task<CatalogHistoryState?> ClassifyLoginFailureAsync(
+            IEnumerable<int> errorNumbers,
+            Func<CancellationToken, Task<bool?>> databaseExists,
+            CancellationToken cancellationToken)
         {
+            int[] numbers = [.. errorNumbers];
+
+            // --- Refused for the database: 4060, beside the login failure 18456 in either order ---
+            if (numbers.Contains(CatalogStatements.CannotOpenDatabase))
+            {
+                return CatalogHistoryState.MissingDatabase;
+            }
+
+            // --- Cut off before saying why: a missing database or a transient fault ---
+            if (!numbers.Contains(CatalogStatements.LoginInterrupted))
+            {
+                return null;
+            }
+
+            bool? exists;
             try
             {
-                return await catalog.DatabaseExistsAsync(cancellationToken).ConfigureAwait(false);
+                exists = await databaseExists(cancellationToken).ConfigureAwait(false);
             }
-            catch (SqlException)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 // The server cannot be asked either: the original failure stands.
-                return true;
+                return null;
             }
+
+            // Only a server that says the database is absent turns the failure into a missing one.
+            return exists == false ? CatalogHistoryState.MissingDatabase : null;
         }
     }
 }

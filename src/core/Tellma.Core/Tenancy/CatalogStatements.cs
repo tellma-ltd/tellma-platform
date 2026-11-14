@@ -49,8 +49,13 @@ namespace Tellma.Core.Tenancy
         /// </summary>
         public const int LoginInterrupted = 233;
 
-        /// <summary>Whether a database exists on the server, asked of <c>master</c>; 1 or 0.</summary>
-        public const string DatabaseExists = "SELECT CASE WHEN DB_ID(@database) IS NULL THEN 0 ELSE 1 END;";
+        /// <summary>
+        ///     Whether a database exists on the server, asked of <c>master</c>: 1 when the caller sees
+        ///     it, 0 when the caller may see every database and this one is not among them, and NULL
+        ///     when the caller may not see every database, so its absence proves nothing.
+        /// </summary>
+        public const string DatabaseExists =
+            "SELECT CASE WHEN DB_ID(@database) IS NOT NULL THEN 1 WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'VIEW ANY DATABASE') = 1 THEN 0 END;";
 
         /// <summary>The refresh probe, every refresh interval per instance.</summary>
         public const string Probe = "SELECT [Version] FROM [catalog].[CatalogState] WHERE [Id] = 1;";

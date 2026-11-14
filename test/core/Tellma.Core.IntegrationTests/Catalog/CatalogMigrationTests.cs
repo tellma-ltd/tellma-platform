@@ -135,6 +135,11 @@ namespace Tellma.Core.IntegrationTests.Catalog
 
             Assert.True(await Connection(existing).DatabaseExistsAsync(Token));
             Assert.False(await Connection(sql.ConnectionString(sql.NewDatabaseName("catalog_exists_absent"))).DatabaseExistsAsync(Token));
+
+            // A string that names no database leaves the login's default, which nothing can check.
+            Microsoft.Data.SqlClient.SqlConnectionStringBuilder unnamed = new(sql.MasterConnectionString);
+            _ = unnamed.Remove("Initial Catalog");
+            Assert.Null(await Connection(unnamed.ConnectionString).DatabaseExistsAsync(Token));
         }
 
         /// <summary>The catalog connection over a database.</summary>
