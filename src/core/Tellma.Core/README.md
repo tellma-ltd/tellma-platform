@@ -751,9 +751,11 @@ façade passes it the current tag from the process's snapshot and the scope's `I
 
 `[Cacheable(MaxRows)]` marks a small reference list; `MaxRows = 0` resolves to
 `Tellma:Cache:EntityMaxRowsDefault`. `CacheableEntityStore` (the `entities` kind, sized in rows
-against `EntityRows`) keeps one `CachedEntitySet` per tenant and entity: every row, inactive ones
-included, in key order, with `ById`. A caller may ask by the leaf class or a base it replaces; a
-base reads one view of the same instances.
+against `EntityRows`) keeps one `CachedEntitySet` per tenant, entity and multilingual shape: every
+row, inactive ones included, in key order, with `ById`. The shape is part of the key because the
+list's columns follow it and a language change moves no entity tag; a list read under an old shape
+is never served under the new one and simply ages out. A caller may ask by the leaf class or a base
+it replaces; a base reads one view of the same instances.
 
 - **The probe.** One entity query selecting every scalar property the tenant's query schema
   declares (and the JSON columns), no filter, ordered by `Id`, taking `MaxRows + 1` rows, after the
@@ -767,12 +769,14 @@ base reads one view of the same instances.
   dependency (`Refresh` on a read batch, `Rerun` on a validate or persist batch). A miss appends the
   probe to the consumer's batch, so a cold lookup costs no round trip of its own; its rows are
   stamped with the batch's prelude tag and stored when the batch's results complete, before the
-  handle does, and no dependency is declared. A batch that already writes the entity's table is
-  refused.
+  handle does, and no dependency is declared. On a writing persist batch the guard still locks the
+  list's tag row to the commit without comparing it, so a concurrent write of the table waits for
+  the batch. A batch that already writes the entity's table is refused.
 
 `core.cacheable-entities` reports a cacheable entity that is not a `TopLevelEntity<int>`, declares a
 child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, or has a `Read`
-securable with a filter root.
+securable with a filter root. It also creates the store, so a store that cannot be created (another
+live `entities` cache on the host's meter) fails the host at startup rather than at its first read.
 
 ## Notifications and client events
 

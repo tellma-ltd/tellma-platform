@@ -3,9 +3,17 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Caching;
 using Tellma.Core.Composition;
+using Tellma.Core.Composition.Checks;
 using Tellma.Core.Tests.Caching;
 using Tellma.Core.Tests.Data.Metadata;
 using Tellma.Core.Tests.Infrastructure;
@@ -15,7 +23,8 @@ namespace Tellma.Core.Tests.Composition.Checks
     /// <summary>
     ///     <c>core.cacheable-entities</c>: a cacheable entity is a top-level entity with an int key and
     ///     no child collection, its resolved row limit is within the ceiling, and its read securable
-    ///     has no row filter.
+    ///     has no row filter; the store itself is created at startup, so one that cannot be is reported
+    ///     there.
     /// </summary>
     public sealed class CacheableEntitiesCheckTests
     {
@@ -81,6 +90,29 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             Assert.Empty(problems.From(Check));
             Assert.NotEmpty(problems.From("core.options"));
+        }
+
+        [Fact]
+        public async Task A_store_that_cannot_be_created_is_reported_at_startup_and_one_that_can_is_created_there()
+        {
+            await using ServiceProvider services = TestComposition.Compose(CacheModel.Compose, TestComposition.Configuration()).BuildServiceProvider();
+            CacheableEntitiesCheck check = new();
+
+            // --- Another live entities cache on the host's meter: the store cannot be created ---
+            CacheableEntityStore other = new(
+                services.GetRequiredService<IEntityMetadataProvider>(),
+                services.GetRequiredService<IQueryexSchemaProvider>(),
+                Options.Create(new CacheOptions()),
+                services.GetRequiredService<IMeterFactory>(),
+                TimeProvider.System,
+                NullLogger<CacheableEntityStore>.Instance);
+            CompositionProblem problem = Assert.Single(await check.CheckAsync(services, TestContext.Current.CancellationToken));
+            Assert.StartsWith("The cacheable entities' cache cannot be created: A cache of the kind 'entities' already reports on this meter.", problem.Problem, StringComparison.Ordinal);
+
+            // --- Once it is gone, the check creates the host's store, which every later resolution finds ---
+            other.Dispose();
+            Assert.Empty(await check.CheckAsync(services, TestContext.Current.CancellationToken));
+            Assert.Same(services.GetRequiredService<CacheableEntityStore>(), services.GetRequiredService<CacheableEntityStore>());
         }
 
         [Fact]

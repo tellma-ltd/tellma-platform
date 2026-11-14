@@ -47,7 +47,7 @@ namespace Tellma.Core.IntegrationTests.Caching
             await fixture.SeedTagsAsync();
 
             // The store outlives the tests of the class; each starts cold.
-            Store.Remove(new CacheableEntityKey(FixtureTenant.TenantId, "fixture.Lookup"));
+            Store.Remove(new CacheableEntityKey(FixtureTenant.TenantId, "fixture.Lookup", MultilingualShape.Primary));
         }
 
         /// <inheritdoc />
@@ -190,7 +190,7 @@ namespace Tellma.Core.IntegrationTests.Caching
 
             Assert.Equal((CacheOutcome.Uncached, VersionTag.None, 1), (first.Outcome, first.Tag, first.Value!.Items.Count));
             Assert.Equal(CacheOutcome.Uncached, second.Outcome);
-            Assert.Equal(CacheOutcome.Miss, Store.Find(Store.TypeOf(typeof(Lookup)), FixtureTenant.TenantId, VersionTag.None, out _));
+            Assert.Equal(CacheOutcome.Miss, Store.Find(Store.TypeOf(typeof(Lookup)), FixtureTenant.TenantId, MultilingualShape.Primary, VersionTag.None, out _));
         }
 
         /// <summary>Inserts lookups <c>L1</c>... with ids from 1; every even one inactive.</summary>

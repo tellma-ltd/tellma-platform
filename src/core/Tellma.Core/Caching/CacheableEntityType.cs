@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
 
@@ -56,12 +57,13 @@ namespace Tellma.Core.Caching
                 : throw new ArgumentException($"The entity {metadata.Name} is not a top-level entity with an int key, so it is not cacheable.", nameof(metadata));
         }
 
-        /// <summary>The cache key of the type's list for a tenant.</summary>
+        /// <summary>The cache key of the type's list for a tenant under its multilingual shape.</summary>
         /// <param name="tenantId">The tenant.</param>
+        /// <param name="shape">The tenant's multilingual shape, which decides the list's columns.</param>
         /// <returns>The key.</returns>
-        public CacheableEntityKey Key(int tenantId)
+        public CacheableEntityKey Key(int tenantId, MultilingualShape shape)
         {
-            return new CacheableEntityKey(tenantId, Name);
+            return new CacheableEntityKey(tenantId, Name, shape);
         }
 
         /// <summary>

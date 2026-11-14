@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Caching;
 using Tellma.Core.Data.Queries;
 
@@ -14,6 +15,9 @@ namespace Tellma.Core.Data.Batches
     /// <content>The cached lists of the cacheable entities, read through the batch.</content>
     internal sealed partial class DataBatch
     {
+        /// <summary>The tags of the lists the batch probed on a persist batch, which its guard locks without comparing.</summary>
+        private readonly HashSet<string> _lockedTags = new(StringComparer.Ordinal);
+
         /// <inheritdoc />
         /// <remarks>
         ///     <para>
@@ -22,7 +26,13 @@ namespace Tellma.Core.Data.Batches
         ///         miss the probe rides the batch, after its prelude, and its rows are stamped with
         ///         the tag that prelude read; the list is stored when the batch's results complete,
         ///         before the handle does, and no dependency is declared, since the rows are the
-        ///         batch's own read.
+        ///         batch's own read. On a writing persist batch the guard still locks the list's tag
+        ///         to the commit, without comparing it, so a concurrent write of the table waits for
+        ///         the batch rather than committing under it.
+        ///     </para>
+        ///     <para>
+        ///         A list is keyed by the batch's multilingual shape too: a list read under another
+        ///         shape is a miss, since its rows carry another set of multilingual columns.
         ///     </para>
         ///     <para>
         ///         Refused after a statement of the batch declared a write to the entity's table: the
@@ -55,9 +65,11 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- The cache first, under the tag the process's snapshot holds ---
+            // The list's columns follow the shape the batch compiles under, so the shape is part of its key.
             int tenantId = Connection.TenantId;
+            MultilingualShape shape = Connection.Shape;
             VersionTag current = _executor.Snapshots?.Current(tenantId)[type.TagName] ?? VersionTag.None;
-            CacheOutcome lookup = store.Find(type, tenantId, current, out CachedEntityList? cached);
+            CacheOutcome lookup = store.Find(type, tenantId, shape, current, out CachedEntityList? cached);
             BatchResult<CacheResult<CachedEntitySet<TEntity>>> result;
             if (lookup == CacheOutcome.Hit)
             {
@@ -72,13 +84,24 @@ namespace Tellma.Core.Data.Batches
                 BatchResult<CacheResult<CachedEntitySet<TEntity>>> pending = new();
                 type.Probe(this, type.Select(Map.Schema), (cursor, rows) => cursor.Settle(
                     pending,
-                    () => store.Settle<TEntity>(type, tenantId, lookup, ReadTag(tenantId, type.TagName), rows)));
+                    () => store.Settle<TEntity>(type, tenantId, shape, lookup, ReadTag(tenantId, type.TagName), rows)));
                 result = pending;
+
+                // A writing persist batch's guard locks the list's tag row to the commit without
+                // comparing it: no cached list stood in for rows, but a concurrent write of the table
+                // must not commit between this probe and the batch's commit.
+                if (Purpose == BatchPurpose.Persist)
+                {
+                    _ = _lockedTags.Add(type.TagName);
+                }
             }
 
             _sharedQueries[key] = result;
             return result;
         }
+
+        /// <summary>The tags the guard of a writing persist batch locks to the commit without comparing them.</summary>
+        internal IReadOnlySet<string> LockedTags => _lockedTags;
 
         /// <summary>The tag the batch's prelude read for a name; <see cref="VersionTag.None" /> when it read none.</summary>
         /// <param name="tenantId">The batch's tenant.</param>

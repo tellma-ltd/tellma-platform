@@ -22,11 +22,13 @@ namespace Tellma.Core.Composition.Checks
     ///     top-level entity with an int key (the cached list is keyed by an int id), declares no child
     ///     collection, has a resolved row limit between 1 and <see cref="CacheOptions.EntityMaxRowsCeiling" />,
     ///     and has a read securable without a row filter, since one cached list is shared by every reader.
+    ///     The check also creates the process-wide store, so a host whose meter already carries an
+    ///     entities cache fails at startup rather than at its first cached read.
     /// </summary>
     /// <remarks>
     ///     A model that does not build is the entity-metadata check's to report, and limits that do
-    ///     not validate are the options check's; the row limits are then not judged. An entity whose
-    ///     read securable is not registered is not judged on its filter.
+    ///     not validate are the options check's; the row limits are then not judged and the store is
+    ///     not created. An entity whose read securable is not registered is not judged on its filter.
     /// </remarks>
     internal sealed class CacheableEntitiesCheck : IStartupCheck
     {
@@ -51,6 +53,24 @@ namespace Tellma.Core.Composition.Checks
             foreach (EntityMetadata entity in metadata.All.Where(static entity => entity.IsCacheable).OrderBy(static entity => entity.Name, StringComparer.Ordinal))
             {
                 Check(entity, limits, securables, problems);
+            }
+
+            // --- The store: created here, once its limits validate, so a refusal surfaces at startup ---
+            // The data executor resolves it on first use and keeps what it resolved; the singleton this
+            // creates is the one it later finds.
+            if (limits is not null)
+            {
+                try
+                {
+                    _ = services.GetService<CacheableEntityStore>();
+                }
+                catch (InvalidOperationException exception)
+                {
+                    problems.Add(new CompositionProblem(
+                        Name,
+                        $"The cacheable entities' cache cannot be created: {exception.Message}",
+                        "Give each host its own meter factory, or dispose the other host before this one starts."));
+                }
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);

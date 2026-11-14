@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
@@ -10,8 +11,10 @@ using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
@@ -25,8 +28,9 @@ namespace Tellma.Core.Tests.Caching
 {
     /// <summary>
     ///     The entities cache: which entities it holds and at what row limit, how a probe's rows settle
-    ///     into it (stored, oversized and warned about once, or uncached), the views by a base class,
-    ///     the scope's façade, and how a batch reads a list through <c>FromCache</c>.
+    ///     into it (stored in rows, oversized and warned about once, or uncached), the views by a base
+    ///     class, a list per multilingual shape, the scope's façade, and how a batch reads a list
+    ///     through <c>FromCache</c>, its guard locking a probed list's tag on a writing persist batch.
     /// </summary>
     public sealed class CacheableEntityStoreTests : IDisposable
     {
@@ -97,15 +101,33 @@ namespace Tellma.Core.Tests.Caching
             using MetricCollector<long> requests = Requests();
             CacheableEntityType currencies = store.TypeOf(typeof(CmCurrency));
 
-            CacheResult<CachedEntitySet<CmCurrency>> result = store.Settle<CmCurrency>(currencies, 1, CacheOutcome.Miss, First, Currencies(2));
+            CacheResult<CachedEntitySet<CmCurrency>> result = store.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(2));
 
             CachedEntitySet<CmCurrency> set = Assert.IsType<CachedEntitySet<CmCurrency>>(result.Value);
             Assert.Equal((First, CacheOutcome.Miss, First, Now), (result.Tag, result.Outcome, set.Tag, set.LoadedAt));
             Assert.Equal([1, 2], set.Items.Select(static currency => currency.Id));
             Assert.Equal("C2", set.ById[2].Code);
-            Assert.Same(set, store.Peek<CmCurrency>(1, First));
-            Assert.Null(store.Peek<CmCurrency>(2, First));
+            Assert.Same(set, store.Peek<CmCurrency>(1, MultilingualShape.Primary, First));
+            Assert.Null(store.Peek<CmCurrency>(2, MultilingualShape.Primary, First));
             Assert.Equal(["miss", "hit", "miss"], Outcomes(requests));
+        }
+
+        [Fact]
+        public void The_store_is_sized_in_rows_and_an_empty_list_takes_one()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            using MetricCollector<long> size = new(MeterFactory, CacheTelemetryNames.MeterName, CacheTelemetryNames.Size);
+            using MetricCollector<long> entries = new(MeterFactory, CacheTelemetryNames.MeterName, CacheTelemetryNames.Entries);
+            CacheableEntityType currencies = store.TypeOf(typeof(CmCurrency));
+
+            _ = store.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(2));
+            _ = store.Settle<CmCurrency>(currencies, 2, MultilingualShape.Primary, CacheOutcome.Miss, First, []);
+
+            // Two rows and an empty list: three units over two entries, where one per entry would be two.
+            size.RecordObservableInstruments();
+            entries.RecordObservableInstruments();
+            Assert.Equal(3, Gauge(size));
+            Assert.Equal(2, Gauge(entries));
         }
 
         [Fact]
@@ -115,12 +137,12 @@ namespace Tellma.Core.Tests.Caching
             using MetricCollector<long> requests = Requests();
             CacheableEntityType currencies = store.TypeOf(typeof(CmCurrency));
 
-            CacheResult<CachedEntitySet<CmCurrency>> first = store.Settle<CmCurrency>(currencies, 1, CacheOutcome.Miss, First, Currencies(4));
-            CacheResult<CachedEntitySet<CmCurrency>> second = store.Settle<CmCurrency>(currencies, 2, CacheOutcome.Stale, First, Currencies(4));
+            CacheResult<CachedEntitySet<CmCurrency>> first = store.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(4));
+            CacheResult<CachedEntitySet<CmCurrency>> second = store.Settle<CmCurrency>(currencies, 2, MultilingualShape.Primary, CacheOutcome.Stale, First, Currencies(4));
 
             Assert.Equal((null, First, CacheOutcome.Oversized), (first.Value, first.Tag, first.Outcome));
             Assert.Equal(CacheOutcome.Oversized, second.Outcome);
-            Assert.Null(store.Peek<CmCurrency>(1, First));
+            Assert.Null(store.Peek<CmCurrency>(1, MultilingualShape.Primary, First));
             FakeLogRecord warning = Assert.Single(logs.GetSnapshot());
             Assert.Equal((LogLevel.Warning, "CacheableEntityOverflow"), (warning.Level, warning.Id.Name));
             Assert.Equal(
@@ -135,10 +157,10 @@ namespace Tellma.Core.Tests.Caching
             using CacheableEntityStore store = Standalone(out _);
             using MetricCollector<long> requests = Requests();
 
-            CacheResult<CachedEntitySet<CmCurrency>> result = store.Settle<CmCurrency>(store.TypeOf(typeof(CmCurrency)), 1, CacheOutcome.Miss, VersionTag.None, Currencies(1));
+            CacheResult<CachedEntitySet<CmCurrency>> result = store.Settle<CmCurrency>(store.TypeOf(typeof(CmCurrency)), 1, MultilingualShape.Primary, CacheOutcome.Miss, VersionTag.None, Currencies(1));
 
             Assert.Equal((CacheOutcome.Uncached, 1), (result.Outcome, result.Value!.Items.Count));
-            Assert.Equal(CacheOutcome.Miss, store.Find(store.TypeOf(typeof(CmCurrency)), 1, VersionTag.None, out _));
+            Assert.Equal(CacheOutcome.Miss, store.Find(store.TypeOf(typeof(CmCurrency)), 1, MultilingualShape.Primary, VersionTag.None, out _));
             Assert.Equal(["uncached"], Outcomes(requests));
         }
 
@@ -149,14 +171,87 @@ namespace Tellma.Core.Tests.Caching
             CacheableEntityType units = store.TypeOf(typeof(CmUnit));
             CmMyUnit kilogram = new() { Id = 5, Name = "Kilogram", Symbol = "kg" };
 
-            CacheResult<CachedEntitySet<CmUnit>> settled = store.Settle<CmUnit>(units, 1, CacheOutcome.Miss, First, [kilogram]);
+            CacheResult<CachedEntitySet<CmUnit>> settled = store.Settle<CmUnit>(units, 1, MultilingualShape.Primary, CacheOutcome.Miss, First, [kilogram]);
 
             CachedEntitySet<CmUnit> view = settled.Value!;
             Assert.Same(kilogram, Assert.Single(view.Items));
             Assert.Same(kilogram, view.ById[5]);
-            Assert.Same(view, store.Peek<CmUnit>(1, First));
-            Assert.Same(kilogram, store.Peek<CmMyUnit>(1, First)!.ById[5]);
+            Assert.Same(view, store.Peek<CmUnit>(1, MultilingualShape.Primary, First));
+            Assert.Same(kilogram, store.Peek<CmMyUnit>(1, MultilingualShape.Primary, First)!.ById[5]);
             Assert.Throws<NotSupportedException>(() => ((IList<CmUnit>)view.Items).Add(kilogram));
+        }
+
+        // ===================== A list per multilingual shape =====================
+
+        [Fact]
+        public void A_list_read_under_one_shape_is_a_miss_under_another_in_either_direction()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            CacheableEntityType currencies = store.TypeOf(typeof(CmCurrency));
+
+            // --- A language added: the one-language list has no twins, so the wider shape misses ---
+            _ = store.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(2));
+            Assert.Equal(CacheOutcome.Miss, store.Find(currencies, 1, MultilingualShape.All, First, out _));
+            Assert.Null(store.Peek<CmCurrency>(1, MultilingualShape.All, First));
+
+            // --- A language removed: the wider list carries twins the narrower shape no longer has ---
+            _ = store.Settle<CmCurrency>(currencies, 2, MultilingualShape.All, CacheOutcome.Miss, First, Currencies(2));
+            Assert.Equal(CacheOutcome.Miss, store.Find(currencies, 2, MultilingualShape.Primary, First, out _));
+            Assert.Null(store.Peek<CmCurrency>(2, MultilingualShape.PrimaryAndSecondary, First));
+
+            // Each list still answers under its own shape.
+            Assert.NotNull(store.Peek<CmCurrency>(1, MultilingualShape.Primary, First));
+            Assert.NotNull(store.Peek<CmCurrency>(2, MultilingualShape.All, First));
+        }
+
+        [Fact]
+        public async Task A_batch_under_a_new_shape_probes_its_own_columns_instead_of_reading_the_old_shapes_list()
+        {
+            _ = Warm(First);
+            _harness.Shape = MultilingualShape.All;
+            DataBatch batch = _harness.Batch(BatchPurpose.Read);
+
+            BatchResult<CacheResult<CachedEntitySet<CmCurrency>>> result = batch.FromCache<CmCurrency>();
+
+            Assert.False(result.IsCompleted);
+            Assert.Empty(batch.Dependencies);
+            Assert.Contains("[Name3]", (await BatchHarness.SealAsync(batch)).Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Callers_under_different_shapes_never_share_a_load_and_each_reads_its_own_columns()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            GatedDatabase primary = new(_harness, MultilingualShape.Primary, gate.Task);
+            GatedDatabase all = new(_harness, MultilingualShape.All, gate.Task);
+
+            // --- Same tenant, entity and tag: the two shapes start a load each; a second caller of one shape joins it ---
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> one = store.GetAsync<CmCurrency>(1, MultilingualShape.Primary, First, primary, Token);
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> other = store.GetAsync<CmCurrency>(1, MultilingualShape.All, First, all, Token);
+            Task<CacheResult<CachedEntitySet<CmCurrency>>> joined = store.GetAsync<CmCurrency>(1, MultilingualShape.Primary, First, primary, Token);
+            Assert.Equal((1, 1), (primary.Batches.Count, all.Batches.Count));
+
+            // --- Each load fails on its own handle, and each read only its own shape's columns ---
+            gate.SetResult();
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(() => one.WaitAsync(Bound, Token));
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(() => other.WaitAsync(Bound, Token));
+            _ = await Assert.ThrowsAsync<BatchHarness.RefusedConnection.RefusedException>(() => joined.WaitAsync(Bound, Token));
+            Assert.DoesNotContain("[Name3]", primary.Batches[0].Assemble().Text, StringComparison.Ordinal);
+            Assert.Contains("[Name3]", all.Batches[0].Assemble().Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_load_asked_of_a_handle_under_another_shape_is_refused()
+        {
+            using CacheableEntityStore store = Standalone(out _);
+            GatedDatabase primary = new(_harness, MultilingualShape.Primary, Task.CompletedTask);
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => store.GetAsync<CmCurrency>(1, MultilingualShape.All, First, primary, Token));
+
+            Assert.Contains("under the Primary shape", refused.Message, StringComparison.Ordinal);
+            Assert.Empty(primary.Batches);
         }
 
         // ===================== The scope's façade =====================
@@ -167,7 +262,7 @@ namespace Tellma.Core.Tests.Caching
             using CacheableEntityStore store = Standalone(out _);
             using VersionTagSnapshots snapshots = new(Options.Create(new CacheOptions()));
             snapshots.Replace(new VersionTagSnapshot(17, new Dictionary<string, VersionTag> { ["entity:cm.CmCurrency"] = First }, Now));
-            _ = store.Settle<CmCurrency>(store.TypeOf(typeof(CmCurrency)), 17, CacheOutcome.Miss, First, Currencies(1));
+            _ = store.Settle<CmCurrency>(store.TypeOf(typeof(CmCurrency)), 17, MultilingualShape.Primary, CacheOutcome.Miss, First, Currencies(1));
             CacheableEntities facade = new(store, snapshots, new FixedContext(17), new RefusedDatabase());
 
             Assert.Equal("C1", Assert.Single(facade.Peek<CmCurrency>()!.Items).Code);
@@ -230,6 +325,45 @@ namespace Tellma.Core.Tests.Caching
         }
 
         [Fact]
+        public async Task A_cold_read_on_a_writing_persist_batch_has_its_guard_lock_the_lists_tag_without_comparing_it()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist, new TextContributor(0, "DECLARE @tm_Guard bit = 1;", null));
+            batch.MarkConnectPrologue(GuardPremises.ForUser(First, Second));
+
+            _ = batch.FromCache<CmCurrency>();
+            _ = batch.Sql($"DELETE FROM [core].[Jobs] WHERE 1 = 0;", new SqlOptions(writes: new HashSet<TableName> { new("core", "Jobs") }));
+
+            // No dependency, so nothing compared; the tag row is still read under the guard's shared lock to the commit.
+            Assert.Empty(batch.Dependencies);
+            PersistChecks checks = Assert.IsType<PersistChecks>((await BatchHarness.SealAsync(batch)).Checks);
+            Assert.Contains(("entity:cm.CmCurrency", PersistChecks.NoExpectation, false), checks.ExpectedTags.Select(static row => (row.Name, row.Tag, row.Bumped)));
+        }
+
+        [Theory]
+        [InlineData(BatchPurpose.Read)]
+        [InlineData(BatchPurpose.Validate)]
+        public void A_cold_read_on_a_batch_with_no_guard_locks_nothing(BatchPurpose purpose)
+        {
+            DataBatch batch = _harness.Batch(purpose);
+
+            _ = batch.FromCache<CmCurrency>();
+
+            Assert.Empty(batch.LockedTags);
+        }
+
+        [Fact]
+        public void A_warm_read_on_a_persist_batch_compares_the_lists_tag_instead_of_only_locking_it()
+        {
+            _ = Warm(First);
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+
+            _ = batch.FromCache<CmCurrency>();
+
+            Assert.Empty(batch.LockedTags);
+            Assert.Equal(new VersionTagDependency("entity:cm.CmCurrency", First, VersionTagMismatchPolicy.Rerun), Assert.Single(batch.Dependencies));
+        }
+
+        [Fact]
         public void A_second_read_of_one_list_answers_with_the_first_handle()
         {
             DataBatch batch = _harness.Batch(BatchPurpose.Read);
@@ -251,6 +385,12 @@ namespace Tellma.Core.Tests.Caching
 
         // ===================== Helpers =====================
 
+        /// <summary>The bound on every wait for a load to finish.</summary>
+        private static readonly TimeSpan Bound = TimeSpan.FromSeconds(10);
+
+        /// <summary>The test's cancellation token.</summary>
+        private static CancellationToken Token => TestContext.Current.CancellationToken;
+
         /// <summary>The composition's store.</summary>
         private CacheableEntityStore Composed => _harness.Services.GetRequiredService<CacheableEntityStore>();
 
@@ -263,6 +403,14 @@ namespace Tellma.Core.Tests.Caching
         private static List<object> Currencies(int count)
         {
             return [.. Enumerable.Range(1, count).Select(static id => new CmCurrency { Id = id, Code = $"C{id}", Name = $"Currency {id}", IsActive = true })];
+        }
+
+        /// <summary>The last value a gauge reported for the entities kind.</summary>
+        /// <param name="gauge">The gauge's collector.</param>
+        /// <returns>The value.</returns>
+        private static long Gauge(MetricCollector<long> gauge)
+        {
+            return gauge.GetMeasurementSnapshot().Last(static measurement => Equals(measurement.Tags[CacheTelemetryNames.KindTag], CacheKinds.Entities)).Value;
         }
 
         /// <summary>The outcomes a request collector recorded, in order.</summary>
@@ -282,6 +430,7 @@ namespace Tellma.Core.Tests.Caching
             logs = logger.Collector;
             return new CacheableEntityStore(
                 _harness.Services.GetRequiredService<IEntityMetadataProvider>(),
+                _harness.Services.GetRequiredService<IQueryexSchemaProvider>(),
                 Options.Create(new CacheOptions()),
                 MeterFactory,
                 new FakeTimeProvider(Now),
@@ -310,10 +459,10 @@ namespace Tellma.Core.Tests.Caching
         {
             ReplaceSnapshot(tag);
             CacheableEntityType currencies = Composed.TypeOf(typeof(CmCurrency));
-            return Composed.Settle<CmCurrency>(currencies, 1, CacheOutcome.Miss, tag, Currencies(2)).Value!;
+            return Composed.Settle<CmCurrency>(currencies, 1, MultilingualShape.Primary, CacheOutcome.Miss, tag, Currencies(2)).Value!;
         }
 
-        /// <summary>A request context accessor whose context names one tenant.</summary>
+        /// <summary>A request context accessor whose context names one tenant, its settings of one language loaded.</summary>
         /// <param name="tenantId">The tenant.</param>
         private sealed class FixedContext(int tenantId) : IRequestContextAccessor
         {
@@ -321,7 +470,69 @@ namespace Tellma.Core.Tests.Caching
             public RequestContext Current { get; } = RequestContext.Tenantless(new GregorianCalendarSystem(), Now) with
             {
                 Tenant = new TenantDescriptor(tenantId, "Acme", null, null, ["en"], TenantCategory.Live, TenantState.Active, null),
+                TenantSettings = new TenantSettings
+                {
+                    TenantId = tenantId,
+                    Tag = First,
+                    Names = ["Acme", null, null],
+                    Languages = [new LanguageInfo("en", "English", "E", false)],
+                    Shape = MultilingualShape.Primary,
+                    Calendars = [],
+                    TimeZone = TimeZoneInfo.Utc,
+                    SqlServerTimeZoneName = "UTC",
+                    ModifiedAt = Now,
+                    Entries = new Dictionary<string, JsonElement>(),
+                },
             };
+        }
+
+        /// <summary>
+        ///     A handle of one shape whose batches wait at a gate, then refuse to connect; it keeps the
+        ///     batches it created.
+        /// </summary>
+        /// <param name="harness">The harness whose executor the batches run on.</param>
+        /// <param name="shape">The shape the handle reports.</param>
+        /// <param name="gate">What each batch waits for before it refuses.</param>
+        private sealed class GatedDatabase(BatchHarness harness, MultilingualShape shape, Task gate) : ITenantDatabase, IBatchConnection
+        {
+            /// <summary>The batches created, in order.</summary>
+            public List<DataBatch> Batches { get; } = [];
+
+            /// <inheritdoc />
+            public QueryexSchema Schema => harness.Services.GetRequiredService<IQueryexSchemaProvider>().GetSchema(shape);
+
+            /// <inheritdoc />
+            public QueryexContextValues Context => harness.Context;
+
+            /// <inheritdoc />
+            public MultilingualShape Shape => shape;
+
+            /// <inheritdoc />
+            public int TenantId => 1;
+
+            /// <inheritdoc />
+            public int? UserId => 7;
+
+            /// <inheritdoc />
+            public IDataBatch CreateBatch(BatchPurpose purpose)
+            {
+                DataBatch batch = new(harness.Executor, this, new ServiceCollection().BuildServiceProvider(), purpose);
+                Batches.Add(batch);
+                return batch;
+            }
+
+            /// <inheritdoc />
+            public async ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)
+            {
+                await gate.WaitAsync(cancellationToken);
+                throw new BatchHarness.RefusedConnection.RefusedException();
+            }
+
+            /// <inheritdoc />
+            public ValueTask ReleaseAsync(SqlConnection connection)
+            {
+                return ValueTask.CompletedTask;
+            }
         }
 
         /// <summary>A database handle no batch is created on.</summary>

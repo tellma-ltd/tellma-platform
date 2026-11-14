@@ -107,7 +107,10 @@ namespace Tellma.Core.Data.Batches
             VersionTags = services.GetService<IVersionTagRegistry>();
             _tagMetrics = services.GetService<VersionTagMetrics>();
 
-            // Resolved on first use: the store reads the cache limits, which the startup gate validates first.
+            // Resolved on first use: the store reads the cache limits, which the startup gate validates
+            // first. The gate also creates the store, so a store that cannot be created (another live
+            // entities cache on the same meter) fails the host's startup rather than being resolved,
+            // and its failure kept, here.
             _cacheableEntities = new Lazy<CacheableEntityStore?>(services.GetService<CacheableEntityStore>);
         }
 
