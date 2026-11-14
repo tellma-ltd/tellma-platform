@@ -101,7 +101,10 @@ function lines(run: Run): string[] {
   return run.err.split('\n').filter((line) => line !== '');
 }
 
-describe('tellma-client build, before ng build', () => {
+// Each case copies the fixture app and runs the build's first step on it,
+// which takes one or two seconds and has taken over 5 s on a busy machine,
+// so vitest's 5 s default would fail a case on load alone.
+describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
   it('stops with exit 3 on an index.html problem', async () => {
     const run = await build('index', (app) => {
       const file = join(app, 'src', 'index.html');
@@ -213,7 +216,7 @@ describe('tellma-client build, before ng build', () => {
   });
 });
 
-describe('tellma-client build, failures', () => {
+describe('tellma-client build, failures', { timeout: 60_000 }, () => {
   it('exits 2 when the English string pack lacks a boot string', async () => {
     const run = await build('english', undefined, {
       data: () => {
