@@ -35,6 +35,7 @@ export class TmEntityMultiPicker<T, Id extends TmEntityId = TmEntityId> implemen
         label: string;
     }[]>;
     protected readonly chipSize: Signal<TmControlSize>;
+    protected readonly chosen: Signal<Id[]>;
     readonly controlId: Signal<string>;
     readonly create: _angular_core.InputSignal<TmEntityPickerPage | undefined>;
     readonly createLabel: _angular_core.InputSignal<string | undefined>;

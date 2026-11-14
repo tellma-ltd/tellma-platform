@@ -2419,6 +2419,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
         if (untracked(this.ɵchosenIds).includes(key as Id)) {
           this.resolutionFailure.set(null);
           this.resetForNextPick(true);
+          // The browse rows stay, but not the highlight on the row just
+          // taken off: Tab commits a highlighted row, and would put it
+          // straight back.
+          this.clearHighlight();
           this.ɵdeselect.emit(key as Id);
           return;
         }

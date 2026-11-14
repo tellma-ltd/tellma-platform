@@ -130,7 +130,7 @@ const WIDEST_COUNT = 1000;
       #picker
       class="tm-entity-multi-picker__search"
       [ɵcommitMode]="'emit'"
-      [ɵchosenIds]="value()"
+      [ɵchosenIds]="chosen()"
       [ɵmaxItems]="maxItems()"
       [ɵnotice]="notice()"
       [search]="search()"
@@ -309,17 +309,26 @@ export class TmEntityMultiPicker<
    * The chip size step: the enclosing field's, else the workspace default
    * (`lg` on a phone) — the same resolution the field applies to itself.
    */
-  protected readonly chipSize: Signal<TmControlSize> = ɵtmControlSize(computed(() => this.formField?.size()));
+  protected readonly chipSize: Signal<TmControlSize> = ɵtmControlSize(
+    computed(() => this.formField?.size()),
+  );
+
+  /**
+   * The chosen ids without duplicates, first occurrence first. The control's
+   * own writes never duplicate, but a value written from outside (a filter
+   * restored from a URL) may; every chip, count and check reads this.
+   */
+  protected readonly chosen = computed(() => [...new Set(this.value())]);
 
   /** The chips, in value order, with their resolved labels. */
   protected readonly chips = computed(() =>
-    this.value().map((id) => ({ id, label: this.labelFor(id) })),
+    this.chosen().map((id) => ({ id, label: this.labelFor(id) })),
   );
 
   /** The refusal message at the cap, or `null` while there is room. */
   private readonly capMessage = computed(() => {
     const max = this.maxItems();
-    return max === undefined || this.value().length < max
+    return max === undefined || this.chosen().length < max
       ? null
       : this.translate('entityPicker.maxItems', { max })();
   });
@@ -468,7 +477,7 @@ export class TmEntityMultiPicker<
    * the cap is refused with the cap message; anything else is appended.
    */
   protected onPicked(event: TmEntityPicked<T, Id>): void {
-    const ids = untracked(this.value);
+    const ids = untracked(this.chosen);
     if (ids.includes(event.id)) {
       return;
     }
@@ -493,7 +502,7 @@ export class TmEntityMultiPicker<
 
   /** Removes one chosen id (a chip's remove, or a toggled row). */
   protected remove(id: Id): void {
-    const ids = untracked(this.value);
+    const ids = untracked(this.chosen);
     if (!ids.includes(id) || !untracked(this.editable)) {
       return;
     }
@@ -519,10 +528,12 @@ export class TmEntityMultiPicker<
       );
     }
     this.remember(pick.picks.filter((entry) => next.includes(entry.id)));
-    const before = untracked(this.value);
+    const before = untracked(this.chosen);
     const added = next.filter((id) => !before.includes(id));
     const removed = before.filter((id) => !next.includes(id));
-    if (next.length !== before.length || next.some((id, i) => id !== before[i])) {
+    // Compared with the value as written, so a duplicated one is rewritten.
+    const current = untracked(this.value);
+    if (next.length !== current.length || next.some((id, i) => id !== current[i])) {
       this.value.set(next);
     }
     // One message for the whole outcome: what came on, what came off, or —

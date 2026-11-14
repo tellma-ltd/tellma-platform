@@ -304,6 +304,12 @@ function panelOpen(): boolean {
   return document.querySelector('.tm-entity-picker__panel') !== null;
 }
 
+/** The label of the dropdown's highlighted row, if any. */
+function activeLabel(): string | null {
+  const row = document.querySelector('.tm-entity-picker__option[data-active="true"]');
+  return row?.querySelector('.tm-entity-picker__option-label')?.textContent?.trim() ?? null;
+}
+
 describe('tm-entity-multi-picker', () => {
   afterEach(() => {
     lastPageData = null;
@@ -453,6 +459,38 @@ describe('tm-entity-multi-picker', () => {
       expect(panelOpen()).toBe(true);
     });
 
+    it('Tab after a pointer toggle-off on the browse list does not put the entity back', async () => {
+      const { fixture, host, input } = await setup(Host);
+      host.model.set({ agentIds: [4] });
+      await settle(fixture);
+      await openList(fixture, input);
+      await clickRow(fixture, 'Bob Stone');
+      expect(host.f.agentIds().value()).toEqual([]);
+      await press(fixture, input, 'Tab');
+      expect(host.f.agentIds().value()).toEqual([]);
+      expect(host.picks).toHaveLength(0);
+      expect(host.removals).toEqual([4]);
+    });
+
+    it('Tab after an Enter toggle-off on the browse list does not put the entity back', async () => {
+      const { fixture, host, input } = await setup(Host);
+      host.model.set({ agentIds: [4] });
+      await settle(fixture);
+      await openList(fixture, input);
+      // Arrow down the browse rows to Bob's.
+      for (let step = 0; step < 6 && activeLabel() !== 'Bob Stone'; step++) {
+        await press(fixture, input, 'ArrowDown');
+      }
+      expect(activeLabel()).toBe('Bob Stone');
+      await press(fixture, input, 'Enter');
+      expect(host.f.agentIds().value()).toEqual([]);
+      expect(panelOpen()).toBe(true);
+      await press(fixture, input, 'Tab');
+      expect(host.f.agentIds().value()).toEqual([]);
+      expect(host.picks).toHaveLength(0);
+      expect(host.removals).toEqual([4]);
+    });
+
     it('auto-resolution and Tab that land on a chosen id keep its chip and clear the text', async () => {
       const { fixture, host, input } = await setup(Host);
       const outside = fixture.nativeElement.querySelector('[data-testid="outside"]') as HTMLElement;
@@ -479,6 +517,25 @@ describe('tm-entity-multi-picker', () => {
       expect(host.f.agentIds().value()).toEqual([5]);
       expect(host.picks.map((p) => p.source)).toEqual(['auto']);
       expect(panelOpen()).toBe(false);
+    });
+
+    it('a value written with duplicates shows each entity once, and one removal clears it', async () => {
+      const { fixture, host } = await setup(Host);
+      host.displayWith.set(nameOf);
+      host.model.set({ agentIds: [3, 3] });
+      await settle(fixture);
+      expect(removeButtons(fixture).map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Remove Alan Grey',
+      ]);
+      const count = fixture.nativeElement.querySelector(
+        '.tm-entity-multi-picker__count-value',
+      ) as HTMLElement;
+      expect(count.textContent?.trim()).toBe('1');
+      removeButtons(fixture)[0].click();
+      await settle(fixture);
+      expect(host.f.agentIds().value()).toEqual([]);
+      expect(host.removals).toEqual([3]);
+      expect(removeButtons(fixture)).toHaveLength(0);
     });
 
     it('a chip remove button removes it and emits removed', async () => {
@@ -858,7 +915,7 @@ describe('tm-entity-multi-picker', () => {
   });
 
   describe('touch', () => {
-    it('leaving from a chip reports touch; moving between chips and the input does not', async () => {
+    it('leaving the input (for a chip or outside) and leaving the chips for outside report touch; moving among the chips does not', async () => {
       const { fixture, host, input } = await setup(Host);
       const outside = fixture.nativeElement.querySelector('[data-testid="outside"]') as HTMLElement;
       host.displayWith.set(nameOf);

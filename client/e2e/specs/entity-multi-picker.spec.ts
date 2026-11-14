@@ -145,10 +145,33 @@ test.describe('keyboard paths', () => {
       await appStable(page);
       expect(await focusedName(page)).toBe('Remove Bob Stone');
 
-      // Toggle-remove: Enter on a chosen row takes it off.
+      // Toggle-remove: Enter on a chosen row of the browse list takes it off,
+      // and Tab out of the field does not put it back.
       await input(page).focus();
-      await addByKeyboard(page, 'Bob');
+      await input(page).press('ArrowDown');
+      await expect(options(page).first()).toBeVisible();
+      const active = page.locator(
+        '.tm-entity-picker__option[data-active="true"] .tm-entity-picker__option-label',
+      );
+      const activeText = (): Promise<string | null> =>
+        page.evaluate(
+          () =>
+            document
+              .querySelector(
+                '.tm-entity-picker__option[data-active="true"] .tm-entity-picker__option-label',
+              )
+              ?.textContent?.trim() ?? null,
+        );
+      for (let step = 0; step < 10 && (await activeText()) !== 'Bob Stone'; step++) {
+        await input(page).press('ArrowDown');
+      }
+      await expect(active).toHaveText('Bob Stone');
+      await input(page).press('Enter');
       await expect(chips(page)).toHaveText(['Alice Green']);
+      await input(page).press('Tab');
+      await appStable(page);
+      await expect(chips(page)).toHaveText(['Alice Green']);
+      expect(await chosenIds(page)).toEqual([3]);
 
       // Delete on the last chip standing returns focus to the input.
       await input(page).press('Escape');
