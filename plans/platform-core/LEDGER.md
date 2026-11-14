@@ -103,8 +103,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-031 | pc-3 | pc/PC-031 | fix1 + merge (held; R1 0/1/8: reorder handle click opens a Move menu (WCAG 2.5.7); tighten the id-less drop fallback; D-082) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-063 | pc-2 | pc/PC-063 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
-| PC-055 | (none; pushed) | pc/PC-055 | held 10bbca4 (fix1 166c532: single flight shares failures under its own 30 s timeout, mutation-checked; expires_in clamped to 1 day; merge clean, gates green incl. Identity integration 204) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
-| PC-040 | pc-f2 | pc/PC-040 | fix1 + integrate (held; R1 0/3/8: buildTransitive analyzers, analyze generated code, run every touched integration suite; D-081) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
+| PC-046 | pc-1 | pc/PC-046 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-055 | pc-4 | pc/PC-055 | released (after PC-F40 ca95362): re-merge + integrate from pc-4 | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
+| PC-040 | pc-f2 | pc/PC-040 | held 355e82d (fix1 3abcebe: R1-1..R1-11 fixed, buildTransitive analyzers, generated code analyzed; merge followed PC-062: stubs removed, probe exactly six; all integration suites green on Testcontainers) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 
 ## Fix items
 
@@ -147,8 +148,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F36 | CI red on 8b39d28 (integration-windows; ubuntu integration green): Tellma.Core.IntegrationTests RegistryCatalogTests.A_missing_catalog_fails_startup_in_Development_and_starts_not_ready_elsewhere, Assert.Throws: no exception thrown (17 ms); PC-024's test, green on the 11 earlier runs; the change under test was client-only, so it is a flake | done (integrated 67d65bb, CI 43577169711 green on all jobs; R1 0/0/2 fixed: three-valued existence check, pure decision function; revoked-permission case has no integration test, LocalDB cannot create such a login) | 5fd775b, e854585, cbf3b03, 67d65bb (pc) | | stop the line; all-checks-passed stayed green because it does not cover integration-windows |
 | PC-F37 | tree-grid showcase story switches contentKey (a/b toggle, depth select) over one shared rows array, against the D-077 contract; it works only because its lazy children are already loaded; hand the story a fresh array per switch (PC-054 integrator note) | todo (low) | | | |
 | PC-F38 | CI red on 821a6cf (client e2e chromium + client-windows unit): entity-multi-picker.spec.ts:105 keyboard-only add/toggle-remove/chip removal (ltr failed twice, rtl flaky; active option "Supplier 03" where "Bob Stone"/"Supplier 01" was expected) and tm-entity-multi-picker.spec.ts maxItems "a refused message repeated is announced" (live region ''); PC-058's tests, green in its local gate | done (integrated 7c5d82e, CI 43606208615 green; R1-1 fixed 87a8187, mutation-checked) | 2cafee3, 87a8187, 7c5d82e (pc) | | stop the line; PC-F33 told to hold |
-| PC-F39 | SendGridClient.cs:61 sends its API key as a bearer token through IHttpClientFactory's default logging; at Trace, the RequestHeader/RequestPipelineRequestHeader structured state carries the raw value (verified on Microsoft.Extensions.Http 10.0.11 by the PC-055 reviewer). Remove the default loggers on that client, as PC-055 did for Tellma.Identity, and add a test that no secret reaches the logs | r1 (impl 61843b2 ready: audit found SendGrid exposed, others not; ConfigureHttpClientDefaults(RemoveAllLoggers) in the platform and standalone identity hosts + SendGrid named client; state-walking log capture tests with a leak control), pc-f, fresh agent a5e9d4eb7a78ad277 | 61843b2 (pc/PC-F39) | | from PC-055 r1 |
-| PC-F40 | tree-grid-restore.spec.ts:167 "scrollToRow expands the ancestors and flashes the row, still, under reduced motion" (ltr) flaky: Expected rgb(234, 244, 247), Received rgba(0, 0, 0, 0); 1/20 alone; seen in PC-F38's local CI-mode e2e (failed with its retry); PC-054's test; the colour is read inside the 1200 ms flash window | released (after PC-099 183e772): re-merge + integrate, pc-1, fix-PC-F40 = impl-PC-054 aede283b100436c0c | 7f8041f, 4f20811, 188dfe9 (pc/PC-F40) | | must land with PC-F38 before the line restarts; D-028 cap exceeded by one (stop-the-line) |
+| PC-F39 | SendGridClient.cs:61 sends its API key as a bearer token through IHttpClientFactory's default logging; at Trace, the RequestHeader/RequestPipelineRequestHeader structured state carries the raw value (verified on Microsoft.Extensions.Http 10.0.11 by the PC-055 reviewer). Remove the default loggers on that client, as PC-055 did for Tellma.Identity, and add a test that no secret reaches the logs | fix1 + merge (held; R1 0/0/4 approve: cover the migrator host, state the lost Start/End lines, widen the state walker, run every integration suite), pc-f, a5e9d4eb7a78ad277 | 61843b2 (pc/PC-F39) | | from PC-055 r1 |
+| PC-F40 | tree-grid-restore.spec.ts:167 "scrollToRow expands the ancestors and flashes the row, still, under reduced motion" (ltr) flaky: Expected rgb(234, 244, 247), Received rgba(0, 0, 0, 0); 1/20 alone; seen in PC-F38's local CI-mode e2e (failed with its retry); PC-054's test; the colour is read inside the 1200 ms flash window | done (integrated ca95362, CI 43619462565 green) | 7f8041f, 4f20811, 188dfe9, efbbacb, ca95362 (pc) | | must land with PC-F38 before the line restarts; D-028 cap exceeded by one (stop-the-line) |
 | PC-F41 | startup gate: refuse any EF shadow property other than the period columns and Node (spec 0012 §14 "no implicit shadow properties"); ARCHITECTURE.md:779 promised an analyzer, withdrawn by D-081 | todo (medium) | | | from PC-040 r1 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
@@ -189,6 +190,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| dotnet Tellma.Distro.Acme.IntegrationTests: SQL execution timeout while the migrator provisions tenant 2 (once under load in PC-F39 r1; passed alone) | 2026-11-14 | watch |
 | client e2e fonts.spec and grid-glyphs.spec load timeouts (once each in PC-031's local PR-tier run under load; passed on rerun with --retries 0) | 2026-11-14 | watch |
 | client core-ui tm-grid-lazy-editing.spec.ts "a failed load leaves the draft whole while every key asks again, and reports once" (failed once locally under load in the PC-058 integration; passed alone 25/25 and on the full re-run) | 2026-11-14 | watch |
 | client core-ui tm-grid-header-nav.spec.ts "tm-grid row-end column takes a right-click or a long-press …" (both variants; expected false to be true; CI 43491332443 on 3077eb7, green on the next two runs) | 2026-11-13 | PC-F33 (second CI sighting: run 43546459441 on a2ebe0a) |
@@ -284,13 +286,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-037 | 0012-e | 1 | done (integrated 620e2c9, CI 43438810750 green) | 79c94a2, 30c3508, e09c4db, 0b683ab, 491773d, 63479b9, 620e2c9 (pc) |  |  |
 | PC-038 | 0013-d | 1 | done (integrated c18780c, CI 43391353328 green) | 57575e0, b3ac84e, ac5c5b6, 9e82c32, c18780c (pc) |  |  |
 | PC-039 | 0014-b | 1 | done (integrated db62c09, CI 43447738414 green) | be9c828, 8447934, bcb367c, c251cc7, 609ee5e, db62c09 (pc) |  |  |
-| PC-040 | 0012-g | 1 | fix1 + integrate (held) | 30dda44 | | |
+| PC-040 | 0012-g | 1 | held 355e82d | 30dda44, 3abcebe, 355e82d (pc/PC-040) | | |
 | PC-041 | 0010-c1 | 1 | done | 143f3df, 3cd84d0 (pc) | impl 16.34M (fable) | 3cd84d0, CI 42968324773 green; gates on d5987b1 (3cd84d0 adds only plans/), e2e 629/629; integrate (fix1 76bf308; R1 0/2/8; impl 143f3df; 16 deviations; ./menu ceiling 8.5 vs §C.11's 7, D-031 ruling after R1) |
 | PC-042 | 0012-f | 1 | todo | | | |
 | PC-043 | 0014-c | 1 | done 8c086c4 (CI green at 362aabc after PC-F32; the red run on 8c086c4 was PC-F32's client flake) | 1ee46fa, 0af47f3, 8633134, 8c086c4 (pc) |  |  |
 | PC-044 | 0013-e | 1 | done (integrated 018f0fd, CI 43579957646 green) | 0855b68, 9336510, a4181b7, 45f91c4 (pc/PC-044), 018f0fd (pc) |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
-| PC-046 | 0013-g | 1 | todo | | | |
+| PC-046 | 0013-g | 1 | impl | | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | todo |  |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
@@ -343,7 +345,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | todo | | | |
-| PC-099 | 0021-b | 1 | integrated 183e772 (CI pending) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
+| PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | todo | | | |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
 | PC-102 | 0029-f | 1 | todo | | | |
