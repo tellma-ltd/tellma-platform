@@ -7,6 +7,9 @@
 import { Calendar } from '@internationalized/date';
 
 // @public
+export const TM_BIDI_CONTROLS: RegExp;
+
+// @public
 export const TM_NUMBER_MAX_DIGITS = 15;
 
 // @public
@@ -30,6 +33,7 @@ export interface TmCalendarParts {
 export interface TmDateFormatOptions {
     readonly calendar?: TmCalendar;
     readonly dateStyle?: TmDateStyle;
+    readonly quarterPattern?: string;
 }
 
 // @public
@@ -44,7 +48,17 @@ export function tmDatePlaceholder(locale: string, options?: {
 }): string;
 
 // @public
-export type TmDateStyle = 'numeric' | 'medium' | 'long';
+export type TmDateStyle = 'long' | 'medium' | 'month' | 'numeric' | 'quarter' | 'weekday' | 'year';
+
+// @public
+export interface TmDateTimeFormatOptions {
+    readonly calendar?: TmCalendar;
+    readonly dateStyle?: TmDateStyle;
+    readonly quarterPattern?: string;
+    readonly timeStyle?: 'none' | TmTimeStyle;
+    readonly timeZone: string;
+    readonly zoneLabel?: boolean;
+}
 
 // @public
 export function tmFirstDayOfWeek(locale: string): number;
@@ -53,7 +67,30 @@ export function tmFirstDayOfWeek(locale: string): number;
 export function tmFormatDate(iso: string | null | undefined, locale: string, options?: TmDateFormatOptions): string;
 
 // @public
+export function tmFormatDateTime(instant: string | null | undefined, locale: string, options: TmDateTimeFormatOptions): string;
+
+// @public
+export function tmFormatMonthName(month: number, locale: string, options?: {
+    readonly calendar?: TmCalendar;
+}): string;
+
+// @public
 export function tmFormatNumber(value: unknown, locale: string, options?: TmNumberFormatOptions): string;
+
+// @public
+export function tmFormatRelativeTime(instant: string | null | undefined, locale: string, options: TmRelativeTimeFormatOptions): string;
+
+// @public
+export function tmFormatTime(instant: string | null | undefined, locale: string, options: TmTimeFormatOptions): string;
+
+// @public
+export function tmFormatWeekdayName(weekday: number, locale: string): string;
+
+// @public
+export function tmFormatZoneName(timeZone: string, locale: string, at: number): string;
+
+// @public
+export function tmFormatZoneOffset(instant: number | string, locale: string, timeZone: string): string;
 
 // @public
 export function tmGregorianCalendar(): TmCalendar;
@@ -63,6 +100,7 @@ export function tmNumberDigitCount(value: number): number;
 
 // @public
 export interface TmNumberFormatOptions {
+    readonly grouping?: boolean;
     readonly maxDecimals?: number;
     readonly minDecimals?: number;
     readonly percent?: boolean;
@@ -74,9 +112,34 @@ export interface TmNumberParseOptions extends TmNumberFormatOptions {
 }
 
 // @public
-export function tmParseDate(text: string, locale: string, options?: TmDateParseOptions): string | null | TmParseError;
+export function tmParseDate(text: string, locale: string, options?: TmDateParseOptions): string | TmParseError | null;
 
 // @public
-export function tmParseNumber(text: string, locale: string, options?: TmNumberParseOptions): number | null | TmParseError;
+export function tmParseNumber(text: string, locale: string, options?: TmNumberParseOptions): number | TmParseError | null;
+
+// @public
+export interface TmRelativeTimeFormatOptions {
+    readonly calendar?: TmCalendar;
+    readonly now: number;
+    readonly style?: 'long' | 'narrow' | 'short';
+    readonly timeZone: string;
+}
+
+// @public
+export function tmStripBidiControls(text: string): string;
+
+// @public
+export interface TmTimeFormatOptions {
+    readonly timeStyle?: TmTimeStyle;
+    readonly timeZone: string;
+    readonly zoneLabel?: boolean;
+}
+
+// @public
+export type TmTimeStyle =
+/** The hour and the minute — "10:42". */
+'short'
+/** The hour, the minute and the second — "10:42:07". */
+| 'medium';
 
 ```

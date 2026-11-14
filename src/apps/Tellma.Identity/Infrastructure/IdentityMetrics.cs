@@ -16,12 +16,39 @@ namespace Tellma.Identity.Infrastructure
         /// <summary>The meter name hosts subscribe to.</summary>
         public const string MeterName = "Tellma.Identity";
 
+        /// <summary>
+        ///     The counter of management-API calls, one per call whether answered or refused,
+        ///     tagged <see cref="ApiVersionTag" />, <see cref="ApiEndpointTag" /> and
+        ///     <see cref="ApiOutcomeTag" />. It shows an operator when a version falls silent; the
+        ///     matching log line names the calling client.
+        /// </summary>
+        public const string ApiCallsInstrumentName = "tellma.identity.api.calls";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the API version, in the form of
+        ///     its route segment (<c>v1</c>).
+        /// </summary>
+        public const string ApiVersionTag = "version";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the endpoint, one of the closed
+        ///     set in <see cref="ManagementApiEndpoints" />.
+        /// </summary>
+        public const string ApiEndpointTag = "endpoint";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the call's outcome, one of the
+        ///     closed set in <see cref="ManagementApiOutcomes" />.
+        /// </summary>
+        public const string ApiOutcomeTag = "outcome";
+
         private readonly Counter<long> _loginAttempts;
         private readonly Counter<long> _tokensIssued;
         private readonly Counter<long> _refreshReuseDetected;
         private readonly Counter<long> _emailCodes;
         private readonly Counter<long> _invitations;
         private readonly Counter<long> _backchannelLogoutDeliveries;
+        private readonly Counter<long> _apiCalls;
 
         /// <summary>Creates the metric instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
@@ -36,6 +63,7 @@ namespace Tellma.Identity.Infrastructure
             _emailCodes = meter.CreateCounter<long>("tellma.identity.email_codes", description: "Email one-time codes by purpose and result.");
             _invitations = meter.CreateCounter<long>("tellma.identity.invitations", description: "Invitations by status.");
             _backchannelLogoutDeliveries = meter.CreateCounter<long>("tellma.identity.backchannel_logout.deliveries", description: "Back-channel logout deliveries by result.");
+            _apiCalls = meter.CreateCounter<long>(ApiCallsInstrumentName, description: "Management API calls by version, endpoint and outcome.");
         }
 
         /// <summary>Records a sign-in attempt.</summary>
@@ -81,6 +109,17 @@ namespace Tellma.Identity.Infrastructure
         public void BackchannelLogoutDelivery(string result)
         {
             _backchannelLogoutDeliveries.Add(1, new KeyValuePair<string, object?>("result", result));
+        }
+
+        /// <summary>Records one management-API call.</summary>
+        /// <param name="version">The API version's route segment, for example <c>v1</c>.</param>
+        /// <param name="endpoint">The endpoint, one of <see cref="ManagementApiEndpoints" />.</param>
+        /// <param name="outcome">The outcome, one of <see cref="ManagementApiOutcomes" />.</param>
+        public void ApiCall(string version, string endpoint, string outcome)
+        {
+            _apiCalls.Add(1, new KeyValuePair<string, object?>(ApiVersionTag, version),
+                new KeyValuePair<string, object?>(ApiEndpointTag, endpoint),
+                new KeyValuePair<string, object?>(ApiOutcomeTag, outcome));
         }
     }
 }

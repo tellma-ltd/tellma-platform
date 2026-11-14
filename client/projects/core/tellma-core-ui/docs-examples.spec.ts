@@ -8,50 +8,121 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
+import {
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleX,
+  Columns3,
+  Funnel,
+  Inbox,
+  LayoutGrid,
+  Plus,
+  Search,
+  SearchX,
+  Table2,
+} from 'lucide';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
+import { TmAvatar } from '@tellma/core-ui/avatar';
+import { TmBadge, TmCounter } from '@tellma/core-ui/badge';
+import { TmBannerBar } from '@tellma/core-ui/banner';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmCard } from '@tellma/core-ui/card';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
+import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
+import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
-import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
+import { TmDateRange } from '@tellma/core-ui/date-range';
+import { TmDateTimeField, TmTimeField } from '@tellma/core-ui/date-time';
+import { TmDescriptionList } from '@tellma/core-ui/description-list';
+import { TmEntityMultiPicker, TmEntityPicker } from '@tellma/core-ui/entity-picker';
+import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import {
   TmGrid,
   TmGridColumn,
   TmGridDisplayDef,
+  TmGridDriver,
   TmGridEmptyDef,
+  TmGridHeaderAction,
+  TmGridHeaderEndDef,
   TmGridLoadingDef,
+  TmGridRowEndHeaderDef,
+  type TmGridRowActivation,
+  type TmGridSort,
 } from '@tellma/core-ui/grid';
+import { TmIcon, provideTellmaIcons } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
-import { TmContextMenuTrigger, TmMenu } from '@tellma/core-ui/menu';
+import { TmKbd } from '@tellma/core-ui/kbd';
+import { TmContextMenuTrigger, TmMenu, TmMenuHeaderDef, TmMenuTrigger } from '@tellma/core-ui/menu';
 import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
+import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
-import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
+import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
+import { TmRelativeTime } from '@tellma/core-ui/relative-time';
+import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
+import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
+import { TmSwitch } from '@tellma/core-ui/switch';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
 import * as alertExamples from './alert/tm-alert.examples';
+import * as avatarExamples from './avatar/tm-avatar.examples';
+import * as badgeExamples from './badge/tm-badge.examples';
+import * as counterExamples from './badge/tm-counter.examples';
+import * as bannerBarExamples from './banner/tm-banner-bar.examples';
 import * as buttonExamples from './button/tm-button.examples';
+import * as cardExamples from './card/tm-card.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
+import * as chipExamples from './chip/tm-chip.examples';
+import * as chipSetExamples from './chip/tm-chip-set.examples';
+import * as copyButtonExamples from './copy/tm-copy-button.examples';
+import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
+import * as dateRangeExamples from './date-range/tm-date-range.examples';
+import * as dateTimeFieldExamples from './date-time/tm-date-time-field.examples';
+import * as timeFieldExamples from './date-time/tm-time-field.examples';
+import * as descriptionListExamples from './description-list/tm-description-list.examples';
+import * as entityMultiPickerExamples from './entity-picker/tm-entity-multi-picker.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
+import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
 import * as filePickerExamples from './files/tm-file-picker.examples';
 import * as gridExamples from './grid/tm-grid.examples';
+import * as iconExamples from './icon/tm-icon.examples';
 import * as imageExamples from './image/tm-image.examples';
 import * as inputExamples from './input/tm-input.examples';
+import * as kbdExamples from './kbd/tm-kbd.examples';
 import * as menuExamples from './menu/tm-menu.examples';
+import * as menuTriggerExamples from './menu/tm-menu-trigger.examples';
 import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
+import * as pageHeaderExamples from './page-header/tm-page-header.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
+import * as progressBarExamples from './progress/tm-progress-bar.examples';
+import * as progressRingExamples from './progress/tm-progress-ring.examples';
+import * as radioGroupExamples from './radio/tm-radio-group.examples';
+import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
+import * as searchExamples from './search-field/tm-search.examples';
+import * as searchFieldExamples from './search-field/tm-search-field.examples';
+import * as segmentedExamples from './segmented/tm-segmented.examples';
+import * as multiSelectExamples from './select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
+import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
+import * as splitterExamples from './splitter/tm-splitter.examples';
+import * as switchExamples from './switch/tm-switch.examples';
 import * as tabsExamples from './tabs/tm-tabs.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -103,35 +174,74 @@ class ExamplePage {}
 @Component({
   imports: [
     TmAlert,
+    TmAvatar,
+    TmBadge,
+    TmBannerBar,
     TmButton,
+    TmCard,
     TmCheckbox,
+    TmChip,
+    TmChipSet,
     TmContextMenuTrigger,
+    TmCopyButton,
+    TmCounter,
     TmDatePicker,
+    TmDateRange,
+    TmDateTimeField,
+    TmDescriptionList,
     TmDropzone,
+    TmEmptyState,
+    TmEntityMultiPicker,
     TmEntityPicker,
     TmFilePicker,
     TmFormField,
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
+    TmGridDriver,
     TmGridEmptyDef,
+    TmGridHeaderAction,
+    TmGridHeaderEndDef,
     TmGridLoadingDef,
+    TmGridRowEndHeaderDef,
+    TmIcon,
     TmImage,
     TmImagePlaceholder,
     TmInput,
+    TmKbd,
     TmMenu,
+    TmMenuHeaderDef,
+    TmMenuTrigger,
     TmModalFooter,
+    TmMultiSelect,
     TmNumber,
     TmOption,
+    TmOptionGroup,
+    TmPageHeader,
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
+    TmProgressBar,
+    TmProgressRing,
+    TmRadio,
+    TmRadioGroup,
+    TmReference,
+    TmRelativeTime,
+    TmSearch,
+    TmSearchField,
+    TmSegment,
+    TmSegmented,
     TmSelect,
+    TmSkeleton,
     TmSpinner,
+    TmSplitter,
+    TmSplitterPane,
+    TmSwitch,
     TmTab,
     TmTabContent,
     TmTabGroup,
     TmTabLabel,
+    TmTimeField,
     TmTooltip,
     TmTreeGrid,
   ],
@@ -139,7 +249,25 @@ class ExamplePage {}
     <tm-form-field label="placeholder"><input tmInput /></tm-form-field>
     <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
     <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
+    <tm-form-field label="placeholder"><tm-time-field /></tm-form-field>
+    <tm-form-field label="placeholder"><input tmInput tmSearch /></tm-form-field>
+    <tm-date-range label="placeholder" />
+    <tm-date-time-field label="placeholder" />
+    <tm-search-field ariaLabel="placeholder" />
+    <tm-radio-group ariaLabel="placeholder"
+      ><tm-radio value="a" label="placeholder"
+    /></tm-radio-group>
+    <tm-segmented ariaLabel="placeholder"
+      ><tm-segment value="a" label="placeholder"
+    /></tm-segmented>
+    <tm-switch>placeholder</tm-switch>
     <tm-entity-picker
+      [search]="searchAgents"
+      [itemId]="agentId"
+      [itemLabel]="agentName"
+      aria-label="placeholder"
+    />
+    <tm-entity-multi-picker
       [search]="searchAgents"
       [itemId]="agentId"
       [itemLabel]="agentName"
@@ -155,10 +283,44 @@ class ExamplePage {}
     </tm-tab-group>
     <tm-checkbox>placeholder</tm-checkbox>
     <tm-select><tm-option [value]="0">placeholder</tm-option></tm-select>
+    <tm-multi-select aria-label="placeholder">
+      <tm-option-group label="placeholder"
+        ><tm-option [value]="0">placeholder</tm-option></tm-option-group
+      >
+    </tm-multi-select>
     <tm-spinner />
+    <tm-badge>placeholder</tm-badge>
+    <tm-chip-set><tm-chip label="placeholder" /></tm-chip-set>
+    <tm-banner-bar message="placeholder" />
+    <tm-counter [value]="1" />
+    <tm-avatar name="placeholder" />
+    <tm-progress-bar label="placeholder" />
+    <tm-progress-ring />
+    <tm-skeleton />
+    <tm-relative-time value="2026-01-01T00:00:00Z" />
+    <tm-copy-button text="placeholder" />
+    <tm-reference value="placeholder" />
+    <tm-empty-state heading="placeholder" />
+    <tm-icon name="plus" />
+    <tm-kbd keys="Mod+K" />
     <div [tmContextMenuTrigger]="placeholderMenu">placeholder</div>
-    <tm-menu #placeholderMenu [items]="[]" />
+    <button [tmMenuTriggerFor]="placeholderMenu">placeholder</button>
+    <tm-menu #placeholderMenu [items]="[]">
+      <ng-template tmMenuHeader>placeholder</ng-template>
+    </tm-menu>
     <div tmModalFooter>placeholder</div>
+    <tm-card heading="placeholder">placeholder</tm-card>
+    <tm-page-header><h1 tmPageTitle>placeholder</h1></tm-page-header>
+    <dl tmDescriptionList>
+      <div>
+        <dt>placeholder</dt>
+        <dd>placeholder</dd>
+      </div>
+    </dl>
+    <tm-splitter [defaultSize]="100">
+      <div tmSplitterPane="start">placeholder</div>
+      <div tmSplitterPane="end">placeholder</div>
+    </tm-splitter>
     <tm-image src="" alt="" [width]="24" [height]="24">
       <ng-template tmImagePlaceholder>placeholder</ng-template>
     </tm-image>
@@ -169,10 +331,21 @@ class ExamplePage {}
       <ng-template tmPopoverContent>placeholder</ng-template>
     </tm-popover>
     <span tmTooltip="placeholder">placeholder</span>
-    <tm-grid gridId="placeholder-grid" [data]="rows" [rowId]="rowId" style="block-size: 120px">
+    <input [tmGridDriver]="placeholderGrid" aria-label="placeholder" />
+    <tm-grid
+      #placeholderGrid
+      gridId="placeholder-grid"
+      [data]="rows"
+      [rowId]="rowId"
+      style="block-size: 120px"
+    >
       <tm-grid-column key="name" header="placeholder">
         <span *tmGridDisplay="let value">{{ value }}</span>
+        <ng-template tmGridHeaderEnd>
+          <button tmGridHeaderAction aria-label="placeholder">P</button>
+        </ng-template>
       </tm-grid-column>
+      <ng-template tmGridRowEndHeader>placeholder</ng-template>
       <span *tmGridEmpty>placeholder</span>
       <span *tmGridLoading>placeholder</span>
     </tm-grid>
@@ -205,9 +378,27 @@ class ExampleHost {
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
   protected readonly onImageChange = (): void => undefined;
+  // The icon examples' direct-data binding: library code passes Lucide data.
+  protected readonly checkIcon = Check;
+  // The button and input examples' projected glyph.
+  protected readonly searchIcon = Search;
   protected readonly onFiles = (selection: unknown): void => void selection;
   protected readonly treeHasChildren = (row: ExampleTreeRow): boolean => row.parentId === null;
   protected readonly loadTreeChildren = (): Promise<void> => Promise.resolve();
+  // The remembered-expansion example's two-way expanded set.
+  protected readonly treeExpandedIds = signal<ReadonlySet<number | string>>(new Set([1]));
+  // The chip and banner examples' event handlers.
+  protected readonly onRemove = (label: string): void => void label;
+  protected readonly onActivate = (key: string): void => void key;
+  protected readonly onReload = (): void => undefined;
+  protected readonly onPrevious = (): void => undefined;
+  protected readonly onNext = (): void => undefined;
+  protected readonly onDismiss = (): void => undefined;
+  // The card examples' two-way disclosure and error state, and the splitter
+  // example's two-way size.
+  protected readonly addressOpen = signal(true);
+  protected readonly addressInvalid = false;
+  protected readonly listWidth = signal<number | null>(null);
 
   // The entity-picker examples' members: an in-memory directory search plus
   // the accessor closures and a trivial modal page.
@@ -238,6 +429,21 @@ class ExampleHost {
     active: false,
     status: 'Draft',
   });
+
+  // The search-page example's members: the two-way checked set, active row
+  // and sort, the row-open handler and a row-class function.
+  protected readonly selected = signal<ReadonlySet<string | number>>(new Set());
+  protected readonly active = signal<string | number | null>(null);
+  protected readonly order = signal<TmGridSort | null>(null);
+  protected readonly onRow = (activation: TmGridRowActivation<ExampleRow>): void => void activation;
+  protected readonly byStatus = (row: ExampleRow): string | null =>
+    row.active ? null : 'tm-grid__row--muted';
+
+  // The header-filter example's members: whether a filter is in force, and
+  // the filter and column-editor icons.
+  protected readonly filtered = signal(false);
+  protected readonly funnel = Funnel;
+  protected readonly columns3 = Columns3;
 }
 
 /** The example templates' grids — flat and tree — read off the debug tree. */
@@ -272,6 +478,11 @@ const MARKERS: {
     name: 'TmInput',
     pattern: /\btmInput\b/,
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmInput)).length > 0,
+  },
+  {
+    name: 'TmSearch',
+    pattern: /\btmSearch\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmSearch)).length > 0,
   },
   {
     name: 'TmButton',
@@ -313,16 +524,46 @@ const MARKERS: {
       fixture.debugElement.queryAll(By.directive(TmContextMenuTrigger)).length > 0,
   },
   {
+    name: 'TmMenuTrigger',
+    pattern: /\btmMenuTriggerFor\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmMenuTrigger)).length > 0,
+  },
+  {
+    // The header ng-template is unprojected content of tm-menu (the
+    // tm-option caveat), so the marker reads the component's content-query
+    // signal instead of the debug tree.
+    name: 'TmMenuHeaderDef',
+    pattern: /\btmMenuHeader\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement
+        .queryAll(By.directive(TmMenu))
+        .some(
+          (el) => (el.componentInstance as unknown as { header(): unknown }).header() !== undefined,
+        ),
+  },
+  {
     name: 'TmModalFooter',
     pattern: /\btmModalFooter\b/,
     instantiated: (fixture) =>
       fixture.debugElement.queryAll(By.directive(TmModalFooter)).length > 0,
   },
   {
+    name: 'TmDescriptionList',
+    pattern: /\btmDescriptionList\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmDescriptionList)).length > 0,
+  },
+  {
+    name: 'TmSplitterPane',
+    pattern: /\btmSplitterPane\b/,
+    instantiated: (fixture) =>
+      fixture.debugElement.queryAll(By.directive(TmSplitterPane)).length > 0,
+  },
+  {
     name: 'TmFilePicker',
     pattern: /\btmFilePicker\b/,
-    instantiated: (fixture) =>
-      fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmFilePicker)).length > 0,
   },
   {
     // The placeholder ng-template is unprojected content of tm-image (the
@@ -353,6 +594,16 @@ const MARKERS: {
         .some((el) => (el.componentInstance as TmPopover).contentTemplate() !== undefined),
   },
   {
+    // An unregistered name draws an empty box without failing, so an icon
+    // example that names an icon must actually draw every glyph it shows.
+    name: 'TmIcon glyph',
+    pattern: /<tm-icon\b/,
+    instantiated: (fixture) =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('tm-icon')).every(
+        (icon) => icon.querySelector(':scope > svg') !== null,
+      ),
+  },
+  {
     name: 'TmTooltip',
     pattern: /\btmTooltip\b/,
     instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmTooltip)).length > 0,
@@ -376,6 +627,28 @@ const MARKERS: {
     instantiated: (fixture) => grids(fixture).some((grid) => grid.loadingDef() !== undefined),
   },
   {
+    name: 'TmGridHeaderEndDef',
+    pattern: /\btmGridHeaderEnd\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) =>
+        grid.columns().some((column) => column.headerEndDef() !== undefined),
+      ),
+  },
+  {
+    name: 'TmGridRowEndHeaderDef',
+    pattern: /\btmGridRowEndHeader\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.rowEndHeaderDef() !== undefined),
+  },
+  {
+    // A header action renders inside the grid's own header row, outside
+    // the fixture's debug tree; a matched one carries its class.
+    name: 'TmGridHeaderAction',
+    pattern: /\btmGridHeaderAction\b/,
+    instantiated: (fixture) =>
+      (fixture.nativeElement as HTMLElement).querySelector('button.tm-grid-header-action') !==
+      null,
+  },
+  {
     name: 'selectable',
     pattern: /\bselectable\b/,
     instantiated: (fixture) => grids(fixture).some((grid) => grid.selectable()),
@@ -391,6 +664,22 @@ const MARKERS: {
     instantiated: (fixture) => grids(fixture).some((grid) => grid.loading()),
   },
   {
+    name: 'TmGridDriver',
+    pattern: /\btmGridDriver\b/,
+    instantiated: (fixture) => fixture.debugElement.queryAll(By.directive(TmGridDriver)).length > 0,
+  },
+  {
+    name: 'rowActivation',
+    pattern: /\browActivation\b/,
+    instantiated: (fixture) => grids(fixture).some((grid) => grid.rowActivation() === 'row'),
+  },
+  {
+    name: 'sortable',
+    pattern: /\bsortable\b/,
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.columns().some((column) => column.sortable())),
+  },
+  {
     name: 'hierarchy',
     pattern: /\bhierarchy\b/,
     instantiated: (fixture) =>
@@ -402,7 +691,19 @@ const SUITES = [
   { source: 'input/tm-input.examples.ts', examples: inputExamples },
   { source: 'number/tm-number.examples.ts', examples: numberExamples },
   { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
+  { source: 'date-time/tm-time-field.examples.ts', examples: timeFieldExamples },
+  { source: 'date-time/tm-date-time-field.examples.ts', examples: dateTimeFieldExamples },
+  { source: 'date-range/tm-date-range.examples.ts', examples: dateRangeExamples },
+  { source: 'radio/tm-radio-group.examples.ts', examples: radioGroupExamples },
+  { source: 'segmented/tm-segmented.examples.ts', examples: segmentedExamples },
+  { source: 'switch/tm-switch.examples.ts', examples: switchExamples },
+  { source: 'search-field/tm-search.examples.ts', examples: searchExamples },
+  { source: 'search-field/tm-search-field.examples.ts', examples: searchFieldExamples },
   { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
+  {
+    source: 'entity-picker/tm-entity-multi-picker.examples.ts',
+    examples: entityMultiPickerExamples,
+  },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'image/tm-image.examples.ts', examples: imageExamples },
@@ -410,12 +711,36 @@ const SUITES = [
   { source: 'files/tm-dropzone.examples.ts', examples: dropzoneExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
+  { source: 'select/tm-multi-select.examples.ts', examples: multiSelectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
+  { source: 'badge/tm-badge.examples.ts', examples: badgeExamples },
+  { source: 'badge/tm-counter.examples.ts', examples: counterExamples },
+  { source: 'chip/tm-chip.examples.ts', examples: chipExamples },
+  { source: 'chip/tm-chip-set.examples.ts', examples: chipSetExamples },
+  { source: 'banner/tm-banner-bar.examples.ts', examples: bannerBarExamples },
+  { source: 'card/tm-card.examples.ts', examples: cardExamples },
+  { source: 'page-header/tm-page-header.examples.ts', examples: pageHeaderExamples },
+  {
+    source: 'description-list/tm-description-list.examples.ts',
+    examples: descriptionListExamples,
+  },
+  { source: 'splitter/tm-splitter.examples.ts', examples: splitterExamples },
+  { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
+  { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
+  { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },
+  { source: 'skeleton/tm-skeleton.examples.ts', examples: skeletonExamples },
+  { source: 'relative-time/tm-relative-time.examples.ts', examples: relativeTimeExamples },
+  { source: 'copy/tm-copy-button.examples.ts', examples: copyButtonExamples },
+  { source: 'copy/tm-reference.examples.ts', examples: referenceExamples },
+  { source: 'empty-state/tm-empty-state.examples.ts', examples: emptyStateExamples },
+  { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
+  { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },
   { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
   { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
   { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
   { source: 'tooltip/tm-tooltip.examples.ts', examples: tooltipExamples },
   { source: 'menu/tm-menu.examples.ts', examples: menuExamples },
+  { source: 'menu/tm-menu-trigger.examples.ts', examples: menuTriggerExamples },
   { source: 'grid/tm-grid.examples.ts', examples: gridExamples },
   { source: 'tree-grid/tm-tree-grid.examples.ts', examples: treeGridExamples },
 ];
@@ -426,8 +751,22 @@ describe('co-located docs examples compile against the live API (§11)', () => {
       for (const [title, { template }] of Object.entries(examples)) {
         it(`'${title}' compiles, renders, and instantiates what it names`, async () => {
           TestBed.configureTestingModule({
-            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER.
-            providers: [provideTellmaUi(), provideHttpClient()],
+            // provideHttpClient backs tm-image's default TM_BLOB_FETCHER; the
+            // icons are the registry names the examples draw.
+            providers: [
+              provideTellmaUi(),
+              provideHttpClient(),
+              provideTellmaIcons({
+                plus: Plus,
+                'circle-alert': CircleAlert,
+                'circle-x': CircleX,
+                inbox: Inbox,
+                'search-x': SearchX,
+                'table-2': Table2,
+                'layout-grid': LayoutGrid,
+                'chevron-right': { node: ChevronRight, mirrorInRtl: true },
+              }),
+            ],
             errorOnUnknownElements: true,
             errorOnUnknownProperties: true,
           });

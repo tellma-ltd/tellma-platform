@@ -18,7 +18,16 @@
  * minutes of wall-clock and buy a suite whose failures mean something.
  * Pass --project to run just one; the sequencing then steps aside.
  *
- * Usage: node scripts/e2e.mjs [playwright args...]
+ * Every argument passes through to `playwright test` unchanged, which is how
+ * the test tiers select their tests (--project, --grep, --grep-invert,
+ * --pass-with-no-tests); CONTRIBUTING.md at the repository root gives the
+ * exact PR-tier and nightly-tier invocations.
+ *
+ * Playwright runs in client/ whatever the caller's directory, so a relative
+ * path argument (--output, a spec file) resolves against client/.
+ *
+ * Usage: node client/scripts/e2e.mjs [playwright args...]   (from the repository root)
+ *        node scripts/e2e.mjs [playwright args...]          (from client/)
  */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -34,7 +43,12 @@ const playwrightCli = require.resolve('@playwright/test/cli', { paths: [clientDi
 const port = await getPort('CLIENT_SHOWCASE_E2E');
 const args = process.argv.slice(2);
 
-/** One Playwright invocation; resolves with its exit code. */
+/**
+ * One Playwright invocation; resolves with its exit code. A run killed by a
+ * signal (the OOM killer, a cancelled job) has no exit code and counts as a
+ * failure, as does a runner that never starts: a suite that did not finish
+ * must never read as green.
+ */
 function runPlaywright(extraArgs) {
   return new Promise((resolve) => {
     const child = spawn(
@@ -46,7 +60,11 @@ function runPlaywright(extraArgs) {
         env: { ...process.env, SHOWCASE_PORT: String(port) },
       },
     );
-    child.on('exit', (code) => resolve(code ?? 0));
+    child.on('error', (error) => {
+      console.error(`[e2e] could not start Playwright: ${error.message}`);
+      resolve(1);
+    });
+    child.on('exit', (code) => resolve(code ?? 1));
   });
 }
 

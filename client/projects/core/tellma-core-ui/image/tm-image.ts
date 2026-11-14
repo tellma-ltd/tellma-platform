@@ -22,8 +22,10 @@ import {
   TemplateRef,
   untracked,
 } from '@angular/core';
+import { Camera, Crop, Image as ImageGlyph, ImageOff, Trash2 } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 import { ɵTmImageBlobCache } from './internal/blob-cache';
@@ -36,6 +38,20 @@ import type { TmImageEdit, TmImageFit } from './tm-image-types';
 
 /** The formats the replace dialog accepts. */
 const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif';
+
+/** The box's glyphs, drawn through tm-icon; none is directional. */
+const GLYPHS = {
+  /** A failed load. */
+  error: ImageOff,
+  /** No image and no placeholder template. */
+  empty: ImageGlyph,
+  /** The edit chrome's pick action. */
+  replace: Camera,
+  /** The edit chrome's re-fit action. */
+  adjust: Crop,
+  /** The edit chrome's delete action. */
+  remove: Trash2,
+} as const;
 
 /**
  * Marks the `ng-template` rendered in the no-image state (and while the
@@ -57,11 +73,24 @@ interface LocalPreview {
 }
 
 /**
- * The four mutually exclusive box renderings. Named so the emitted
- * declaration carries the alias — a literal union's print order follows
- * the compiler's type interning and churns the API golden.
+ * The five mutually exclusive box renderings. `fallback` is a failed load
+ * rendered through the placeholder template (`placeholderOnError`). Named so
+ * the emitted declaration carries the alias — a literal union's print order
+ * follows the compiler's type interning and churns the API golden.
  */
-type DisplayState = 'preview' | 'image' | 'error' | 'placeholder';
+type DisplayState = 'preview' | 'image' | 'error' | 'fallback' | 'placeholder';
+
+/** The view load of one record identity: in flight, or on screen. */
+interface ActiveLoad {
+  /** The `src` it loads. */
+  readonly src: string;
+  /** The `etag` it loads. */
+  readonly etag: string | null;
+  /** The instance's wait: its hold on the shared request and revalidation. */
+  readonly controller: AbortController;
+  /** Whether the bytes are still to arrive (leaving the viewport aborts until then). */
+  awaitingBytes: boolean;
+}
 
 /** An active fitting session. */
 interface FittingSession {
@@ -78,7 +107,10 @@ interface FittingSession {
  * View mode renders the sized rendition through the blob cache: deferred
  * until near-viewport, fetched via {@link TM_BLOB_FETCHER} (the app's
  * interceptors apply), decoded off-DOM, and swapped in with zero layout
- * shift; the placeholder template shows until then. Edit mode adds
+ * shift; the placeholder template shows until then. A wait the box
+ * abandons (destroyed, a new `src` or `etag`, or scrolled away before the
+ * bytes arrive) is aborted: the request stops once no other instance waits
+ * on it, and nothing is cached or shown as an error. Edit mode adds
  * replace / re-fit / delete affordances inside the same fixed box and
  * emits {@link TmImageEdit} on every committed adjustment — the consumer
  * sends it to the server, which crops from the original it holds.
@@ -96,7 +128,7 @@ interface FittingSession {
  */
 @Component({
   selector: 'tm-image',
-  imports: [NgTemplateOutlet, TmTooltip, ɵTmImageEditPane],
+  imports: [NgTemplateOutlet, TmIcon, TmTooltip, ɵTmImageEditPane],
   template: `
     @if (fitting(); as session) {
       @defer (on immediate) {
@@ -127,6 +159,18 @@ interface FittingSession {
         @case ('image') {
           <img class="tm-image__img" [src]="displayUrl()" [alt]="alt()" draggable="false" />
         }
+        @case ('fallback') {
+          <!-- A failed load shown as the placeholder (an avatar's initials):
+               the box still presents the image, named by its alt text. -->
+          <div
+            class="tm-image__fallback"
+            [attr.role]="alt() === '' ? null : 'img'"
+            [attr.aria-label]="alt() === '' ? null : alt()"
+            [attr.aria-hidden]="alt() === '' ? 'true' : null"
+          >
+            <ng-container [ngTemplateOutlet]="placeholder()!.template" />
+          </div>
+        }
         @case ('error') {
           <div
             class="tm-image__glyph tm-image__glyph--error"
@@ -135,20 +179,7 @@ interface FittingSession {
             [attr.aria-label]="errorLabel()"
             [tmTooltip]="errorLabel()"
           >
-            <svg viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true">
-              <line x1="2" x2="22" y1="2" y2="22" />
-              <path d="M10.41 10.41a2 2 0 1 1-2.83-2.83" />
-              <line x1="13.5" x2="6" y1="13.5" y2="21" />
-              <line x1="18" x2="21" y1="12" y2="15" />
-              <path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59" />
-              <path d="M21 15V5a2 2 0 0 0-2-2H9" />
-            </svg>
+            <tm-icon [svg]="glyphs.error" />
           </div>
         }
         @default {
@@ -156,17 +187,7 @@ interface FittingSession {
             <ng-container [ngTemplateOutlet]="marker.template" />
           } @else {
             <div class="tm-image__glyph" aria-hidden="true">
-              <svg viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.75"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true">
-                <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                <circle cx="9" cy="9" r="2" />
-                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-              </svg>
+              <tm-icon [svg]="glyphs.empty" />
             </div>
           }
         }
@@ -185,16 +206,7 @@ interface FittingSession {
             [tmTooltip]="replaceLabel()"
             (click)="pickerInput.click()"
           >
-            <svg viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true">
-              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-              <circle cx="12" cy="13" r="3" />
-            </svg>
+            <tm-icon [svg]="glyphs.replace" />
           </button>
           @if (canRefit()) {
             <button
@@ -205,16 +217,7 @@ interface FittingSession {
               [tmTooltip]="adjustLabel()"
               (click)="onRefit()"
             >
-              <svg viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.75"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true">
-                <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-                <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-              </svg>
+              <tm-icon [svg]="glyphs.adjust" />
             </button>
           }
           @if (hasImage()) {
@@ -226,19 +229,7 @@ interface FittingSession {
               [tmTooltip]="removeLabel()"
               (click)="onDelete()"
             >
-              <svg viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.75"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                <line x1="10" x2="10" y1="11" y2="17" />
-                <line x1="14" x2="14" y1="11" y2="17" />
-              </svg>
+              <tm-icon [svg]="glyphs.remove" />
             </button>
           }
         </div>
@@ -290,7 +281,11 @@ export class TmImage {
   readonly height = input.required<number>();
   /** Builds the sized URL. Default appends `?size=<bucket>`. */
   readonly srcForSize = input<(src: string, size: number) => string>(tmDefaultSrcForSize);
-  /** Defer the fetch until near-viewport (IntersectionObserver). */
+  /**
+   * Defer the fetch until near-viewport (IntersectionObserver). A fetch
+   * whose box leaves the viewport before the bytes arrive is aborted, and
+   * starts again when the box returns.
+   */
   readonly defer = input(true, { transform: booleanAttribute });
   /**
    * URL of the stored ORIGINAL — enables re-fitting an existing image;
@@ -299,6 +294,14 @@ export class TmImage {
   readonly editSrc = input<string | undefined>(undefined);
   /** `view` renders; `edit` adds replace / re-fit / delete. */
   readonly mode = input<'view' | 'edit'>('view');
+  /**
+   * Render a failed load through the `tmImagePlaceholder` template instead
+   * of the broken-image glyph — an avatar falls back to its initials. The
+   * box then presents the image as before, named by `alt`, and the failure
+   * shows no notice. Without a placeholder template the glyph shows as
+   * usual. Default `false`.
+   */
+  readonly placeholderOnError = input(false, { transform: booleanAttribute });
   /** Reject picked files over this many bytes (before any processing). */
   readonly maxFileBytes = input(20 * 1024 * 1024);
   /** Downscale picked output whose longest edge exceeds this many px. */
@@ -312,6 +315,8 @@ export class TmImage {
 
   /** The hidden file input's `accept` attribute. */
   protected readonly accept = ACCEPT;
+  /** The box's glyph data. */
+  protected readonly glyphs = GLYPHS;
   /** Localized label of the load-error glyph. */
   protected readonly errorLabel = this.translate('image.error');
   private readonly replaceExistingLabel = this.translate('image.replace');
@@ -332,8 +337,14 @@ export class TmImage {
   private readonly status = signal<'empty' | 'pending' | 'ready' | 'error'>('empty');
   /** Object URL of the fetched rendition currently on screen. */
   protected readonly displayUrl = signal<string | null>(null);
+  /** Whether the box is near the viewport (always, without `defer`). */
   private readonly visible = signal(false);
+  /** Bumped by every new or abandoned load, so a stale one swaps nothing in. */
   private loadToken = 0;
+  /** The current record identity's view load; `null` before the first and after an abort. */
+  private activeLoad: ActiveLoad | null = null;
+  /** Aborted on destroy: the re-fit's fetch of the original waits on it. */
+  private readonly lifetime = new AbortController();
   private destroyed = false;
 
   /** Local edit overrides. */
@@ -352,7 +363,12 @@ export class TmImage {
     return notice === null ? null : this.translate(notice.key, notice.params)();
   });
 
-  /** Which of the four mutually exclusive box renderings is active. */
+  /** Whether a failed load renders the placeholder template (and stays silent). */
+  private readonly fallsBackOnError = computed(
+    () => this.placeholderOnError() && this.placeholder() !== undefined,
+  );
+
+  /** Which of the mutually exclusive box renderings is active. */
   protected readonly displayState = computed<DisplayState>(() => {
     if (this.preview() !== null) {
       return 'preview';
@@ -364,7 +380,10 @@ export class TmImage {
     if (status === 'ready') {
       return 'image';
     }
-    return status === 'error' ? 'error' : 'placeholder';
+    if (status !== 'error') {
+      return 'placeholder';
+    }
+    return this.fallsBackOnError() ? 'fallback' : 'error';
   });
 
   /** Whether an image (stored or local preview) is showing — gates delete. */
@@ -402,8 +421,10 @@ export class TmImage {
       // Invalidate in-flight loads FIRST: a fetch/decode resolving after
       // this point must revoke its own object URL (the token check in
       // swapIn), not adopt it — otherwise the URL and the blob it pins
-      // leak for the life of the tab.
-      this.loadToken += 1;
+      // leak for the life of the tab. The abort releases this instance's
+      // hold on the shared request and on any background revalidation.
+      this.abortLoad();
+      this.lifetime.abort();
       this.destroyed = true;
       observer?.disconnect();
       this.setDisplayUrl(null);
@@ -416,13 +437,13 @@ export class TmImage {
         this.visible.set(true);
         return;
       }
+      // Observed for the component's life, not just until the first sight:
+      // a box that leaves the viewport before its bytes arrive aborts its
+      // wait, and resumes when it comes back.
       observer = new IntersectionObserver(
         (entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) {
-            this.visible.set(true);
-            observer?.disconnect();
-            observer = null;
-          }
+          // Entries for one target arrive in order; the last is current.
+          this.visible.set(entries[entries.length - 1].isIntersecting);
         },
         { rootMargin: '200px' },
       );
@@ -446,41 +467,87 @@ export class TmImage {
     effect(() => {
       const src = this.src();
       const etag = this.etag();
-      if (!this.visible()) {
-        return;
-      }
-      const token = ++this.loadToken;
+      const visible = this.visible();
       untracked(() => {
+        const active = this.activeLoad;
+        if (active !== null && (active.src !== src || active.etag !== etag)) {
+          // A new record identity abandons the old wait; what is on screen
+          // stays until the new bytes swap in.
+          this.abortLoad();
+        }
         if (src === '') {
           this.status.set('empty');
           this.setDisplayUrl(null);
           this.clearLoadError();
           return;
         }
+        if (!visible) {
+          // Left the defer viewport before the bytes arrived: abort the
+          // wait; the load starts again when the box comes back.
+          if (this.activeLoad?.awaitingBytes === true) {
+            this.abortLoad();
+          }
+          return;
+        }
+        if (this.activeLoad !== null) {
+          return; // this identity is already loading, or loaded
+        }
         if (this.status() !== 'ready') {
           this.status.set('pending');
         }
-        void this.load(src, etag, token);
+        this.startLoad(src, etag);
       });
     });
   }
 
   // ---- view pipeline ----
 
-  private async load(src: string, etag: string | null, token: number): Promise<void> {
+  /** Starts the view load of one record identity. */
+  private startLoad(src: string, etag: string | null): void {
+    const token = ++this.loadToken;
+    const load: ActiveLoad = { src, etag, controller: new AbortController(), awaitingBytes: true };
+    this.activeLoad = load;
+    void this.load(load, token);
+  }
+
+  /**
+   * Abandons the current view load: its request is aborted once no other
+   * instance waits on it, its background revalidation once no instance
+   * shows the URL, and a decode still running swaps nothing in.
+   */
+  private abortLoad(): void {
+    const active = this.activeLoad;
+    if (active !== null) {
+      this.activeLoad = null;
+      this.loadToken += 1;
+      active.controller.abort();
+    }
+  }
+
+  private async load(load: ActiveLoad, token: number): Promise<void> {
     try {
       const bucket = tmSizeBucket(
         untracked(this.width),
         untracked(this.height),
         globalThis.devicePixelRatio ?? 1,
       );
-      const url = untracked(this.srcForSize)(src, bucket);
-      const blob = await this.cache.getImage(url, etag, (refreshed) => {
-        void this.swapIn(refreshed, token);
+      const url = untracked(this.srcForSize)(load.src, bucket);
+      const blob = await this.cache.getImage(url, load.etag, {
+        signal: load.controller.signal,
+        onRefresh: (refreshed) => {
+          void this.swapIn(refreshed, token);
+        },
       });
+      load.awaitingBytes = false;
       await this.swapIn(blob, token);
     } catch {
-      this.failLoad(token);
+      // An abandoned load is not a failure: no glyph, no announcement.
+      if (!load.controller.signal.aborted) {
+        // The wait is over: a failed box stays failed when it scrolls away
+        // and back, rather than refetching on every pass.
+        load.awaitingBytes = false;
+        this.failLoad(token);
+      }
     }
   }
 
@@ -509,6 +576,8 @@ export class TmImage {
    * Fails the pipeline (stale tokens no-op). The error glyph is silent to
    * a screen reader until it is focused, so the failure also goes through
    * the status region — the channel pick rejections already announce on.
+   * A failure that falls back to the placeholder stays silent: the box
+   * still presents the image by its alt text, as an avatar's initials do.
    */
   private failLoad(token: number): void {
     if (token !== this.loadToken) {
@@ -516,7 +585,9 @@ export class TmImage {
     }
     this.status.set('error');
     this.setDisplayUrl(null);
-    this.noticeKey.set({ key: 'image.error' });
+    if (!untracked(this.fallsBackOnError)) {
+      this.noticeKey.set({ key: 'image.error' });
+    }
   }
 
   /**
@@ -608,7 +679,10 @@ export class TmImage {
     }
     let url: string | null = null;
     try {
-      const blob = await this.cache.getImage(editSrc, untracked(this.etag));
+      // Destroying the component aborts this fetch too.
+      const blob = await this.cache.getImage(editSrc, untracked(this.etag), {
+        signal: this.lifetime.signal,
+      });
       if (this.destroyed) {
         return;
       }
@@ -630,7 +704,10 @@ export class TmImage {
       });
       url = null; // ownership transferred to the fitting session
     } catch {
-      this.noticeKey.set({ key: 'image.error' });
+      // A fetch aborted by the destroy is no failure to announce.
+      if (!this.destroyed) {
+        this.noticeKey.set({ key: 'image.error' });
+      }
     } finally {
       if (url !== null) {
         URL.revokeObjectURL(url); // failure/destroy exits own the revoke

@@ -11,6 +11,7 @@ import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
 import { InjectionToken } from '@angular/core';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 
 // @public
@@ -19,10 +20,11 @@ export const TM_FORM_FIELD_CONTROL: InjectionToken<TmFormFieldControl>;
 // @public
 export class TmFormField {
     constructor();
-    protected readonly anchoredError: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchoredError: _tellma_core_ui_overlay.TmAnchoredOverlay;
     protected readonly chromeless: _angular_core.Signal<boolean>;
     protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;
+    protected readonly errorIcon: lucide.IconNode;
     protected readonly errorId: string;
     protected readonly errorPopoverAbove: _angular_core.WritableSignal<boolean>;
     protected readonly errorTexts: _angular_core.Signal<readonly string[]>;
@@ -39,11 +41,12 @@ export class TmFormField {
     protected readonly ownsErrorIcon: _angular_core.Signal<boolean>;
     protected readonly pending: _angular_core.Signal<boolean>;
     protected readonly requiredMarker: string;
+    protected readonly resolvedSize: _angular_core.Signal<TmControlSize>;
     protected readonly showError: _angular_core.Signal<boolean>;
     protected readonly showErrorPopover: _angular_core.Signal<boolean>;
     protected readonly showHint: _angular_core.Signal<boolean>;
     protected readonly showRequiredMarker: _angular_core.Signal<boolean>;
-    readonly size: _angular_core.InputSignal<TmControlSize>;
+    readonly size: _angular_core.InputSignal<TmControlSize | undefined>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFormField, "tm-form-field", never, { "label": { "alias": "label"; "required": false; "isSignal": true; }; "hint": { "alias": "hint"; "required": false; "isSignal": true; }; "error": { "alias": "error"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, {}, ["control"], ["[tmPrefix]", "*", "[tmSuffix]"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFormField, never>;
 }

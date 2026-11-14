@@ -269,6 +269,7 @@ namespace Tellma.Identity.E2E.Infrastructure
                     OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
                     OpenIddictConstants.Permissions.ResponseTypes.Code,
                     OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Email,
                 },
                 Requirements = { OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange },
             });
@@ -310,6 +311,57 @@ namespace Tellma.Identity.E2E.Infrastructure
                     OpenIddictConstants.Permissions.Scopes.Profile,
                 },
                 Requirements = { OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange },
+            };
+
+            Services.Provisioning.TellmaClientProperties.Set(
+                descriptor.Properties, Services.Provisioning.TellmaClientProperties.FirstParty, "true");
+
+            await applications.CreateAsync(descriptor);
+        }
+
+        /// <summary>
+        ///     Registers a first-party client that must push its authorization requests, the shape
+        ///     a distribution's backend-for-frontend has. A pushed request reaches the browser as a
+        ///     reference and nothing else, so whatever the sign-in pages show for it came from the
+        ///     request the server kept, not from the address bar.
+        /// </summary>
+        /// <param name="clientId">The client id.</param>
+        /// <param name="clientSecret">The secret the client pushes its requests with.</param>
+        /// <param name="redirectUri">The callback the authorization redirects to.</param>
+        /// <returns>A task that completes when the client is registered.</returns>
+        public async Task CreatePushedRequestClientAsync(string clientId, string clientSecret, string redirectUri)
+        {
+            await using AsyncServiceScope scope = _app!.Services.CreateAsyncScope();
+            IOpenIddictApplicationManager applications =
+                scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+            if (await applications.FindByClientIdAsync(clientId) is not null)
+            {
+                return;
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new()
+            {
+                ClientId = clientId,
+                ClientSecret = clientSecret,
+                DisplayName = clientId,
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                ConsentType = OpenIddictConstants.ConsentTypes.Implicit,
+                RedirectUris = { new Uri(redirectUri) },
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Authorization,
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.Endpoints.PushedAuthorization,
+                    OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+                    OpenIddictConstants.Permissions.ResponseTypes.Code,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                },
+                Requirements =
+                {
+                    OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange,
+                    OpenIddictConstants.Requirements.Features.PushedAuthorizationRequests,
+                },
             };
 
             Services.Provisioning.TellmaClientProperties.Set(
@@ -489,15 +541,12 @@ namespace Tellma.Identity.E2E.Infrastructure
                 masterConnectionString = _container.GetConnectionString();
             }
 
+            // The database is only named here. The host starts with migrations on, so the engine
+            // creates it through its own model — in the platform collation, with read-committed
+            // snapshot on — exactly as a developer's first start does; a bare CREATE DATABASE
+            // would take the server's default collation, which the engine's store check refuses.
             string database = $"ide2e_{Guid.NewGuid():N}";
             _databaseName = database;
-            await using (SqlConnection connection = new(masterConnectionString))
-            {
-                await connection.OpenAsync(TestContext.Current.CancellationToken);
-                await using SqlCommand command = connection.CreateCommand();
-                command.CommandText = $"CREATE DATABASE [{database}]";
-                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-            }
 
             return new SqlConnectionStringBuilder(masterConnectionString) { InitialCatalog = database }.ConnectionString;
         }

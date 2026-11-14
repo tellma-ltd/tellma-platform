@@ -6,6 +6,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
+import { pressInOneTask, releaseAndPressInOneTask } from '../support/keyboard-burst';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -55,8 +58,13 @@ function fieldError(page: Page): Locator {
   return page.getByTestId('ff').locator('.tm-form-field__error');
 }
 
-/** The story's committed-model oracle. */
+/**
+ * The story's committed-model oracle, read once the app is stable: the dump
+ * renders a beat after the commit it reflects (the input shows a pick's
+ * label at once), so an immediate read could see the model before it.
+ */
 async function model(page: Page): Promise<{ supplierId: number | null; populatedId: number | null }> {
+  await appStable(page);
   const text = await page.getByTestId('model-json').textContent();
   return JSON.parse(text ?? '{}') as { supplierId: number | null; populatedId: number | null };
 }
@@ -66,11 +74,14 @@ async function useSyncSearch(page: Page): Promise<void> {
   await page.getByTestId('search-async').uncheck();
 }
 
+/** Sets the story's async search latency. */
 async function setSearchDelay(page: Page, ms: number): Promise<void> {
   await page.getByTestId('search-delay').fill(String(ms));
 }
 
+/** The story's search-call counter, read once the app is stable. */
 async function searchCalls(page: Page): Promise<number> {
+  await appStable(page);
   return Number(await page.getByTestId('search-calls').textContent());
 }
 
@@ -78,6 +89,37 @@ test.beforeEach(async ({ page }) => {
   await page.goto(storyUrl('entity-picker'));
   await expect(input(page)).toBeVisible();
 });
+
+/** The instant the fake clock starts from. */
+const CLOCK_START = new Date('2026-01-05T09:00:00Z');
+/** The instant the fake clock jumps to and pauses at, well past any setup. */
+const CLOCK_PAUSE = new Date('2026-01-05T09:10:00Z');
+
+/**
+ * Reloads the story on Playwright's fake clock and focuses the field
+ * picker, leaving the clock running; `configure` then sets the story up in
+ * real time. The clock is paused last, so from then on page time (the
+ * coalescing window, the search latency, renders) moves only when the test
+ * advances it. A timing claim then rests on page time alone: real-time
+ * delays between key presses are what CDP jitter and a slow runner bend,
+ * and a stretched gap would open a window the burst never left.
+ */
+async function pauseClockAfter(page: Page, configure: () => Promise<void>): Promise<void> {
+  await page.clock.install({ time: CLOCK_START });
+  await page.reload();
+  await expect(input(page)).toBeVisible();
+  await configure();
+  await input(page).focus();
+  await page.clock.pauseAt(CLOCK_PAUSE);
+}
+
+/** Presses each character in turn, advancing page time by `gapMs` after each. */
+async function typeOnClock(page: Page, text: string, gapMs: number): Promise<void> {
+  for (const key of text) {
+    await page.keyboard.press(key);
+    await page.clock.runFor(gapMs);
+  }
+}
 
 test.describe('search lifecycle', () => {
   test('sync source renders keystroke-instant with no spinner; async shows the immediate spinner', async ({
@@ -89,11 +131,14 @@ test.describe('search lifecycle', () => {
     await expect(status(page)).toHaveCount(0); // no spinner ever appeared
 
     // Async: the spinner shows at once and holds until the fresh set lands.
+    // The response is held, so the in-flight state stays on screen until it
+    // has been asserted, however slow the runner.
     await page.getByTestId('search-async').check();
-    await setSearchDelay(page, 400);
+    await holdResponses(page, 'search');
     await input(page).fill('Alice');
     await expect(status(page).locator('tm-spinner')).toBeVisible();
     await expect(options(page)).toHaveCount(0); // stale rows cleared immediately
+    await releaseResponses(page, 'search');
     await expect(options(page)).toHaveText(['Alice Green']);
     await expect(status(page)).toHaveCount(0);
   });
@@ -102,13 +147,22 @@ test.describe('search lifecycle', () => {
     // The window slides: every keystroke inside it pushes the deadline out,
     // so a sustained burst costs the leading request plus one trailing one
     // — not one per window, which is what a fixed window would charge.
-    // The window is widened here only so the assertion cannot be decided
-    // by CDP round-trip jitter; the semantics under test are the default's.
-    await setSearchDelay(page, 200);
-    await page.getByTestId('search-debounce').fill('300');
-    const before = await searchCalls(page);
-    await input(page).pressSequentially('aaaaaaaaaaaaaaaaaaaa', { delay: 33 });
-    await page.waitForTimeout(600);
+    // The window is widened to 300 ms, far beyond the 33 ms repeat; the
+    // semantics under test are the default's. Page time runs on a paused
+    // fake clock, so no real-time stall can stretch a gap past the window.
+    let before = 0;
+    await pauseClockAfter(page, async () => {
+      await setSearchDelay(page, 200);
+      await page.getByTestId('search-debounce').fill('300');
+      before = await searchCalls(page);
+    });
+    await typeOnClock(page, 'aaaaaaaaaaaaaaaaaaaa', 33); // a key repeating every 33 ms
+    await page.clock.runFor(300); // the window goes quiet: the trailing request fires
+    await page.clock.runFor(200); // …and its answer lands
+    await page.clock.resume();
+    // Nothing matches the run of a's, and the leading request was aborted
+    // by the next keystroke: 'No results' is the trailing request's answer.
+    await expect(status(page)).toHaveText('No results');
     expect((await searchCalls(page)) - before).toBe(2);
   });
 
@@ -117,9 +171,13 @@ test.describe('search lifecycle', () => {
   }) => {
     // The window only absorbs bursts: at human typing speed each keystroke
     // is its own leading edge and fires immediately.
-    await setSearchDelay(page, 100);
-    const before = await searchCalls(page);
-    await input(page).pressSequentially('Ali', { delay: 120 });
+    let before = 0;
+    await pauseClockAfter(page, async () => {
+      await setSearchDelay(page, 100);
+      before = await searchCalls(page);
+    });
+    await typeOnClock(page, 'Ali', 120); // each key lands after the 50 ms window closed
+    await page.clock.resume();
     await expect(options(page)).toHaveText(['Alice Green']);
     expect((await searchCalls(page)) - before).toBe(3);
   });
@@ -158,6 +216,8 @@ test.describe('search lifecycle', () => {
     await useSyncSearch(page);
     await input(page).fill('Al');
     await expect(options(page)).toHaveCount(2);
+    // The ids are read, not asserted: let the highlight's render land first.
+    await appStable(page);
     const controls = await input(page).getAttribute('aria-controls');
     expect(controls).toBeTruthy();
     await expect(page.locator(`[id="${controls}"]`)).toHaveRole('listbox');
@@ -346,7 +406,9 @@ test.describe('keyboard matrix', () => {
     await input(page).fill('Adam');
     await expect(activeOption(page)).toHaveText('Adam Brown');
     // Both rows read 'Adam Brown', so the highlight has to be tracked by
-    // identity: waiting on the TEXT would let Tab race the arrow.
+    // identity: waiting on the TEXT would let Tab race the arrow. The id is
+    // read once the render that set it has landed.
+    await appStable(page);
     const first = await input(page).getAttribute('aria-activedescendant');
     await input(page).press('ArrowDown'); // the SECOND 'Adam Brown', id 2
     await expect(input(page)).not.toHaveAttribute('aria-activedescendant', first ?? '');
@@ -363,6 +425,8 @@ test.describe('keyboard matrix', () => {
     // "this is your supplier" while the box reads empty.
     await useSyncSearch(page);
     await input(page).fill('Alice Gr');
+    // The highlight renders a beat after the keystroke; Enter acts on it.
+    await expect(activeOption(page)).toHaveText('Alice Green');
     await input(page).press('Enter');
     await expect(input(page)).toHaveValue('Alice Green');
 
@@ -403,14 +467,243 @@ test.describe('keyboard matrix', () => {
   });
 });
 
+// A barcode scanner, a text expander or a stalled main thread delivers keys
+// back to back. Each burst below arrives in ONE task, so no render runs
+// between the last keystroke and the commit key, and each must commit what
+// the same keys commit when paced (the keyboard matrix above).
+test.describe('input delivered faster than the page renders', () => {
+  test('the first keystrokes and Enter in one burst commit the first result, never a submit', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'Enter']); // before the popup has even mounted
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+    // The popup opened and closed with no render in between, and nothing of
+    // that open may linger: the combobox reads closed, so the next Enter is
+    // the form's again…
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).press('Enter');
+    await expect(page.getByTestId('submit-count')).toHaveText('1');
+    // …and the next open is a fresh pristine browse, not the stale 'Al' rows
+    // with their highlight.
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5); // the capped browse list
+    await expect(activeOption(page)).toHaveCount(0);
+  });
+
+  test('the first keystrokes and Tab in one burst commit and leave nothing of the open behind', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'Tab']);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await input(page).click();
+    await expect(options(page)).toHaveCount(5);
+    await expect(activeOption(page)).toHaveCount(0);
+  });
+
+  test('a narrowing keystroke and Enter in one burst commit the FRESH first result', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Enter']);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+  });
+
+  test('a keystroke and Tab in one burst commit the fresh first result', async ({ page }) => {
+    await useSyncSearch(page);
+    const before = Number(await page.getByTestId('picked-count').textContent());
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'Tab']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    expect(Number(await page.getByTestId('picked-count').textContent()) - before).toBe(1);
+  });
+
+  test('keys that find nothing and Enter in one burst fail fast with the popup open', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['Z', 'e', 'b', 'r', 'a', 'Enter']);
+    await expect(panel(page)).toBeVisible();
+    await expect(fieldError(page)).toContainText('No match for');
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+    expect((await model(page)).supplierId).toBeNull();
+  });
+
+  test('Enter right after an async answer lands, before it renders, commits its first result', async ({
+    page,
+  }) => {
+    await holdResponses(page, 'search'); // the story's search is asynchronous by default
+    await input(page).fill('Al');
+    await expect(heldResponses(page, 'search')).toHaveText('1'); // asked, unanswered
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('keys and Enter in one burst before the async search answers resolve the text', async ({
+    page,
+  }) => {
+    // No answer, no highlight: Enter resolves the typed text, as a paced
+    // Enter pressed while the spinner is up does.
+    await holdResponses(page, 'search');
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'i', 'c', 'e', ' ', 'G', 'r', 'Enter']);
+    await expect(input(page)).toBeFocused(); // focus retained while resolving
+    await expect(input(page)).toHaveAttribute('aria-busy', 'true');
+    await releaseResponses(page, 'search');
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+});
+
+// The same bursts with arrow keys in them. Every arrow moves the highlight
+// the moment it arrives, over the rows the picker's state has decided, so
+// the commit key picks the row the same keys reach when paced.
+test.describe('arrow keys delivered faster than the page renders', () => {
+  test('a keystroke, ArrowDown and Enter in one burst commit the SECOND result', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown'); // the previous highlight
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('the first keystrokes, ArrowDown and Enter in one burst commit the second result', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'ArrowDown', 'Enter']); // before the popup has mounted
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('a keystroke, ArrowDown and Tab in one burst commit the second result', async ({ page }) => {
+    await useSyncSearch(page);
+    const before = Number(await page.getByTestId('picked-count').textContent());
+    await input(page).fill('A');
+    await expect(activeOption(page)).toHaveText('Adam Brown');
+    await appStable(page);
+    await pressInOneTask(page, ['l', 'ArrowDown', 'Tab']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    expect(Number(await page.getByTestId('picked-count').textContent()) - before).toBe(1);
+  });
+
+  test('every arrow of a burst moves the highlight, and the paint follows', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).fill('Al');
+    await expect(activeOption(page)).toHaveText('Alice Green');
+    await appStable(page);
+    // Alice Green, Alan Grey, Advanced search…, Create supplier…: three
+    // arrows down from the first row reach the last one.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowDown', 'ArrowDown']);
+    await expect(activeOption(page)).toHaveText('Create supplier…');
+    await expect(input(page)).toHaveAttribute(
+      'aria-activedescendant',
+      (await activeOption(page).getAttribute('id'))!,
+    );
+    // One more wraps to the top, and ArrowUp from there wraps back down.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowUp', 'ArrowUp']);
+    await expect(activeOption(page)).toHaveText('Advanced search…');
+    expect((await model(page)).supplierId).toBeNull(); // arrows alone commit nothing
+  });
+
+  test('ArrowDown that opens the popup, a second ArrowDown and Enter in one burst pick the first row', async ({
+    page,
+  }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    const before = await searchCalls(page);
+    // Paced: the first arrow opens the browse list with no highlight, the
+    // second highlights its first row, Enter commits it.
+    await pressInOneTask(page, ['ArrowDown', 'ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Adam Brown');
+    expect((await model(page)).supplierId).toBe(1);
+    expect((await searchCalls(page)) - before).toBe(1); // one browse search
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow onto a footer row and Enter in one burst open its page', async ({ page }) => {
+    await useSyncSearch(page);
+    await input(page).focus();
+    // No results: Create supplier… is two arrows and Enter away (Advanced
+    // search… comes first).
+    await pressInOneTask(page, ['Z', 'e', 'b', 'r', 'a', 'ArrowDown', 'ArrowDown', 'Enter']);
+    await expect(page.getByTestId('create-name')).toHaveValue('Zebra');
+    await expect(fieldError(page)).toHaveText(''); // never the fail-fast of an unhighlighted Enter
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow and Enter right after an async answer lands, before it renders, commit its second result', async ({
+    page,
+  }) => {
+    await holdResponses(page, 'search'); // the story's search is asynchronous by default
+    await input(page).fill('Al');
+    await expect(heldResponses(page, 'search')).toHaveText('1'); // asked, unanswered
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
+    await releaseAndPressInOneTask(page, 'search', ['ArrowDown', 'Enter']);
+    await expect(panel(page)).toHaveCount(0);
+    await expect(input(page)).toHaveValue('Alan Grey');
+    expect((await model(page)).supplierId).toBe(4);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+
+  test('an arrow before the async search answers moves nothing: Enter still resolves the text', async ({
+    page,
+  }) => {
+    // While the spinner is up the popup has no option, so the arrow has
+    // nowhere to go and Enter resolves the typed text, as when paced.
+    await holdResponses(page, 'search');
+    await input(page).focus();
+    await pressInOneTask(page, ['A', 'l', 'i', 'c', 'e', ' ', 'G', 'r', 'ArrowDown', 'Enter']);
+    await expect(input(page)).toBeFocused();
+    await expect(input(page)).toHaveAttribute('aria-busy', 'true');
+    await releaseResponses(page, 'search');
+    await expect(input(page)).toHaveValue('Alice Green');
+    expect((await model(page)).supplierId).toBe(3);
+    await expect(page.getByTestId('submit-count')).toHaveText('0');
+  });
+});
+
 test.describe('blur resolution', () => {
   test('a unique match auto-picks even when the response lands after the departure', async ({
     page,
   }) => {
-    await setSearchDelay(page, 500);
+    await holdResponses(page, 'search');
     await input(page).fill('Alice Gr');
     await page.getByTestId('submit').focus(); // real departure mid-flight
     await expect(panel(page)).toHaveCount(0);
+    await releaseResponses(page, 'search'); // the response lands after the departure
     await expect(input(page)).toHaveValue('Alice Green');
     expect((await model(page)).supplierId).toBe(3);
     await expect(fieldError(page)).toHaveText(''); // no error flash
@@ -487,16 +780,17 @@ test.describe('panel placement', () => {
     // so the very first painted position is the final one. (Choosing it
     // from the panel instead means measuring an empty panel, which always
     // "fits below" and then gets yanked up a frame later.)
-    await setSearchDelay(page, 600); // the panel is still a spinner when it attaches
+    await holdResponses(page, 'search'); // the panel is still a spinner when it attaches
     const flip = input(page, 'picker-flip');
     const anchor = (await flip.boundingBox())!;
     await flip.click();
-    await expect(panel(page)).toBeVisible();
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
 
     const whileLoading = (await panel(page).boundingBox())!;
     expect(whileLoading.y + whileLoading.height).toBeLessThanOrEqual(anchor.y + 2);
 
     // …and it stays above once the results replace the spinner.
+    await releaseResponses(page, 'search');
     await expect(options(page).first()).toBeVisible();
     const withResults = (await panel(page).boundingBox())!;
     expect(withResults.y + withResults.height).toBeLessThanOrEqual(anchor.y + 2);
@@ -505,13 +799,14 @@ test.describe('panel placement', () => {
   test('a growing result set never re-orients the panel or overflows the viewport', async ({
     page,
   }) => {
-    await setSearchDelay(page, 400);
+    await holdResponses(page, 'search');
     const flip = input(page, 'picker-flip');
     await flip.click();
-    await expect(panel(page)).toBeVisible();
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
     const loadingTop = (await panel(page).boundingBox())!.y;
 
     // The full directory is the longest set this picker can show.
+    await releaseResponses(page, 'search');
     await expect(options(page).first()).toBeVisible();
     const grown = (await panel(page).boundingBox())!;
     const viewport = page.viewportSize()!;
@@ -541,22 +836,25 @@ test.describe('size stability', () => {
   test('the field box keeps its size across loading, resolving, resolved, and error states', async ({
     page,
   }) => {
-    await setSearchDelay(page, 800);
+    await holdResponses(page, 'search');
     const box = page.getByTestId('ff').locator('.tm-form-field__box');
     const before = (await box.boundingBox())!;
 
     await input(page).fill('Alice Gr'); // loading — dropdown-only churn
+    await expect(status(page).locator('tm-spinner')).toBeVisible();
     const loading = (await box.boundingBox())!;
 
     await page.getByTestId('submit').focus(); // resolving — the spinner slot fills
     await expect(page.getByTestId('ff').locator('.tm-form-field__spinner')).toBeVisible();
     const resolving = (await box.boundingBox())!;
 
+    await releaseResponses(page, 'search');
     await expect(input(page)).toHaveValue('Alice Green'); // the pick lands
     const resolved = (await box.boundingBox())!;
 
     await input(page).fill('Zebra'); // kept-error state
     await page.getByTestId('submit').focus();
+    await releaseResponses(page, 'search');
     await expect(fieldError(page)).toContainText('No match for');
     const errored = (await box.boundingBox())!;
 
@@ -579,50 +877,56 @@ test.describe('modal round-trips', () => {
     await expect(input(page)).toBeFocused();
   });
 
-  test('the create page prefills the query; its pick applies with the fresh label', async ({
-    page,
-  }) => {
-    await useSyncSearch(page);
-    await input(page).fill('Newco');
-    await expect(status(page)).toHaveText('No results');
-    // Each arrow waits for the row it asked for: a burst measures how fast
-    // the runner is, not where the highlight goes.
-    await input(page).press('ArrowDown');
-    await expect(activeOption(page)).toHaveText('Advanced search…');
-    await input(page).press('ArrowDown');
-    await expect(activeOption(page)).toHaveText('Create supplier…');
-    await input(page).press('Enter');
-    await expect(page.getByTestId('create-name')).toHaveValue('Newco');
-    await page.getByTestId('create-save').click();
-    await expect(input(page)).toHaveValue('Newco');
-    expect((await model(page)).supplierId).toBeGreaterThanOrEqual(100);
-  });
+  test(
+    'the create page prefills the query; its pick applies with the fresh label',
+    async ({ page }) => {
+      await useSyncSearch(page);
+      await input(page).fill('Newco');
+      await expect(status(page)).toHaveText('No results');
+      // Each arrow waits for the row it asked for: a burst measures how fast
+      // the runner is, not where the highlight goes.
+      await input(page).press('ArrowDown');
+      await expect(activeOption(page)).toHaveText('Advanced search…');
+      await input(page).press('ArrowDown');
+      await expect(activeOption(page)).toHaveText('Create supplier…');
+      await input(page).press('Enter');
+      await expect(page.getByTestId('create-name')).toHaveValue('Newco');
+      await page.getByTestId('create-save').click();
+      await expect(input(page)).toHaveValue('Newco');
+      expect((await model(page)).supplierId).toBeGreaterThanOrEqual(100);
+    },
+  );
 
-  test('the edit page targets the committed id; rename re-applies, delete clears', async ({
-    page,
-  }) => {
-    await useSyncSearch(page);
-    const populated = input(page, 'picker-populated');
-    await populated.click();
-    // ArrowUp with nothing highlighted wraps straight to the LAST option.
-    await populated.press('ArrowUp');
-    await expect(activeOption(page)).toHaveText('Edit…');
-    await populated.press('Enter');
-    await expect(page.getByTestId('edit-id')).toHaveText('5');
-    await page.getByTestId('edit-name').fill('Bob S. (renamed)');
-    await page.getByTestId('edit-save').click();
-    await expect(populated).toHaveValue('Bob S. (renamed)');
-    expect((await model(page)).populatedId).toBe(5); // same id, fresh label
+  test(
+    'the edit page targets the committed id; rename re-applies, delete clears',
+    async ({ page }) => {
+      await useSyncSearch(page);
+      const populated = input(page, 'picker-populated');
+      await populated.click();
+      // The click opens the browse list, whose rows mount on a later render;
+      // an arrow pressed before they exist has nothing to move through.
+      await expect(actions(page).last()).toHaveText('Edit…');
+      // ArrowUp with nothing highlighted wraps straight to the LAST option.
+      await populated.press('ArrowUp');
+      await expect(activeOption(page)).toHaveText('Edit…');
+      await populated.press('Enter');
+      await expect(page.getByTestId('edit-id')).toHaveText('5');
+      await page.getByTestId('edit-name').fill('Bob S. (renamed)');
+      await page.getByTestId('edit-save').click();
+      await expect(populated).toHaveValue('Bob S. (renamed)');
+      expect((await model(page)).populatedId).toBe(5); // same id, fresh label
 
-    // Round 2: the page deletes the entity — close(null) clears the field.
-    await populated.click();
-    await populated.press('ArrowUp');
-    await expect(activeOption(page)).toHaveText('Edit…');
-    await populated.press('Enter');
-    await page.getByTestId('edit-delete').click();
-    await expect(populated).toHaveValue('');
-    expect((await model(page)).populatedId).toBeNull();
-  });
+      // Round 2: the page deletes the entity — close(null) clears the field.
+      await populated.click();
+      await expect(actions(page).last()).toHaveText('Edit…');
+      await populated.press('ArrowUp');
+      await expect(activeOption(page)).toHaveText('Edit…');
+      await populated.press('Enter');
+      await page.getByTestId('edit-delete').click();
+      await expect(populated).toHaveValue('');
+      expect((await model(page)).populatedId).toBeNull();
+    },
+  );
 
   test('a picker inside a modal stacks its pages and Esc dismisses innermost-first', async ({
     page,
@@ -687,39 +991,73 @@ test.describe('RTL & locale', () => {
   });
 });
 
-test.describe('axe floor', () => {
-  for (const theme of ['light', 'dark'] as const) {
-    test(`no violations across popup states (${theme})`, async ({ page }) => {
-      await page.goto(storyUrl('entity-picker', { theme }));
-      await useSyncSearch(page);
+/** One popup state the axe floor scans, and the step that reaches it. */
+interface PopupState {
+  /** The state's name, as it appears in the test title. */
+  readonly name: string;
+  /** Moves the story from the previous state into this one, and waits for it. */
+  readonly reach: (page: Page) => Promise<void>;
+}
 
-      // Results + footer rows.
+/**
+ * The popup states the axe floor covers, in the order one session walks
+ * through them: each state's step starts from the state before it.
+ */
+const POPUP_STATES: readonly PopupState[] = [
+  {
+    name: 'results with the footer rows',
+    reach: async (page) => {
       await input(page).fill('Al');
       await expect(options(page)).toHaveCount(2);
-      await expectNoAxeViolations(page);
-
-      // The truncated browse (hasMore hint) — aria-hidden rows must stay
-      // clean inside the listbox.
+    },
+  },
+  {
+    // aria-hidden rows must stay clean inside the listbox.
+    name: 'the truncated browse list',
+    reach: async (page) => {
       await input(page).fill('');
       await expect(options(page)).toHaveCount(5);
-      await expectNoAxeViolations(page);
-
-      // Empty set.
+    },
+  },
+  {
+    name: 'an empty result set',
+    reach: async (page) => {
       await input(page).fill('Zebra');
       await expect(status(page)).toHaveText('No results');
-      await expectNoAxeViolations(page);
-
-      // Kept resolution error on the field.
+    },
+  },
+  {
+    name: 'a kept resolution error on the field',
+    reach: async (page) => {
       await page.getByTestId('submit').focus();
       await expect(fieldError(page)).toContainText('No match for');
-      await expectNoAxeViolations(page);
-
-      // The loading state (a long-latency async search).
+    },
+  },
+  {
+    name: 'a search in flight',
+    reach: async (page) => {
       await page.getByTestId('search-async').check();
-      await setSearchDelay(page, 5000);
+      await holdResponses(page, 'search');
       await input(page).fill('Alice');
       await expect(status(page).locator('tm-spinner')).toBeVisible();
-      await expectNoAxeViolations(page);
+    },
+  },
+];
+
+test.describe('axe floor', () => {
+  // One scan per test: each test replays the session up to its state (the
+  // steps are cheap; the scan is the cost), so no test carries the time of
+  // several scans against its timeout.
+  for (const theme of ['light', 'dark'] as const) {
+    POPUP_STATES.forEach((state, index) => {
+      test(`no violations with ${state.name} (${theme})`, async ({ page }) => {
+        await page.goto(storyUrl('entity-picker', { theme }));
+        await useSyncSearch(page);
+        for (const step of POPUP_STATES.slice(0, index + 1)) {
+          await step.reach(page);
+        }
+        await expectNoAxeViolations(page);
+      });
     });
   }
 });
@@ -781,4 +1119,118 @@ test.describe('forced-colors & reduced motion', () => {
       expect(motion).toBe('none|0s');
     }
   });
+});
+
+test.describe('two-line rows & label parts', () => {
+  /** The two-line Center picker's input. */
+  function centers(page: Page): Locator {
+    return input(page, 'picker-centers');
+  }
+
+  /** The two-line row height token, in px. */
+  async function twoLineHeight(page: Page): Promise<number> {
+    return page.evaluate(() =>
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--entity-picker-option-height-2line',
+        ),
+      ),
+    );
+  }
+
+  test('every result row takes the one two-line height, a row without a description included', async ({
+    page,
+  }) => {
+    const expected = await twoLineHeight(page);
+    expect(expected).toBeGreaterThan(0);
+    await centers(page).fill('J');
+    await expect(options(page)).toHaveCount(2);
+    await appStable(page);
+    for (const row of await options(page).all()) {
+      expect((await row.boundingBox())!.height).toBeCloseTo(expected, 1);
+    }
+    // The two Jeddahs are told apart by their description lines.
+    await expect(options(page).locator('.tm-entity-picker__option-description')).toHaveText([
+      'Western Region',
+      'Logistics',
+    ]);
+    // DMM-01 has no parent: its row keeps the same height, so the panel
+    // does not re-measure between the two queries.
+    await centers(page).fill('DMM');
+    await expect(options(page)).toHaveCount(1);
+    await appStable(page);
+    expect((await options(page).first().boundingBox())!.height).toBeCloseTo(expected, 1);
+  });
+
+  // The two lines fit the two-line height with air to spare, at the default
+  // and the large field size, Latin and Arabic rows alike: neither line may
+  // reach within 1px of the row's edges, where the active row's ring and the
+  // chosen row's bar are drawn.
+  for (const testid of ['picker-centers', 'picker-centers-lg'] as const) {
+    test(`both lines sit inside the row with room above and below (${testid})`, async ({
+      page,
+    }) => {
+      const field = input(page, testid);
+      for (const query of ['J', 'INV', 'DMM']) {
+        await field.fill(query);
+        await expect(options(page).first()).toBeVisible();
+        await appStable(page);
+        for (const row of await options(page).all()) {
+          const rowBox = (await row.boundingBox())!;
+          for (const line of [
+            '.tm-entity-picker__option-label',
+            '.tm-entity-picker__option-description',
+          ]) {
+            const box = (await row.locator(line).boundingBox())!;
+            expect(box.y - rowBox.y).toBeGreaterThanOrEqual(1);
+            expect(rowBox.y + rowBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(1);
+          }
+        }
+      }
+    });
+  }
+
+  test('a row is named "label, description" while the separator stays unseen', async ({
+    page,
+  }) => {
+    await centers(page).fill('RUH');
+    await expect(options(page)).toHaveCount(1);
+    await expect(options(page).first()).toHaveAccessibleName('RUH-01 - Riyadh, Central Region');
+    const separator = options(page).first().locator('.tm-entity-picker__option-separator');
+    const clipped = await separator.evaluate((el) => getComputedStyle(el).clipPath);
+    expect(clipped).not.toBe('none');
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    test(`a Latin code beside an Arabic name stays first (${dir})`, async ({ page }) => {
+      await page.goto(storyUrl('entity-picker', { dir }));
+      await page.getByTestId('search-async').uncheck();
+      await centers(page).fill('INV');
+      await expect(options(page)).toHaveCount(1);
+      await appStable(page);
+      const runs = options(page).first().locator('.tm-entity-picker__option-label > bdi');
+      await expect(runs).toHaveText(['INV-0011', 'نقد']);
+      const code = (await runs.nth(0).boundingBox())!;
+      const name = (await runs.nth(1).boundingBox())!;
+      // "First" is the inline start: the left in LTR, the right in RTL.
+      if (dir === 'ltr') {
+        expect(code.x + code.width).toBeLessThanOrEqual(name.x);
+      } else {
+        expect(name.x + name.width).toBeLessThanOrEqual(code.x);
+      }
+      await expect(options(page).first()).toHaveAccessibleName('INV-0011 - نقد, الأصول المتداولة');
+    });
+  }
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const dir of ['ltr', 'rtl'] as const) {
+      test(`no axe violations with a two-line panel open (${theme}, ${dir})`, async ({ page }) => {
+        await page.goto(storyUrl('entity-picker', { theme, dir }));
+        await page.getByTestId('search-async').uncheck();
+        await centers(page).fill('J');
+        await expect(options(page)).toHaveCount(2);
+        await expectNoAxeViolations(page);
+      });
+    }
+  }
 });

@@ -21,7 +21,13 @@ export default defineConfig({
   testDir: './specs',
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
-  retries: process.env['CI'] ? 2 : 0,
+  // CI retries a failed test once, so that the retry records a trace
+  // (`trace: 'on-first-retry'`) and the report tells a flake from a hard
+  // failure. A test that fails and then passes on retry still fails the run:
+  // a flake must surface and be quarantined, never turn a red run green. A
+  // second retry would only slow a run that is red either way.
+  retries: process.env['CI'] ? 1 : 0,
+  failOnFlakyTests: !!process.env['CI'],
   // Locally the battery runs four projects at once, and a headless
   // Firefox or WebKit that loses the CPU does not merely run slow — it
   // stops painting, so elements never reach "stable" and assertions fail
@@ -42,7 +48,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /grid-touch|tooltip-touch/,
+      testIgnore: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
@@ -80,7 +86,7 @@ export default defineConfig({
     // testIgnore keeps the same specs out of the desktop run.
     {
       name: 'touch',
-      testMatch: /grid-touch|tooltip-touch/,
+      testMatch: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
       use: { ...devices['Pixel 7'] },
     },
   ],

@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using Tellma.Identity.Data;
+using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using Tellma.Identity.Services.Sessions;
@@ -138,6 +140,26 @@ namespace Tellma.Identity.Hosting
                 {
                     await SecurityStampValidator.ValidatePrincipalAsync(validation);
                     await TouchSessionAsync(validation);
+                };
+
+                // The redirect to the sign-in page keeps the language the challenged request
+                // asked for (spec 0010 §A.9). The request itself travels inside the return
+                // address, where the sign-in page does not read it, so the language is repeated
+                // as a value of the sign-in URL's own. The handler in place does the redirecting.
+                Func<RedirectContext<CookieAuthenticationOptions>, Task> redirectToLogin = cookie.Events.OnRedirectToLogin;
+                cookie.Events.OnRedirectToLogin = challenge =>
+                {
+                    if (CarriedQuery.Read(challenge.Request).UiLocales is { } uiLocales)
+                    {
+                        challenge.RedirectUri = QueryHelpers.AddQueryString(
+                            challenge.RedirectUri, CarriedQuery.UiLocalesName, uiLocales);
+                    }
+
+                    // Whether this address challenges depends on who asks, so the challenge is
+                    // never what a cache hands the same browser once it has signed in.
+                    challenge.Response.Headers.CacheControl = "no-store";
+
+                    return redirectToLogin(challenge);
                 };
             });
 

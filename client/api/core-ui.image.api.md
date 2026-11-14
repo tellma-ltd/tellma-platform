@@ -6,6 +6,7 @@
 
 import * as _angular_core from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import * as lucide from 'lucide';
 import { TemplateRef } from '@angular/core';
 
 // @public
@@ -17,6 +18,7 @@ export type TmBlobFetcher = (url: string, options?: TmBlobFetchOptions) => Promi
 // @public
 export interface TmBlobFetchOptions {
     readonly ifNoneMatch?: string;
+    readonly signal?: AbortSignal;
 }
 
 // @public
@@ -40,12 +42,19 @@ export class TmImage {
     protected readonly errorLabel: _angular_core.Signal<string>;
     readonly etag: _angular_core.InputSignal<string | null>;
     protected readonly fitting: _angular_core.WritableSignal<FittingSession | null>;
+    protected readonly glyphs: {
+        readonly error: lucide.IconNode;
+        readonly empty: lucide.IconNode;
+        readonly replace: lucide.IconNode;
+        readonly adjust: lucide.IconNode;
+        readonly remove: lucide.IconNode;
+    };
     protected readonly hasImage: _angular_core.Signal<boolean>;
     readonly height: _angular_core.InputSignal<number>;
     readonly imageChange: _angular_core.OutputEmitterRef<TmImageEdit | null>;
     readonly maxEdgePx: _angular_core.InputSignal<number>;
     readonly maxFileBytes: _angular_core.InputSignal<number>;
-    readonly mode: _angular_core.InputSignal<"view" | "edit">;
+    readonly mode: _angular_core.InputSignal<"edit" | "view">;
     protected readonly noticeText: _angular_core.Signal<string | null>;
     protected onDelete(): void;
     protected onFilePicked(event: Event): Promise<void>;
@@ -53,16 +62,17 @@ export class TmImage {
     protected onFitDone(): void;
     protected onRefit(): Promise<void>;
     readonly placeholder: _angular_core.Signal<TmImagePlaceholder | undefined>;
+    readonly placeholderOnError: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected readonly preview: _angular_core.WritableSignal<LocalPreview | null>;
     protected readonly previewTransform: _angular_core.Signal<string>;
     protected readonly previewWidth: _angular_core.Signal<number>;
     protected readonly removeLabel: _angular_core.Signal<string>;
     protected readonly replaceLabel: _angular_core.Signal<string>;
-    readonly shape: _angular_core.InputSignal<"rect" | "circle">;
+    readonly shape: _angular_core.InputSignal<"circle" | "rect">;
     readonly src: _angular_core.InputSignal<string>;
     readonly srcForSize: _angular_core.InputSignal<(src: string, size: number) => string>;
     readonly width: _angular_core.InputSignal<number>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmImage, "tm-image", never, { "src": { "alias": "src"; "required": true; "isSignal": true; }; "etag": { "alias": "etag"; "required": false; "isSignal": true; }; "alt": { "alias": "alt"; "required": true; "isSignal": true; }; "shape": { "alias": "shape"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": true; "isSignal": true; }; "height": { "alias": "height"; "required": true; "isSignal": true; }; "srcForSize": { "alias": "srcForSize"; "required": false; "isSignal": true; }; "defer": { "alias": "defer"; "required": false; "isSignal": true; }; "editSrc": { "alias": "editSrc"; "required": false; "isSignal": true; }; "mode": { "alias": "mode"; "required": false; "isSignal": true; }; "maxFileBytes": { "alias": "maxFileBytes"; "required": false; "isSignal": true; }; "maxEdgePx": { "alias": "maxEdgePx"; "required": false; "isSignal": true; }; }, { "imageChange": "imageChange"; }, ["placeholder"], never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmImage, "tm-image", never, { "src": { "alias": "src"; "required": true; "isSignal": true; }; "etag": { "alias": "etag"; "required": false; "isSignal": true; }; "alt": { "alias": "alt"; "required": true; "isSignal": true; }; "shape": { "alias": "shape"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": true; "isSignal": true; }; "height": { "alias": "height"; "required": true; "isSignal": true; }; "srcForSize": { "alias": "srcForSize"; "required": false; "isSignal": true; }; "defer": { "alias": "defer"; "required": false; "isSignal": true; }; "editSrc": { "alias": "editSrc"; "required": false; "isSignal": true; }; "mode": { "alias": "mode"; "required": false; "isSignal": true; }; "placeholderOnError": { "alias": "placeholderOnError"; "required": false; "isSignal": true; }; "maxFileBytes": { "alias": "maxFileBytes"; "required": false; "isSignal": true; }; "maxEdgePx": { "alias": "maxEdgePx"; "required": false; "isSignal": true; }; }, { "imageChange": "imageChange"; }, ["placeholder"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmImage, never>;
 }
 

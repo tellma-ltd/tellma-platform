@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Azure deployment's common composition, shared by a distribution's web host and its migrator: UseAzureDefaults() composes the email pipeline with the Azure Communication Services and SendGrid transports, the sender chosen by Email:Provider. A distribution-layer package: it sits above the connectors it composes, and no Core package references it. Takes no ASP.NET Core dependency.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\Tellma.Core\Tellma.Core.csproj" />
+    <ProjectReference Include="..\..\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <ProjectReference Include="..\..\connector\acs-email\Tellma.Connector.AcsEmail.Adapter\Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <ProjectReference Include="..\..\connector\sendgrid\Tellma.Connector.SendGrid.Adapter\Tellma.Connector.SendGrid.Adapter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite asserts the bundle's registrations through its marker. -->
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.Tests" />
+  </ItemGroup>
+
+</Project>

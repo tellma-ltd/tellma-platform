@@ -1,8 +1,10 @@
 # Tellma.Core.Testing
 
-Test doubles and executable conformance suites for the `Tellma.Core.Abstractions` contracts — the
-C# sibling of `@tellma/core-ui-testing`. Referenced by test projects, so distribution and platform
-suites stop hand-rolling their own email fakes.
+Test doubles, executable conformance suites (email senders, blob stores) and the job item probe for the
+`Tellma.Core.Abstractions` contracts — the
+C# sibling of `@tellma/core-ui-testing` — and the pins every EF migrations assembly is held to.
+Referenced by test projects, so distribution and platform suites stop hand-rolling their own email
+fakes and their own migration checks.
 
 It also carries the diagnostics a credentialed suite needs to explain a failure nobody can step
 through, which is why this package is the one that takes an xunit dependency by charter.
@@ -53,6 +55,32 @@ Cases a transport cannot express on its own wire are skipped through `SenderCapa
 skip reason names the transport limitation — so a skip always reads as "not applicable", never as
 "not implemented".
 
+**[BlobStoreConformanceTests](Blobs/BlobStoreConformanceTests.cs)** is the executable form of the
+`IBlobStore` contract. Every blob store derives from it and supplies an
+[IBlobStoreHarness](Blobs/IBlobStoreHarness.cs), which gives the suite tenants of its own and the
+out-of-band access the contract alone cannot: whether a tenant's container or directory exists,
+removing one behind the store's back, and planting incomplete artefacts. It pins:
+
+- byte-for-byte round trips through a seekable stream of the object's length, empty objects
+  included;
+- create-only writes: a second write of a name throws `BlobAlreadyExistsException` and keeps the
+  first bytes, eight writers racing to one name leave exactly one winner whose bytes read back, and
+  a failing object leaves the call's other writes in place;
+- content that yields more or fewer bytes than declared failing with `BlobStoreException` and
+  leaving no object;
+- a primary and its `thumb` variant written in one call;
+- null for a missing object, success for deleting one, and nothing created by a read, delete, list
+  or purge in a tenant without storage;
+- tenant isolation;
+- listing by kind and by fan-out segment in name order, with a kind never matching a longer kind
+  that starts with it;
+- the purge removing only artefacts older than its cut-off (skipped, via `BlobStoreCapabilities`,
+  for a store whose writes are atomic on the service side);
+- idempotent `EnsureTenantAsync`, and a write that recreates missing tenant storage and retries;
+- every name outside the grammar (traversal strings, backslashes, upper case, a mismatched fan-out,
+  a reserved device name) refused by every member before storage is touched, and every
+  non-positive tenant id refused.
+
 **[TestOutputLoggerProvider](Diagnostics/TestOutputLoggerProvider.cs)** and its
 `AddTestOutput()` builder extension route `ILogger` records into the running test's output.
 `AddLogging()` registers no provider of its own, so a transport's account of what went wrong —
@@ -66,11 +94,38 @@ either because the code is wrong or because the environment was not what the run
 bare assertion cannot tell those apart — but the log that answers it is published by a public
 repository's Actions runs, which is the wrong audience for an address or a key.
 
+**[CollationPin](Database/CollationPin.cs)** holds a migrations assembly and its model to the
+platform collation (`DatabaseCollations.Platform`) without a database: the design-time model must
+declare it, the model must have no change its migrations do not capture, and no migration's up or
+down operations may hold an `AlterDatabaseOperation` that changes the collation — an initial
+migration's annotation-only one passes. A database's collation is set once by `CREATE DATABASE`, and
+Azure SQL Database refuses the `ALTER DATABASE … COLLATE` a changed model would scaffold, so every
+suite that owns a migrations assembly runs `CollationPin.Verify` over a context built the way its
+design-time factory builds one.
+
+**[LatestMigrationPin](Database/LatestMigrationPin.cs)** keeps a published constant naming a
+migrations assembly's last migration — the row a host's startup check requires in its store's
+history, read so that the host need not carry the migrations — equal to that assembly's last
+migration.
+
+**[JobItemProbe](Jobs/JobItemProbe.cs)** plays the worker's part in a job handler's unit test:
+it builds the items a claim would hand the handler (`ForJob`, `ForItem`), seeds the checkpoint a
+resume reads (`SetCheckpoint`, stored under the platform's JSON rules), records why an item is being
+cancelled (`SetCancellationReason`, with the worker's escalation rule), and reads back what the
+handler marked (`OutcomeOf`, a [JobItemOutcome](Jobs/JobItemOutcome.cs)) and the notifications it
+queued for success. It reads and writes what the worker does and nothing more: an unmarked item
+stays unmarked, where the worker would settle it from how the handler ended.
+
+These two read EF Core's relational model and migration operations, which is why the package
+references `Microsoft.EntityFrameworkCore.Relational` (never a provider).
+
 ## Rules this package lives by
 
-- **It takes an xunit dependency, and nothing else does.** Shipping the conformance suite is the
-  point: a transport written outside this repository should inherit the contract rather than
-  reimplement a reading of it. Everything else here is framework-agnostic.
+- **It takes an xunit dependency, and nothing else does.** Shipping the conformance suites is the
+  point: a transport or store written outside this repository should inherit the contract rather
+  than reimplement a reading of it. Everything else here is framework-agnostic, the pins aside: they
+  report through xunit's `Assert.Fail`, and expose the same findings framework-free through
+  `FindViolations`.
 - **The doubles answer to the same contract as the real thing.** The capturing sender rejects a
   structurally invalid message exactly as a transport would, and it passes the conformance suite —
   untested test infrastructure produces false green everywhere downstream.

@@ -2,6 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The engine's migrations assembly, which the collation and latest-migration pins read
+         without a database. -->
+    <ProjectReference Include="..\..\..\src\apps\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+    <!-- The pins themselves, shared with every suite that owns a migrations assembly. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />

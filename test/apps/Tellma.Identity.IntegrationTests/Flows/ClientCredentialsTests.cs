@@ -22,7 +22,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Service_account_obtains_an_access_token_with_explicit_audience()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idcc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idcc");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await CreateServiceAccountAsync(
@@ -55,12 +55,47 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal(account.ClientId, payload.RootElement.GetProperty("sub").GetString());
             Assert.Equal("http://localhost/", payload.RootElement.GetProperty("iss").GetString());
             Assert.Equal("https://acme.app.tellma.com", ReadSingleOrArray(payload.RootElement, "aud").Single());
+
+            // A machine token says so, for the resource server to read rather than infer.
+            Assert.Equal("service", payload.RootElement.GetProperty("tellma_kind").GetString());
+        }
+
+        [Fact]
+        public async Task A_client_cannot_choose_the_kind_its_token_carries()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idcckind");
+            using HttpClient client = factory.CreateClient();
+
+            ServiceAccountCredentials account = await CreateServiceAccountAsync(
+                factory, ["https://acme.app.tellma.com"]);
+
+            // A request parameter named after the claim is ignored like any unknown parameter:
+            // the kind comes from the grant type alone.
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = account.ClientId,
+                    ["client_secret"] = account.ClientSecret,
+                    ["scope"] = "tellma_api",
+                    ["resource"] = "https://acme.app.tellma.com",
+                    ["tellma_kind"] = "individual",
+                }),
+                TestContext.Current.CancellationToken);
+
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, body);
+
+            using var document = JsonDocument.Parse(body);
+            using JsonDocument payload = DecodeJwtPayload(document.RootElement.GetProperty("access_token").GetString()!);
+            Assert.Equal("service", payload.RootElement.GetProperty("tellma_kind").GetString());
         }
 
         [Fact]
         public async Task Invalid_client_secret_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idccbad");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idccbad");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await CreateServiceAccountAsync(factory, []);

@@ -26,13 +26,13 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Gender_is_optional_and_stored_when_supplied()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idgender");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idgender");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new object[]
@@ -64,13 +64,13 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task The_arabic_invitation_addresses_a_woman_in_the_feminine()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idgendermail");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idgendermail");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new
                 {
                     users = new object[]

@@ -5,13 +5,20 @@
 ```ts
 
 // @public
+export interface TmCategoricalTone {
+    readonly mark: TmTokenValue;
+    readonly onTint: TmTokenValue;
+    readonly tint: TmTokenValue;
+}
+
+// @public
 export type TmColorRamp = Partial<Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>>;
 
 // @public
 export function tmEmitCss(tokens: TmTokens): string;
 
 // @public
-export function tmEmittedSchemeVars(tokens: TmTokens, scheme: 'light' | 'dark'): Map<string, string>;
+export function tmEmittedSchemeVars(tokens: TmTokens, scheme: 'dark' | 'light'): Map<string, string>;
 
 // @public
 export type TmGreyRamp = Record<25 | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, TmTokenValue>;
@@ -43,7 +50,8 @@ export interface TmSchemeColors {
         readonly strong: TmTokenValue;
         readonly divider: TmTokenValue;
     };
-    readonly colorScheme: 'light' | 'dark';
+    readonly categorical: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, TmCategoricalTone>>;
+    readonly colorScheme: 'dark' | 'light';
     readonly field: {
         readonly bg: TmTokenValue;
         readonly bgDisabled: TmTokenValue;
@@ -62,6 +70,7 @@ export interface TmSchemeColors {
         readonly bg: TmTokenValue;
         readonly text: TmTokenValue;
     };
+    readonly sequential: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6 | 7, TmTokenValue>>;
     readonly status: {
         readonly success: TmStatusColors;
         readonly warning: TmStatusColors;

@@ -13,11 +13,14 @@
  *   node scripts/api-extractor.mjs --approve   # regenerate the goldens
  *
  * Every public-API change is therefore an explicit, reviewed act
- * (`pnpm run api:approve` + commit).
+ * (`pnpm run api:approve` + commit). Both paths sort every union into one
+ * canonical order first, so the build path that produced the d.ts (clean,
+ * warm cache, single project) never shows up as drift.
  */
 import { createRequire } from 'node:module';
 
-import { discoverLibraries } from '../tools/workspace.mjs';
+import { normalizeUnionOrder } from '../tools/api/union-order.mjs';
+import { discoverLibraries, discoverNodePackages } from '../tools/workspace.mjs';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,11 +30,12 @@ const require = createRequire(join(clientDir, 'package.json'));
 const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
 
 /**
- * Every published entry point, discovered from the workspace (any folder
- * with an ng-package.json). The MCP Node package has none, so it stays out
- * of golden scope by construction. `publicApi` is the source entry point
- * whose `@packageDocumentation` header is restored into the flattened d.ts
- * (see `prepareDts`).
+ * Every published entry point, discovered from the workspace: each folder
+ * with an ng-package.json, and each typed subpath of a Node package's
+ * `exports` map (its compiled d.ts). The MCP Node package exports none, so
+ * it stays out of golden scope by construction. `publicApi` is the source
+ * entry point whose `@packageDocumentation` header is restored into the
+ * flattened d.ts (see `prepareDts`).
  *
  * A library may opt individual entry points out of golden scope via its
  * package.json policy field `"tellma".apiGoldens.exclude` — the mechanism
@@ -40,7 +44,7 @@ const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
  * script's bidirectional coverage check) so a typo can never silently
  * orphan an exclusion.
  */
-const ENTRY_POINTS = discoverLibraries(clientDir).flatMap((library) => {
+const ENTRY_POINTS = [...discoverLibraries(clientDir), ...discoverNodePackages(clientDir)].flatMap((library) => {
   const excluded = new Set(library.tellma?.apiGoldens?.exclude ?? []);
   for (const id of excluded) {
     if (!library.entryPoints.some((entryPoint) => entryPoint.id === id)) {
@@ -197,6 +201,10 @@ for (const entryPoint of ENTRY_POINTS) {
             types: [],
             // Cross-package d.ts imports resolve against the BUILT packages.
             paths: {
+              '@tellma/core': ['./dist/core'],
+              '@tellma/core/*': ['./dist/core/*'],
+              '@tellma/core-testing': ['./dist/core-testing'],
+              '@tellma/core-testing/*': ['./dist/core-testing/*'],
               '@tellma/core-ui': ['./dist/core-ui'],
               '@tellma/core-ui/*': ['./dist/core-ui/*'],
               '@tellma/core-ui-tokens': ['./dist/core-ui-tokens'],
@@ -209,8 +217,8 @@ for (const entryPoint of ENTRY_POINTS) {
         enabled: true,
         reportFileName: entryPoint.report,
         // The extractor always writes to the temp folder; the committed
-        // golden is written/compared AFTER the ɵ filter below, so both
-        // paths see the same filtered shape.
+        // golden is written/compared AFTER the ɵ filter and the union sort
+        // below, so both paths see the same shape.
         reportFolder: tempFolder,
         reportTempFolder: tempFolder,
       },
@@ -245,9 +253,13 @@ for (const entryPoint of ENTRY_POINTS) {
   }
 
   // The golden-shaped report: the generated surface minus the ɵ blocks
-  // (private-by-convention, excluded from the goldens by spec).
-  const report = stripPrivateByConvention(
-    readFileSync(join(tempFolder, entryPoint.report), 'utf8'),
+  // (private-by-convention, excluded from the goldens by spec), with every
+  // union in canonical order. The emitter prints an inferred union in the
+  // order the compiler first met its member types, which differs between a
+  // clean build, a warm .angular/cache and a single-project build; sorting
+  // makes the report a function of the public API alone.
+  const report = normalizeUnionOrder(
+    stripPrivateByConvention(readFileSync(join(tempFolder, entryPoint.report), 'utf8')),
   );
 
   // Documentation gate: every public member carries TSDoc and every entry

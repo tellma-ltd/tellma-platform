@@ -10,7 +10,13 @@ comparison over absent values is easy to get subtly wrong and very hard to notic
 
 | Suite | What it proves |
 |---|---|
-| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both. |
+| `DifferentialTests` | The rows on the server are the rows in memory, and every corpus query answers the same on both — restrictions to key sets included, with each table of keys declared ahead of the statement the way a host would. A query compiled with parameters left out is answered by the interpreter applying the omission rule itself, at evaluation time and over the text as written, with a value supplied for every parameter all the same. |
+| `ConstantDifferentialTests` | Every constant statement of the corpus answers with exactly one row, each value the one the interpreter computes with no row to read and each column's promise about absence kept; and a statement and a query bound from the same values see the same day. |
+| `CalendarSweepTests` | Every calendar function, in the Gregorian, Ethiopian and Umm al-Qura calendars, answers the same as the interpreter on every day from 1900 to 2100. The days are generated on the server and in memory by the same rules, and run past both ends of the month table, where every Umm al-Qura answer is absent. |
+| `PartialMonthTableTests` | A month table that starts partway through a year, as a host's may: a difference in whole years whose correction reads a month before the table's first is absent, and one that reads a month it holds is counted as usual. The table is copied from the fixture's own the first time a test needs it. |
+| `ParameterBindingDifferentialTests` | A text with its arguments written in as literals and nothing declared returns the rows the original returns with those arguments bound and its omitted parameters folded, both as the interpreter says; and a measure aggregated over the rows its printed condition admits is the measure itself. |
+| `FilterStructureTests` | A rebase onto a navigation's target and a semi-join over another entity's rows are each the exact complement of their negation — the rows whose navigation reaches nothing, and the rows nothing points at, included — and one compiled statement answers for every user. |
+| `EmbeddingTests` | A compiled statement embeds in SQL of a host's own: its body counts as a derived table, unordered or paged, with its prologue written first, and with the host's own hint clause when the statement asks to be planned afresh; and keys one statement captures into a table restrict a second one in the same batch. |
 | `BackendFactsTests` | Every function that promises a value produces one even when everything it reads is missing; division keeps the fractional digits the language promises; emitted SQL means the same thing under hostile connection settings; and every zone the embedded table resolves to is one the server has. |
 
 Absence comes from **nullable columns with real NULL rows**, never from a `null` literal: a literal
@@ -35,8 +41,11 @@ export TELLMA_TEST_SQL='Server=localhost;Integrated Security=true;TrustServerCer
 dotnet test test/core/Tellma.Core.Queryex.IntegrationTests
 ```
 
-The connection string may name any database; the fixture creates and uses `TellmaQueryexTests`, and
-rebuilds its tables on every run.
+The connection string may name any database. `LedgerDatabase`, the collection fixture, starts
+the shared `SqlServerFixture` of `Tellma.Testing.Support` and creates a uniquely named database on it, in the platform collation
+(`Latin1_General_100_CI_AS`), with the ledger's tables and rows; on an existing server the database
+is dropped when the run ends. The fixture's text columns keep the collation they declare; the
+database's is what literals and table variables get.
 
 Every class here is tagged `Category=Integration`, which is how CI both excludes it from the pull-request
 run and includes it in the integration job. A class without the trait runs in neither.

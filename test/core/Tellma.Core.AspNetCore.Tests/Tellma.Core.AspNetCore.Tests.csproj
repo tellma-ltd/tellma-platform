@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The suite hosts the real pipeline on a test server. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <!-- The identity engine, so the in-proc mode's wiring runs against the real engine. -->
+    <ProjectReference Include="..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The platform's email pipeline and its capturing transport, so the in-proc engine's mail goes
+         through the real router. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The shared reading of the checked-in alert queries. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- Bearer tokens minted against the test issuer's key. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <!-- MetricCollector, for the CSRF and step-up instruments. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- FakeTimeProvider, so the registry's staleness bound runs on a clock the suite moves. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
+    <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
+    <!-- The launch-landing vectors the client's launch redirect reads too: the sign-in's landing follows the same file. -->
+    <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Bff\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The host's alert queries are read at runtime and cross-checked against the emitted
+         instrument, tag and tag-value names, so a telemetry rename turns an alert query red. -->
+    <Content Include="..\..\..\infra\monitoring\host\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

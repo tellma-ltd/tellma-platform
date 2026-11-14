@@ -1,0 +1,30 @@
+{
+  "name": "tellma-platform",
+  "version": "0.0.0",
+  "description": "The root of the repository's pnpm workspace. Its scripts run the client gates from the repository root; each one forwards to the platform's Angular workspace in client/.",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "pnpm --dir client run start",
+    "build": "pnpm --dir client run build",
+    "build:showcase": "pnpm --dir client run build:showcase",
+    "test": "pnpm --dir client run test",
+    "lint": "pnpm --dir client run lint",
+    "typecheck": "pnpm --dir client run typecheck",
+    "lint:test": "pnpm --dir client run lint:test",
+    "e2e": "pnpm --dir client run e2e",
+    "tokens:build-css": "pnpm --dir client run tokens:build-css",
+    "tokens:check": "pnpm --dir client run tokens:check",
+    "assets:generate": "pnpm --dir client run assets:generate",
+    "identity:copy-assets": "pnpm --dir client run identity:copy-assets",
+    "api:check": "pnpm --dir client run api:check",
+    "api:approve": "pnpm --dir client run api:approve",
+    "docs:build": "pnpm --dir client run docs:build",
+    "golden:approve": "pnpm --dir client run golden:approve",
+    "size:check": "pnpm --dir client run size:check"
+  }
+}

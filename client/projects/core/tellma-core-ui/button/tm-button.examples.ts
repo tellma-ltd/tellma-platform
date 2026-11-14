@@ -32,22 +32,37 @@ export const PendingSave = {
   template: `<button tmButton variant="primary" [pending]="true">Save</button>`,
 };
 
-/** An icon-only button must carry an accessible name. */
+/**
+ * An icon-only button must carry an accessible name. The glyph is a
+ * `tm-icon`, sized by the button; `searchIcon` is the `Search` data from
+ * `lucide` (or use `name` with a registered icon).
+ */
 export const IconOnly = {
   template: `
     <button tmButton aria-label="Search">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
+      <tm-icon [svg]="searchIcon" />
+    </button>
+  `,
+};
+
+/** A `tm-icon` child takes the button's icon size and hides while pending. */
+export const WithIcon = {
+  template: `<button tmButton variant="primary"><tm-icon name="plus" /> Add a line</button>`,
+};
+
+/** A link styled as a button stays a link: Mod+click opens a new tab. */
+export const Link = {
+  template: `<a tmButton variant="primary" href="/customers/new">New customer</a>`,
+};
+
+/**
+ * An action the user may not take says why: focusable, activation
+ * swallowed, the reason shown on hover, focus and tap.
+ */
+export const DisabledWithReason = {
+  template: `
+    <button tmButton disabledReason="Needs the Customers: Create and edit permission.">
+      Edit
     </button>
   `,
 };

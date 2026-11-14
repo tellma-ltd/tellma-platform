@@ -6,6 +6,7 @@
 using System.Globalization;
 using System.Text;
 using Tellma.Core.Queryex;
+using Tellma.Queryex.Testing.Semantics;
 
 namespace Tellma.Queryex.Testing.Schema
 {
@@ -43,6 +44,9 @@ namespace Tellma.Queryex.Testing.Schema
                 AppendTable(script, entity);
             }
 
+            // The host's month table, which no entity describes: the schema names it only as the
+            // table one calendar's months are read from.
+            script.Append(CalendarMonths.Create());
             return script.ToString();
         }
 
@@ -54,6 +58,7 @@ namespace Tellma.Queryex.Testing.Schema
 
             // Dropped in reverse declaration order so a table is gone before whatever pointed at it,
             // and unconditionally, so a half-created fixture still cleans up.
+            script.Append("DROP TABLE IF EXISTS ").Append(LedgerFixture.CalendarMonthsSource).Append(";\n");
             foreach (EntityDescriptor entity in LedgerFixture.Schema.Entities.Reverse())
             {
                 script.Append("DROP TABLE IF EXISTS ").Append(entity.Source).Append(";\n");
@@ -97,26 +102,20 @@ namespace Tellma.Queryex.Testing.Schema
         {
             script.Append("CREATE TABLE ").Append(entity.Source).Append(" (\n");
 
-            for (int index = 0; index < entity.Properties.Count; index++)
+            // The declared columns, then the ones the schema leaves out, which the table has to hold
+            // all the same for a query to read them by name.
+            List<string> columns = [];
+            foreach (PropertyDescriptor property in entity.Properties)
             {
-                PropertyDescriptor property = entity.Properties[index];
-                script.Append("    [").Append(property.Column).Append("] ")
-                    .Append(TypeName(StoreTypeOf(property)));
-
-                if (IsText(StoreTypeOf(property).Family))
-                {
-                    script.Append(" COLLATE ").Append(Collation);
-                }
-
-                script.Append(property.IsNotNull ? " NOT NULL" : " NULL");
-                if (index < entity.Properties.Count - 1)
-                {
-                    script.Append(',');
-                }
-
-                script.Append('\n');
+                columns.Add(Column(property.Column, StoreTypeOf(property), property.IsNotNull));
             }
 
+            foreach (UndeclaredColumn undeclared in LedgerFixture.UndeclaredColumns(entity))
+            {
+                columns.Add(Column(undeclared.Name, undeclared.StoreType, isNotNull: false));
+            }
+
+            script.Append(string.Join(",\n", columns)).Append('\n');
             script.Append(");\n");
             script.Append("ALTER TABLE ").Append(entity.Source).Append(" ADD CONSTRAINT [PK_")
                 .Append(entity.Name).Append("] PRIMARY KEY ([").Append(entity.Key.Column).Append("]);\n");
@@ -132,6 +131,17 @@ namespace Tellma.Queryex.Testing.Schema
                         .Append(" ([").Append(property.Column).Append("]);\n");
                 }
             }
+        }
+
+        /// <summary>One column definition.</summary>
+        /// <param name="name">The physical column name.</param>
+        /// <param name="type">Its type.</param>
+        /// <param name="isNotNull">Whether it refuses absent values.</param>
+        /// <returns>The definition, indented and without a trailing comma.</returns>
+        private static string Column(string name, QueryexStoreType type, bool isNotNull)
+        {
+            string collation = IsText(type.Family) ? " COLLATE " + Collation : string.Empty;
+            return "    [" + name + "] " + TypeName(type) + collation + (isNotNull ? " NOT NULL" : " NULL");
         }
 
         /// <summary>The declared type of a property, or the default for its type in the language.</summary>
@@ -170,12 +180,16 @@ namespace Tellma.Queryex.Testing.Schema
         private static IEnumerable<string> SchemaNames()
         {
             HashSet<string> seen = new(StringComparer.Ordinal);
-            foreach (EntityDescriptor entity in LedgerFixture.Schema.Entities)
+            IEnumerable<string> sources = LedgerFixture.Schema.Entities
+                .Select(entity => entity.Source)
+                .Append(LedgerFixture.CalendarMonthsSource);
+
+            foreach (string source in sources)
             {
-                int close = entity.Source.IndexOf(']', StringComparison.Ordinal);
-                if (entity.Source.StartsWith('[') && close > 1 && seen.Add(entity.Source[1..close]))
+                int close = source.IndexOf(']', StringComparison.Ordinal);
+                if (source.StartsWith('[') && close > 1 && seen.Add(source[1..close]))
                 {
-                    yield return entity.Source[1..close];
+                    yield return source[1..close];
                 }
             }
         }

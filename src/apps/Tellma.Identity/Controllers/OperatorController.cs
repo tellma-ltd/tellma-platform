@@ -17,12 +17,14 @@ namespace Tellma.Identity.Controllers
     /// <summary>
     ///     The operator (control-plane) surface: global user lookup, Temporary Access Pass
     ///     issuance, and audit access. Absent in in-proc deployments (no control plane). User
-    ///     disable/enable/purge, impersonation, and scope/key administration are deferred.
+    ///     disable/enable/purge, impersonation, and scope/key administration are deferred. Mapped
+    ///     under version 1 of the management API (<c>api/identity/v1</c>).
     /// </summary>
     /// <param name="userManager">The Identity user manager.</param>
     /// <param name="tapService">Temporary Access Pass issuance.</param>
     [ApiController]
     [ControlPlaneOnly]
+    [ManagementApi(ManagementApiVersions.V1)]
     [Authorize(AuthenticationSchemes = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme,
         Policy = ApiPolicies.ControlPlaneScope)]
     public sealed class OperatorController(
@@ -32,7 +34,8 @@ namespace Tellma.Identity.Controllers
         /// <summary>Reads a global-directory user by subject.</summary>
         /// <param name="sub">The subject identifier.</param>
         /// <returns>The user, or 404.</returns>
-        [HttpGet("api/identity/users/{sub}")]
+        [HttpGet("users/{sub}")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.GetUser)]
         public async Task<ActionResult<OperatorUserResponse>> GetUser(string sub)
         {
             TellmaIdentityUser? user = await userManager.FindByIdAsync(sub);
@@ -52,7 +55,8 @@ namespace Tellma.Identity.Controllers
         /// <summary>Issues a Temporary Access Pass for admin-assisted recovery.</summary>
         /// <param name="sub">The subject to recover.</param>
         /// <returns>The one-time pass, or 404 when the user does not exist.</returns>
-        [HttpPost("api/identity/users/{sub}/temporary-access-passes")]
+        [HttpPost("users/{sub}/temporary-access-passes")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.IssueTemporaryAccessPass)]
         public async Task<ActionResult<TemporaryAccessPassResponse>> IssueTap(string sub)
         {
             // Audit attribution must not depend on an optional scope: the subject claim (or the

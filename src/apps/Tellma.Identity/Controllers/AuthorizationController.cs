@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Globalization;
@@ -17,7 +16,6 @@ using System.Security.Claims;
 using Tellma.Identity.Controllers.ViewModels;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
-using Tellma.Identity.Options;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -31,19 +29,16 @@ namespace Tellma.Identity.Controllers
     /// </summary>
     /// <param name="applicationManager">The OpenIddict application manager.</param>
     /// <param name="policyService">The authentication-policy engine.</param>
-    /// <param name="principalFactory">Protocol principal assembly.</param>
-    /// <param name="authorizationManager">The OpenIddict authorization manager.</param>
+    /// <param name="principalFactory">Protocol principal assembly, and the consent memory it records.</param>
     /// <param name="userManager">The Identity user manager.</param>
-    /// <param name="engineOptions">The engine options (route prefix).</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="timeProvider">The clock.</param>
+    [RequestedLanguage]
     public sealed class AuthorizationController(
         IOpenIddictApplicationManager applicationManager,
         IAuthenticationPolicyService policyService,
         TellmaPrincipalFactory principalFactory,
-        IOpenIddictAuthorizationManager authorizationManager,
         UserManager<TellmaIdentityUser> userManager,
-        IOptions<TellmaIdentityOptions> engineOptions,
         IAuditLogger auditLogger,
         TimeProvider timeProvider) : Controller
     {
@@ -68,10 +63,9 @@ namespace Tellma.Identity.Controllers
             OpenIddictRequest request = HttpContext.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
 
-            // OpenIddict defers manager-based validation (client existence, PAR, redirect_uri) to
-            // the final sign-in in pass-through mode. Enforce the two guards that decide whether
-            // the interaction may even begin up front, so an unknown client or a BFF bypassing
-            // PAR gets a clean error instead of failing deep in the sign-in.
+            // The two guards that decide whether the interaction may even begin are also enforced
+            // here, independently of OpenIddict's validation, so an unknown client or a BFF
+            // bypassing PAR gets a clean error instead of failing deep in the sign-in.
             object? application = string.IsNullOrEmpty(request.ClientId)
                 ? null
                 : await applicationManager.FindByClientIdAsync(request.ClientId);
@@ -84,6 +78,15 @@ namespace Tellma.Identity.Controllers
                 && string.IsNullOrEmpty(request.RequestUri))
             {
                 return ForbidProtocol(Errors.InvalidRequest, "This client must use pushed authorization requests.");
+            }
+
+            // Any other request OpenIddict refused while validating it — a redirect URI, scope or
+            // resource the client does not hold — still reaches this action: error pass-through
+            // hands it on so the error page can render the refusal. The interaction must never
+            // begin for it.
+            if (ProtocolRefusal.Find(HttpContext) is { } refusal)
+            {
+                return refusal;
             }
 
             // The tenant's method allow-list rides the pushed request; unknown vocabulary is a
@@ -168,7 +171,7 @@ namespace Tellma.Identity.Controllers
                     WriteReauthMarker(attemptId, nowUnixSeconds);
                 }
 
-                return RedirectToLogin(evaluation, stepUp: assurance is not null);
+                return RedirectToLogin(request, evaluation, stepUp: assurance is not null);
             }
 
             TellmaIdentityUser? user = await userManager.GetUserAsync(cookie.Principal!);
@@ -199,7 +202,7 @@ namespace Tellma.Identity.Controllers
                     WriteReauthMarker(attemptId, nowUnixSeconds);
                 }
 
-                return RedirectToLogin(fresh, stepUp: false);
+                return RedirectToLogin(request, fresh, stepUp: false);
             }
 
             if (user.LifecycleState != UserLifecycleState.Active)
@@ -208,11 +211,14 @@ namespace Tellma.Identity.Controllers
             }
 
             // Consent: first-party clients are implicit; third-party clients need an explicit,
-            // remembered grant. A non-interactive client cannot be shown the consent form.
+            // remembered grant for these scopes and these resources, so a grant the user gave for
+            // one place never answers for another. A non-interactive client cannot be shown the
+            // consent form.
             string? consentType = await applicationManager.GetConsentTypeAsync(application);
             if (consentType == ConsentTypes.Explicit)
             {
-                bool hasConsent = await HasPermanentAuthorizationAsync(user, application, request);
+                bool hasConsent = await principalFactory.HasCoveringAuthorizationAsync(
+                    user.Id, application, [.. request.GetScopes()], [.. request.GetResources()], HttpContext.RequestAborted);
                 if (!hasConsent || request.HasPromptValue(PromptValues.Consent))
                 {
                     if (request.HasPromptValue(PromptValues.None))
@@ -233,6 +239,7 @@ namespace Tellma.Identity.Controllers
                     {
                         ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
                         Scope = request.Scope ?? string.Empty,
+                        Targets = ConsentTargetCatalog.Describe(request.GetResources()),
                     });
                 }
             }
@@ -254,6 +261,13 @@ namespace Tellma.Identity.Controllers
         {
             OpenIddictRequest request = HttpContext.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
+
+            // The consent form posts the whole request back, which OpenIddict validates again: a
+            // request refused this time is never granted, whatever the form says.
+            if (ProtocolRefusal.Find(HttpContext) is { } refusal)
+            {
+                return refusal;
+            }
 
             if (User.Identity?.IsAuthenticated != true)
             {
@@ -359,37 +373,18 @@ namespace Tellma.Identity.Controllers
                 : SignIn(new ClaimsPrincipal(result.Identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
 
-        /// <summary>Whether a valid permanent authorization already covers the requested scopes.</summary>
-        private async Task<bool> HasPermanentAuthorizationAsync(
-            TellmaIdentityUser user, object application, OpenIddictRequest request)
-        {
-            string clientObjectId = (await applicationManager.GetIdAsync(application))!;
-            IAsyncEnumerator<object> authorizations = authorizationManager.FindAsync(
-                subject: user.Id,
-                client: clientObjectId,
-                status: Statuses.Valid,
-                type: AuthorizationTypes.Permanent,
-                scopes: request.GetScopes(),
-                HttpContext.RequestAborted).GetAsyncEnumerator(HttpContext.RequestAborted);
-            await using (authorizations)
-            {
-                return await authorizations.MoveNextAsync();
-            }
-        }
-
         /// <summary>
         ///     Redirects to the login UI with the policy context the page needs to offer only the
         ///     right methods. The query is advisory UI state — enforcement happens back here, on
         ///     the pushed request, when the browser returns.
         /// </summary>
-        private RedirectResult RedirectToLogin(PolicyEvaluation evaluation, bool stepUp)
+        private RedirectResult RedirectToLogin(OpenIddictRequest request, PolicyEvaluation evaluation, bool stepUp)
         {
             // Rebuild the exact authorize URL (query for GET, form for POST) as the return target.
             string returnUrl = Request.HasFormContentType
                 ? Request.PathBase + Request.Path + QueryString.Create(Request.Form)
                 : Request.PathBase + Request.Path + Request.QueryString;
 
-            string prefix = engineOptions.Value.PathBase;
             QueryBuilder query = new()
             {
                 { "returnUrl", returnUrl },
@@ -411,7 +406,19 @@ namespace Tellma.Identity.Controllers
                 query.Add("tier", evaluation.RequiredTier);
             }
 
-            return Redirect(prefix + "/Identity/Account/Login" + query.ToQueryString());
+            // The language the client asked for (spec 0010 §A.10), read from the validated
+            // request so a pushed request's value is found as readily as a query's. The return
+            // address holds it too, but nested where the sign-in pages do not look.
+            if (CarriedQuery.NormalizeUiLocales(request.UiLocales) is { } uiLocales)
+            {
+                query.Add(CarriedQuery.UiLocalesName, uiLocales);
+            }
+
+            // The sign-in page's address is generated by routing, so it carries the engine's mount
+            // point and the host's path base, the same base the return address above was built on.
+            string login = Url.Page("/Account/Login", new { area = TellmaIdentityConstants.AreaName })
+                ?? throw new InvalidOperationException("The sign-in page cannot be addressed.");
+            return Redirect(login + query.ToQueryString());
         }
 
         /// <summary>Returns a protocol error through the OpenIddict response pipeline.</summary>

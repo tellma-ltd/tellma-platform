@@ -96,11 +96,17 @@ namespace Tellma.Identity.Hosting
                     // encrypted (the default).
                     server.DisableAccessTokenEncryption();
 
-                    // `resource` parameters are validated against per-client rsrc: permissions
-                    // (granted at provisioning time). The alternative global registry is
+                    // `resource` parameters are validated by one engine check at every endpoint
+                    // that accepts them (the resource grant handlers below), against the client's
+                    // rsrc: permissions granted at provisioning time — plus one per-tenant path
+                    // under a granted origin — or against the presented grant's own resources.
+                    // OpenIddict's two built-in checks are therefore off: its global registry is
                     // startup-static and cannot know audiences of distributions provisioned at
-                    // runtime, so it is disabled; the per-client check is strict and remains on.
+                    // runtime, and its per-client permission check knows neither the per-tenant
+                    // pattern nor the narrowing rule, and answers invalid_request rather than
+                    // invalid_target.
                     server.DisableResourceValidation();
+                    server.IgnoreResourcePermissions();
 
                     // Only asymmetric X.509 material is ever registered — a symmetric signing key
                     // would win selection and emit HS256 tokens that offline resource servers
@@ -144,6 +150,23 @@ namespace Tellma.Identity.Hosting
                     server.AddEventHandler(Handlers.CaptureAuditSubjectHandler.Descriptor);
                     server.AddEventHandler(Handlers.AuditTokenResponseHandler.Descriptor);
                     server.AddEventHandler(Handlers.AuditRevocationResponseHandler.Descriptor);
+
+                    // The principal kind (individual or service) is written into every access
+                    // token from the grant type, in one place, after OpenIddict has built each
+                    // token's principal and before any token is signed.
+                    server.AddEventHandler(Handlers.TellmaKindClaimHandler.Descriptor);
+
+                    // The resource grant check, one per endpoint that accepts `resource`, all
+                    // asking the same validator: authorization, pushed authorization, device
+                    // authorization and token. A device request's resources are carried into its
+                    // codes, and a token request against a stored grant narrows only the access
+                    // token's audience, never the refresh token's.
+                    server.AddEventHandler(Handlers.ValidateAuthorizationResourcesHandler.Descriptor);
+                    server.AddEventHandler(Handlers.ValidatePushedAuthorizationResourcesHandler.Descriptor);
+                    server.AddEventHandler(Handlers.ValidateDeviceAuthorizationResourcesHandler.Descriptor);
+                    server.AddEventHandler(Handlers.AttachDeviceAuthorizationResourcesHandler.Descriptor);
+                    server.AddEventHandler(Handlers.ValidateTokenResourcesHandler.Descriptor);
+                    server.AddEventHandler(Handlers.NarrowAccessTokenAudienceHandler.Descriptor);
 
                     // Pass-through: the engine's controllers shape every interactive protocol
                     // response while OpenIddict handles the wire format. The device-authorization

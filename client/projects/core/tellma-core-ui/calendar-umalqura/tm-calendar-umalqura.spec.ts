@@ -3,8 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import golden from '../l10n/format-golden.json';
-import { tmFormatDate, tmParseDate, type TmDateStyle } from '@tellma/core-ui/l10n';
+import {
+  tmFormatDate,
+  tmFormatDateTime,
+  tmFormatMonthName,
+  tmFormatRelativeTime,
+  tmParseDate,
+} from '@tellma/core-ui/l10n';
 
 import { tmUmalquraCalendar } from './tm-calendar-umalqura';
 
@@ -58,15 +63,48 @@ describe('tmUmalquraCalendar', () => {
     expect(tmFormatDate(iso as string, 'en-US', { calendar, dateStyle: 'long' })).toContain('Safar');
   });
 
-  it('asserts its rows of the committed formatting golden', () => {
-    const rows = golden.date.filter((row) => row.calendar === 'islamic-umalqura');
-    expect(rows.length).toBeGreaterThanOrEqual(40);
-    for (const row of rows) {
-      expect(
-        tmFormatDate(row.iso, row.locale, { calendar, dateStyle: row.dateStyle as TmDateStyle }),
-        `${row.locale} ${row.dateStyle} ${row.iso}`,
-      ).toBe(row.expected);
-    }
+  it('names its twelve months, and writes a number past them', () => {
+    expect(tmFormatMonthName(1, 'en-GB', { calendar })).toBe('Muharram');
+    expect(tmFormatMonthName(9, 'en-GB', { calendar })).toBe('Ramadan');
+    expect(tmFormatMonthName(9, 'ar-SA', { calendar })).toBe('رمضان');
+    expect(tmFormatMonthName(13, 'en-GB', { calendar })).toBe('13');
+  });
+
+  it('writes the period styles in its own months and years, without the era', () => {
+    // 5 March 2026 is 16 Ramadan 1447.
+    expect(tmFormatDate('2026-03-05', 'en-GB', { calendar, dateStyle: 'month' })).toBe('Ram. 1447');
+    expect(tmFormatDate('2026-03-05', 'en-GB', { calendar, dateStyle: 'quarter' })).toBe('Q3 1447');
+    expect(tmFormatDate('2026-03-05', 'en-GB', { calendar, dateStyle: 'year' })).toBe('1447');
+    expect(tmFormatDate('2026-03-05', 'en-GB', { calendar, dateStyle: 'weekday' })).toBe(
+      'Thursday, 16 Ram. 1447',
+    );
+    expect(tmFormatDate('2026-03-05', 'en-US', { calendar, dateStyle: 'year' })).toBe('1447');
+  });
+
+  it('dates an instant in the display zone, the era dropped and its separator kept', () => {
+    // 20 October 2026, 10:42 in Riyadh, is 9 Jumada I 1448.
+    const at = '2026-10-20T07:42:00Z';
+    const timeZone = 'Asia/Riyadh';
+    expect(tmFormatDateTime(at, 'en-GB', { timeZone, calendar })).toBe('09/05/1448, 10:42');
+    // en-US writes the era between the year and the time: dropping it
+    // keeps the comma, never welding "1448" to "10:42".
+    expect(tmFormatDateTime(at, 'en-US', { timeZone, calendar })).toBe('5/9/1448, 10:42 AM');
+    expect(tmFormatDateTime(at, 'en-US', { timeZone, calendar, dateStyle: 'medium' })).toBe(
+      'Jum. I 9, 1448, 10:42 AM',
+    );
+    expect(tmFormatDateTime(at, 'en-GB', { timeZone, calendar, timeStyle: 'none' })).toBe(
+      '09/05/1448',
+    );
+    // The Hijri date turns at midnight in the zone, not in UTC.
+    expect(
+      tmFormatDateTime('2026-10-19T21:00:00Z', 'en-GB', { timeZone, calendar, timeStyle: 'none' }),
+    ).toBe('09/05/1448');
+    expect(
+      tmFormatDateTime('2026-10-19T20:59:59Z', 'en-GB', { timeZone, calendar, timeStyle: 'none' }),
+    ).toBe('08/05/1448');
+    expect(
+      tmFormatRelativeTime(at, 'en-GB', { now: Date.UTC(2026, 11, 1), timeZone, calendar }),
+    ).toBe('9 Jum. I 1448');
   });
 
   it('agrees with Intl.DateTimeFormat numeric fields over sampled dates (the drift gate)', () => {

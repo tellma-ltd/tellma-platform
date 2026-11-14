@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using static OpenIddict.Abstractions.OpenIddictConstants;
+
 namespace Tellma.Identity.Services.AuthenticationPolicy
 {
     /// <summary>
@@ -96,6 +98,59 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         ///     after a stronger one.
         /// </summary>
         public const string AcrAuthTime = "tellma_acr_auth_time";
+
+        /// <summary>
+        ///     The kind of principal an access token speaks for: <see cref="TellmaKinds.Individual" />
+        ///     or <see cref="TellmaKinds.Service" />. Written by the server from the grant type at
+        ///     issuance, into access tokens only, and never taken from a client or from a claim
+        ///     already on the principal — so a resource server can read it instead of inferring
+        ///     the kind from the presence of <c>auth_time</c>.
+        /// </summary>
+        public const string Kind = "tellma_kind";
+    }
+
+    /// <summary>The closed set of <see cref="TellmaClaims.Kind" /> values.</summary>
+    public static class TellmaKinds
+    {
+        /// <summary>
+        ///     A person: the token descends from an interactive <c>authorization_code</c> or
+        ///     <c>device_code</c> grant, directly or through any number of refreshes.
+        /// </summary>
+        public const string Individual = "individual";
+
+        /// <summary>
+        ///     A machine: the token was issued to a client acting under its own identity, through
+        ///     <c>client_credentials</c> or the exchange of one of its own machine tokens.
+        /// </summary>
+        public const string Service = "service";
+
+        /// <summary>
+        ///     The kind a token issued for a grant type speaks for, or null for a grant type that
+        ///     issues no access token here (the caller must then refuse to issue one).
+        /// </summary>
+        /// <param name="grantType">The token request's <c>grant_type</c>.</param>
+        /// <returns>The kind, or null.</returns>
+        /// <remarks>
+        ///     A refresh is always <see cref="Individual" /> because only the user grants hold
+        ///     refresh tokens a refresh can redeem: client credentials never issues one, and the
+        ///     token endpoint refuses to refresh a principal that is not a stored, active user. A
+        ///     token exchange is always <see cref="Service" /> because the token endpoint refuses
+        ///     any subject token that belongs to a user. Both rules are enforced by the token
+        ///     endpoint before a token is signed, so this mapping never labels a person as a
+        ///     machine or the reverse.
+        /// </remarks>
+        public static string? ForGrantType(string? grantType)
+        {
+            return grantType switch
+            {
+                GrantTypes.AuthorizationCode
+                    or GrantTypes.DeviceCode
+                    or GrantTypes.RefreshToken => Individual,
+                GrantTypes.ClientCredentials
+                    or GrantTypes.TokenExchange => Service,
+                _ => null,
+            };
+        }
     }
 
     /// <summary>Tellma-defined OAuth request parameters.</summary>

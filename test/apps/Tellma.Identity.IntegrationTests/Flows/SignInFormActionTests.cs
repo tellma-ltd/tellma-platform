@@ -5,6 +5,7 @@
 
 using System.Net;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -56,7 +57,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [InlineData("/Identity/Account/EmailCode?email=someone%40example.com")]
         public async Task A_page_resuming_an_authorization_permits_that_clients_callback(string page)
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idsignincsp" + (page.Contains("EmailCode", StringComparison.Ordinal) ? "code" : "login"), ClientSeed);
 
             string policy = await PolicyOfAsync(factory, page + Separator(page) + "returnUrl=" + Uri.EscapeDataString(AuthorizeUrl(ClientId)));
@@ -67,7 +68,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task An_ordinary_local_destination_widens_nothing()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idsignincsplocal", ClientSeed);
 
             string policy = await PolicyOfAsync(
@@ -79,7 +80,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_path_that_merely_ends_in_the_authorization_endpoint_widens_nothing()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idsignincspdecoy", ClientSeed);
 
             // The endpoint is matched whole, not by suffix. A route that happens to end in the same
@@ -94,7 +95,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task An_unregistered_client_widens_nothing()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idsignincspunknown", ClientSeed);
 
             // Nothing comes off the URL itself: the callbacks are read from the registration, so a
@@ -115,7 +116,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 seed[key] = value;
             }
 
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idsignincspboth", seed);
 
             // One page, two widenings: the federated buttons it renders and the callback it is
@@ -134,7 +135,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <returns>The <c>Content-Security-Policy</c> header value.</returns>
         private static async Task<string> PolicyOfAsync(StandaloneFactory factory, string url)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             using HttpResponseMessage response = await flow.Browser.GetAsync(
                 new Uri(url, UriKind.Relative), TestContext.Current.CancellationToken);
 

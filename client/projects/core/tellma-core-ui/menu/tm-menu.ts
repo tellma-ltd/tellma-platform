@@ -7,90 +7,112 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
-  computed,
+  contentChild,
   DestroyRef,
+  Directive,
   inject,
   input,
   isDevMode,
   output,
   signal,
   type Signal,
-  type TemplateRef,
+  TemplateRef,
   untracked,
   viewChild,
+  ViewEncapsulation,
 } from '@angular/core';
-import { Menu, MenuItem } from '@angular/aria/menu';
+import { Menu } from '@angular/aria/menu';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 
-import { TM_UI_TRANSLATE } from '@tellma/core-ui';
-import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 
-/** One actionable menu item. */
-export interface TmMenuItem {
-  /** Stable identity (also the activation key). */
-  readonly id: string;
-  /** Literal label. Provide exactly one of `label`/`labelKey`. */
-  readonly label?: string;
-  /** Label resolved through the UI translation seam. */
-  readonly labelKey?: string;
-  /** Leading inline-SVG icon template (rendered `aria-hidden`). */
-  readonly icon?: TemplateRef<void>;
-  /** Whether the item is disabled (kept navigable, never activates). */
-  readonly disabled?: boolean;
-  /**
-   * Keyboard-shortcut hint shown trailing the label in the muted hint color
-   * (e.g. `⌘C` / `Ctrl+C`). Display only — the caller pre-formats it for the
-   * platform; it never binds the accelerator.
-   */
-  readonly shortcut?: string;
-  /** Runs on activation (click, Enter, Space), before the menu closes. */
-  action(): void;
+import {
+  ɵtmIsMenuGroup,
+  ɵtmIsMenuLink,
+  ɵtmIsMenuSeparator,
+  ɵTmMenuHost,
+  ɵTmMenuList,
+  type ɵTmMenuRow,
+  ɵTmMenuRows,
+} from './internal/tm-menu-rows';
+import type {
+  TmMenuAnchor,
+  TmMenuEntry,
+  TmMenuItem,
+  TmMenuLink,
+  TmMenuOpenOptions,
+} from './tm-menu-entries';
+
+/**
+ * A block shown above the menu's rows, such as who is signed in at the top
+ * of a session menu. It sits outside the list of rows and is read as the
+ * menu's description when the menu opens.
+ *
+ * ```html
+ * <tm-menu #menu [items]="items()">
+ *   <ng-template tmMenuHeader>Signed in as {{ userName() }}</ng-template>
+ * </tm-menu>
+ * ```
+ *
+ * The block is for text and images only. Focus moves through the rows and
+ * never enters it, so a button or a link placed here could not be reached
+ * from the keyboard; in development the menu warns when it finds one.
+ *
+ * @tmGroup overlay
+ * @tmA11yNotes Rendered outside role="menu" and referenced by the menu's
+ *   aria-describedby, so it is announced once as the menu opens.
+ */
+@Directive({ selector: 'ng-template[tmMenuHeader]' })
+export class TmMenuHeaderDef {
+  /** The header template. */
+  readonly template = inject<TemplateRef<void>>(TemplateRef);
 }
 
-/** A visual separator between item groups. */
-export interface TmMenuSeparator {
-  /** Discriminates a separator entry. */
-  readonly separator: true;
-}
-
-/** One entry of a menu: an item or a separator. */
-export type TmMenuEntry = TmMenuItem | TmMenuSeparator;
-
-/** Where a menu opens: an element, a rectangle, or a point (right-click). */
-export type TmMenuAnchor = Element | DOMRect | { readonly x: number; readonly y: number };
-
-/** Options of {@link TmMenu.open}. */
-export interface TmMenuOpenOptions {
-  /** The element focus returns to when the menu closes via keyboard. */
-  readonly restoreFocus?: HTMLElement;
-}
+/** Counts menus, so each one's list and header ids are unique in the document. */
+let nextMenuId = 0;
 
 /**
  * Open menus, most-recently-opened last — the front-most gate for the
  * outside-POINTERDOWN dismissal (Escape rides the shared cross-component
- * dismissal stack in `@tellma/core-ui/private` instead, so a tooltip
+ * dismissal stack in `@tellma/core-ui/overlay` instead, so a tooltip
  * showing over an open menu never makes one Escape close both).
  */
 const openMenuStack: TmMenu[] = [];
 
 /**
- * A general-purpose menu: flat items + separators with icon and disabled
- * support, opened programmatically at an element, rectangle, or pointer
- * position (see `TmContextMenuTrigger` for the context-menu wiring). The
- * `@angular/aria` menu directives own the roles, roving focus, arrow/Home/
- * End navigation, and typeahead; `tm-menu` owns the overlay, open/close
- * semantics (Esc, Tab, outside click), focus restore, and label resolution.
+ * A general-purpose, data-driven menu. Its `items` are plain objects:
+ * items (optionally checkable, or disabled with a reason), links, submenus
+ * one level deep, labelled groups and separators. It opens from a
+ * `button[tmMenuTriggerFor]`, as a context menu (`tmContextMenuTrigger`),
+ * or programmatically at an element, rectangle, or pointer position.
+ *
+ * The `@angular/aria` menu directives own the roles, roving focus, arrow/
+ * Home/End navigation, submenu keys and typeahead; `tm-menu` owns the
+ * overlays, open/close semantics (Esc, Tab, outside press), focus restore,
+ * and label resolution.
+ *
+ * Rows are 30px tall, and 44px on viewports narrower than 576px, where
+ * they are pressed with a finger.
  *
  * @tmGroup overlay
- * @tmA11yNotes role="menu"/"menuitem" with roving tabindex from the aria
- *   pattern; Esc closes and restores focus to the invoking element; Tab
- *   closes and lets focus continue past the invoker; disabled items stay
- *   navigable but never activate.
+ * @tmA11yNotes role="menu" with menuitem, menuitemcheckbox and
+ *   menuitemradio rows on a roving tabindex; focus lands on the first row
+ *   (or the last, on request) as the menu opens. Esc closes one level per
+ *   press and restores focus to the invoking element; Tab closes and lets
+ *   focus continue past the invoker. Disabled rows stay navigable but never
+ *   activate, and a row disabled with a reason exposes that reason as its
+ *   description. Links are real anchors. Typeahead matches labels only;
+ *   shortcut hints are hidden from assistive technology.
  */
 @Component({
   selector: 'tm-menu',
-  imports: [Menu, MenuItem, NgTemplateOutlet, OverlayModule],
+  imports: [Menu, NgTemplateOutlet, OverlayModule, ɵTmMenuList, ɵTmMenuRows],
+  // Section notes (kept out of the markup, which ships in the bundle):
+  // - The panel is the overlay surface. It holds the optional header block,
+  //   then the aria menu (the list) whose rows ɵTmMenuRows renders.
+  // - Submenu overlays are inserted next to their parent rows, so their
+  //   events bubble through this panel too.
   template: `
     <ng-template
       [cdkConnectedOverlay]="anchored.overlayConfig()"
@@ -102,43 +124,42 @@ const openMenuStack: TmMenu[] = [];
       <div
         class="tm-menu__panel"
         (keydown)="onPanelKeydown($event)"
-        (contextmenu)="$event.preventDefault()"
+        (contextmenu)="onPanelContextMenu($event)"
       >
+        @if (header(); as header) {
+          <div class="tm-menu__header" [id]="headerId">
+            <ng-container [ngTemplateOutlet]="header.template" />
+          </div>
+        }
         <div
           ngMenu
-          #m="ngMenu"
+          tmMenuList
           class="tm-menu__list"
+          [id]="listId"
           [attr.aria-label]="ariaLabel()"
+          [attr.aria-describedby]="header() ? headerId : null"
           (itemSelected)="onItemSelected($event)"
         >
-          @for (entry of items(); track $index) {
-            @if (isSeparator(entry)) {
-              <div class="tm-menu__separator" role="separator"></div>
-            } @else {
-              <div
-                ngMenuItem
-                class="tm-menu__item"
-                [value]="entry.id"
-                [disabled]="entry.disabled ?? false"
-                [searchTerm]="labelOf(entry)()"
-              >
-                <span class="tm-menu__icon" aria-hidden="true">
-                  @if (entry.icon) {
-                    <ng-container [ngTemplateOutlet]="entry.icon" />
-                  }
-                </span>
-                <span class="tm-menu__label">{{ labelOf(entry)() }}</span>
-                @if (entry.shortcut; as shortcut) {
-                  <span class="tm-menu__shortcut" aria-hidden="true">{{ shortcut }}</span>
-                }
-              </div>
-            }
-          }
+          <tm-menu-rows [entries]="items()" />
         </div>
       </div>
     </ng-template>
   `,
   styleUrl: './tm-menu.css',
+  // The rows and the submenu panels are rendered by internal components, so
+  // the one stylesheet must reach markup this component did not stamp; every
+  // selector in it is tm-menu scoped.
+  encapsulation: ViewEncapsulation.None,
+  // Rows on every level hand their activations to this menu.
+  providers: [
+    {
+      provide: ɵTmMenuHost,
+      useFactory: (): ɵTmMenuHost => {
+        const menu = inject(TmMenu);
+        return { activate: (entry) => menu.ɵactivate(entry) };
+      },
+    },
+  ],
   host: {
     class: 'tm-menu',
     // The accessible name lives on the role="menu" list; strip it from the
@@ -147,8 +168,6 @@ const openMenuStack: TmMenu[] = [];
   },
 })
 export class TmMenu {
-  private readonly translate = inject(TM_UI_TRANSLATE);
-
   /** The menu's entries, in display order. */
   readonly items = input.required<readonly TmMenuEntry[]>();
   /** Accessible name of the menu (falls back to the invoker's context). */
@@ -158,11 +177,21 @@ export class TmMenu {
   readonly opened = output<void>();
   /** Emits when the menu closes. */
   readonly closed = output<void>();
-  /** Emits the activated item (its `action()` has already run). */
+  /**
+   * Emits the activated item (its `action()` has already run). Links and
+   * submenu parents never emit.
+   */
   readonly itemSelected = output<TmMenuItem>();
 
   /** Whether the menu is open. */
   readonly isOpen: Signal<boolean>;
+
+  /** The id of the element that carries `role="menu"`. */
+  protected readonly listId = `tm-menu-${nextMenuId++}`;
+  /** The id of the header block, which describes the menu. */
+  protected readonly headerId = `${this.listId}-header`;
+  /** The projected header block, if any. */
+  protected readonly header = contentChild(TmMenuHeaderDef);
 
   /** Whether the overlay is attached. */
   protected readonly expanded = signal(false);
@@ -178,9 +207,13 @@ export class TmMenu {
   ];
 
   private readonly overlay = viewChild(CdkConnectedOverlay);
-  private readonly menu = viewChild(Menu);
-  private restoreFocusTarget: HTMLElement | null = null;
-  private focusedOnOpen = false;
+  private readonly menu = viewChild<Menu<ɵTmMenuRow>>(Menu);
+  /** The element that invoked the open menu and takes focus back from it. */
+  private readonly invoker = signal<HTMLElement | null>(null);
+  /** The row that should take focus once the open menu has rendered. */
+  private readonly pendingFocus = signal<'first' | 'last' | null>(null);
+  /** Trigger buttons: a press on one is the trigger's to handle, not an outside press. */
+  private readonly triggers = new Set<Element>();
 
   /**
    * The shared anchored-overlay wiring. The re-measure runs after the NEXT
@@ -197,11 +230,8 @@ export class TmMenu {
     remeasure: 'afterNextRender',
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
-    onOutsideClick: () => this.close({ restoreFocus: false }),
+    onOutsideClick: (event) => this.onOutsideClick(event),
   });
-  /** Per-item label signals, cached by item reference. */
-  private readonly labelCache = new WeakMap<TmMenuItem, Signal<string>>();
-
   /**
    * The shared Escape-dismissal registration while open (document capture
    * — the aria menu registers its own Escape handler, a no-op for a
@@ -211,6 +241,12 @@ export class TmMenu {
    * one Escape, one layer.
    */
   private releaseEscape: (() => void) | null = null;
+  /**
+   * Whether a pointer press has begun since the menu last opened. Until
+   * one has, a click reported outside the panel can only be the tail of
+   * the gesture that opened the menu.
+   */
+  private pressedSinceOpen = false;
 
   /**
    * Dismiss on an outside POINTERDOWN, not the trailing click: Excel/Sheets
@@ -221,6 +257,7 @@ export class TmMenu {
    * reaches its target (e.g. the grid's drag start). Front-most menu only.
    */
   private readonly onDocumentPointerDownCapture = (event: PointerEvent): void => {
+    this.pressedSinceOpen = true;
     if (openMenuStack[openMenuStack.length - 1] !== this) {
       return;
     }
@@ -228,6 +265,15 @@ export class TmMenu {
     const panel = this.overlay()?.overlayRef?.overlayElement ?? null;
     if (target instanceof Node && panel !== null && panel.contains(target)) {
       return;
+    }
+    // A press on a trigger button toggles the menu from the button's own
+    // click; closing here first would make that click re-open it.
+    if (target instanceof Node) {
+      for (const trigger of this.triggers) {
+        if (trigger.contains(target)) {
+          return;
+        }
+      }
     }
     // A press on a MODAL SCRIM must dismiss only the menu: the press's
     // un-consumed trailing click would also fire the modal's backdrop
@@ -268,24 +314,50 @@ export class TmMenu {
       this.disarmDismissal();
     });
 
-    // Focus the menu once its items have rendered (the overlay content
-    // lands one render pass after attach); aria's focusin handler then
-    // activates the first item. Guarded so re-renders don't steal focus.
+    // Move focus onto the first (or last) row once the rows have rendered:
+    // the overlay content lands one render pass after attach. The request
+    // is cleared as it is served, so later re-renders never steal focus.
     afterRenderEffect(() => {
       const menu = this.menu();
-      if (menu === undefined || !this.expanded() || menu._items().length === 0) {
+      const target = this.pendingFocus();
+      if (menu === undefined || target === null || !this.expanded() || menu._items().length === 0) {
         return;
       }
-      if (!this.focusedOnOpen) {
-        this.focusedOnOpen = true;
-        untracked(() => menu.element.focus());
-      }
+      untracked(() => {
+        this.pendingFocus.set(null);
+        if (target === 'last') {
+          menu._pattern.last();
+        } else {
+          menu._pattern.first();
+        }
+        // Never leave focus outside an open menu, whose keys would be dead.
+        if (!menu.element.contains(document.activeElement)) {
+          menu.element.focus();
+        }
+      });
     });
+
+    // The header block is read, never operated: focus cannot reach into it.
+    if (isDevMode()) {
+      afterRenderEffect(() => {
+        if (this.header() === undefined || !this.expanded()) {
+          return;
+        }
+        const block = document.getElementById(this.headerId);
+        if (block?.querySelector('a[href], button, input, select, textarea, [tabindex]') != null) {
+          console.warn(
+            'tm-menu: tmMenuHeader holds interactive content, which the keyboard cannot reach. ' +
+              'Keep it to text and images.',
+          );
+        }
+      });
+    }
   }
 
   /**
    * Opens the menu at an element, rectangle, or pointer position. While
-   * already open, the menu re-anchors to the new position. Ignored (with a
+   * already open, the menu re-anchors to the new position. Focus moves to
+   * the first row, or the last with `initialFocus: 'last'`. Ignored (with a
    * dev-mode warning) when there is nothing actionable to show.
    */
   open(anchor: TmMenuAnchor, options?: TmMenuOpenOptions): void {
@@ -295,10 +367,11 @@ export class TmMenu {
       }
       return;
     }
-    this.restoreFocusTarget = options?.restoreFocus ?? null;
+    this.invoker.set(options?.restoreFocus ?? null);
     this.overlayOrigin.set(anchor);
-    this.focusedOnOpen = false;
+    this.pendingFocus.set(options?.initialFocus ?? 'first');
     this.armDismissal();
+    this.pressedSinceOpen = false;
 
     // Re-anchor rather than (re)open whenever the overlay is still live: a
     // genuine open-while-open, or a same-tick close+reopen where an outside-
@@ -323,42 +396,67 @@ export class TmMenu {
     this.disarmDismissal();
     this.expanded.set(false);
     if (options?.restoreFocus !== false) {
-      this.restoreFocusTarget?.focus();
+      untracked(this.invoker)?.focus();
     }
-    this.restoreFocusTarget = null;
+    this.invoker.set(null);
+  }
+
+  /**
+   * Carries out an activation reported by a row on any level: runs the
+   * entry's action, emits `itemSelected` for an item, and closes the whole
+   * menu unless the item keeps it open.
+   * @internal
+   */
+  ɵactivate(entry: TmMenuItem | TmMenuLink): void {
+    if (ɵtmIsMenuLink(entry)) {
+      // A link with no action is being followed by the browser as we close.
+      entry.action?.();
+      this.close();
+      return;
+    }
+    entry.action();
+    this.itemSelected.emit(entry);
+    if (entry.keepOpen !== true) {
+      this.close();
+    }
+  }
+
+  /**
+   * The id of the element that carries `role="menu"`, for a trigger's
+   * `aria-controls`.
+   * @internal
+   */
+  get ɵlistId(): string {
+    return this.listId;
+  }
+
+  /**
+   * Records a trigger button so a press on it is never treated as an
+   * outside press, and returns the callback that releases it again.
+   * Called by `TmMenuTrigger` for that directive's lifetime.
+   * @internal
+   */
+  ɵregisterTrigger(element: Element): () => void {
+    this.triggers.add(element);
+    return (): void => {
+      this.triggers.delete(element);
+    };
+  }
+
+  /**
+   * Whether the menu is open and was opened from `element`, which is what
+   * that element's `aria-expanded` reports.
+   * @internal
+   */
+  ɵisOpenFor(element: Element): boolean {
+    return this.expanded() && this.invoker() === element;
   }
 
   // ---- internals ----
 
-  /** Discriminates separator entries in the template. */
-  protected isSeparator(entry: TmMenuEntry): entry is TmMenuSeparator {
-    return 'separator' in entry && entry.separator === true;
-  }
-
-  /** The entry's label signal: literal, or resolved through the i18n seam. */
-  protected labelOf(item: TmMenuItem): Signal<string> {
-    let label = this.labelCache.get(item);
-    if (label === undefined) {
-      label =
-        item.labelKey !== undefined
-          ? this.translate(item.labelKey)
-          : computed(() => item.label ?? '');
-      this.labelCache.set(item, label);
-    }
-    return label;
-  }
-
-  /** Runs the activated item's action, reports it, and closes. */
-  protected onItemSelected(id: string): void {
-    const item = this.items().find(
-      (entry): entry is TmMenuItem => !this.isSeparator(entry) && entry.id === id,
-    );
-    if (item === undefined || item.disabled === true) {
-      return;
-    }
-    item.action();
-    this.itemSelected.emit(item);
-    this.close();
+  /** An activation the aria menu reports, from a row on any level. */
+  protected onItemSelected(entry: TmMenuItem | TmMenuLink): void {
+    this.ɵactivate(entry);
   }
 
   /**
@@ -373,18 +471,69 @@ export class TmMenu {
     }
   }
 
+  /**
+   * The browser's own context menu is suppressed over the menu, except on
+   * a link, where it is how the user copies the address or opens a new tab.
+   */
+  protected onPanelContextMenu(event: MouseEvent): void {
+    if (!(event.target instanceof Element && event.target.closest('a[href]') !== null)) {
+      event.preventDefault();
+    }
+  }
+
+  /**
+   * A click outside the panel, reported by the overlay. It closes the menu
+   * without returning focus, unless it is the release of the gesture that
+   * opened the menu.
+   */
+  private onOutsideClick(event: MouseEvent): void {
+    // Where the engine raises `contextmenu` on the press (Firefox, WebKit,
+    // and Blink outside Windows), the menu opens with the button still
+    // down, and the release then produces an `auxclick` on the invoking
+    // element, outside the panel. Safari likewise follows the `contextmenu`
+    // of a Ctrl+click with a `click`. Neither is a click away from the
+    // menu. The CDK's own context-menu trigger skips the same two events;
+    // it knows the event that opened it, where `open()` is called with
+    // none, so the test here is that no press has begun since the open. A
+    // real click away starts with a press, which has already closed the
+    // menu by the time its click arrives.
+    if (!this.pressedSinceOpen && (event.type === 'auxclick' || event.ctrlKey)) {
+      return;
+    }
+    this.close({ restoreFocus: false });
+  }
+
+  /**
+   * Escape closes one level per press: an open submenu first, returning
+   * focus to its parent row, then the menu. Which of the two is decided
+   * from what is expanded as the key arrives, so a key pressed in the same
+   * moment a submenu opens or closes still reaches the right level.
+   */
+  private onEscape(): void {
+    const rows = untracked(() => this.menu()?._items()) ?? [];
+    const parent = rows.find((row) => untracked(row.expanded) === true);
+    if (parent !== undefined) {
+      parent._pattern.close({ refocus: true });
+    } else {
+      this.close();
+    }
+  }
+
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   private onOverlayDetach(): void {
     if (untracked(this.expanded)) {
       this.disarmDismissal();
       this.expanded.set(false);
+      this.invoker.set(null);
     }
     this.closed.emit();
   }
 
-  /** Whether the menu has at least one non-separator entry to show. */
+  /** Whether the menu has at least one row to show, on its own or in a group. */
   private hasActionableItems(): boolean {
-    return untracked(this.items).some((entry) => !this.isSeparator(entry));
+    return untracked(this.items).some((entry) =>
+      ɵtmIsMenuGroup(entry) ? entry.items.length > 0 : !ɵtmIsMenuSeparator(entry),
+    );
   }
 
   /**
@@ -394,7 +543,7 @@ export class TmMenu {
    * double-registers (the listeners de-dupe by reference).
    */
   private armDismissal(): void {
-    this.releaseEscape ??= tmPushEscapeDismissal(() => this.close());
+    this.releaseEscape ??= tmPushEscapeDismissal(() => this.onEscape());
     document.addEventListener('pointerdown', this.onDocumentPointerDownCapture, true);
     if (!openMenuStack.includes(this)) {
       openMenuStack.push(this);

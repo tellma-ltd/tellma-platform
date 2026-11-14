@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import { email, form, FormField, minLength, required } from '@angular/forms/signals';
@@ -13,6 +13,7 @@ import {
   TM_UI_MESSAGE_CONTEXT,
   TM_UI_STRINGS_EN,
   TM_UI_TRANSLATE,
+  TmL10n,
 } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
@@ -168,7 +169,7 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const [name, type] of args) {
     if (type === 'plural' || type === 'selectordinal' || type === 'number') {
-      params[name] = 5; // messageformat throws on a non-number here
+      params[name] = 5; // a plural picks its arm from a number
     } else if (type === 'date' || type === 'time') {
       params[name] = new Date(0);
     } else if (type === 'select') {
@@ -256,21 +257,24 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     await settle(fixture);
 
     // The four tests above pin four messages; malformed ICU anywhere else
-    // would first surface as a runtime throw in whichever component happens
-    // to render that string. Reading each signal runs the real transpiler.
+    // would render as its raw source (with a development warning) in
+    // whichever component happens to show that string. Reading each signal
+    // runs the real transpiler.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken: string[] = [];
     for (const path of keyPaths(TM_LOCALE_AR_STRINGS)) {
       const message = messageAt(TM_LOCALE_AR_STRINGS, path);
-      try {
-        const rendered = host.translate(path, sampleParams(icuArguments(message)))();
-        if (rendered === '') {
-          broken.push(`${path}: rendered empty`);
-        }
-      } catch (error) {
-        broken.push(`${path}: ${(error as Error).message}`);
+      const rendered = host.translate(path, sampleParams(icuArguments(message)))();
+      if (rendered === '') {
+        broken.push(`${path}: rendered empty`);
+      } else if (/[{}]/.test(rendered)) {
+        broken.push(`${path}: rendered unresolved syntax: ${rendered}`);
       }
     }
+    const malformed = warn.mock.calls.filter(([text]) => String(text).includes('Malformed'));
+    warn.mockRestore();
     expect(broken).toEqual([]);
+    expect(malformed).toEqual([]);
   });
 
   it('the ambient gender context conjugates the imperative', async () => {
@@ -295,6 +299,26 @@ describe('@tellma/locale-ar (DoD 13)', () => {
 
     gender.set({ gender: 'other' });
     expect(text()).toBe('أدخل حرفين على الأقل'); // live re-render on switch
+  });
+
+  it('WITH the pack: a quarter is written through the Arabic pattern, live on a switch', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    const l10n = TestBed.inject(TmL10n);
+    const quarter = computed(() => l10n.formatDate('2026-11-02', { dateStyle: 'quarter' }));
+    expect(quarter()).toBe('Q4 2026');
+
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    // Bare `ar` formats with Latin digits; the words are the pack's.
+    expect(quarter()).toBe('الربع 4 2026');
+    expect(l10n.formatDateTime('2026-11-02T09:00:00Z', { dateStyle: 'quarter' })).toBe(
+      'الربع 4 2026',
+    );
+
+    host.transloco.setActiveLang('en');
+    await settle(fixture);
+    expect(quarter()).toBe('Q4 2026');
   });
 
   it('WITHOUT the pack: the same keys fall back to ENGLISH — never a raw key', async () => {

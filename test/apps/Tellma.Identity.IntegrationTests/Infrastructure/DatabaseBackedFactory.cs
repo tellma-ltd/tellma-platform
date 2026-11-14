@@ -10,16 +10,17 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
     {
         /// <summary>
         ///     Creates a <see cref="StandaloneFactory" /> whose store is a fresh database on the
-        ///     shared SQL Server, with migrations applied at startup.
+        ///     shared SQL Server, which the host creates through the engine's model and migrates at
+        ///     startup.
         /// </summary>
         /// <param name="fixture">The shared SQL Server.</param>
         /// <param name="prefix">The database name prefix identifying the test.</param>
         /// <param name="overrides">Extra configuration on top of the database wiring.</param>
         /// <returns>The configured (not yet started) factory.</returns>
-        public static async Task<StandaloneFactory> CreateStandaloneAsync(
+        public static StandaloneFactory CreateStandalone(
             SqlServerFixture fixture, string prefix, IReadOnlyDictionary<string, string?>? overrides = null)
         {
-            string connectionString = await fixture.CreateDatabaseAsync(prefix);
+            string connectionString = fixture.ReserveDatabase(prefix);
 
             StandaloneFactory factory = new();
             factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"] = connectionString;
@@ -38,16 +39,17 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
 
         /// <summary>
         ///     Creates an <see cref="InProcFactory" /> whose store is a fresh database on the
-        ///     shared SQL Server, with migrations applied at startup.
+        ///     shared SQL Server, which the host creates through the engine's model and migrates at
+        ///     startup.
         /// </summary>
         /// <param name="fixture">The shared SQL Server.</param>
         /// <param name="prefix">The database name prefix identifying the test.</param>
         /// <param name="overrides">Extra configuration on top of the database wiring.</param>
         /// <returns>The configured (not yet started) factory.</returns>
-        public static async Task<InProcFactory> CreateInProcAsync(
+        public static InProcFactory CreateInProc(
             SqlServerFixture fixture, string prefix, IReadOnlyDictionary<string, string?>? overrides = null)
         {
-            string connectionString = await fixture.CreateDatabaseAsync(prefix);
+            string connectionString = fixture.ReserveDatabase(prefix);
 
             InProcFactory factory = new();
             factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"] = connectionString;

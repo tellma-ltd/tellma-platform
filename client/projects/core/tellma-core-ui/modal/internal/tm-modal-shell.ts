@@ -6,8 +6,10 @@
 import { Component, inject, ViewEncapsulation } from '@angular/core';
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { DIALOG_DATA } from '@angular/cdk/dialog';
+import { X } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 
 import type { ɵTmModalShellPayload } from '../tm-modal-ref';
 
@@ -27,15 +29,20 @@ import type { ɵTmModalShellPayload } from '../tm-modal-ref';
  */
 @Component({
   selector: 'tm-modal-shell',
-  imports: [NgComponentOutlet, NgTemplateOutlet],
+  imports: [NgComponentOutlet, NgTemplateOutlet, TmIcon],
   encapsulation: ViewEncapsulation.None,
   styleUrl: './tm-modal-shell.css',
-  host: { class: 'tm-modal' },
+  host: {
+    class: 'tm-modal',
+    // The placement, readable from the shell itself (the pane carrying the
+    // geometry classes is an ancestor that harnesses cannot query).
+    '[class.tm-modal--end]': 'payload.placement === "end"',
+  },
   template: `
-    @if (payload.title !== undefined || payload.showClose) {
+    @if (payload.title() !== undefined || payload.showClose) {
       <div class="tm-modal__header">
-        @if (payload.title !== undefined) {
-          <h2 class="tm-modal__title" [id]="payload.titleId">{{ payload.title }}</h2>
+        @if (payload.title(); as title) {
+          <h2 class="tm-modal__title" [id]="payload.titleId">{{ title }}</h2>
         }
         @if (payload.showClose) {
           <button
@@ -44,18 +51,7 @@ import type { ɵTmModalShellPayload } from '../tm-modal-ref';
             [attr.aria-label]="closeLabel()"
             (click)="dismissFromCloseButton()"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
+            <tm-icon [svg]="closeIcon" />
           </button>
         }
       </div>
@@ -76,6 +72,9 @@ export class ɵTmModalShell {
   private readonly translate = inject(TM_UI_TRANSLATE);
 
   protected readonly payload = inject<ɵTmModalShellPayload>(DIALOG_DATA);
+
+  /** The close button's glyph data. */
+  protected readonly closeIcon = X;
 
   /** Localized aria-label of the X button. */
   protected readonly closeLabel = this.translate('modal.close');

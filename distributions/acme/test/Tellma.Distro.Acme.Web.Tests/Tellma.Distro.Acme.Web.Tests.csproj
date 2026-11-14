@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The web host, built as Program.cs builds it, without starting it. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Web\Tellma.Distro.Acme.Web.csproj" />
+    <!-- The migrator, run in process for the client-asset emit, and its design-time factory. -->
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" />
+    <!-- The collation pin. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

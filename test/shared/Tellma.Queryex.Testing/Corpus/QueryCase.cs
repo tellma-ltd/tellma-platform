@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Queryex;
+using Tellma.Queryex.Testing.Semantics;
 
 namespace Tellma.Queryex.Testing.Corpus
 {
@@ -21,6 +22,13 @@ namespace Tellma.Queryex.Testing.Corpus
         /// <summary>The declared parameters.</summary>
         public IReadOnlyList<QueryexParameterDeclaration> Parameters { get; init; } = [];
 
+        /// <summary>The declared parameters the compilation leaves out, by name.</summary>
+        /// <remarks>
+        ///     Both halves of the differential check leave the same ones out: the compiler through
+        ///     its options, and the second reading through its context.
+        /// </remarks>
+        public IReadOnlyList<string> OmittedParameters { get; init; } = [];
+
         /// <summary>Whether execution will have a signed-in user.</summary>
         public bool HasUser { get; init; } = true;
 
@@ -28,10 +36,31 @@ namespace Tellma.Queryex.Testing.Corpus
         public QueryexLimits Limits { get; init; } = QueryexLimits.Default;
 
         /// <summary>
+        ///     The tables of keys the query's restrictions read, by the name each restriction gives
+        ///     its table.
+        /// </summary>
+        /// <remarks>
+        ///     What a host would have declared or bound ahead of the statement. Both halves of the
+        ///     differential check read the same keys from here.
+        /// </remarks>
+        public IReadOnlyDictionary<string, KeySet> KeySets { get; init; } =
+            new Dictionary<string, KeySet>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
         ///     The diagnostic codes the case expects. Empty means the query is expected to compile,
         ///     in which case its SQL is compared against a stored snapshot.
         /// </summary>
         public IReadOnlyList<string> Diagnostics { get; init; } = [];
+
+        /// <summary>
+        ///     The diagnostics the case pins exactly — location, span and arguments as well as code —
+        ///     when where a problem is reported is what the case is about.
+        /// </summary>
+        /// <remarks>
+        ///     Each must be among what the compilation reports. Their codes must also be listed in
+        ///     <see cref="Diagnostics" />, which stays the complete set of codes the case expects.
+        /// </remarks>
+        public IReadOnlyList<DiagnosticSite> Sites { get; init; } = [];
 
         /// <summary>
         ///     Whether this case is expected to match no rows at all.
@@ -44,6 +73,30 @@ namespace Tellma.Queryex.Testing.Corpus
         ///     to returning something.
         /// </remarks>
         public bool MatchesNothing { get; init; }
+
+        /// <summary>The options the case compiles under.</summary>
+        /// <param name="schema">The schema to compile against.</param>
+        /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
+        /// <returns>The options.</returns>
+        /// <remarks>
+        ///     Built in one place, so a suite that compiles the corpus cannot leave out something a
+        ///     case depends on.
+        /// </remarks>
+        public QueryCompilationOptions Options(QueryexSchema schema, int batchOrdinal = 0)
+        {
+            ArgumentNullException.ThrowIfNull(schema);
+
+            return new QueryCompilationOptions
+            {
+                QueryexVersion = QueryexLanguage.Version,
+                Schema = schema,
+                Parameters = Parameters,
+                OmittedParameters = OmittedParameters,
+                HasUser = HasUser,
+                Limits = Limits,
+                BatchOrdinal = batchOrdinal,
+            };
+        }
 
         /// <summary>Returns the case's name, so a failing theory names itself.</summary>
         /// <returns>The identifier.</returns>

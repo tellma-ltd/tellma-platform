@@ -1,0 +1,27 @@
+@inject IStringLocalizer<SharedResources> L
+@{
+    ViewData["Title"] = L["SignOut"].Value;
+}
+
+@* A sign-out request the server cannot tie to the signed-in session ends nothing until the user
+   confirms it here: the logout is global, so it is the user's decision, not the linking page's. *@
+<h1 class="tmi-title">@L["SignOutConfirm"]</h1>
+
+<form method="post">
+    @* Round-trip the protocol parameters so OpenIddict resolves the same request on POST. The
+       form tag helper adds the anti-forgery token the confirmation requires. *@
+    @foreach (KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues> parameter in
+        (Context.Request.HasFormContentType
+            ? (IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>>)Context.Request.Form
+            : Context.Request.Query))
+    {
+        @if (!string.Equals(parameter.Key, "__RequestVerificationToken", StringComparison.Ordinal)
+            && !parameter.Key.StartsWith("submit.", StringComparison.Ordinal))
+        {
+            <input type="hidden" name="@parameter.Key" value="@parameter.Value" />
+        }
+    }
+    <div class="tmi-actions">
+        <button class="tmi-button tmi-button-primary" type="submit" name="submit.SignOut" value="yes">@L["SignOut"]</button>
+    </div>
+</form>

@@ -35,6 +35,14 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                 yield break;
             }
 
+            // The principal kind is never carried over from a principal: the sign-in pipeline
+            // writes it into each access token from the grant type, and strips it from
+            // everything else.
+            if (claim.Type is TellmaClaims.Kind)
+            {
+                yield break;
+            }
+
             switch (claim.Type)
             {
                 // Identity claims are gated on their scope in both tokens: a client not granted

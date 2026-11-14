@@ -37,7 +37,7 @@
 .NOTES
     Prerequisites are the ones in ui-inspection-guide.md beside this script: LocalDB
     running, the dev certificate trusted, and user secrets carrying EnablePasswordSignIn
-    plus the local-browser / local-control-plane clients.
+    plus the local-browser / local-control-plane clients and the local distribution.
 #>
 [CmdletBinding()]
 param(
@@ -97,7 +97,7 @@ $script:AuthorizeTemplate = '{0}/connect/authorize?client_id={1}&response_type=c
 
 $script:DeviceGrantType = 'urn:ietf:params:oauth:grant-type:device_code'
 
-# Cached management-scope token, so a failed invitation does not cost another device grant.
+# Cached management-scope token, reused until it nears expiry.
 $script:IdentityToken = $null
 
 # ---------------------------------------------------------------------------------------
@@ -660,20 +660,31 @@ function Invoke-DeviceFlow {
 }
 
 <#
-    Gets an access token carrying the management scope, running a device grant only when
-    there is no live one cached. Nothing but the device grant can produce this token for the
-    local-browser client, and it costs a browser round trip, so it is worth keeping.
+    Gets an access token carrying the management scope with the client-credentials grant of
+    the local distribution's backend client (local-svc), reusing a live cached one. The
+    management API is machine-to-machine: it refuses a token that speaks for a person, and no
+    interactive client (local-browser included) may ask for its scope.
 #>
 function Get-IdentityScopeToken {
     if ($script:IdentityToken -and $script:IdentityToken.ExpiresAt -gt (Get-Date).AddSeconds(60)) {
         $remaining = [int]($script:IdentityToken.ExpiresAt - (Get-Date)).TotalSeconds
-        Write-Step "Reusing the access token from an earlier device grant (${remaining}s left)."
+        Write-Step "Reusing the earlier management token (${remaining}s left)."
         return $script:IdentityToken.Token
     }
 
-    Write-Step 'Requesting a device code for the tellma_identity scope'
-    $token = Invoke-DeviceFlow -Scope 'openid tellma_identity'
-    if (-not $token) { return $null }
+    Write-Step 'Requesting a management token for the local distribution backend'
+    $token = Invoke-TokenEndpoint -Body @{
+        grant_type    = 'client_credentials'
+        client_id     = 'local-svc'
+        client_secret = 'local-svc-secret'
+        scope         = 'tellma_identity'
+    }
+
+    if (-not $token.access_token) {
+        Write-Bad "Client credentials refused: $($token.error) - $($token.error_description)"
+        Write-Note 'Check that the local distribution is in user secrets with the matching ServiceClientSecret.'
+        return $null
+    }
 
     $script:IdentityToken = @{
         Token     = $token.access_token
@@ -745,7 +756,7 @@ function Test-Prerequisites {
         Where-Object { $_ -match '^TellmaIdentity:Seed:Clients:\d+:ClientId$' } |
         ForEach-Object { $secrets[$_] }
 
-    foreach ($required in @('local-browser', 'local-control-plane')) {
+    foreach ($required in @('local-browser', 'local-control-plane', 'local')) {
         if ($clientIds -contains $required) { Write-Step "Client '$required' is seeded" }
         else { Write-Bad "Client '$required' is missing from user secrets" }
     }
@@ -887,9 +898,9 @@ function Invoke-DeviceVerifyFlow {
 }
 
 <#
-    Phase E: a valid invitation link. Needs a token carrying the management scope, which
-    only the device grant can produce for the local-browser client, then the bulk API, then
-    the link that arrives by email a moment later (delivery is queued, not inline).
+    Phase E: a valid invitation link. Needs a token carrying the management scope, which the
+    local distribution's backend client obtains with client credentials, then the bulk API,
+    then the link that arrives by email a moment later (delivery is queued, not inline).
 #>
 function Invoke-InvitationFlow {
     if (-not (Confirm-Server -RequireManaged)) { return }
@@ -911,7 +922,7 @@ function Invoke-InvitationFlow {
 
     $mark = Get-LogMark
     $status = 0
-    $response = Invoke-RestMethod -Method Post -Uri "$script:Base/api/identity/invitations" `
+    $response = Invoke-RestMethod -Method Post -Uri "$script:Base/api/identity/v1/invitations" `
         -Headers @{ Authorization = "Bearer $accessToken" } `
         -ContentType 'application/json' -Body $body `
         -SkipHttpErrorCheck -StatusCodeVariable 'status' @script:Http
@@ -956,7 +967,7 @@ function Invoke-TapFlow {
 
     $status = 0
     $pass = Invoke-RestMethod -Method Post `
-        -Uri "$script:Base/api/identity/users/$sub/temporary-access-passes" `
+        -Uri "$script:Base/api/identity/v1/users/$sub/temporary-access-passes" `
         -Headers @{ Authorization = "Bearer $accessToken" } `
         -SkipHttpErrorCheck -StatusCodeVariable 'status' @script:Http
 

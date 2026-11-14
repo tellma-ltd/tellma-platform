@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
 import { storyUrl } from '../support/story-map';
@@ -14,6 +14,7 @@ import { storyUrl } from '../support/story-map';
  * Browser battery for tm-image (DoD 10/11): caching behaviors observed at
  * the network (N instances → one request, reload → zero, etag flip → one
  * refetch, clearAll → sweep), the deferred near-viewport fetch, the
+ * aborts of requests a box gives up on (navigation, scrolling away), the
  * no-CLS error glyph, edit-mode pick/fit/delete flows, and the
  * axe/RTL/forced-colors gates.
  */
@@ -83,6 +84,76 @@ test.describe('caching at the network (DoD 10)', () => {
     await page.getByTestId('deferred-image').scrollIntoViewIfNeeded();
     await expect(page.getByTestId('deferred-image').locator('.tm-image__img')).toBeVisible();
     expect(deferredRequests).toBe(1);
+  });
+});
+
+test.describe('cancellation', () => {
+  /**
+   * Holds every test-image response until released, and records which of
+   * the held requests the page aborted. Holding is what keeps a request in
+   * flight long enough for the page to give up on it.
+   */
+  async function holdImageRequests(
+    page: Page,
+  ): Promise<{ held: () => string[]; aborted: () => string[]; release: () => Promise<void> }> {
+    const routes: Route[] = [];
+    const aborted: string[] = [];
+    await page.route('**/test-image.png*', (route) => {
+      routes.push(route);
+    });
+    page.on('requestfailed', (request) => {
+      if (request.url().includes('test-image.png')) {
+        aborted.push(new URL(request.url()).search);
+      }
+    });
+    return {
+      held: () => routes.map((route) => new URL(route.request().url()).search),
+      aborted: () => [...aborted],
+      release: async () => {
+        for (const route of routes.splice(0)) {
+          // A request the page already aborted can no longer be continued.
+          await route.continue().catch(() => undefined);
+        }
+      },
+    };
+  }
+
+  test('navigating away aborts every image request still in flight', async ({ page }) => {
+    const requests = await holdImageRequests(page);
+    await page.goto(storyUrl('image'));
+    // The three view instances share one rendition; the edit box has its own.
+    await expect.poll(() => requests.held().sort()).toEqual(['?size=128', '?size=256']);
+    expect(requests.aborted()).toEqual([]);
+
+    // A client-side navigation destroys every box on the story.
+    await page.getByRole('link', { name: 'Button (tmButton)' }).click();
+    await expect(page).toHaveURL(/\/story\/button/);
+    await expect.poll(() => requests.aborted().sort()).toEqual(['?size=128', '?size=256']);
+    await requests.release();
+  });
+
+  test('a deferred box scrolled away before its bytes arrive aborts, and refetches on return', async ({
+    page,
+  }) => {
+    const requests = await holdImageRequests(page);
+    await page.goto(storyUrl('image'));
+    await expect.poll(() => requests.held()).toContain('?size=128');
+    const deferred = page.getByTestId('deferred-image');
+    const isDeferred = (search: string): boolean => search.startsWith('?v=deferred');
+
+    await deferred.scrollIntoViewIfNeeded();
+    await expect.poll(() => requests.held().filter(isDeferred)).toHaveLength(1);
+    // Back to the top: the box leaves the viewport with its request held.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => requests.aborted().filter(isDeferred)).toHaveLength(1);
+    expect(requests.aborted().filter((search) => !isDeferred(search))).toEqual([]);
+
+    // Coming back starts the request again, and this time it lands.
+    await requests.release();
+    await page.unroute('**/test-image.png*');
+    await deferred.scrollIntoViewIfNeeded();
+    await expect(deferred.locator('.tm-image__img')).toBeVisible();
+    await expect(deferred.locator('.tm-image__glyph--error')).toHaveCount(0);
   });
 });
 

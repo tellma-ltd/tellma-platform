@@ -50,8 +50,13 @@ function menuItem(page: Page, name: string) {
   return page.getByRole('menuitem', { name, exact: true });
 }
 
-async function menuLabels(page: Page): Promise<string[]> {
-  return menuPanel(page).locator('.tm-menu__label').allInnerTexts();
+/**
+ * The open menu's item labels, in order. A locator, not a snapshot: the menu
+ * renders a pass after the gesture that opens it, so assert on it web-first
+ * (`toHaveText([...])`), which waits for the items instead of reading none.
+ */
+function menuLabels(page: Page) {
+  return menuPanel(page).locator('.tm-menu__label');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -79,6 +84,26 @@ test.describe('opening', () => {
     // Anchored at the pointer (flexible positioning may flip around it,
     // so measure the gap between the point and the panel's rectangle).
     expect(distanceToBox(point, box!)).toBeLessThan(40);
+  });
+
+  test('@cross-engine a right-click outside the selection leaves focus in the menu', async ({
+    page,
+  }) => {
+    await cell(page, 0, 0).click();
+    await cell(page, 8, 2).click({ button: 'right' });
+    await expect(menuPanel(page)).toBeVisible();
+
+    // The grid moved its active cell to the press target; it must not take
+    // focus back from the menu, whose arrow keys would then be dead.
+    const focused = menuPanel(page).locator('.tm-menu__item:focus .tm-menu__label');
+    await expect(focused).toHaveText('Cut');
+    await page.keyboard.press('ArrowDown');
+    await expect(focused).toHaveText('Copy');
+
+    // Closing hands focus to the cell the menu was opened on.
+    await page.keyboard.press('Escape');
+    await expect(menuPanel(page)).toHaveCount(0);
+    await expect(cell(page, 8, 2)).toBeFocused();
   });
 
   test('Shift+F10 opens the menu at the active cell', async ({ page }) => {
@@ -112,7 +137,7 @@ test.describe('items', () => {
     await activateCell(page, 2, 0);
     await page.keyboard.press('Shift+F10');
 
-    expect(await menuLabels(page)).toEqual([
+    await expect(menuLabels(page)).toHaveText([
       'Cut',
       'Copy',
       'Copy with headers',
@@ -128,15 +153,40 @@ test.describe('items', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('shortcut hints render as key caps, outside the item names', async ({ page }) => {
+    await activateCell(page, 2, 0);
+    await page.keyboard.press('Shift+F10');
+    await expect(menuPanel(page)).toBeVisible();
+
+    /** The key caps of the item named exactly `name`. */
+    const caps = (name: string) => menuItem(page, name).locator('tm-kbd.tm-menu__shortcut kbd');
+    // One cap per key, the modifier written for the platform.
+    await expect(caps('Cut')).toHaveText([/^(Ctrl|⌘)$/, 'X']);
+    await expect(caps('Copy')).toHaveText([/^(Ctrl|⌘)$/, 'C']);
+    await expect(caps('Paste')).toHaveText([/^(Ctrl|⌘)$/, 'V']);
+    await expect(caps('Insert 1 row above')).toHaveCount(3);
+    await expect(caps('Insert 1 row above').last()).toHaveText('+');
+    await expect(caps('Delete 1 row').last()).toHaveText('-');
+    // An item with no shortcut draws none; the caps are not read out.
+    await expect(caps('Copy with headers')).toHaveCount(0);
+    await expect(menuItem(page, 'Cut').locator('tm-kbd')).toHaveAttribute('aria-hidden', 'true');
+    await page.keyboard.press('Escape');
+  });
+
   test('a 3-row selection pluralizes the row items', async ({ page }) => {
     await cell(page, 1, 0).click();
     await cell(page, 3, 0).click({ modifiers: ['Shift'] }); // rows 1–3
     await cell(page, 2, 0).click({ button: 'right' }); // inside the selection: kept
 
-    const labels = await menuLabels(page);
-    expect(labels).toContain('Insert 3 rows above');
-    expect(labels).toContain('Insert 3 rows below');
-    expect(labels).toContain('Delete 3 rows');
+    await expect(menuLabels(page)).toHaveText([
+      'Cut',
+      'Copy',
+      'Copy with headers',
+      'Paste',
+      'Insert 3 rows above',
+      'Insert 3 rows below',
+      'Delete 3 rows',
+    ]);
     await page.keyboard.press('Escape');
   });
 });
@@ -158,6 +208,10 @@ test.describe('row operations', () => {
     expect(after[0].id).toBe(before[0].id);
     expect(after[1].id).toBe(before[4].id); // rows 1–3 are gone
     await expect(liveRegion(page)).toContainText('3 rows deleted');
+    // The mouse pick pressed outside the grid and the render removed the
+    // focused row: focus must still land on the surviving active cell, not
+    // fall to the page (arrows and undo would stop reaching the grid).
+    await expect(activeCell(page)).toBeFocused();
   });
 
   test('Insert row above adds a factory-minted row (negative temp id)', async ({ page }) => {

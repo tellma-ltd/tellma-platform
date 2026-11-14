@@ -1,0 +1,76 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-copy-button — a ghost tmButton (its look and size ladder come from
+   the button's global styles), a hidden status region, and, while the
+   clipboard is out of reach, a hidden read-only input laid over the
+   button. The host is inline, like the button it wraps. */
+
+:host {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+}
+
+/* Icon-only: a square of the button's own height. */
+.tm-copy-button__button--icon {
+  inline-size: var(--tm-button-block-size);
+  padding-inline: 0;
+}
+
+/* The two labels share one grid cell, so the button is as wide as the
+   wider of them and does not move when "Copy" becomes "Copied". The
+   label not in use keeps its width but is not drawn or read. */
+.tm-copy-button__labels {
+  display: inline-grid;
+}
+
+.tm-copy-button__label {
+  grid-area: 1 / 1;
+}
+
+.tm-copy-button__label--off {
+  visibility: hidden;
+}
+
+/* The polite status region: present from the start, never drawn. */
+.tm-copy-button__status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The manual fallback's input covers the button exactly, so its tooltip
+   points where the user looked. It is transparent and lets the pointer
+   through to the button. */
+.tm-copy-button__manual {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The input is invisible, so the button it covers draws the focus ring,
+   as tmButton draws its own: the token ring, over a transparent outline
+   that forced colours repaint. */
+:host(:has(.tm-copy-button__manual:focus)) .tm-copy-button__button {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}

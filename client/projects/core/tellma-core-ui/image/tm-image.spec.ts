@@ -10,7 +10,11 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmImageHarness } from '@tellma/core-ui-testing';
 
-import { TM_BLOB_FETCHER, type TmBlobFetchResult } from './tm-blob-fetcher';
+import {
+  TM_BLOB_FETCHER,
+  type TmBlobFetchOptions,
+  type TmBlobFetchResult,
+} from './tm-blob-fetcher';
 import { ɵTM_CACHE_STORAGE } from './internal/blob-cache';
 import { TmImage, TmImagePlaceholder } from './tm-image';
 import type { TmImageEdit } from './tm-image-types';
@@ -62,6 +66,30 @@ class Host {
 })
 class PlaceholderHost {}
 
+/** An avatar-like image whose failed load may fall back to its placeholder. */
+@Component({
+  imports: [TmImage, TmImagePlaceholder],
+  template: `
+    <tm-image
+      src="/img/agent-9"
+      [alt]="alt()"
+      [width]="50"
+      [height]="50"
+      [defer]="false"
+      [placeholderOnError]="fallback()"
+    >
+      @if (withTemplate()) {
+        <ng-template tmImagePlaceholder><span class="initials">LH</span></ng-template>
+      }
+    </tm-image>
+  `,
+})
+class FallbackHost {
+  readonly alt = signal('Lina Hakim');
+  readonly fallback = signal(true);
+  readonly withTemplate = signal(true);
+}
+
 interface FetcherControl {
   readonly urls: string[];
   fail: boolean;
@@ -86,6 +114,103 @@ function setupFetcher(): FetcherControl {
     ],
   });
   return control;
+}
+
+/** Two boxes on one URL, each shown while its flag is set. */
+@Component({
+  imports: [TmImage],
+  template: `
+    @if (showFirst()) {
+      <tm-image src="/img/shared" etag="v1" alt="" [width]="50" [height]="50" [defer]="false" />
+    }
+    @if (showSecond()) {
+      <tm-image src="/img/shared" etag="v1" alt="" [width]="50" [height]="50" [defer]="false" />
+    }
+  `,
+})
+class TwinHost {
+  readonly showFirst = signal(true);
+  readonly showSecond = signal(true);
+}
+
+/** A deferred box, which loads only while it is near the viewport. */
+@Component({
+  imports: [TmImage],
+  template: `<tm-image src="/img/agent-7" etag="v1" alt="" [width]="50" [height]="50" />`,
+})
+class DeferredHost {}
+
+/** One request the pending fetcher holds open. */
+interface HeldRequest {
+  readonly url: string;
+  readonly signal: AbortSignal;
+  /** Answers the request with a decodable image. */
+  readonly resolve: () => Promise<void>;
+}
+
+/**
+ * Provides a fetcher that holds every request open until the test answers
+ * it, rejecting with the abort reason on abort as the default fetcher does.
+ */
+function setupPendingFetcher(): HeldRequest[] {
+  const held: HeldRequest[] = [];
+  TestBed.configureTestingModule({
+    providers: [
+      provideTellmaUi(),
+      { provide: ɵTM_CACHE_STORAGE, useValue: null },
+      {
+        provide: TM_BLOB_FETCHER,
+        useValue: (url: string, options?: TmBlobFetchOptions): Promise<TmBlobFetchResult> =>
+          new Promise((resolve, reject) => {
+            const signal = options?.signal ?? new AbortController().signal;
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            held.push({
+              url,
+              signal,
+              resolve: async () =>
+                resolve({ status: 200, blob: await pngBlob(100, 100), etag: null }),
+            });
+          }),
+      },
+    ],
+  });
+  return held;
+}
+
+/**
+ * Stands in for `IntersectionObserver` so a test decides when the box is
+ * near the viewport.
+ */
+class FakeIntersectionObserver {
+  /** The observers the component created, newest last. */
+  static readonly instances: FakeIntersectionObserver[] = [];
+  private readonly targets: Element[] = [];
+
+  constructor(private readonly callback: IntersectionObserverCallback) {
+    FakeIntersectionObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.targets.push(target);
+  }
+
+  unobserve(): void {}
+
+  disconnect(): void {
+    this.targets.length = 0;
+  }
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+
+  /** Reports every observed target as entering or leaving the viewport. */
+  report(isIntersecting: boolean): void {
+    const entries = this.targets.map(
+      (target) => ({ target, isIntersecting }) as IntersectionObserverEntry,
+    );
+    this.callback(entries, this as unknown as IntersectionObserver);
+  }
 }
 
 /**
@@ -167,6 +292,58 @@ describe('tm-image', () => {
     expect(glyph.getAttribute('aria-label')).toBe('The image could not be loaded');
     const box = query<HTMLElement>(fixture, 'tm-image')!;
     expect(box.getBoundingClientRect().width).toBe(50); // fixed box, no CLS
+  });
+
+  it('placeholderOnError: a failing fetch renders the placeholder, named by alt, silently', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__fallback') !== null);
+    const fallback = query<HTMLElement>(fixture, '.tm-image__fallback')!;
+    expect(fallback.querySelector('.initials')?.textContent).toBe('LH');
+    expect(fallback.getAttribute('role')).toBe('img');
+    expect(fallback.getAttribute('aria-label')).toBe('Lina Hakim');
+    expect(query(fixture, '.tm-image__glyph--error')).toBeNull();
+    expect(noticeText(fixture)).toBe('');
+    // The placeholder fills the same fixed box.
+    expect(fallback.getBoundingClientRect().width).toBe(50);
+    expect(fallback.getBoundingClientRect().height).toBe(50);
+  });
+
+  it('placeholderOnError with a decorative alt hides the fallback from assistive technology', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.alt.set('');
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__fallback') !== null);
+    const fallback = query<HTMLElement>(fixture, '.tm-image__fallback')!;
+    expect(fallback.hasAttribute('role')).toBe(false);
+    expect(fallback.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('without placeholderOnError a failing fetch keeps the error glyph and its notice', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.fallback.set(false);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__glyph--error') !== null);
+    expect(query(fixture, '.tm-image__fallback')).toBeNull();
+    expect(query(fixture, '.initials')).toBeNull();
+    expect(noticeText(fixture)).toBe('The image could not be loaded');
+  });
+
+  it('placeholderOnError without a placeholder template shows the glyph as usual', async () => {
+    const control = setupFetcher();
+    control.fail = true;
+    const fixture = TestBed.createComponent(FallbackHost);
+    fixture.componentInstance.withTemplate.set(false);
+    await fixture.whenStable();
+    await until(fixture, () => query(fixture, '.tm-image__glyph--error') !== null);
+    expect(query(fixture, '.tm-image__fallback')).toBeNull();
+    expect(noticeText(fixture)).toBe('The image could not be loaded');
   });
 
   it('an etag change refetches; the same etag does not', async () => {
@@ -346,5 +523,89 @@ describe('tm-image', () => {
     host.etag.set('v2');
     await until(fixture, () => control.urls.length > fetches);
     expect((await openPane()).value).toBe('1');
+  });
+
+  // ---- cancellation ----
+
+  it('destroying the box mid-fetch aborts its wait', async () => {
+    const held = setupPendingFetcher();
+    const fixture = TestBed.createComponent(Host);
+    await until(fixture, () => held.length === 1);
+    expect(held[0].signal.aborted).toBe(false);
+
+    fixture.destroy();
+    expect(held[0].signal.aborted).toBe(true);
+  });
+
+  it('a src or etag change aborts the old wait, silently', async () => {
+    const held = setupPendingFetcher();
+    const fixture = TestBed.createComponent(Host);
+    await until(fixture, () => held.length === 1);
+
+    fixture.componentInstance.src.set('/img/agent-8');
+    await until(fixture, () => held.length === 2);
+    expect(held[0].signal.aborted).toBe(true);
+    expect(held[1].url).toBe('/img/agent-8?size=64');
+
+    fixture.componentInstance.etag.set('v2');
+    await until(fixture, () => held.length === 3);
+    expect(held[1].signal.aborted).toBe(true);
+
+    // An abandoned wait is no failure: no glyph, nothing announced.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fixture.whenStable();
+    expect(query(fixture, '.tm-image__glyph--error')).toBeNull();
+    expect(noticeText(fixture)).toBe('');
+
+    await held[2].resolve();
+    await until(fixture, () => query(fixture, '.tm-image__img') !== null);
+  });
+
+  it('two boxes on one URL abort the shared request only when both are gone', async () => {
+    const held = setupPendingFetcher();
+    const fixture = TestBed.createComponent(TwinHost);
+    await until(fixture, () => held.length === 1);
+    await fixture.whenStable();
+    expect(held).toHaveLength(1); // one request for both boxes
+
+    fixture.componentInstance.showFirst.set(false);
+    await fixture.whenStable();
+    expect(held[0].signal.aborted).toBe(false);
+
+    fixture.componentInstance.showSecond.set(false);
+    await fixture.whenStable();
+    expect(held[0].signal.aborted).toBe(true);
+  });
+
+  it('a deferred box that leaves the viewport before its bytes arrive aborts, and reloads on return', async () => {
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+    try {
+      const held = setupPendingFetcher();
+      const fixture = TestBed.createComponent(DeferredHost);
+      await fixture.whenStable();
+      const observer = FakeIntersectionObserver.instances.at(-1)!;
+      expect(held).toHaveLength(0); // deferred: nothing until near the viewport
+
+      observer.report(true);
+      await until(fixture, () => held.length === 1);
+      observer.report(false);
+      await fixture.whenStable();
+      expect(held[0].signal.aborted).toBe(true);
+      expect(query(fixture, '.tm-image__glyph--error')).toBeNull();
+
+      observer.report(true);
+      await until(fixture, () => held.length === 2);
+      await held[1].resolve();
+      await until(fixture, () => query(fixture, '.tm-image__img') !== null);
+
+      // Loaded bytes stay: leaving and coming back fetches nothing more.
+      observer.report(false);
+      observer.report(true);
+      await fixture.whenStable();
+      expect(held).toHaveLength(2);
+      expect(held[1].signal.aborted).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

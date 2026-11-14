@@ -44,9 +44,8 @@
     <span class="shell-lang" data-testid="active-lang">{{ lang() }}</span>
   </div>
 </header>
-<!-- The rail stays OUTSIDE the dir wrapper below, so it keeps its side
-     when a story is previewed in RTL — the shell is a dev tool, not part
-     of what is being demonstrated. -->
+<!-- The rail and the story both follow <html dir>: a story previewed in
+     RTL is the whole page in RTL, exactly as an app renders it. -->
 <div class="shell-body">
   <nav class="shell-nav" aria-label="Stories">
     @for (story of stories; track story.id) {
@@ -59,11 +58,10 @@
       >
     }
   </nav>
-  <!-- Dir wrapper: a LIVE Directionality for CDK overlays; the root service
-       reads <html dir> only once at construction and would go stale on the
-       shell's runtime dir toggle. A <div>, not <main> — story pages render
-       their own main landmark. -->
-  <div class="shell-main" [dir]="dir()">
+  <!-- No [dir] wrapper: the library's root Directionality follows <html dir>
+       live, so overlays flip with a runtime language switch on their own.
+       A <div>, not <main> — story pages render their own main landmark. -->
+  <div class="shell-main">
     <router-outlet />
   </div>
 </div>

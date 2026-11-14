@@ -46,12 +46,14 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     /// <param name="scopeManager">The OpenIddict scope manager.</param>
     /// <param name="policyService">Assurance derivation.</param>
     /// <param name="sessionRegistry">The sid registry.</param>
+    /// <param name="timeProvider">The clock a new authorization is dated by.</param>
     public sealed class TellmaPrincipalFactory(
         IOpenIddictApplicationManager applicationManager,
         IOpenIddictAuthorizationManager authorizationManager,
         IOpenIddictScopeManager scopeManager,
         IAuthenticationPolicyService policyService,
-        ISessionRegistry sessionRegistry)
+        ISessionRegistry sessionRegistry,
+        TimeProvider timeProvider)
     {
         /// <summary>Builds the principal for an interactive authorization request.</summary>
         /// <param name="user">The authenticated user.</param>
@@ -187,27 +189,36 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             }
 
             // Attach (or create) the permanent authorization backing this grant; it anchors
-            // consent memory and lets global logout revoke the client's refresh tokens.
+            // consent memory and lets global logout revoke the client's refresh tokens. It records
+            // every resource the user has granted the client, so consent remembered by it covers
+            // those places and no other. An existing authorization that lacks one of this grant's
+            // resources gains it (the user was asked first when the client's consent is explicit)
+            // rather than a second one being created beside it: the session registers one
+            // authorization per client, and that is the one global logout revokes.
             string clientObjectId = (await applicationManager.GetIdAsync(application, cancellationToken))!;
-            object? authorization = null;
-            await foreach (object candidate in authorizationManager.FindAsync(
-                subject: user.Id,
-                client: clientObjectId,
-                status: Statuses.Valid,
-                type: AuthorizationTypes.Permanent,
-                scopes: identity.GetScopes(),
-                cancellationToken))
-            {
-                authorization = candidate;
-            }
+            ImmutableArray<string> resources = identity.GetResources();
+            (object? covering, object? existing) = await FindAuthorizationAsync(
+                user.Id, clientObjectId, identity.GetScopes(), resources, cancellationToken);
 
-            authorization ??= await authorizationManager.CreateAsync(
-                identity: identity,
-                subject: user.Id,
-                client: clientObjectId,
-                type: AuthorizationTypes.Permanent,
-                scopes: identity.GetScopes(),
-                cancellationToken);
+            object authorization;
+            if (covering is not null)
+            {
+                authorization = covering;
+            }
+            else if (existing is not null)
+            {
+                if (!await TryAddResourcesAsync(existing, resources, cancellationToken))
+                {
+                    return new PrincipalResult(
+                        null, Errors.TemporarilyUnavailable, "The authorization changed while it was being granted; try again.");
+                }
+
+                authorization = existing;
+            }
+            else
+            {
+                authorization = await CreateAuthorizationAsync(identity, user.Id, clientObjectId, resources, cancellationToken);
+            }
 
             string authorizationId = (await authorizationManager.GetIdAsync(authorization, cancellationToken))!;
             identity.SetAuthorizationId(authorizationId);
@@ -219,10 +230,133 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         }
 
         /// <summary>
-        ///     Derives token audiences: explicit <c>resource</c> parameters win (already
-        ///     validated against the client's permissions); a browser client's distribution
-        ///     audience derives from its registered origin; fixed platform audiences come from
-        ///     the scope registry.
+        ///     Whether consent is remembered for a grant: a valid permanent authorization of the
+        ///     user's for the client holds the requested scopes and covers every requested resource.
+        ///     An authorization the user granted for one distribution, or for one tenant of it,
+        ///     therefore never answers for another, and the user is asked again.
+        /// </summary>
+        /// <param name="subject">The user's subject.</param>
+        /// <param name="application">The requesting client's application object.</param>
+        /// <param name="scopes">The requested scopes.</param>
+        /// <param name="resources">The requested resources.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>True when a remembered grant covers the request.</returns>
+        public async Task<bool> HasCoveringAuthorizationAsync(
+            string subject,
+            object application,
+            IReadOnlyCollection<string> scopes,
+            IReadOnlyCollection<string> resources,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(subject);
+            ArgumentNullException.ThrowIfNull(application);
+            ArgumentNullException.ThrowIfNull(scopes);
+            ArgumentNullException.ThrowIfNull(resources);
+
+            string clientObjectId = (await applicationManager.GetIdAsync(application, cancellationToken))!;
+            (object? covering, _) = await FindAuthorizationAsync(
+                subject, clientObjectId, [.. scopes], resources, cancellationToken);
+            return covering is not null;
+        }
+
+        /// <summary>
+        ///     Finds the user's valid permanent authorizations for the client that hold the scopes,
+        ///     and returns the first that also covers the resources, and the last one found
+        ///     whatever it covers (the one a grant extends when none covers it).
+        /// </summary>
+        private async Task<(object? Covering, object? Existing)> FindAuthorizationAsync(
+            string subject,
+            string clientObjectId,
+            ImmutableArray<string> scopes,
+            IReadOnlyCollection<string> resources,
+            CancellationToken cancellationToken)
+        {
+            // Read the whole list before reading any properties: the store streams this query
+            // over the request's single connection, which does not allow a second active reader.
+            List<object> candidates = [];
+            await foreach (object candidate in authorizationManager.FindAsync(
+                subject: subject,
+                client: clientObjectId,
+                status: Statuses.Valid,
+                type: AuthorizationTypes.Permanent,
+                scopes: scopes,
+                cancellationToken))
+            {
+                candidates.Add(candidate);
+            }
+
+            foreach (object candidate in candidates)
+            {
+                if (AuthorizationResources.Covers(
+                    await authorizationManager.GetPropertiesAsync(candidate, cancellationToken), resources))
+                {
+                    return (candidate, candidate);
+                }
+            }
+
+            return (null, candidates.Count > 0 ? candidates[^1] : null);
+        }
+
+        /// <summary>
+        ///     Adds resources to an authorization's covered set. When a concurrent grant changed the
+        ///     same authorization first, this write is lost and the grant is refused for the caller
+        ///     to retry, rather than recorded over a stale copy.
+        /// </summary>
+        /// <returns>Whether the resources were recorded.</returns>
+        private async Task<bool> TryAddResourcesAsync(
+            object authorization, IReadOnlyCollection<string> resources, CancellationToken cancellationToken)
+        {
+            OpenIddictAuthorizationDescriptor descriptor = new();
+            await authorizationManager.PopulateAsync(descriptor, authorization, cancellationToken);
+            AuthorizationResources.Write(
+                descriptor.Properties,
+                AuthorizationResources.Read(descriptor.Properties).Union(resources, StringComparer.Ordinal));
+
+            try
+            {
+                await authorizationManager.UpdateAsync(authorization, descriptor, cancellationToken);
+                return true;
+            }
+            catch (OpenIddictExceptions.ConcurrencyException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        ///     Creates the permanent authorization of a first grant: what the manager's own overload
+        ///     builds, plus the resources it covers.
+        /// </summary>
+        private async Task<object> CreateAuthorizationAsync(
+            ClaimsIdentity identity,
+            string subject,
+            string clientObjectId,
+            IReadOnlyCollection<string> resources,
+            CancellationToken cancellationToken)
+        {
+            OpenIddictAuthorizationDescriptor descriptor = new()
+            {
+                ApplicationId = clientObjectId,
+                CreationDate = timeProvider.GetUtcNow(),
+                Principal = new ClaimsPrincipal(identity),
+                Status = Statuses.Valid,
+                Subject = subject,
+                Type = AuthorizationTypes.Permanent,
+            };
+            descriptor.Scopes.UnionWith(identity.GetScopes());
+            AuthorizationResources.Write(descriptor.Properties, resources);
+
+            return await authorizationManager.CreateAsync(descriptor, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Derives token audiences. Explicit <c>resource</c> parameters — already validated
+        ///     against the client's grants by the engine's resource check, per-tenant resources and
+        ///     combinations included — are the whole audience. Without one, a browser client's
+        ///     distribution audience derives from its registered origin and is likewise the whole
+        ///     audience; otherwise the token carries its scopes' fixed platform audiences. A
+        ///     distribution's audience is never combined with a platform one, so a token handed to
+        ///     a distribution is never also a credential at the identity server's own APIs.
         /// </summary>
         private async Task<string?> SetAudiencesAsync(
             ClaimsIdentity identity, GrantRequest grant, object application, CancellationToken cancellationToken)
@@ -238,19 +372,28 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
                     return "The tellma_api scope requires an explicit 'resource' parameter for this client.";
                 }
 
+                // The derived audience is a distribution's, so the management scope cannot ride
+                // with it; the resource check refuses the explicit form of the same request.
+                if (identity.HasScope(TellmaIdentityConstants.IdentityScope))
+                {
+                    return "A distribution audience cannot be combined with the tellma_identity scope; request two tokens.";
+                }
+
                 resources.Add(origin);
             }
 
-            // Platform-scope audiences are unioned in unconditionally: a token granted
-            // tellma_identity or tellma_control_plane must carry that audience even when an
-            // explicit resource was also named, or the platform API would reject it.
-            ImmutableArray<string> platformScopes =
-                [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
-            await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
+            // Without a distribution audience, the token is for the platform's own APIs: the
+            // audiences of its management and operator scopes.
+            if (resources.Count == 0)
             {
-                if (!resources.Contains(resource, StringComparer.Ordinal))
+                ImmutableArray<string> platformScopes =
+                    [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
+                await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, cancellationToken))
                 {
-                    resources.Add(resource);
+                    if (!resources.Contains(resource, StringComparer.Ordinal))
+                    {
+                        resources.Add(resource);
+                    }
                 }
             }
 

@@ -24,6 +24,14 @@ namespace Tellma.Identity.Hosting
     /// </summary>
     public static class TellmaIdentityServiceCollectionExtensions
     {
+        /// <summary>
+        ///     The service key of the sender the engine's mail goes through. By default it is the
+        ///     host's <see cref="Core.Abstractions.Email.IEmailSender" /> itself; a host that runs
+        ///     the engine beside tenants registers its own under this key, so the engine's mail,
+        ///     which belongs to no tenant, is not asked which tenant it belongs to.
+        /// </summary>
+        public const string EmailSenderKey = "Tellma.Identity";
+
         /// <summary>Registers the identity engine from a configuration section.</summary>
         /// <param name="services">The service collection.</param>
         /// <param name="configuration">
@@ -53,6 +61,7 @@ namespace Tellma.Identity.Hosting
             // misconfigured host fails at startup with the full failure list.
             TellmaIdentityOptions snapshot = new();
             configure(snapshot);
+            snapshot.Seed.ApplyInterimClientIds();
 
             ValidateOptionsResult validation = new TellmaIdentityOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, snapshot);
             if (validation.Failed)
@@ -61,7 +70,12 @@ namespace Tellma.Identity.Hosting
                     "Tellma Identity configuration is invalid: " + string.Join(" ", validation.Failures ?? []));
             }
 
-            services.AddOptions<TellmaIdentityOptions>().Configure(configure).ValidateOnStart();
+            // An interim client's key is its client id; filled in before validation, so every
+            // reader of an entry sees it.
+            services.AddOptions<TellmaIdentityOptions>()
+                .Configure(configure)
+                .PostConfigure(static options => options.Seed.ApplyInterimClientIds())
+                .ValidateOnStart();
             services.AddSingleton<IValidateOptions<TellmaIdentityOptions>>(
                 static provider => new TellmaIdentityOptionsValidator(
                     provider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()));
@@ -70,16 +84,28 @@ namespace Tellma.Identity.Hosting
             services.TryAddSingleton(TimeProvider.System);
 
             // Startup seeding runs before Quartz (hosted services start in registration order),
-            // so pruning never races a not-yet-migrated store.
+            // so pruning never races a not-yet-migrated store. Its first step is the store check,
+            // which refuses a store in another collation or one behind the engine's migrations.
+            services.AddScoped<Services.Seeding.IdentityStoreCheck>();
             services.AddScoped<Services.Seeding.IdentitySeeder>();
             services.AddHostedService<Services.Seeding.IdentitySeedHostedService>();
 
             // Engine services.
             services.AddScoped<Services.Audit.IAuditLogger, Services.Audit.SqlAuditLogger>();
             services.AddScoped<Services.Provisioning.IClientProvisioningService, Services.Provisioning.ClientProvisioningService>();
+
+            // The one write path for the registrations the platform owns, shared by onboarding and
+            // startup seeding. Each convergence runs its attempts in scopes of its own, so it is
+            // resolved by its concrete type there.
+            services.AddScoped<Services.Provisioning.ClientRegistrationConverger>();
             services.AddSingleton<Services.AuthenticationPolicy.IAuthenticationPolicyService, Services.AuthenticationPolicy.AuthenticationPolicyService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaSignInService>();
             services.AddScoped<Services.AuthenticationPolicy.TellmaPrincipalFactory>();
+
+            // The one rule for `resource` parameters, and the one request-time decision point
+            // every endpoint's resource check asks.
+            services.AddSingleton<Services.IResourceGrantEvaluator, Services.ResourceGrantEvaluator>();
+            services.AddScoped<Services.ResourceGrantValidator>();
 
             // Every page in the sign-in flow needs this to name the pending client's callbacks in
             // its own policy, or the form that completes the flow submits and the browser refuses
@@ -112,6 +138,12 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<Services.Email.IEmailDispatcher>(
                 static provider => provider.GetRequiredService<Services.Email.EmailDispatcher>());
             services.AddHostedService<Services.Email.EmailDispatchHostedService>();
+
+            // The sender the engine's mail goes through: the host's own unless the host keys one
+            // for the engine, which it may do before or after this call.
+            services.TryAddKeyedScoped(
+                EmailSenderKey,
+                static (provider, _) => provider.GetRequiredService<Core.Abstractions.Email.IEmailSender>());
             services.AddSingleton<IBrandingResolver, DefaultBrandingResolver>();
             services.AddSingleton<Services.BackchannelLogout.LogoutTokenFactory>();
             services.AddScoped<Services.BackchannelLogout.IBackchannelLogoutService, Services.BackchannelLogout.BackchannelLogoutService>();
@@ -120,9 +152,16 @@ namespace Tellma.Identity.Hosting
             services.AddScoped<Services.Tap.ITemporaryAccessPassService, Services.Tap.TemporaryAccessPassService>();
             services.AddSingleton<IdentityMetrics>();
 
-            // Management-API authorization policies (tellma_identity, tellma_control_plane).
+            // Management-API authorization policies (tellma_identity, tellma_control_plane), each
+            // requiring its scope and its own fixed audience.
             services.AddAuthorization();
             services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(ApiPolicies.Configure);
+
+            // Every management-API call is counted and logged: an authorized one by the
+            // controllers' own filter, a refused one by the decorated authorization result
+            // handler, because the authorization middleware answers it before MVC runs.
+            services.AddSingleton<ManagementApiCallRecorder>();
+            ManagementApiAuthorizationResultHandler.Decorate(services);
 
             // Best-effort logout-token delivery: bounded timeout plus the standard retry pipeline.
             services.AddHttpClient(
@@ -143,6 +182,12 @@ namespace Tellma.Identity.Hosting
             // Reads the registered clients to resolve the account pages' way back to the app, so
             // it is scoped alongside the OpenIddict managers it depends on.
             services.AddScoped<ApplicationLinkResolver>();
+
+            // The client, return address and language a request arrived with stay on every link,
+            // form and redirect between the engine's pages (spec 0010 §A.9, §A.10): the tag
+            // helper covers what a view renders, the filter what a page handler redirects to.
+            services.AddSingleton<IdentityPageLinks>();
+            services.AddSingleton<CarriedQueryRedirectFilter>();
 
             // Every resource string is rendered through ICU MessageFormat, so a translation can
             // select on its own data — grammatical gender today, plurals when they arrive —
@@ -191,10 +236,26 @@ namespace Tellma.Identity.Hosting
                 .AddApplicationPart(typeof(TellmaIdentityServiceCollectionExtensions).Assembly);
             services.AddRazorPages();
 
+            // Every page of the engine's area runs the filter that keeps the carried query on its
+            // redirects. Registered after AddRazorPages on purpose: the framework's own options
+            // setup, which that call registers, replaces the conventions collection, so a
+            // convention added by an earlier registration would be discarded with the old one.
+            services.Configure<Microsoft.AspNetCore.Mvc.RazorPages.RazorPagesOptions>(static pages =>
+                pages.Conventions.AddAreaFolderApplicationModelConvention(
+                    TellmaIdentityConstants.AreaName,
+                    "/",
+                    static model => model.Filters.Add(
+                        new Microsoft.AspNetCore.Mvc.ServiceFilterAttribute(typeof(CarriedQueryRedirectFilter)))));
+
             // The operator (control-plane) surface exists only in standalone mode; remove it from
             // the application model in-proc so its routes do not exist there at all.
             services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(mvc =>
                 mvc.Conventions.Add(new RemoveControlPlaneControllersConvention(snapshot.Mode)));
+
+            // Every management-API action must be a named, routed endpoint, refused at startup
+            // otherwise, so none answers at the bare version prefix or goes uncounted.
+            services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(static mvc =>
+                mvc.Conventions.Add(new ManagementApiModelConvention()));
 
             string prefix = snapshot.RoutePrefix;
             if (prefix.Length > 0)

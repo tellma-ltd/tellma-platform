@@ -48,7 +48,16 @@ Thumbs.db
 **/generated/
 *.tsbuildinfo
 projects/core/tellma-core-ui-mcp/dist/
+projects/core/tellma-core-tools/dist/
 
 # Generated token stylesheets (built by tokens:build-css)
 projects/core/tellma-core-ui-tokens/css/
+
+# Generated boot script template (built by tools/boot/build-boot-template.mts)
+projects/core/tellma-core/boot/
 .vitest-attachments/
+
+# The tellma-client fixture app's build output, cache and the specs' working copies of it
+projects/core/tellma-core-tools/fixtures/**/dist/
+projects/core/tellma-core-tools/fixtures/**/.angular/
+projects/core/tellma-core-tools/fixtures/run-*/

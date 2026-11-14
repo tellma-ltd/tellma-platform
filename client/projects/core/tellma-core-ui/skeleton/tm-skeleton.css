@@ -1,0 +1,100 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-skeleton — static placeholder shapes. Width and height are bound on
+   the host; everything else comes from the skeleton token group, and a
+   table borrows the data grid's row heights so its rows line up with the
+   rows that replace them. Nothing animates. */
+
+:host {
+  display: block;
+  box-sizing: border-box;
+}
+
+/* ---- line: a stack of 8 px bars ---- */
+
+:host([data-shape='line']) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--skeleton-line-gap);
+}
+
+/* The bar every shape but block and circle is built from. */
+.tm-skeleton__bar {
+  display: block;
+  flex: none;
+  block-size: var(--skeleton-bar-height);
+  border-radius: var(--skeleton-radius);
+  background: var(--skeleton-bg);
+}
+
+/* A paragraph's last line is shorter (a lone line keeps the full width). */
+:host([data-shape='line']) .tm-skeleton__bar:last-child:not(:first-child) {
+  inline-size: var(--skeleton-last-line-width);
+}
+
+/* ---- block and circle: the host is the shape ---- */
+
+:host([data-shape='block']) {
+  block-size: 100%;
+  border-radius: var(--skeleton-radius);
+  background: var(--skeleton-bg);
+}
+
+:host([data-shape='circle']) {
+  aspect-ratio: 1;
+  border-radius: var(--radius-full);
+  background: var(--skeleton-bg);
+}
+
+/* ---- table: a header row and body rows at the grid's row height ---- */
+
+:host([data-shape='table']) {
+  /* The cells per row; the component binds the real count inline. */
+  --tm-skeleton-columns: 4;
+  --tm-skeleton-row-height: var(--grid-row-height);
+
+  display: flex;
+  flex-direction: column;
+}
+
+:host([data-shape='table'][data-size='sm']) {
+  --tm-skeleton-row-height: var(--grid-row-height-sm);
+}
+
+:host([data-shape='table'][data-size='lg']) {
+  --tm-skeleton-row-height: var(--grid-row-height-lg);
+}
+
+.tm-skeleton__row {
+  display: grid;
+  grid-template-columns: repeat(var(--tm-skeleton-columns), minmax(0, 1fr));
+  box-sizing: border-box;
+  block-size: var(--tm-skeleton-row-height);
+  border-block-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tm-skeleton__row--header {
+  background: var(--grid-header-bg);
+  border-block-end-color: var(--grid-header-line);
+}
+
+/* Each cell centres its bar vertically, inset like the grid's cell text. */
+.tm-skeleton__cell {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--skeleton-cell-padding-x);
+}
+
+.tm-skeleton__cell > .tm-skeleton__bar {
+  inline-size: 100%;
+}
+
+/* Header labels are shorter than the data under them. */
+.tm-skeleton__row--header .tm-skeleton__bar {
+  inline-size: var(--skeleton-last-line-width);
+}

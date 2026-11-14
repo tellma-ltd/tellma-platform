@@ -9,33 +9,60 @@ disabled/readonly/required).
 
 | Import | Contents |
 |---|---|
-| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()`, the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade, `TM_CALENDAR` + `provideTmCalendar()`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
+| `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()` (with the translations loader, the theme seed and a live root `Directionality`), the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade (numbers, dates, instants with zone labels, relative times, month and weekday names), `TM_CALENDAR` + `provideTmCalendar()`, the display and device time zones (`TM_TIME_ZONE`, `TM_DEVICE_TIME_ZONE`) and the clock (`TM_NOW`), `TmBreakpoints` + `TM_BREAKPOINTS`, `TmTheme`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
 | `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces |
-| `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …) and the `TmCalendar` seam with the Gregorian default |
+| `@tellma/core-ui/l10n` | Framework-free number/date codecs (`tmFormatNumber`, `tmParseNumber`, `tmFormatDate`, `tmParseDate`, …), the instant formats in an explicit time zone (`tmFormatDateTime`, `tmFormatTime`, `tmFormatRelativeTime`, `tmFormatZoneOffset`, `tmFormatZoneName`), month and weekday names, `tmStripBidiControls` (no formatter writes a bidirectional control character), and the `TmCalendar` seam with the Gregorian default |
 | `@tellma/core-ui/calendar-umalqura` | `tmUmalquraCalendar()` — the Umm al-Qura (Hijri) calendar pack |
 | `@tellma/core-ui/calendar-ethiopic` | `tmEthiopicCalendar()` — the Ethiopic (Amete Mihret) calendar pack |
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
 | `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
-| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages |
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`); `tm-entity-multi-picker` — several FKs as one-line scrolling chips over the same search, with whole-selection advanced search and `maxItems` |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
+| `@tellma/core-ui/radio` | `tm-radio-group` + `tm-radio` — one value from a visible list of native radios, with arrow keys mapped to the live direction |
+| `@tellma/core-ui/segmented` | `tm-segmented` + `tm-segment` — the same native radios as a compact track of segments; icon segments drop their labels below a container width |
+| `@tellma/core-ui/switch` | `tm-switch` — an on/off setting: a native checkbox with `role="switch"` |
+| `@tellma/core-ui/search-field` | `tm-search-field` + `input[tmSearch]` — search-as-you-type with leading and trailing edges and an undoable clear (global stylesheet) |
+| `@tellma/core-ui/date-range` | `tm-date-range` + `tmDateRangeOrder` — a from–to pair of coupled date pickers |
+| `@tellma/core-ui/date-time` | `tm-time-field` + `tm-date-time-field` — a typed time of day, and an instant as a date and a time in an explicit zone that is always named |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
-| `@tellma/core-ui/select` | `tm-select` + `tm-option` — overlay single-select |
-| `@tellma/core-ui/button` | `tmButton` — variants, sizes, and the `pending` suppressed-activation state |
-| `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent` |
-| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel |
-| `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels |
+| `@tellma/core-ui/select` | `tm-select` and `tm-multi-select` over `tm-option` and `tm-option-group` — overlay single- and multiple-choice selects with option headings |
+| `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
+| `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent`, and `instantiate()` to render unselected tabs on request |
+| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`) |
+| `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels, content-sized or at a fixed `sm`/`md`/`lg` width |
 | `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
 | `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |
-| `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode |
+| `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode, and `placeholderOnError` for a placeholder fallback (an avatar's initials) |
 | `@tellma/core-ui/files` | `tmFilePicker` + `tm-dropzone` — file selection over one guardrail engine |
 | `@tellma/core-ui/file-preview` | `TmFilePreview` — the modal file viewer (download-only for HTML/unknown) |
-| `@tellma/core-ui/menu` | `tm-menu` + `tmContextMenuTrigger` — programmatic and context menus |
+| `@tellma/core-ui/menu` | `tm-menu` + `tmMenuTriggerFor` + `tmContextMenuTrigger` — data-driven menus opened from a menu button, a right-click or code. Entries are items (plain, checkbox or radio; with a description, a detail, a key-cap shortcut, `keepOpen`, `disabledReason`), links, one level of submenus, labelled groups and separators; `ng-template[tmMenuHeader]` adds a header block |
 | `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
+| `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
-| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries — no API goldens, never for app code |
+| `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
+| `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
+| `@tellma/core-ui/badge` | `tm-badge` — a status label in a colour tone, with an optional leading dot or icon; `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+") |
+| `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; `tmInitials` and `tmAvatarTone` |
+| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring` — the same as a ring around an icon button |
+| `@tellma/core-ui/skeleton` | `tm-skeleton` — static line, block, circle and table placeholders with the final geometry of what replaces them |
+| `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |
+| `@tellma/core-ui/copy` | `tm-copy-button` — one-click copy with a "Press Ctrl+C to copy" fallback; `tm-reference` — a trace id or version as a mono chip with that button |
+| `@tellma/core-ui/empty-state` | `tm-empty-state` — the one anatomy for "nothing to show" and inline failures: icon, heading, detail and actions |
+| `@tellma/core-ui/chip` | `tm-chip` — a compact label in a badge tone, as text, a link or a button, optionally removable (Delete/Backspace); `tm-chip-set` — a list of chips with one tab stop and arrow keys, that wraps, collapses behind a "+N" chip, or scrolls in one line |
+| `@tellma/core-ui/toast` | `TmToasts` + `provideTellmaToasts()` — transient messages in the block-start, inline-end corner: three on show behind an "N more" pill, six-second timers that pause on hover, focus and a hidden page, keyed replacement, `focus()` |
+| `@tellma/core-ui/banner` | `tm-banner-bar` — a 32 px page-wide message bar in a tone, with an action, previous/next paging and dismiss |
+| `@tellma/core-ui/busy-overlay` | `TmBusyOverlay` — `run(work)` holds the pointer and the keyboard from the calling task, shows a scrim, spinner and label after 200 ms (or at once), and returns focus when the work settles |
+| `@tellma/core-ui/confirm` | `TmConfirm` — `ask()` puts a question with two or more answers in a small alert dialog and resolves to the chosen key (or `null` when dismissed); `confirm()` is the yes-or-no case, with a destructive mode that focuses Cancel |
+| `@tellma/core-ui/error-dialog` | `TmErrorDialog` — a failure the user must acknowledge: the message, up to ten items and a count of the rest, a reference to copy, a Details disclosure with facts and actions, and caller footer buttons whose async `run` shows a pending state; a later `show` replaces the open dialog in place |
+| `@tellma/core-ui/card` | `tm-card` — a framed panel with a heading, a count, subtitle and action slots, a body and a footer; optionally a disclosure (`collapsible`, `preserveContent`), with an error dot whose box is reserved so it never moves the header |
+| `@tellma/core-ui/page-header` | `tm-page-header` — a page's title row (crumb link, `h1`, extras, end slot) and toolbar row on one line each, and a band below them that wraps |
+| `@tellma/core-ui/description-list` | `dl[tmDescriptionList]` — label and value pairs, stacked or inline, in one, two or container-sized columns (global stylesheet) |
+| `@tellma/core-ui/splitter` | `tm-splitter` + `tmSplitterPane` — two panes divided by a bar dragged with any pointer or moved by keyboard, the primary pane's size clamped to the container in CSS while `size` keeps the user's intent |
+| `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
+| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
 ## Consuming
 
@@ -44,18 +71,61 @@ Add to the application's `styles` array:
 - `@tellma/core-ui-tokens`' emitted stylesheet (the token variables);
 - this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);
 - one stylesheet per BARE DIRECTIVE — `styles/tm-button.css`,
-  `styles/tm-input.css`, `styles/tm-number.css`. A directive has no view of
-  its own to carry styles, so its appearance ships as a global sheet;
-  skipping these leaves buttons and text/number inputs unstyled. The
+  `styles/tm-input.css`, `styles/tm-number.css`, `styles/tm-search.css`,
+  `styles/tm-description-list.css`. A directive has no view of its own to
+  carry styles, so its appearance ships as a global sheet; skipping these
+  leaves buttons, text/number/search inputs and description lists unstyled. The
   authoritative list is `package.json`'s `"tellma".docs.globalStyles`, keyed
   by the entry point that needs it.
 
+Icons draw from data, not from a font or a sprite. The library registers no
+icon names: register the ones the application uses once, importing each
+icon's data from `lucide` (a dependency of this package):
+
+```ts
+import { ChevronRight, HandCoins } from 'lucide';
+
+providers: [
+  provideTellmaIcons({
+    'hand-coins': HandCoins,
+    // Glyphs that point along the reading direction flip in RTL.
+    'chevron-right': { node: ChevronRight, mirrorInRtl: true },
+  }),
+]
+```
+
 The build pipeline fingerprints the font binaries like any other
 CSS-referenced asset (see the showcase's `angular.json` for the reference
-wiring, and the workspace's `scripts/inject-font-preloads.mjs` for the
-post-build step that injects `<link rel="preload">` tags for the emitted font
-URLs). Theming, sizing, and typography all flow from the token variables —
+wiring, and `@tellma/core-tools/fonts` for the post-build step that injects
+`<link rel="preload">` tags for the emitted font URLs, which a distribution's
+`tellma-client build` runs). Theming, sizing, and typography all flow from the token variables —
 the components ship no hardcoded sizes or colors.
+
+## Layout, theme, strings and direction
+
+- **Breakpoints.** One closed set of widths (`sm` 576, `md` 768, `lg` 992,
+  `xl` 1200, `xxl` 1440), kept once in `layout/breakpoints.json` and
+  exported as `@tellma/core-ui/breakpoints.json`. Pages switch structure
+  with `TmBreakpoints`; components adapt with container queries on an inner
+  wrapper. Stylesheets spell width queries in range syntax at those values
+  only — `(width >= 768px)`, `(width < 576px)`, `(576px <= width < 992px)` —
+  which the `tm/allowed-breakpoints` stylelint rule enforces.
+- **Touch sizes.** Below `sm`, a field, button or select whose `size` is
+  unset renders at `lg` (46 px); an explicit size always wins, and grids
+  keep their row size.
+- **Theme.** `TmTheme` resolves System, Light or Dark and writes
+  `<html data-theme>` (always `light` or `dark`). Seed it with
+  `provideTellmaUi({ theme: { initial } })`; the app persists the choice.
+- **Strings.** `provideTellmaUi({ translations })` registers the app's
+  loader; loaded tables merge with the built-in English and installed locale
+  packs. ICU MessageFormat is interpreted, never compiled to code, so it
+  runs under a Content Security Policy without `'unsafe-eval'`. Typed
+  arguments (`number`, `date`, `time`) format through
+  `TM_UI_ARGUMENT_FORMATTER`: numbers with `Intl`, dates and times as ISO
+  8601 by default, which an app replaces with its calendar-aware formatting.
+- **Direction.** Flip `document.documentElement.dir` (and `lang`): the root
+  `Directionality` follows live, so open modals mirror in place and every
+  overlay opened afterwards takes the new direction.
 
 ## Authoring conventions
 
@@ -64,7 +134,22 @@ the components ship no hardcoded sizes or colors.
 - Entry points import shared code via `@tellma/core-ui` only — never a
   relative `../` path (each entry point is its own compilation unit).
 - Component hosts must be `display: block`: an inline host wrapping a block
-  child hit-tests above the child in Chromium, swallowing real clicks.
+  child hit-tests above the child in Chromium, swallowing real clicks. Hosts
+  that sit inside a line of text or beside a name are atomic inline boxes
+  (`inline-flex`) instead, which hit-test like blocks: the glyphs
+  (`tm-icon`, `tm-kbd`), `tm-badge`, `tm-counter`, `tm-avatar`,
+  `tm-progress-ring`, `tm-copy-button`, `tm-reference` and `tm-chip`.
+  `tm-relative-time` is plain `inline` text, since it wraps only inline
+  content.
+- `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
+  point builds on, so they import no other `@tellma` entry point (lint
+  enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
+  imported from `lucide`; key combinations are matched and labelled through
+  the `kbd` helpers, the library's only platform check.
+- Unit spec files share one browser page per run. A spec that changes the
+  page irreversibly (a Content Security Policy, which can never be lifted)
+  is named `*.csp.spec.ts`: the `test` target excludes that suffix and the
+  `test-csp` target runs those files in a run of their own.
 - Usage examples live in co-located `*.examples.ts` files (dependency-free
   template objects); they feed the docs pipeline and are compile-checked
   against the live components by `docs-examples.spec.ts`.

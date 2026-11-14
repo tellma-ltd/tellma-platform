@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Not an xunit project: a stand-in for the PDF worker that the imaging suite starts the way
+         the processor starts the real one, with the host's runtime configuration and dependency
+         manifest, so it has no app host, runtime configuration or manifest of its own. -->
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <TellmaTestAsset>true</TellmaTestAsset>
+    <!-- The allocation probes touch native memory. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The real worker's protocol and sandbox, so each misbehaviour happens inside the very
+         sandbox and limits a real worker gets. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Imaging.PdfWorker\Tellma.Core.Imaging.PdfWorker.csproj" />
+  </ItemGroup>
+
+</Project>

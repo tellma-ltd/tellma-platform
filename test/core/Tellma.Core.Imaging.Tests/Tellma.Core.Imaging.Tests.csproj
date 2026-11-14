@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The PDF worker suites read native structures (job and handle queries). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Imaging\Tellma.Core.Imaging.csproj" />
+    <!-- The misbehaving stand-in for the PDF worker, and a host that composes the processor and
+         runs as a process of its own; both are started with this suite's runtime configuration
+         and dependency manifest, which these references make list them. -->
+    <ProjectReference Include="..\assets\Tellma.Core.Imaging.TestWorker\Tellma.Core.Imaging.TestWorker.csproj" />
+    <ProjectReference Include="..\assets\Tellma.Core.Imaging.SmokeHost\Tellma.Core.Imaging.SmokeHost.csproj" />
+    <!-- In-memory configuration for the options binding. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

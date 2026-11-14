@@ -6,6 +6,18 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# One group per commit, never cancelled: every push to a pull request gets its own verdict, even
+# when a later push lands while it is still running. Only a second run of the same commit (a
+# reopen, or ready-for-review) waits for the first. The event name keeps a push to main and a pull
+# request at the same commit from queueing behind each other.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+# This file is the PR tier. Every job below excludes the nightly tier: dotnet tests carrying
+# [Trait("Category", "Nightly")] and Playwright tests tagged @nightly, @perf or @quarantine, plus the
+# Firefox and WebKit runs of @cross-engine tests. Those run in nightly-tier.yml. CONTRIBUTING.md lists the
+# commands of both tiers; keep it in step with this file.
 jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
@@ -23,7 +35,13 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
       - run: dotnet build Tellma.slnx -c Release --no-restore
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Live!=true"
+      # The Linux runner carries the ICU release the pinned culture data was generated from
+      # (eng/culture-data), so the test that regenerates the data must run there. The variable
+      # turns its skip on any other ICU release into a failure: a runner image that moves on is
+      # noticed here rather than silently dropping the guard.
+      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
+        env:
+          TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
@@ -49,14 +67,69 @@ jobs:
   # PRs cannot read the secrets they need anyway.
   integration:
     if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 25
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Live!=true"
+      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true"
+
+  # The distribution host's two integration suites on Windows, against LocalDB rather than a
+  # container (the Windows runners have no Linux containers): the platform's catalog and migrator
+  # suite and the reference distribution's. LocalDB is installed when the image lacks it. The other
+  # integration suites need nothing Windows-specific and run in the job above.
+  integration-windows:
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 45
+    runs-on: windows-latest
+    env:
+      TELLMA_TEST_SQL: 'Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Start LocalDB
+        shell: pwsh
+        run: |
+          # The installer's PATH change does not reach this shell, and its folder names the SQL
+          # Server version, so the tool is located rather than assumed and its folder is added for
+          # this step and the later ones.
+          if (-not (Get-Command sqllocaldb -ErrorAction SilentlyContinue)) {
+            choco install sqllocaldb --no-progress -y
+            $tool = Get-ChildItem "$env:ProgramFiles\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe" | Select-Object -First 1
+            if (-not $tool) { throw 'SqlLocalDB.exe was not found after its install.' }
+            $env:PATH += ";$($tool.DirectoryName)"
+            Add-Content -Path $env:GITHUB_PATH -Value $tool.DirectoryName
+          }
+          if (-not (sqllocaldb info | Where-Object { $_.Trim() -eq 'MSSQLLocalDB' })) {
+            sqllocaldb create MSSQLLocalDB
+          }
+          sqllocaldb start MSSQLLocalDB
+      - run: dotnet build test/core/Tellma.Core.IntegrationTests -c Release
+      - run: dotnet build distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release
+      # The instance's first logins can fail while it warms up, and a suite's first catalog load
+      # would then classify that error instead of the one under test. A query against master,
+      # retried until it answers, leaves the instance warm. The instance's pipe name serves either
+      # sqlcmd (the ODBC one or the Go one).
+      - name: Warm LocalDB
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
+            choco install sqlcmd --no-progress -y
+          }
+          sqllocaldb start MSSQLLocalDB
+          $pipe = (sqllocaldb info MSSQLLocalDB | Select-String 'np:\S+').Matches[0].Value
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            sqlcmd -S $pipe -E -d master -l 30 -b -Q 'SELECT 1'
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds 5
+          }
+          throw 'LocalDB did not answer a query against master.'
+      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
+      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
 
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
@@ -94,8 +167,10 @@ jobs:
         run: dotnet ef migrations bundle --project "$HOST" --startup-project "$HOST" -o artifacts/efbundle
 
       # --- Package flow ---
+      # Tellma.Core.Abstractions depends on Tellma.Core.Queryex, so the feed carries both.
       - name: Pack the libraries
         run: |
+          dotnet pack src/core/Tellma.Core.Queryex -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
@@ -123,10 +198,12 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('Directory.Packages.props') }}
+      # Not `install --with-deps`: the script installs the OS packages with bounded retries and, when
+      # the apt mirrors are down, lets the job go on with a warning as long as Chromium launches.
       - name: Install Chromium
         timeout-minutes: 10
-        run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
-      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E"
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
+      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E&Category!=Nightly"
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -135,32 +212,32 @@ jobs:
           path: test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright-traces
           if-no-files-found: ignore
 
-  # The Angular workspace (spec 0002): lint (incl. the tm- rules), token
-  # gates (schema + missing-ref), build, the full unit suite, API
-  # goldens, docs/MCP generation + validation, bundle budgets, and the
-  # Playwright behavioral/a11y/RTL suite (incl. axe contrast) — all
-  # port-free (§1.3).
+  # The client (spec 0002, spec 0024 §12): lint (incl. the tm- rules, the
+  # @tellma/core boundary rule and the decimal rules), token gates (schema +
+  # missing-ref), build, the full unit suite, API goldens, docs/MCP generation
+  # + validation, bundle budgets, and the Playwright behavioral/a11y/RTL suite
+  # (incl. axe contrast) — all port-free (§1.3). Every step runs from the
+  # repository root, the root of the one pnpm workspace; the root scripts
+  # forward to client/. The e2e step runs the PR tier on the Chromium engine
+  # only: the desktop battery and the touch battery. Firefox and WebKit, and
+  # tests tagged @nightly, @perf or @quarantine, run in nightly-tier.yml.
   client:
     if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
-        with:
-          package_json_file: client/package.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: client/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Install browsers
+      # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone. The
+      # script survives an apt-mirror outage as long as Chromium still launches (see identity-e2e).
+      - name: Install Chromium
         timeout-minutes: 15
-        run: pnpm exec playwright install chromium firefox webkit --with-deps
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir client exec playwright
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run lint:test
@@ -172,7 +249,49 @@ jobs:
       - run: pnpm run size:check
       # Production showcase build + post-build font preload injection.
       - run: pnpm run build:showcase
-      - run: pnpm run e2e
+      # Called directly rather than through `pnpm run e2e`, so the grep pattern reaches Playwright
+      # without a second round of shell parsing. The tokens CSS that the `pree2e` hook would
+      # generate already exists: the build step above writes it. No --pass-with-no-tests here: a
+      # pattern that matched nothing would be a broken gate, and must fail.
+      - name: PR-tier e2e (Chromium, nightly-tier tags excluded)
+        run: node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-e2e-report
+          path: client/.artifacts/e2e
+          if-no-files-found: ignore
+
+  # The client packages build, lint, test and match their goldens on Windows too (spec 0024 §12):
+  # every gate of the job above except the e2e suite, whose Linux run covers the browser
+  # behaviour. Path separators, line endings and shell differences surface here first.
+  client-windows:
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 45
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The unit suites run in real Chromium (vitest browser mode).
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: pnpm --dir client exec playwright install chromium
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run lint:test
+      - run: pnpm run tokens:check
+      - run: pnpm run build
+      - run: pnpm run test
+      - run: pnpm run api:check
+      - run: pnpm run docs:build
+      - run: pnpm run size:check
+      - run: pnpm run build:showcase
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
@@ -181,7 +300,9 @@ jobs:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
     # Include all required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    needs: [build-test, format, integration, design-e2e, client, identity-e2e]
+    # `integration-windows` runs with the other jobs but does not gate yet: it joins this list
+    # once it has run green on platform-core.
+    needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:

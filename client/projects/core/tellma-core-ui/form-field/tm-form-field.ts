@@ -23,10 +23,18 @@ import {
   OverlayModule,
   type ConnectedOverlayPositionChange,
 } from '@angular/cdk/overlay';
+import { CircleAlert } from 'lucide';
 
 import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
-import { TM_ERROR_DISPLAY, TM_FORM_FIELD_DEFAULTS, type TmControlSize } from '@tellma/core-ui';
-import { tmCreateAnchoredOverlay, tmLogicalPositions, ɵTmErrorPopover } from '@tellma/core-ui/private';
+import {
+  TM_ERROR_DISPLAY,
+  TM_FORM_FIELD_DEFAULTS,
+  ɵtmControlSize,
+  type TmControlSize,
+} from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
+import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
+import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 /**
@@ -73,7 +81,7 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-form-field',
-  imports: [TmSpinner, OverlayModule, ɵTmErrorPopover],
+  imports: [TmIcon, TmSpinner, OverlayModule, ɵTmErrorPopover],
   template: `
     @if (label() !== '') {
       <label
@@ -106,20 +114,7 @@ let nextUniqueId = 0;
            glyph itself (ownsErrorIcon) — the field cannot reach in front
            of that button from out here. -->
       @if (showError() && !chromeless() && !ownsErrorIcon()) {
-        <svg
-          class="tm-form-field__error-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" x2="12" y1="8" y2="12" />
-          <line x1="12" x2="12.01" y1="16" y2="16" />
-        </svg>
+        <tm-icon class="tm-form-field__error-icon" [svg]="errorIcon" />
       }
       <ng-content select="[tmSuffix]" />
       @if (pending() && !chromeless()) {
@@ -165,8 +160,8 @@ let nextUniqueId = 0;
     '[class.tm-form-field--invalid]': 'showError()',
     '[class.tm-form-field--disabled]': 'control()?.disabled() ?? false',
     '[class.tm-form-field--readonly]': 'control()?.readonly() ?? false',
-    '[class.tm-form-field--sm]': 'size() === "sm"',
-    '[class.tm-form-field--lg]': 'size() === "lg"',
+    '[class.tm-form-field--sm]': 'resolvedSize() === "sm"',
+    '[class.tm-form-field--lg]': 'resolvedSize() === "lg"',
     '(focusin)': 'onFocusIn()',
     '(focusout)': 'onFocusOut($event)',
   },
@@ -190,11 +185,21 @@ export class TmFormField {
    * control's own errors take precedence while displayed.
    */
   readonly error = input('');
-  /** Size step, mapping to the --field-height/-font-size/-padding-x tokens. */
-  readonly size = input<TmControlSize>(this.defaults.size);
+  /**
+   * Size step, mapping to the --field-height/-font-size/-padding-x tokens,
+   * and inherited by the projected control. Unset, the field takes the
+   * workspace default from `TM_FORM_FIELD_DEFAULTS`, and the `lg` touch
+   * height below the `sm` breakpoint.
+   */
+  readonly size = input<TmControlSize | undefined>(undefined);
+  /** The size step the field renders at: `size`, else the responsive default. */
+  protected readonly resolvedSize = ɵtmControlSize(this.size);
 
   /** The projected control, discovered through the TM_FORM_FIELD_CONTROL token. */
   protected readonly control = contentChild(TM_FORM_FIELD_CONTROL);
+
+  /** The in-field invalid mark's icon data. */
+  protected readonly errorIcon = CircleAlert;
 
   /** Stable id of the label element, handed to non-labelable controls for aria-labelledby. */
   protected readonly labelId = `tm-ff-label-${this.uniqueId}`;

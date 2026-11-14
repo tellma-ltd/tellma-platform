@@ -18,7 +18,8 @@ namespace Tellma.Identity.Options
     ///     The host environment, when available: used to reject development-only settings outside
     ///     the Development environment regardless of their opt-in flag. Null for the eager
     ///     registration-time snapshot check, where the same rule is enforced later at start-up by
-    ///     the DI-resolved validator that does have it.
+    ///     the DI-resolved validator that does have it. The seeded clients are validated only when
+    ///     it is set: their rules depend on it, and they shape no registration-time decision.
     /// </param>
     public sealed class TellmaIdentityOptionsValidator(IHostEnvironment? environment = null)
         : IValidateOptions<TellmaIdentityOptions>
@@ -136,7 +137,153 @@ namespace Tellma.Identity.Options
                 failures.Add("TellmaIdentity:Lifetimes:RefreshTokenReuseLeeway must not be negative.");
             }
 
+            // Seed entries shape no registration-time decision, and their rules depend on the
+            // environment (Development relaxes the origin scheme and the secrets), so they are
+            // validated only once it is known: by the start-up check, over the host's final
+            // configuration, never by the eager registration-time one.
+            if (environment is not null)
+            {
+                ValidateSeedClients(options.Seed, environment, failures);
+            }
+
             return failures.Count > 0 ? ValidateOptionsResult.Fail(failures) : ValidateOptionsResult.Success;
+        }
+
+        /// <summary>
+        ///     Validates the enabled seed entries — the client list and the interim clients alike:
+        ///     every client id they register is unique, each distribution entry is well formed, the
+        ///     third-party flag sits on native entries only, and each interim client is a
+        ///     third-party native entry whose client id is its key. Every failure names its entry.
+        /// </summary>
+        private static void ValidateSeedClients(
+            TellmaIdentitySeedOptions seed, IHostEnvironment environment, List<string> failures)
+        {
+            // A distribution entry registers two clients, so its backend id counts too: two entries
+            // that resolve to one client id would overwrite each other at every start. Compared
+            // ignoring case, as the store's unique index on the client id is under the platform's
+            // case-insensitive collation: "ACME-svc" and "acme-svc" are one row there.
+            Dictionary<string, string> claimed = new(StringComparer.OrdinalIgnoreCase);
+            foreach ((string path, TellmaIdentitySeedClientOptions client, string? interimKey) in seed.ListEntries())
+            {
+                // A disabled entry seeds nothing, so nothing about it can go wrong at a start.
+                if (!client.Enabled)
+                {
+                    continue;
+                }
+
+                string entry = $"{path} ('{client.ClientId}')";
+
+                if (string.IsNullOrWhiteSpace(client.ClientId))
+                {
+                    failures.Add($"{path}: ClientId is required.");
+                    continue;
+                }
+
+                IEnumerable<string> clientIds = client.Kind == TellmaIdentitySeedClientKind.Distribution
+                    ? [client.ClientId, client.ClientId + Services.Provisioning.DistributionClientRegistration.ServiceClientIdSuffix]
+                    : [client.ClientId];
+                foreach (string clientId in clientIds)
+                {
+                    if (!claimed.TryAdd(clientId, entry))
+                    {
+                        failures.Add($"{entry}: registers client '{clientId}', which {claimed[clientId]} already registers.");
+                    }
+                }
+
+                if (client.Kind == TellmaIdentitySeedClientKind.Distribution)
+                {
+                    ValidateDistribution(client, entry, environment.IsDevelopment(), failures);
+                }
+
+                // Third-party software is a public native client by definition; on any other kind
+                // the flag would either be meaningless or strip a first-party marker the platform's
+                // own clients rely on.
+                if (client.ThirdParty && client.Kind != TellmaIdentitySeedClientKind.Native)
+                {
+                    failures.Add($"{entry}: ThirdParty is accepted on Native entries only.");
+                }
+
+                // The interim section exists for third-party agents alone: an entry there that is
+                // not one would be a first-party client seeded under the agents' name.
+                if (interimKey is not null)
+                {
+                    if (!string.Equals(client.ClientId, interimKey, StringComparison.Ordinal))
+                    {
+                        failures.Add($"{entry}: an interim client's ClientId must equal its key '{interimKey}'.");
+                    }
+
+                    if (client.Kind != TellmaIdentitySeedClientKind.Native || !client.ThirdParty)
+                    {
+                        failures.Add($"{entry}: an interim client must be a Native entry with ThirdParty set.");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Validates one distribution entry: its slug, its origin and back-channel logout URI,
+        ///     and — outside Development — both secrets.
+        /// </summary>
+        private static void ValidateDistribution(
+            TellmaIdentitySeedClientOptions client, string entry, bool development, List<string> failures)
+        {
+            // The slug becomes a client id, a host name and Azure resource names, so it keeps to
+            // the slug grammar: lowercase letters, digits and hyphens, starting with a letter.
+            string slug = client.ClientId!;
+            if (slug.Length > TellmaIdentitySeedClientOptions.MaxDistributionSlugLength
+                || slug[0] is not (>= 'a' and <= 'z')
+                || !slug.All(static c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-'))
+            {
+                failures.Add(
+                    $"{entry}: a Distribution ClientId is the distribution's slug: lowercase letters, digits and hyphens, "
+                        + $"starting with a letter, at most {TellmaIdentitySeedClientOptions.MaxDistributionSlugLength} characters.");
+            }
+
+            if (string.IsNullOrWhiteSpace(client.Origin))
+            {
+                failures.Add($"{entry}: Origin is required for a Distribution entry.");
+            }
+            else if (!Uri.TryCreate(client.Origin, UriKind.Absolute, out Uri? origin)
+                || !IsAcceptedScheme(origin, development)
+                || !string.IsNullOrEmpty(origin.UserInfo)
+                || origin.AbsolutePath != "/"
+                || !string.IsNullOrEmpty(origin.Query)
+                || !string.IsNullOrEmpty(origin.Fragment))
+            {
+                failures.Add(
+                    $"{entry}: Origin must be an absolute https origin with no path, query or fragment "
+                        + "(http only in the Development environment).");
+            }
+
+            if (!string.IsNullOrWhiteSpace(client.BackchannelLogoutUri)
+                && (!Uri.TryCreate(client.BackchannelLogoutUri, UriKind.Absolute, out Uri? backchannel)
+                    || !IsAcceptedScheme(backchannel, development)
+                    || !string.IsNullOrEmpty(backchannel.UserInfo)))
+            {
+                failures.Add(
+                    $"{entry}: BackchannelLogoutUri must be an absolute https URI (http only in the Development environment).");
+            }
+
+            // Development lets a host supply per-boot secrets of its own; the seeder never makes one.
+            if (!development)
+            {
+                if (string.IsNullOrWhiteSpace(client.ClientSecret))
+                {
+                    failures.Add($"{entry}: ClientSecret is required outside the Development environment.");
+                }
+
+                if (string.IsNullOrWhiteSpace(client.ServiceClientSecret))
+                {
+                    failures.Add($"{entry}: ServiceClientSecret is required outside the Development environment.");
+                }
+            }
+        }
+
+        /// <summary>Whether a distribution URI's scheme is accepted: <c>https</c> always, <c>http</c> only in Development.</summary>
+        private static bool IsAcceptedScheme(Uri uri, bool development)
+        {
+            return string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+                || (development && string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.Ordinal));
         }
 
         /// <summary>Validates one certificate slot's source configuration.</summary>

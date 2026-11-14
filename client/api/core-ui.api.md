@@ -21,10 +21,13 @@ export function provideTellmaForms(options?: TmFormsOptions): EnvironmentProvide
 export function provideTellmaUi(options?: TmUiOptions): EnvironmentProviders;
 
 // @public
-export function provideTmCalendar(calendar: TmCalendar | Signal<TmCalendar>): EnvironmentProviders;
+export function provideTmCalendar(calendar: Signal<TmCalendar> | TmCalendar): EnvironmentProviders;
 
 // @public
 export const TM_ACTIVE_LOCALE: InjectionToken<Signal<string>>;
+
+// @public
+export const TM_BREAKPOINTS: Readonly<Record<Exclude<TmBreakpoint, 'xs'>, number>>;
 
 // @public
 export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
@@ -33,10 +36,22 @@ export const TM_CALENDAR: InjectionToken<Signal<TmCalendar>>;
 export const TM_CELL_EDITOR_HOST: InjectionToken<TmCellEditorHost>;
 
 // @public
+export const TM_DEVICE_TIME_ZONE: InjectionToken<Signal<string>>;
+
+// @public
 export const TM_ERROR_DISPLAY: InjectionToken<TmErrorDisplayPolicy>;
 
 // @public
 export const TM_FORM_FIELD_DEFAULTS: InjectionToken<TmFormFieldDefaults>;
+
+// @public
+export const TM_NOW: InjectionToken<() => number>;
+
+// @public
+export const TM_TIME_ZONE: InjectionToken<Signal<string>>;
+
+// @public
+export const TM_UI_ARGUMENT_FORMATTER: InjectionToken<TmUiArgumentFormatter>;
 
 // @public
 export const TM_UI_I18N_SCOPE = "tmUi";
@@ -59,6 +74,9 @@ export const TM_UI_STRINGS_EN: {
         readonly parse: "Enter a valid number, like {example}";
         readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
         readonly parseDate: "Enter a date like {example}";
+        readonly parseTime: "Enter a time like {example}";
+        readonly dateRangeOrder: "The end date must be on or after the start date";
+        readonly dateTimeIncomplete: "Enter both a date and a time";
     };
     readonly datePicker: {
         readonly chooseDate: "Choose date";
@@ -72,6 +90,12 @@ export const TM_UI_STRINGS_EN: {
     readonly select: {
         readonly placeholder: "Select an option";
     };
+    readonly multiSelect: {
+        readonly placeholder: "Select options";
+    };
+    readonly l10n: {
+        readonly quarter: "Q{quarter} {year}";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "Advanced search…";
         readonly create: "Create…";
@@ -83,12 +107,16 @@ export const TM_UI_STRINGS_EN: {
         readonly noResults: "No results";
         readonly searchFailed: "Search failed";
         readonly moreResults: "{count, plural, one {Showing 1 match. Type to refine.} other {Showing # matches. Type to refine.}}";
+        readonly maxItems: "You can choose up to {max, number}";
+        readonly selectedSummary: "{count, plural, one {# selected} other {# selected}}: {labels}";
         readonly announce: {
             readonly results: "{count, plural, one {1 result} other {# results}}";
             readonly resultsMore: "{count, number}+ results — more available";
             readonly noResults: "No results";
             readonly searchFailed: "Search failed";
             readonly picked: "{label} selected";
+            readonly added: "{label} added";
+            readonly removed: "{label} removed";
         };
         readonly errors: {
             readonly unresolved: "Select an item from the list";
@@ -103,6 +131,10 @@ export const TM_UI_STRINGS_EN: {
         readonly newRow: "New row";
         readonly selectAll: "Select all rows";
         readonly selectRow: "Select row";
+        readonly rowActivationHint: "Press Enter to open a row. Press F2 to reach a link in a cell.";
+        readonly headerNavHint: "{filter, select, true {Enter to sort. {filterKeys} to filter.} other {Enter to sort.}}";
+        readonly headerActionHint: "Press Enter to open.";
+        readonly headerActionActive: "Active";
         readonly menu: {
             readonly cut: "Cut";
             readonly copy: "Copy";
@@ -148,6 +180,9 @@ export const TM_UI_STRINGS_EN: {
             readonly lazyLoadFailed: "Could not load child rows";
             readonly errorJump: "Error {index, number} of {count, number}";
             readonly checkedCount: "{selected, number} of {total, number} selected";
+            readonly checkedCountAcross: "{onPage, number} of {total, number} selected here, {selected, number} in all";
+            readonly sorted: "Sorted by {column}, {direction, select, asc {ascending} other {descending}}";
+            readonly sortCleared: "Sort cleared";
             readonly loaded: "{count, plural, =0 {No records} one {1 record} other {# records}} loaded";
             readonly loading: "Loading";
         };
@@ -170,6 +205,43 @@ export const TM_UI_STRINGS_EN: {
             readonly previous: "Previous match";
             readonly close: "Close find";
         };
+        readonly keys: {
+            readonly move: "Move to the adjacent cell";
+            readonly jump: "Jump to the edge of the data";
+            readonly page: "Move up or down one page";
+            readonly rowEdge: "Move to the start or end of the row";
+            readonly gridEdge: "Move to the first or last cell";
+            readonly extend: "Extend the selection";
+            readonly selectRows: "Select entire rows";
+            readonly selectColumns: "Select entire columns";
+            readonly selectAll: "Select all cells";
+            readonly checkRow: "Check or uncheck the row";
+            readonly checkAll: "Check or uncheck all rows";
+            readonly tab: "Move to the next or previous cell";
+            readonly enter: "Open the row, edit the cell, or move down";
+            readonly openRowNewTab: "Open the row in a new tab";
+            readonly moveUp: "Move up";
+            readonly edit: "Edit the cell, or reach the link in it";
+            readonly openDropdown: "Open the cell’s dropdown";
+            readonly clear: "Clear the selected cells";
+            readonly escape: "Cancel the cut or copy, or leave the grid";
+            readonly menu: "Open the context menu";
+            readonly find: "Find in the grid";
+            readonly copy: "Copy";
+            readonly cut: "Cut";
+            readonly paste: "Paste";
+            readonly fillDown: "Fill down";
+            readonly undo: "Undo";
+            readonly redo: "Redo";
+            readonly insertRows: "Insert rows above";
+            readonly deleteRows: "Delete the selected rows";
+            readonly expand: "Expand the row";
+            readonly collapse: "Collapse the row";
+            readonly headerAction: "Open the column header’s action, such as its filter";
+        };
+    };
+    readonly menu: {
+        readonly opensInNewTab: "(opens in a new tab)";
     };
     readonly alert: {
         readonly info: "Info:";
@@ -214,26 +286,106 @@ export const TM_UI_STRINGS_EN: {
         readonly tooLarge: "The file is larger than {maxMb, number} MB";
         readonly unsupported: "The file is not a supported image";
     };
+    readonly copy: {
+        readonly copy: "Copy";
+        readonly copied: "Copied";
+        readonly manual: "Press {keys} to copy";
+    };
+    readonly reference: {
+        readonly label: "Reference";
+        readonly copy: "Copy reference";
+    };
+    readonly counter: {
+        readonly overflow: "{max}+";
+    };
+    readonly chip: {
+        readonly remove: "Remove {label}";
+        readonly more: "{count, number} more: {labels}";
+    };
+    readonly toast: {
+        readonly region: "Recent messages";
+        readonly close: "Close";
+        readonly more: "{count, number} more";
+    };
+    readonly banner: {
+        readonly dismiss: "Dismiss";
+        readonly previous: "Previous message";
+        readonly next: "Next message";
+        readonly position: "{index, number} of {count, number}";
+    };
+    readonly busyOverlay: {
+        readonly label: "Please wait";
+    };
+    readonly confirm: {
+        readonly ok: "OK";
+        readonly cancel: "Cancel";
+    };
+    readonly errorDialog: {
+        readonly close: "Close";
+        readonly details: "Details";
+        readonly more: "and {count, number} more";
+    };
+    readonly card: {
+        readonly hasErrors: "{heading}, has errors";
+    };
+    readonly splitter: {
+        readonly label: "Resize panels";
+    };
+    readonly searchField: {
+        readonly placeholder: "Search";
+        readonly clear: "Clear search";
+    };
+    readonly dateRange: {
+        readonly from: "From";
+        readonly to: "To";
+    };
+    readonly dateTime: {
+        readonly date: "Date";
+        readonly time: "Time";
+    };
 };
 
 // @public
 export const TM_UI_TRANSLATE: InjectionToken<TmUiTranslateFn>;
 
 // @public
+export type TmBreakpoint = 'lg' | 'md' | 'sm' | 'xl' | 'xs' | 'xxl';
+
+// @public
+export class TmBreakpoints {
+    constructor();
+    atLeast(breakpoint: TmBreakpoint): Signal<boolean>;
+    readonly current: Signal<TmBreakpoint>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmBreakpoints, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmBreakpoints>;
+}
+
+// @public
 export class TmClientCache {
-    clearAll(): Promise<void>;
+    clearAll(options?: TmClientCacheClearOptions): Promise<void>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmClientCache, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmClientCache>;
 }
 
 // @public
-export type TmControlSize = 'sm' | 'md' | 'lg';
+export type TmClientCacheArea = 'cache-storage' | 'indexeddb' | 'local-storage' | 'session-storage';
+
+// @public
+export interface TmClientCacheClearOptions {
+    readonly keep?: (name: string, area: TmClientCacheArea) => boolean;
+}
+
+// @public
+export type TmControlSize = 'lg' | 'md' | 'sm';
 
 // @public
 export function tmDefaultActiveLocale(): Signal<string>;
 
 // @public
 export const tmDefaultErrorDisplay: TmErrorDisplayPolicy;
+
+// @public
+export function tmDefaultUiArgumentFormatter(type: TmUiArgumentType, value: unknown, style: string, locale: string): string;
 
 // @public
 export function tmDefaultUiTranslate(): TmUiTranslateFn;
@@ -269,10 +421,32 @@ export interface TmFormsOptions {
 
 // @public
 export class TmL10n {
+    constructor();
     readonly calendar: Signal<TmCalendar>;
+    readonly deviceTimeZone: Signal<string>;
     formatDate(iso: string | null | undefined, options?: TmDateFormatOptions): string;
+    formatDateTime(instant: string | null | undefined, options?: {
+        readonly dateStyle?: TmDateStyle;
+        readonly timeStyle?: 'none' | TmTimeStyle;
+        readonly zoneLabel?: TmZoneLabelMode;
+    }): string;
+    formatMonthName(month: number, options?: {
+        readonly calendar?: TmCalendar;
+    }): string;
     formatNumber(value: unknown, options?: TmNumberFormatOptions): string;
+    formatRelativeTime(instant: string | null | undefined, options: {
+        readonly now: number;
+        readonly style?: 'long' | 'narrow' | 'short';
+    }): string;
+    formatTime(instant: string | null | undefined, options?: {
+        readonly timeStyle?: TmTimeStyle;
+        readonly zoneLabel?: TmZoneLabelMode;
+    }): string;
+    formatWeekdayName(weekday: number): string;
     readonly locale: Signal<string>;
+    readonly timeZone: Signal<string>;
+    zoneLabel(instant?: string | null): string;
+    readonly zoneMismatch: Signal<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmL10n, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmL10n>;
 }
@@ -287,15 +461,55 @@ export function tmMinDate<TValue extends string | null, TPathKind extends PathKi
 export function tmResolveFieldErrors(errors: Signal<readonly ValidationError.WithOptionalFieldTree[]>, translate: TmUiTranslateFn, formatDate?: (iso: string) => string): Signal<readonly TmFieldError[]>;
 
 // @public
+export class TmTheme {
+    constructor();
+    readonly effective: Signal<'dark' | 'light'>;
+    set(setting: TmThemeSetting): void;
+    readonly setting: Signal<TmThemeSetting>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTheme, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmTheme>;
+}
+
+// @public
+export interface TmThemeOptions {
+    readonly initial?: TmThemeSetting | (() => TmThemeSetting);
+}
+
+// @public
+export type TmThemeSetting = 'dark' | 'light' | 'system';
+
+// @public
+export type TmUiArgumentFormatter = (type: TmUiArgumentType, value: unknown, style: string, locale: string) => string;
+
+// @public
+export type TmUiArgumentType = 'date' | 'number' | 'time';
+
+// @public
 export type TmUiMessageContext = Record<string, unknown>;
 
 // @public
 export interface TmUiOptions {
     readonly availableLangs?: readonly string[];
     readonly forms?: TmFormsOptions;
+    readonly theme?: TmThemeOptions;
+    readonly translations?: TmUiTranslationsLoader;
 }
 
 // @public
 export type TmUiTranslateFn = (key: string, params?: Record<string, unknown>) => Signal<string>;
+
+// @public
+export type TmUiTranslationsLoader = (request: {
+    readonly lang: string;
+    readonly scope: string | null;
+}) => Promise<TmUiTranslationTable>;
+
+// @public
+export type TmUiTranslationTable = {
+    readonly [key: string]: string | TmUiTranslationTable;
+};
+
+// @public
+export type TmZoneLabelMode = 'auto' | 'column' | 'none';
 
 ```

@@ -14,8 +14,10 @@
     <File Path="LICENSE" />
     <File Path="README.md" />
     <File Path="SECURITY.md" />
+    <File Path="taxonomy.json" />
   </Folder>
   <Folder Name="/eng/">
+    <Project Path="eng/culture-data/Tellma.CultureData.Generator/Tellma.CultureData.Generator.csproj" />
     <Project Path="eng/queryex-inspection/Tellma.Queryex.Inspection/Tellma.Queryex.Inspection.csproj" />
   </Folder>
   <Folder Name="/src/">
@@ -24,8 +26,12 @@
     <Project Path="src/apps/Tellma.Identity.Web/Tellma.Identity.Web.csproj" />
     <Project Path="src/core/Tellma.Core.Abstractions/Tellma.Core.Abstractions.csproj" Id="a8c5c375-60d1-4415-9377-aa1254091b00" />
     <Project Path="src/core/Tellma.Core/Tellma.Core.csproj" Id="139b300f-8e04-4fcf-92db-45127fb3c7a4" />
+    <Project Path="src/core/Tellma.Core.AspNetCore/Tellma.Core.AspNetCore.csproj" />
     <Project Path="src/core/Tellma.Core.Email/Tellma.Core.Email.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore/Tellma.Core.EntityFrameworkCore.csproj" />
+    <Project Path="src/core/Tellma.Core.Imaging.PdfWorker/Tellma.Core.Imaging.PdfWorker.csproj" />
+    <Project Path="src/core/Tellma.Core.Imaging/Tellma.Core.Imaging.csproj" />
+    <Project Path="src/core/Tellma.Core.Migrator/Tellma.Core.Migrator.csproj" />
     <Project Path="src/core/Tellma.Core.EntityFrameworkCore.Design/Tellma.Core.EntityFrameworkCore.Design.csproj" />
     <Project Path="src/core/Tellma.Core.Queryex/Tellma.Core.Queryex.csproj" />
     <Project Path="src/core/Tellma.Core.Testing/Tellma.Core.Testing.csproj" />
@@ -38,6 +44,21 @@
     <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/Tellma.Connector.SendGrid.Adapter.csproj" />
     <Project Path="src/connector/smtp/Tellma.Connector.Smtp.Adapter/Tellma.Connector.Smtp.Adapter.csproj" />
   </Folder>
+  <Folder Name="/src/defaults/">
+    <Project Path="src/defaults/Tellma.Defaults.Azure/Tellma.Defaults.Azure.csproj" />
+    <Project Path="src/defaults/Tellma.Defaults.Azure.AspNetCore/Tellma.Defaults.Azure.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/distributions/acme/src/">
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme/Tellma.Distro.Acme.csproj" />
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme.Migrator/Tellma.Distro.Acme.Migrator.csproj" />
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme.Web/Tellma.Distro.Acme.Web.csproj" />
+  </Folder>
+  <Folder Name="/distributions/acme/test/">
+    <File Path="distributions/acme/test/Directory.Build.props" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.E2E/Tellma.Distro.Acme.E2E.csproj" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.IntegrationTests/Tellma.Distro.Acme.IntegrationTests.csproj" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.Web.Tests/Tellma.Distro.Acme.Web.Tests.csproj" />
+  </Folder>
   <Folder Name="/test/">
     <File Path="test/Directory.Build.props" />
     <Project Path="test/apps/Tellma.Identity.Tests/Tellma.Identity.Tests.csproj" />
@@ -45,10 +66,14 @@
     <Project Path="test/apps/Tellma.Identity.E2E/Tellma.Identity.E2E.csproj" />
     <Project Path="test/apps/Tellma.Identity.TestSupport/Tellma.Identity.TestSupport.csproj" />
     <Project Path="test/core/Tellma.Core.Abstractions.Tests/Tellma.Core.Abstractions.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.Tests/Tellma.Core.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.AspNetCore.Tests/Tellma.Core.AspNetCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/Tellma.Core.EntityFrameworkCore.IntegrationTests.csproj" />
+    <Project Path="test/core/Tellma.Core.IntegrationTests/Tellma.Core.IntegrationTests.csproj" />
+    <Project Path="test/core/Tellma.Core.Imaging.Tests/Tellma.Core.Imaging.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Queryex.Tests/Tellma.Core.Queryex.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Queryex.IntegrationTests/Tellma.Core.Queryex.IntegrationTests.csproj" />
     <Project Path="test/core/Tellma.Core.Testing.Tests/Tellma.Core.Testing.Tests.csproj" />
@@ -64,12 +89,19 @@
     <Project Path="test/connector/sendgrid/Tellma.Connector.SendGrid.IntegrationTests/Tellma.Connector.SendGrid.IntegrationTests.csproj" />
     <Project Path="test/connector/smtp/Tellma.Connector.Smtp.Adapter.Tests/Tellma.Connector.Smtp.Adapter.Tests.csproj" />
   </Folder>
+  <Folder Name="/test/defaults/">
+    <Project Path="test/defaults/Tellma.Defaults.Azure.Tests/Tellma.Defaults.Azure.Tests.csproj" />
+  </Folder>
   <Folder Name="/test/shared/">
     <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />
     <Project Path="test/shared/Tellma.Testing.Support/Tellma.Testing.Support.csproj" />
+    <Project Path="test/shared/Tellma.Testing.Entities/Tellma.Testing.Entities.csproj" />
   </Folder>
   <Folder Name="/test/assets/">
     <Project Path="test/apps/assets/Tellma.Identity.TestInProcHost/Tellma.Identity.TestInProcHost.csproj" />
     <Project Path="test/core/assets/Tellma.Core.EntityFrameworkCore.MigrationsHost/Tellma.Core.EntityFrameworkCore.MigrationsHost.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Imaging.SmokeHost/Tellma.Core.Imaging.SmokeHost.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Imaging.TestWorker/Tellma.Core.Imaging.TestWorker.csproj" />
+    <Project Path="test/core/assets/Tellma.Core.Migrator.TestDistribution/Tellma.Core.Migrator.TestDistribution.csproj" />
   </Folder>
 </Solution>

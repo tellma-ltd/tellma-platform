@@ -59,7 +59,8 @@ namespace Tellma.Core.Queryex.Lowering
 
             return new PlanParameterRef(
                 literal.Span,
-                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span));
+                Slot(literal.Type, store, QueryexParameterOrigin.Literal, literal.Value, null, literal.Span),
+                Here(literal.Span));
         }
 
         /// <summary>Lowers a declared parameter.</summary>
@@ -82,7 +83,8 @@ namespace Tellma.Core.Queryex.Lowering
                     QueryexParameterOrigin.Declared,
                     null,
                     parameter.Symbol.Name,
-                    parameter.Span));
+                    parameter.Span),
+                Here(parameter.Span));
         }
 
         /// <summary>Lowers a path to the column of a joined table.</summary>
@@ -91,16 +93,18 @@ namespace Tellma.Core.Queryex.Lowering
         private PlanColumn LowerPath(TypedPath path)
         {
             JoinNode table = Walk(path.Navigations, path.Span);
-            return new PlanColumn(path.Span, table, path.Property);
+            return new PlanColumn(path.Span, table, path.Property, Here(path.Span));
         }
 
-        /// <summary>Follows a run of navigations from the root, creating joins as needed.</summary>
+        /// <summary>
+        ///     Follows a run of navigations from the current root, creating joins as needed.
+        /// </summary>
         /// <param name="navigations">The steps.</param>
         /// <param name="span">The range of the path that needed them.</param>
         /// <returns>The node the last step leads to.</returns>
         private JoinNode Walk(ImmutableArray<NavigationDescriptor> navigations, QueryexSpan span)
         {
-            JoinNode table = Root;
+            JoinNode table = Base;
             PlanOrigin origin = new(span, _location);
             foreach (NavigationDescriptor navigation in navigations)
             {
@@ -108,6 +112,14 @@ namespace Tellma.Core.Queryex.Lowering
             }
 
             return table;
+        }
+
+        /// <summary>Where something written at a range of the current input was written.</summary>
+        /// <param name="span">The range.</param>
+        /// <returns>The origin.</returns>
+        private PlanOrigin Here(QueryexSpan span)
+        {
+            return new PlanOrigin(span, _location);
         }
 
         /// <summary>Finds or allocates the slot a value binds through.</summary>
@@ -157,13 +169,7 @@ namespace Tellma.Core.Queryex.Lowering
                 return existing;
             }
 
-            HoistedVariable variable = new(
-                _variables.Count,
-                BoundType.HierarchyId,
-                entity,
-                lookup,
-                node,
-                key);
+            NodeLookupVariable variable = new(entity, lookup, node, key);
 
             _variables.Add(variable);
             if (slot is not null)
@@ -191,10 +197,21 @@ namespace Tellma.Core.Queryex.Lowering
                 return false;
             }
 
-            ValueBinding binding = new(_bindings.Count, value, value.Type);
-            _bindings.Add(binding);
-            value = new PlanBindingRef(value.Span, binding);
+            // Collected where the value is computed: the statement's source, or the subquery whose
+            // rows it reads.
+            value = Bind(value, _scope);
             return true;
+        }
+
+        /// <summary>Gives a value a name in one sequence of one-row sources.</summary>
+        /// <param name="value">The value.</param>
+        /// <param name="scope">The sequence the binding is written in.</param>
+        /// <returns>A reference to the binding.</returns>
+        private static PlanBindingRef Bind(PlanValue value, List<LateralSource> scope)
+        {
+            ValueBinding binding = new(value);
+            scope.Add(binding);
+            return new PlanBindingRef(value.Span, binding);
         }
 
         /// <summary>The column a value is being compared against, when it is a bare path.</summary>

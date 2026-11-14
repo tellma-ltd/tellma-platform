@@ -29,9 +29,11 @@ const run = (bin, args) =>
 
 const tsx = require.resolve('tsx/cli', { paths: [clientDir] });
 
-// Generated assets first (token CSS + JSON schema ship as package assets).
+// Generated assets first (token CSS + JSON schema ship as package assets, and
+// so does @tellma/core's boot script template).
 run(tsx, ['tools/tokens/check.mts']);
 run(tsx, ['tools/tokens/build-css.mts']);
+run(tsx, ['tools/boot/build-boot-template.mts']);
 
 const packages = [
   ...discoverLibraries(clientDir).map((pkg) => ({ ...pkg, kind: 'angular' })),

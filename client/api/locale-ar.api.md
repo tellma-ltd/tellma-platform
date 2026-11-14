@@ -24,6 +24,9 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
         readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
         readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
+        readonly parseTime: "{gender, select, female {أدخلي} other {أدخل}} وقتا مثل {example}";
+        readonly dateRangeOrder: "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده";
+        readonly dateTimeIncomplete: "{gender, select, female {أدخلي} other {أدخل}} التاريخ والوقت معا";
     };
     readonly datePicker: {
         readonly chooseDate: "اختيار التاريخ";
@@ -37,6 +40,12 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly select: {
         readonly placeholder: "{gender, select, female {حددي خيارا} other {حدد خيارا}}";
     };
+    readonly multiSelect: {
+        readonly placeholder: "{gender, select, female {حددي خيارات} other {حدد خيارات}}";
+    };
+    readonly l10n: {
+        readonly quarter: "الربع {quarter} {year}";
+    };
     readonly entityPicker: {
         readonly advancedSearch: "بحث متقدم…";
         readonly create: "إنشاء…";
@@ -48,12 +57,16 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly noResults: "لا توجد نتائج";
         readonly searchFailed: "فشل البحث";
         readonly moreResults: "يتم عرض {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {اكتبي} other {اكتب}} للتصفية.";
+        readonly maxItems: "يمكنك اختيار {max, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرا} other {# عنصر}} كحد أقصى";
+        readonly selectedSummary: "{count, plural, zero {# عنصر محدد} one {عنصر واحد محدد} two {عنصران محددان} few {# عناصر محددة} many {# عنصرا محددا} other {# عنصر محدد}}: {labels}";
         readonly announce: {
             readonly results: "{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}";
             readonly resultsMore: "أكثر من {count, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}} — هناك المزيد";
             readonly noResults: "لا توجد نتائج";
             readonly searchFailed: "فشل البحث";
             readonly picked: "تم اختيار {label}";
+            readonly added: "تمت إضافة {label}";
+            readonly removed: "تمت إزالة {label}";
         };
         readonly errors: {
             readonly unresolved: "{gender, select, female {حددي} other {حدد}} عنصرا من القائمة";
@@ -68,6 +81,10 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly newRow: "صف جديد";
         readonly selectAll: "تحديد كل الصفوف";
         readonly selectRow: "تحديد الصف";
+        readonly rowActivationHint: "{gender, select, female {اضغطي} other {اضغط}} Enter لفتح صف. {gender, select, female {اضغطي} other {اضغط}} F2 للوصول إلى رابط في خلية.";
+        readonly headerNavHint: "{filter, select, true {Enter للفرز. {filterKeys} للتصفية.} other {Enter للفرز.}}";
+        readonly headerActionHint: "{gender, select, female {اضغطي} other {اضغط}} Enter للفتح.";
+        readonly headerActionActive: "مفعّل";
         readonly menu: {
             readonly cut: "{gender, select, female {قصي} other {قص}}";
             readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
@@ -113,6 +130,9 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly lazyLoadFailed: "تعذر تحميل الصفوف الفرعية";
             readonly errorJump: "الخطأ {index, number} من {count, number}";
             readonly checkedCount: "تم تحديد {selected, number} من {total, number}";
+            readonly checkedCountAcross: "تم تحديد {onPage, number} من {total, number} هنا، و{selected, number} في المجموع";
+            readonly sorted: "تم الفرز حسب {column}، {direction, select, asc {تصاعديا} other {تنازليا}}";
+            readonly sortCleared: "تم إلغاء الفرز";
             readonly loaded: "{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}";
             readonly loading: "جار التحميل";
         };
@@ -135,6 +155,43 @@ export const TM_LOCALE_AR_STRINGS: {
             readonly previous: "التطابق السابق";
             readonly close: "إغلاق البحث";
         };
+        readonly keys: {
+            readonly move: "الانتقال إلى الخلية المجاورة";
+            readonly jump: "الانتقال إلى طرف البيانات";
+            readonly page: "الانتقال صفحة لأعلى أو لأسفل";
+            readonly rowEdge: "الانتقال إلى بداية الصف أو نهايته";
+            readonly gridEdge: "الانتقال إلى الخلية الأولى أو الأخيرة";
+            readonly extend: "توسيع التحديد";
+            readonly selectRows: "تحديد الصفوف بأكملها";
+            readonly selectColumns: "تحديد الأعمدة بأكملها";
+            readonly selectAll: "تحديد كل الخلايا";
+            readonly checkRow: "تحديد خانة اختيار الصف أو إلغاء تحديدها";
+            readonly checkAll: "تحديد خانات اختيار كل الصفوف أو إلغاء تحديدها";
+            readonly tab: "الانتقال إلى الخلية التالية أو السابقة";
+            readonly enter: "فتح الصف، أو تحرير الخلية، أو الانتقال لأسفل";
+            readonly openRowNewTab: "فتح الصف في علامة تبويب جديدة";
+            readonly moveUp: "الانتقال لأعلى";
+            readonly edit: "تحرير الخلية، أو الوصول إلى الرابط فيها";
+            readonly openDropdown: "فتح القائمة المنسدلة للخلية";
+            readonly clear: "مسح الخلايا المحددة";
+            readonly escape: "إلغاء القص أو النسخ، أو مغادرة الجدول";
+            readonly menu: "فتح قائمة السياق";
+            readonly find: "البحث في الجدول";
+            readonly copy: "النسخ";
+            readonly cut: "القص";
+            readonly paste: "اللصق";
+            readonly fillDown: "التعبئة لأسفل";
+            readonly undo: "التراجع";
+            readonly redo: "الإعادة";
+            readonly insertRows: "إدراج صفوف أعلاه";
+            readonly deleteRows: "حذف الصفوف المحددة";
+            readonly expand: "توسيع الصف";
+            readonly collapse: "طي الصف";
+            readonly headerAction: "فتح إجراء عنوان العمود، مثل التصفية";
+        };
+    };
+    readonly menu: {
+        readonly opensInNewTab: "(يفتح في تبويب جديد)";
     };
     readonly alert: {
         readonly info: "معلومة:";
@@ -178,6 +235,63 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly done: "تم";
         readonly tooLarge: "حجم الملف أكبر من {maxMb, number} ميغابايت";
         readonly unsupported: "الملف ليس صورة مدعومة";
+    };
+    readonly copy: {
+        readonly copy: "{gender, select, female {انسخي} other {انسخ}}";
+        readonly copied: "تم النسخ";
+        readonly manual: "{gender, select, female {اضغطي} other {اضغط}} على {keys} للنسخ";
+    };
+    readonly reference: {
+        readonly label: "المرجع";
+        readonly copy: "{gender, select, female {انسخي} other {انسخ}} المرجع";
+    };
+    readonly counter: {
+        readonly overflow: "{max}+";
+    };
+    readonly chip: {
+        readonly remove: "إزالة {label}";
+        readonly more: "المزيد ({count, number}): {labels}";
+    };
+    readonly toast: {
+        readonly region: "الرسائل الأخيرة";
+        readonly close: "إغلاق";
+        readonly more: "المزيد ({count, number})";
+    };
+    readonly banner: {
+        readonly dismiss: "إخفاء";
+        readonly previous: "الرسالة السابقة";
+        readonly next: "الرسالة التالية";
+        readonly position: "{index, number} من {count, number}";
+    };
+    readonly busyOverlay: {
+        readonly label: "يرجى الانتظار";
+    };
+    readonly confirm: {
+        readonly ok: "موافق";
+        readonly cancel: "إلغاء";
+    };
+    readonly errorDialog: {
+        readonly close: "إغلاق";
+        readonly details: "التفاصيل";
+        readonly more: "و{count, number} أخرى";
+    };
+    readonly card: {
+        readonly hasErrors: "{heading}، يحتوي على أخطاء";
+    };
+    readonly splitter: {
+        readonly label: "تغيير حجم اللوحتين";
+    };
+    readonly searchField: {
+        readonly placeholder: "بحث";
+        readonly clear: "مسح البحث";
+    };
+    readonly dateRange: {
+        readonly from: "من";
+        readonly to: "إلى";
+    };
+    readonly dateTime: {
+        readonly date: "التاريخ";
+        readonly time: "الوقت";
     };
 };
 

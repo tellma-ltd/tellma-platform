@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { NgTemplateOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
@@ -22,21 +22,35 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide';
 
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmMenu } from '@tellma/core-ui/menu';
-import { tmCreateAnchoredOverlay, ɵTmErrorPopover } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
+import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
-import { ɵTmGridIcons } from './icons';
-import { ɵTmGridStatusBar } from './status-bar';
+import { ɵTmGridEndCell } from './grid-end-cell';
 import { ɵTmGridTouchHandles } from './touch-handles';
+
+// The tree expander's two glyphs, shared by every grid so tm-icon validates
+// each once. Expanded points down; collapsed points along the reading
+// direction, so it mirrors in right-to-left text (the down chevron is
+// symmetric and never needs to).
+const EXPANDED_GLYPH: TmIconSource = ChevronDown;
+const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
+
+/** The ascending sort indicator: a vertical arrow, which never mirrors. */
+const SORT_ASC_GLYPH: TmIconSource = ArrowUp;
+/** The descending sort indicator: a vertical arrow, which never mirrors. */
+const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
  * row window, the row-checkbox chrome column, the loading/empty overlays,
- * the editing-cell editor outlet, the editable-mode status bar, the
+ * the editing-cell editor outlet, the editable-mode status-bar slot, the
  * context menu, the find bar, the coarse-pointer selection handles, and
  * the active-cell error overlay. `tm-grid` and `tm-tree-grid` are thin
  * shells around this component so the large template compiles exactly
@@ -47,14 +61,15 @@ import { ɵTmGridTouchHandles } from './touch-handles';
   selector: 'tm-grid-view',
   imports: [
     CdkScrollable,
+    NgComponentOutlet,
     NgTemplateOutlet,
     OverlayModule,
+    TmIcon,
     TmMenu,
     TmSpinner,
     ɵTmErrorPopover,
+    ɵTmGridEndCell,
     ɵTmGridFindBar,
-    ɵTmGridIcons,
-    ɵTmGridStatusBar,
     ɵTmGridTouchHandles,
   ],
   template: `
@@ -62,16 +77,22 @@ import { ɵTmGridTouchHandles } from './touch-handles';
       #scroller
       cdkScrollable
       class="tm-grid__scroller"
+      [id]="core().scrollerId"
       [attr.role]="core().gridRole()"
       aria-multiselectable="true"
       [class.tm-grid__scroller--readonly]="!core().editable()"
+      [class.tm-grid__scroller--rows]="core().rowMode()"
+      [class.tm-grid__scroller--row-end]="core().rowEnd()"
+      [class.tm-grid__scroller--end-overlap]="endOverlap()"
       [attr.aria-rowcount]="core().ariaRowCount()"
       [attr.aria-colcount]="core().ariaColCount()"
       [attr.aria-busy]="core().loading() ? 'true' : null"
+      [attr.aria-describedby]="core().rowMode() ? core().rowHintId : null"
       [tabindex]="core().containerTabindex()"
       (keydown)="core().onKeydown($event)"
       (pointerdown)="core().onPointerDown($event)"
       (click)="core().onClick($event)"
+      (auxclick)="core().onAuxClick($event)"
       (dblclick)="core().onDblClick($event)"
       (contextmenu)="core().onContextMenu($event)"
       (focusout)="core().onFocusOut($event)"
@@ -81,14 +102,22 @@ import { ɵTmGridTouchHandles } from './touch-handles';
       (scroll)="onScrollerScroll($event)"
     >
       <div class="tm-grid__header" role="row" aria-rowindex="1">
-        <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
+        @if (core().rowHeaders()) {
+          <div class="tm-grid__corner" role="columnheader" aria-colindex="1" data-tm-corner></div>
+        }
         @if (core().checkboxColumn()) {
-          <div class="tm-grid__checkhdr" role="columnheader" aria-colindex="2" data-tm-checkhdr>
+          <div
+            class="tm-grid__checkhdr"
+            role="columnheader"
+            data-tm-checkhdr
+            [attr.aria-colindex]="core().checkColIndex()"
+          >
             <div
               class="tm-grid__check"
               role="checkbox"
-              tabindex="-1"
               data-tm-checkall
+              data-tm-hslot="-1"
+              [attr.tabindex]="core().headerTabStop() === -1 ? 0 : -1"
               [class.tm-grid__check--on]="core().checkAllState() === 'all'"
               [class.tm-grid__check--mixed]="core().checkAllState() === 'mixed'"
               [attr.aria-checked]="checkAllAria()"
@@ -97,25 +126,75 @@ import { ɵTmGridTouchHandles } from './touch-handles';
           </div>
         }
         @for (col of core().columnModel(); track col.id) {
+          @let sort = core().headerSort()[col.index];
           <div
             class="tm-grid__colhdr"
             role="columnheader"
             data-tm-colhdr
             [attr.data-col]="col.index"
+            [attr.data-key]="col.key"
+            [attr.data-tm-hslot]="col.index"
+            [attr.tabindex]="core().headerTabIndex(col.index)"
+            [attr.aria-describedby]="core().headerHintIds()[col.index]"
             [attr.aria-colindex]="col.ariaColIndex"
+            [attr.aria-sort]="sort?.ariaSort ?? null"
             [class.tm-grid__colhdr--hit]="core().hitCols()[col.index]"
+            [class.tm-grid__colhdr--sortable]="!!sort"
+            [class.tm-grid__colhdr--end]="!!col.headerEndTemplate"
             [style.text-align]="col.align"
           >
             @if (col.headerTemplate; as headerTemplate) {
               <ng-container
                 [ngTemplateOutlet]="headerTemplate"
                 [ngTemplateOutletContext]="{ $implicit: col.header() }"
+                [ngTemplateOutletInjector]="core().headerTemplateInjector"
               />
             } @else {
               <span class="tm-grid__colhdr-label">{{ col.header() }}</span>
             }
-            <div class="tm-grid__resize" data-tm-resize (pointerdown)="core().resize.start(col, $event)"></div>
+            @if (sort) {
+              <!-- Sort slot: the current arrow, then the hover preview. -->
+              <span class="tm-grid__sort" aria-hidden="true">
+                @if (sort.direction; as direction) {
+                  <tm-icon
+                    class="tm-grid__sort-glyph"
+                    size="sm"
+                    [svg]="direction === 'asc' ? sortAscGlyph : sortDescGlyph"
+                  />
+                }
+                @if (sort.next; as next) {
+                  <tm-icon
+                    class="tm-grid__sort-glyph tm-grid__sort-glyph--next"
+                    size="sm"
+                    [svg]="next === 'asc' ? sortAscGlyph : sortDescGlyph"
+                  />
+                }
+              </span>
+            }
+            @if (col.headerEndTemplate; as headerEndTemplate) {
+              <!-- The header-end slot: the column's header action. -->
+              <span class="tm-grid__hdrend">
+                <ng-container
+                  [ngTemplateOutlet]="headerEndTemplate"
+                  [ngTemplateOutletContext]="{
+                    $implicit: col.header(),
+                    key: col.key ?? undefined,
+                    sort: sort?.direction ?? null,
+                  }"
+                  [ngTemplateOutletInjector]="core().headerTemplateInjector"
+                />
+              </span>
+            }
+            <div
+              class="tm-grid__resize"
+              data-tm-resize
+              (pointerdown)="core().resize.start(col, $event)"
+            ></div>
           </div>
+        }
+        @if (core().rowEnd()) {
+          <!-- The row-end header. -->
+          <tm-grid-end-cell [core]="core()" />
         }
       </div>
 
@@ -125,6 +204,9 @@ import { ɵTmGridTouchHandles } from './touch-handles';
             <div
               class="tm-grid__row"
               role="row"
+              [id]="row.elementId"
+              [class]="row.rowClass"
+              [class.tm-grid__row--active]="row.activeRow"
               [attr.aria-rowindex]="row.ariaRowIndex"
               [attr.aria-level]="row.ariaLevel"
               [attr.aria-expanded]="row.ariaExpanded"
@@ -135,25 +217,30 @@ import { ɵTmGridTouchHandles } from './touch-handles';
               [class.tm-grid__row--checked]="row.checked"
               [class.tm-grid__row--placeholder]="row.isPlaceholder"
               [class.tm-grid__row--outlier]="row.outlier"
+              [class.tm-grid__row--flash]="row.flash !== 0"
+              [class.tm-grid__row--reflash]="row.flash === 2"
+              [attr.data-tm-key]="row.rowKey"
               [style.transform]="row.outlierTransform"
             >
-              <div
-                class="tm-grid__rowhdr"
-                role="rowheader"
-                aria-colindex="1"
-                data-tm-rowhdr
-                [attr.data-row]="row.viewIndex"
-                [attr.aria-label]="row.isPlaceholder ? core().newRowLabel() : null"
-                [class.tm-grid__rowhdr--hit]="row.headerHit"
-              >
-                {{ row.rowHeaderText }}
-              </div>
+              @if (core().rowHeaders()) {
+                <div
+                  class="tm-grid__rowhdr"
+                  role="rowheader"
+                  aria-colindex="1"
+                  data-tm-rowhdr
+                  [attr.data-row]="row.viewIndex"
+                  [attr.aria-label]="row.isPlaceholder ? core().newRowLabel() : null"
+                  [class.tm-grid__rowhdr--hit]="row.headerHit"
+                >
+                  {{ row.rowHeaderText }}
+                </div>
+              }
               @if (core().checkboxColumn()) {
                 <div
                   class="tm-grid__checkcell"
                   role="gridcell"
-                  aria-colindex="2"
                   data-tm-checkcell
+                  [attr.aria-colindex]="core().checkColIndex()"
                   [attr.data-row]="row.viewIndex"
                 >
                   <!-- The placeholder row has no checkbox; its chrome cell
@@ -181,8 +268,12 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   [attr.aria-selected]="cell.selected ? 'true' : null"
                   [attr.aria-invalid]="cell.invalid ? 'true' : null"
                   [attr.aria-readonly]="cell.readonly ? 'true' : null"
-                  [attr.aria-describedby]="cell.active && cell.invalid && !cell.editing && showErrorBubble() ? core().errorMsgId : null"
-                  [tabindex]="cell.active && !core().escaped() ? 0 : -1"
+                  [attr.aria-describedby]="
+                    cell.active && cell.invalid && !cell.editing && showErrorBubble()
+                      ? core().errorMsgId
+                      : null
+                  "
+                  [tabindex]="cell.active && core().bodyTabStop() ? 0 : -1"
                   [class.tm-grid__cell--active]="cell.active"
                   [class.tm-grid__cell--selected]="cell.fill"
                   [class.tm-grid__cell--error]="cell.invalid"
@@ -207,29 +298,19 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                     ></span>
                     <span class="tm-grid__twisty" aria-hidden="true">
                       @if (cell.expander !== null) {
-                        <!-- One chevron, rotated: expanded points down, and
-                             collapsed points along the reading direction —
-                             which is the CSS's job, since the glyph itself
-                             cannot know it is in an RTL grid. -->
+                        <!-- Two glyphs, swapped: expanded points down, and
+                             collapsed points along the reading direction,
+                             mirrored under the live computed direction. -->
                         <button
                           type="button"
                           class="tm-grid__expander"
                           data-tm-expander
                           tabindex="-1"
-                          [class.tm-grid__expander--open]="cell.expander === 'expanded'"
                         >
-                          <svg
+                          <tm-icon
                             class="tm-grid__expander-glyph"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.75"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="m6 9 6 6 6-6" />
-                          </svg>
+                            [svg]="cell.expander === 'expanded' ? expandedGlyph : collapsedGlyph"
+                          />
                         </button>
                       }
                     </span>
@@ -242,6 +323,27 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   @if (cell.editing) {
                     <div class="tm-grid__editor" data-tm-editor>
                       <ng-container #editorOutlet />
+                      @if (core().draft(); as draft) {
+                        <!-- The draft: a plain input that takes the typing
+                             until the editing code arrives and the editor
+                             mounts with its text. The core sets its value
+                             and focuses it. It is never in the tab order:
+                             a Tab that commits the draft and leaves the
+                             grid must not land on it before it unrenders. -->
+                        <input
+                          class="tm-grid__draft"
+                          data-tm-draft
+                          tabindex="-1"
+                          autocomplete="off"
+                          [attr.dir]="cell.dir"
+                          [attr.aria-label]="draft.label"
+                          [attr.inputmode]="draft.numeric ? 'decimal' : null"
+                          [style.text-align]="cell.align"
+                          (compositionstart)="core().onDraftComposition(true)"
+                          (compositionend)="core().onDraftComposition(false)"
+                        />
+                        <tm-spinner class="tm-grid__cell-spin" />
+                      }
                     </div>
                   } @else if (cell.displayTemplate; as displayTemplate) {
                     <ng-container
@@ -251,13 +353,27 @@ import { ɵTmGridTouchHandles } from './touch-handles';
                   } @else if (cell.glyphClass; as glyphClass) {
                     <span [class]="glyphClass" aria-hidden="true"></span>
                     <span class="tm-visually-hidden">{{ cell.text }}</span>
+                  } @else if (cell.parts; as parts) {
+                    <!-- Display parts: isolated runs joined by " - ". -->
+                    <span class="tm-grid__text" [attr.dir]="cell.dir">
+                      @for (part of parts; track $index) {
+                        @if (!$first) { - }
+                        <bdi>{{ part }}</bdi>
+                      }
+                    </span>
                   } @else {
-                    <span class="tm-grid__text">{{ cell.text }}</span>
+                    <!-- A number's text is its own left-to-right run, so its
+                         minus sits at the left in an RTL grid too. -->
+                    <span class="tm-grid__text" [attr.dir]="cell.dir">{{ cell.text }}</span>
                   }
                   @if (cell.pending) {
                     <tm-spinner class="tm-grid__cell-spin" />
                   }
                 </div>
+              }
+              @if (core().rowEnd()) {
+                <!-- The row-end cell. -->
+                <tm-grid-end-cell [core]="core()" [row]="row" />
               }
             </div>
           }
@@ -269,6 +385,17 @@ import { ɵTmGridTouchHandles } from './touch-handles';
         }
       </div>
     </div>
+
+    @if (core().rowMode()) {
+      <!-- The scroller's row-activation hint. -->
+      <span class="tm-visually-hidden" [id]="core().rowHintId">{{
+        core().rowActivationHint()
+      }}</span>
+    }
+    <!-- The navigable headers' hidden hints. -->
+    @for (hint of core().headerHints(); track hint.id) {
+      <span class="tm-visually-hidden" [id]="hint.id">{{ hint.text }}</span>
+    }
 
     <!-- Loading / empty overlay: a sibling of the scroller (not inside its
          scrolling flow) so it covers the visible viewport regardless of the
@@ -311,7 +438,11 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     }
 
     @if (core().editable()) {
-      <tm-grid-status-bar class="tm-grid__status" [core]="core()" />
+      <!-- The status bar's fixed band; the bar itself arrives with the
+           editing code, which an editable grid loads on demand. -->
+      <div class="tm-grid__status">
+        <ng-container *ngComponentOutlet="core().statusBar(); inputs: { core: core() }" />
+      </div>
     } @else {
       <!-- Readonly grids have no status bar; the transient clipboard-failure
            notice overlays the grid's block-end edge instead (zero layout shift). -->
@@ -321,7 +452,6 @@ import { ɵTmGridTouchHandles } from './touch-handles';
     }
 
     <tm-menu [items]="core().menuItems()" />
-    <tm-grid-icons />
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
          or clearing never shift the grid's (or the page's) layout. The same
@@ -349,12 +479,29 @@ import { ɵTmGridTouchHandles } from './touch-handles';
       />
     </ng-template>
   `,
-  styleUrl: './grid-view.css',
+  // The header row's rules load first, in a sheet of their own: together
+  // with the body's they outgrow one component stylesheet's budget.
+  styleUrls: ['./grid-header.css', './grid-view.css', './grid-flash.css'],
   host: { class: 'tm-grid-view' },
 })
 export class ɵTmGridView {
   /** The composition root this view renders from (built by the grid shell). */
   readonly core = input.required<ɵTmGridViewCore>();
+
+  /** The tree expander's glyph on an expanded row: a chevron pointing down. */
+  protected readonly expandedGlyph = EXPANDED_GLYPH;
+  /** The tree expander's glyph on a collapsed row, mirrored in right-to-left text. */
+  protected readonly collapsedGlyph = COLLAPSED_GLYPH;
+  /** The ascending sort indicator: an up arrow. */
+  protected readonly sortAscGlyph = SORT_ASC_GLYPH;
+  /** The descending sort indicator: a down arrow. */
+  protected readonly sortDescGlyph = SORT_DESC_GLYPH;
+
+  /**
+   * Whether content scrolls under the row-end column — there is more of it
+   * beyond the inline end — which draws the column's hairline.
+   */
+  protected readonly endOverlap = signal(false);
 
   /** The select-all checkbox's `aria-checked` value (`mixed` is tri-state). */
   protected readonly checkAllAria = computed(() => {
@@ -413,6 +560,33 @@ export class ɵTmGridView {
   protected onScrollerScroll(event: Event): void {
     this.core().onScroll(event);
     this.measureErrorAnchorInView();
+    this.measureEndOverlap();
+  }
+
+  /**
+   * Re-measures {@link endOverlap} from the header row: content runs under
+   * the row-end column while the last data column's inline end lies past the
+   * row-end header's inline start. Geometry rather than scroll metrics,
+   * because the reachable scroll range is not always `scrollWidth` less
+   * `clientWidth` (a hidden scrollbar keeps its gutter in the client box but
+   * not in the scrollport). Only a grid with a row-end column measures.
+   */
+  private measureEndOverlap(): void {
+    const end = untracked(this.core().rowEnd)
+      ? this.scroller()?.nativeElement.querySelector('[data-tm-endhdr]')
+      : null;
+    const last = end?.previousElementSibling;
+    if (!end || !last?.hasAttribute('data-tm-colhdr')) {
+      this.endOverlap.set(false);
+      return;
+    }
+    const lastBox = last.getBoundingClientRect();
+    const endBox = end.getBoundingClientRect();
+    this.endOverlap.set(
+      this.directionality.value === 'rtl'
+        ? lastBox.left < endBox.right - 1
+        : lastBox.right > endBox.left + 1,
+    );
   }
 
   /** Set when the overlay flips above the cell, to turn the arrow over. */
@@ -447,11 +621,19 @@ export class ɵTmGridView {
    */
   private readonly errorOverlay = viewChild(CdkConnectedOverlay);
 
+  /**
+   * The view's host element — the box the loading/empty overlay is inset
+   * against, and the error popover's top-layer host.
+   */
+  private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
+  /** The reading direction, which decides which edge of a header is its inline end. */
+  private readonly directionality = inject(Directionality);
+
   protected readonly errorAnchored = tmCreateAnchoredOverlay({
     overlay: () => this.errorOverlay(),
     origin: () => this.core().errorAnchor(),
     positions: this.errorPositions,
-    popoverHost: { type: 'parent', element: inject(ElementRef).nativeElement as Element },
+    popoverHost: { type: 'parent', element: this.hostElement },
     // The anchor is written from an afterRender effect and only reaches
     // CDK on the NEXT change detection, so the re-measure has to cross a
     // pass boundary — measuring in the same pass reads the old origin.
@@ -461,10 +643,6 @@ export class ɵTmGridView {
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
   private readonly menu = viewChild(TmMenu);
-  private readonly icons = viewChild(ɵTmGridIcons);
-  private readonly direction = inject(Directionality);
-  /** The view's host element — the box the loading/empty overlay is inset against. */
-  private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
 
   /**
    * Measures the loading/empty overlay's trailing insets, only while a
@@ -531,8 +709,7 @@ export class ɵTmGridView {
     afterRenderEffect(() => {
       const core = this.core();
       const menu = this.menu();
-      const icons = this.icons();
-      untracked(() => core.attachMenu(menu ?? null, icons?.templates() ?? null));
+      untracked(() => core.attachMenu(menu ?? null));
     });
     // Measured after render so the scroller has its final box, re-running
     // when a layer goes up or the scroller arrives.
@@ -547,19 +724,35 @@ export class ɵTmGridView {
     // toggle a scrollbar while a layer is up without any signal changing,
     // and content-box observation sees both outer resizes and a scrollbar
     // appearing or disappearing.
+    // The header row is observed too: its box grows and shrinks with the
+    // column tracks (a resize, a column added), which changes how much of
+    // the content hides past the row-end column without moving the scroller.
     effect((onCleanup) => {
       const scroller = this.scroller()?.nativeElement;
       if (scroller === undefined) {
         return;
       }
-      const observer = new ResizeObserver(() => this.measureOverlayInsets());
+      const observer = new ResizeObserver(() => {
+        this.measureOverlayInsets();
+        this.measureEndOverlap();
+      });
       observer.observe(scroller);
+      const header = scroller.querySelector('.tm-grid__header');
+      if (header !== null) {
+        observer.observe(header);
+      }
       onCleanup(() => observer.disconnect());
+    });
+    // The row-end column arriving or leaving re-measures its hairline.
+    afterRenderEffect(() => {
+      this.core().rowEnd();
+      this.core().columnModel();
+      untracked(() => this.measureEndOverlap());
     });
     // A live direction flip re-lays the grid, but an already-open overlay
     // keeps the inline offset the CDK measured against the OLD side, so the
     // cell's error bubble stays on the edge it opened against.
-    const directionChange = this.direction.change.subscribe(() =>
+    const directionChange = this.directionality.change.subscribe(() =>
       this.errorAnchored.reanchor(),
     );
     inject(DestroyRef).onDestroy(() => directionChange.unsubscribe());

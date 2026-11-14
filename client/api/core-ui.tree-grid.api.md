@@ -5,6 +5,7 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
@@ -20,14 +21,16 @@ import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
 // @public
-export class TmTreeGrid<T> extends ɵTmGridBase<T> {
+export class TmTreeGrid<T> extends TmGridBase<T> {
     readonly defaultExpandedDepth: _angular_core.InputSignal<number | undefined>;
+    readonly expandedIds: _angular_core.ModelSignal<ReadonlySet<TmRowId>>;
+    readonly expansionSource: _angular_core.InputSignal<"model" | "store">;
     readonly hasChildren: _angular_core.InputSignal<((row: T) => boolean) | undefined>;
-    readonly loadChildren: _angular_core.InputSignal<((row: T) => Promise<void>) | undefined>;
-    readonly parentId: _angular_core.InputSignal<(row: T) => string | number | null>;
+    readonly loadChildren: _angular_core.InputSignal<((rows: readonly T[]) => Promise<void>) | undefined>;
+    readonly parentId: _angular_core.InputSignal<(row: T) => number | string | null>;
     readonly parentIdKey: _angular_core.InputSignal<string | undefined>;
     protected treeConfig(): ɵTmGridTreeConfig<T>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTreeGrid<any>, "tm-tree-grid", never, { "parentId": { "alias": "parentId"; "required": true; "isSignal": true; }; "parentIdKey": { "alias": "parentIdKey"; "required": false; "isSignal": true; }; "hasChildren": { "alias": "hasChildren"; "required": false; "isSignal": true; }; "loadChildren": { "alias": "loadChildren"; "required": false; "isSignal": true; }; "defaultExpandedDepth": { "alias": "defaultExpandedDepth"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTreeGrid<any>, "tm-tree-grid", never, { "parentId": { "alias": "parentId"; "required": true; "isSignal": true; }; "parentIdKey": { "alias": "parentIdKey"; "required": false; "isSignal": true; }; "hasChildren": { "alias": "hasChildren"; "required": false; "isSignal": true; }; "loadChildren": { "alias": "loadChildren"; "required": false; "isSignal": true; }; "defaultExpandedDepth": { "alias": "defaultExpandedDepth"; "required": false; "isSignal": true; }; "expansionSource": { "alias": "expansionSource"; "required": false; "isSignal": true; }; "expandedIds": { "alias": "expandedIds"; "required": false; "isSignal": true; }; }, { "expandedIds": "expandedIdsChange"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTreeGrid<any>, never>;
 }
 

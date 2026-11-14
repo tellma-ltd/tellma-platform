@@ -25,6 +25,15 @@ namespace Tellma.Identity
         /// <summary>The assembly that holds the EF Core migrations for the identity store.</summary>
         public const string MigrationsAssemblyName = "Tellma.Identity.Migrations";
 
+        /// <summary>
+        ///     The id of the last migration in <see cref="MigrationsAssemblyName" />: the row the
+        ///     store check requires in the store's migration history at every start. Kept here
+        ///     rather than read from the migrations assembly, so a host that never migrates its
+        ///     store carries no migrations at all. A unit test keeps it equal to the assembly's last
+        ///     migration.
+        /// </summary>
+        public const string LatestMigration = "20261108125718_Initial";
+
         /// <summary>The scope requested to call a distribution API.</summary>
         public const string ApiScope = "tellma_api";
 
@@ -36,5 +45,13 @@ namespace Tellma.Identity
 
         /// <summary>The fixed audience of tokens minted for the control-plane admin surface.</summary>
         public const string ControlPlaneAudience = "urn:tellma:control-plane";
+
+        /// <summary>
+        ///     The fixed audience of tokens minted for the identity server's management API. A URN,
+        ///     never an origin, so it can equal no distribution's origin in any mode: in-proc, the
+        ///     issuer shares the distribution's origin, and an origin-valued audience would make one
+        ///     token valid at both.
+        /// </summary>
+        public const string IdentityAudience = "urn:tellma:identity";
     }
 }

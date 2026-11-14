@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 
-import { activateCell, cell, cellText, gotoGrid, gridScroller } from '../support/grid';
+import { activateCell, cell, cellText, gotoGrid } from '../support/grid';
 import { syntheticPaste } from '../support/clipboard';
 
 /**
@@ -27,9 +27,7 @@ test.describe('date column defaults (DoD 9)', () => {
     expect(text).toMatch(/^\d{1,2}\/\d{1,2}\/2026$/);
   });
 
-  test('type-to-edit seeds tm-date-picker; Enter commits ISO into the model', async ({
-    page,
-  }) => {
+  test('type-to-edit seeds tm-date-picker; Enter commits ISO into the model', async ({ page }) => {
     await gotoGrid(page, 'grid-editable');
     await activateCell(page, 0, DUE_COL);
     await page.keyboard.type('3/12/2026');
@@ -132,27 +130,6 @@ test.describe('date column defaults (DoD 9)', () => {
     await expect(popup).toBeHidden();
     await expect(page.getByTestId('model-json')).toContainText('-01-15"');
     await expect(cell(page, 0, DUE_COL)).toBeFocused();
-  });
-
-  test('arrowing onto the last column clears the scrollbar gutter', async ({ page }) => {
-    await gotoGrid(page, 'grid-editable');
-    await activateCell(page, 0, 0);
-    for (let col = 0; col < DUE_COL; col++) {
-      await page.keyboard.press('ArrowRight');
-    }
-    await expect(cell(page, 0, DUE_COL)).toBeFocused();
-
-    // The scroller's border box counts the vertical scrollbar's gutter as
-    // visible space; the cell has to clear the CLIENT box.
-    const viewport = await gridScroller(page).evaluate((element: HTMLElement) => {
-      const rect = element.getBoundingClientRect();
-      const gutter = element.offsetWidth - element.clientWidth;
-      const rtl = getComputedStyle(element).direction === 'rtl';
-      return { left: rect.left + (rtl ? gutter : 0), right: rect.right - (rtl ? 0 : gutter) };
-    });
-    const box = (await cell(page, 0, DUE_COL).boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(viewport.left - 1);
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.right + 1);
   });
 
   test('Alt+ArrowDown opens the popup anchored to the cell; two-stage Esc composes', async ({

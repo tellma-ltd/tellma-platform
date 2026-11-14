@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -22,7 +23,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_returns_scope_gated_claims_for_a_signed_in_user()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfo");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfo");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "grace@example.com");
 
@@ -48,7 +49,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_withholds_claims_whose_scope_was_not_granted()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfoscope");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfoscope");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "heidi@example.com");
 
@@ -72,7 +73,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Userinfo_challenges_without_a_token()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iduserinfoanon");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iduserinfoanon");
             using HttpClient client = factory.CreateClient();
 
             using HttpResponseMessage response = await client.GetAsync(
@@ -85,7 +86,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         private static async Task<string> SignInAndGetAccessTokenAsync(
             StandaloneFactory factory, DistributionClientCredentials distribution, string email, string scope)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>

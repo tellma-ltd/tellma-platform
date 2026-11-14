@@ -69,6 +69,27 @@ namespace Tellma.Core.Queryex.Functions
             return TargetsByName.TryGetValue(name, out type);
         }
 
+        /// <summary>The name a type goes by as a conversion target.</summary>
+        /// <param name="type">The type.</param>
+        /// <returns>The name.</returns>
+        /// <exception cref="InvalidOperationException">No conversion targets that type.</exception>
+        /// <remarks>
+        ///     Every type a parameter can be declared with is a target, which is what lets a
+        ///     parameter left out be written as the absent value of its own type.
+        /// </remarks>
+        internal static string TargetName(BoundType type)
+        {
+            foreach ((string name, BoundType target) in Targets)
+            {
+                if (target == type)
+                {
+                    return name;
+                }
+            }
+
+            throw new InvalidOperationException("No conversion targets the type " + type + ".");
+        }
+
         /// <summary>Whether a conversion exists.</summary>
         /// <param name="from">The source type.</param>
         /// <param name="to">The target type.</param>

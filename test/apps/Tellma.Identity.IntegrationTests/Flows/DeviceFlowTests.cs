@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -28,10 +29,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Device_grant_completes_after_the_user_approves_the_code()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddev", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddev", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "frank@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // 1. The device requests device + user codes.
             using JsonDocument device = await PostDeviceAuthorizationAsync(factory);
@@ -64,6 +65,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string accessToken = tokens.RootElement.GetProperty("access_token").GetString()!;
             using JsonDocument payload = ClientCredentialsTests.DecodeJwtPayload(accessToken);
             Assert.Equal("frank@example.com", payload.RootElement.GetProperty("email").GetString());
+
+            // A device-code token speaks for the person who approved the code.
+            Assert.Equal("individual", payload.RootElement.GetProperty("tellma_kind").GetString());
         }
 
         /// <summary>Posts a device-authorization request for the seeded CLI client.</summary>
@@ -108,10 +112,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_user_code_that_does_not_resolve_says_so_instead_of_clearing_the_form()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevbad", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevbad", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "gina@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The page is [Authorize], so reaching it at all means signing in first.
             string verifyUrl = "/connect/verify?user_code=" + Uri.EscapeDataString("WRONGCODE");
@@ -137,10 +141,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Arriving_with_no_user_code_asks_for_one_without_an_error()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddevnone", CliSeed);
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddevnone", CliSeed);
             await TestData.CreateActiveUserAsync(factory, "hana@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             string loginUrl;
             using (HttpResponseMessage challenge = await flow.Browser.GetAsync(
@@ -161,7 +165,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Signs the user in and approves the device user code in the browser.</summary>
-        private static async Task ApproveUserCodeAsync(OidcFlowClient flow, string userCode, string email)
+        internal static async Task ApproveUserCodeAsync(OidcFlowClient flow, string userCode, string email)
         {
             // Opening the verification URI requires a login; the device page is [Authorize].
             string verifyUrl = "/connect/verify?user_code=" + Uri.EscapeDataString(userCode);

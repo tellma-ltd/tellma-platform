@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -25,7 +26,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_refreshed_session_can_still_authorize()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstamp");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstamp");
 
             // Zero makes every request re-validate, so the refresh this covers happens on the very
             // next hop instead of five minutes later.
@@ -36,7 +37,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "stamp@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
             await SignInAsync(flow, distribution, challenge);
 

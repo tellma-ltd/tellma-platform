@@ -11,6 +11,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -39,10 +40,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [InlineData("Microsoft")]
         public async Task The_login_page_permits_the_redirect_its_provider_button_produces(string provider)
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfed" + provider.ToLowerInvariant(), ProviderSeed);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             using HttpResponseMessage loginPage = await flow.Browser.GetAsync(
                 new Uri("/Identity/Account/Login", UriKind.Relative), TestContext.Current.CancellationToken);
@@ -66,9 +67,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         [Fact]
-        public async Task Googles_verified_email_claim_reaches_the_principal()
+        public void Googles_verified_email_claim_reaches_the_principal()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedclaims", ProviderSeed);
 
             GoogleOptions options = factory.Services
@@ -101,9 +102,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
         {
             // The widening is per-response and earned. With nothing configured there is no button,
             // so there is nothing to permit.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idfednone");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idfednone");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             using HttpResponseMessage loginPage = await flow.Browser.GetAsync(
                 new Uri("/Identity/Account/Login", UriKind.Relative), TestContext.Current.CancellationToken);
 
@@ -114,10 +115,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_request_that_disallows_federation_offers_no_provider_button()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedfiltered", ProviderSeed);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // The allow-list on the authorize redirect names only the email code, so the providers
             // are configured but not offerable. The button and the policy have to agree about

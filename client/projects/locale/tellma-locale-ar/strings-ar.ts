@@ -18,6 +18,7 @@ const enter = '{gender, select, female {أدخلي} other {أدخل}}';
 /** Grid imperatives reused across several strings, same {gender} pattern. */
 const copyVerb = '{gender, select, female {انسخي} other {انسخ}}';
 const insertVerb = '{gender, select, female {أدرجي} other {أدرج}}';
+const pressVerb = '{gender, select, female {اضغطي} other {اضغط}}';
 
 /**
  * Counted rows with full Arabic plural categories. `rowsObject` is the
@@ -48,6 +49,9 @@ export const TM_LOCALE_AR_STRINGS = {
     parse: `${enter} رقما صالحا، مثل {example}`,
     numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
     parseDate: `${enter} تاريخا مثل {example}`,
+    parseTime: `${enter} وقتا مثل {example}`,
+    dateRangeOrder: 'يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده',
+    dateTimeIncomplete: `${enter} التاريخ والوقت معا`,
   },
   datePicker: {
     chooseDate: 'اختيار التاريخ',
@@ -63,6 +67,12 @@ export const TM_LOCALE_AR_STRINGS = {
   select: {
     placeholder: '{gender, select, female {حددي خيارا} other {حدد خيارا}}',
   },
+  multiSelect: {
+    placeholder: '{gender, select, female {حددي خيارات} other {حدد خيارات}}',
+  },
+  l10n: {
+    quarter: 'الربع {quarter} {year}',
+  },
   entityPicker: {
     advancedSearch: 'بحث متقدم…',
     create: 'إنشاء…',
@@ -75,6 +85,10 @@ export const TM_LOCALE_AR_STRINGS = {
     searchFailed: 'فشل البحث',
     moreResults:
       'يتم عرض {count, plural, zero {# نتيجة} one {نتيجة} two {نتيجتين} few {# نتائج} many {# نتيجة} other {# نتيجة}}. {gender, select, female {اكتبي} other {اكتب}} للتصفية.',
+    maxItems:
+      'يمكنك اختيار {max, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرا} other {# عنصر}} كحد أقصى',
+    selectedSummary:
+      '{count, plural, zero {# عنصر محدد} one {عنصر واحد محدد} two {عنصران محددان} few {# عناصر محددة} many {# عنصرا محددا} other {# عنصر محدد}}: {labels}',
     announce: {
       results:
         '{count, plural, zero {لا توجد نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
@@ -83,6 +97,8 @@ export const TM_LOCALE_AR_STRINGS = {
       noResults: 'لا توجد نتائج',
       searchFailed: 'فشل البحث',
       picked: 'تم اختيار {label}',
+      added: 'تمت إضافة {label}',
+      removed: 'تمت إزالة {label}',
     },
     errors: {
       unresolved: '{gender, select, female {حددي} other {حدد}} عنصرا من القائمة',
@@ -97,6 +113,11 @@ export const TM_LOCALE_AR_STRINGS = {
     newRow: 'صف جديد',
     selectAll: 'تحديد كل الصفوف',
     selectRow: 'تحديد الصف',
+    rowActivationHint: `${pressVerb} Enter لفتح صف. ${pressVerb} F2 للوصول إلى رابط في خلية.`,
+    headerNavHint:
+      '{filter, select, true {Enter للفرز. {filterKeys} للتصفية.} other {Enter للفرز.}}',
+    headerActionHint: `${pressVerb} Enter للفتح.`,
+    headerActionActive: 'مفعّل',
     menu: {
       cut: '{gender, select, female {قصي} other {قص}}',
       copy: copyVerb,
@@ -147,6 +168,10 @@ export const TM_LOCALE_AR_STRINGS = {
       lazyLoadFailed: 'تعذر تحميل الصفوف الفرعية',
       errorJump: 'الخطأ {index, number} من {count, number}',
       checkedCount: 'تم تحديد {selected, number} من {total, number}',
+      checkedCountAcross:
+        'تم تحديد {onPage, number} من {total, number} هنا، و{selected, number} في المجموع',
+      sorted: 'تم الفرز حسب {column}، {direction, select, asc {تصاعديا} other {تنازليا}}',
+      sortCleared: 'تم إلغاء الفرز',
       loaded:
         '{count, plural, =0 {لا توجد سجلات} one {تم تحميل سجل واحد} two {تم تحميل سجلين} few {تم تحميل # سجلات} many {تم تحميل # سجلا} other {تم تحميل # سجل}}',
       loading: 'جار التحميل',
@@ -172,6 +197,44 @@ export const TM_LOCALE_AR_STRINGS = {
       previous: 'التطابق السابق',
       close: 'إغلاق البحث',
     },
+    // Verbal nouns, so the help rows need no gender select.
+    keys: {
+      move: 'الانتقال إلى الخلية المجاورة',
+      jump: 'الانتقال إلى طرف البيانات',
+      page: 'الانتقال صفحة لأعلى أو لأسفل',
+      rowEdge: 'الانتقال إلى بداية الصف أو نهايته',
+      gridEdge: 'الانتقال إلى الخلية الأولى أو الأخيرة',
+      extend: 'توسيع التحديد',
+      selectRows: 'تحديد الصفوف بأكملها',
+      selectColumns: 'تحديد الأعمدة بأكملها',
+      selectAll: 'تحديد كل الخلايا',
+      checkRow: 'تحديد خانة اختيار الصف أو إلغاء تحديدها',
+      checkAll: 'تحديد خانات اختيار كل الصفوف أو إلغاء تحديدها',
+      tab: 'الانتقال إلى الخلية التالية أو السابقة',
+      enter: 'فتح الصف، أو تحرير الخلية، أو الانتقال لأسفل',
+      openRowNewTab: 'فتح الصف في علامة تبويب جديدة',
+      moveUp: 'الانتقال لأعلى',
+      edit: 'تحرير الخلية، أو الوصول إلى الرابط فيها',
+      openDropdown: 'فتح القائمة المنسدلة للخلية',
+      clear: 'مسح الخلايا المحددة',
+      escape: 'إلغاء القص أو النسخ، أو مغادرة الجدول',
+      menu: 'فتح قائمة السياق',
+      find: 'البحث في الجدول',
+      copy: 'النسخ',
+      cut: 'القص',
+      paste: 'اللصق',
+      fillDown: 'التعبئة لأسفل',
+      undo: 'التراجع',
+      redo: 'الإعادة',
+      insertRows: 'إدراج صفوف أعلاه',
+      deleteRows: 'حذف الصفوف المحددة',
+      expand: 'توسيع الصف',
+      collapse: 'طي الصف',
+      headerAction: 'فتح إجراء عنوان العمود، مثل التصفية',
+    },
+  },
+  menu: {
+    opensInNewTab: '(يفتح في تبويب جديد)',
   },
   alert: {
     info: 'معلومة:',
@@ -216,5 +279,62 @@ export const TM_LOCALE_AR_STRINGS = {
     done: 'تم',
     tooLarge: 'حجم الملف أكبر من {maxMb, number} ميغابايت',
     unsupported: 'الملف ليس صورة مدعومة',
+  },
+  copy: {
+    copy: copyVerb,
+    copied: 'تم النسخ',
+    manual: '{gender, select, female {اضغطي} other {اضغط}} على {keys} للنسخ',
+  },
+  reference: {
+    label: 'المرجع',
+    copy: `${copyVerb} المرجع`,
+  },
+  counter: {
+    overflow: '{max}+',
+  },
+  chip: {
+    remove: 'إزالة {label}',
+    more: 'المزيد ({count, number}): {labels}',
+  },
+  toast: {
+    region: 'الرسائل الأخيرة',
+    close: 'إغلاق',
+    more: 'المزيد ({count, number})',
+  },
+  banner: {
+    dismiss: 'إخفاء',
+    previous: 'الرسالة السابقة',
+    next: 'الرسالة التالية',
+    position: '{index, number} من {count, number}',
+  },
+  busyOverlay: {
+    label: 'يرجى الانتظار',
+  },
+  confirm: {
+    ok: 'موافق',
+    cancel: 'إلغاء',
+  },
+  errorDialog: {
+    close: 'إغلاق',
+    details: 'التفاصيل',
+    more: 'و{count, number} أخرى',
+  },
+  card: {
+    hasErrors: '{heading}، يحتوي على أخطاء',
+  },
+  splitter: {
+    label: 'تغيير حجم اللوحتين',
+  },
+  searchField: {
+    placeholder: 'بحث',
+    clear: 'مسح البحث',
+  },
+  dateRange: {
+    from: 'من',
+    to: 'إلى',
+  },
+  dateTime: {
+    date: 'التاريخ',
+    time: 'الوقت',
   },
 } as const;

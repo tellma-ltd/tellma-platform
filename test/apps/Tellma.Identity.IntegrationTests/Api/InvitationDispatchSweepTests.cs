@@ -35,7 +35,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_invitation_whose_mail_was_lost_is_delivered_by_the_sweep()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweep");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweep");
             string email = "swept@example.com";
             await InviteAsync(factory, email);
 
@@ -60,7 +60,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task The_sweep_leaves_alone_what_it_must_not_resend()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweepskip");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweepskip");
 
             // Already sent by the normal path, and still inside the grace window besides.
             await InviteAsync(factory, "sent@example.com");
@@ -84,7 +84,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Two_instances_sweeping_at_once_send_each_invitation_exactly_once()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweeprace");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweeprace");
 
             string[] addresses = [.. Enumerable.Range(0, 12).Select(static i => $"racer{i}@example.com")];
             foreach (string address in addresses)
@@ -121,7 +121,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_claim_left_behind_by_a_crashed_instance_is_reclaimed_when_it_expires()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweeplease");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweeplease");
             string email = "stranded@example.com";
             await InviteAsync(factory, email);
             await LoseTheMailAsync(factory, email);
@@ -144,7 +144,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_send_the_sweep_got_to_first_is_dropped_rather_than_sent_twice()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweepclaim");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweepclaim");
             string email = "queued@example.com";
             await InviteAsync(factory, email);
 
@@ -178,7 +178,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_send_that_claims_first_leaves_nothing_for_the_sweep()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsweepclaimfirst");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsweepclaimfirst");
             string email = "claimed@example.com";
             await InviteAsync(factory, email);
 
@@ -295,7 +295,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new { users = new object[] { new { email, displayName = email, locale = "en" } } },
                 TestContext.Current.CancellationToken);
 

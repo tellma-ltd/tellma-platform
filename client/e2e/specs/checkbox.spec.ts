@@ -108,7 +108,7 @@ test.describe('forced-colors (§6)', () => {
       .not.toBe(unchecked.bg);
     const checked = await box.evaluate((el) => {
       const s = getComputedStyle(el);
-      const mark = el.querySelector('.tm-checkbox__mark');
+      const mark = el.querySelector('.tm-checkbox__glyph');
       return {
         bg: s.backgroundColor,
         color: s.color,

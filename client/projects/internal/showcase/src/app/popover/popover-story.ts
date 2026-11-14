@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 
 import { TmButton } from '@tellma/core-ui/button';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
@@ -11,7 +11,8 @@ import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/p
 /**
  * tm-popover demo host — trigger toggle, lazy content with a small form,
  * logical placement (with a bottom-edge trigger forcing the flip),
- * programmatic anchoring, and the focus in/out battery hooks.
+ * programmatic anchoring, the fixed sizes (one of them loading more content
+ * while open), and the focus in/out battery hooks.
  */
 @Component({
   imports: [TmButton, TmPopover, TmPopoverContent, TmPopoverTrigger],
@@ -65,6 +66,42 @@ import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/p
       </tm-popover>
     </section>
 
+    <section>
+      <h3>Sizes</h3>
+      <!-- Each fixed size keeps its width whatever the content; a panel
+           loads more rows while open to show it. -->
+      <div class="row">
+        @for (size of sizes; track size) {
+          <button
+            tmButton
+            variant="secondary"
+            [attr.data-testid]="'size-trigger-' + size"
+            [tmPopoverTriggerFor]="sized"
+          >
+            {{ size }}
+          </button>
+          <tm-popover #sized [aria-label]="'Columns ' + size" [size]="size">
+            <ng-template tmPopoverContent>
+              <p data-testid="sized-content">Choose the columns of the list.</p>
+              <button
+                tmButton
+                variant="ghost"
+                data-testid="sized-load"
+                (click)="loaded.set(loaded() + 12)"
+              >
+                Load more columns
+              </button>
+              <ul>
+                @for (column of columns(); track column) {
+                  <li data-testid="sized-column">{{ column }}</li>
+                }
+              </ul>
+            </ng-template>
+          </tm-popover>
+        }
+      </div>
+    </section>
+
     <section class="pin-bottom">
       <h3>Flip at the viewport edge</h3>
       <button
@@ -86,6 +123,11 @@ import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/p
     section {
       margin-block-end: 24px;
     }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     /* Pins the flip trigger against the bottom of the viewport. */
     .pin-bottom {
       position: fixed;
@@ -97,4 +139,16 @@ import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/p
 })
 export class PopoverStory {
   readonly rectAnchor = new DOMRect(240, 160, 1, 1);
+  /** The sizes the size triggers open. */
+  readonly sizes = ['auto', 'sm', 'md', 'lg'] as const;
+  /** How many column rows the sized popovers have loaded. */
+  readonly loaded = signal(0);
+
+  /** The loaded column rows, long-labelled so 'auto' would have to grow. */
+  columns(): readonly string[] {
+    return Array.from(
+      { length: this.loaded() },
+      (_, index) => `Column ${index + 1}: posted amount in the functional currency`,
+    );
+  }
 }

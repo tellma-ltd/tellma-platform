@@ -1,0 +1,25 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+/*
+ * The package build compiles against the BUILT @tellma/core-ui, as a consumer
+ * would, so its paths point at dist/ rather than at the sources. The editor,
+ * lint and typecheck view is tsconfig.json.
+ */
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../../out-tsc/lib",
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "types": [],
+    "paths": {
+      "@tellma/core": ["./public-api.ts"],
+      "@tellma/core/*": ["./*/public-api.ts"],
+      "@tellma/core-ui": ["../../../dist/core-ui"],
+      "@tellma/core-ui/*": ["../../../dist/core-ui/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}

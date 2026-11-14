@@ -82,6 +82,34 @@ export const EnumAndComputedColumns = {
 };
 
 /**
+ * An `entity` column whose dropdown rows show a second line
+ * (`itemDescription`) and draw the label in parts (`itemLabelParts`), and
+ * whose display cells draw `format`'s text in parts too (`formatParts`), so
+ * a Latin code keeps its place beside an Arabic name in either direction.
+ * `format` stays the cell's text for copy, find and announcements.
+ */
+export const EntityColumnWithParts = {
+  template: `
+    <tm-grid gridId="voucher-lines" [field]="lineForm" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="memo" header="Memo" [flex]="1" />
+      <tm-grid-column
+        key="centerId"
+        type="entity"
+        header="Center"
+        [search]="searchCenters"
+        [itemId]="centerId"
+        [itemLabel]="centerLabel"
+        [itemDescription]="centerParent"
+        [itemLabelParts]="centerCodeAndName"
+        [format]="centerText"
+        [formatParts]="centerTextParts"
+        [width]="220"
+      />
+    </tm-grid>
+  `,
+};
+
+/**
  * A custom cell rendered through `*tmGridDisplay` — here a record link.
  * The context gives the cell's value, the row, and its `rowId`; copy and
  * find still use the column's text representation.
@@ -128,6 +156,87 @@ export const SelectableSearchableListScreen = {
     <tm-grid gridId="customers" [data]="rows" [rowId]="rowId" selectable searchable style="block-size: 320px">
       <tm-grid-column key="name" header="Name" [flex]="2" />
       <tm-grid-column key="qty" type="number" header="Orders" [width]="100" />
+    </tm-grid>
+  `,
+};
+
+/**
+ * The search-page shape: `rowActivation="row"` opens a row on a click, a
+ * tap or Enter (`rowActivate` reports the row and whether to open a new
+ * tab), and the search field's `tmGridDriver` moves and opens the active
+ * row while focus stays in the field. Sortable headers edit the two-way
+ * `orderBy` and the consumer orders its rows; `rowClass` styles rows through
+ * the shipped `tm-grid__row--muted` and `tm-grid__row--emphasis` modifiers,
+ * and `[rowHeaders]="false"` drops the row numbers. `selected`, `active`,
+ * `order` (signals), `onRow` and `byStatus` are members of the consuming
+ * component.
+ */
+export const SearchPage = {
+  template: `
+    <input tmInput type="search" aria-label="Search customers" [tmGridDriver]="grid" />
+    <tm-grid #grid gridId="search.customers" [data]="rows" [rowId]="rowId" rowActivation="row"
+             [rowHeaders]="false" [rowClass]="byStatus" selectable [(selectedIds)]="selected"
+             [(activeRowId)]="active" [(orderBy)]="order" (rowActivate)="onRow($event)"
+             style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" sortable />
+      <tm-grid-column key="qty" type="number" header="Orders" [width]="100" sortable />
+    </tm-grid>
+  `,
+};
+
+/**
+ * Header filters and a column editor: a column's `tmGridHeaderEnd` template
+ * holds a `button[tmGridHeaderAction]` that opens a filter popover (its
+ * `active` input marks a filter in force), and the grid's
+ * `tmGridRowEndHeader` template puts the column editor in a sticky column
+ * at the inline end. The keyboard reaches both from the header row: ArrowUp
+ * from the first row, then Enter on a filter-only header, Alt+ArrowDown on
+ * a sortable one. `filtered` (a signal), `funnel` and `columns3` (Lucide
+ * icons) are members of the consuming component.
+ */
+export const HeaderFiltersAndColumnEditor = {
+  template: `
+    <tm-grid gridId="search.customers" [data]="rows" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" sortable>
+        <ng-template tmGridHeaderEnd>
+          <button tmGridHeaderAction aria-label="Filter Name" [active]="filtered()"
+                  [tmPopoverTriggerFor]="nameFilter"><tm-icon [svg]="funnel" /></button>
+          <tm-popover #nameFilter aria-label="Filter Name">
+            <ng-template tmPopoverContent>
+              <p>The fields that filter the Name column.</p>
+            </ng-template>
+          </tm-popover>
+        </ng-template>
+      </tm-grid-column>
+      <tm-grid-column key="qty" type="number" header="Orders" [width]="100" />
+      <ng-template tmGridRowEndHeader>
+        <button tmGridHeaderAction aria-label="Choose columns" [tmPopoverTriggerFor]="columnPicker">
+          <tm-icon [svg]="columns3" />
+        </button>
+        <tm-popover #columnPicker aria-label="Choose columns">
+          <ng-template tmPopoverContent>
+            <p>Choose and order the columns of the list.</p>
+          </ng-template>
+        </tm-popover>
+      </ng-template>
+    </tm-grid>
+  `,
+};
+
+/**
+ * Bringing a row into view from code — after a save, or from a link to a
+ * record: `scrollToRow` centres the row, moves the active cell to it (in
+ * the named column) without taking focus, and `flash` pulses it once so
+ * the eye lands on it. It returns `false` when the row is not in the data.
+ */
+export const ScrollToRowWithFlash = {
+  template: `
+    <button type="button" (click)="products.scrollToRow(2, { flash: true, column: 'qty' })">
+      Show item 2
+    </button>
+    <tm-grid #products gridId="products-scroll" [data]="rows" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="name" header="Name" [flex]="2" />
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="90" />
     </tm-grid>
   `,
 };

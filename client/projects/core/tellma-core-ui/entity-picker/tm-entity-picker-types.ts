@@ -55,9 +55,30 @@ export interface TmEntityPick<Id extends TmEntityId = TmEntityId, T = unknown> {
 }
 
 /**
+ * What a page opened from a multi-picker (`multiple` in its
+ * {@link TmEntityPickerPageData}) closes with: the whole selection it
+ * edited, which replaces the picker's value. Closing with no result leaves
+ * the value as it was.
+ */
+export interface TmEntityMultiPick<Id extends TmEntityId = TmEntityId, T = unknown> {
+  /**
+   * The whole selection: the ids the page kept, in the picker's order, then
+   * the ones it added. An empty list clears the selection.
+   */
+  readonly ids: readonly Id[];
+  /**
+   * Label memos for the rows the page showed — they seed the chip labels
+   * where `displayWith` has none. An id with no pick here keeps the label
+   * the picker already knew.
+   */
+  readonly picks: readonly TmEntityPick<Id, T>[];
+}
+
+/**
  * A consumer page the picker launches in a modal: the component class alone,
- * or a config object adding a size bucket and a title (defaults: size `lg`
- * for advanced search, `md` for create and edit; localized default titles).
+ * or a config object adding a size bucket, a title and a context (defaults:
+ * size `lg` for advanced search, `md` for create and edit; localized default
+ * titles; no context).
  */
 export type TmEntityPickerPage =
   | Type<unknown>
@@ -68,6 +89,14 @@ export type TmEntityPickerPage =
       size?: 'sm' | 'md' | 'lg';
       /** The modal title; defaults to a localized per-page-kind title. */
       title?: string;
+      /**
+       * Anything the page needs to know about where it was opened from —
+       * which entity a page shared by many entities serves, say. The picker
+       * never reads it: it reaches the page untouched as
+       * {@link TmEntityPickerPageData.context}, and the binding and its page
+       * agree on its shape.
+       */
+      context?: unknown;
     };
 
 /**
@@ -83,6 +112,26 @@ export interface TmEntityPickerPageData<Id extends TmEntityId = TmEntityId> {
   readonly query: string;
   /** Edit launches only: the committed value being edited. */
   readonly id?: Id;
+  /**
+   * Set when the page was opened from a picker that holds several entities:
+   * the page edits the whole selection, starting from `ids`, and closes
+   * with every id it keeps and adds rather than with a single pick.
+   */
+  readonly multiple?: true;
+  /** With `multiple`: the ids already chosen, in the picker's order. */
+  readonly ids?: readonly Id[];
+  /**
+   * With `multiple`: the most entities the picker may hold. The page keeps
+   * its Done action disabled while more than this many are chosen, and says
+   * why with the same message the picker shows when it refuses a pick.
+   */
+  readonly maxItems?: number;
+  /**
+   * The `context` of the page's config object, passed through untouched.
+   * Absent when the page was configured as a bare component class or its
+   * config carries no context.
+   */
+  readonly context?: unknown;
 }
 
 /**

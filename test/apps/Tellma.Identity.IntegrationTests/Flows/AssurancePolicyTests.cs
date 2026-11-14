@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -25,12 +26,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Aal3_fails_closed_when_the_user_has_only_a_synced_passkey()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idaal3synced");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idaal3synced");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "synced@example.com");
             await AddPasskeyAsync(factory, user, deviceBound: false);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "synced@example.com");
 
             using HttpResponseMessage response = await AuthorizeWithAal3Async(flow, distribution);
@@ -46,12 +47,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Aal3_sends_a_device_bound_passkey_holder_to_the_login_page()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idaal3bound");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idaal3bound");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "bound@example.com");
             await AddPasskeyAsync(factory, user, deviceBound: true);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "bound@example.com");
 
             using HttpResponseMessage response = await AuthorizeWithAal3Async(flow, distribution);
@@ -72,10 +73,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Prompt_none_returns_login_required_rather_than_the_login_page()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpromptnone");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpromptnone");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (_, string challenge) = OidcFlowClient.CreatePkcePair();
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
             {
@@ -105,11 +106,11 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Max_age_zero_forces_one_reauthentication_then_completes()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idmaxage0");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idmaxage0");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "ivan@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await EstablishSessionAsync(flow, distribution, "ivan@example.com");
 
             // max_age=0 (OIDC: equivalent to prompt=login) with an existing session: one forced

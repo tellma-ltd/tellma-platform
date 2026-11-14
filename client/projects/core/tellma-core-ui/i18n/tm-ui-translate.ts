@@ -14,8 +14,12 @@ import {
 } from '@angular/core';
 import { TRANSLOCO_TRANSPILER, TranslocoService } from '@jsverse/transloco';
 
+import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+
 import { TM_UI_STRINGS_EN } from './strings-en';
 import { TM_ACTIVE_LOCALE } from './tm-active-locale';
+import { ɵtmFormatMessage } from './tm-icu';
+import { TM_UI_ARGUMENT_FORMATTER } from './tm-ui-argument-formatter';
 
 /**
  * The thin one-function i18n seam: resolves a library string key to a
@@ -72,20 +76,6 @@ export function tmEnglishString(key: string): string | null {
   return typeof node === 'string' ? node : null;
 }
 
-/** Naive `{param}` interpolation for the no-Transloco static fallback. */
-function interpolate(template: string, params?: Record<string, unknown>): string {
-  if (!params) {
-    return template;
-  }
-  // Strip ICU plural/select blocks down to their 'other' arm, then fill
-  // simple placeholders — good enough for the last-resort static path.
-  const simplified = template.replace(
-    /\{(\w+),\s*(?:plural|select)\s*,[^{}]*other\s*\{([^{}]*)\}[^{}]*\}/g,
-    (_, name: string, other: string) => other.replaceAll('#', String(params[name] ?? '')),
-  );
-  return simplified.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`));
-}
-
 function missingKeyGuard(key: string): string {
   if (isDevMode()) {
     console.warn(
@@ -101,16 +91,24 @@ function missingKeyGuard(key: string): string {
  * The default `TM_UI_TRANSLATE` implementation: Transloco-backed when a
  * `TranslocoService` is provided (the `provideTellmaUi()` path — live locale
  * switching included), else a static English-only resolver (so the library
- * renders sensibly even in a Transloco-less harness).
+ * renders sensibly even in a Transloco-less harness). Both paths format ICU
+ * MessageFormat through the same interpreter.
  *
  * Resolution is SYNCHRONOUS against Transloco's loaded translations (the
  * library's own strings are registered eagerly by `provideTellmaUi()` and
  * the locale packs), re-evaluated through one shared version signal bumped
- * by language changes and translation (re)loads. That keeps the factory to
- * two app-lifetime subscriptions total — resolving a message never
- * subscribes, caches, or serializes params — and a string's very first
- * read already carries text (English until the locale's strings apply),
- * never a blank frame in the error live region.
+ * by language changes and by every completed translation load. That keeps
+ * the factory to two app-lifetime subscriptions total — resolving a message
+ * never subscribes, caches, or serializes params — and a string's very
+ * first read already carries text (English until the locale's strings
+ * apply), never a blank frame in the error live region.
+ *
+ * The library never loads a language itself: a table the app loads (or a
+ * pack registers) re-renders every visible string when it lands.
+ *
+ * A resolved message carries no bidirectional control character: neither a
+ * direction mark `Intl` wrote beside a formatted number argument nor one a
+ * translator pasted reaches the text — markup sets direction.
  */
 export function tmDefaultUiTranslate(): TmUiTranslateFn {
   // TranslocoService is providedIn:'root', so an optional inject would still
@@ -119,21 +117,32 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
   // only present when Transloco was actually provided — probe that instead.
   const translocoProvided = inject(TRANSLOCO_TRANSPILER, { optional: true }) !== null;
   const context = inject(TM_UI_MESSAGE_CONTEXT);
+  const locale = inject(TM_ACTIVE_LOCALE);
+  const format = inject(TM_UI_ARGUMENT_FORMATTER);
   if (!translocoProvided) {
     return (key, params) =>
       computed(() => {
         const merged = { ...context(), ...params };
         const english = tmEnglishString(key);
-        return english !== null ? interpolate(english, merged) : missingKeyGuard(key);
+        return english !== null
+          ? tmStripBidiControls(ɵtmFormatMessage(english, merged, locale(), format))
+          : missingKeyGuard(key);
       });
   }
 
   const transloco = inject(TranslocoService);
-  const locale = inject(TM_ACTIVE_LOCALE);
   const version = signal(0);
   const bump = () => version.update((v) => v + 1);
+  // A language switch, or a table merged by `setTranslation` (which
+  // re-publishes the active language), arrives on langChanges$; a completed
+  // load arrives as its own event, because Transloco merges a loaded table
+  // without re-publishing the language.
   const langSub = transloco.langChanges$.subscribe(bump);
-  const eventSub = transloco.events$.subscribe(bump);
+  const eventSub = transloco.events$.subscribe((event) => {
+    if (event.type === 'translationLoadSuccess') {
+      bump();
+    }
+  });
   inject(DestroyRef).onDestroy(() => {
     langSub.unsubscribe();
     eventSub.unsubscribe();
@@ -153,9 +162,13 @@ export function tmDefaultUiTranslate(): TmUiTranslateFn {
       if (text === '' || text === namespacedKey || text === key) {
         // Raw-key echo: the key is missing everywhere Transloco looked.
         const english = tmEnglishString(key);
-        return english !== null ? interpolate(english, merged) : missingKeyGuard(key);
+        return english !== null
+          ? tmStripBidiControls(ɵtmFormatMessage(english, merged, locale(), format))
+          : missingKeyGuard(key);
       }
-      return text;
+      // Spec 0010 §D.14: the set leaves every resolved message, whether an
+      // ICU number argument or a translator's paste brought it.
+      return tmStripBidiControls(text);
     });
 }
 

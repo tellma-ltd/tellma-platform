@@ -94,11 +94,16 @@ namespace Tellma.Core.Queryex.Nullity
 
                 // Every construct that yields a truth value yields one: comparison is defined for
                 // absent operands rather than undefined by them, so a predicate is never anything
-                // but true or false and no third possibility leaks through a negation.
-                TypedComparison or TypedIn or TypedIsNull or TypedLogical or TypedNot =>
-                    QueryexNullity.NotNull,
+                // but true or false and no third possibility leaks through a negation. A rebased
+                // criterion and a semi-join are the same: one tests for the row it needs before
+                // reading it, and the other is an existence test, which has no third answer.
+                TypedComparison or TypedIn or TypedIsNull or TypedLogical or TypedNot
+                    or TypedVia or TypedExists => QueryexNullity.NotNull,
 
                 TypedCall call => CallNullity(call),
+
+                // A leaf of a composed filter is its expression, at a place in the tree.
+                TypedFilterLeaf leaf => _map[leaf.Expression],
                 _ => QueryexNullity.Nullable,
             };
         }
@@ -108,13 +113,14 @@ namespace Tellma.Core.Queryex.Nullity
         /// <returns>Its nullity.</returns>
         /// <remarks>
         ///     Present only when every step of the way is: a navigation whose foreign key may be
-        ///     absent means there may be no row to read the next name from at all.
+        ///     absent, or that the schema declares optional, means there may be no row to read the
+        ///     next name from at all.
         /// </remarks>
         private static QueryexNullity PathNullity(TypedPath path)
         {
             foreach (NavigationDescriptor navigation in path.Navigations)
             {
-                if (!navigation.ForeignKey.IsNotNull)
+                if (navigation.MayBeMissing)
                 {
                     return QueryexNullity.Nullable;
                 }
@@ -129,6 +135,15 @@ namespace Tellma.Core.Queryex.Nullity
         private QueryexNullity CallNullity(TypedCall call)
         {
             NullityRule rule = call.Signature.Nullity;
+            if (rule.TableCalendarSelector is int selector
+                && selector < call.Selectors.Length
+                && CalendarCodes.IsTabular(call.Selectors[selector]))
+            {
+                // A table calendar answers only for the dates its months cover, and a result past
+                // them is absent too — so every call in one may be absent, whatever its operands.
+                return QueryexNullity.Nullable;
+            }
+
             return rule.Kind switch
             {
                 NullityRuleKind.AlwaysNotNull or NullityRuleKind.CountAggregate => QueryexNullity.NotNull,

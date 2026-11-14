@@ -7,6 +7,11 @@ using Tellma.Core.Queryex;
 
 namespace Tellma.Queryex.Testing.Schema
 {
+    /// <summary>A column a fixture table holds that the schema does not declare.</summary>
+    /// <param name="Name">The physical column name.</param>
+    /// <param name="StoreType">The column's type.</param>
+    public sealed record UndeclaredColumn(string Name, QueryexStoreType StoreType);
+
     /// <summary>
     ///     The schema every Queryex suite binds against.
     /// </summary>
@@ -31,8 +36,14 @@ namespace Tellma.Queryex.Testing.Schema
     /// </remarks>
     public static class LedgerFixture
     {
+        /// <summary>The table the host's Umm al-Qura months are kept in.</summary>
+        public const string CalendarMonthsSource = "[core].[CalendarMonths]";
+
         /// <summary>The schema, built once.</summary>
-        public static QueryexSchema Schema { get; } = Build();
+        public static QueryexSchema Schema { get; } = Build(mapsCalendars: true);
+
+        /// <summary>The same schema with no month table mapped, so no table calendar is accepted.</summary>
+        public static QueryexSchema WithoutCalendarMaps { get; } = Build(mapsCalendars: false);
 
         /// <summary>The entity most suites query from.</summary>
         public static EntityDescriptor Invoice { get; } = Schema.FindEntity("Invoice")!;
@@ -43,11 +54,43 @@ namespace Tellma.Queryex.Testing.Schema
         /// <summary>An entity that is not hierarchical, so asking it for ancestry fails.</summary>
         public static EntityDescriptor Party { get; } = Schema.FindEntity("Party")!;
 
+        /// <summary>A child of <see cref="Invoice" />, pointing at its parent, for semi-joins.</summary>
+        public static EntityDescriptor InvoiceLine { get; } = Schema.FindEntity("InvoiceLine")!;
+
+        /// <summary>
+        ///     The columns an entity's table holds that the schema leaves out on purpose.
+        /// </summary>
+        /// <param name="entity">The entity.</param>
+        /// <returns>The columns, in the order the table declares them; empty for most entities.</returns>
+        /// <remarks>
+        ///     Opaque text the schema omits by design, the way a host leaves JSON columns out of what
+        ///     an expression can name. Kept beside the schema rather than in it, because the whole
+        ///     point is that the compiler never learns about them: a query reads them by name, and
+        ///     the tables a differential run creates have to hold them all the same.
+        /// </remarks>
+        public static IReadOnlyList<UndeclaredColumn> UndeclaredColumns(EntityDescriptor entity)
+        {
+            ArgumentNullException.ThrowIfNull(entity);
+
+            return ReferenceEquals(entity, Invoice)
+                ?
+                [
+                    new UndeclaredColumn("ExtrasJson", QueryexStoreType.QxNVarChar(null)),
+                    new UndeclaredColumn("AuditJson", QueryexStoreType.QxNVarChar(null)),
+                ]
+                : [];
+        }
+
         /// <summary>Builds the schema.</summary>
+        /// <param name="mapsCalendars">Whether the Umm al-Qura calendar is mapped to its month table.</param>
         /// <returns>The schema.</returns>
-        private static QueryexSchema Build()
+        private static QueryexSchema Build(bool mapsCalendars)
         {
             QueryexSchemaBuilder builder = new();
+            if (mapsCalendars)
+            {
+                builder.CalendarMap("uq", CalendarMonthsSource);
+            }
 
             // The entity name, the key's name, and several columns all differ from what an
             // expression author writes.
@@ -131,6 +174,20 @@ namespace Tellma.Queryex.Testing.Schema
 
             // A cycle, which the two-phase build exists to handle.
             account.Navigation("Parent", "Account", "ParentId");
+
+            // A child of the invoice: no navigation reaches it, so only a semi-join can ask about it.
+            // The key and the parent's foreign key are named differently from their columns, and the
+            // optional party sits beside the mandatory parent, so a rebase inside a semi-join has an
+            // outer path to guard.
+            QueryexSchemaBuilder.EntityBuilder line = builder.Entity("InvoiceLine", "[gl].[DocumentLines]");
+            line.Key("Id", QueryexType.QxNumeric, "LineId", QueryexStoreType.QxInt);
+            line.Property("InvoiceId", QueryexType.QxNumeric, "DocumentId", isNotNull: true, storeType: QueryexStoreType.QxInt);
+            line.Property("Amount", QueryexType.QxNumeric, "LineAmount", isNotNull: true, storeType: QueryexStoreType.QxDecimal(19, 4));
+            line.Property("Memo", QueryexType.QxString, "Memo", storeType: QueryexStoreType.QxNVarChar(255));
+            line.Property("PartyId", QueryexType.QxNumeric, "AgentFk", storeType: QueryexStoreType.QxInt);
+            line.Property("CreatedById", QueryexType.QxNumeric, "CreatedById", isNotNull: true, storeType: QueryexStoreType.QxInt);
+            line.Navigation("Invoice", "Invoice", "InvoiceId");
+            line.Navigation("Party", "Party", "PartyId");
 
             return builder.Build();
         }

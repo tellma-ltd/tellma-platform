@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Abstractions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
@@ -36,7 +37,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Seeding_creates_scopes_platform_clients_and_dev_admin_idempotently()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idseed", SeedConfiguration);
 
             // First boot seeds everything.
@@ -61,7 +62,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Reseeding_preserves_grants_on_a_client_stored_before_the_marker_existed()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idseedmarker", SeedConfiguration);
             CancellationToken cancellationToken = TestContext.Current.CancellationToken;
             string grant = Permissions.Prefixes.Resource + "https://acme.app.tellma.com";
@@ -99,6 +100,181 @@ namespace Tellma.Identity.IntegrationTests
             }
         }
 
+        [Fact]
+        public async Task A_distribution_seed_converges_across_starts_and_audits_only_what_it_changed()
+        {
+            // The distribution entry comes first, ahead of the CLI it grants its origin to: the
+            // seeder registers platform clients before distributions whatever the order.
+            Dictionary<string, string?> configuration = new()
+            {
+                ["TellmaIdentity:Seed:Clients:0:ClientId"] = "acme",
+                ["TellmaIdentity:Seed:Clients:0:Kind"] = "Distribution",
+                ["TellmaIdentity:Seed:Clients:0:Origin"] = "https://acme.example.com",
+                ["TellmaIdentity:Seed:Clients:0:ClientSecret"] = "acme-bff-secret-0123456789abcdef",
+                ["TellmaIdentity:Seed:Clients:0:ServiceClientSecret"] = "acme-svc-secret-0123456789abcdef",
+                ["TellmaIdentity:Seed:Clients:1:ClientId"] = "tellma-cli",
+                ["TellmaIdentity:Seed:Clients:1:Kind"] = "Cli",
+                ["TellmaIdentity:Seed:Clients:1:RedirectUris:0"] = "http://127.0.0.1/callback",
+            };
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idseeddist", configuration);
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+            string grant = Permissions.Prefixes.Resource + "https://acme.example.com";
+
+            using (factory.CreateClient())
+            {
+                using IServiceScope scope = factory.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                IOpenIddictScopeManager scopes = scope.ServiceProvider.GetRequiredService<IOpenIddictScopeManager>();
+
+                object bff = (await applications.FindByClientIdAsync("acme", cancellationToken))!;
+                object service = (await applications.FindByClientIdAsync("acme-svc", cancellationToken))!;
+                Assert.True(await applications.ValidateClientSecretAsync(bff, "acme-bff-secret-0123456789abcdef", cancellationToken));
+                Assert.True(await applications.ValidateClientSecretAsync(service, "acme-svc-secret-0123456789abcdef", cancellationToken));
+                Assert.False(await applications.HasPermissionAsync(service, Permissions.GrantTypes.TokenExchange, cancellationToken));
+                Assert.Contains(
+                    new Uri("https://acme.example.com/signin-oidc"),
+                    (await applications.GetRedirectUrisAsync(bff, cancellationToken)).Select(static uri => new Uri(uri)));
+
+                object cli = (await applications.FindByClientIdAsync("tellma-cli", cancellationToken))!;
+                Assert.True(await applications.HasPermissionAsync(cli, grant, cancellationToken));
+
+                object api = (await scopes.FindByNameAsync(TellmaIdentityConstants.ApiScope, cancellationToken))!;
+                Assert.Contains("https://acme.example.com", await scopes.GetResourcesAsync(api, cancellationToken));
+            }
+
+            Assert.Single(await DistributionSeedEventsAsync(factory));
+
+            // An unchanged second start converges without writing, so it records nothing.
+            using (StandaloneFactory unchanged = Reboot(factory))
+            {
+                using (unchanged.CreateClient())
+                {
+                    Assert.Single(await DistributionSeedEventsAsync(unchanged));
+                }
+            }
+
+            // A rotated secret is applied, and audited, on the next start.
+            using StandaloneFactory rotated = Reboot(factory);
+            rotated.ConfigurationOverrides["TellmaIdentity:Seed:Clients:0:ClientSecret"] = "acme-bff-secret-rotated-0123456789";
+            using (rotated.CreateClient())
+            {
+                using IServiceScope scope = rotated.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                object bff = (await applications.FindByClientIdAsync("acme", cancellationToken))!;
+                Assert.True(await applications.ValidateClientSecretAsync(bff, "acme-bff-secret-rotated-0123456789", cancellationToken));
+                Assert.False(await applications.ValidateClientSecretAsync(bff, "acme-bff-secret-0123456789abcdef", cancellationToken));
+
+                // The CLI kept its grant through two re-seeds.
+                object cli = (await applications.FindByClientIdAsync("tellma-cli", cancellationToken))!;
+                Assert.True(await applications.HasPermissionAsync(cli, grant, cancellationToken));
+
+                List<Data.Entities.AuditEvent> events = await DistributionSeedEventsAsync(rotated);
+                Assert.Equal(2, events.Count);
+                Assert.Contains("\"client\":\"updated\"", events[^1].DetailsJson, StringComparison.Ordinal);
+                Assert.Contains("\"serviceClient\":\"unchanged\"", events[^1].DetailsJson, StringComparison.Ordinal);
+                Assert.DoesNotContain("secret-rotated", events[^1].DetailsJson, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public async Task The_shipped_interim_agent_clients_are_seeded_overridable_by_key_and_granted_each_origin()
+        {
+            // The host's own configuration ships claude-code, codex and cursor; a deployment layer
+            // moves one entry's redirect and turns another off, by key, leaving the third alone.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
+                fixture,
+                "idseedinterim",
+                new Dictionary<string, string?>
+                {
+                    ["TellmaIdentity:Seed:InterimClients:claude-code:RedirectUris:0"] = "http://127.0.0.1/oauth/callback",
+                    ["TellmaIdentity:Seed:InterimClients:cursor:Enabled"] = "false",
+                });
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+            using (factory.CreateClient())
+            {
+                await TestData.ProvisionDistributionAsync(factory, "acme");
+
+                using IServiceScope scope = factory.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+                foreach ((string clientId, string redirectUri) in (ValueTuple<string, string>[])
+                    [("claude-code", "http://127.0.0.1/oauth/callback"), ("codex", "http://127.0.0.1/callback")])
+                {
+                    object client = (await applications.FindByClientIdAsync(clientId, cancellationToken))!;
+                    Assert.Equal(ConsentTypes.Explicit, await applications.GetConsentTypeAsync(client, cancellationToken));
+                    Assert.Equal(ClientTypes.Public, await applications.GetClientTypeAsync(client, cancellationToken));
+                    Assert.Equal([redirectUri], await applications.GetRedirectUrisAsync(client, cancellationToken));
+                    Assert.False((await applications.GetPropertiesAsync(client, cancellationToken))
+                        .ContainsKey(TellmaClientProperties.FirstParty));
+
+                    // Onboarding grants the new distribution's origin to it, as to every seeded
+                    // client that calls distribution APIs.
+                    Assert.True(await applications.HasPermissionAsync(
+                        client, Permissions.Prefixes.Resource + "https://acme.app.tellma.com", cancellationToken));
+                }
+
+                Assert.Null(await applications.FindByClientIdAsync("cursor", cancellationToken));
+            }
+        }
+
+        [Fact]
+        public async Task Disabling_a_seeded_interim_client_warns_that_it_still_works_until_deleted()
+        {
+            // The first start seeds every shipped entry, cursor included.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idseeddisabled");
+            using (factory.CreateClient())
+            {
+            }
+
+            // The next start has cursor disabled. The seeder never deletes, so the row stays and
+            // still authenticates; the start says so, naming the client and the remedy.
+            CapturingLogSink logs = new();
+            using StandaloneFactory disabled = Reboot(factory);
+            disabled.ConfigurationOverrides["TellmaIdentity:Seed:InterimClients:cursor:Enabled"] = "false";
+            disabled.ServiceOverrides.Add(services => services.AddSingleton<Serilog.Core.ILogEventSink>(logs));
+            using (disabled.CreateClient())
+            {
+                using IServiceScope scope = disabled.Services.CreateScope();
+                IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                Assert.NotNull(await applications.FindByClientIdAsync("cursor", TestContext.Current.CancellationToken));
+            }
+
+            string warning = Assert.Single(
+                logs.Messages(Serilog.Events.LogEventLevel.Warning),
+                static message => message.Contains("TellmaIdentity:Seed:InterimClients:cursor", StringComparison.Ordinal));
+            Assert.Contains("cursor", warning, StringComparison.Ordinal);
+            Assert.Contains("Delete the application", warning, StringComparison.Ordinal);
+
+            // The enabled entries draw no such warning.
+            Assert.DoesNotContain(
+                logs.Messages(Serilog.Events.LogEventLevel.Warning),
+                static message => message.Contains("InterimClients:codex", StringComparison.Ordinal));
+        }
+
+        /// <summary>A second host over the same store and configuration.</summary>
+        private static StandaloneFactory Reboot(StandaloneFactory factory)
+        {
+            StandaloneFactory next = new();
+            foreach ((string key, string? value) in factory.ConfigurationOverrides)
+            {
+                next.ConfigurationOverrides[key] = value;
+            }
+
+            return next;
+        }
+
+        /// <summary>The distribution-seed audit events in the host's store, oldest first.</summary>
+        private static async Task<List<Data.Entities.AuditEvent>> DistributionSeedEventsAsync(StandaloneFactory factory)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            Data.TellmaIdentityDbContext context = scope.ServiceProvider.GetRequiredService<Data.TellmaIdentityDbContext>();
+            return await context.Set<Data.Entities.AuditEvent>()
+                .Where(static e => e.Action == Services.Audit.AuditActions.DistributionSeedApplied)
+                .OrderBy(static e => e.Id)
+                .ToListAsync(TestContext.Current.CancellationToken);
+        }
+
         /// <summary>Asserts the seeded catalog is present and correctly shaped.</summary>
         private static async Task AssertSeededAsync(StandaloneFactory factory)
         {
@@ -117,7 +293,7 @@ namespace Tellma.Identity.IntegrationTests
             object? identityScope = await scopeManager.FindByNameAsync("tellma_identity", cancellationToken);
             OpenIddictScopeDescriptor identityScopeDescriptor = new();
             await scopeManager.PopulateAsync(identityScopeDescriptor, identityScope!, cancellationToken);
-            Assert.Contains("http://localhost", identityScopeDescriptor.Resources);
+            Assert.Equal(["urn:tellma:identity"], identityScopeDescriptor.Resources);
 
             // The CLI: public, native (portless loopback), PKCE-required, device-grant capable.
             object? cli = await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken);

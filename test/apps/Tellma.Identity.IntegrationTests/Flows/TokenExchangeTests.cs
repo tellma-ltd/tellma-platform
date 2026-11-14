@@ -8,6 +8,7 @@ using OpenIddict.Abstractions;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests.Flows
@@ -23,7 +24,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Backend_exchanges_its_token_down_scoping_to_the_distribution_api()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idte");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idte");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
 
@@ -63,12 +64,15 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string[] scopes = payload.RootElement.GetProperty("scope").GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             Assert.Contains("tellma_api", scopes);
             Assert.DoesNotContain("tellma_identity", scopes);
+
+            // The exchanged token is the backend's own, so it stays a machine token.
+            Assert.Equal("service", payload.RootElement.GetProperty("tellma_kind").GetString());
         }
 
         [Fact]
         public async Task Exchange_cannot_widen_the_subject_token_scopes()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idtewiden");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idtewiden");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
 
@@ -101,6 +105,49 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.Equal("invalid_scope", document.RootElement.GetProperty("error").GetString());
         }
 
+        [Theory]
+        [InlineData("https://globex.app.tellma.com")]
+        [InlineData(null)]
+        public async Task Exchange_cannot_retarget_to_another_distribution_or_to_every_distribution(string? resource)
+        {
+            // Two distributions are onboarded, so the distribution API scope's resources hold both
+            // origins. Naming the other one is refused, and naming none must never yield a token
+            // carrying them all.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteretarget");
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
+                factory, allowTokenExchange: true);
+            await TestData.ProvisionDistributionAsync(factory, "globex");
+
+            using HttpClient client = factory.CreateClient();
+            using JsonDocument original = await GetClientCredentialsTokenAsync(
+                client, distribution.ServiceClientId, distribution.ServiceClientSecret,
+                scope: "tellma_api", resource: "https://acme.app.tellma.com");
+
+            Dictionary<string, string> parameters = new()
+            {
+                ["grant_type"] = "urn:ietf:params:oauth:grant-type:token-exchange",
+                ["client_id"] = distribution.ServiceClientId,
+                ["client_secret"] = distribution.ServiceClientSecret,
+                ["subject_token"] = original.RootElement.GetProperty("access_token").GetString()!,
+                ["subject_token_type"] = "urn:ietf:params:oauth:token-type:access_token",
+                ["scope"] = "tellma_api",
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(parameters),
+                TestContext.Current.CancellationToken);
+
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.False(response.IsSuccessStatusCode, body);
+            using var document = JsonDocument.Parse(body);
+            Assert.Equal("invalid_target", document.RootElement.GetProperty("error").GetString());
+        }
+
         [Fact]
         public async Task A_backend_cannot_exchange_a_token_issued_to_the_browser_client()
         {
@@ -108,7 +155,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // neither its presenter nor its audience, so the protocol layer refuses this before the
             // endpoint runs. That is the outer of the two barriers against impersonation; the inner
             // one is Endpoint_refuses_a_user_token_even_from_the_client_that_holds_it below.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteuser");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteuser");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
             await TestData.CreateActiveUserAsync(factory, "trudy@example.com");
@@ -145,7 +192,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // impersonation capability, so the endpoint refuses user subjects itself. This test
             // grants the browser client that permission to reach the refusal, which is otherwise
             // unreachable and would be untested.
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idteself");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idteself");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, allowTokenExchange: true);
             await TestData.CreateActiveUserAsync(factory, "mallory@example.com");
@@ -193,7 +240,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         private static async Task<string> SignInAndGetAccessTokenAsync(
             StandaloneFactory factory, DistributionClientCredentials distribution, string email)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>
