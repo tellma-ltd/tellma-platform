@@ -20,11 +20,22 @@ namespace Tellma.Core.Tenancy
             {
                 connection = await catalog.OpenWithoutRetryAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (SqlException exception) when (exception.Errors.Cast<SqlError>().Any(static error => error.Number == CatalogStatements.CannotOpenDatabase))
+            catch (SqlException exception) when (HasError(exception, CatalogStatements.CannotOpenDatabase))
             {
                 // A login to a missing database fails with two errors, 4060 and the login failure
                 // 18456, and which one the exception reports first is not to be relied on.
                 return CatalogHistoryState.MissingDatabase;
+            }
+            catch (SqlException exception) when (HasError(exception, CatalogStatements.LoginInterrupted))
+            {
+                // The server ended the login without the client reading why, which a missing
+                // database can cause as well as a transient fault: the server itself decides which.
+                if (!await DatabaseExistsAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    return CatalogHistoryState.MissingDatabase;
+                }
+
+                throw;
             }
 
             await using (connection.ConfigureAwait(false))
@@ -84,6 +95,31 @@ namespace Tellma.Core.Tenancy
                 }
 
                 return new CatalogReload(version, rows.AsReadOnly());
+            }
+        }
+
+        /// <summary>Whether an exception carries a SQL Server error number.</summary>
+        /// <param name="exception">The exception.</param>
+        /// <param name="number">The error number.</param>
+        /// <returns>Whether any of the exception's errors has the number.</returns>
+        private static bool HasError(SqlException exception, int number)
+        {
+            return exception.Errors.Cast<SqlError>().Any(error => error.Number == number);
+        }
+
+        /// <summary>Whether the catalog database exists, when the server can be asked; a failure to ask counts as yes.</summary>
+        /// <param name="cancellationToken">Cancels the question.</param>
+        /// <returns><see langword="false" /> only when the server says the database is missing.</returns>
+        private async Task<bool> DatabaseExistsAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await catalog.DatabaseExistsAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (SqlException)
+            {
+                // The server cannot be asked either: the original failure stands.
+                return true;
             }
         }
     }

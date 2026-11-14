@@ -64,6 +64,29 @@ namespace Tellma.Core.Tenancy
             return OpenAsync(builder.ConnectionString, cancellationToken);
         }
 
+        /// <summary>
+        ///     Asks the catalog's server, through <c>master</c> and with the catalog's own credential,
+        ///     whether the catalog database exists. A login the server cut off before saying why
+        ///     cannot tell a missing database from a transient fault; this question can.
+        /// </summary>
+        /// <param name="cancellationToken">Cancels the question.</param>
+        /// <returns>Whether the server knows the database; <see langword="false" /> also when the login may not see it.</returns>
+        /// <exception cref="InvalidOperationException">The catalog connection string is not configured.</exception>
+        /// <exception cref="SqlException">The server cannot be reached, or the credential may not log in to <c>master</c>.</exception>
+        public async Task<bool> DatabaseExistsAsync(CancellationToken cancellationToken)
+        {
+            SqlConnectionStringBuilder builder = new(ConnectionString) { InitialCatalog = "master", ConnectRetryCount = 0 };
+            SqlConnection connection = await OpenAsync(builder.ConnectionString, cancellationToken).ConfigureAwait(false);
+            await using (connection.ConfigureAwait(false))
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.CommandText = CatalogStatements.DatabaseExists;
+                _ = command.Parameters.Add(new SqlParameter("@database", System.Data.SqlDbType.NVarChar, 128) { Value = Database });
+                object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
+            }
+        }
+
         /// <summary>Opens a connection over a composed catalog string.</summary>
         /// <param name="connectionString">The string.</param>
         /// <param name="cancellationToken">Cancels the open.</param>
