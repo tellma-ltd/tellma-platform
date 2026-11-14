@@ -124,8 +124,11 @@ describe('TmSearch timing', () => {
     type('b');
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(queries()).toEqual(['a', 'ab']);
+    // The burst is closed: the next key leads at once, with no timer run.
+    type('c');
+    expect(queries()).toEqual(['a', 'ab', 'abc']);
     vi.advanceTimersByTime(100);
-    expect(queries()).toEqual(['a', 'ab']);
+    expect(queries()).toEqual(['a', 'ab', 'abc']);
   });
 
   it('emits the empty query at once on a clear inside a burst, and drops the burst’s trailing edge', () => {
@@ -137,8 +140,11 @@ describe('TmSearch timing', () => {
     type('b');
     search.clear();
     expect(queries()).toEqual(['a', '']);
+    // The burst is closed: the next key leads at once, with no timer run.
+    type('c');
+    expect(queries()).toEqual(['a', '', 'c']);
     vi.advanceTimersByTime(100);
-    expect(queries()).toEqual(['a', '']);
+    expect(queries()).toEqual(['a', '', 'c']);
   });
 
   it('holds a repeating key until it is released', () => {
