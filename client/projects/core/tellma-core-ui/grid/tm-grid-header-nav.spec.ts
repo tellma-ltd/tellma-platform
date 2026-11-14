@@ -334,12 +334,45 @@ function contextMenu(target: Element): MouseEvent {
   return event;
 }
 
-/** A touch press held on an element until the long-press menu opens, then released. */
+/** Resolves on the browser's next animation frame. */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+/**
+ * A touch press held on an element until the long-press menu opens, then
+ * released. Like a real finger, the press lands inside the viewport, on the
+ * element itself.
+ */
 async function longPress(fixture: ComponentFixture<unknown>, target: Element): Promise<void> {
-  pointer(target, 'pointerdown', { pointerType: 'touch', pointerId: 7 });
-  await new Promise((resolve) => setTimeout(resolve, 650));
+  // The grid hit-tests the press point, and the test viewport is narrower
+  // than the grid, so the element is scrolled into view first. Any scroll
+  // cancels a press, and a scroll's event is dispatched only with the next
+  // frame (closing a menu scrolls too, as it returns focus). One frame
+  // passes before the press, so every pending scroll event lands first: a
+  // frame dispatches them before it runs animation-frame callbacks.
   await stable(fixture);
-  pointer(target, 'pointerup', { pointerType: 'touch', pointerId: 7 });
+  target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  await nextFrame();
+  const rect = target.getBoundingClientRect();
+  const point = { clientX: rect.left + 4, clientY: rect.top + 4 };
+  expect(
+    target.contains(document.elementFromPoint(point.clientX, point.clientY)),
+    'the press point hit-tests the pressed element',
+  ).toBe(true);
+  pointer(target, 'pointerdown', { pointerType: 'touch', pointerId: 7, ...point });
+  // Hold until the menu is open, rather than for a fixed time past the
+  // press threshold.
+  await vi.waitFor(
+    () => {
+      if (!menuOpen()) {
+        throw new Error('The long-press menu has not opened.');
+      }
+    },
+    { timeout: 5000 },
+  );
+  await stable(fixture);
+  pointer(target, 'pointerup', { pointerType: 'touch', pointerId: 7, ...point });
   await stable(fixture);
 }
 
