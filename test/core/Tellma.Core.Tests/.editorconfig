@@ -1,0 +1,8 @@
+# The suite's data-layer and cache tests drive the batch directly, the way only the runtime does:
+# their raw statements are held in fields or built to provoke the batch's own run-time refusals
+# (TELLMA0003), and their test classes, which own no stack, write the fixture's and the platform's
+# entity tables (TELLMA0006). The analyzer suite pins both rules instead. Every other folder of the
+# suite stays under both rules.
+[{Data,Caching}/**.cs]
+dotnet_diagnostic.TELLMA0003.severity = none
+dotnet_diagnostic.TELLMA0006.severity = none
