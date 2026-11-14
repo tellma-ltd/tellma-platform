@@ -29,7 +29,9 @@ namespace Tellma.Core.Analyzers
         /// <inheritdoc />
         public override void Initialize(AnalysisContext context)
         {
-            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            // Generated code is checked too: a scaffolded client or a source generator would otherwise
+            // reach the database or an action around the rules without anyone choosing to.
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
             context.EnableConcurrentExecution();
             context.RegisterCompilationStartAction(static start =>
             {

@@ -91,12 +91,12 @@ dotnet format Tellma.slnx --verify-no-changes
 dotnet test Tellma.slnx --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
 ```
 
-CI also builds the analyzer probe on Linux and Windows and expects it to fail with all six
-platform analyzer errors, `TELLMA0001` to `TELLMA0006`. The probe holds one violation of each rule
-and is not in the solution, so the solution's build stays clean:
+CI also builds the analyzer probe on Linux and Windows and expects it to fail with exactly the six
+platform analyzer errors, `TELLMA0001` to `TELLMA0006`, and no other error. The probe holds one
+violation of each rule and is not in the solution, so the solution's build stays clean:
 
 ```bash
-dotnet build test/core/assets/Tellma.Core.Analyzers.Probe
+bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh test/core/assets/Tellma.Core.Analyzers.Probe artifacts/analyzer-probe.log
 ```
 
 On Linux, CI runs the unit-suite command with `TELLMA_REQUIRE_PINNED_ICU=1`. The test that regenerates the

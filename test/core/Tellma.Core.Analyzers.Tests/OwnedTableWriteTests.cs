@@ -142,6 +142,35 @@ namespace Tellma.Core.Analyzers.Tests
                 """);
         }
 
+        /// <summary>
+        ///     A companion constrained to a mapped class writes its own type parameter, which its stack
+        ///     closes over that class or a leaf; a method-level type parameter is still checked through
+        ///     its constraint.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task A_constrained_companion_writes_its_own_entity()
+        {
+            return AnalyzerHarness.VerifyAsync<DataBatchAnalyzer>(Model + """
+                public class CenterCompanion<TCenter>
+                    where TCenter : Center
+                {
+                    public void Run(IDataBatch batch)
+                    {
+                        _ = batch.Save<TCenter>([]);
+                        _ = batch.Delete<TCenter>(null!);
+                        _ = {|TELLMA0006:batch.Save<Unit>([])|};
+                    }
+
+                    public void Other<TOther>(IDataBatch batch)
+                        where TOther : Unit
+                    {
+                        _ = {|TELLMA0006:batch.Save<TOther>([])|};
+                    }
+                }
+                """);
+        }
+
         /// <summary>The runtime writes every table.</summary>
         /// <returns>A task that completes when the check has passed.</returns>
         [Fact]

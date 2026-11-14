@@ -51,7 +51,9 @@ namespace Tellma.Core.Analyzers
         /// <inheritdoc />
         public override void Initialize(AnalysisContext context)
         {
-            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            // Generated code is checked too: a scaffolded client or a source generator would otherwise
+            // reach the database or an action around the rules without anyone choosing to.
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
             context.EnableConcurrentExecution();
             context.RegisterCompilationStartAction(static start =>
             {
@@ -141,7 +143,7 @@ namespace Tellma.Core.Analyzers
         /// <param name="syntax">Where.</param>
         private static void AnalyzeEntityWrite(OperationAnalysisContext context, Scope scope, IMethodSymbol method, SyntaxNode syntax)
         {
-            if (scope.Runtime || EntityTables.TableOf(method.TypeArguments[0]) is not TableKey table)
+            if (scope.Runtime || IsCompanionWrite(context.ContainingSymbol, method.TypeArguments[0]) || EntityTables.TableOf(method.TypeArguments[0]) is not TableKey table)
             {
                 return;
             }
@@ -151,6 +153,21 @@ namespace Tellma.Core.Analyzers
                 Report(context, TellmaDiagnostics.OwnedTableWrite, syntax.GetLocation(),
                     $"IDataBatch.{method.Name}<{method.TypeArguments[0].Name}> writes {table}, the table of {entry.Entity.Name}, from a type that is not its owner. A stack-owned table is written by its own service, validators, effects and companions; enlist the write with the owning stack through IEnlists<T> instead.");
             }
+        }
+
+        /// <summary>
+        ///     Whether a write's entity is a type parameter of one of the code's enclosing types: a
+        ///     companion, generic over its entity and closed over it when its stack registers it.
+        ///     Its constraint may name a mapped class (<c>TUser : User</c>) without the write being
+        ///     another stack's.
+        /// </summary>
+        /// <param name="symbol">The analysis context's containing symbol.</param>
+        /// <param name="entity">The write's type argument.</param>
+        /// <returns>True when it is.</returns>
+        private static bool IsCompanionWrite(ISymbol symbol, ITypeSymbol entity)
+        {
+            return entity is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type, DeclaringType: INamedTypeSymbol declaring }
+                && symbol.EnclosingTypes().Any(type => SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, declaring.OriginalDefinition));
         }
 
         /// <summary>
@@ -258,6 +275,8 @@ namespace Tellma.Core.Analyzers
                         $"The hole {{{Quote(hole)}}} binds the name as a string parameter, not as a name. Write a column or table name as {{new SqlIdentifier(nameof(...))}}.",
                     SqlHoleKind.Unsupported =>
                         $"The hole {{{Quote(hole)}}} is of type {hole.TypeName ?? "unknown"}, which the batch cannot bind. A hole is a scalar value, a SqlIdentifier, or a list of table-type rows.",
+                    SqlHoleKind.NotRows =>
+                        $"The hole {{{Quote(hole)}}} is a {hole.TypeName ?? "list"}, whose elements are not table-type rows, so the batch cannot bind it as a table-valued parameter. Bind a list of a [TableType] class instead, such as IdList or StringList rows.",
                     SqlHoleKind.Value or SqlHoleKind.Identifier or SqlHoleKind.Table => null,
                     _ => null,
                 };
@@ -410,7 +429,15 @@ namespace Tellma.Core.Analyzers
                 }
             }
 
-            SqlTarget? unresolved = inspector.Targets.FirstOrDefault(static target => target.Kind == TargetKind.Unresolved);
+            // --- A write the text does not reduce to one table cannot be checked, whatever the options declare ---
+            // An UPDATE through a joined common table expression writes one of its base tables,
+            // which neither this check nor the batch's write authority, reading the declared
+            // writes only, would see.
+            foreach (SqlTarget unresolved in inspector.Targets.Where(static target => target.Kind == TargetKind.Unresolved))
+            {
+                Report(context, TellmaDiagnostics.RawSql, LocationOf(text, unresolved.Fragment),
+                    $"The text writes through a target it does not reduce to one table ({unresolved.Statement}), such as a common table expression or a derived table over a join or a union, so the table it writes cannot be checked. Write the base table directly, joining the others in the statement's FROM.");
+            }
 
             // --- Writes must be declared, and must list what the text writes ---
             if (options.Writes == WritesShape.Absent)
@@ -419,12 +446,6 @@ namespace Tellma.Core.Analyzers
                 {
                     Report(context, TellmaDiagnostics.RawSql, LocationOf(text, written.Value.Fragment),
                         $"The text writes {written.Key} ({written.Value.Statement}) but its SqlOptions declare no writes. Declare every table the statement writes in SqlOptions.Writes, so the batch checks its write authority and bumps the tables' version tags.");
-                }
-
-                if (unresolved is not null)
-                {
-                    Report(context, TellmaDiagnostics.RawSql, LocationOf(text, unresolved.Fragment),
-                        $"The text writes a table through a common table expression or a derived table ({unresolved.Statement}) but its SqlOptions declare no writes. Declare every table the statement writes in SqlOptions.Writes.");
                 }
             }
             else if (options.Writes == WritesShape.Listed)

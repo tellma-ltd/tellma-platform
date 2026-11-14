@@ -81,6 +81,9 @@ namespace Tellma.Core.Analyzers
         /// <summary>The marker of a table whose writes bump a user-level version tag.</summary>
         public const string BumpsUserVersionTagAttribute = "BumpsUserVersionTagAttribute";
 
+        /// <summary>The attribute that gives a class a table type, the row shape of a table-valued parameter.</summary>
+        public const string TableTypeAttribute = "TableTypeAttribute";
+
         /// <summary>The stack annotation.</summary>
         public const string StackAttribute = "StackAttribute";
 

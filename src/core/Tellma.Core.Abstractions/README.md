@@ -10,7 +10,10 @@ BCL, which is what keeps the dependency graph of the packages built on top of it
 The package also ships the platform's Roslyn analyzers, `TELLMA0001` to `TELLMA0006`
 ([Tellma.Core.Analyzers](../Tellma.Core.Analyzers/README.md)), as its analyzer asset: the analyzer
 and the T-SQL parser it loads sit under `analyzers/dotnet/cs`, so every project that references the
-contract runs the rules. The project reference to the analyzer only orders the build; it adds no
+contract runs the rules. NuGet hands that folder only to direct consumers, so
+`buildTransitive/Tellma.Core.Abstractions.targets` adds the same two assemblies, once, to a project
+that gets the contract as a dependency of another package, such as a distribution that references
+only `Tellma.Core`. The project reference to the analyzer only orders the build; it adds no
 dependency and nothing of the analyzer is referenced at run time. In-repo consumers load the same
 two assemblies through the root `Directory.Build.targets`.
 

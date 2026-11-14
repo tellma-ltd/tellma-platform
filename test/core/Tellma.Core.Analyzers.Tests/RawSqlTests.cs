@@ -15,8 +15,15 @@ namespace Tellma.Core.Analyzers.Tests
             using System;
             using System.Collections.Generic;
             using Tellma.Core.Abstractions.Data;
+            using Tellma.Core.Abstractions.Entities;
 
+            [TableType]
             public sealed class IdRow
+            {
+                public int Id { get; set; }
+            }
+
+            public sealed class PlainRow
             {
                 public int Id { get; set; }
             }
@@ -125,6 +132,27 @@ namespace Tellma.Core.Analyzers.Tests
                 """);
         }
 
+        /// <summary>A list whose elements are not table-type rows is refused: the batch binds only rows of a [TableType] class.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task A_list_of_non_rows_is_refused()
+        {
+            return Verify("""
+                List<string> codes = ["a"];
+                IReadOnlyList<object> objects = [];
+                IReadOnlyList<PlainRow> plain = [];
+                batch.Sql($"SELECT [Id] FROM [core].[Jobs] WHERE [Code] IN (SELECT [Id] FROM {|TELLMA0003:{codes}|});", SqlOptions.None);
+                batch.Sql($"SELECT [Id] FROM {|TELLMA0003:{objects}|} AS o JOIN {|TELLMA0003:{plain}|} AS p ON p.[Id] = o.[Id];", SqlOptions.None);
+
+                // Rows of a type parameter are rows the code does not show, left to the batch's run-time checks.
+                void Bind<TRow>(IReadOnlyList<TRow> rows)
+                    where TRow : class
+                {
+                    batch.Sql($"SELECT [Id] FROM {rows};", SqlOptions.None);
+                }
+                """);
+        }
+
         /// <summary>Scalars, identifiers and row lists bind.</summary>
         /// <returns>A task that completes when the check has passed.</returns>
         [Fact]
@@ -205,6 +233,35 @@ namespace Tellma.Core.Analyzers.Tests
                 batch.Sql($"{|TELLMA0003:SAVE TRANSACTION point;|} {|TELLMA0003:ROLLBACK TRANSACTION point;|}", SqlOptions.None);
                 batch.Sql($"{|TELLMA0003:SET XACT_ABORT OFF;|} {|TELLMA0003:SET IMPLICIT_TRANSACTIONS ON;|}", SqlOptions.None);
                 batch.Sql($"SET NOCOUNT ON; SELECT 1;", new SqlOptions(resultSets: 1));
+                """);
+        }
+
+        /// <summary>Schema changes outside a temporary table, bulk loads, USE, permissions and administration are refused.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task Schema_bulk_database_and_permission_statements_are_refused()
+        {
+            return Verify("""
+                batch.Sql($"{|TELLMA0003:DROP TABLE [core].[Jobs];|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:ALTER TABLE [core].[Jobs] DROP COLUMN [State];|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:CREATE INDEX [IX_Ledger] ON [dist].[Ledger] ([Id]);|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:CREATE TABLE [dist].[Copy] ([Id] int);|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:BULK INSERT [core].[Jobs] FROM 'x.csv';|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:USE [master];|} SELECT 1;", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:GRANT SELECT ON [dist].[Ledger] TO [someone];|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:DENY SELECT ON [dist].[Ledger] TO [someone];|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:REVOKE SELECT ON [dist].[Ledger] FROM [someone];|}", SqlOptions.None);
+                batch.Sql($"{|TELLMA0003:DBCC CHECKDB;|}", SqlOptions.None);
+                """);
+        }
+
+        /// <summary>A batch may create, alter, index and drop its own temporary tables.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task Temporary_table_schema_statements_pass()
+        {
+            return Verify("""
+                batch.Sql($"CREATE TABLE #t ([Id] int); CREATE INDEX [IX_t] ON #t ([Id]); ALTER TABLE #t ADD [X] int; DROP TABLE #t; DROP TABLE IF EXISTS #u;", SqlOptions.None);
                 """);
         }
 
@@ -326,6 +383,30 @@ namespace Tellma.Core.Analyzers.Tests
 
                 // A name the code does not show is left to the batch's run-time checks.
                 batch.Sql($"UPDATE {new SqlIdentifier(Environment.MachineName)} SET [Amount] = 0;", SqlOptions.None);
+                """);
+        }
+
+        /// <summary>A write through a target the text does not reduce to one table is refused, whatever the options declare.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task A_write_through_a_joined_expression_is_refused_whatever_the_writes()
+        {
+            return Verify("""
+                batch.Sql($"WITH c AS (SELECT j.[State] FROM [core].[Jobs] AS j JOIN [dist].[Ledger] AS l ON l.[Id] = j.[Id]) UPDATE {|TELLMA0003:c|} SET [State] = N'x';", Writes);
+                batch.Sql($"UPDATE {|TELLMA0003:d|} SET [Amount] = 0 FROM (SELECT l.[Amount] FROM [dist].[Ledger] AS l JOIN [dist].[Accounts] AS a ON a.[Id] = l.[AccountId]) AS d;", new SqlOptions(writes: Opaque()));
+                """);
+        }
+
+        /// <summary>A name with any part the code does not show is left to the batch's run-time checks, whatever the listed set.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task A_partly_unknown_name_is_left_to_run_time()
+        {
+            return Verify("""
+                string table = Environment.MachineName;
+                batch.Sql($"UPDATE [dist].{new SqlIdentifier(table)} SET [Amount] = 0;", Writes);
+                batch.Sql($"UPDATE {new SqlIdentifier(table)}.{new SqlIdentifier(table)} SET [Amount] = 0;", Writes);
+                batch.Sql($"DELETE FROM {new SqlIdentifier(table)}.[Ledger];", SqlOptions.None);
                 """);
         }
 

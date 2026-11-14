@@ -30,6 +30,9 @@ namespace Tellma.Core.Analyzers.Sql
 
         /// <summary>A value of a type the batch cannot bind.</summary>
         Unsupported,
+
+        /// <summary>A list whose elements are not table-type rows, such as strings, which the batch refuses to bind.</summary>
+        NotRows,
     }
 
     /// <summary>What an identifier hole names, as far as the code shows.</summary>
@@ -108,6 +111,7 @@ namespace Tellma.Core.Analyzers.Sql
             {
                 Kind = IsScalar(Value.Type) ? SqlHoleKind.Value
                     : IsRowList(Value.Type) ? SqlHoleKind.Table
+                    : IsNonRowList(Value.Type) ? SqlHoleKind.NotRows
                     : SqlHoleKind.Unsupported;
             }
 
@@ -208,10 +212,28 @@ namespace Tellma.Core.Analyzers.Sql
                     && named.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true });
         }
 
-        /// <summary>Whether a type is a read-only list of reference-type rows, which the batch binds as a table-valued parameter.</summary>
+        /// <summary>
+        ///     Whether a type is a read-only list of table-type rows, which the batch binds as a
+        ///     table-valued parameter: rows of a class carrying <c>[TableType]</c>, or of a type
+        ///     parameter, whose rows the code does not show.
+        /// </summary>
         /// <param name="type">The type.</param>
         /// <returns>True when it is.</returns>
         private static bool IsRowList(ITypeSymbol type)
+        {
+            return type.FindInterfaces("System.Collections.Generic", "IReadOnlyList`1")
+                .Any(static list => list.TypeArguments[0] switch
+                {
+                    ITypeParameterSymbol parameter => !parameter.IsValueType,
+                    INamedTypeSymbol { TypeKind: TypeKind.Class } row => row.FindInheritedAttribute(KnownNames.EntitiesNamespace, KnownNames.TableTypeAttribute) is not null,
+                    _ => false,
+                });
+        }
+
+        /// <summary>Whether a type is a read-only list of reference-type elements that are no table-type rows.</summary>
+        /// <param name="type">The type.</param>
+        /// <returns>True when it is.</returns>
+        private static bool IsNonRowList(ITypeSymbol type)
         {
             return type.FindInterfaces("System.Collections.Generic", "IReadOnlyList`1")
                 .Any(static list => list.TypeArguments[0].IsReferenceType);

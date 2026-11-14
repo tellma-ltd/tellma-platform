@@ -23,7 +23,12 @@ stubs share with the real types.
 
 [NamePinTests](NamePinTests.cs) holds every matched name to the real type it stands for. It also
 holds the analyzer's reserved-name rule to the contract's `ReservedSqlNames.IsReserved`, so a
-rename or a rule change on either side fails here.
+rename or a rule change on either side fails here. Each pipeline stand-in also has a test there that
+fails once the platform ships the real type, which is the moment to delete the stand-in and pin the
+name instead.
+
+[GeneratedCodeTests](GeneratedCodeTests.cs) checks that each rule fires in a file marked
+auto-generated, as in hand-written code.
 
 ## Running
 

@@ -31,6 +31,12 @@
           Pack="true"
           PackagePath="analyzers/dotnet/cs"
           Visible="false" />
+    <!-- NuGet hands analyzers/ only to direct consumers, so these targets add the same two
+         assemblies to every project that gets this package as a dependency of another, such as a
+         distribution referencing only Tellma.Core. -->
+    <None Include="buildTransitive\Tellma.Core.Abstractions.targets"
+          Pack="true"
+          PackagePath="buildTransitive" />
   </ItemGroup>
 
   <ItemGroup>

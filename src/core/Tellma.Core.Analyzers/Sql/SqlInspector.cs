@@ -67,6 +67,9 @@ namespace Tellma.Core.Analyzers.Sql
         /// <summary>The two system procedures distribution text may execute.</summary>
         private static readonly HashSet<string> AllowedProcedures = new(StringComparer.OrdinalIgnoreCase) { "sp_sequence_get_range", "sp_getapplock" };
 
+        /// <summary>The first words of the parse types of the statements that change the database rather than its rows.</summary>
+        private static readonly string[] SchemaStatementStems = ["Create", "Alter", "Drop", "Backup", "Restore", "Kill"];
+
         /// <summary>The common table expressions of the statement being visited, by name.</summary>
         private Dictionary<string, CommonTableExpression> _ctes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -188,6 +191,89 @@ namespace Tellma.Core.Analyzers.Sql
                 "MERGE",
                 "Write with INSERT, UPDATE and DELETE statements instead; MERGE is never used on the platform's tables.",
                 node));
+        }
+
+        // ------------------------------------------------------------------
+        // Schema, bulk loads, database context, permissions and administration
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        ///     Refuses the statements that change the database rather than its rows, or that leave it:
+        ///     schema changes outside a temporary table, bulk loads, <c>USE</c>, permission statements
+        ///     and server administration.
+        /// </summary>
+        /// <param name="node">The statement.</param>
+        public override void Visit(TSqlStatement node)
+        {
+            string? why = node switch
+            {
+                BulkInsertBase =>
+                    "Write rows with INSERT; a bulk load reads a file the batch never sees and writes a table outside its declared writes.",
+                UseStatement =>
+                    "The batch runs against the tenant's database; a statement never moves the rest of the batch to another.",
+                SecurityStatement or SecurityStatementBody80 =>
+                    "Permissions belong to the deployment; a statement never grants, denies or revokes them.",
+                DbccStatement or ShutdownStatement or ReconfigureStatement or SetUserStatement or RevertStatement or EnableDisableTriggerStatement =>
+                    "Server and database administration is never part of a batch.",
+                _ when IsSchemaStatement(node) && !OnTemporaryTable(node) =>
+                    "The schema is migrated, never changed by a statement; only a #temporary table may be created, altered or dropped.",
+                _ => null,
+            };
+            if (why is not null)
+            {
+                Refusals.Add(new SqlRefusal(Keywords(node), why, node));
+            }
+        }
+
+        /// <summary>Whether a statement creates, alters or drops an object, or backs up, restores or kills, by its parse type's name.</summary>
+        /// <param name="node">The statement.</param>
+        /// <returns>True when it does.</returns>
+        private static bool IsSchemaStatement(TSqlStatement node)
+        {
+            // ScriptDom has no common base for its schema statements; each type is named after its keyword.
+            string type = node.GetType().Name;
+            return SchemaStatementStems.Any(stem => type.StartsWith(stem, StringComparison.Ordinal));
+        }
+
+        /// <summary>Whether a schema statement touches only temporary tables, which a batch may create, alter, index and drop.</summary>
+        /// <param name="node">The statement.</param>
+        /// <returns>True when it does.</returns>
+        private static bool OnTemporaryTable(TSqlStatement node)
+        {
+            return node switch
+            {
+                CreateTableStatement create => IsTemporary(create.SchemaObjectName),
+                AlterTableStatement alter => IsTemporary(alter.SchemaObjectName),
+                DropTableStatement drop => drop.Objects.All(IsTemporary),
+                CreateIndexStatement index => IsTemporary(index.OnName),
+                _ => false,
+            };
+        }
+
+        /// <summary>Whether a name is a temporary table's.</summary>
+        /// <param name="name">The name.</param>
+        /// <returns>True when it starts with <c>#</c>.</returns>
+        private static bool IsTemporary(SchemaObjectName name)
+        {
+            return name.BaseIdentifier.Value.StartsWith("#", StringComparison.Ordinal);
+        }
+
+        /// <summary>The first two words of a statement, upper-cased, as a message names it.</summary>
+        /// <param name="node">The statement.</param>
+        /// <returns>The words.</returns>
+        private static string Keywords(TSqlStatement node)
+        {
+            List<string> words = [];
+            for (int index = node.FirstTokenIndex; index <= node.LastTokenIndex && words.Count < 2; index++)
+            {
+                TSqlParserToken token = node.ScriptTokenStream[index];
+                if (token.TokenType is not (TSqlTokenType.WhiteSpace or TSqlTokenType.SingleLineComment or TSqlTokenType.MultilineComment or TSqlTokenType.Semicolon))
+                {
+                    words.Add(token.Text.ToUpperInvariant());
+                }
+            }
+
+            return string.Join(" ", words);
         }
 
         // ------------------------------------------------------------------
@@ -387,8 +473,9 @@ namespace Tellma.Core.Analyzers.Sql
                 return new SqlTarget(statement, TargetKind.Local, null, null, null, fragment);
             }
 
-            // An identifier hole whose name the code does not show stands in as [__tellma_holeN].
-            return name.SchemaIdentifier is null && SqlHole.IndexOf(table) >= 0
+            // An identifier hole whose name the code does not show stands in as [__tellma_holeN], in
+            // any part of the name: [dist].{table} and {schema}.{table} name no table the code shows.
+            return name.Identifiers.Any(static identifier => SqlHole.IndexOf(identifier.Value) >= 0)
                 ? new SqlTarget(statement, TargetKind.UnknownHole, null, null, null, fragment)
                 : new SqlTarget(statement, TargetKind.Permanent, name.SchemaIdentifier?.Value ?? "dbo", table, null, fragment);
         }
