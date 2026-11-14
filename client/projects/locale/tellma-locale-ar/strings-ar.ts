@@ -49,6 +49,9 @@ export const TM_LOCALE_AR_STRINGS = {
     parse: `${enter} رقما صالحا، مثل {example}`,
     numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
     parseDate: `${enter} تاريخا مثل {example}`,
+    parseTime: `${enter} وقتا مثل {example}`,
+    dateRangeOrder: 'يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده',
+    dateTimeIncomplete: `${enter} التاريخ والوقت معا`,
   },
   datePicker: {
     chooseDate: 'اختيار التاريخ',
@@ -315,5 +318,17 @@ export const TM_LOCALE_AR_STRINGS = {
   },
   splitter: {
     label: 'تغيير حجم اللوحتين',
+  },
+  searchField: {
+    placeholder: 'بحث',
+    clear: 'مسح البحث',
+  },
+  dateRange: {
+    from: 'من',
+    to: 'إلى',
+  },
+  dateTime: {
+    date: 'التاريخ',
+    time: 'الوقت',
   },
 } as const;
