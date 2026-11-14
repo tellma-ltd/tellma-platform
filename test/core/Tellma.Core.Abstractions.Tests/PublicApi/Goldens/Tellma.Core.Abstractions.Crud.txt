@@ -1,0 +1,566 @@
+public abstract record ActionDescriptor : IEquatable<ActionDescriptor>
+    protected ctor(ActionDescriptor original)
+    protected virtual Type EqualityContract { get; }
+    protected virtual bool PrintMembers(StringBuilder builder)
+    public McpExposure Mcp { get; }
+    public Type ResultType { get; }
+    public bool AllowWhenReadOnly { get; }
+    public bool Destructive { get; }
+    public bool Idempotent { get; }
+    public bool Long { get; }
+    public bool Mutation { get; }
+    public int ContractRevision { get; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ActionDescriptor? left, ActionDescriptor? right)
+    public static bool op_Inequality(ActionDescriptor? left, ActionDescriptor? right)
+    public string Name { get; }
+    public string? Description { get; }
+    public virtual bool Equals(ActionDescriptor? other)
+
+public sealed record ActionOptions : IEquatable<ActionOptions>
+    public DetailsRequest? Details { get; init; }
+    public bool Equals(ActionOptions? other)
+    public bool ReturnEntities { get; init; }
+    public ctor(bool ReturnEntities = false, DetailsRequest? Details = null)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ActionOptions? left, ActionOptions? right)
+    public static bool op_Inequality(ActionOptions? left, ActionOptions? right)
+    public void Deconstruct(out bool ReturnEntities, out DetailsRequest? Details)
+
+public sealed class ActionPersistContext<TEntity> : PersistContext<TEntity>
+    public ctor()
+    public object? Arguments { get; init; }
+    public required string Action { get; init; }
+
+public sealed class ActionPersistOutcome<TEntity, TKey> : ActionPersistOutcome<TEntity>
+    public ctor()
+    public required IReadOnlyList<TKey> Ids { get; init; }
+
+public abstract class ActionPersistOutcome<TEntity> : PersistOutcome<TEntity>
+    public object? Arguments { get; init; }
+    public required string Action { get; init; }
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class ApiActionAttribute : Attribute
+    public McpExposure Mcp { get; set; }
+    public bool AllowWhenReadOnly { get; set; }
+    public bool Destructive { get; set; }
+    public bool Idempotent { get; set; }
+    public bool Long { get; set; }
+    public bool MemberOnly { get; set; }
+    public bool Mutation { get; set; }
+    public ctor(string name)
+    public int ContractRevision { get; set; }
+    public string Name { get; }
+    public string? Action { get; set; }
+    public string? Description { get; set; }
+    public string? Resource { get; set; }
+
+public sealed record ApiActionDescriptor : ActionDescriptor, IEquatable<ActionDescriptor>, IEquatable<ApiActionDescriptor>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public SecurableRef? Securable { get; init; }
+    public Type HandlerType { get; init; }
+    public Type? RequestType { get; init; }
+    public bool Equals(ApiActionDescriptor? other)
+    public ctor(string Name, string? Description, bool Mutation, bool AllowWhenReadOnly, bool Idempotent, bool Long, bool Destructive, McpExposure Mcp, int ContractRevision, Type ResultType, SecurableRef? Securable, Type? RequestType, Type HandlerType)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ActionDescriptor? other)
+    public static bool op_Equality(ApiActionDescriptor? left, ApiActionDescriptor? right)
+    public static bool op_Inequality(ApiActionDescriptor? left, ApiActionDescriptor? right)
+    public void Deconstruct(out string Name, out string? Description, out bool Mutation, out bool AllowWhenReadOnly, out bool Idempotent, out bool Long, out bool Destructive, out McpExposure Mcp, out int ContractRevision, out Type ResultType, out SecurableRef? Securable, out Type? RequestType, out Type HandlerType)
+
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class ApiRouteAttribute : Attribute
+    public ctor(string route)
+    public string Route { get; }
+
+public sealed record ApiServiceDescriptor : IEquatable<ApiServiceDescriptor>
+    public IReadOnlyList<ApiActionDescriptor> Actions { get; init; }
+    public Type ServiceType { get; init; }
+    public bool Equals(ApiServiceDescriptor? other)
+    public ctor(string Route, Type ServiceType, IReadOnlyList<ApiActionDescriptor> Actions, string Feature)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ApiServiceDescriptor? left, ApiServiceDescriptor? right)
+    public static bool op_Inequality(ApiServiceDescriptor? left, ApiServiceDescriptor? right)
+    public string Feature { get; init; }
+    public string Route { get; init; }
+    public void Deconstruct(out string Route, out Type ServiceType, out IReadOnlyList<ApiActionDescriptor> Actions, out string Feature)
+
+public sealed record ChildCollectionDescriptor : IEquatable<ChildCollectionDescriptor>
+    public Type ChildType { get; init; }
+    public bool Equals(ChildCollectionDescriptor? other)
+    public ctor(string Property, Type ChildType, string ParentKeyProperty, int MaxCount)
+    public int MaxCount { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ChildCollectionDescriptor? left, ChildCollectionDescriptor? right)
+    public static bool op_Inequality(ChildCollectionDescriptor? left, ChildCollectionDescriptor? right)
+    public string ParentKeyProperty { get; init; }
+    public string Property { get; init; }
+    public void Deconstruct(out string Property, out Type ChildType, out string ParentKeyProperty, out int MaxCount)
+
+public sealed record ChildQueryDescriptor : IEquatable<ChildQueryDescriptor>
+    public IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties { get; init; }
+    public IReadOnlyList<ApiActionDescriptor> Actions { get; init; }
+    public IReadOnlySet<string> RelatedSelect { get; init; }
+    public McpExposure Mcp { get; init; }
+    public StackLimits Limits { get; init; }
+    public Type EntityType { get; init; }
+    public bool Equals(ChildQueryDescriptor? other)
+    public bool Exportable { get; init; }
+    public ctor(string Resource, string ResourceSegment, Type EntityType, string OwnerResource, string OwnerNavigation, string Collection, IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties, string DefaultSelect, IReadOnlySet<string> RelatedSelect, string DefaultOrderBy, bool Exportable, StackLimits Limits, McpExposure Mcp, IReadOnlyList<ApiActionDescriptor> Actions)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ChildQueryDescriptor? left, ChildQueryDescriptor? right)
+    public static bool op_Inequality(ChildQueryDescriptor? left, ChildQueryDescriptor? right)
+    public string Collection { get; init; }
+    public string DefaultOrderBy { get; init; }
+    public string DefaultSelect { get; init; }
+    public string OwnerNavigation { get; init; }
+    public string OwnerResource { get; init; }
+    public string Resource { get; init; }
+    public string ResourceSegment { get; init; }
+    public void Deconstruct(out string Resource, out string ResourceSegment, out Type EntityType, out string OwnerResource, out string OwnerNavigation, out string Collection, out IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties, out string DefaultSelect, out IReadOnlySet<string> RelatedSelect, out string DefaultOrderBy, out bool Exportable, out StackLimits Limits, out McpExposure Mcp, out IReadOnlyList<ApiActionDescriptor> Actions)
+
+public static class CrudTelemetryNames
+    public const string ConcurrencyConflicts = "tellma.crud.concurrency.conflicts"
+    public const string ConcurrencyOverrides = "tellma.crud.concurrency.overrides"
+    public const string Confirmations = "tellma.crud.confirmations"
+    public const string EffectFailures = "tellma.crud.effects.failures"
+    public const string EffectTag = "crud.effect"
+    public const string Enlistments = "tellma.crud.enlistments"
+    public const string KeyTag = "crud.key"
+    public const string KindTag = "crud.kind"
+    public const string LaneTag = "crud.lane"
+    public const string MeterName = "Tellma.Core"
+    public const string OperationDuration = "tellma.crud.operation.duration"
+    public const string OperationTag = "crud.operation"
+    public const string Operations = "tellma.crud.operations"
+    public const string OutcomeTag = "crud.outcome"
+    public const string QueryDiscoverDuration = "tellma.crud.query.discover.duration"
+    public const string SaveEntities = "tellma.crud.save.entities"
+    public const string SourceTag = "crud.source"
+    public const string StaleContextReruns = "tellma.crud.stale_context.reruns"
+    public const string TagTag = "crud.tag"
+    public const string ValidationRounds = "tellma.crud.validation.rounds"
+
+public sealed class DeletePersistContext<TEntity> : PersistContext<TEntity>
+    public ctor()
+
+public sealed class DeletePersistOutcome<TEntity, TKey> : DeletePersistOutcome<TEntity>
+    public ctor()
+    public required IReadOnlyList<TKey> DeletedIds { get; init; }
+
+public abstract class DeletePersistOutcome<TEntity> : PersistOutcome<TEntity>
+
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
+public sealed class DetailsExtrasAttribute : Attribute
+    public IReadOnlyList<string> Names { get; }
+    public ctor(params string[] names)
+
+public sealed class DetailsPlan<TEntity, TKey> : DetailsPlan<TEntity>
+    public ctor()
+    public required IReadOnlyList<TKey> Ids { get; init; }
+
+public abstract class DetailsPlan<TEntity>
+    public BatchResult<RawResult> AddRead(FormattableString sql, SqlOptions? options)
+    public BatchResult<RowPage> AddRead(QuerySpec spec, QueryArguments? arguments)
+    public required DetailsRequest Request { get; init; }
+    public required RequestContext Context { get; init; }
+    public required SqlIdentifier IdsSource { get; init; }
+    public void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<TEntity>, TValue> compute)
+    public void AddExtra(string name, FormattableString sql, SqlOptions? options)
+    public void AddExtra(string name, QuerySpec spec, QueryArguments? arguments)
+
+public sealed class DetailsRequest
+    public IReadOnlyList<string> Include { get; init; }
+    public ctor()
+    public static DetailsRequest None { get; }
+
+public sealed class EnlistDeleteOptions
+    public EnlistOrder Order { get; set; }
+    public Func<ValidationPath, ValidationPath>? MapPath { get; set; }
+    public SaveSource? Source { get; set; }
+    public ctor()
+
+public enum EnlistOrder : int
+    AfterHost = 0
+    BeforeHost = 1
+
+public sealed class EnlistSaveOptions
+    public ConcurrencyMode Concurrency { get; set; }
+    public EnlistOrder Order { get; set; }
+    public Func<ValidationPath, ValidationPath>? MapPath { get; set; }
+    public IReadOnlySet<string> ServerOwned { get; set; }
+    public SaveSource? Source { get; set; }
+    public ctor()
+
+public sealed class EnlistedDelete<TKey>
+    public IReadOnlyList<TKey> Ids { get; }
+    public string Resource { get; }
+
+public sealed class EnlistedSave<TEntity>
+    public IReadOnlyList<TEntity> Rows { get; }
+    public string Resource { get; }
+
+public sealed record EnlistmentDescriptor : IEquatable<EnlistmentDescriptor>
+    public Type WriterKey { get; init; }
+    public bool Equals(EnlistmentDescriptor? other)
+    public ctor(Type WriterKey, string WriterName, string TargetResource)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(EnlistmentDescriptor? left, EnlistmentDescriptor? right)
+    public static bool op_Inequality(EnlistmentDescriptor? left, EnlistmentDescriptor? right)
+    public string TargetResource { get; init; }
+    public string WriterName { get; init; }
+    public void Deconstruct(out Type WriterKey, out string WriterName, out string TargetResource)
+
+public static class EnlistmentExtensions
+    public static EnlistedDelete<TKey> EnlistDelete<TTarget, TKey>(this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TKey> ids, EnlistDeleteOptions? options = null) where TTarget : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
+    public static Task<EnlistedSave<TTarget>> EnlistSaveAsync<TTarget>(this IEnlists<TTarget> writer, IWriteHost host, IReadOnlyList<TTarget> rows, EnlistSaveOptions? options = null)
+
+public sealed record EnlistmentOutcome : IEquatable<EnlistmentOutcome>
+    public DateTimeOffset Stamp { get; init; }
+    public UserVersionTagSnapshot? UserVersionTags { get; init; }
+    public VersionTagSnapshot VersionTags { get; init; }
+    public bool Equals(EnlistmentOutcome? other)
+    public ctor(DateTimeOffset Stamp, VersionTagSnapshot VersionTags, UserVersionTagSnapshot? UserVersionTags)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(EnlistmentOutcome? left, EnlistmentOutcome? right)
+    public static bool op_Inequality(EnlistmentOutcome? left, EnlistmentOutcome? right)
+    public void Deconstruct(out DateTimeOffset Stamp, out VersionTagSnapshot VersionTags, out UserVersionTagSnapshot? UserVersionTags)
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class EntityActionAttribute : Attribute
+    public McpExposure Mcp { get; set; }
+    public bool AllowWhenReadOnly { get; set; }
+    public bool Destructive { get; set; }
+    public bool Idempotent { get; set; }
+    public bool LoadChildren { get; set; }
+    public bool Long { get; set; }
+    public bool Mutation { get; set; }
+    public bool PostCheck { get; set; }
+    public bool SingleTarget { get; set; }
+    public bool SupportsFilter { get; set; }
+    public ctor(string name)
+    public int ContractRevision { get; set; }
+    public string Name { get; }
+    public string? Action { get; set; }
+    public string? Description { get; set; }
+
+public sealed record EntityActionDescriptor : ActionDescriptor, IEquatable<ActionDescriptor>, IEquatable<EntityActionDescriptor>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public Type? ArgumentsType { get; init; }
+    public bool Equals(EntityActionDescriptor? other)
+    public bool IsBuiltIn { get; init; }
+    public bool LoadChildren { get; init; }
+    public bool PostCheck { get; init; }
+    public bool SingleTarget { get; init; }
+    public bool SupportsFilter { get; init; }
+    public ctor(string Name, string? Description, bool Mutation, bool AllowWhenReadOnly, bool Idempotent, bool Long, bool Destructive, McpExposure Mcp, int ContractRevision, Type ResultType, string Action, bool SupportsFilter, bool LoadChildren, bool PostCheck, bool SingleTarget, bool IsBuiltIn, Type? ArgumentsType)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ActionDescriptor? other)
+    public static bool op_Equality(EntityActionDescriptor? left, EntityActionDescriptor? right)
+    public static bool op_Inequality(EntityActionDescriptor? left, EntityActionDescriptor? right)
+    public string Action { get; init; }
+    public void Deconstruct(out string Name, out string? Description, out bool Mutation, out bool AllowWhenReadOnly, out bool Idempotent, out bool Long, out bool Destructive, out McpExposure Mcp, out int ContractRevision, out Type ResultType, out string Action, out bool SupportsFilter, out bool LoadChildren, out bool PostCheck, out bool SingleTarget, out bool IsBuiltIn, out Type? ArgumentsType)
+
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+public sealed class EntityRefAttribute : Attribute
+    public ctor(string resource)
+    public string Resource { get; }
+
+public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TKey> where TEntity : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
+    protected ctor(IEntityPipelineFactory factory)
+    protected virtual FilterTree? SearchFilter(string search)
+    protected virtual Task AfterCommitAsync(PersistOutcome<TEntity> outcome)
+    protected virtual Task ContributeAsync(PersistContext<TEntity> context)
+    protected virtual Task PreprocessAsync(SaveContext<TEntity> context)
+    protected virtual Task ValidateActionAsync(string action, ActionContext<TEntity, TKey> context)
+    protected virtual Task ValidateAsync(SaveContext<TEntity> context)
+    protected virtual Task ValidateDeleteAsync(DeleteContext<TEntity, TKey> context)
+    protected virtual string? RefuseOnRecord(TEntity row, string ability)
+    protected virtual void ContributeDetails(DetailsPlan<TEntity, TKey> plan)
+    public IExcelRowSource ExcelRowSource(ExportSource source)
+    public StackDescriptor Descriptor { get; }
+    public Task<AffectedResult> DeleteByIdsAsync(IReadOnlyList<TKey> ids, IReadOnlyList<DateTimeOffset?>? expectedStamps = null, CancellationToken cancellationToken = default)
+    public Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request, CancellationToken cancellationToken = default)
+    public Task<EntitiesResult<TEntity>> ExecuteActionAsync(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken = default)
+    public Task<EntitiesResult<TEntity>> GetAllCachedAsync(DetailsRequest request, CancellationToken cancellationToken = default)
+    public Task<EntitiesResult<TEntity>> GetByIdAsync(TKey id, DetailsRequest request, CancellationToken cancellationToken = default)
+    public Task<EntitiesResult<TEntity>> GetByIdsAsync(IReadOnlyList<TKey> ids, DetailsRequest request, CancellationToken cancellationToken = default)
+    public Task<EntitiesResult<TEntity>> SaveAsync(IReadOnlyList<TEntity> entities, SaveOptions options, CancellationToken cancellationToken = default)
+    public Task<RowPage> QueryAsync(QueryRequest request, CancellationToken cancellationToken = default)
+    public Task<TResult> ExecuteActionAsync<TResult>(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken = default)
+
+public abstract class EntityService<TEntity> : EntityService<TEntity, int>, IEntityBehavior<TEntity, int> where TEntity : Entity<int>
+    protected ctor(IEntityPipelineFactory factory)
+
+public static class EntityServiceExtensions
+    public static Task<AffectedResult> DeleteWithDescendantsAsync<TEntity, TKey>(this EntityService<TEntity, TKey> service, IReadOnlyList<TKey> ids, CancellationToken cancellationToken = default) where TEntity : TreeEntity<TKey> where TKey : struct, IBinaryInteger<TKey>
+    public static Task<EntitiesResult<TEntity>> ActivateAsync<TEntity, TKey>(this EntityService<TEntity, TKey> service, IReadOnlyList<TKey> ids, ActionOptions? options = null, CancellationToken cancellationToken = default) where TEntity : Entity<TKey>, IActivatable where TKey : struct, IBinaryInteger<TKey>
+    public static Task<EntitiesResult<TEntity>> DeactivateAsync<TEntity, TKey>(this EntityService<TEntity, TKey> service, IReadOnlyList<TKey> ids, ActionOptions? options = null, CancellationToken cancellationToken = default) where TEntity : Entity<TKey>, IActivatable where TKey : struct, IBinaryInteger<TKey>
+    public static Task<QueryRowSet> GetByParentIdsAsync<TEntity, TKey>(this EntityService<TEntity, TKey> service, ParentIdsRequest request, CancellationToken cancellationToken = default) where TEntity : TreeEntity<TKey> where TKey : struct, IBinaryInteger<TKey>
+
+[CollectionService]
+public interface IApiActionInterceptor
+    public Task<object?> InvokeAsync(ApiActionDescriptor action, object? body, Func<Task<object?>> next, CancellationToken cancellationToken)
+
+public interface IApiActionInvoker
+    public Task<object?> InvokeAsync(ApiActionDescriptor action, object? body, CancellationToken cancellationToken = default)
+
+public interface IChildQueryService
+    public IExcelRowSource ExcelRowSource(string resource, ExportSource source)
+    public Task<RowPage> QueryAsync(string resource, QueryRequest request, CancellationToken cancellationToken = default)
+
+[CollectionService]
+public interface IDetailsContributor<TEntity>
+    public void Contribute(DetailsPlan<TEntity> plan, IReadOnlySet<string> requested)
+
+public interface IEnlists<TTarget>
+
+[EditorBrowsable(EditorBrowsableState.Never)]
+public interface IEntityBehavior<TEntity, TKey>
+    public FilterTree? SearchFilter(string search)
+    public Task AfterCommitAsync(PersistOutcome<TEntity> outcome)
+    public Task ContributeAsync(PersistContext<TEntity> context)
+    public Task PreprocessAsync(SaveContext<TEntity> context)
+    public Task ValidateActionAsync(string action, ActionContext<TEntity, TKey> context)
+    public Task ValidateAsync(SaveContext<TEntity> context)
+    public Task ValidateDeleteAsync(DeleteContext<TEntity, TKey> context)
+    public string? RefuseOnRecord(TEntity row, string ability)
+    public void ContributeDetails(DetailsPlan<TEntity, TKey> plan)
+
+[EditorBrowsable(EditorBrowsableState.Never)]
+public interface IEntityPipeline<TEntity, TKey>
+    public IExcelRowSource CreateExcelRowSource(ExportSource source)
+    public StackDescriptor Descriptor { get; }
+    public Task<AffectedResult> DeleteByIdsAsync(IReadOnlyList<TKey> ids, IReadOnlyList<DateTimeOffset?>? expectedStamps, CancellationToken cancellationToken)
+    public Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request, CancellationToken cancellationToken)
+    public Task<AffectedResult> DeleteWithDescendantsAsync(IReadOnlyList<TKey> ids, CancellationToken cancellationToken)
+    public Task<EntitiesResult<TEntity>> ExecuteActionAsync(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken)
+    public Task<EntitiesResult<TEntity>> GetAllCachedAsync(DetailsRequest request, CancellationToken cancellationToken)
+    public Task<EntitiesResult<TEntity>> GetByIdAsync(TKey id, DetailsRequest request, CancellationToken cancellationToken)
+    public Task<EntitiesResult<TEntity>> GetByIdsAsync(IReadOnlyList<TKey> ids, DetailsRequest request, CancellationToken cancellationToken)
+    public Task<EntitiesResult<TEntity>> SaveAsync(IReadOnlyList<TEntity> entities, SaveOptions options, CancellationToken cancellationToken)
+    public Task<QueryRowSet> GetByParentIdsAsync(ParentIdsRequest request, CancellationToken cancellationToken)
+    public Task<RowPage> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
+    public Task<TResult> ExecuteActionAsync<TResult>(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken)
+
+[EditorBrowsable(EditorBrowsableState.Never)]
+public interface IEntityPipelineFactory
+    public IEntityPipeline<TEntity, TKey> Create<TEntity, TKey>(IEntityBehavior<TEntity, TKey> behavior) where TEntity : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
+
+[CollectionService]
+public interface IEntityValidator<TEntity>
+    public Task ValidateAsync(SaveContext<TEntity> context)
+    public default Task ValidateActionAsync(string action, ActionContext<TEntity> context)
+    public default Task ValidateDeleteAsync(DeleteContext<TEntity> context)
+
+[CollectionService]
+public interface INamedFilterContributor<TEntity>
+    public IReadOnlyDictionary<string, FilterTree> NamedFilters { get; }
+
+public interface IOpenWriteHost : IWriteHost
+    public Task<EnlistmentOutcome> PersistAsync(CancellationToken cancellationToken = default)
+
+[CollectionService]
+public interface IPersistEffect<TEntity>
+    public Task ContributeAsync(PersistContext<TEntity> context)
+    public default Task AfterCommitAsync(PersistOutcome<TEntity> outcome)
+
+public interface IQueryTraversalRule
+    public IReadOnlyList<TraversalRefusal> Check(string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
+
+public interface IStackRegistry
+    public ChildQueryDescriptor? FindChildQuery(string resource)
+    public IReadOnlyList<ApiServiceDescriptor> Services { get; }
+    public IReadOnlyList<ChildQueryDescriptor> ChildQueries { get; }
+    public IReadOnlyList<EnlistmentDescriptor> Enlistments { get; }
+    public IReadOnlyList<StackDescriptor> Stacks { get; }
+    public StackDescriptor? Find(string resource)
+    public StackDescriptor? OwnerOf(TableName table)
+
+public interface IWriteHost
+    public IConfirmations Confirmations { get; }
+    public WriteHostKind Kind { get; }
+    public string Operation { get; }
+
+public abstract class PersistContext<TEntity>
+    public BatchAssignments Assignments { get; }
+    public EnlistmentDescriptor? Enlistment { get; init; }
+    public required IDataBatch Batch { get; init; }
+    public required IReadOnlyList<ColumnCapture> Captures { get; init; }
+    public required IReadOnlyList<TEntity> Entities { get; init; }
+    public required RequestContext Context { get; init; }
+    public required SqlIdentifier AffectedIds { get; init; }
+    public void Notify(NotificationRequest request)
+    public void Withdraw(WithdrawRequest request)
+
+public abstract class PersistOutcome<TEntity>
+    public UserVersionTagSnapshot? UserVersionTags { get; init; }
+    public required DateTimeOffset Stamp { get; init; }
+    public required IReadOnlyList<TEntity> Entities { get; init; }
+    public required RequestContext Context { get; init; }
+    public required VersionTagSnapshot VersionTags { get; init; }
+
+public sealed record RecordPermissions<TKey> : IEquatable<RecordPermissions<TKey>> where TKey : struct
+    public IReadOnlyDictionary<string, string> Refused { get; init; }
+    public TKey Id { get; init; }
+    public bool Equals(RecordPermissions<TKey>? other)
+    public ctor(TKey Id, IReadOnlyDictionary<string, string> Refused)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(RecordPermissions<TKey>? left, RecordPermissions<TKey>? right)
+    public static bool op_Inequality(RecordPermissions<TKey>? left, RecordPermissions<TKey>? right)
+    public void Deconstruct(out TKey Id, out IReadOnlyDictionary<string, string> Refused)
+
+public sealed class SaveOptions
+    public Action<IDataBatch>? OnPersist { get; set; }
+    public ConcurrencyMode Concurrency { get; set; }
+    public DetailsRequest Details { get; set; }
+    public SaveSource Source { get; set; }
+    public bool ReturnEntities { get; set; }
+    public ctor()
+
+public sealed class SavePersistContext<TEntity> : PersistContext<TEntity>
+    public TEntity? Before(int index)
+    public ctor()
+    public required SaveOptions Options { get; init; }
+    public required SqlIdentifier NewIds { get; init; }
+    public required SqlIdentifier TouchedIds { get; init; }
+
+public sealed class SavePersistOutcome<TEntity> : PersistOutcome<TEntity>
+    public TEntity? Before(int index)
+    public ctor()
+    public required SaveOptions Options { get; init; }
+
+public enum SaveSource : int
+    Agent = 2
+    Import = 3
+    PublicApi = 1
+    System = 4
+    Web = 0
+
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+public sealed class StackAttribute : Attribute
+    public StackOperations Operations { get; set; }
+    public ctor()
+    public int CountCap { get; set; }
+    public int MaxDeleteByQueryRows { get; set; }
+    public int MaxExpandDepth { get; set; }
+    public int MaxExtras { get; set; }
+    public int MaxIds { get; set; }
+    public int MaxRowsPerSave { get; set; }
+    public int MaxSaveCount { get; set; }
+    public int MaxSearchLength { get; set; }
+    public int MaxSkipWindow { get; set; }
+    public int MaxTake { get; set; }
+    public int MaxValidationRounds { get; set; }
+    public string? DefaultOrderBy { get; set; }
+
+public sealed record StackDescriptor : IEquatable<StackDescriptor>
+    public DisplayNameMetadata DisplayName { get; init; }
+    public IReadOnlyDictionary<string, FilterTree> NamedFilters { get; init; }
+    public IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties { get; init; }
+    public IReadOnlyList<ActionDescriptor> Actions { get; init; }
+    public IReadOnlyList<ChildCollectionDescriptor> Children { get; init; }
+    public IReadOnlyList<PropertyMetadata> Properties { get; init; }
+    public IReadOnlyList<string> DetailsExpand { get; init; }
+    public IReadOnlyList<string> Extras { get; init; }
+    public IReadOnlyList<string> NaturalKeys { get; init; }
+    public IReadOnlySet<string> Capabilities { get; init; }
+    public IReadOnlySet<string> RelatedSelect { get; init; }
+    public McpExposure Mcp { get; init; }
+    public StackLimits Limits { get; init; }
+    public StackOperations Operations { get; init; }
+    public Type EntityType { get; init; }
+    public Type KeyType { get; init; }
+    public Type ServiceType { get; init; }
+    public bool Equals(StackDescriptor? other)
+    public ctor(string Resource, string ResourceSegment, Type EntityType, Type ServiceType, Type KeyType, string? Description, StackOperations Operations, IReadOnlySet<string> Capabilities, IReadOnlyList<ActionDescriptor> Actions, IReadOnlyList<PropertyMetadata> Properties, IReadOnlyList<ChildCollectionDescriptor> Children, IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties, IReadOnlyList<string> NaturalKeys, string DefaultSelect, IReadOnlySet<string> RelatedSelect, IReadOnlyList<string> DetailsExpand, string? DefaultOrderBy, DisplayNameMetadata DisplayName, IReadOnlyList<string> Extras, IReadOnlyDictionary<string, FilterTree> NamedFilters, StackLimits Limits, McpExposure Mcp, int ContractRevision, string Feature)
+    public int ContractRevision { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(StackDescriptor? left, StackDescriptor? right)
+    public static bool op_Inequality(StackDescriptor? left, StackDescriptor? right)
+    public string DefaultSelect { get; init; }
+    public string Feature { get; init; }
+    public string Resource { get; init; }
+    public string ResourceSegment { get; init; }
+    public string? DefaultOrderBy { get; init; }
+    public string? Description { get; init; }
+    public void Deconstruct(out string Resource, out string ResourceSegment, out Type EntityType, out Type ServiceType, out Type KeyType, out string? Description, out StackOperations Operations, out IReadOnlySet<string> Capabilities, out IReadOnlyList<ActionDescriptor> Actions, out IReadOnlyList<PropertyMetadata> Properties, out IReadOnlyList<ChildCollectionDescriptor> Children, out IReadOnlyList<(string Property, SearchKind Kind)> SearchableProperties, out IReadOnlyList<string> NaturalKeys, out string DefaultSelect, out IReadOnlySet<string> RelatedSelect, out IReadOnlyList<string> DetailsExpand, out string? DefaultOrderBy, out DisplayNameMetadata DisplayName, out IReadOnlyList<string> Extras, out IReadOnlyDictionary<string, FilterTree> NamedFilters, out StackLimits Limits, out McpExposure Mcp, out int ContractRevision, out string Feature)
+
+public sealed record StackLimits : IEquatable<StackLimits>
+    public bool Equals(StackLimits? other)
+    public ctor(int MaxTake, int CountCap, int MaxSkipWindow, int MaxSaveCount, int MaxRowsPerSave, int MaxIds, int MaxDeleteByQueryRows, int MaxExpandDepth, int MaxValidationRounds, int MaxSearchLength, int MaxExtras)
+    public int CountCap { get; init; }
+    public int MaxDeleteByQueryRows { get; init; }
+    public int MaxExpandDepth { get; init; }
+    public int MaxExtras { get; init; }
+    public int MaxIds { get; init; }
+    public int MaxRowsPerSave { get; init; }
+    public int MaxSaveCount { get; init; }
+    public int MaxSearchLength { get; init; }
+    public int MaxSkipWindow { get; init; }
+    public int MaxTake { get; init; }
+    public int MaxValidationRounds { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static StackLimits Default { get; }
+    public static bool op_Equality(StackLimits? left, StackLimits? right)
+    public static bool op_Inequality(StackLimits? left, StackLimits? right)
+    public void Deconstruct(out int MaxTake, out int CountCap, out int MaxSkipWindow, out int MaxSaveCount, out int MaxRowsPerSave, out int MaxIds, out int MaxDeleteByQueryRows, out int MaxExpandDepth, out int MaxValidationRounds, out int MaxSearchLength, out int MaxExtras)
+
+[Flags]
+public enum StackOperations : int
+    All = 63
+    Delete = 8
+    Details = 2
+    Enlist = 64
+    Export = 32
+    Import = 16
+    None = 0
+    Query = 1
+    Read = 35
+    Save = 4
+
+public sealed record TraversalRefusal : IEquatable<TraversalRefusal>
+    public PathUse Path { get; init; }
+    public bool Equals(TraversalRefusal? other)
+    public ctor(string Entity, PathUse Path)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(TraversalRefusal? left, TraversalRefusal? right)
+    public static bool op_Inequality(TraversalRefusal? left, TraversalRefusal? right)
+    public string Entity { get; init; }
+    public void Deconstruct(out string Entity, out PathUse Path)
+
+public enum WriteHostKind : int
+    ApiAction = 1
+    Job = 2
+    Pipeline = 0
+    Provisioning = 3
+

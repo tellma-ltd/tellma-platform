@@ -1,0 +1,160 @@
+public sealed class ActionContext<TEntity, TKey> : ActionContext<TEntity>
+    public ctor()
+    public required IReadOnlyList<TKey> Ids { get; init; }
+
+public abstract class ActionContext<TEntity>
+    public BatchAssignments Assignments { get; }
+    public CancellationToken CancellationToken { get; init; }
+    public IReadOnlyList<TEntity> Entities { get; }
+    public Task Persisted { get; }
+    public object? Arguments { get; init; }
+    public required IContextLoader Loader { get; init; }
+    public required IDataBatch Batch { get; init; }
+    public required IWriteHost Host { get; init; }
+    public required RequestContext Context { get; init; }
+    public required ValidationErrors<TEntity> Errors { get; init; }
+    public void Notify(NotificationRequest request)
+    public void Save(IReadOnlyList<TEntity> entities)
+    public void Update(IReadOnlyDictionary<string, object?> assignments)
+    public void Withdraw(WithdrawRequest request)
+
+public sealed class ContextRef<T>
+    public T Value { get; }
+    public bool IsLoaded { get; }
+    public ctor(T value)
+
+public sealed class DeleteContext<TEntity, TKey> : DeleteContext<TEntity>
+    public ctor()
+    public required IReadOnlyList<TKey> Ids { get; init; }
+
+public abstract class DeleteContext<TEntity>
+    public CancellationToken CancellationToken { get; init; }
+    public EnlistmentDescriptor? Enlistment { get; init; }
+    public IReadOnlyList<TEntity> Entities { get; }
+    public required IContextLoader Loader { get; init; }
+    public required IWriteHost Host { get; init; }
+    public required RequestContext Context { get; init; }
+    public required ValidationErrors<TEntity> Errors { get; init; }
+
+public interface IConfirmations
+    public IReadOnlyCollection<string> Confirmed { get; }
+    public bool IsConfirmed(string key)
+    public void Require(string key, IReadOnlyList<long>? rows = null, IReadOnlyDictionary<string, object?>? arguments = null)
+
+public interface IContextLoader
+    public ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> ByParentIds<TChild, TK>(IReadOnlyList<TK> parentIds, string? select = null) where TK : notnull
+    public ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TK>>> Ancestors<T, TK>(IReadOnlyList<TK> ids) where TK : notnull
+    public ContextRef<IReadOnlyDictionary<TK, T>> ByIds<T, TK>(IReadOnlyList<TK> ids, string? select = null) where TK : notnull
+    public ContextRef<IReadOnlyDictionary<TK, T>> ByKey<T, TK>(string key, IReadOnlyList<TK> values, string? select = null) where TK : notnull
+    public ContextRef<IReadOnlyList<T>> Query<T>(FilterTree filter, QueryArguments? arguments = null, string? select = null)
+    public ContextRef<IReadOnlyList<T>> Visible<T>(FilterTree filter, QueryArguments? arguments = null, string? select = null)
+    public ContextRef<QueryRowSet> Rows(QuerySpec spec, QueryArguments? arguments = null)
+    public ContextRef<RawResult> Sql(FormattableString sql, SqlOptions? options = null)
+    public ContextRef<bool> Exists(string root, FilterTree filter, QueryArguments? arguments = null)
+    public ContextRef<int> Count(string root, FilterTree filter, int cap, QueryArguments? arguments = null)
+    public Task LoadAsync()
+    public void Prime<T, TK>(T entity) where TK : notnull
+
+public sealed record IndexSegment : PathSegment, IEquatable<IndexSegment>, IEquatable<PathSegment>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(IndexSegment? other)
+    public ctor(int Index)
+    public int Index { get; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(PathSegment? other)
+    public static bool op_Equality(IndexSegment? left, IndexSegment? right)
+    public static bool op_Inequality(IndexSegment? left, IndexSegment? right)
+    public void Deconstruct(out int Index)
+
+public abstract record PathSegment : IEquatable<PathSegment>
+    protected ctor()
+    protected ctor(PathSegment original)
+    protected virtual Type EqualityContract { get; }
+    protected virtual bool PrintMembers(StringBuilder builder)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(PathSegment? left, PathSegment? right)
+    public static bool op_Inequality(PathSegment? left, PathSegment? right)
+    public virtual bool Equals(PathSegment? other)
+
+public sealed record PropertySegment : PathSegment, IEquatable<PathSegment>, IEquatable<PropertySegment>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(PropertySegment? other)
+    public ctor(string Name)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(PathSegment? other)
+    public static bool op_Equality(PropertySegment? left, PropertySegment? right)
+    public static bool op_Inequality(PropertySegment? left, PropertySegment? right)
+    public string Name { get; }
+    public void Deconstruct(out string Name)
+
+public sealed class SaveContext<TEntity>
+    public CancellationToken CancellationToken { get; init; }
+    public EnlistmentDescriptor? Enlistment { get; init; }
+    public TEntity? Before(int index)
+    public bool Changed<TValue>(int index, Func<TEntity, TValue> property)
+    public bool IsNew(int index)
+    public ctor()
+    public int Round { get; }
+    public required IContextLoader Loader { get; init; }
+    public required IReadOnlyList<TEntity> Entities { get; init; }
+    public required IWriteHost Host { get; init; }
+    public required RequestContext Context { get; init; }
+    public required SaveOptions Options { get; init; }
+    public required ValidationErrors<TEntity> Errors { get; init; }
+
+public static class ValidationCodes
+    public const string BlobDuplicateReference = "Blob.DuplicateReference"
+    public const string BlobNotAttachable = "Blob.NotAttachable"
+    public const string ConcurrencyStampRequired = "Concurrency.StampRequired"
+    public const string DisplayNamePrefixSeparator = "DisplayName.PrefixSeparator"
+    public const string EntityDuplicateId = "Entity.DuplicateId"
+    public const string EntityNotFound = "Entity.NotFound"
+    public const string FkInUse = "Fk.InUse"
+    public const string FkNotFound = "Fk.NotFound"
+    public const string ImportLanguageNotConfigured = "Import.LanguageNotConfigured"
+    public const string MaxLength = "MaxLength"
+    public const string Precision = "Precision"
+    public const string QueryArithmeticFailed = "Query.ArithmeticFailed"
+    public const string QueryGeographyNotSelectable = "Query.GeographyNotSelectable"
+    public const string QueryPathNotReachable = "Query.PathNotReachable"
+    public const string QueryUnknownNamedFilter = "Query.UnknownNamedFilter"
+    public const string Range = "Range"
+    public const string Required = "Required"
+    public const string TreeCycle = "Tree.Cycle"
+    public const string TreeTooDeep = "Tree.TooDeep"
+    public const string Unique = "Unique"
+    public const string ValueNotInSet = "Validation.ValueNotInSet"
+    public const string WriteOnce = "WriteOnce"
+
+public class ValidationErrors
+    public IReadOnlyList<ValidationError> Items { get; }
+    public bool HasErrors { get; }
+    public ctor()
+    public void Add(ValidationPath path, string code, IReadOnlyDictionary<string, object?>? arguments = null)
+
+public sealed class ValidationErrors<TEntity> : ValidationErrors
+    public ctor()
+    public void Add<TValue>(int index, Expression<Func<TEntity, TValue>> property, string code, IReadOnlyDictionary<string, object?>? arguments = null)
+
+public sealed record ValidationPath : IEquatable<ValidationPath>
+    public IReadOnlyList<PathSegment> Segments { get; }
+    public ValidationPath Index(int index)
+    public ValidationPath Property(string name)
+    public bool Equals(ValidationPath? other)
+    public ctor(IReadOnlyList<PathSegment> Segments)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static ValidationPath Root { get; }
+    public static bool op_Equality(ValidationPath? left, ValidationPath? right)
+    public static bool op_Inequality(ValidationPath? left, ValidationPath? right)
+    public void Deconstruct(out IReadOnlyList<PathSegment> Segments)
+

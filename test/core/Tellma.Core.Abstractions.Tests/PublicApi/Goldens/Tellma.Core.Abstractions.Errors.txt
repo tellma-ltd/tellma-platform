@@ -1,0 +1,139 @@
+public sealed class BadRequestException : TellmaException, ISerializable
+    public ctor(string? detail, IReadOnlyDictionary<string, object?>? arguments = null)
+    public string? Detail { get; }
+
+public abstract record CodedError : IEquatable<CodedError>
+    protected ctor(CodedError original)
+    protected ctor(string Code, IReadOnlyDictionary<string, object?> Arguments)
+    protected virtual Type EqualityContract { get; }
+    protected virtual bool PrintMembers(StringBuilder builder)
+    public IReadOnlyDictionary<string, object?> Arguments { get; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(CodedError? left, CodedError? right)
+    public static bool op_Inequality(CodedError? left, CodedError? right)
+    public string Code { get; }
+    public virtual bool Equals(CodedError? other)
+    public void Deconstruct(out string Code, out IReadOnlyDictionary<string, object?> Arguments)
+
+public sealed record ConcurrencyConflict : IEquatable<ConcurrencyConflict>
+    public bool Equals(ConcurrencyConflict? other)
+    public bool IsMissing { get; init; }
+    public ctor(long Id, string? ModifiedAt, int? ModifiedById, string? ModifiedByName, bool IsMissing)
+    public int? ModifiedById { get; init; }
+    public long Id { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ConcurrencyConflict? left, ConcurrencyConflict? right)
+    public static bool op_Inequality(ConcurrencyConflict? left, ConcurrencyConflict? right)
+    public string? ModifiedAt { get; init; }
+    public string? ModifiedByName { get; init; }
+    public void Deconstruct(out long Id, out string? ModifiedAt, out int? ModifiedById, out string? ModifiedByName, out bool IsMissing)
+
+public sealed class ConcurrencyException : TellmaException, ISerializable
+    public IReadOnlyList<ConcurrencyConflict> Conflicts { get; }
+    public ctor(string code, IReadOnlyList<ConcurrencyConflict> conflicts)
+
+public sealed record ConfirmationRequest : IEquatable<ConfirmationRequest>
+    public IReadOnlyDictionary<string, object?> Arguments { get; }
+    public IReadOnlyList<long> Ids { get; }
+    public bool Equals(ConfirmationRequest? other)
+    public ctor(string Key, IReadOnlyList<long> Ids, IReadOnlyDictionary<string, object?> Arguments)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ConfirmationRequest? left, ConfirmationRequest? right)
+    public static bool op_Inequality(ConfirmationRequest? left, ConfirmationRequest? right)
+    public string Key { get; }
+    public void Deconstruct(out string Key, out IReadOnlyList<long> Ids, out IReadOnlyDictionary<string, object?> Arguments)
+
+public sealed class ConfirmationRequiredException : TellmaException, ISerializable
+    public IReadOnlyList<ConfirmationRequest> Requests { get; }
+    public ctor(IReadOnlyList<ConfirmationRequest> requests)
+
+public sealed class CountMismatchException : TellmaException, ISerializable
+    public ctor(int expected, int actual)
+    public int Actual { get; }
+    public int Expected { get; }
+
+public sealed class DependencyUnavailableException : TellmaException, ISerializable
+    public TimeSpan? RetryAfter { get; }
+    public ctor(string dependency, TimeSpan? retryAfter, Exception? inner)
+    public string Dependency { get; }
+
+public sealed class ForbiddenException : TellmaException, ISerializable
+    public ForbiddenReason Reason { get; }
+    public ctor(string code, string resource, string? action, ForbiddenReason reason, string? path = null)
+    public string Resource { get; }
+    public string? Action { get; }
+    public string? Path { get; }
+
+public enum ForbiddenReason : int
+    NoGrant = 0
+    OutsideFilter = 1
+    RestrictedPath = 2
+
+public sealed class IndividualRequiredException : TellmaException, ISerializable
+    public ctor()
+
+public sealed class InvalidQueryException : TellmaException, ISerializable
+    public IReadOnlyList<QueryexDiagnostic> Diagnostics { get; }
+    public ctor(IReadOnlyList<QueryexDiagnostic> diagnostics)
+
+public sealed class LimitExceededException : TellmaException, ISerializable
+    public ctor(string limit, int actual, int maximum)
+    public int Actual { get; }
+    public int Maximum { get; }
+    public string Limit { get; }
+
+public static class LimitNames
+    public const string Body = "body"
+    public const string Entities = "entities"
+    public const string MaxChildren = "MaxChildren"
+    public const string MaxDeleteByQueryRows = "MaxDeleteByQueryRows"
+    public const string MaxExtras = "MaxExtras"
+    public const string MaxIds = "MaxIds"
+    public const string MaxRowsPerSave = "MaxRowsPerSave"
+    public const string MaxSaveCount = "MaxSaveCount"
+    public const string MaxSearchLength = "MaxSearchLength"
+    public const string MaxTake = "MaxTake"
+    public const string SkipWindow = "skipWindow"
+
+public sealed class NotFoundException : TellmaException, ISerializable
+    public IReadOnlyList<string> Ids { get; }
+    public ctor(string resource, IReadOnlyList<string> ids)
+    public string Resource { get; }
+
+public sealed class PartialFailureException : TellmaException, ISerializable
+    public IReadOnlyList<string> Failed { get; }
+    public ctor(string code, object results, IReadOnlyList<string> failed)
+    public object Results { get; }
+
+public sealed class StaleContextException : TellmaException, ISerializable
+    public IReadOnlyList<VersionTagDependency> Dependencies { get; }
+    public ctor(IReadOnlyList<VersionTagDependency> dependencies)
+
+public abstract class TellmaException : Exception, ISerializable
+    public IReadOnlyDictionary<string, object?> Arguments { get; }
+    public string Code { get; }
+
+public sealed record ValidationError : CodedError, IEquatable<CodedError>, IEquatable<ValidationError>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public ValidationPath Path { get; }
+    public bool Equals(ValidationError? other)
+    public ctor(ValidationPath Path, string Code, IReadOnlyDictionary<string, object?> Arguments)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(CodedError? other)
+    public static bool op_Equality(ValidationError? left, ValidationError? right)
+    public static bool op_Inequality(ValidationError? left, ValidationError? right)
+    public void Deconstruct(out ValidationPath Path, out string Code, out IReadOnlyDictionary<string, object?> Arguments)
+
+public sealed class ValidationException : TellmaException, ISerializable
+    public IReadOnlyList<ValidationError> Errors { get; }
+    public ctor(IReadOnlyList<ValidationError> errors)
+
