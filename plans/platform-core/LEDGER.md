@@ -100,9 +100,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-044 | pc-3 | pc/PC-044 | integrate (released 2026-11-14) — HOLD (stop the line, PC-F35) | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
+| PC-044 | pc-3 | pc/PC-044 | held (merge 8449758 of 6f87f63 on pc/PC-044; gates green: Core unit 3788, integration Core 268, Acme 11); first in the queue once PC-F35 lands | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
 | PC-058 | pc-f2 | pc/PC-058 | held, in the release queue after PC-054 (merge d36a847 on pc/PC-058; R1 fixes d435e7a; ./entity-picker 13.90 (14,234 B), ceiling 13.97 → 14.0, which is the spec cap: 0.1 KB headroom; e2e 961) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
-| PC-062 | pc-f | pc/PC-062 | impl (high; R1; 19 dependents) | impl (Opus, launched 2026-11-14) | | 2026-11-14 |
+| PC-062 | pc-f | pc/PC-062 | fix1 + integrate (held; R1 0/0/4, D-079) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | impl (high; R1) | impl (Opus, launched 2026-11-14) | | 2026-11-14 |
 | PC-054 | pc-2 | pc/PC-054 | held (merge 6a24f16 on pc/PC-054, over cf6ed37; R1 fixes 5b36220; e2e 965/965; D-075: ./grid 40.91/41.01 (1,115 B under the 42 cap), ./tree-grid 2.10/2.2; contentKey TSDoc per D-077 to add at release) | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
 
@@ -299,22 +299,22 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
-| PC-062 | 0015-a | 1 | impl |  |  |  |
-| PC-063 | 0015-b | 1 | todo | | | |
+| PC-062 | 0015-a | 1 | fix1 + integrate (held) | e97c3f3 |  |  |
+| PC-063 | 0015-b | 1 | todo | | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | todo | | | |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | todo | | | |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
-| PC-070 | 0015-e | 1 | todo | | | |
+| PC-070 | 0015-e | 1 | todo | | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | todo | | | |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
-| PC-077 | 0015-i | 1 | todo | | | |
+| PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference |
 | PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073 |
 | PC-079 | 0013-h | 1 | todo | | | |
 | PC-080 | 0016-c | 1 | todo | | | |

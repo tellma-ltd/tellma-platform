@@ -359,6 +359,14 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-079 (2026-11-14): PC-062 contract placement and signature conventions
+
+- **Golden placement.** The pipeline public-API goldens live in Tellma.Core.Abstractions.Tests/PublicApi, beside the existing Abstractions goldens. They do not live in Tellma.Core.Tests/Crud, which spec 0015 §1.1/§18.1 names: the contracts ship in Tellma.Core.Abstractions, so their surface is pinned where the assembly is tested.
+- **TKey constraint.** Where a contract sketch closes over Entity<TKey>, TKey carries `struct, IBinaryInteger<TKey>`, the constraint Entity<TKey> itself declares.
+- **Cancellation.** Every async contract member takes a trailing `CancellationToken cancellationToken = default`, even where the sketch omits it.
+- **Closed hierarchies.** ActionDescriptor and ExportSource are closed with an internal abstract member, following the PathSegment precedent (review R1-1).
+- **For Ahmad:** spec 0015 §1.1/§18.1 still name Tellma.Core.Tests/Crud for the golden, and its sketches omit the TKey constraint and the cancellation tokens; bring the spec in line.
+
 ### D-078 (2026-11-14): the tellma-core-tools shim-test timeout does not block an integration
 
 - Ruling: while CI stays green, an integrator's local lint:test failure caused only by `tellma-core-tools/src/common/common.spec.ts` "starts a package manager's shim … and fails a missing program" timing out at about 5 s does not block a push, provided the file passes when run alone. PC-F29 is raised to medium and takes the next free fix slot. If the test fails in CI, it becomes a stop-the-line item as usual.
