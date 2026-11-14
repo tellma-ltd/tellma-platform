@@ -19,4 +19,17 @@
   <data name="Notification_acme_order_shipped_Detail" xml:space="preserve">
     <value>{boxes, plural, one {صندوق واحد} other {# صناديق}}، {express, select, true {سريع} other {عادي}}</value>
   </data>
+  <!-- The Arabic labels of the fixture model; the components' label is left to English. -->
+  <data name="Fixture_Widget" xml:space="preserve">
+    <value>أداة</value>
+  </data>
+  <data name="Fixture_Widget_Plural" xml:space="preserve">
+    <value>أدوات</value>
+  </data>
+  <data name="Fixture_Widget_Name" xml:space="preserve">
+    <value>العنوان</value>
+  </data>
+  <data name="Fixture_WidgetKind_Fancy" xml:space="preserve">
+    <value>فاخر</value>
+  </data>
 </root>

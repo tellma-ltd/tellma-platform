@@ -185,6 +185,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-metadata"] = false,
                 ["core.version-tags"] = false,
                 ["core.languages"] = false,
+                ["core.string-pack"] = false,
                 ["core.calendars"] = false,
                 ["core.value-sets"] = false,
                 ["core.notification-types"] = false,

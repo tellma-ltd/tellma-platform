@@ -16,8 +16,8 @@ namespace Tellma.Core.Tests.Localization
     /// </summary>
     public sealed class LocalizationScopeTests
     {
-        private static readonly LocalizationContext English = new(NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1);
-        private static readonly LocalizationContext Arabic = new(NegotiatedCultures.Get("ar", "SA"), new UmAlQuraCalendarSystem(), TimeZoneInfo.Utc, 2);
+        private static readonly LocalizationContext English = new(NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, []);
+        private static readonly LocalizationContext Arabic = new(NegotiatedCultures.Get("ar", "SA"), new UmAlQuraCalendarSystem(), TimeZoneInfo.Utc, 2, []);
 
         [Fact]
         public void Outside_every_scope_there_is_no_current_context()

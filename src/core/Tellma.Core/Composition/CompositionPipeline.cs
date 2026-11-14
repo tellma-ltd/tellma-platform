@@ -502,6 +502,7 @@ namespace Tellma.Core.Composition
                 new EntityMetadataCheck(),
                 new VersionTagsCheck(),
                 new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
+                new StringPackCheck(),
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),
                 new NotificationTypesCheck(_record),
