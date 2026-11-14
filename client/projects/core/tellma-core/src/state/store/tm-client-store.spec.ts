@@ -5,6 +5,7 @@
 
 import { ApplicationRef, createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { MockInstance } from 'vitest';
 
 import { tmDeleteExpiredUser } from '../../boot/tm-boot-expiry';
 import { TmTelemetry } from '../../observe/tm-telemetry';
@@ -166,13 +167,18 @@ function failingTransaction(error: DOMException, reads: boolean): IDBTransaction
   return Object.assign(transaction, { objectStore: () => store }) as unknown as IDBTransaction;
 }
 
+/** The spy on `IDBDatabase.transaction` a fault helper installs; restoring it ends the fault. */
+type TmTransactionSpy = MockInstance<IDBDatabase['transaction']>;
+
 /**
  * Makes every later transaction of the modes fail with an error, as a full
  * disk or a failing backing store does.
+ *
+ * @returns The spy, whose `mockRestore()` ends the fault alone.
  */
-function failTransactions(error: DOMException, modes: readonly IDBTransactionMode[], reads = true): void {
+function failTransactions(error: DOMException, modes: readonly IDBTransactionMode[], reads = true): TmTransactionSpy {
   const original = IDBDatabase.prototype.transaction;
-  vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
+  return vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
     this: IDBDatabase,
     ...args: Parameters<IDBDatabase['transaction']>
   ) {
@@ -180,10 +186,14 @@ function failTransactions(error: DOMException, modes: readonly IDBTransactionMod
   });
 }
 
-/** Makes every later transaction abort once its work is queued, as a lost connection does. */
-function loseTheConnection(): void {
+/**
+ * Makes every later transaction abort once its work is queued, as a lost connection does.
+ *
+ * @returns The spy, whose `mockRestore()` ends the fault alone.
+ */
+function loseTheConnection(): TmTransactionSpy {
   const original = IDBDatabase.prototype.transaction;
-  vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
+  return vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
     this: IDBDatabase,
     ...args: Parameters<IDBDatabase['transaction']>
   ) {
@@ -598,14 +608,15 @@ describe('TmClientStore', () => {
     it('drops a write the quota refuses, keeping it in the mirror', async () => {
       const { store, bus, telemetry } = setUp();
       await store.readAll(USER);
-      failTransactions(QUOTA, ['readwrite']);
+      const full = failTransactions(QUOTA, ['readwrite']);
       await store.put(USER, 'tenants', docOf(['acme']));
       await store.patch(USER, 'distribution', () => ({ session: { idleDays: 9 } }));
       expect(store.doc(USER, 'tenants')()?.data).toEqual(['acme']);
       expect(store.doc(USER, 'distribution')()?.data).toEqual({ session: { idleDays: 9 } });
       expect(eventsNamed(telemetry, 'tm.store.quota')).toEqual([{ reason: 'put' }, { reason: 'patch' }]);
       expect(bus.posted).toEqual([]);
-      vi.restoreAllMocks();
+      // Only the fault ends: the idle hold stays.
+      full.mockRestore();
       expect(await tmReadRawKeys()).toEqual([]);
     });
 
@@ -614,9 +625,11 @@ describe('TmClientStore', () => {
       await tmWriteRawRecords(vectorRecords());
       await store.readAll(DEVICE);
       const errors = vi.spyOn(telemetry, 'error');
-      loseTheConnection();
+      const lost = loseTheConnection();
       await expect(store.ɵstart(17)).resolves.toBeUndefined();
-      vi.restoreAllMocks();
+      // Only the fault ends: the idle hold stays, so the boot step's idle
+      // sweep never runs past this test.
+      lost.mockRestore();
       expect(store.mode).toBe('memory');
       expect(errors).toHaveBeenCalledOnce();
       expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
