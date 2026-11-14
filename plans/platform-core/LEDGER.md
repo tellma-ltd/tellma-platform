@@ -100,9 +100,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-044 | pc-3 | pc/PC-044 | integrate (released 2026-11-14) | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
-| PC-058 | pc-f2 | pc/PC-058 | fix1 + integrate, held until released (R1 0/1/2: Tab after a browse-list toggle-off re-adds the entity → clearHighlight; dedupe external duplicate ids; test name) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
-| PC-062 | pc-f | pc/PC-062 | impl (high; R1; 19 dependents) | impl (Opus, launched 2026-11-14) | | 2026-11-14 |
+| PC-044 | pc-3 | pc/PC-044 | held (merge 8449758 of 6f87f63 on pc/PC-044; gates green: Core unit 3788, integration Core 268, Acme 11); first in the queue once PC-F35 lands | impl (Opus, launched 2026-11-13) | r1 a53082f76e59c587b done; r2 a624397f7fe11af3d done | 2026-11-13 |
+| PC-058 | pc-f2 | pc/PC-058 | held, in the release queue after PC-054 (merge d36a847 on pc/PC-058; R1 fixes d435e7a; ./entity-picker 13.90 (14,234 B), ceiling 13.97 → 14.0, which is the spec cap: 0.1 KB headroom; e2e 961) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
+| PC-062 | pc-f | pc/PC-062 | fix1 + integrate (held; R1 0/0/4, D-079) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | impl (high; R1) | impl (Opus, launched 2026-11-14) | | 2026-11-14 |
 | PC-054 | pc-2 | pc/PC-054 | held (merge 6a24f16 on pc/PC-054, over cf6ed37; R1 fixes 5b36220; e2e 965/965; D-075: ./grid 40.91/41.01 (1,115 B under the 42 cap), ./tree-grid 2.10/2.2; contentKey TSDoc per D-077 to add at release) | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
 
@@ -141,8 +141,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F30 | CI red on db81630 (every dotnet job): dotnet restore Tellma.slnx MSB3202, distributions/acme/test/Tellma.Distro.Acme.E2E/*.csproj missing; .gitignore *.e2e (VS trace files) matches the folder case-insensitively on Windows, so PC-085 never committed the project | done (integrated 9a1754d, CI 43488423725 green; fast-forward; negations !*.e2e/ and !*.E2E/ replace the single Identity one; Acme E2E csproj + README added (no sources); all 81 slnx paths tracked; clean-clone restore/build/format green) | 9a1754d (pc) |  | stop the line; D-028 cap exceeded by one (6 heavy) until PC-075 returns held |
 | PC-F31 | Core integration flake: SqlQueryTextTests.A_commands_span_carries_no_query_text asserts over every SqlClient span in the process, so other classes' CREATE/ALTER DATABASE spans fail it under the full suite (seen by PC-033 integrate, PC-038 R2, PC-043 R2); scope the listener to the test's own connection or activity | done: integrated a0e7adc (CI 43551466443 green); 1 block (refused chained sleep; notified) | e26a10b, 9ca33fb, e558648, a0e7adc (pc) |  |  |
 | PC-F32 | CI red on 8c086c4 and 70326bb (client unit, core chromium): tm-client-store.spec.ts:833 "the boot step sweeps every user first when the boot record names no user, then records the user" got 2 events, expected 1 store.changed (PC-075's test; no client change since green d316b10; both runs 23:39-23:45 UTC, suspect time/ordering) | done: integrated 362aabc (CI 43547014788 green) | 00fc427, 916ec2d, 1e81373, 362aabc (pc) |  | line restarted 2026-11-14; held merges released one at a time: PC-F31 → PC-030 → PC-044 → PC-054 → PC-058 |
-| PC-F33 | Client flake (CI twice: 3077eb7, a2ebe0a): tm-grid-header-nav.spec.ts:769 and :797, "tm-grid row-end column takes a right-click or a long-press …" (expected false to be true; both together; green on retry) | ready, waiting for release (R1-2 fixed 80fdc8c; R1-1 → PC-F34), pc-4 | d6e699d, 80fdc8c (pc/PC-F33) |  | impl = ae842da6eeee1e322 (resumed, Opus; the ledger had this id as PC-051's implementer, but it was the PC-F21 fix2 verifier); r1 ad783ba6a385139de |
+| PC-F33 | Client flake (CI twice: 3077eb7, a2ebe0a): tm-grid-header-nav.spec.ts:769 and :797, "tm-grid row-end column takes a right-click or a long-press …" (expected false to be true; both together; green on retry) | ready, waiting for release (80fdc8c pushed; slot pc-4 lent to PC-F35, so switch back before integrating) | d6e699d, 80fdc8c (pc/PC-F33) |  | impl = ae842da6eeee1e322 (resumed, Opus; the ledger had this id as PC-051's implementer, but it was the PC-F21 fix2 verifier); r1 ad783ba6a385139de |
 | PC-F34 | Long-press observer (tellma-core-ui menu/internal/long-press.ts:130-132, 157) cancels a hold on any window scroll, including unrelated scrollers (an auto-scrolling log, a carousel), so a user's hold opens nothing; cancel only when the scrolled node is the document or an ancestor of the observed element, with a tm-menu.spec test for each case (PC-F33 R1-1) | todo (low) | | | |
+| PC-F35 | CI red on 6f87f63 (client, PR-tier e2e chromium; CI fails on flaky): search-field.spec.ts:32 "the clear button clears, emits and refocuses; Mod+Z brings the text back", expected the emit log to end "jed","" but got ["j",""] (5.4 s; the retry passed). PC-030's new test | impl (2026-11-14), pc-4, fix-PC-F35 = impl-PC-030 afa920119d3e8d01d (resumed, Opus) | | | stop the line; PC-044 holds; queue after it: PC-054, PC-058, PC-F33 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -182,6 +183,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client core-ui tm-grid-lazy-editing.spec.ts "a failed load leaves the draft whole while every key asks again, and reports once" (failed once locally under load in the PC-058 integration; passed alone 25/25 and on the full re-run) | 2026-11-14 | watch |
 | client core-ui tm-grid-header-nav.spec.ts "tm-grid row-end column takes a right-click or a long-press …" (both variants; expected false to be true; CI 43491332443 on 3077eb7, green on the next two runs) | 2026-11-13 | PC-F33 (second CI sighting: run 43546459441 on a2ebe0a) |
 | dotnet Tellma.Core.IntegrationTests RegistryCatalogTests missing-catalog test (failed once under load on LocalDB, PC-085 impl) | 2026-11-13 | watch; root-cause per D-018 if it recurs |
 | client lint:test tellma-core-tools build.fixture.spec.ts (one cold ng build; 1200 s beforeAll timeout hit while dotnet build and client gates ran in parallel; 11/11 in 299 s alone; PC-057 fix1) | 2026-11-13 | watch on CI |
@@ -265,7 +267,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-027 | 0012-c1 | 1 | done | 7a4fc5e, 3e11619, d2ccf81, 4a8712d (pc) | 18.99M + r1 (impl+fix+int 16.31 Opus, r2 2.68; r1 id not recorded) | CI 43091104900 green; dedup per write epoch (merge-time task); SqlServerFixture consolidated; 1 permission block (process listing) notified |
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
-| PC-030 | 0023-e | 1 | integrated 6f87f63 (CI pending) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
+| PC-030 | 0023-e | 1 | integrated 6f87f63 (CI 43558788125 red: its search-field.spec.ts:32 e2e flaked, PC-F35) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
 | PC-031 | 0023-f | 1 | todo | | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
@@ -293,26 +295,26 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-055 | 0018-a | 1 | todo | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
-| PC-058 | 0010-e2 | 1 | fix1 + integrate | 78a4afa |  |  |
+| PC-058 | 0010-e2 | 1 | held | 78a4afa, d435e7a, d36a847 (pc/PC-058) |  |  |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
-| PC-062 | 0015-a | 1 | impl |  |  |  |
-| PC-063 | 0015-b | 1 | todo | | | |
+| PC-062 | 0015-a | 1 | fix1 + integrate (held) | e97c3f3 |  |  |
+| PC-063 | 0015-b | 1 | todo | | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | todo | | | |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | todo | | | |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
-| PC-070 | 0015-e | 1 | todo | | | |
+| PC-070 | 0015-e | 1 | todo | | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | todo | | | |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
-| PC-077 | 0015-i | 1 | todo | | | |
+| PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference |
 | PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073 |
 | PC-079 | 0013-h | 1 | todo | | | |
 | PC-080 | 0016-c | 1 | todo | | | |
