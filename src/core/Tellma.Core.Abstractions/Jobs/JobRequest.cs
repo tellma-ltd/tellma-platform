@@ -39,7 +39,8 @@ namespace Tellma.Core.Abstractions.Jobs
     /// </param>
     /// <param name="Entity">
     ///     The row the job processes, for an entity-backed handler: a saved row (a positive id), already
-    ///     in the table or in the same batch's save, with no active job. The enqueue sets its
+    ///     in the table or in the same batch's save, whose stored <see cref="IJobEntity.JobId" /> is null
+    ///     or names a job that has ended; the in-memory member is not consulted. The enqueue sets its
     ///     <see cref="IJobEntity.JobId" /> in the same transaction. Null for an arguments-only job.
     /// </param>
     /// <param name="Label">

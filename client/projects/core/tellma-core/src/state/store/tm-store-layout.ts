@@ -60,16 +60,71 @@ export function tmPartitionKey(partition: TmPartition): string {
   }
 }
 
+/** The lower and upper bound of a key range, both inclusive. */
+export type TmKeyBounds = readonly [lower: readonly unknown[], upper: readonly unknown[]];
+
+/**
+ * The bounds of every document whose `p` starts with a prefix: from
+ * `[prefix]` to `[prefix + '\uffff']`. Each key is `[p, n]`, so the bounds
+ * compare against `p` alone.
+ *
+ * @param prefix - The key prefix, such as `u:<sub>/`.
+ * @returns The lower and upper bound, both inclusive.
+ */
+export function tmPrefixKeyBounds(prefix: string): readonly [lower: readonly [string], upper: readonly [string]] {
+  return [[prefix], [prefix + LAST]];
+}
+
 /**
  * The bounds of every document one user holds, in all of that user's
- * partitions: from `['u:<sub>/']` to `['u:<sub>/\uffff']`. Each key is
- * `[p, n]`, so the bounds compare against `p` alone, and an array sorts after
- * every string.
+ * partitions: from `['u:<sub>/']` to `['u:<sub>/\uffff']`.
  *
  * @param sub - The user's subject identifier.
  * @returns The lower and upper bound, both inclusive.
  */
 export function tmUserKeyBounds(sub: string): readonly [lower: readonly [string], upper: readonly [string]] {
+  // Spelled out rather than through tmPrefixKeyBounds: the boot script
+  // bundles this function, and its size is capped.
   const prefix = `u:${sub}/`;
   return [[prefix], [prefix + LAST]];
+}
+
+/**
+ * The bounds of one partition's documents, and of no other partition's: from
+ * `[p]` to `[p, []]`, since an array sorts after every string, so every
+ * `[p, n]` falls between them and a longer `p` that starts with this one
+ * does not.
+ *
+ * @param partition - The partition.
+ * @returns The lower and upper bound, both inclusive.
+ */
+export function tmPartitionKeyBounds(partition: TmPartition): TmKeyBounds {
+  const p = tmPartitionKey(partition);
+  return [[p], [p, []]];
+}
+
+/** The key prefix of every user's documents, which a session's end deletes. */
+export const TM_USERS_PREFIX = 'u:';
+
+/**
+ * The key prefix of one user's session partitions: `u:<sub>/s`.
+ *
+ * @param sub - The user's subject identifier.
+ * @returns The prefix.
+ */
+export function tmSessionsPrefix(sub: string): string {
+  return `u:${sub}/s`;
+}
+
+/**
+ * The stored name of a document: its name and its client format, as in
+ * `settings@1` or `entity:acme.Currency@1`. Each build reads and writes only
+ * the stored names of its own formats.
+ *
+ * @param name - The document's name.
+ * @param format - The document's client format.
+ * @returns The stored name.
+ */
+export function tmStoredName(name: string, format: number): string {
+  return `${name}@${format}`;
 }

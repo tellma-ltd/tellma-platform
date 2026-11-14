@@ -31,14 +31,14 @@ namespace Tellma.Core.IntegrationTests.Data
     [Trait("Category", "Integration")]
     public class DataBatchTests(DataBatchDatabase fixture) : IClassFixture<DataBatchDatabase>, IAsyncLifetime
     {
-        /// <summary>The stand-in jobs table, written by the statements that need a write.</summary>
+        /// <summary>The jobs table, written by the statements that need a write.</summary>
         private static readonly TableName Jobs = new("core", "Jobs");
 
         /// <summary>The stand-in version-tag table.</summary>
         private static readonly TableName VersionTags = new("core", "VersionTags");
 
         /// <summary>A statement that inserts one job row.</summary>
-        private static readonly FormattableString InsertJob = $"INSERT INTO [core].[Jobs] ([Id]) VALUES (NEXT VALUE FOR [core].[sq_Jobs]);";
+        private static readonly FormattableString InsertJob = $"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (NEXT VALUE FOR [core].[sq_Jobs], N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());";
 
         /// <summary>A statement that counts the job rows.</summary>
         private static readonly FormattableString CountJobs = $"SELECT COUNT(*) AS [N] FROM [core].[Jobs];";
@@ -69,7 +69,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- Every table but the platform's own and the history tables is change-tracked ---
             Assert.Equal(
-                ["core.Blobs", "core.Jobs", "core.Permissions", "core.RoleMemberships", "core.Roles", "core.UserPreferences", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Links", "fixture.Lookups", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
+                ["core.Blobs", "core.Jobs", "core.JobWorkerState", "core.Permissions", "core.RoleMemberships", "core.Roles", "core.Schedules", "core.ScheduleStates", "core.UserPreferences", "core.Users", "core.UserStamps", "core.VersionTags", "fixture.Exports", "fixture.Links", "fixture.Lookups", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras", "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets"],
                 await TrackedTablesAsync(tenant.ConnectionString));
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant.ConnectionString, "SELECT CAST([temporal_type] AS int) FROM sys.tables WHERE [object_id] = OBJECT_ID(N'fixture.WidgetsHistory');"));
 
@@ -638,14 +638,14 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- 2627 names the primary key ---
             IDataBatch duplicate = database.CreateBatch(BatchPurpose.Persist);
-            _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({5});", new SqlOptions(writes: Set(Jobs)));
-            _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({5});", new SqlOptions(writes: Set(Jobs)));
+            _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({5}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
+            _ = duplicate.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({5}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             UniqueConstraintViolationException duplicated = await Assert.ThrowsAsync<UniqueConstraintViolationException>(() => duplicate.ExecuteAsync(Token));
             Assert.Equal(("PK_Jobs", 2), (duplicated.IndexName, duplicated.StatementOrdinal));
 
             // --- 547 on a check constraint is no reference: the generic exception ---
             IDataBatch check = database.CreateBatch(BatchPurpose.Persist);
-            _ = check.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({0});", new SqlOptions(writes: Set(Jobs)));
+            _ = check.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({0}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             DataAccessException checkFailed = await Assert.ThrowsAsync<DataAccessException>(() => check.ExecuteAsync(Token));
             Assert.Equal(typeof(DataAccessException), checkFailed.GetType());
             Assert.Equal(1, checkFailed.StatementOrdinal);

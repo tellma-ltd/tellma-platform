@@ -21,10 +21,18 @@ namespace Tellma.Core.Abstractions.Jobs
     ///     </para>
     ///     <para>
     ///         A request that breaks a rule of <see cref="JobRequest" />, names a key no handler on this
-    ///         instance registers, names an entity with a temporary id or an active job, or names rows of
-    ///         two entity types in one call, is a programming error: the call throws
+    ///         instance registers, names an entity with a temporary id or a row another request names,
+    ///         or names rows of two entity types in one call, and a batch that does not write or whose
+    ///         statements autocommit, are programming errors: the call throws
     ///         <see cref="ArgumentException" /> or <see cref="InvalidOperationException" /> and appends
     ///         nothing.
+    ///     </para>
+    ///     <para>
+    ///         A named row's stored <see cref="Entities.IJobEntity.JobId" /> must be null or name a job
+    ///         that has ended; the in-memory member is not consulted. The statement checks the stored
+    ///         row under its update's lock, so two enqueues of one row never both succeed, and refuses
+    ///         the whole batch with <see cref="JobEnqueueCodes.OwnerUnavailable" /> when a row is
+    ///         missing or its job is still active.
     ///     </para>
     /// </remarks>
     [SuppressMessage(
@@ -38,7 +46,7 @@ namespace Tellma.Core.Abstractions.Jobs
         ///     jobs commit or roll back with the batch's other work: the way a service hands work off
         ///     from inside its save.
         /// </summary>
-        /// <param name="batch">A persist batch that is still composing.</param>
+        /// <param name="batch">A persist batch that is still composing, in a transaction mode other than autocommit.</param>
         /// <param name="requests">The jobs to enqueue; every one naming an entity names a row of one entity type.</param>
         /// <returns>A result whose value, once the batch has executed, is the new jobs' ids in request order.</returns>
         BatchResult<IReadOnlyList<int>> Enqueue(IDataBatch batch, IReadOnlyList<JobRequest> requests);

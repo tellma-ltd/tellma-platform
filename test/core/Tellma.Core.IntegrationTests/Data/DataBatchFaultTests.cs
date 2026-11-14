@@ -46,9 +46,9 @@ namespace Tellma.Core.IntegrationTests.Data
         private const string ReadyText = "SELECT @@SPID AS [Spid];\nRAISERROR(N'', 0, 1) WITH NOWAIT;";
 
         /// <summary>An insert of the probed id outside any batch.</summary>
-        private const string InsertProbedJob = "INSERT INTO [core].[Jobs] ([Id]) VALUES (1001);";
+        private const string InsertProbedJob = "INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES (1001, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());";
 
-        /// <summary>The stand-in jobs table, whose rows the probe counts.</summary>
+        /// <summary>The jobs table, whose rows the probe counts.</summary>
         private static readonly TableName Jobs = new("core", "Jobs");
 
         /// <summary>The stand-in version-tag table, whose rows the gate and the deadlock lock.</summary>
@@ -83,7 +83,7 @@ namespace Tellma.Core.IntegrationTests.Data
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, async (attempt, spid) =>
             {
@@ -116,7 +116,7 @@ namespace Tellma.Core.IntegrationTests.Data
             RecordingConnection connection = new(fixture.Tenant.ConnectionString);
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist, connection);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, async (_, _) =>
             {
@@ -184,7 +184,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, (_, spid) => KillAsync(spid));
             _ = batch.Sql(GateText, null);
@@ -214,7 +214,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
             batch.MarkConnectPrologue(DataBatchDatabase.Premises);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, (_, spid) => KillAsync(spid));
             _ = batch.Sql(GateText, null);
@@ -239,7 +239,7 @@ namespace Tellma.Core.IntegrationTests.Data
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, async (_, spid) =>
             {
@@ -297,7 +297,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             Ready(batch, (_, spid) => KillAsync(spid));
             _ = batch.Sql(GateText, null);
 
@@ -317,7 +317,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
             batch.TransactionMode = TransactionMode.Explicit;
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, (_, spid) => KillAsync(spid));
             _ = batch.Sql(GateText, null);
@@ -462,7 +462,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // Every re-run then fails transiently short of its insert, so it never collides with the row.
             _ = batch.Sql($"IF EXISTS (SELECT 1 FROM [core].[Jobs] WHERE [Id] = 1001)\n    THROW 50503, N'Fixture.Busy', 1;", null);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
 
             DataAccessAmbiguousException ambiguous = await Assert.ThrowsAsync<DataAccessAmbiguousException>(() => batch.ExecuteAsync(Token));
@@ -485,7 +485,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- The reader fails while the server waits before its commit, which the attention aborts ---
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, (_, _) => throw new FormatException("The reader misread its set."));
             _ = batch.Sql(GateText, null);
@@ -506,7 +506,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             // --- RAISERROR does not abort the batch under XACT_ABORT: the server runs on to its COMMIT ---
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             _ = batch.Sql($"RAISERROR(N'Ledger.Unbalanced', 16, 1);", null);
 
@@ -526,7 +526,7 @@ namespace Tellma.Core.IntegrationTests.Data
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
 
             DataBatch batch = Batch(scope, BatchPurpose.Persist);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             _ = batch.Sql($"THROW 50000, N'Out of band.', 1;", null);
 
@@ -552,7 +552,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 int[] ids = [.. Enumerable.Range(1, 20_000)];
                 IdList[] rows = [.. ids.Select(static id => new IdList { Id = id }), null!];
                 DataBatch batch = Batch(scope, BatchPurpose.Persist);
-                _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) SELECT [Id] FROM {rows};", new SqlOptions(writes: Set(Jobs)));
+                _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) SELECT [Id], N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME() FROM {rows};", new SqlOptions(writes: Set(Jobs)));
                 if (probed)
                 {
                     batch.DeclareInsertedRoots(Jobs, ids);
@@ -626,7 +626,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 batch.TransactionMode = TransactionMode.Explicit;
             }
 
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             Ready(batch, (_, _) => cancel.CancelAsync());
             _ = batch.Sql(GateText, null);
 
@@ -663,7 +663,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 }
             });
             DataBatch batch = Batch(scope, BatchPurpose.Persist, connection);
-            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id]) VALUES ({ProbedId});", new SqlOptions(writes: Set(Jobs)));
+            _ = batch.Sql($"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({ProbedId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());", new SqlOptions(writes: Set(Jobs)));
             batch.DeclareInsertedRoots(Jobs, [ProbedId]);
             Ready(batch, async (attempt, spid) =>
             {

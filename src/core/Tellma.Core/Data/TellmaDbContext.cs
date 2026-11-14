@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Data.Conventions;
+using Tellma.Core.Jobs;
 
 namespace Tellma.Core.Data
 {
@@ -96,6 +97,9 @@ namespace Tellma.Core.Data
             {
                 TableTypeConvention.AddStandalone(modelBuilder, tableType);
             }
+
+            // --- The built-in schedules' seed rows, once the schedule's leaf and its state are mapped ---
+            BuiltInScheduleSeeds.Apply(modelBuilder, definition.BuiltInSchedules);
         }
     }
 }

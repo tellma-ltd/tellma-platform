@@ -204,6 +204,21 @@ namespace Tellma.Core.Access
         }
 
         /// <inheritdoc />
+        public string? FindResource(string resource)
+        {
+            if (resource is null)
+            {
+                return null;
+            }
+
+            // A registered name wins and comes back as registered; a former name resolves one hop.
+            return _byResource.TryGetValue(resource, out IReadOnlyList<SecurableDescriptor>? securables)
+                || (_aliases.TryGetValue(resource, out string? renamed) && _byResource.TryGetValue(renamed, out securables))
+                ? securables[0].Resource
+                : null;
+        }
+
+        /// <inheritdoc />
         public IReadOnlyList<SecurableDescriptor> ForResource(string resource)
         {
             return resource is not null && _byResource.TryGetValue(resource, out IReadOnlyList<SecurableDescriptor>? securables) ? securables : [];

@@ -4,9 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 import { inject, makeEnvironmentProviders, type EnvironmentProviders } from '@angular/core';
-import { TM_CLIENT_METADATA, TmApi, TmTelemetry } from '@tellma/core';
+import { TmApi, TmTelemetry, ɵTmClientMetadataStore } from '@tellma/core';
 import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
 
+import { tmMemoryStoreProvider } from './provide-tellma-state-testing';
 import { TmFakeApi } from './tm-fake-api';
 import { TmFakeTelemetry } from './tm-fake-telemetry';
 import { tmTestMetadata } from './tm-test-metadata';
@@ -16,8 +17,10 @@ import { tmTestMetadata } from './tm-test-metadata';
  * replaced by a fake a test can inspect. Calls go to {@link TmFakeApi},
  * which answers from a script and records them, image fetches included
  * (`tm-image`'s `TM_BLOB_FETCHER` goes to `TmFakeApi.fetchBlob`), telemetry goes to
- * {@link TmFakeTelemetry}, which records items and sends nothing, and the
- * client metadata is {@link tmTestMetadata}'s, loaded from the start.
+ * {@link TmFakeTelemetry}, which records items and sends nothing, the
+ * client metadata is {@link tmTestMetadata}'s, loaded from the start, and
+ * the client store runs in memory, so no test touches the browser's
+ * IndexedDB or local storage.
  *
  * @example
  * ```ts
@@ -38,6 +41,16 @@ export function provideTellmaTesting(): EnvironmentProviders {
     },
     TmFakeTelemetry,
     { provide: TmTelemetry, useExisting: TmFakeTelemetry },
-    { provide: TM_CLIENT_METADATA, useValue: tmTestMetadata() },
+    // Loaded as the boot sequence loads it, so TM_CLIENT_METADATA and every
+    // service that waits for the chunk see it from the start.
+    {
+      provide: ɵTmClientMetadataStore,
+      useFactory: (): ɵTmClientMetadataStore => {
+        const store = new ɵTmClientMetadataStore();
+        store.set(tmTestMetadata());
+        return store;
+      },
+    },
+    tmMemoryStoreProvider(),
   ]);
 }

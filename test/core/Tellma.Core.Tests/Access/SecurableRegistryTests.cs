@@ -172,7 +172,7 @@ namespace Tellma.Core.Tests.Access
         // --- Aliases ---
 
         [Fact]
-        public void An_alias_resolves_on_Find_only()
+        public void An_alias_resolves_on_Find_and_FindResource_only()
         {
             SecurableRegistry registry = Compose(("gl", static builder => builder
                 .Add("gl.Center", "Read", "gl.Center")
@@ -181,6 +181,13 @@ namespace Tellma.Core.Tests.Access
             Assert.Empty(registry.Problems);
             Assert.Same(registry.Find("gl.Center", "Read"), registry.Find("GL.costcenter", "read"));
             Assert.Null(registry.Find("gl.CostCenter", "Save"));
+
+            // A resource resolves to its registered spelling, through one alias hop at most.
+            Assert.Equal("gl.Center", registry.FindResource("GL.CENTER"));
+            Assert.Equal("gl.Center", registry.FindResource("gl.costCenter"));
+            Assert.Null(registry.FindResource("gl.ProfitCenter"));
+            Assert.Null(registry.FindResource("*"));
+            Assert.Null(registry.FindResource(null!));
             Assert.Equal(["gl.Center"], registry.Resources);
             Assert.Equal(["gl.Center:Read"], registry.All.Select(static securable => securable.ToString()));
             Assert.Empty(registry.ForResource("gl.CostCenter"));
@@ -430,6 +437,7 @@ namespace Tellma.Core.Tests.Access
             Assert.Empty(registry.All);
             Assert.Empty(registry.Resources);
             Assert.Null(registry.Find("gl.Center", "Read"));
+            Assert.Null(registry.FindResource("gl.Center"));
             Assert.Empty(registry.ForResource("gl.Center"));
             Assert.Equal(Compose().Fingerprint, registry.Fingerprint);
             Assert.False(Compose().Failed);
