@@ -364,7 +364,7 @@ Format, one entry per ruling:
 - **Reorder handle.** The handle's keyboard grab does not satisfy WCAG 2.5.7, which needs a single-pointer alternative to dragging; screen-reader activation also sends a click. A click on the handle therefore opens a menu: Move up, Move down, Move to top, Move to bottom, disabled at the ends. Each choice moves the item, emits `moved`, announces, and returns focus to the handle. The keyboard grab model stays.
 - **WebKit drop fallback.** A drop without the drag-id type is accepted only when its text/plain is non-empty and exactly matches the drag in flight, and its types include neither the drag type nor `Files`. The in-flight record ends on window dragend/drop. A drop from another Tellma tab carries its own id and is refused. A nonce in the text was rejected, because the text is what editors insert.
 - **Tree prefetch.** `children()` runs when a node first renders, so leafness is known before expansion. A failed prefetch is silent and retried on expansion.
-- **Budgets.** pager 2.8, tree 5.09 and reorder-list 4.47 KB (linked + 0.1), and root 9.14 KB, each with a budgetNotes entry.
+- **Budgets.** pager 2.8, tree 5.09 and reorder-list 4.8 (raised from 4.47 at fix1 for the move menu; measured 4.70) KB (linked + 0.1), and root 9.14 KB, each with a budgetNotes entry.
 - **For Ahmad:**
   - Spec 0023 §8.3/§8.4 name the keyboard handle as the 2.5.7 path, which it is not.
   - Spec 0023 §8.2 should allow the render-time prefetch. An optional `hasChildren` hint would let fetching loaders opt out.

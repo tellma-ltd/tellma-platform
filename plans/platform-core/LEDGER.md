@@ -101,9 +101,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-031 | pc-3 | pc/PC-031 | fix1 + merge (held; R1 0/1/8: reorder handle click opens a Move menu (WCAG 2.5.7); tighten the id-less drop fallback; D-082) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
-| PC-063 | pc-2 | pc/PC-063 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-031 | pc-3 | pc/PC-031 | held a2a651d (fix1 2aa76e1: R1-1..R1-8 fixed, R1-9 evidence; move menu; merge d84ee97b; e2e 1066 green; budgets root 9.13/9.14, reorder-list 4.70/4.8) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
+| PC-063 | pc-2 | pc/PC-063 | R1 (commit1 9bbe22e: 15 deviations; core.User×Read moved to users' stack, NoStackRoutes deleted) | impl (Opus, high, launched 2026-11-14) | R1 (Opus, high, launched 2026-11-14) | 2026-11-14 |
 | PC-046 | pc-1 | pc/PC-046 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-056 | pc-4 | pc/PC-056 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 | PC-040 | pc-f2 | pc/PC-040 | integrate (released 2026-11-14 after PC-055 push; re-merge c4acf1f7) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 
 ## Fix items
@@ -276,7 +277,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
 | PC-030 | 0023-e | 1 | done (integrated 6f87f63; its e2e flake fixed by PC-F35 at 8b39d28, whose client CI is green) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
-| PC-031 | 0023-f | 1 | fix1 + merge (held) | 646fde1 | | |
+| PC-031 | 0023-f | 1 | held a2a651d | 646fde1, 2aa76e1, a2a651d (pc/PC-031) | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
@@ -301,14 +302,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
 | PC-055 | 0018-a | 1 | done (CI 43625011160) | 9dce959, 166c532, 10bbca4, abd9413, c4acf1f (pc/PC-055) | | |
-| PC-056 | 0010-c6 | 1 | todo | | | |
+| PC-056 | 0010-c6 | 1 | impl | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
 | PC-058 | 0010-e2 | 1 | done (integrated 821a6cf; its races fixed by PC-F38 at 7c5d82e, CI 43606208615 green) | 78a4afa, d435e7a, d36a847 (pc/PC-058), 7c113e2, 821a6cf (pc) |  |  |
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | done (integrated f861d40, CI 43614912992 green) | e97c3f3, 924fcd3, 2a34bc69, f861d40 (pc) |  | carry from PC-040 r1: whichever of PC-040/PC-062 integrates second deletes the analyzer suite's and the probe's pipeline stub files, adds the pipeline rows to NamePinTests and re-runs the probe |
-| PC-063 | 0015-b | 1 | impl | | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
+| PC-063 | 0015-b | 1 | R1 | 9bbe22e (pc/PC-063) | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | todo | | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
