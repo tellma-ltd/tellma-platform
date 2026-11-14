@@ -33,7 +33,7 @@ import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmDescriptionList } from '@tellma/core-ui/description-list';
-import { TmEntityPicker } from '@tellma/core-ui/entity-picker';
+import { TmEntityMultiPicker, TmEntityPicker } from '@tellma/core-ui/entity-picker';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmDropzone, TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
@@ -83,6 +83,7 @@ import * as copyButtonExamples from './copy/tm-copy-button.examples';
 import * as referenceExamples from './copy/tm-reference.examples';
 import * as datePickerExamples from './date-picker/tm-date-picker.examples';
 import * as descriptionListExamples from './description-list/tm-description-list.examples';
+import * as entityMultiPickerExamples from './entity-picker/tm-entity-multi-picker.examples';
 import * as entityPickerExamples from './entity-picker/tm-entity-picker.examples';
 import * as emptyStateExamples from './empty-state/tm-empty-state.examples';
 import * as dropzoneExamples from './files/tm-dropzone.examples';
@@ -172,6 +173,7 @@ class ExamplePage {}
     TmDescriptionList,
     TmDropzone,
     TmEmptyState,
+    TmEntityMultiPicker,
     TmEntityPicker,
     TmFilePicker,
     TmFormField,
@@ -222,6 +224,12 @@ class ExamplePage {}
     <tm-form-field label="placeholder"><input tmNumber /></tm-form-field>
     <tm-form-field label="placeholder"><tm-date-picker /></tm-form-field>
     <tm-entity-picker
+      [search]="searchAgents"
+      [itemId]="agentId"
+      [itemLabel]="agentName"
+      aria-label="placeholder"
+    />
+    <tm-entity-multi-picker
       [search]="searchAgents"
       [itemId]="agentId"
       [itemLabel]="agentName"
@@ -634,6 +642,10 @@ const SUITES = [
   { source: 'number/tm-number.examples.ts', examples: numberExamples },
   { source: 'date-picker/tm-date-picker.examples.ts', examples: datePickerExamples },
   { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
+  {
+    source: 'entity-picker/tm-entity-multi-picker.examples.ts',
+    examples: entityMultiPickerExamples,
+  },
   { source: 'alert/tm-alert.examples.ts', examples: alertExamples },
   { source: 'button/tm-button.examples.ts', examples: buttonExamples },
   { source: 'image/tm-image.examples.ts', examples: imageExamples },

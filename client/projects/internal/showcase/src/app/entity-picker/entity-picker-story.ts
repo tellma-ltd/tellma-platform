@@ -6,9 +6,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { form, required, FormField } from '@angular/forms/signals';
 
+import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import {
+  TmEntityMultiPicker,
   TmEntityPicker,
+  type TmEntityMultiPick,
   type TmEntityPick,
   type TmEntityPickerPageData,
   type TmEntitySearchFn,
@@ -64,6 +67,15 @@ const CENTERS: readonly Center[] = [
 /** Browse results are capped here; a larger match set flags `hasMore`. */
 const RESULT_CAP = 5;
 
+/**
+ * 24 more suppliers, so the multi-picker can hold 30 chips (the one-line
+ * height check) and the long picker has rows to scroll.
+ */
+const LONG_DIRECTORY: readonly Agent[] = Array.from({ length: 24 }, (_, i) => ({
+  id: 1000 + i,
+  name: `Supplier ${String(i + 1).padStart(2, '0')}`,
+}));
+
 let nextCreatedId = 100;
 
 /** The advanced-search page: its own filter prefilled from the picker's query. */
@@ -115,6 +127,85 @@ export class DemoAdvancedSearchPage {
 
   protected pick(agent: Agent): void {
     this.ref.close({ id: agent.id, label: agent.name, item: agent });
+  }
+}
+
+/**
+ * The multi-picker's advanced search: a checklist over the directory that
+ * starts from the picker's chosen ids and closes with the whole selection,
+ * so one visit can add and remove. Done stays disabled, with the picker's
+ * own message, while more than `maxItems` are ticked.
+ */
+@Component({
+  imports: [TmButton, TmModalFooter],
+  template: `
+    <p>
+      Chosen at launch: <output data-testid="multi-page-ids">{{ launchIds }}</output>
+    </p>
+    <ul class="adv-list">
+      @for (agent of directory; track agent.id) {
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'multi-page-' + agent.id"
+              [checked]="chosen().includes(agent.id)"
+              (change)="toggle(agent.id)"
+            />
+            {{ agent.name }}
+          </label>
+        </li>
+      }
+    </ul>
+    @if (overCap()) {
+      <p data-testid="multi-page-cap">{{ capText() }}</p>
+    }
+    <div tmModalFooter>
+      <button tmButton data-testid="multi-page-done" [disabled]="overCap()" (click)="done()">
+        Done
+      </button>
+      <button tmButton data-testid="multi-page-cancel" (click)="ref.close()">Cancel</button>
+    </div>
+  `,
+  styles: `
+    .adv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      list-style: none;
+      padding: 0;
+    }
+  `,
+})
+export class DemoMultiSearchPage {
+  protected readonly ref = inject(TmModalRef) as TmModalRef<TmEntityMultiPick<number, Agent> | null>;
+  private readonly data = inject(TM_MODAL_DATA) as TmEntityPickerPageData<number>;
+  private readonly translate = inject(TM_UI_TRANSLATE);
+  protected readonly directory = DIRECTORY;
+  protected readonly launchIds = (this.data.ids ?? []).join(', ');
+  /** The ticked ids: the launch selection in its order, then each new tick. */
+  protected readonly chosen = signal<readonly number[]>(this.data.ids ?? []);
+  protected readonly overCap = computed(
+    () => this.data.maxItems !== undefined && this.chosen().length > this.data.maxItems,
+  );
+  protected readonly capText = computed(() =>
+    this.translate('entityPicker.maxItems', { max: this.data.maxItems })(),
+  );
+
+  protected toggle(id: number): void {
+    this.chosen.update((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
+
+  protected done(): void {
+    const ids = this.chosen();
+    this.ref.close({
+      ids,
+      picks: DIRECTORY.filter((agent) => ids.includes(agent.id)).map((agent) => ({
+        id: agent.id,
+        label: agent.name,
+        item: agent,
+      })),
+    });
   }
 }
 
@@ -222,14 +313,23 @@ export class DemoPickerModalPage {
  * Entity-picker demo host: a required field-wrapped picker inside a native
  * form (submit counting proves Enter-never-submits-while-open), a bare
  * standalone picker, a no-magnifier picker, a prepopulated picker whose
- * label only `displayWith` knows, and a two-line Center picker whose labels
- * are drawn code-first in parts. The toolbar switches sync/async search,
+ * label only `displayWith` knows, a two-line Center picker whose labels
+ * are drawn code-first in parts, and two multi-pickers (one in a field with
+ * a whole-selection advanced search, one bare with a cap of three). The
+ * toolbar switches sync/async search,
  * tunes the artificial latency (or holds async responses until released),
  * arms a one-shot failure, toggles abort-signal honoring, and counts search
  * calls; the model dump is the Playwright battery's committed-value oracle.
  */
 @Component({
-  imports: [TmEntityPicker, TmFormField, TmButton, FormField, HeldResponsesControls],
+  imports: [
+    TmEntityMultiPicker,
+    TmEntityPicker,
+    TmFormField,
+    TmButton,
+    FormField,
+    HeldResponsesControls,
+  ],
   template: `
     <h2>Entity picker</h2>
 
@@ -382,6 +482,48 @@ export class DemoPickerModalPage {
       </tm-form-field>
     </div>
 
+    <!-- The multi-picker: chips in one fixed-height line, a toggling list,
+         and an advanced search that edits the whole selection. The buttons
+         fill and clear it for the stable-layout checks. -->
+    <h3>Several suppliers</h3>
+    <div class="toolbar">
+      <button type="button" tmButton data-testid="multi-fill" (click)="fillMulti(30)">
+        Choose 30
+      </button>
+      <button type="button" tmButton data-testid="multi-one" (click)="fillMulti(1)">
+        Choose 1
+      </button>
+      <button type="button" tmButton data-testid="multi-clear" (click)="multiIds.set([])">
+        Clear
+      </button>
+      <span>Removed: <span data-testid="multi-removed">{{ removedCount() }}</span></span>
+    </div>
+    <div class="grid">
+      <tm-form-field label="Suppliers" hint="Pick several" data-testid="multi-ff">
+        <tm-entity-multi-picker
+          data-testid="multi-picker"
+          [(value)]="multiIds"
+          [search]="multiSearch"
+          [itemId]="agentId"
+          [itemLabel]="agentName"
+          [displayWith]="multiDisplay"
+          [advancedSearch]="multiPage"
+          [create]="createPage"
+          placeholder="Search suppliers"
+          (removed)="removedCount.set(removedCount() + 1)"
+        />
+      </tm-form-field>
+
+      <tm-entity-multi-picker
+        data-testid="multi-picker-bare"
+        aria-label="Bare suppliers picker"
+        [search]="multiSearch"
+        [itemId]="agentId"
+        [itemLabel]="agentName"
+        [maxItems]="3"
+      />
+    </div>
+
     <h3>Model</h3>
     <output class="model-dump" data-testid="model-json">{{ modelJson() }}</output>
 
@@ -441,6 +583,10 @@ export class EntityPickerStory {
   });
   readonly populatedId = signal<number | null>(5);
   readonly submitCount = signal(0);
+  /** The multi-picker's chosen ids. */
+  readonly multiIds = signal<readonly number[]>([]);
+  /** Every `removed` emit from the multi-picker. */
+  readonly removedCount = signal(0);
 
   readonly asyncMode = signal(true);
   readonly searchDelay = signal(200);
@@ -455,10 +601,15 @@ export class EntityPickerStory {
   readonly ignoreAbort = signal(false);
 
   readonly modelJson = computed(() =>
-    JSON.stringify({ supplierId: this.model().supplierId, populatedId: this.populatedId() }),
+    JSON.stringify({
+      supplierId: this.model().supplierId,
+      populatedId: this.populatedId(),
+      multiIds: this.multiIds(),
+    }),
   );
 
   readonly advancedPage = DemoAdvancedSearchPage;
+  readonly multiPage = DemoMultiSearchPage;
   readonly createPage = DemoCreatePage;
   readonly editPage = { component: DemoEditPage, size: 'sm' as const, title: 'Edit supplier' };
 
@@ -513,17 +664,26 @@ export class EntityPickerStory {
     );
   };
 
-  /** A 24-entry directory returned uncapped — enough rows to scroll. */
-  private readonly longDirectory: readonly Agent[] = Array.from({ length: 24 }, (_, i) => ({
-    id: 1000 + i,
-    name: `Supplier ${String(i + 1).padStart(2, '0')}`,
-  }));
+  /** The long directory returned uncapped — enough rows to scroll. */
   readonly longSearch = (query: string): readonly Agent[] => {
     const q = query.trim().toLowerCase();
-    return q === ''
-      ? this.longDirectory
-      : this.longDirectory.filter((a) => a.name.toLowerCase().includes(q));
+    return q === '' ? LONG_DIRECTORY : LONG_DIRECTORY.filter((a) => a.name.toLowerCase().includes(q));
   };
+
+  /** The multi-picker's synchronous search over both directories. */
+  readonly multiSearch = (query: string): readonly Agent[] => {
+    const q = query.trim().toLowerCase();
+    const all = [...DIRECTORY, ...LONG_DIRECTORY];
+    return q === '' ? all : all.filter((a) => a.name.toLowerCase().includes(q));
+  };
+  /** Chip labels from either directory. */
+  readonly multiDisplay = (id: number): string | null =>
+    [...DIRECTORY, ...LONG_DIRECTORY].find((agent) => agent.id === id)?.name ?? null;
+
+  /** Chooses the first `count` entities of both directories. */
+  protected fillMulti(count: number): void {
+    this.multiIds.set([...DIRECTORY, ...LONG_DIRECTORY].slice(0, count).map((a) => a.id));
+  }
 
   protected onSubmit(event: Event): void {
     event.preventDefault();

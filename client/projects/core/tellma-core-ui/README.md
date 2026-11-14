@@ -17,7 +17,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/input` | `tmInput` — a bare directive on the native `<input>` and `<textarea>` |
 | `@tellma/core-ui/number` | `tmNumber` — locale-aware numeric input (percent mode, display rounding) |
 | `@tellma/core-ui/date-picker` | `tm-date-picker` — calendar-aware date input + popup (ISO `YYYY-MM-DD` model) |
-| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`) |
+| `@tellma/core-ui/entity-picker` | `tm-entity-picker` — server-searched FK selector with advanced-search/create/edit modal pages (which receive an opaque `context`), and optional two-line rows (`itemDescription`) and code-first label parts (`itemLabelParts`); `tm-entity-multi-picker` — several FKs as one-line scrolling chips over the same search, with whole-selection advanced search and `maxItems` |
 | `@tellma/core-ui/checkbox` | `tm-checkbox` — native-input tri-state checkbox |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |
 | `@tellma/core-ui/select` | `tm-select` and `tm-multi-select` over `tm-option` and `tm-option-group` — overlay single- and multiple-choice selects with option headings |

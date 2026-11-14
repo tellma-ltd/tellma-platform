@@ -210,6 +210,17 @@ export class TmEmptyStateHarness extends ComponentHarness {
 }
 
 // @public
+export class TmEntityMultiPickerHarness extends ComponentHarness {
+    getChipLabels(): Promise<string[]>;
+    getCountBadge(): Promise<string | null>;
+    getPicker(): Promise<TmEntityPickerHarness>;
+    static hostSelector: string;
+    pick(label: string): Promise<void>;
+    removeChip(label: string): Promise<void>;
+    search(text: string): Promise<void>;
+}
+
+// @public
 export class TmEntityPickerHarness extends ComponentHarness {
     blur(): Promise<void>;
     clickMagnifier(): Promise<void>;

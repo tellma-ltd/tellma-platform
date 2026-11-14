@@ -21,6 +21,11 @@
  * entry point with its sibling entry points resolved and fails when an
  * excluded one is reachable through static imports.
  *
+ * A library may also declare "tellma".treeShakes: per entry point, an app
+ * module's named imports and the strings its production bundle must not
+ * contain — a component the app never imports has to fall away even though
+ * it ships in the same FESM.
+ *
  * Coverage is enforced both ways: a library that declares budgets must
  * cover EVERY discovered entry point, and every budget key must match a
  * real entry point. A library with no "tellma".budgetsInKb block is exempt by
@@ -32,13 +37,14 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createBundleMeasurer } from '../tools/bundle-measure.mjs';
+import { createBundleMeasurer, createProductionBundler } from '../tools/bundle-measure.mjs';
 import { discoverLibraries } from '../tools/workspace.mjs';
 
 const clientDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(clientDir, 'package.json'));
 const esbuild = require('esbuild');
 const measure = await createBundleMeasurer(clientDir);
+const bundle = await createProductionBundler(clientDir);
 
 let failed = false;
 const rows = [];
@@ -164,6 +170,41 @@ for (const library of discoverLibraries(clientDir)) {
       failed = true;
     } else {
       console.log(`${library.name}: '${id}' statically reaches none of ${excluded.join(', ')}.`);
+    }
+  }
+}
+
+// Section: tree shaking. A library's "tellma".treeShakes maps an entry point
+// to the names an app imports from it and the strings (a component's
+// selector) that app's production bundle must not contain. One FESM holds
+// every component of an entry point, so the module-level `sideEffects`
+// flag cannot drop an unused one; only the linker's pure definitions can,
+// and a top-level side effect would silently keep it.
+for (const library of discoverLibraries(clientDir)) {
+  const checks = library.tellma?.treeShakes;
+  if (!checks) {
+    continue;
+  }
+  for (const [id, check] of Object.entries(checks)) {
+    const entryPoint = library.entryPoints.find((candidate) => candidate.id === id);
+    if (entryPoint === undefined) {
+      console.error(`${library.name}: "tellma".treeShakes names '${id}', which is not an entry point.`);
+      failed = true;
+      continue;
+    }
+    const { text } = await bundle(join(clientDir, entryPoint.fesm), check.imports);
+    const kept = check.absent.filter((needle) => text.includes(needle));
+    if (kept.length > 0) {
+      console.error(
+        `${library.name}: an app importing only ${check.imports.join(', ')} from '${id}' ` +
+          `still ships ${kept.join(', ')}.`,
+      );
+      failed = true;
+    } else {
+      console.log(
+        `${library.name}: an app importing only ${check.imports.join(', ')} from '${id}' ` +
+          `ships none of ${check.absent.join(', ')}.`,
+      );
     }
   }
 }
