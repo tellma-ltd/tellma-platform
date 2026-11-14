@@ -17,7 +17,7 @@ It is committed by the snapshot procedure. Status values: `todo`, `impl`, `r1`, 
 | Fable phase | ended 2026-11-11 06:50 UTC (no new Fable checkpoint fits after PC-025; Ahmad emailed/pushed 06:50; remind once at U 85 if the reset is still pending) |
 | Fable reset | applied (detected 2026-11-11 10:44 UTC: Fable 91 → 3, all-models ≈ 51 → 9; ρ window restarted at 10:44, U 9; Ahmad emailed (Gmail 1a1ca365086f89f3) and pushed) |
 | Fable alias resolves to | claude-fable-5-2 (Fable 5.2; transcripts of impl-PC-013, impl-PC-041, fix-PC-F08, 2026-11-10 20:16) |
-| Full reset | pending (deadline Sat Nov 14 20:00 UTC; reminder cron Sat Nov 14 12:00 UTC) |
+| Full reset | applied (detected 2026-11-14 12:01 UTC by the 12:00 deadline check: all-models 59 at 2026-11-12 20:00 → 8, Fable 19 → 0; weekly reset still 2026-11-17 20:00; no reminder sent) |
 | Agent tool supports name / effort / fable | name: **no** (address agents by id via SendMessage) / effort: yes / fable: yes (model enum) |
 | Environment check | git clean on platform-core, no prompt on `cd MAIN && …`; gh logged in (repo, workflow scopes); Docker 29.6.2; .NET SDK 10.0.401 (+9.0.314); Node 24.18.0; pnpm 11.9.0; check_deps 218 checkpoints, 0 problems |
 | Notification test | email "Platform-core: run starting" delivered (Gmail id 1a1b98a787d056c9); PushNotification not sent (terminal active, tool skips while Ahmad is at the machine; it reaches the phone when he is away) |
@@ -95,6 +95,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-12 19:22 | | | 2026-11-17 20:00 | PC-F23 done (CI 43248406932), PC-035 done (CI 43284321336, 42 done), PC-F21 done (CI 43287447113; PC-051/PC-057 unblocked). In flight: PC-026, PC-033, PC-034 fix+int; PC-073, PC-036 impl |
 | 2026-11-12 20:00 | 59 | 19 | 2026-11-17 20:00 | ΔU 11 since 11:50 (≈1.4/h, 5 heavy agents, Opus only). R 41: in flight PC-026/PC-033/PC-034 fix+int, PC-073/PC-036 impl; next ready PC-051, PC-057, PC-075 |
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
+| 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 
 ## In flight
 
@@ -103,7 +104,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-062 | pc-f | pc/PC-062 | held 2a34bc69 (fix1 924fcd3: R1-1..4 fixed; D7 reworded, D14 narrowed; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | held 11a57e0 (fix1 2de32d7 + responses f5174b3; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-031 | pc-3 | pc/PC-031 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
-| PC-055 | pc-2 | pc/PC-055 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
+| PC-055 | pc-2 | pc/PC-055 | r1 (impl 9dce959: 9 deviations; RemoveAllLoggers on the identity HttpClient (Trace header logs carry the bearer); Production standalone hosts and migrators need ServiceClientSecret) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-040 | pc-f2 | pc/PC-040 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 
 ## Fix items
@@ -295,7 +296,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
-| PC-055 | 0018-a | 1 | impl | | | |
+| PC-055 | 0018-a | 1 | r1 | 9dce959 | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
 | PC-058 | 0010-e2 | 1 | integrated 821a6cf (CI 43588563023 red: its multi-picker e2e and Windows unit, PC-F38) | 78a4afa, d435e7a, d36a847 (pc/PC-058), 7c113e2, 821a6cf (pc) |  |  |
