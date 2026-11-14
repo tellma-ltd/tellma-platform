@@ -32,7 +32,8 @@ English.
 
 1. **Collect.** Registers `DeploymentIdentity(slug, environment)` and `DeploymentVersions`, adds
    `CoreFeature` (`core`) first, and runs the composition method. Selection is explicit: there is no
-   assembly scanning.
+   assembly scanning. Before any of it, the HTTP client factory's default loggers are removed from
+   every client as a default (see [Outbound HTTP logging](#outbound-http-logging)).
 2. **Declare.** Each feature's `Declare` records its `Requires` edges and options bindings, and its
    `Contribute` its data-only items. A nested feature (`contribution.Feature(...)`) joins the same
    two steps.
@@ -61,6 +62,23 @@ for a host that is not started, optionally skipping those with `RequiresInfrastr
 
 `TellmaComposition.Validate` runs the same composition host-free and returns, rather than throws,
 every problem `AddTellma` would throw.
+
+### Outbound HTTP logging
+
+`AddTellma` registers `ConfigureHttpClientDefaults(http => http.RemoveAllLoggers())`, so no HTTP
+client of a host that composes a distribution (the web host, the migrator, and the migrator's
+`emit-client-assets`) logs through the HTTP client factory's default loggers. At Trace those
+loggers write each request and response header into the event's structured state with its raw
+value; only the rendered message reads `Authorization: *`. So a bearer token, an API key or a
+basic credential would reach any sink that serialises state (Serilog's properties, OpenTelemetry
+log attributes) as soon as an operator enables Trace for `System.Net.Http`.
+
+**What operators see change:** the per-request `Start processing HTTP request` / `End processing
+HTTP request` lines (and their Trace header lines) are gone from every log, at every level.
+Outbound requests remain observable through the HttpClient instrumentation's spans and metrics
+wherever an exporter is configured, and each connector logs its own failures (SendGrid's refusals
+at Warning, for one). The default applies before each client's own configuration, whenever the
+client is registered: a client may add a logger of its own, which then decides what it writes.
 
 ### Built-in startup checks
 
@@ -811,6 +829,41 @@ anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
 users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
 
+### Raising, withdrawing and rendering
+
+Core maps the inbox to `core.Notifications` (ids from `core.sq_Notifications`, lock escalation
+disabled, an index per read path: a user's rows newest first, the unread count, the duplicate
+lookup and the retention sweep) and the preferences to `core.NotificationPreferences` (one row per
+user, type and channel that differs from the channel's default). `Notification` is a read-only
+stack.
+
+`Notifier` (scoped `INotifier`) checks and shapes every request in C# before it appends anything,
+refusing a rule broken with `InvalidOperationException`, then appends one statement per request to
+the caller's persist batch. The statement reserves one id range for the request's distinct
+recipients and inserts a row for each one who is active, has not muted a mutable type, and holds no
+duplicate (an unread row of the key, or any row under `Ongoing`); under `Replace` it first refreshes
+each unread duplicate in place. It then enqueues one `core.notification-delivery` job per slice of
+`DeliverySliceSize` recipients in which an active recipient receives a channel other than the inbox,
+by the user's preference or the channel's default. The delivering channels are the registered ones
+an `INotificationChannel` sender serves, resolved once by `NotificationDeliveryChannels`; with none,
+or for an `InboxOnly` request, nothing is enqueued. A statement that enqueues refuses to run outside
+a transaction, and the notifier refuses a batch in `None` mode. A withdrawal deletes the rows of a key,
+for everyone or for named recipients. After the commit, one callback per batch counts what each
+statement did (`tellma.notifications.created`, `suppressed`, `replaced`, `withdrawn` and
+`delivery_enqueued`, by type), wakes the tenant's pollers when a delivery job was enqueued, and
+publishes one `inbox.changed` to the users whose inbox changed, logging a failure as
+`InboxEventFailed` without throwing it.
+
+`NotificationRenderer` (scoped `INotificationRenderer`) renders a row's text server-side: the
+resource `Notification_<type key, dots as underscores>` of the package whose feature registered the
+type, formatted as an ICU message in the reader's language, calendar and zone, then the
+`…_Detail` line on a new line when the neutral resources declare one. Each top-level argument
+formats by its JSON kind: an ISO 8601 date-time with an offset as an instant, an ISO 8601 date as a
+calendar date, numbers as numbers, booleans as `true`/`false`, null as nothing, a localized text in
+the reader's content slot, and anything else as its JSON text. A missing resource renders the type
+key; arguments that are not a JSON object render the message without them and log
+`NotificationArgumentsInvalid` once per scope.
+
 ## Entity stacks
 
 A feature stacks an entity with `Entity<TEntity>()` (the platform's default service) or
@@ -970,6 +1023,48 @@ and `tellma.access.set.grants` and logs `AccessSetBuilt` (3106) at Debug.
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
 
+## The identity-server client
+
+`IdentityServerClient` is the distribution's client of its identity server's v1 management API:
+the bulk invite, the bulk delivery status, and creating and deleting service accounts. It is one
+singleton per host, tenant-agnostic, registered by `CoreFeature` for the web host and the migrator
+alike. Its options, `IdentityServerClientOptions`, bind from `Tellma:Identity` (the section the web
+host's sign-in options bind from too) and the platform settles them after binding: `ClientId` is
+`<slug>-svc`, and in in-proc identity mode `Authority` is the in-proc engine's issuer,
+`{Tellma:PublicOrigin}/id`, whatever the section says. `core.options` judges them: the authority
+absolute, `https` outside Development, with no trailing slash, query, fragment or user information;
+`ServiceClientSecret` set, except in in-proc Development, where the web host fills it with the secret
+it generates for its boot (the one the in-proc engine seeds) and the migrator has none, so a call
+there fails with `InvalidOperationException` before anything is sent.
+
+Each exchange goes through the named `HttpClient` `Tellma.Identity`, under a 30-second timeout on the
+injected `TimeProvider`, with `Accept: application/json` and `User-Agent: Tellma.Core/<version>`;
+the routes are relative to the authority, its path kept. The factory's own request logging is
+removed from that client: its structured header values would carry the bearer token verbatim. The
+service token is a `client_credentials` grant for the `tellma_identity` scope with no `resource`
+parameter, the secret posted in the form body; it is cached until 60 seconds before it expires (a
+claimed lifetime beyond a day counts as a day). Callers without a fresh token await one shared
+fetch, which runs under its own timeout whatever its callers' cancellation; its failure reaches every
+one of them, and the next call starts a fresh fetch. One `401` discards that token (unless a
+concurrent caller already replaced it), fetches one and retries the call once.
+
+The bulk members send chunks of at most `IIdentityServerClient.MaxChunkSize` (1,000), one call each,
+in input order. A chunk's answer is recorded only when it holds one result per item, each echoing its
+item's address or subject, with a known status or state, and either a status with its subject or a
+refusal. Before any chunk completed, a failure raises by cause: the server unreachable (a transport
+failure, a `5xx` or the timeout) as `DependencyUnavailableException` (`identity`, retry after 1 s),
+the server refusing the distribution (a token-endpoint `4xx`, a second `401`, any other `4xx`) or an
+answer it cannot record as `InvalidOperationException`, and the caller's cancellation as itself.
+After one, any failure or a cancellation answers the completed chunks' results, a prefix the caller
+tells apart by its length, and logs `IdentityChunkFailed` at Warning.
+
+Every call is counted on `tellma.identity.calls` and timed on `tellma.identity.call.duration`
+(meter `Tellma.Core`, tags `identity.endpoint` ∈ `invite | delivery | service-account` and `outcome`
+∈ `ok | partial | unavailable | error | cancelled`) and logged once as `IdentityCall` at Information;
+each chunk is an `identity.invite` or `identity.delivery` activity tagged `identity.count` and
+`identity.outcome`. No log, exception message or `ToString` carries a token, a secret, an
+Authorization header, an address or a subject.
+
 ## Background jobs
 
 The job contracts live in `Tellma.Core.Abstractions.Jobs`. Core binds `JobsOptions` from
@@ -1048,7 +1143,8 @@ same in a `Persist` batch of its own.
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
-| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`; internally the name grammars, the hub-less real-time status, the composition step and the log events. |
+| `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
+| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 

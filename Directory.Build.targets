@@ -10,4 +10,39 @@
        SkiaSharp's Windows native symbol files out of build and publish output. A no-op in a
        project without SkiaSharp. -->
   <Import Project="$(MSBuildThisFileDirectory)src\core\Tellma.Core.Imaging\build\Tellma.Core.Imaging.targets" />
+
+  <!-- The platform's analyzers (TELLMA0001 to TELLMA0006) for in-repo consumers. NuGet hands a
+       package's analyzer asset only to projects that reference the package, and a ProjectReference
+       carries no analyzer asset at all, so every project that reaches Tellma.Core.Abstractions
+       through project references, directly or transitively, loads the two assemblies from the
+       analyzer's output folder here. A project that takes the contract as a package gets them
+       from the package instead, and is skipped. Tellma.Core.Abstractions builds the analyzer
+       first through its build-order reference, so the folder is filled before any consumer
+       compiles, and packs the same folder's two files. -->
+  <PropertyGroup>
+    <TellmaAnalyzerOutputDirectory>$(MSBuildThisFileDirectory)src/core/Tellma.Core.Analyzers/bin/$(Configuration)/netstandard2.0/</TellmaAnalyzerOutputDirectory>
+  </PropertyGroup>
+
+  <Target Name="TellmaAddPlatformAnalyzers"
+          AfterTargets="ResolveAssemblyReferences"
+          Condition="'$(MSBuildProjectName)' != 'Tellma.Core.Analyzers'">
+    <!-- The contract, when it arrives as a project's output rather than a package's. -->
+    <ItemGroup>
+      <_TellmaContractReference Include="@(ReferencePath)"
+                                Condition="'%(Filename)' == 'Tellma.Core.Abstractions' and '%(ReferencePath.ReferenceSourceTarget)' == 'ProjectReference'" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_TellmaRunsPlatformAnalyzers>false</_TellmaRunsPlatformAnalyzers>
+      <_TellmaRunsPlatformAnalyzers Condition="'@(_TellmaContractReference)' != '' or '$(MSBuildProjectName)' == 'Tellma.Core.Abstractions'">true</_TellmaRunsPlatformAnalyzers>
+    </PropertyGroup>
+
+    <!-- An analyzer that silently failed to load would let every rule pass, so a missing build is an error. -->
+    <Error Condition="'$(_TellmaRunsPlatformAnalyzers)' == 'true' and '$(DesignTimeBuild)' != 'true' and !Exists('$(TellmaAnalyzerOutputDirectory)Tellma.Core.Analyzers.dll')"
+           Text="The platform analyzers were not found at $(TellmaAnalyzerOutputDirectory). Build src/core/Tellma.Core.Analyzers in the $(Configuration) configuration first." />
+
+    <ItemGroup Condition="'$(_TellmaRunsPlatformAnalyzers)' == 'true'">
+      <Analyzer Include="$(TellmaAnalyzerOutputDirectory)Tellma.Core.Analyzers.dll;$(TellmaAnalyzerOutputDirectory)Microsoft.SqlServer.TransactSql.ScriptDom.dll" />
+    </ItemGroup>
+  </Target>
 </Project>

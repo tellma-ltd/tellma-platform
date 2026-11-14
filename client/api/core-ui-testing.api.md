@@ -7,6 +7,7 @@
 import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { HarnessPredicate } from '@angular/cdk/testing';
+import { ModifierKeys } from '@angular/cdk/testing';
 import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
@@ -565,6 +566,21 @@ export class TmOptionHarness extends ComponentHarness {
 }
 
 // @public
+export class TmPagerHarness extends ComponentHarness {
+    getMode(): Promise<'item' | 'range'>;
+    getNextLabel(): Promise<string | null>;
+    getPreviousLabel(): Promise<string | null>;
+    getSizeSelect(): Promise<TmSelectHarness | null>;
+    getStatusSentence(): Promise<string | null>;
+    getStatusText(): Promise<string | null>;
+    static hostSelector: string;
+    isNextDisabled(): Promise<boolean>;
+    isPreviousDisabled(): Promise<boolean>;
+    next(): Promise<void>;
+    previous(): Promise<void>;
+}
+
+// @public
 export class TmPopoverHarness extends ComponentHarness {
     getAriaLabel(): Promise<string | null>;
     getSize(): Promise<'auto' | 'lg' | 'md' | 'sm'>;
@@ -629,6 +645,26 @@ export class TmRelativeTimeHarness extends ComponentHarness {
     getDateTime(): Promise<string | null>;
     getText(): Promise<string>;
     static hostSelector: string;
+}
+
+// @public
+export type TmReorderKey = 'ArrowDown' | 'ArrowUp' | 'End' | 'Enter' | 'Escape' | 'Home' | 'Space' | 'Tab';
+
+// @public
+export class TmReorderListHarness extends ComponentHarness {
+    clickHandle(index: number): Promise<void>;
+    focusHandle(index: number): Promise<void>;
+    getFocusedHandleIndex(): Promise<number>;
+    getGrabbedIndex(): Promise<number>;
+    getHandleLabels(): Promise<(string | null)[]>;
+    getInstructions(): Promise<string>;
+    getItemTexts(): Promise<string[]>;
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+    isMoveMenuOpen(index: number): Promise<boolean>;
+    openMoveMenu(index: number): Promise<TmMenuHarness>;
+    press(index: number, key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
+    pressFocused(key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
 }
 
 // @public
@@ -785,6 +821,53 @@ export class TmTreeGridHarness extends TmGridHarness {
     static hostSelector: string;
     isExpanded(rowIndex: number): Promise<boolean>;
     isLoadingChildren(rowIndex: number): Promise<boolean>;
+}
+
+// @public
+export class TmTreeHarness extends ComponentHarness {
+    getActiveNode(): Promise<TmTreeNodeHarness | null>;
+    getLabel(): Promise<string | null>;
+    getNode(filter: TmTreeNodeHarnessFilters): Promise<TmTreeNodeHarness>;
+    getNodes(filter?: TmTreeNodeHarnessFilters): Promise<TmTreeNodeHarness[]>;
+    getNodeTexts(): Promise<string[]>;
+    static hostSelector: string;
+    isMultiSelectable(): Promise<boolean>;
+    press(key: TmTreeKey, modifiers?: ModifierKeys): Promise<void>;
+}
+
+// @public
+export type TmTreeKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'Space';
+
+// @public
+export class TmTreeNodeHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    collapse(): Promise<void>;
+    doubleClick(): Promise<void>;
+    expand(): Promise<void>;
+    focus(): Promise<void>;
+    getKey(): Promise<string | null>;
+    getLevel(): Promise<number>;
+    getText(): Promise<string>;
+    hasSpinner(): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isContext(): Promise<boolean>;
+    isDraggable(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    press(key: TmTreeKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    type(text: string): Promise<void>;
+    static with(options?: TmTreeNodeHarnessFilters): HarnessPredicate<TmTreeNodeHarness>;
+}
+
+// @public
+export interface TmTreeNodeHarnessFilters extends BaseHarnessFilters {
+    key?: string;
+    text?: string | RegExp;
 }
 
 ```

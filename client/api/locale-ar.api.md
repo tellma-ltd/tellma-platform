@@ -293,6 +293,39 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly date: "التاريخ";
         readonly time: "الوقت";
     };
+    readonly pager: {
+        readonly range: "{from, number}–{to, number} / {total, number}";
+        readonly rangeAtLeast: "{from, number}–{to, number} / {total, number}+";
+        readonly item: "{index, number} / {total, number}";
+        readonly itemAtLeast: "{index, number} / {total, number}+";
+        readonly rangeSentence: "العناصر من {from, number} إلى {to, number} من أصل {total, number}";
+        readonly rangeSentenceAtLeast: "العناصر من {from, number} إلى {to, number} من أصل {total, number} أو أكثر";
+        readonly itemSentence: "العنصر {index, number} من أصل {total, number}";
+        readonly itemSentenceAtLeast: "العنصر {index, number} من أصل {total, number} أو أكثر";
+        readonly previousPage: "الصفحة السابقة";
+        readonly nextPage: "الصفحة التالية";
+        readonly previousItem: "العنصر السابق";
+        readonly nextItem: "العنصر التالي";
+        readonly pageSize: "حجم الصفحة";
+        readonly perPage: "{size, number} لكل صفحة";
+    };
+    readonly tree: {
+        readonly loading: "جار التحميل";
+        readonly loadFailed: "تعذر تحميل {label}";
+    };
+    readonly reorderList: {
+        readonly handle: "إعادة ترتيب {label}";
+        readonly instructions: "{gender, select, female {اضغطي} other {اضغط}} مفتاح المسافة للالتقاط. {gender, select, female {استخدمي} other {استخدم}} مفاتيح الأسهم للنقل، والمسافة للإفلات، وEscape للإلغاء.";
+        readonly grabbed: "تم التقاط {label}. الموضع {index, number} من {count, number}.";
+        readonly position: "الموضع {index, number} من {count, number}";
+        readonly dropped: "تم إفلات {label} في الموضع {index, number} من {count, number}.";
+        readonly cancelled: "ألغي النقل. عاد {label} إلى الموضع {index, number}.";
+        readonly moveMenu: "نقل {label}";
+        readonly moveUp: "نقل لأعلى";
+        readonly moveDown: "نقل لأسفل";
+        readonly moveToTop: "نقل إلى البداية";
+        readonly moveToBottom: "نقل إلى النهاية";
+    };
 };
 
 ```

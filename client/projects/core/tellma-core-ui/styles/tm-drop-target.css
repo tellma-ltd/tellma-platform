@@ -1,0 +1,24 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* [tmDropTarget] — a directive has no view to carry styles, so its hover
+   state ships as this global sheet. While an accepted drag hovers, the
+   target takes a translucent accent wash (the same in both schemes) and an
+   accent outline drawn inside its box, so nothing around it moves and the
+   state survives forced colors, which drop the wash. */
+
+.tm-drop-target--over {
+  outline: var(--drop-target-border-width) dashed var(--drop-target-border);
+  outline-offset: calc(-1 * var(--drop-target-border-width));
+  background-color: var(--drop-target-over-bg);
+}
+
+@media (forced-colors: active) {
+  .tm-drop-target--over {
+    outline-color: Highlight;
+  }
+}
