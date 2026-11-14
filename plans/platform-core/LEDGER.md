@@ -100,11 +100,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-058 | pc-f2 | pc/PC-058 | held, in the release queue after PC-054 (merge d36a847 on pc/PC-058; R1 fixes d435e7a; ./entity-picker 13.90 (14,234 B), ceiling 13.97 → 14.0, which is the spec cap: 0.1 KB headroom; e2e 961) | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
+| PC-058 | pc-f2 | pc/PC-058 | released (after PC-054 285e993): re-merge + integrate | impl (Opus, launched 2026-11-13) | r1 afba3a4bc33c1d790 done | 2026-11-13 |
 | PC-062 | pc-f | pc/PC-062 | held 2a34bc69 (fix1 924fcd3: R1-1..4 fixed; D7 reworded, D14 narrowed; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-099 | pc-1 | pc/PC-099 | held 11a57e0 (fix1 2de32d7 + responses f5174b3; merge clean, gates green) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-031 | pc-3 | pc/PC-031 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
-| PC-054 | pc-2 | pc/PC-054 | released (after PC-044 018f0fd): contentKey TSDoc (D-077), re-merge + integrate | aede283b100436c0c (Opus inherit) | r1 a0ff449360eecf55e done | 2026-11-13 |
+| PC-055 | pc-2 | pc/PC-055 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 
 ## Fix items
 
@@ -145,6 +145,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F34 | Long-press observer (tellma-core-ui menu/internal/long-press.ts:130-132, 157) cancels a hold on any window scroll, including unrelated scrollers (an auto-scrolling log, a carousel), so a user's hold opens nothing; cancel only when the scrolled node is the document or an ancestor of the observed element, with a tm-menu.spec test for each case (PC-F33 R1-1) | todo (low) | | | |
 | PC-F35 | CI red on 6f87f63 (client, PR-tier e2e chromium; CI fails on flaky): search-field.spec.ts:32 "the clear button clears, emits and refocuses; Mod+Z brings the text back", expected the emit log to end "jed","" but got ["j",""] (5.4 s; the retry passed). PC-030's new test | done (integrated 8b39d28; its client CI jobs green; run 43567104257 red only on integration-windows, PC-F36) | 7dfcd25, f15c258, 8b39d28 (pc) | | stop the line; PC-044 holds; queue after it: PC-054, PC-058, PC-F33 |
 | PC-F36 | CI red on 8b39d28 (integration-windows; ubuntu integration green): Tellma.Core.IntegrationTests RegistryCatalogTests.A_missing_catalog_fails_startup_in_Development_and_starts_not_ready_elsewhere, Assert.Throws: no exception thrown (17 ms); PC-024's test, green on the 11 earlier runs; the change under test was client-only, so it is a flake | done (integrated 67d65bb, CI 43577169711 green on all jobs; R1 0/0/2 fixed: three-valued existence check, pure decision function; revoked-permission case has no integration test, LocalDB cannot create such a login) | 5fd775b, e854585, cbf3b03, 67d65bb (pc) | | stop the line; all-checks-passed stayed green because it does not cover integration-windows |
+| PC-F37 | tree-grid showcase story switches contentKey (a/b toggle, depth select) over one shared rows array, against the D-077 contract; it works only because its lazy children are already loaded; hand the story a fresh array per switch (PC-054 integrator note) | todo (low) | | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -292,8 +293,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
-| PC-054 | 0010-c5 | 1 | held | 12871ed, 5b36220, 6a24f16 (pc/PC-054) |  |  |
-| PC-055 | 0018-a | 1 | todo | | | |
+| PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
+| PC-055 | 0018-a | 1 | impl | | | |
 | PC-056 | 0010-c6 | 1 | todo | | | |
 | PC-057 | 0010-e1 | 1 | done (integrated cc60f8e, CI 43477397796 green; linked ceilings entity-picker 10.98 (10.88), grid 40.77 (40.68; 1.32 KB left under 42 for PC-054), grid-editing 5.67 (5.58); e2e 951) | 86eb8cf, f74dc2d, 13a04b1, cc60f8e (pc) |  |  |
 | PC-058 | 0010-e2 | 1 | held | 78a4afa, d435e7a, d36a847 (pc/PC-058) |  |  |
