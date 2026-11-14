@@ -15,6 +15,7 @@ import {
   input,
   model,
   output,
+  PendingTasks,
   signal,
   untracked,
   viewChild,
@@ -383,6 +384,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private readonly errorDisplay = inject(TM_ERROR_DISPLAY);
   private readonly modal = inject(TmModal);
   private readonly destroyRef = inject(DestroyRef);
+  /** Holds the app unstable while a repeated announcement waits to be restored. */
+  private readonly pendingTasks = inject(PendingTasks);
   private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
   /** The enclosing grid cell's registration sink, if any — absent standalone. */
   private readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
@@ -613,6 +616,8 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   private warnedLabelPartsDrift = false;
   /** True once destroy ran — guards late async continuations. */
   private destroyed = false;
+  /** Cancels a repeated announcement still waiting to be restored, if any. */
+  private cancelAnnounceRestore: (() => void) | null = null;
   /** Suppresses blur handling while a picker-launched modal owns focus. */
   private suppressBlur = false;
   /**
@@ -1223,6 +1228,7 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
       this.resolutionController?.abort();
       this.resolutionController = null;
       this.cancelDebounce();
+      this.cancelAnnounceRestore?.();
       this.openModal?.close();
       this.hostElement.removeEventListener('keydown', this.onCaptureKeydown, { capture: true });
     });
@@ -2653,15 +2659,25 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
    * @internal
    */
   ɵannounce(message: string): void {
+    // A newer message supersedes a repeat still waiting to be restored:
+    // the late restore would otherwise overwrite it.
+    this.cancelAnnounceRestore?.();
     if (untracked(this.liveText) === message) {
       // Re-announce an identical message: clear first, restore a beat later
-      // (an unchanged live region announces nothing).
+      // (an unchanged live region announces nothing). The wait is a pending
+      // task, so the app's stability, and a test's, covers the restore.
       this.liveText.set('');
-      setTimeout(() => {
-        if (!this.destroyed) {
-          this.liveText.set(message);
-        }
+      const removeTask = this.pendingTasks.add();
+      const timer = setTimeout(() => {
+        this.cancelAnnounceRestore = null;
+        this.liveText.set(message); // schedules its render before the task ends
+        removeTask();
       });
+      this.cancelAnnounceRestore = () => {
+        this.cancelAnnounceRestore = null;
+        clearTimeout(timer);
+        removeTask();
+      };
       return;
     }
     this.liveText.set(message);
