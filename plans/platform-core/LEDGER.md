@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-099 | pc-4 | pc/PC-099 | released (after PC-062 f861d40): re-merge + integrate from pc-4 (pc-1 lent to PC-F40) | impl (Opus, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
-| PC-031 | pc-3 | pc/PC-031 | r1 (impl 646fde1: 12 deviations; budgets over spec (pager 2.8/2, tree 5.09/4, reorder 4.47/3, root 9.14); WebKit drop accepted by exact text match without drag id; tree prefetches children one level ahead) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
+| PC-031 | pc-3 | pc/PC-031 | fix1 + merge (held; R1 0/1/8: reorder handle click opens a Move menu (WCAG 2.5.7); tighten the id-less drop fallback; D-082) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-055 | pc-2 | pc/PC-055 | held 10bbca4 (fix1 166c532: single flight shares failures under its own 30 s timeout, mutation-checked; expires_in clamped to 1 day; merge clean, gates green incl. Identity integration 204) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 | PC-040 | pc-f2 | pc/PC-040 | fix1 + integrate (held; R1 0/3/8: buildTransitive analyzers, analyze generated code, run every touched integration suite; D-081) | impl (Opus, high, launched 2026-11-14) | r1 (launched) | 2026-11-14 |
 
@@ -275,7 +275,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-028 | 0012-c2 | 1 | done (17dedec, CI 43148071042 green) | c56c48a, 675cbb1, 9b5727e, 17dedec (pc) | 21.15M (impl+fix1+fix2 16.54, r1 2.14, r2 2.47) | D-056 |
 | PC-029 | 0014-a | 1 | done (1816210, CI 43152469396 green) | c3bce14, 56bd70b, 1816210 (pc) | 14.39M (impl+fix1+int 12.24, r1 2.15) | merge with PC-028 needed a semantic fix to DataBatchDatabase (seeded caller id above the reserved band; reset keeps ids ≤ 999) |
 | PC-030 | 0023-e | 1 | done (integrated 6f87f63; its e2e flake fixed by PC-F35 at 8b39d28, whose client CI is green) | 08f0ff9, ad42a11, acf42dc (pc/PC-030), 6f87f63 (pc) |  |  |
-| PC-031 | 0023-f | 1 | r1 | 646fde1 | | |
+| PC-031 | 0023-f | 1 | fix1 + merge (held) | 646fde1 | | |
 | PC-032 | 0011-e | 1 | done | 521655a, 427c7c1, 5067600, aad2e61 (pc) | 26.64M (impl+fix+int 19.65 Opus, r1 3.42, r2 3.57 Fable) | CI 43109655216 green; 22 deviations; compressed/fingerprinted index.html all get CSP; Hub group requires HubMetadata (MapHub only) |
 | PC-033 | 0012-d | 1 | done (CI 43314555760 green; 6488ee1) | f156e3d, 5f0a6e0, 107225d, 6488ee1 (pc) | 27.99M (impl 22.01, r1 2.87, r2 3.11) |  |
 | PC-034 | 0011-d | 1 | done (CI 43298198316 green; integrated 4fb84e2; commit 3 77389f9; steps keyed by name through registrations with factories; generic steps closed over the leaf) | 2cbb909, 074a856, 77389f9, 91886ef, c1817dc, 4fb84e2 (pc) | 24.18M (impl+fix+int 19.11, r1 1.77, r2 3.30) |  |
@@ -306,7 +306,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-059 | 0010-d3 | 1 | done (bcb703e, CI 43156693433 green) | c60627e, 89dd3d5, bcb703e (pc) | 17.03M (impl+fix1+int 15.81, r1 1.22) | R1 0/1/1 fixed; e2e 716/716; '.' entry 8.48/8.5 KB |
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
-| PC-062 | 0015-a | 1 | integrated f861d40 (CI pending) | e97c3f3, 924fcd3, 2a34bc69, f861d40 (pc) |  | carry from PC-040 r1: whichever of PC-040/PC-062 integrates second deletes the analyzer suite's and the probe's pipeline stub files, adds the pipeline rows to NamePinTests and re-runs the probe |
+| PC-062 | 0015-a | 1 | done (integrated f861d40, CI 43614912992 green) | e97c3f3, 924fcd3, 2a34bc69, f861d40 (pc) |  | carry from PC-040 r1: whichever of PC-040/PC-062 integrates second deletes the analyzer suite's and the probe's pipeline stub files, adds the pipeline rows to NamePinTests and re-runs the probe |
 | PC-063 | 0015-b | 1 | todo | | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
