@@ -82,6 +82,19 @@ namespace Tellma.Core.Composition
             ArgumentNullException.ThrowIfNull(environment);
             ArgumentNullException.ThrowIfNull(compose);
 
+            // No outbound HTTP client of any host that composes a distribution (the web host, the
+            // migrator and its client-asset emit alike) logs through the factory's default loggers.
+            // At Trace they put each request and response header's raw value into the event's
+            // structured state, and only the rendered message is redacted, so a bearer token, API key
+            // or basic credential would reach any sink that serialises state once a Trace level for
+            // System.Net.Http is enabled. The trade is deliberate: the per-request "Start/End
+            // processing HTTP request" lines are no longer logged; outbound requests stay observable
+            // through the HttpClient instrumentation's spans and metrics where an exporter is
+            // configured, and each connector logs its own failures. As a default it applies before
+            // every client's own configuration, whenever the client is registered: a client that
+            // removes the loggers itself is unaffected, and one that adds a logger of its own keeps it.
+            _ = services.ConfigureHttpClientDefaults(static http => http.RemoveAllLoggers());
+
             CompositionPipeline pipeline = new(slug, services, configuration, environment, realizers, icuProbe);
 
             // The graph gate: nothing is realised over a graph that cannot be ordered.

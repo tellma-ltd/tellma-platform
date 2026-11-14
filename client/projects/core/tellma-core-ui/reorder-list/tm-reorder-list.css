@@ -1,0 +1,151 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-reorder-list — rows at the option-row height, each led by a 24px grab
+   handle. The insertion line is absolutely placed over the gap between
+   rows, so a drag never reflows the list. */
+
+:host {
+  /* The size ladder, re-pointed once per step. */
+  --tm-reorder-row-height: var(--field-option-height);
+  --tm-reorder-font-size: var(--field-font-size);
+
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--tm-reorder-font-size);
+  color: var(--reorder-list-text);
+}
+
+:host([data-size='sm']) {
+  --tm-reorder-row-height: var(--field-option-height-sm);
+  --tm-reorder-font-size: var(--field-font-size-sm);
+}
+
+:host([data-size='lg']) {
+  --tm-reorder-row-height: var(--field-option-height-lg);
+  --tm-reorder-font-size: var(--field-font-size-lg);
+}
+
+/* ---- Frame and list ---- */
+
+/* The drop target; the insertion line's containing block. */
+.tm-reorder-list__frame {
+  position: relative;
+  border-radius: var(--reorder-list-radius);
+}
+
+.tm-reorder-list__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--reorder-list-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Rows ---- */
+
+.tm-reorder-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--reorder-list-gap);
+  box-sizing: border-box;
+  min-block-size: var(--tm-reorder-row-height);
+  padding-inline: var(--reorder-list-padding-x);
+  border-radius: var(--reorder-list-radius);
+  background: var(--surface-card);
+}
+
+/* A keyboard grab tints its row. */
+.tm-reorder-list__row--grabbed {
+  background: var(--reorder-list-grabbed-bg);
+}
+
+/* The row a pointer drag carries lifts. */
+.tm-reorder-list__row--dragging {
+  box-shadow: var(--shadow-sm);
+}
+
+.tm-reorder-list__content {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Handle ---- */
+
+.tm-reorder-list__handle {
+  --icon-size: var(--reorder-list-handle-icon-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--reorder-list-handle-size);
+  block-size: var(--reorder-list-handle-size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--reorder-list-radius);
+  background: transparent;
+  color: var(--reorder-list-handle);
+  cursor: grab;
+}
+
+.tm-reorder-list__handle:hover {
+  background: var(--reorder-list-handle-hover-bg);
+}
+
+.tm-reorder-list__handle:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  box-shadow: var(--focus-ring);
+}
+
+/* A grabbed row's handle stays pressed-looking. */
+.tm-reorder-list__row--grabbed .tm-reorder-list__handle {
+  color: var(--reorder-list-indicator);
+  cursor: grabbing;
+}
+
+/* ---- Empty state ---- */
+
+.tm-reorder-list__empty {
+  padding-block: var(--reorder-list-empty-padding-y);
+  color: var(--reorder-list-empty-text);
+  text-align: center;
+}
+
+/* ---- Insertion line ---- */
+
+/* Centred on the boundary it marks, across the frame's width. */
+.tm-reorder-list__indicator {
+  position: absolute;
+  inset-inline: 0;
+  block-size: var(--reorder-list-indicator-size);
+  border-radius: var(--reorder-list-indicator-size);
+  background: var(--reorder-list-indicator);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* ---- Forced colors ---- */
+
+@media (forced-colors: active) {
+  .tm-reorder-list__row--grabbed {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-reorder-list__handle:focus-visible {
+    outline-color: CanvasText;
+  }
+
+  .tm-reorder-list__indicator {
+    background: Highlight;
+  }
+}

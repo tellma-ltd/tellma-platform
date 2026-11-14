@@ -23,7 +23,11 @@ for one radio), `TmSegmentedHarness` and `TmSwitchHarness`; the search box
 has `TmSearchFieldHarness`; and the date and time controls have
 `TmDateRangeHarness`, `TmTimeFieldHarness` and `TmDateTimeFieldHarness`,
 whose parts are reached as `TmDatePickerHarness`, `TmTimeFieldHarness` and
-`TmFormFieldHarness` (for each part's messages).
+`TmFormFieldHarness` (for each part's messages). The collections have
+`TmPagerHarness` (the status, the buttons and the size select),
+`TmTreeHarness` with `TmTreeNodeHarness` (one node's state, twisty and
+keys) and `TmReorderListHarness` (the rows, the handles and the grab
+model's keys, and the move menu a handle's click opens); the drag-drop directives impose nothing a harness would add.
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

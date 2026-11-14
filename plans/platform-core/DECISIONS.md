@@ -359,6 +359,19 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-084 (2026-11-14): shadow-property gate allow-list and scope (PC-F41)
+
+- **Allow-list.** The startup gate (in core.entity-metadata) allows the period columns and Node per spec 0012 §14, plus five model-only machinery columns that other specs require: Job StateJson, LeaseToken, ConfirmedKeys (spec 0020 §2.3) and Blob StorageKey, Sha256 (spec 0017 §2.1-2.2). Entries are keyed by CLR type + property name; Job and Blob are sealed and only Core can contribute model configurations.
+- **Scope.** Only the tenant model is gated: it is the only model taking pack or distribution input. The catalog context is Core-only, and OpenIddict's vendor entities carry shadow FKs by design.
+- **Neighbouring fix.** core.Job.ConfirmedKeys is now withheld from the Queryex schema, as spec 0020 §2.3 requires.
+- **For Ahmad:** spec 0012 §14 says "two platform shadow properties exist"; it should list the five machinery columns from 0020 §2.3 and 0017 §2.1-2.2 too.
+
+### D-083 (2026-11-14): outbound HTTP logging default and SendGrid refusal level (PC-F39)
+
+- **One default, in core.** `AddTellma` removes IHttpClientFactory's default loggers for every named and typed client, so no host that composes a distribution (web, migrator commands, emit-client-assets) can log request headers such as bearer tokens or API keys at Trace. The standalone identity host keeps its own call because it does not compose a distribution; PC-055's per-client call on the identity client stays as a harmless duplicate. Trade-off, documented in the Tellma.Core, Tellma.Identity.Web and SendGrid adapter READMEs: the per-request "Start/End processing HTTP request" lines are gone; outbound calls stay visible as HttpClient spans and metrics where an exporter is configured, and each sender logs its own failures.
+- **SendGrid refusal at Warning.** `RequestFailed` moves from Debug to Warning (status + provider error text, never the key), matching spec 0007 §9.2's table ("Message failed" at Warning) and its PII rule.
+- **For Ahmad:** spec 0007 (around line 1801) still says the adapters record a refusal's status and error code at Debug; it should say Warning.
+
 ### D-082 (2026-11-14): reorder-list single-pointer path, drop fallback, tree prefetch and budgets (PC-031)
 
 - **Reorder handle.** The handle's keyboard grab does not satisfy WCAG 2.5.7, which needs a single-pointer alternative to dragging; screen-reader activation also sends a click. A click on the handle therefore opens a menu: Move up, Move down, Move to top, Move to bottom, disabled at the ends. Each choice moves the item, emits `moved`, announces, and returns focus to the handle. The keyboard grab model stays.

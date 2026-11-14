@@ -16,11 +16,16 @@ namespace Tellma.Connector.SendGrid.Adapter
     internal static partial class SendGridEmailLog
     {
         /// <summary>SendGrid refused a mail-send request.</summary>
+        /// <remarks>
+        ///     At Warning so that a refusal shows at the shipped Information level: the transport's
+        ///     HTTP client logs nothing per request, so this is the only log line a refused call
+        ///     leaves. It carries the status and the provider's error text, never the API key.
+        /// </remarks>
         /// <param name="logger">The logger.</param>
         /// <param name="statusCode">The HTTP status it answered with.</param>
         /// <param name="error">The parsed error text, or the raw body when it was not JSON.</param>
         [LoggerMessage(
-            Level = LogLevel.Debug,
+            Level = LogLevel.Warning,
             Message = "SendGrid answered {StatusCode} to an email mail-send request: {Error}")]
         public static partial void RequestFailed(ILogger logger, int statusCode, string? error);
 

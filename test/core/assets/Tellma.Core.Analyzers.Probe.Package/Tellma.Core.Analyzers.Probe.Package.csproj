@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Not an xunit project, and deliberately NOT in Tellma.slnx: the package-flow twin of the
+         analyzer probe. It compiles the probe's sources against the Tellma.Core PACKAGE only, from
+         the local feed `dotnet pack` fills, so its build fails with all six errors only when the
+         analyzers reach a project that gets the contract package transitively. The CI design-e2e
+         job packs the libraries first. Versions are explicit because the Tellma packages are not
+         pinned in Directory.Packages.props. -->
+    <TellmaTestAsset>true</TellmaTestAsset>
+    <RootNamespace>Tellma.Core.Analyzers.Probe</RootNamespace>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same violations and pipeline stand-ins as the project-reference probe. -->
+    <Compile Include="..\Tellma.Core.Analyzers.Probe\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tellma.Core" Version="1.0.0" />
+  </ItemGroup>
+
+</Project>
