@@ -128,6 +128,19 @@ describe('TmSearch timing', () => {
     expect(queries()).toEqual(['a', 'ab']);
   });
 
+  it('emits the empty query at once on a clear inside a burst, and drops the burst’s trailing edge', () => {
+    // A clear supersedes the text it removes: the window still open on "ab"
+    // must not search for it afterwards.
+    const { fixture, queries, type } = setup();
+    const search = fixture.debugElement.children[0].references['search'] as TmSearch;
+    type('a');
+    type('b');
+    search.clear();
+    expect(queries()).toEqual(['a', '']);
+    vi.advanceTimersByTime(100);
+    expect(queries()).toEqual(['a', '']);
+  });
+
   it('holds a repeating key until it is released', () => {
     const { keyup, queries, type } = setup();
     type('a');
