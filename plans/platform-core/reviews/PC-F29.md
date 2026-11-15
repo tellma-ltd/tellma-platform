@@ -93,3 +93,83 @@ reports in `.tmp/pcf29-*`):
   limit sized to its measured cost.
 - The LEDGER "Flaky" row for `build.fixture.spec.ts` (the 1200 s hook timeout) is addressed by the
   same change.
+
+## Review 1
+
+Scope: commit 1 (6a5ebb36). What I checked, and found sound:
+
+- **Coverage.** All three assertions of the old test remain, one per test, and nothing was
+  weakened. The real `.cmd` shim launch (`pnpm --version`, with no DEP0190) still runs on every
+  OS, so the `client-windows` job's `pnpm run lint:test` covers it on `windows-latest`. The
+  fixture build fakes pnpm, so this is the only real shim launch in the suite, as before.
+  `tmNodeProcessRunner.run` calls `tmProcessLaunch(command, args)` with its defaults
+  (`process.platform`, and `process.env`, whose case-insensitive `ComSpec` lookup on Windows is
+  unchanged). The pure function is therefore the production code path, not a copy of it. On
+  Windows the wiring is also proven end to end, because a bare `spawn('pnpm')` would fail with
+  ENOENT. vitest's `suppress-warnings.cjs` does not filter DEP0190, so the warning check still works.
+- **Two projects and groupOrder** (vitest 4.1.9, read in `cli-api.24X8XwN1.js`):
+  - `groupSpecs` puts `fixture-build` in group 1, and `executeTests` runs the groups one after the
+    other with `Promise.allSettled`. A failure in the `tools` group therefore does not skip the
+    fixture build. Both projects inherit the same `maxWorkers`, but their `groupOrder`s differ, so
+    the "different maxWorkers but same groupOrder" error cannot fire.
+  - `vitest list --filesOnly` lists 37 files: 36 in `[tools]` and 1 in `[fixture-build]`. No file
+    appears twice, and the count equals the tracked spec files under both include roots.
+  - Filters still work: a name filter (`common.spec`), `--project fixture-build`, and an exact
+    path each select the expected file.
+  - No coverage config exists, and the script and both CI steps are unchanged. The default and
+    JSON reporters both worked with the project labels.
+  - Watch mode behaves as before. A change to a module that the fixture spec imports reruns the
+    cold build, but that was already true.
+- **Timeouts.** The real spawns' 120 s is about 8x the worst measured pnpm cost (15.2 s; 14.7 s in
+  my run). The two cheap spawns share that budget, but a hang still fails, only later. The fixture
+  hook keeps 1200 s, about 2.8x my 430 s for the file run alone. `build.spec.ts` gets 60 s for
+  cases that took at most 2.2 s here. None of these hides a real hang. The other real-process
+  siblings all have explicit budgets (checked: `extract-examples`, `no-decimal-operators`,
+  `eslint/index`, `allowed-breakpoints`, and the fixture rebuild cases at 300 s). Every test over
+  2 s in my run sits in one of those budgeted describes.
+- **CI cost.** Run 43636806694 spent 73 s (Windows) and 33 s (Linux) on the whole lint:test step,
+  `prelint` included. Serializing adds at most the `tools` group's time, about 36 s on Windows and
+  less on Linux. That is small against the jobs' 45-minute limits. No CI run exists yet for
+  6a5ebb36, so the split is verified locally on Windows only.
+- **AGENTS.md.** `FIXTURE_BUILD_SPEC`, `TmProcessLaunch` and its members, and `tmProcessLaunch`
+  carry TSDoc. The config, the specs and `process.ts` carry inline comments on the non-trivial
+  parts. Both READMEs describe the grouping. The config and the pure tests are OS-neutral (POSIX
+  path in the exclude, explicit platform arguments). The test names cite no spec, PC id or
+  decision. The changed files pass ESLint and both relevant `tsc` projects.
+
+My full run of `pnpm run lint:test` (Windows, with other slots building): 234/234 tests in 37
+files, exit 0. Wall time was 810 s, of which `prelint:test` took about 285 s and vitest 524.5 s.
+The `tools` group finished at 88.4 s. The fixture-build file took 430.3 s alone (the cold ng
+build's bundle generation took 354.6 s). The shim test took 14.7 s and `node -e` took 1.6 s. Log
+and JSON report: `.tmp/pcf29-r1-linttest.log` and `.tmp/pcf29-r1-report.json`.
+
+### Findings
+
+R1-1 (minor): `client/tools/tests/core-lint-scope.spec.mts:28`. This sibling has the same
+load-sensitive pattern, and it keeps only 2x headroom after the change. The implementer notes
+record that it once hit its 120 s limit while the fixture build ran beside it. They then leave
+it alone as "already sized for load". In my run the fixture build no longer overlapped it, yet
+"refuses text arithmetic on a TmDecimal in the primary entry point" still took 60.2 s. That is
+half the budget, spent on the first typed lint that loads the workspace config and a TypeScript
+program. The failure scenario is a busier slot machine, or a `dotnet build` running beside
+lint:test, which is the load that commit 1 measured against. That load can push the first lint
+past 120 s and give the next D-078-style local flake. The serialization does not remove this
+contention, because the typed-lint scope specs still run in parallel with one another inside the
+`tools` group. Suggested fix: either give the describe a budget sized like the fixture rebuild
+cases (300 s), with the measured cost in its comment, or record the measured cost (up to 60 s
+locally) in the implementer notes to justify keeping 120 s. The other scope specs peaked at 33 s
+(`no-platform-sniffing`) and 13.7 s (`csp-only-in-csp-specs`), so this file is the only one near
+its limit.
+
+No blocking or major findings.
+
+### Responses
+
+- R1-1: fixed in the review 1 fixes commit. `core-lint-scope.spec.mts`'s describe now has 300 s,
+  the same budget as the fixture rebuild cases. Its comment gives the measured cost. Its first
+  test took 36.6, 39.9 (with `dotnet build Tellma.slnx` running beside it), 66.8 and 54.1 s in my
+  four runs, and 60.2 s in the reviewer's. So it peaked at 67 s against the old 120 s, and it hit
+  120 s once in the logged history. The other typed-lint scope specs keep their budgets.
+  `no-platform-sniffing.spec.mts` peaked at 37.3 s against 120 s (3.2x), and
+  `csp-only-in-csp-specs.spec.mts` at 13.7 s against 60 s (4.4x). Neither has failed in the
+  logged history.
