@@ -3,9 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
@@ -26,7 +29,8 @@ namespace Tellma.Core.IntegrationTests.Data
     ///     security and stamp checks; the cap and the count of a query's keys; children, siblings and
     ///     blob captures gone with their root in one round trip; a referenced row; a tree's paths,
     ///     cycle fence, depth limit and counts after a save, an activation and a delete with
-    ///     descendants; and the verify statement repairing drift.
+    ///     descendants; a save under a node a concurrent save moves, and two concurrent saves that
+    ///     together close a cycle; the verify statement repairing drift; and the instruments of each.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -226,9 +230,11 @@ namespace Tellma.Core.IntegrationTests.Data
             Node grandchild = NewNode("grandchild", child.Id);
             _ = await CreateAsync(grandchild);
             Assert.Equal($"/{root.Id}/{child.Id}/{grandchild.Id}/", await PathAsync(grandchild.Id));
+            using Instruments instruments = new(fixture);
 
             child.ParentId = other.Id;
             _ = await SaveAsync(child);
+            Assert.Equal(1, instruments.Recomputes());
 
             Assert.Equal($"/{other.Id}/{child.Id}/", await PathAsync(child.Id));
             Assert.Equal($"/{other.Id}/{child.Id}/{grandchild.Id}/", await PathAsync(grandchild.Id));
@@ -300,6 +306,95 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
+        public async Task A_save_under_a_node_a_concurrent_save_is_moving_paths_under_the_new_node()
+        {
+            // root > a > b, and other: a rival does what a save moving a under other does, the move first.
+            (Node root, Node other, Node a, Node b) = await ForkAsync();
+            using Instruments instruments = new(fixture);
+            await using SqlConnection rival = await OpenAsync();
+            int session = await ScalarInAsync(rival, transaction: null, "SET DEADLOCK_PRIORITY HIGH;\nSELECT @@SPID;");
+            await using var rivalTransaction = (SqlTransaction)await rival.BeginTransactionAsync(Token);
+            _ = await ScalarInAsync(rival, rivalTransaction, string.Create(
+                CultureInfo.InvariantCulture, $"UPDATE [fixture].[Nodes] SET [ParentId] = {other.Id}, [Node] = hierarchyid::Parse('/{other.Id}/{a.Id}/') WHERE [Id] = {a.Id};\nSELECT 0;"));
+
+            // --- A new row under b holds b once it read b's node, then waits to recount a ---
+            Node c = NewNode("c", b.Id);
+            Task<SaveReceipt> save = CreateAsync(c);
+            await WaitUntilAsync(() => IsBlockedByAsync(session), save);
+
+            // The rival's re-path of b waits for that hold: the save, the deadlock's victim, runs again after the move.
+            _ = await ScalarInAsync(rival, rivalTransaction, string.Create(
+                CultureInfo.InvariantCulture, $"UPDATE [fixture].[Nodes] SET [Node] = hierarchyid::Parse('/{other.Id}/{a.Id}/{b.Id}/') WHERE [Id] = {b.Id};\nSELECT 0;"));
+            await rivalTransaction.CommitAsync(Token);
+            _ = await save;
+
+            Assert.Equal($"/{other.Id}/{a.Id}/{b.Id}/{c.Id}/", await PathAsync(c.Id));
+            Assert.Equal([(DataMetrics.ReportedClass, "1205")], instruments.Retries());
+            Assert.Equal($"/{root.Id}/", await PathAsync(root.Id));
+        }
+
+        [Fact]
+        public async Task Two_concurrent_saves_that_together_close_a_cycle_serialise_and_the_second_is_refused_by_the_fence()
+        {
+            // root > a > b, and other: the first save moves a under other, the second other under b.
+            (Node root, Node other, Node a, Node b) = await ForkAsync();
+            using Instruments instruments = new(fixture);
+
+            // --- A rival holds root, so the first save waits in its recount holding other, which the second saves ---
+            await using SqlConnection rival = await OpenAsync();
+            int session = await ScalarInAsync(rival, transaction: null, "SELECT @@SPID;");
+            await using var rivalTransaction = (SqlTransaction)await rival.BeginTransactionAsync(Token);
+            _ = await ScalarInAsync(rival, rivalTransaction, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [fixture].[Nodes] WITH (UPDLOCK, ROWLOCK) WHERE [Id] = {root.Id};"));
+
+            a.ParentId = other.Id;
+            Task<SaveReceipt> first = SaveAsync(a);
+            await WaitUntilAsync(() => IsBlockedByAsync(session), first);
+            other.ParentId = b.Id;
+            Task<SaveReceipt> second = SaveAsync(other);
+            await WaitUntilAsync(() => IsWaitingAsync(2), second);
+
+            // --- Released, the first commits; the second, which waited for it, sees the move and the cycle ---
+            await rivalTransaction.CommitAsync(Token);
+            _ = await first;
+            _ = await Assert.ThrowsAsync<TreeCycleException>(() => second);
+
+            Assert.Empty(instruments.Retries());
+            Assert.Equal($"{other.Id}:-", await ParentsAsync(a, other));
+        }
+
+        [Fact]
+        public async Task Two_concurrent_saves_that_together_close_a_cycle_deadlock_and_the_re_run_victim_is_refused_by_the_fence()
+        {
+            // root > a > b, and other: one save moves other under b, the other a under other.
+            (Node root, Node other, Node a, Node b) = await ForkAsync();
+            using Instruments instruments = new(fixture);
+
+            // --- A rival holds b, so the save of other waits for b, the parent it reads, holding other ---
+            await using SqlConnection rival = await OpenAsync();
+            int session = await ScalarInAsync(rival, transaction: null, "SELECT @@SPID;");
+            await using var rivalTransaction = (SqlTransaction)await rival.BeginTransactionAsync(Token);
+            _ = await ScalarInAsync(rival, rivalTransaction, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [fixture].[Nodes] WITH (UPDLOCK, ROWLOCK) WHERE [Id] = {b.Id};"));
+
+            other.ParentId = b.Id;
+            Task<SaveReceipt> moveOther = SaveAsync(other);
+            await WaitUntilAsync(() => IsBlockedByAsync(session), moveOther);
+            a.ParentId = other.Id;
+            Task<SaveReceipt> moveA = SaveAsync(a);
+            await WaitUntilAsync(() => IsWaitingAsync(2), moveA);
+
+            // --- Released, the save of other recounts a, which the save of a holds while it waits for other ---
+            await rivalTransaction.CommitAsync(Token);
+            Exception?[] errors = await Task.WhenAll(OutcomeAsync(moveOther), OutcomeAsync(moveA));
+
+            Assert.Single(errors, static error => error is null);
+            _ = Assert.IsType<TreeCycleException>(Assert.Single(errors, static error => error is not null));
+            Assert.Equal([(DataMetrics.ReportedClass, "1205")], instruments.Retries());
+
+            // Whichever won, its move stands alone: no parent chain closes on itself.
+            Assert.Contains(await ParentsAsync(a, other), (string[])[$"{other.Id}:-", $"{root.Id}:{b.Id}"]);
+        }
+
+        [Fact]
         public async Task A_chain_at_the_depth_limit_is_saved_and_one_level_deeper_is_refused()
         {
             // The fixture's tree is eight levels deep at most.
@@ -323,9 +418,11 @@ namespace Tellma.Core.IntegrationTests.Data
         public async Task A_deactivation_recounts_the_active_counts_of_the_ancestors_in_one_round_trip()
         {
             (Node root, Node child, _) = await ChainAsync();
+            using Instruments instruments = new(fixture);
 
             BatchOutcome outcome = await RunAsync(batch => batch.Update(new UpdateSpec<Node>.ByIds([child.Id], null, null, new Dictionary<string, object?> { ["IsActive"] = false })));
             Assert.Equal(1, outcome.RoundTrips);
+            Assert.Equal(1, instruments.Recomputes());
             Assert.Equal("child:2:1|grandchild:1:1|root:3:2", await CountsAsync());
 
             _ = await RunAsync(batch => batch.Update(new UpdateSpec<Node>.ByIds([child.Id, root.Id], null, null, new Dictionary<string, object?> { ["IsActive"] = true })));
@@ -336,6 +433,7 @@ namespace Tellma.Core.IntegrationTests.Data
         public async Task A_delete_with_descendants_refuses_a_hidden_root_or_a_closure_outside_its_grant_and_else_deletes_the_subtree()
         {
             (Node root, Node child, Node grandchild) = await ChainAsync();
+            using Instruments instruments = new(fixture);
 
             BatchAssertionFailedException hidden = await Assert.ThrowsAsync<BatchAssertionFailedException>(
                 () => RunAsync(batch => batch.Delete(new DeleteSpec<Node>.WithDescendants([child.Id], FilterTree.Leaf("Code != 'child'"), null))));
@@ -349,6 +447,7 @@ namespace Tellma.Core.IntegrationTests.Data
 
             Assert.Equal(1, outcome.RoundTrips);
             Assert.Equal([child.Id, grandchild.Id], handle!.Receipt.Value.DeletedIds.Order());
+            Assert.Equal((2, 1), (instruments.Deleted(), instruments.Recomputes()));
             Assert.Equal("root:1:1", await CountsAsync());
             Assert.Equal($"/{root.Id}/", await PathAsync(root.Id));
         }
@@ -367,6 +466,7 @@ namespace Tellma.Core.IntegrationTests.Data
         public async Task The_verify_statement_repairs_drifted_counts_once_logs_the_repair_and_then_finds_none()
         {
             (Node root, _, _) = await ChainAsync();
+            using Instruments instruments = new(fixture);
             await SqlServerFixture.ExecuteAsync(
                 fixture.ConnectionString,
                 string.Create(CultureInfo.InvariantCulture, $"UPDATE [fixture].[Nodes] SET [SubtreeCount] = 9, [ActiveSubtreeCount] = 0 WHERE [Id] = {root.Id};"));
@@ -375,6 +475,7 @@ namespace Tellma.Core.IntegrationTests.Data
             int again = await VerifyAsync();
 
             Assert.Equal((1, 0), (repaired, again));
+            Assert.Equal((2, 1), (instruments.Recomputes(), instruments.Repairs()));
             Assert.Equal("child:2:2|grandchild:1:1|root:3:3", await CountsAsync());
             FakeLogRecord record = Assert.Single(fixture.Logs.GetSnapshot(), static record => record.Id.Name == "TreeVerify.Repaired");
             Assert.Equal(LogLevel.Warning, record.Level);
@@ -410,6 +511,47 @@ namespace Tellma.Core.IntegrationTests.Data
             Node grandchild = NewNode("grandchild", child.Id);
             _ = await CreateAsync(grandchild);
             return (root, child, grandchild);
+        }
+
+        /// <summary>Creates the fork root > a > b beside the root other, one save per level.</summary>
+        /// <returns>The nodes.</returns>
+        private async Task<(Node Root, Node Other, Node A, Node B)> ForkAsync()
+        {
+            Node root = NewNode("root", null);
+            Node other = NewNode("other", null);
+            _ = await CreateAsync(root, other);
+            Node a = NewNode("a", root.Id);
+            _ = await CreateAsync(a);
+            Node b = NewNode("b", a.Id);
+            _ = await CreateAsync(b);
+            return (root, other, a, b);
+        }
+
+        /// <summary>The stored parents of two nodes, <c>first:second</c>, a root's as <c>-</c>.</summary>
+        /// <param name="first">The first node.</param>
+        /// <param name="second">The second node.</param>
+        /// <returns>The parents.</returns>
+        private Task<string> ParentsAsync(Node first, Node second)
+        {
+            return ScalarAsync<string>(string.Create(
+                CultureInfo.InvariantCulture,
+                $"SELECT CONCAT(ISNULL(CAST((SELECT [ParentId] FROM [fixture].[Nodes] WHERE [Id] = {first.Id}) AS varchar(20)), '-'), ':', ISNULL(CAST((SELECT [ParentId] FROM [fixture].[Nodes] WHERE [Id] = {second.Id}) AS varchar(20)), '-'));"));
+        }
+
+        /// <summary>The exception a task ends with, or null when it succeeds.</summary>
+        /// <param name="work">The task.</param>
+        /// <returns>The exception, or null.</returns>
+        private static async Task<Exception?> OutcomeAsync(Task work)
+        {
+            try
+            {
+                await work;
+                return null;
+            }
+            catch (Exception error)
+            {
+                return error;
+            }
         }
 
         /// <summary>Reserves ids for new rows, then saves them: the reservation first, then the persist.</summary>
@@ -532,6 +674,73 @@ namespace Tellma.Core.IntegrationTests.Data
             return ScalarAsync<int>($"SELECT COUNT(*) FROM {table};");
         }
 
+        /// <summary>Opens a side connection to the fixture database.</summary>
+        /// <returns>The open connection.</returns>
+        private async Task<SqlConnection> OpenAsync()
+        {
+            SqlConnection connection = new(fixture.ConnectionString);
+            await connection.OpenAsync(Token);
+            return connection;
+        }
+
+        /// <summary>Runs text on a side connection and reads its first value as an <see cref="int" />.</summary>
+        /// <param name="connection">The connection.</param>
+        /// <param name="transaction">Its transaction, if any.</param>
+        /// <param name="text">The text, ending in a select of one integer.</param>
+        /// <returns>The value.</returns>
+        private static async Task<int> ScalarInAsync(SqlConnection connection, SqlTransaction? transaction, string text)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = text;
+            return Convert.ToInt32(await command.ExecuteScalarAsync(Token), CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Whether a request waits for a lock the session holds.</summary>
+        /// <param name="session">The session id.</param>
+        /// <returns>True when one does.</returns>
+        private async Task<bool> IsBlockedByAsync(int session)
+        {
+            return await SqlServerFixture.ScalarAsync<int>(
+                fixture.MasterConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [blocking_session_id] = {session};")) > 0;
+        }
+
+        /// <summary>Whether at least a number of requests on the fixture database wait for locks.</summary>
+        /// <param name="count">The number.</param>
+        /// <returns>True when that many do.</returns>
+        private async Task<bool> IsWaitingAsync(int count)
+        {
+            return await SqlServerFixture.ScalarAsync<int>(
+                fixture.MasterConnectionString,
+                $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [database_id] = DB_ID(N'{new SqlConnectionStringBuilder(fixture.ConnectionString).InitialCatalog}') AND [blocking_session_id] <> 0;") >= count;
+        }
+
+        /// <summary>Polls a condition until it holds, failing when the work it waits on ends first.</summary>
+        /// <param name="condition">The condition.</param>
+        /// <param name="running">The work that should be waiting.</param>
+        /// <returns>A task that completes when the condition holds.</returns>
+        /// <exception cref="TimeoutException">It did not hold within 30 seconds.</exception>
+        private static async Task WaitUntilAsync(Func<Task<bool>> condition, Task running)
+        {
+            DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!await condition())
+            {
+                if (running.IsCompleted)
+                {
+                    await running;
+                    Assert.Fail("The work finished without waiting for the lock it should wait for.");
+                }
+
+                if (DateTime.UtcNow > deadline)
+                {
+                    throw new TimeoutException("The condition did not hold within 30 seconds.");
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(25), Token);
+            }
+        }
+
         /// <summary>Runs a scalar query against the fixture database.</summary>
         /// <typeparam name="T">The result's type.</typeparam>
         /// <param name="sql">The query.</param>
@@ -539,6 +748,78 @@ namespace Tellma.Core.IntegrationTests.Data
         private async Task<T> ScalarAsync<T>(string sql)
         {
             return (await SqlServerFixture.ScalarAsync<T>(fixture.ConnectionString, sql))!;
+        }
+
+        /// <summary>The delete, tree and retry instruments of the class's host, from the test's start.</summary>
+        private sealed class Instruments : IDisposable
+        {
+            /// <summary>The deleted root rows.</summary>
+            private readonly MetricCollector<long> _deleted;
+
+            /// <summary>The tree recomputes.</summary>
+            private readonly MetricCollector<long> _recomputes;
+
+            /// <summary>The verify repairs.</summary>
+            private readonly MetricCollector<long> _repairs;
+
+            /// <summary>The re-runs.</summary>
+            private readonly MetricCollector<long> _retries;
+
+            /// <summary>Starts collecting.</summary>
+            /// <param name="fixture">The class's database, whose host the instruments belong to.</param>
+            public Instruments(SaveDatabase fixture)
+            {
+                IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
+                _deleted = new MetricCollector<long>(meters, DataTelemetryNames.MeterName, DataTelemetryNames.RowsDeleted);
+                _recomputes = new MetricCollector<long>(meters, DataTelemetryNames.MeterName, DataTelemetryNames.TreeRecomputes);
+                _repairs = new MetricCollector<long>(meters, DataTelemetryNames.MeterName, DataTelemetryNames.TreeRepairs);
+                _retries = new MetricCollector<long>(meters, DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
+            }
+
+            /// <summary>The root rows deleted so far.</summary>
+            /// <returns>The sum.</returns>
+            public long Deleted()
+            {
+                return Sum(_deleted);
+            }
+
+            /// <summary>The tree recomputes so far.</summary>
+            /// <returns>The sum.</returns>
+            public long Recomputes()
+            {
+                return Sum(_recomputes);
+            }
+
+            /// <summary>The rows the verify statement repaired so far.</summary>
+            /// <returns>The sum.</returns>
+            public long Repairs()
+            {
+                return Sum(_repairs);
+            }
+
+            /// <summary>The re-runs, in order.</summary>
+            /// <returns>Each re-run's class and error tags.</returns>
+            public (string Class, string Error)[] Retries()
+            {
+                return [.. _retries.GetMeasurementSnapshot().Select(static measurement => ((string)measurement.Tags[DataTelemetryNames.ClassTag]!, (string)measurement.Tags[DataTelemetryNames.ErrorTag]!))];
+            }
+
+            /// <inheritdoc />
+            public void Dispose()
+            {
+                _deleted.Dispose();
+                _recomputes.Dispose();
+                _repairs.Dispose();
+                _retries.Dispose();
+            }
+
+            /// <summary>The sum of a collector's measurements.</summary>
+            /// <param name="collector">The collector.</param>
+            /// <returns>The sum.</returns>
+            private static long Sum(MetricCollector<long> collector)
+            {
+                return collector.GetMeasurementSnapshot().Sum(static measurement => measurement.Value);
+            }
         }
     }
 }

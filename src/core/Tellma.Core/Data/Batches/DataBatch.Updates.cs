@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Collections.Frozen;
+using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
@@ -177,9 +178,13 @@ namespace Tellma.Core.Data.Batches
                 draft =>
                 {
                     bindIds(draft);
-                    foreach ((PropertyMetadata _, object? value) in assigned)
+                    foreach ((PropertyMetadata property, object? value) in assigned)
                     {
-                        _ = draft.Scalar(value);
+                        // A null binds as text, which every column but a binary one converts from;
+                        // a binary column's null binds as binary.
+                        _ = value is null && property.ClrType == typeof(byte[])
+                            ? draft.Scalar(SqlDbType.VarBinary, null, ScalarValues.BinarySize)
+                            : draft.Scalar(value);
                     }
 
                     if (userId is int user)
@@ -290,9 +295,37 @@ namespace Tellma.Core.Data.Batches
                         $"The update of {metadata.Name} assigns '{name}' a value of length {length}, longer than its column's {property.MaxLength}.",
                         parameterName);
                 }
+
+                // An enum binds by the name of one defined member: a combination or an undefined
+                // value has none, and is refused here rather than when the statement binds.
+                if (value is Enum member && !Enum.IsDefined(member.GetType(), member))
+                {
+                    throw new ArgumentException(
+                        $"The update of {metadata.Name} assigns '{name}' the value {member}, which is not a defined member of {member.GetType().Name}.",
+                        parameterName);
+                }
+
+                // A decimal column holds as many integral digits as its precision leaves its scale;
+                // more fail in the database as an arithmetic overflow. Extra fractional digits round.
+                if (value is decimal number && property is { Precision: int precision, Scale: int scale }
+                    && IntegralDigits(number) > precision - scale)
+                {
+                    throw new ArgumentException(
+                        $"The update of {metadata.Name} assigns '{name}' the value {number.ToString(CultureInfo.InvariantCulture)}, whose integral digits pass its decimal({precision.ToString(CultureInfo.InvariantCulture)}, {scale.ToString(CultureInfo.InvariantCulture)}) column.",
+                        parameterName);
+                }
             }
 
             return [.. metadata.Properties.Where(property => assignments.ContainsKey(property.Name)).Select(property => (property, assignments[property.Name]))];
+        }
+
+        /// <summary>The digits of a decimal's integral part; none for a value below one in magnitude.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>The digit count.</returns>
+        private static int IntegralDigits(decimal value)
+        {
+            decimal integral = decimal.Truncate(Math.Abs(value));
+            return integral == 0 ? 0 : integral.ToString(CultureInfo.InvariantCulture).Length;
         }
 
         /// <summary>The stamp properties of an entity an update stamps.</summary>

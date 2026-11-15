@@ -356,6 +356,42 @@ namespace Tellma.Core.Tests.Data.Writes
             _ = Assert.Single(batch.Statements);
         }
 
+        [Theory]
+        [InlineData("Shade", "is not a defined member")]
+        [InlineData("Reading", "whose integral digits pass its decimal(9, 2) column")]
+        public void An_undefined_enum_member_or_a_decimal_too_wide_for_its_column_is_refused_and_appends_nothing(string property, string reason)
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            object value = property == "Shade" ? (GaugeShade)7 : 12_345_678m;
+
+            // All-or-nothing: the not-found check would precede the update, so neither is appended.
+            ArgumentException refusal = Assert.Throws<ArgumentException>(
+                () => batch.Update(new UpdateSpec<Gauge>.ByIds([1], null, null, Assign((property, value)), AllOrNothing: true)));
+
+            Assert.Contains(reason, refusal.Message, StringComparison.Ordinal);
+            Assert.Empty(batch.Statements);
+
+            // A defined member and seven integral digits fit.
+            _ = batch.Update(new UpdateSpec<Gauge>.ByIds([1], null, null, Assign(("Shade", GaugeShade.Square), ("Reading", -1_234_567.995m)), AllOrNothing: true));
+            Assert.Equal(2, batch.Statements.Count);
+        }
+
+        [Fact]
+        public void A_null_assigned_to_a_binary_column_binds_as_binary()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+
+            _ = batch.Update(new UpdateSpec<Gauge>.ByIds([1], null, null, Assign(("Seal", null), ("Reading", null))));
+
+            // The text a null binds as converts to every column type but a binary one.
+            BatchStatement statement = Assert.Single(batch.Statements);
+            ScalarParameter seal = Assert.IsType<ScalarParameter>(statement.Parameters.Single(static parameter => parameter.Name == "@tb0_p1"));
+            ScalarParameter reading = Assert.IsType<ScalarParameter>(statement.Parameters.Single(static parameter => parameter.Name == "@tb0_p0"));
+            Assert.Equal((SqlDbType.VarBinary, null), (seal.Type, seal.Value));
+            Assert.Equal(SqlDbType.NVarChar, reading.Type);
+            Assert.Contains("t.[Reading] = @tb0_p0, t.[Seal] = @tb0_p1", statement.Text, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void Ids_that_are_null_repeated_or_not_integers_are_refused()
         {

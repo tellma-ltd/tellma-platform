@@ -260,6 +260,40 @@ namespace Tellma.Core.Tests.Data.Writes
         }
 
         [Fact]
+        public void A_sibling_with_a_blob_column_is_deleted_before_its_owner_and_its_blobs_captured()
+        {
+            // The sibling's table belongs to another stack: the delete still needs no authority over it.
+            using BatchHarness siblingOwned = new(new MapOwners(new() { [new TableName("sv", "GaugeCards")] = "cards" }), compose: SaveModel.Compose);
+            DataBatch batch = siblingOwned.Batch(BatchPurpose.Persist);
+
+            DeleteHandle handle = batch.Delete(new DeleteSpec<Gauge>.ByIds([1], null, null));
+
+            // A cascade reports no rows, so the sibling leaves explicitly, its blob read out, before its owner.
+            Assert.Equal(
+                """
+                DECLARE @tb1_blob_sv_GaugeCards_ScanId TABLE ([RowId] int NOT NULL, [OldBlobId] int NULL, [NewBlobId] int NULL);
+                DELETE c
+                OUTPUT deleted.[Id], deleted.[ScanId], NULL INTO @tb1_blob_sv_GaugeCards_ScanId ([RowId], [OldBlobId], [NewBlobId])
+                FROM [sv].[GaugeCards] AS c WHERE c.[Id] IN (SELECT [Id] FROM @tb0_keys);
+                DELETE t
+                OUTPUT deleted.[Id]
+                FROM [sv].[Gauges] AS t WHERE t.[Id] IN (SELECT [Id] FROM @tb0_keys);
+
+                """,
+                batch.Statements[1].Text,
+                ignoreLineEndingDifferences: true);
+            Assert.Equal([new TableName("sv", "GaugeCards"), new TableName("sv", "Gauges")], batch.Statements[1].Writes.OrderBy(static table => table.Name, StringComparer.Ordinal));
+            Assert.Equal(
+                [new ColumnCapture(new TableName("sv", "GaugeCards"), "ScanId", new SqlIdentifier("@tb1_blob_sv_GaugeCards_ScanId"))],
+                handle.Captures);
+
+            // A sibling without one still leaves by its cascade.
+            DataBatch crate = siblingOwned.Batch(BatchPurpose.Persist);
+            _ = crate.Delete(new DeleteSpec<Crate>.ByIds([1], null, null));
+            Assert.DoesNotContain("[sv].[CrateExtras]", crate.Statements[1].Text, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void A_sibling_owned_by_a_stack_never_refuses_its_owners_delete_but_an_owned_aggregate_table_does()
         {
             // The sibling's rows go by the database's cascade, so its stack never authorizes the delete.

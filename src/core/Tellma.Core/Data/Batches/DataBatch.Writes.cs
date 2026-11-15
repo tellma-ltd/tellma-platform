@@ -229,6 +229,11 @@ namespace Tellma.Core.Data.Batches
                 throw BatchAssembly.TooManyParameters(_parameterNames.Count + added);
             }
 
+            // --- What the appends change, kept so a statement that fails to bind takes its call's earlier statements with it ---
+            int start = _statements.Count;
+            TableName[] written = [.. _written];
+            string[] parameterNames = [.. _parameterNames];
+            string[] declared = [.. _declared];
             foreach (WriteStatement statement in statements)
             {
                 StatementDraft draft = Begin();
@@ -252,7 +257,18 @@ namespace Tellma.Core.Data.Batches
                 }
                 catch
                 {
+                    // The call appends all of its statements or none: the failing draft is
+                    // discarded, and the statements appended before it are removed with what they
+                    // added to the batch's names and writes. Read caches cleared by their writes
+                    // stay cleared, which only costs a later read its sharing.
                     Discard(draft);
+                    _statements.RemoveRange(start, _statements.Count - start);
+                    _written.Clear();
+                    _written.UnionWith(written);
+                    _parameterNames.Clear();
+                    _parameterNames.UnionWith(parameterNames);
+                    _declared.Clear();
+                    _declared.UnionWith(declared);
                     throw;
                 }
             }

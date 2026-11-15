@@ -367,7 +367,11 @@ no walk reached closes a cycle, the old nodes, the re-path of the rows whose nod
 stamped), and the recount of the old and new nodes' ancestors. A node is the ids from the root,
 `/5/12/`; a new row's provisional node lasts only until the re-path. Both recursive walks carry
 `MAXRECURSION` one below the tree's depth, so a row nested deeper than it is error 530,
-`TreeDepthExceededException`.
+`TreeDepthExceededException`. The walks' anchor parents are U-locked to the commit, by a seek on
+the key, so a save under a node a concurrent save is moving reads the parent after the move, or
+deadlocks with it and reads it on the victim's re-run. Two concurrent saves that would together
+close a cycle likewise serialise, the second seeing the first's move, or deadlock, and the
+victim's re-run meets the fence.
 
 ### Updates and deletes
 
@@ -379,13 +383,15 @@ not show (absent and hidden alike) and throws `50404` with them, then throws `50
 id passes the grant filter. By query it captures at most the cap plus one keys and throws `50413`
 past the cap and `50428` on another count. It never assigns the key, the audit or tree columns, the
 parent of a tree row (a save re-paths it), a blob reference or a write-once column, nor a text
-or binary value longer than its column, and stamps
+or binary value longer than its column, an undefined enum member or a decimal with more integral
+digits than its column holds, and stamps
 `ModifiedAt`/`ModifiedById` unless the table has no audit columns (`Stamp = false`). Assigning an
 activatable tree's `IsActive` recounts the rows' ancestors.
 
 `IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
 roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
-table among its writes but needs no authority over it. By ids it captures the existing rows under U locks and the read filter, selects the rest
+table among its writes but needs no authority over it, except that a sibling holding a blob
+reference is deleted explicitly before its owner, so its blobs are captured too. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree

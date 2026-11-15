@@ -13,7 +13,8 @@ namespace Tellma.Core.Data.Writes
     /// <summary>
     ///     What a delete of one entity removes, fixed by its metadata: the entity's table, every child
     ///     collection's table under it (recursively), the blob columns of each, and the sibling tables
-    ///     whose rows the database removes with their owner's. Built once per entity.
+    ///     whose rows the database removes with their owner's, a sibling holding a blob reference
+    ///     removed explicitly so its blobs are captured. Built once per entity.
     /// </summary>
     internal sealed class DeletePlan
     {
@@ -25,26 +26,23 @@ namespace Tellma.Core.Data.Writes
         /// <param name="metadata">The running model's metadata, which names the siblings.</param>
         private DeletePlan(EntityMetadata root, IEntityMetadataProvider metadata)
         {
-            // --- The tables, in pre-order: the root, then each collection under its owner ---
-            List<DeleteNode> nodes = [];
-            Root = Build(root, parentKey: null, nodes);
-            Nodes = nodes;
-
-            // --- The siblings: a sibling's rows leave with their owner's by its cascading key ---
-            HashSet<TableName> aggregate = [.. nodes.Select(static node => node.Entity.Table)];
-            HashSet<TableName> writes = [.. aggregate];
+            // --- The siblings of the running model, each with the entity it belongs to ---
+            List<(Type Owner, EntityMetadata Entity)> siblings = [];
             foreach (EntityMetadata candidate in metadata.All)
             {
-                if (EntityShapes.GetAttribute<SiblingAttribute>(candidate.ClrType) is { } sibling
-                    && nodes.Exists(node => sibling.Owner.IsAssignableFrom(node.Entity.ClrType)))
+                if (EntityShapes.GetAttribute<SiblingAttribute>(candidate.ClrType) is { } sibling)
                 {
-                    _ = writes.Add(candidate.Table);
+                    siblings.Add((sibling.Owner, candidate));
                 }
             }
 
-            Aggregate = aggregate.ToFrozenSet();
-            Writes = writes.ToFrozenSet();
-            Captures = [.. nodes.SelectMany(static node => node.BlobColumns.Select(column => new DeleteCapture(node, column)))];
+            // --- The tables, in pre-order: the root, then each collection and each explicitly deleted sibling under its owner ---
+            Builder builder = new(siblings);
+            Root = builder.Build(root, parentKey: null, isSiblings: false);
+            Nodes = builder.Nodes;
+            Aggregate = builder.Aggregate.ToFrozenSet();
+            Writes = builder.Writes.ToFrozenSet();
+            Captures = [.. Nodes.SelectMany(static node => node.BlobColumns.Select(column => new DeleteCapture(node, column)))];
         }
 
         /// <summary>The deleted entity's node.</summary>
@@ -54,16 +52,17 @@ namespace Tellma.Core.Data.Writes
         public IReadOnlyList<DeleteNode> Nodes { get; }
 
         /// <summary>
-        ///     The aggregate's own tables, which the delete's statements name: the ones its caller needs
-        ///     the authority to write. A sibling's rows go by the database's cascade, which its owning
-        ///     feature declared, so a sibling's stack never has to authorize its owner's deletes.
+        ///     The aggregate's own tables: the ones the delete's caller needs the authority to write. A
+        ///     sibling's rows leave with their owner's under the cascade its owning feature declared,
+        ///     even when a delete removes them explicitly to capture their blobs, so a sibling's stack
+        ///     never has to authorize its owner's deletes.
         /// </summary>
         public IReadOnlySet<TableName> Aggregate { get; }
 
         /// <summary>The tables a delete writes, for its tags and change tracking: the aggregate's and its siblings'.</summary>
         public IReadOnlySet<TableName> Writes { get; }
 
-        /// <summary>The blob captures, one per blob column of every table of the aggregate, in node order.</summary>
+        /// <summary>The blob captures, one per blob column of every node, the explicitly deleted siblings' included, in node order.</summary>
         public IReadOnlyList<DeleteCapture> Captures { get; }
 
         /// <summary>The plan of an entity, built on first use.</summary>
@@ -77,36 +76,83 @@ namespace Tellma.Core.Data.Writes
             return Plans.GetValue(root, entity => new DeletePlan(entity, metadata));
         }
 
-        /// <summary>Builds a node and its descendants.</summary>
-        /// <param name="entity">The node's entity.</param>
-        /// <param name="parentKey">The column that names the owning row; null for the root.</param>
-        /// <param name="nodes">The nodes built so far, in pre-order.</param>
-        /// <returns>The node.</returns>
-        private static DeleteNode Build(EntityMetadata entity, string? parentKey, List<DeleteNode> nodes)
+        /// <summary>
+        ///     Builds a plan's nodes. A sibling's rows leave with their owner's by its cascading key,
+        ///     so a sibling is only declared among the writes; but a cascade reports no rows, so a
+        ///     sibling that holds a blob reference (itself, in a collection or in a sibling of its own)
+        ///     is deleted explicitly before its owner, its blobs captured like the aggregate's. Its
+        ///     tables stay out of the aggregate's: the sibling's feature declared the cascade, so the
+        ///     caller needs no authority over them.
+        /// </summary>
+        /// <param name="siblings">The siblings of the running model, each with the entity it belongs to.</param>
+        private sealed class Builder(List<(Type Owner, EntityMetadata Entity)> siblings)
         {
-            DeleteNode node = new(entity, parentKey);
-            nodes.Add(node);
-            foreach (ChildCollectionMetadata collection in entity.Children)
+            /// <summary>Every node built, in pre-order.</summary>
+            public List<DeleteNode> Nodes { get; } = [];
+
+            /// <summary>The aggregate's own tables.</summary>
+            public HashSet<TableName> Aggregate { get; } = [];
+
+            /// <summary>Every table the delete writes.</summary>
+            public HashSet<TableName> Writes { get; } = [];
+
+            /// <summary>Builds a node and its descendants.</summary>
+            /// <param name="entity">The node's entity.</param>
+            /// <param name="parentKey">The column that names the owning row; null for the root, the key for a sibling.</param>
+            /// <param name="isSiblings">Whether the node is a sibling's, or under one.</param>
+            /// <returns>The node.</returns>
+            public DeleteNode Build(EntityMetadata entity, string? parentKey, bool isSiblings)
             {
-                node.Children.Add(Build(collection.Child, collection.ParentKey.Column, nodes));
+                DeleteNode node = new(entity, parentKey);
+                Nodes.Add(node);
+                _ = Writes.Add(entity.Table);
+                if (!isSiblings)
+                {
+                    _ = Aggregate.Add(entity.Table);
+                }
+
+                // --- The collections, then the siblings, each under its owner ---
+                foreach (ChildCollectionMetadata collection in entity.Children)
+                {
+                    node.Children.Add(Build(collection.Child, collection.ParentKey.Column, isSiblings));
+                }
+
+                foreach ((Type _, EntityMetadata sibling) in siblings.Where(candidate => candidate.Owner.IsAssignableFrom(entity.ClrType)))
+                {
+                    _ = Writes.Add(sibling.Table);
+                    if (HoldsBlobs(sibling))
+                    {
+                        node.Children.Add(Build(sibling, sibling.Key.Column, isSiblings: true));
+                    }
+                }
+
+                return node;
             }
 
-            return node;
+            /// <summary>Whether an entity, one of its collections or one of its siblings holds a blob reference.</summary>
+            /// <param name="entity">The entity.</param>
+            /// <returns>Whether a delete of its rows has blobs to capture.</returns>
+            private bool HoldsBlobs(EntityMetadata entity)
+            {
+                return entity.BlobReferences.Count > 0
+                    || entity.Children.Any(collection => HoldsBlobs(collection.Child))
+                    || siblings.Exists(candidate => candidate.Owner.IsAssignableFrom(entity.ClrType) && HoldsBlobs(candidate.Entity));
+            }
         }
     }
 
-    /// <summary>One table a delete removes rows from: the deleted entity's, or a collection's under its owner.</summary>
+    /// <summary>One table a delete removes rows from: the deleted entity's, a collection's or an explicitly deleted sibling's, under its owner.</summary>
     /// <param name="entity">The table's entity.</param>
-    /// <param name="parentKey">The column that names the owning row; null for the root.</param>
+    /// <param name="parentKey">The column that names the owning row; null for the root, and the key for a sibling.</param>
     internal sealed class DeleteNode(EntityMetadata entity, string? parentKey)
     {
         /// <summary>The table's entity.</summary>
         public EntityMetadata Entity { get; } = entity;
 
-        /// <summary>The column that names the owning row; null for the root.</summary>
+        /// <summary>The column that names the owning row; null for the root, and the key for a sibling, whose id is its owner's.</summary>
         public string? ParentKey { get; } = parentKey;
 
-        /// <summary>The collections' nodes, in metadata order.</summary>
+        /// <summary>The collections' nodes, in metadata order, then the explicitly deleted siblings'.</summary>
         public List<DeleteNode> Children { get; } = [];
 
         /// <summary>The columns that hold a blob reference.</summary>

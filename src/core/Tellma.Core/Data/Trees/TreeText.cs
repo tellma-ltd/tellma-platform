@@ -103,12 +103,18 @@ namespace Tellma.Core.Data.Trees
             Statement($"                    WHERE d.{node}.IsDescendantOf(b.{node}) = 1)", Option(recursive: false));
 
             // --- T2: the paths, top-down from the affected rows whose parent's node is final ---
+            // The anchors' parents are U-locked to the commit, by a seek on the key so no other row
+            // is locked, and the locking read sees the latest committed node under row versioning. A
+            // concurrent save moving an ancestor of the parent holds the moved row from its root
+            // update and takes the parent when it re-paths it (T4); this save's recount (T5b) needs
+            // the moved row. So the parent is read after the move commits, or the two deadlock and
+            // the victim's re-run reads it then: never a node the move is about to change.
             Line($"DECLARE {paths} TABLE ([Id] {_tree.KeyType} PRIMARY KEY, [Path] varchar(892) NOT NULL);");
             Line($"WITH {walk} ([Id], [Path]) AS (");
             Line($"    SELECT t.[Id], CAST(ISNULL(p.{node}.ToString(), '/') + CAST(t.[Id] AS varchar(20)) + '/' AS varchar(892))");
             Line($"    FROM {table} AS t");
             Line($"    JOIN {affected} AS a ON a.[Id] = t.[Id]");
-            Line($"    LEFT JOIN {table} AS p ON p.[Id] = t.{parent}");
+            Line($"    LEFT JOIN {table} AS p WITH (UPDLOCK, ROWLOCK, FORCESEEK) ON p.[Id] = t.{parent}");
             Line($"    WHERE t.{parent} IS NULL OR t.{parent} NOT IN (SELECT [Id] FROM {affected})");
             Line("    UNION ALL");
             Line("    SELECT c.[Id], CAST(x.[Path] + CAST(c.[Id] AS varchar(20)) + '/' AS varchar(892))");

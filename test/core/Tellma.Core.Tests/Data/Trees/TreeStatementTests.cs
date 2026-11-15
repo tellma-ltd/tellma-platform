@@ -56,7 +56,7 @@ namespace Tellma.Core.Tests.Data.Trees
                     SELECT t.[Id], CAST(ISNULL(p.[Node].ToString(), '/') + CAST(t.[Id] AS varchar(20)) + '/' AS varchar(892))
                     FROM [sv].[Regions] AS t
                     JOIN @tb0_aff AS a ON a.[Id] = t.[Id]
-                    LEFT JOIN [sv].[Regions] AS p ON p.[Id] = t.[ParentId]
+                    LEFT JOIN [sv].[Regions] AS p WITH (UPDLOCK, ROWLOCK, FORCESEEK) ON p.[Id] = t.[ParentId]
                     WHERE t.[ParentId] IS NULL OR t.[ParentId] NOT IN (SELECT [Id] FROM @tb0_aff)
                     UNION ALL
                     SELECT c.[Id], CAST(x.[Path] + CAST(c.[Id] AS varchar(20)) + '/' AS varchar(892))
