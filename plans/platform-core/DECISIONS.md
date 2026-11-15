@@ -359,6 +359,20 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-096 (2026-11-15): spec 0017 §6.4 BlobContainerStep goes to PC-089; PC-141's skipped rows carry to their seam checkpoints
+
+- Ruling: spec 0017 §6.4 (the `core.blob-container` provisioning step, BlobContainerStep) is in no checkpoint's Sections: PC-017 covers §6.1-§6.2 and PC-089 §6.3. PC-089 takes it, since it builds the per-tenant containers and EnsureTenant the step drives. The carry is on PC-089's status row.
+- Carries: PC-141 left six Acme §10 rows on conditional skips (PlatformSeams, keyed on each seam's presence), so each runs once its seam lands. The checkpoint that lands each seam must see it run green: PC-078 (first request binds UserId, Frozen read, ReadOnly read stamps activity), PC-090 (AllowWhenReadOnly action), PC-100 (RunsWhenReadOnly job), and PC-089 for the provisioning-record row (it needs core.bootstrap-administrator from PC-078, core.settings from PC-049 and core.blob-container from PC-089, and PC-089 lands last of the three).
+- Why: a skipped row with no owner never runs. The conditional skip makes the row run by itself; the carry makes its owner responsible for seeing it pass.
+
+### D-095 (2026-11-15): PC-066 holds with two spec gaps for Ahmad; re-homing moves to PC-077
+
+- Ruling: PC-066 (0015-c) is not on the two-review list. Review 1 found 0/1/7, all fixed, and fix 1 rewrote under a tenth of commit 1 (about 450 of 5,900 lines), so no Review 2. It holds at a1abbefc; merge-tree is clean.
+- Scope: the §7.3 error re-homing view is deferred to PC-077, whose deliverables list an "error re-homing view" (PC-066 deviation 15). The carry is on PC-077's status row.
+- For Ahmad (1): spec 0015 §6.6 step 5 says to use ByKey on a child, scoped to the parent key in C#. ByKey's `IReadOnlyDictionary<TK,T>` holds one row per value, so it refuses a property that is unique only within its parent, and step 5 fails for every child `[Unique]`. PC-066 deviation 6 leaves a Later seam for the write pipeline: an internal `ByValues<T,TK>(property, values)` returning `IReadOnlyDictionary<TK, IReadOnlyList<T>>` through the same key-set restriction and comparer, scoped by parent in C#. Step 5's signature needs amending.
+- For Ahmad (2): spec 0015 §7.5 names no log event for a consent given outside every write frame. PC-066 logs it as `ConfirmationAcceptedOutsideFrame`, because the log generator refuses two methods with one event name (SYSLIB1025).
+- Why: both are spec contradictions with a working code answer, so nothing waits. The write pipeline needs the ByValues seam before it validates child uniqueness.
+
 ### D-094 (2026-11-15): ./grid is at its cap; PC-F26 fits by savings, and a re-split is queued
 
 - Ruling: PC-F26's forced-colors rules put ./grid at 42.05 KB against its 42.03 ceiling once merged over PC-F24 (platform-core alone measures 42.02). No raise: D-057(2) and D-067 allow none without real savings or a re-split. PC-F26 gives the overlay ink a forced-colors default on the scroller and drops the per-rule Highlight fallbacks, keeping every review-1 fix; if that does not fit it stops unpushed. Fix item PC-F44 then re-splits ./grid (or takes measured savings) to restore real headroom, and PC-F42 (more grid forced-colors CSS) waits for it.
