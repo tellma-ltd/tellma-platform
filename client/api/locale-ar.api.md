@@ -326,6 +326,12 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly moveToTop: "نقل إلى البداية";
         readonly moveToBottom: "نقل إلى النهاية";
     };
+    readonly tiles: {
+        readonly empty: "لا توجد عناصر للعرض";
+        readonly select: "تحديد {label}";
+        readonly selected: "تم تحديد {count, number} من {total, number}";
+        readonly loadFailed: "تعذر تحميل {label}";
+    };
 };
 
 ```

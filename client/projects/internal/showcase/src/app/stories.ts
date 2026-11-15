@@ -66,6 +66,9 @@ import { SwitchStory } from './switch/switch-story';
 import { TabsStory } from './tabs/tabs-story';
 import { ThemingStory } from './theming/theming-story';
 import { ToastStory } from './toast/toast-story';
+import { TilesLargeStory } from './tiles/tiles-large-story';
+import { TilesStory } from './tiles/tiles-story';
+import { TilesTreeStory } from './tiles/tiles-tree-story';
 import { TreeStory } from './tree/tree-story';
 
 /**
@@ -133,6 +136,9 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'pager', title: 'Pager (tm-pager)', component: PagerStory },
   { id: 'tree', title: 'Tree (tm-tree)', component: TreeStory },
   { id: 'reorder-list', title: 'Reorder list (tm-reorder-list)', component: ReorderListStory },
+  { id: 'tiles', title: 'Tiles (tm-tiles)', component: TilesStory, wide: true },
+  { id: 'tiles-tree', title: 'Tiles (tree mode)', component: TilesTreeStory },
+  { id: 'tiles-large', title: 'Tiles (10,000 rows)', component: TilesLargeStory, wide: true },
   {
     id: 'drag-drop',
     title: 'Drag and drop (tmDragSource + tmDropTarget)',
