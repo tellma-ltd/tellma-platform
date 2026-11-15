@@ -341,6 +341,25 @@ for (const dir of ['ltr', 'rtl'] as const) {
         await expect(cell(page, 40, 0)).toBeInViewport();
         await expect(page.getByTestId('jump')).toBeFocused();
       });
+
+      test('keys queued right behind the write start from the written row', async ({ page }) => {
+        await search(page).click();
+        // The page seeds the active row and the user's keys arrive before the
+        // render that would apply it: the write and the keydowns, in one task.
+        await search(page).evaluate((input) => {
+          document.querySelector<HTMLButtonElement>('[data-testid="jump"]')!.click();
+          for (const key of ['ArrowDown', 'Enter']) {
+            input.dispatchEvent(
+              new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+            );
+          }
+        });
+        await expect(page.getByTestId('activated')).toHaveText('41 via keyboard');
+        await expect(page.getByTestId('activation-count')).toHaveText('1');
+        await expect(page.getByTestId('active-row')).toHaveText('41');
+        await expect(row(page, 41)).toHaveClass(/tm-grid__row--active/);
+        await expect(search(page)).toBeFocused();
+      });
     });
 
     test.describe('links keep the browser menu', () => {

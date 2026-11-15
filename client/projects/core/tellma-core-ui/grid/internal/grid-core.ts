@@ -173,6 +173,14 @@ const EDGE_SCROLL_ZONE_PX = 24;
 /** Auto-scroll speed per animation frame, in px. */
 const EDGE_SCROLL_STEP_PX = 16;
 
+/**
+ * The keys a render of pending changes runs ahead of: those that move the
+ * active cell (the arrows, PageUp, PageDown, Home and End), and Enter, which
+ * opens the active row. The grid takes Enter only under row activation; a
+ * `tmGridDriver` takes the set on its input.
+ */
+export const ɵTM_GRID_FLUSH_KEY = /^(?:Arrow|Page|Home$|End$|Enter$)/;
+
 /** Column types that carry a built-in editing path. */
 const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'text',
@@ -6289,7 +6297,7 @@ export class ɵTmGridCore<T>
       { injector },
     );
 
-    // Viewport tracking on the scroller.
+    // Viewport tracking on the scroller, and the render ahead of its keys.
     effect(
       (onCleanup) => {
         const scroller = this.scrollerSignal();
@@ -6299,6 +6307,40 @@ export class ɵTmGridCore<T>
         untracked(() => this.viewportHeight.set(scroller.clientHeight));
         const observer = new ResizeObserver(() => this.viewportHeight.set(scroller.clientHeight));
         observer.observe(scroller);
+        // Render the page's pending changes before a navigation key, and
+        // before Enter where it opens the row (row activation is always
+        // readonly): a consumer write to `activeRowId` reaches the grid only
+        // through a render, where its input binding updates, and keys queued
+        // behind a busy page arrive before that render (spec 0010 §C.2).
+        // Without it, the key would act on the stale active cell, and the
+        // render would then move the cell to the written row, discarding the
+        // move. A key that edits, clears, pastes or restructures rows keeps
+        // acting on the cell the user sees; an open editor owns its keys, and
+        // so does an overlay in place in the grid (a read-only popup view's
+        // pane, which a render moving the active cell would close).
+        // DOM handlers run outside a tick in zoneless Angular, so the call is
+        // re-entrancy-safe. It runs in a capture-phase native listener, ahead
+        // of the template's `(keydown)`, because Angular's listener wrapper
+        // marks the view dirty before its handler runs: a tick from there
+        // would always refresh the whole grid view. From here, a production
+        // tick with nothing pending does no work (dev mode still runs its
+        // no-changes check). A DOM listener runs outside any reactive
+        // context, so its signal reads track nothing.
+        // The listener lives on the scroller itself, so it goes with it.
+        scroller.addEventListener(
+          'keydown',
+          (event) => {
+            if (
+              ɵTM_GRID_FLUSH_KEY.test(event.key) &&
+              (event.key !== 'Enter' || this.rowMode()) &&
+              !this.engine.edit.session() &&
+              !this.inOverlay(event.target as Element)
+            ) {
+              this.appRef.tick();
+            }
+          },
+          true,
+        );
         onCleanup(() => observer.disconnect());
       },
       { injector },
