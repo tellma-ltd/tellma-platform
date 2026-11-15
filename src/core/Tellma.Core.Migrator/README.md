@@ -68,6 +68,34 @@ bounded by `Tellma:Migrator:VersionTagBumpTimeout` (a `TimeSpan`, 30 seconds by 
 stopped by the run's cancellation; when it fails or runs out of time, the run logs
 `MigratorVersionTagBumpFailed` and reports the original failure.
 
+### Statement bounds and the model lock
+
+Every statement the migrator sends itself, other than its locks' (which carry their own waits),
+runs under an explicit bound from `Tellma:Migrator` (each a `TimeSpan` from 1 second to 1 day,
+validated by the startup gate, so a bad value exits `3`):
+
+| Key | Default | Bounds |
+|---|---|---|
+| `CommandTimeout` | 5 minutes | Reads of the server and the database (edition, existence, collation, freshness), the role, the application principal, the grants, the fingerprint row, and every read `status` makes. |
+| `DatabaseCommandTimeout` | 30 minutes | `CREATE DATABASE` and the `ALTER DATABASE` of read-committed snapshot and the query store, which wait for the database's other sessions and, on Azure SQL Database, for the service. |
+| `MigrationCommandTimeout` | 1 hour | Each statement of the catalog's, the identity store's and a tenant's migrations. The identity store creates its own commands, so it is given the catalog's connection string with this bound as its `Command Timeout`. |
+| `VersionTagBumpTimeout` | 30 seconds | The version-tag move on the way out of a failed tenant run. |
+
+`CREATE DATABASE` copies `model` under an exclusive lock, so creations on one server queue on it,
+as `migrate --parallelism` provisioning several tenants does. A creation that cannot take the lock
+fails with error 1807 (followed by 1802) having created nothing, and is run again on the same
+connection: at most `Tellma:Migrator:CreateDatabaseAttempts` runs (5 by default, from 1 to 20),
+waiting 2, 4, 8 and then 15 seconds between them, each wait jittered by 25 % so parallel creations
+spread out. Each retry logs the warning `MigratorDatabaseCreationRetrying` and running out of
+attempts logs `MigratorDatabaseCreationGaveUp`; the creation's own error then fails that database
+like any other. The run's cancellation stops a wait at once.
+
+Nothing else is run again. A timeout above all is not: the server may still finish a statement
+whose client stopped waiting, so a creation that timed out or was cancelled may have created its
+database. The next run finds it, or is told it exists (error 1801), checks its collation and
+prepares it as a fresh one, which every preparation statement tolerates. A creation that failed on
+leftover files of an earlier database surfaces for an operator to clear.
+
 ### The application role's grants
 
 After every migration the migrator recomputes `tellma_app`'s grants from the model: `SELECT`,
@@ -84,7 +112,8 @@ migration grants it `EXECUTE`.
 | `Commands/` | One class per command. The seed tenants and their administrator come from `Tellma:Seed` (`TellmaSeedOptions` in `Tellma.Core`, validated at startup). |
 | `CommandLine/` | The command line's parser and its usage errors. |
 | `Emit/` | The client metadata and string-pack files: canonical JSON, the content hash in each file name, the loaders module with its `strings` map. |
-| `Sql/` | The database statements: creation and collation checks, the migration locks, the grants, the schema fingerprint rows. |
+| `MigratorOptions` | The `Tellma:Migrator` bounds: each statement class's command timeout, the creation's attempts and the version-tag move's bound. |
+| `Sql/` | The database statements: creation (with the model-lock retry, `CreateDatabaseRetry`) and collation checks, the migration locks, the grants, the schema fingerprint rows. |
 | `TenantMigration` | One tenant's provisioning and migration, each a converging run under the tenant lock. |
 | `TellmaDesignTimeDbContextFactory<TContext>` | The base of a distribution's tenant design-time factory: `dotnet ef` builds the tenant context from the distribution's composition. |
 | `Migrations/` and the snapshot under `Tellma/Core/Migrator/Migrations/` | The catalog chain for `CatalogDbContext` (`Tellma.Core.Tenancy`): schema `catalog` with `Tenants`, `CatalogState` (one row, seeded), `TenantMemberships` and `Sessions`, the tenant id sequence `sq_Tenants` (from 1000) and the membership table type `TenantMembershipList`. History: `catalog.__EFMigrationsHistory`. |
@@ -129,7 +158,8 @@ Then point `CatalogMigrations.Latest` at the new migration's id.
 ## Testing
 
 `Tellma.Core.Tests` covers the command line, the grant statements, the design-time connections,
-the emit's files and the entry point's exit codes without a database. `Tellma.Core.IntegrationTests`
+the emit's files, the bounds, the model-lock retry policy and the entry point's exit codes without
+a database. `Tellma.Core.IntegrationTests`
 drives every command in process against a SQL Server through the test distribution in
 `test/core/assets/Tellma.Core.Migrator.TestDistribution`. `TellmaMigrator.RunAsync` has a public
 overload taking `MigratorRunSettings` (the output writers, the environment, the content root and

@@ -309,7 +309,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             await using (SqlConnection connection = new(tenant))
             {
                 await connection.OpenAsync(Token);
-                rows.AddRange((await SchemaFingerprints.ReadAsync(connection, Token)).Select(static row => row.Fingerprint));
+                rows.AddRange((await SchemaFingerprints.ReadAsync(connection, MigratorOptions.DefaultCommandTimeout, Token)).Select(static row => row.Fingerprint));
             }
 
             Assert.Equal([third, second], rows);
@@ -715,7 +715,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             await SqlServerFixture.ExecuteAsync(tenant, $"INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'{migrationId}', N'10.0.11');");
             await using SqlConnection connection = new(tenant);
             await connection.OpenAsync(Token);
-            Assert.True(await SchemaFingerprints.RecordAsync(connection, fingerprint, migrationId, "1.0.0", Token));
+            Assert.True(await SchemaFingerprints.RecordAsync(connection, fingerprint, migrationId, "1.0.0", MigratorOptions.DefaultCommandTimeout, Token));
         }
 
         /// <summary>Asserts that the role holds the data grants on exactly the given schemas, and none on <c>dbo</c>.</summary>
