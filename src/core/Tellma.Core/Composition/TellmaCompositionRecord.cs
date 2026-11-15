@@ -74,6 +74,12 @@ namespace Tellma.Core.Composition
         public List<ContributedValueSet> ValueSets { get; } = [];
 
         /// <summary>
+        ///     The types whose setting-key fields the features contributed, in realisation order: each
+        ///     type once, for the feature realised first.
+        /// </summary>
+        public List<ContributedType> SettingKeyTypes { get; } = [];
+
+        /// <summary>
         ///     The tenant provisioning steps the composition runs, in realisation order: each class a
         ///     feature contributed, once, and every instance a realiser adds, so one class may run as
         ///     many steps (one per report seed, say). The runner keys each by the name its instance

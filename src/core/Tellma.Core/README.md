@@ -858,6 +858,58 @@ child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, o
 securable with a filter root. It also creates the store, so a store that cannot be created (another
 live `entities` cache on the host's meter) fails the host at startup rather than at its first read.
 
+## Tenant settings
+
+Each tenant database holds its settings in two temporal tables, both bumping the `settings` tag:
+`core.Settings`, one typed row (`CK_Settings_SingleRow`: `Id = 1`) with the tenant's id, its names
+in up to three content languages, the languages (`CK_Settings_Languages`: a tertiary needs a
+secondary, none repeats), one or two calendars (`CK_Settings_Calendars`), the IANA zone, and the
+optional region and digits; and `core.SettingEntries`, one JSON value per declared key. The
+migrations seed the row as a placeholder for tenant `0` (English, Gregorian, UTC); the
+`core.settings` provisioning step (order 15) completes it with the tenant's id and name and the
+distribution's first language, or the languages and calendars a seeded tenant lists, validated as
+the settings editor validates them. A row the step already completed is left alone.
+
+- **Keys.** A feature declares its keys as `public static readonly SettingKey<T>` fields of a holder
+  type and contributes it with `contribution.SettingKeys(typeof(Holder))`. `ISettingKeyRegistry`
+  lists them in contribution and declaration order, the tabs (`general` first, then each category
+  as its first key appears), and the descriptors the client renders. `core.setting-keys` reports a
+  field holding no key, a name that is not dotted camelCase of two segments or more (at most 128
+  characters), an undefined visibility, a type admitted only with a serialization contract of its
+  own, a default that contradicts the type's nullability, a secret with a default or a reference, a
+  category or group outside the grammar, a reference that is not an int id of an int-keyed stack, a
+  name declared twice, and a category spelled two ways.
+- **The store.** `TenantSettingsStore` (the `settings` kind) keeps one `TenantSettings` per tenant,
+  with its client view serialized once. A miss loads through one read batch whose contributor
+  (`SettingsColdLoadContributor`, after the prelude) appends the row and the entries, stamped with
+  the prelude's tag. `ITenantSettingsCache` is the scoped façade (`GetAsync`, `GetForClientAsync`,
+  `Peek`).
+- **The routing guard.** A row whose tenant id is not the routed tenant's fails closed
+  (`TenantDatabaseMismatchException`, logged `Critical`). The placeholder is served only to the
+  platform's own work and never cached, so a provisioned database is read again at once.
+- **Resolution.** A stored value the composition cannot resolve falls back, logged `Critical`
+  (`SettingsValueUnresolvable`): the primary language to English (else the first offered), a
+  secondary or tertiary one ends the list, the primary calendar to Gregorian, a secondary one is
+  dropped, a zone the host cannot resolve (or convert to the Windows id SQL Server's conversions
+  take) to UTC, digits not named by `DigitStyle` to none. An entry no feature declares is dropped;
+  one that does not read as its key, or fails its check, is dropped, logged and counted
+  (`tellma.settings.entries.invalid`).
+- **Secrets.** A secret is stored as the JSON string of its value's JSON, protected by the purpose
+  `Tellma.Core.Settings.Secret` and the tenant id, kept protected in memory, and unprotected on its
+  first `Get<T>`. One that does not unprotect reads as its default, logged `Critical`. A secret is
+  never in the client view, and its default is never in the client metadata.
+- **Negotiation.** `LocaleNegotiationInitializer` (order 200, after the user connection) ensures the
+  scope's settings and negotiates the locale from the request's inputs, the connected user's stored
+  preferences (`IUserLocalePreferences`, when the composition registers one) and the settings; it
+  completes the context's language, culture, calendar, display and tenant zones, today in the
+  tenant's zone, content-language position and settings, and sets no ambient culture.
+- **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
+  default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+
+`core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
+by calendar, year and month, with the month's first Gregorian day and the day after its last; the
+query language seeks it by calendar and first day. Only the migrations write it.
+
 ## Notifications and client events
 
 The catalogue is composed per distribution, never per tenant. A feature registers each notification
