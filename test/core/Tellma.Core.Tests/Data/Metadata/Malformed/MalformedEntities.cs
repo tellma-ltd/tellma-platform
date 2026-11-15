@@ -745,6 +745,106 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
         }
     }
 
+    // --- Shadow properties ---
+
+    /// <summary>A navigation without a foreign-key property, for which EF Core adds a shadow key.</summary>
+    [Table("Navigating", Schema = "fixture")]
+    [TableType]
+    public class Navigating : TopLevelEntity
+    {
+        public Tabled? Owner { get; set; }
+    }
+
+    /// <summary>A mapped collection, for which EF Core adds a shadow key to the collected class.</summary>
+    [Table("Collecting", Schema = "fixture")]
+    [TableType]
+    public class Collecting : TopLevelEntity
+    {
+        public List<Tabled> Items { get; set; } = [];
+    }
+
+    /// <summary>One side of a many-to-many pair of mapped collections, for which EF Core adds a join table.</summary>
+    [Table("Linking", Schema = "fixture")]
+    [TableType]
+    public class Linking : TopLevelEntity
+    {
+        public List<Linked> Links { get; set; } = [];
+    }
+
+    /// <summary>The other side of the many-to-many pair.</summary>
+    [Table("Linked", Schema = "fixture")]
+    [TableType]
+    public class Linked : TopLevelEntity
+    {
+        public List<Linking> Linkers { get; set; } = [];
+    }
+
+    /// <summary>A class EF Core maps as owned, stored in a table of shadow keys.</summary>
+    [Owned]
+    public class Home
+    {
+        [MaxLength(50)]
+        public string? Street { get; set; }
+    }
+
+    /// <summary>An entity that owns a collection of homes.</summary>
+    [Table("HomeOwners", Schema = "fixture")]
+    [TableType]
+    public class HomeOwner : TopLevelEntity
+    {
+        public List<Home> Homes { get; set; } = [];
+    }
+
+    /// <summary>An entity a configuration gives a shadow column; which column is the test's.</summary>
+    [Table("Shadowed", Schema = "fixture")]
+    [TableType]
+    public class Shadowed : TopLevelEntity;
+
+    /// <summary>Maps a shadow column of its own.</summary>
+    public sealed class ShadowedConfiguration : IEntityTypeConfiguration<Shadowed>
+    {
+        public void Configure(EntityTypeBuilder<Shadowed> builder)
+        {
+            _ = builder.Property<string>("Hidden").HasMaxLength(20);
+        }
+    }
+
+    /// <summary>Maps a shadow node on an entity that is not a tree.</summary>
+    public sealed class ShadowedNodeConfiguration : IEntityTypeConfiguration<Shadowed>
+    {
+        public void Configure(EntityTypeBuilder<Shadowed> builder)
+        {
+            _ = builder.Property<HierarchyId>("Node");
+        }
+    }
+
+    /// <summary>Maps a shadow period column on an entity that is not temporal.</summary>
+    public sealed class ShadowedPeriodConfiguration : IEntityTypeConfiguration<Shadowed>
+    {
+        public void Configure(EntityTypeBuilder<Shadowed> builder)
+        {
+            _ = builder.Property<DateTime>("ValidFrom");
+        }
+    }
+
+    /// <summary>Maps a column named like a job's model-only column on an entity that is not the job.</summary>
+    public sealed class ShadowedMachineryConfiguration : IEntityTypeConfiguration<Shadowed>
+    {
+        public void Configure(EntityTypeBuilder<Shadowed> builder)
+        {
+            _ = builder.Property<string>("StateJson");
+        }
+    }
+
+    /// <summary>A discriminator on a type with no derived type.</summary>
+    public sealed class ShadowedDiscriminatorConfiguration : IEntityTypeConfiguration<Shadowed>
+    {
+        public void Configure(EntityTypeBuilder<Shadowed> builder)
+        {
+            _ = builder.HasDiscriminator<string>("Kind").HasValue("Shadowed");
+        }
+    }
+
     // --- Leaves ---
 
     /// <summary>A class contributed as an entity that does not derive from the entity base.</summary>
