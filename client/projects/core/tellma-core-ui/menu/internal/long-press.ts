@@ -27,6 +27,19 @@ export interface TmLongPressOptions {
 const firedGestures = new Set<number>();
 
 /**
+ * Whether `ancestor` is `node` or one of its ancestors in the composed tree:
+ * the walk steps from a shadow root to its host, which `Node.contains` does
+ * not, so a light-DOM scroller around a shadow-hosted element counts.
+ */
+function composedContains(ancestor: Node, node: Node): boolean {
+  let current: Node | null = node;
+  while (current !== null && current !== ancestor) {
+    current = current instanceof ShadowRoot ? current.host : current.parentNode;
+  }
+  return current !== null;
+}
+
+/**
  * Observes touch/pen long-presses on an element (mouse presses never
  * qualify — right-click owns that path). The press cancels on movement
  * beyond the slop, on release, on cancellation, and on a scroll that moves
@@ -145,13 +158,16 @@ export function tmObserveLongPress(
     // non-node target), of the element or an ancestor of it, or of a
     // scroller inside the element that holds the pressed node. Any other
     // scroller, such as an auto-scrolling log or a carousel beside the
-    // element, leaves the press alive.
+    // element, leaves the press alive. The document needs no test of its
+    // own: it is a composed ancestor of every connected element. The
+    // element test still holds once the pressed node is detached (a
+    // re-rendered row), and both tests walk out of shadow roots to their
+    // hosts.
     const scrolled = event.target;
     if (
       !(scrolled instanceof Node) ||
-      scrolled.nodeType === Node.DOCUMENT_NODE ||
-      scrolled.contains(element) ||
-      scrolled.contains(pressNode)
+      composedContains(scrolled, element) ||
+      composedContains(scrolled, pressNode)
     ) {
       cancel();
     }

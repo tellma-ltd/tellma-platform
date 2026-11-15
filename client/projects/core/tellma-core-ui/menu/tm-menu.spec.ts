@@ -857,6 +857,38 @@ describe('ɵtmObserveLongPress', () => {
 
       expect(points).toEqual([{ x: 50, y: 60 }]);
     });
+
+    it('a scroll of an ancestor cancels the press after the pressed node is detached', async () => {
+      touchDown(50, 60, pressed);
+      // A re-render replaces the pressed node while the finger is down.
+      pressed.remove();
+      await scrollBox(ancestor, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll of the observed element itself cancels the press after the pressed node is detached', async () => {
+      element.style.cssText = 'overflow: auto; height: 40px;';
+      touchDown(50, 60, pressed);
+      pressed.remove();
+      await scrollBox(element, 20);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll of a light-DOM ancestor cancels the press on an element inside a shadow root', async () => {
+      // ancestor > shadow host > (shadow root) > element.
+      const shadowHost = document.createElement('div');
+      ancestor.prepend(shadowHost);
+      shadowHost.attachShadow({ mode: 'open' }).append(element);
+      touchDown(50, 60, pressed);
+      await scrollBox(ancestor, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
   });
 
   it('releasing before the delay cancels the press', async () => {
