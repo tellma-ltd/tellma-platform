@@ -24,7 +24,10 @@ namespace Tellma.Core.Abstractions.Data
     ///     The ancestors of a tree page's rows that are not on the page, in the same columns, when they
     ///     were asked for; null otherwise.
     /// </param>
-    /// <param name="CountCap">The cap <paramref name="Count" /> was counted to; null when no count was asked for.</param>
+    /// <param name="CountCap">
+    ///     The cap <paramref name="Count" /> was counted to; null when no count was asked for. A count
+    ///     is only ever taken under a cap, so a page with a count and no cap cannot be written.
+    /// </param>
     [JsonConverter(typeof(RowPageJsonConverter))]
-    public sealed record RowPage(QueryRowSet Rows, int? Count, QueryRowSet? Ancestors, int? CountCap = null);
+    public sealed record RowPage(QueryRowSet Rows, int? Count, QueryRowSet? Ancestors, int? CountCap);
 }

@@ -17,7 +17,8 @@ namespace Tellma.Core.Abstractions.Api
     /// <remarks>
     ///     <c>count</c> is the page's count held to its cap, and <c>countCapped</c> whether the count
     ///     exceeded the cap; both are absent when no count was asked for, and <c>ancestors</c> when
-    ///     no ancestors were. A page without a cap reports its count as is, never capped.
+    ///     no ancestors were. A count is only ever taken under a cap, so a page carrying a count
+    ///     without its cap is refused rather than written as an exact count.
     /// </remarks>
     internal sealed class RowPageJsonConverter : JsonConverter<RowPage>
     {
@@ -43,7 +44,9 @@ namespace Tellma.Core.Abstractions.Api
             // --- The count: the cap plus one stands for "more than the cap" ---
             if (value.Count is int count)
             {
-                int cap = value.CountCap ?? int.MaxValue;
+                // A page built without its cap would report the cap plus one as an exact count.
+                int cap = value.CountCap ?? throw new JsonException(
+                    "A row page's count is written held to the cap it was counted to, and this page carries a count without its cap.");
                 writer.WriteNumber("count", Math.Min(count, cap));
                 writer.WriteBoolean("countCapped", count > cap);
             }

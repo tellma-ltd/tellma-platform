@@ -76,11 +76,12 @@ namespace Tellma.Core.Abstractions.Api
             ArgumentNullException.ThrowIfNull(projection);
 
             // A member's CLR name comes from the property behind it; a member with none (a contract a
-            // custom resolver built) is matched by its JSON name under the naming policy instead.
+            // custom resolver built) is matched by its JSON name under the naming policy instead. A
+            // member with no getter is never written (an ignored one kept for a constructor parameter).
             JsonNamingPolicy? policy = contract.Options.PropertyNamingPolicy;
-            return contract.Properties.Where(member => member.AttributeProvider is MemberInfo clr
+            return contract.Properties.Where(member => member.Get is not null && (member.AttributeProvider is MemberInfo clr
                 ? projection.Contains(clr.Name)
-                : projection.Any(name => string.Equals(policy?.ConvertName(name) ?? name, member.Name, StringComparison.Ordinal)));
+                : projection.Any(name => string.Equals(policy?.ConvertName(name) ?? name, member.Name, StringComparison.Ordinal))));
         }
 
         /// <summary>The projected contract of an entity type, cached per options instance.</summary>
@@ -117,7 +118,9 @@ namespace Tellma.Core.Abstractions.Api
                 throw new JsonException($"The related set of {type.Name} cannot be written: the type does not serialize as an object.");
             }
 
+            // The type's own number handling is the default of every member that sets none.
             var projected = JsonTypeInfo.CreateJsonTypeInfo(type, options);
+            projected.NumberHandling = full.NumberHandling;
             foreach (JsonPropertyInfo member in ProjectedMembers(full, projection))
             {
                 JsonPropertyInfo copy = projected.CreateJsonPropertyInfo(member.PropertyType, member.Name);

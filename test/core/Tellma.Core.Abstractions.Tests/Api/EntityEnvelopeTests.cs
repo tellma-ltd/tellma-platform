@@ -90,6 +90,17 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Fact]
+        public void A_related_projection_writes_its_numbers_under_the_types_number_handling_as_the_whole_entity_does()
+        {
+            Ranked entity = new() { Id = 4, Rank = 3 };
+            RelatedEntities related = new();
+            related.Add("acme.Ranked", [entity], new HashSet<string> { "Id", "Rank" });
+
+            Assert.Equal(/*lang=json,strict*/ """{"rank":"3","id":"4"}""", Write(entity));
+            Assert.Equal(/*lang=json,strict*/ """{"acme.Ranked":[{"rank":"3","id":"4"}]}""", Write(related));
+        }
+
+        [Fact]
         public void An_empty_related_bag_is_an_empty_object()
         {
             Assert.Equal("{}", Write(new RelatedEntities()));
@@ -177,6 +188,14 @@ namespace Tellma.Core.Abstractions.Tests.Api
 
             /// <summary>A decimal, written as a string.</summary>
             public decimal Weight { get; set; }
+        }
+
+        /// <summary>An entity whose numbers are written as strings by a type-level number handling.</summary>
+        [JsonNumberHandling(JsonNumberHandling.WriteAsString)]
+        public sealed class Ranked : Entity<int>
+        {
+            /// <summary>A rank.</summary>
+            public int Rank { get; set; }
         }
 
         /// <summary>Writes a string in upper case.</summary>

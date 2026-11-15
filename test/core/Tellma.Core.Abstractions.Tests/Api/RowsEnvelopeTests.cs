@@ -114,7 +114,7 @@ namespace Tellma.Core.Abstractions.Tests.Api
         {
             QueryRowSet rows = IdRows(typeof(int), 5);
 
-            Assert.Equal("{\"rows\":" + Write(rows) + "}", Write(new RowPage(rows, Count: null, Ancestors: null)));
+            Assert.Equal("{\"rows\":" + Write(rows) + "}", Write(new RowPage(rows, Count: null, Ancestors: null, CountCap: null)));
         }
 
         [Fact]
@@ -129,12 +129,12 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Fact]
-        public void A_page_that_counted_without_a_cap_reports_its_count_uncapped()
+        public void A_page_with_a_count_but_no_cap_is_refused_rather_than_written_as_an_exact_count()
         {
-            using var page = JsonDocument.Parse(Write(new RowPage(IdRows(typeof(int), 5), Count: 3, Ancestors: null)));
+            RowPage page = new(IdRows(typeof(int), 5), Count: 10_001, Ancestors: null, CountCap: null);
 
-            Assert.Equal(3, page.RootElement.GetProperty("count").GetInt32());
-            Assert.False(page.RootElement.GetProperty("countCapped").GetBoolean());
+            JsonException refusal = Assert.Throws<JsonException>(() => Write(page));
+            Assert.Contains("without its cap", refusal.Message, StringComparison.Ordinal);
         }
 
         [Fact]
