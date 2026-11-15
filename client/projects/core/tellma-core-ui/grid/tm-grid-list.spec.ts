@@ -42,7 +42,13 @@ function makeRows(count: number, from = 0): readonly Row[] {
 @Component({
   imports: [TmGrid, TmGridColumn, TmGridDisplayDef, TmGridDriver],
   template: `
-    <input class="search" type="search" [tmGridDriver]="grid" />
+    <!-- The search field also counts the page's refreshes. -->
+    <input
+      class="search"
+      type="search"
+      [tmGridDriver]="grid"
+      [attr.data-refresh]="countRefresh()"
+    />
     <tm-grid
       #grid
       class="paint-probe"
@@ -96,6 +102,13 @@ class ListHost {
   readonly activations: TmGridRowActivation<Row>[] = [];
   readonly rowId = (row: Row): number => row.id;
   readonly noteOf = (row: Row): string => `note ${row.id}`;
+  /** How many times the page's template has been refreshed. */
+  refreshes = 0;
+  /** Counts a refresh of the page's template; the attribute it binds stays absent. */
+  countRefresh(): null {
+    this.refreshes++;
+    return null;
+  }
 }
 
 /** An editable grid with row activation on — the dev-mode misconfiguration. */
@@ -110,6 +123,28 @@ class ListHost {
 class EditableRowsHost {
   readonly model = signal<Row[]>([{ id: 1, name: 'Alpha', qty: 1 }]);
   readonly f = form(this.model);
+  readonly rowId = (row: Row): number => row.id;
+}
+
+/** An editable grid whose active row the page writes. */
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid
+      gridId="list-editable-active"
+      [field]="f"
+      [rowId]="rowId"
+      [(activeRowId)]="active"
+      style="block-size: 300px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="140" />
+    </tm-grid>
+  `,
+})
+class EditableActiveHost {
+  readonly model = signal<Row[]>([...makeRows(30)]);
+  readonly f = form(this.model);
+  readonly active = signal<TmRowId | null>(null);
   readonly rowId = (row: Row): number => row.id;
 }
 
@@ -731,13 +766,38 @@ describe('tm-grid active row model and driver', () => {
       host.active.set(20);
       keydown(cellAt(scroller, 1, 1), 'ArrowDown');
       // The first key rendered the write, which scrolled the pressed cell
-      // away; the scroller takes the grid's keys wherever they land in it.
-      expect(keydown(scroller, 'Enter').defaultPrevented).toBe(true);
+      // away: the next key goes wherever focus is now, and must still reach
+      // the grid.
+      const focused = document.activeElement!;
+      expect(scroller.contains(focused)).toBe(true);
+      expect(keydown(focused, 'Enter').defaultPrevented).toBe(true);
       expect(host.activations.map((a) => [a.rowId, a.via])).toEqual([[21, 'keyboard']]);
     });
     expect(host.activations).toHaveLength(1);
     expect(host.active()).toBe(21);
     expect(cellAt(scroller, 21, 1).getAttribute('tabindex')).toBe('0'); // same column
+    expect(document.activeElement).toBe(cellAt(scroller, 21, 1));
+  });
+
+  it('leaves an editing key on the active cell as rendered', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(EditableActiveHost);
+    await stable(fixture);
+    const host = fixture.componentInstance;
+    const root = fixture.nativeElement as HTMLElement;
+    const scroller = root.querySelector('.tm-grid__scroller') as HTMLElement;
+    press(cellAt(scroller, 1, 0));
+    await stable(fixture);
+    expect(host.active()).toBe(1);
+    await holdRenders(fixture, () => {
+      // The page moves the active row as the user clears the cell they see:
+      // the clear lands on that cell, and only the highlight moves.
+      host.active.set(3);
+      keydown(cellAt(scroller, 1, 0), 'Delete');
+    });
+    expect(host.model()[1].name).not.toBe('Item 1');
+    expect(host.model()[3].name).toBe('Item 3');
+    expect(host.active()).toBe(3);
   });
 
   it('applies an unrendered consumer write over rows that changed in the same task', async () => {
@@ -754,6 +814,27 @@ describe('tm-grid active row model and driver', () => {
     expect(cellAt(scroller, 11, 0).getAttribute('tabindex')).toBe('0');
   });
 
+  it('refreshes no page ahead of a navigation key while nothing is pending', async () => {
+    const { fixture, host, scroller, input } = await setup();
+    press(cellAt(scroller, 1, 1));
+    await stable(fixture);
+    // With nothing pending, the render ahead of a key does no work: the
+    // page refreshes only with the scheduled render of the key's own move.
+    let before = host.refreshes;
+    await holdRenders(fixture, () => {
+      keydown(document.activeElement!, 'ArrowDown');
+      expect(host.refreshes).toBe(before);
+    });
+    expect(host.active()).toBe(2);
+    input.focus();
+    await stable(fixture);
+    before = host.refreshes;
+    await holdRenders(fixture, () => {
+      keydown(input, 'ArrowDown');
+      expect(host.refreshes).toBe(before);
+    });
+    expect(host.active()).toBe(3);
+  });
   it('moves to the first and last rows and reports a missing row', async () => {
     const { fixture, host } = await setup();
     host.grid().moveActiveRow('last');

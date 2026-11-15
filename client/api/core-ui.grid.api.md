@@ -155,6 +155,7 @@ export class TmGridDisplayDef<T = unknown, V = unknown> {
 
 // @public
 export class TmGridDriver {
+    constructor();
     protected onKeydown(event: KeyboardEvent): void;
     readonly tmGridDriver: _angular_core.InputSignal<TmGridDriverTarget>;
     static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmGridDriver, "input[tmGridDriver]", never, { "tmGridDriver": { "alias": "tmGridDriver"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;

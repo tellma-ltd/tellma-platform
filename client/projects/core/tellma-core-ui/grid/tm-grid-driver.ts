@@ -3,19 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ApplicationRef, Directive, inject, input, type Signal } from '@angular/core';
+import { ApplicationRef, Directive, ElementRef, inject, input, type Signal } from '@angular/core';
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 
-/** The keys a driver routes to its list; every other key stays with the input. */
-const DRIVING_KEYS: ReadonlySet<string> = new Set([
-  'ArrowDown',
-  'ArrowUp',
-  'PageDown',
-  'PageUp',
-  'Enter',
-]);
+import { ɵTM_GRID_FLUSH_KEY } from './internal/grid-core';
 
 /**
  * What a `tmGridDriver` input moves and opens: the active row of a list
@@ -84,8 +77,33 @@ export interface TmGridDriverTarget {
 export class TmGridDriver {
   /** The list this input drives. */
   readonly tmGridDriver = input.required<TmGridDriverTarget>();
-  /** Renders the page's pending changes before a driving key acts. */
-  private readonly appRef = inject(ApplicationRef);
+
+  /** Registers the listener that renders pending changes ahead of the driving keys. */
+  constructor() {
+    // Render the page's pending changes before a driving key acts. A write to
+    // the list's `activeRowId` reaches it only through a render (the input
+    // binding updates there), and keys queued behind a busy page arrive
+    // before that render: without it, the key would act on the stale active
+    // row and the render would then move the row away, discarding the move.
+    // DOM handlers run outside a tick in zoneless Angular, so the call is
+    // re-entrancy-safe. It is a native listener, registered before the host
+    // `(keydown)` below, because an Angular listener marks the page's view
+    // dirty before its handler runs: a tick from there would always refresh
+    // the page. From here, a production tick with nothing pending does no
+    // work (dev mode still runs its no-changes check), so a key the handler
+    // then leaves to the input (Home, End, the horizontal arrows, or any key
+    // with a modifier) only renders sooner what was pending anyway. The
+    // listener lives on the directive's own element, so it needs no removal.
+    const appRef = inject(ApplicationRef);
+    inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement.addEventListener(
+      'keydown',
+      (event) => {
+        if (ɵTM_GRID_FLUSH_KEY.test(event.key)) {
+          appRef.tick();
+        }
+      },
+    );
+  }
 
   /** Routes the driving keys to the list and leaves the rest to the input. */
   protected onKeydown(event: KeyboardEvent): void {
@@ -103,17 +121,6 @@ export class TmGridDriver {
     if (event.altKey || event.shiftKey || other || (mod && event.key !== 'Enter')) {
       return;
     }
-    if (!DRIVING_KEYS.has(event.key)) {
-      return;
-    }
-    // Render the page's pending changes before the key acts. A write to the
-    // list's `activeRowId` reaches it only through a render (the input
-    // binding updates there), and keys queued behind a busy page arrive
-    // before that render: without it, the key would act on the stale active
-    // row and the render would then move the row away, discarding the move.
-    // DOM handlers run outside a tick in zoneless Angular, so this is
-    // re-entrancy-safe; with nothing pending it renders nothing.
-    this.appRef.tick();
     const target = this.tmGridDriver();
     switch (event.key) {
       case 'ArrowDown':
