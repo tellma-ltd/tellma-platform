@@ -54,3 +54,107 @@ All on the final tree. Logs are under `.tmp/f43-*`.
 - That no CI job now builds twice: the freshness check must judge a CI `build:showcase` bundle fresh (the same rule as before, now in `prod-build.mjs`), and the preload injection is idempotent.
 - `--no-build`'s contract: it must never build, and it must fail fast (not time out) when the bundle is missing.
 - The `--list`/`--help`/`-h` skip list in `e2e.mjs`, against Playwright 1.61.1's runner.
+
+## Review 1
+
+Scope: commit a7ab2bed only. Checked conformance (the item allows either fix; building in `e2e.mjs`
+and cutting the `--no-build` webServer timeout to 60 s are both justified). Checked every CI job that
+runs client e2e: ci.yml `client`, and nightly `client-e2e` and `client-e2e-quarantine`. Each runs
+`build:showcase` as the last step before e2e and nothing writes under `projects/` in between, so no
+job builds twice. A missing bundle makes `--no-build` exit 1 on stderr, which Playwright shows, so
+the 60 s timeout hides nothing. `SHOWCASE_PORT` is required, so Playwright cannot be run around
+`e2e.mjs`.
+
+Reviewer runs (logs `.tmp/r1f43-*`):
+- The two new specs: 10/10 (`r1f43-specs.log`).
+- Probe (`r1f43-probe.log`): the bundle is fresh; touching `projects/core/tellma-core-ui/public-api.ts`
+  makes it stale; restoring the file's mtime makes it fresh again. A run of the idempotent
+  `inject-font-preloads.mjs` that adds nothing still moved `index.html`'s mtime from 18:39:42 to
+  18:47:31.
+- CI-mode reuse run: `CI=1 node scripts/e2e.mjs --project chromium --grep "alert story is axe-clean"
+  --workers 2` printed `[e2e] reusing the existing showcase build` and passed 3/3
+  (`r1f43-e2e-reuse.log`).
+- Fixture probe (`r1f43-probe-fixtures.log`): one lint:test spec that copies the tooling fixture app
+  (`emit.spec.ts`) turned the bundle from fresh to stale (see R1-2). I then restored the folder's
+  mtime.
+
+### Findings
+
+**R1-1 (minor). A source saved during a long build is silently left out of a bundle that later runs
+count as fresh.** `client/scripts/prod-build.mjs:101-108` with `:149-171`, and
+`client/projects/core/tellma-core-tools/src/fonts/index.ts:145`.
+- The cause: the freshness marker is `index.html`'s mtime. `ng build` writes that file only at the
+  end of the build, and the font-preload injection then rewrites it on every call, even when it adds
+  no link (shown in the probe).
+- Scenario: a developer starts a CI-mode run (`CI=1 node scripts/e2e.mjs …`). Its cold build takes
+  151-921 s on this host. During it they save a fix to a file that `ng build` has already read. The
+  marker is written after the save, so this run and every later run judge the bundle fresh. They test
+  the old code and can report green on a fix that was never compiled. That is exactly the stale reuse
+  that the rule's own doc comment says it never allows.
+- This was already latent in `serve.mjs`. But the old 300 s limit killed long builds before they
+  wrote a marker. Now such builds run to completion, so the window is the whole build.
+- Fix:
+  - In the build branch of `ensureProdBuild`, after the injection, set `index.html`'s mtime back to
+    `started` (the value already taken at `:155`), so the marker stands for the moment the build
+    began reading sources.
+  - Make `tmInjectFontPreloads` skip the write when `links` is empty, so a reuse no longer moves the
+    marker.
+  - The CI `build:showcase` path keeps working unchanged: no edits happen there.
+  - Add a `prod-build.spec` case: a source mtime between the build's start and `index.html`'s write
+    must read as stale.
+
+**R1-2 (minor). lint:test after build:showcase still makes the bundle look stale, though the commit
+message and notes say it no longer does.** `client/scripts/prod-build.mjs:42`.
+- The cause: `copyFixtureApp` (`projects/core/tellma-core-tools/fixtures/fake-emit.ts:155`, used by
+  the build, serve, emit, app-project and build.fixture specs) creates and then removes
+  `fixtures/run-*` copies. That moves the `fixtures/` folder's mtime, and the walk counts it.
+- The evidence: the probe turned a fresh bundle stale with one such spec. The folder's mtime on this
+  slot (09:50:16.90) is also exactly when the implementer's last lint:test ended. The notes check
+  only lint, typecheck and docs:build afterwards, not lint:test.
+- The cost: no correctness loss, but a needless full rebuild (151-921 s here) on the next local
+  CI-mode e2e after any lint:test. CI is unaffected, since lint:test runs before build:showcase there.
+- Fix: add `fixtures` to `NON_SOURCE_DIRS`. Both folders of that name under `projects/` are test-only
+  (`tellma-core-tools/fixtures` and `tellma-core-tools/src/eslint/fixtures`), and no showcase input
+  lives in either. Add a "build output inside the source tree" case for a `fixtures/run-x` entry. If
+  you keep the current rule instead, correct the claim in the commit message and in "What was built".
+
+**R1-3 (minor). The e2e production build does not regenerate the tokens CSS, so a token edit is
+compiled against the old stylesheet.** `client/scripts/e2e.mjs:62-68` and
+`client/scripts/prod-build.mjs:149-158`.
+- The cause: `tellma-default.css` (`projects/core/tellma-core-ui-tokens/css/`) is generated and
+  gitignored. Only the `pree2e` hook, `pnpm run build` and an explicit `tokens:build-css` regenerate
+  it. CONTRIBUTING.md and the PR-tier command call `node scripts/e2e.mjs` directly, which skips the
+  hook.
+- Scenario: a developer edits a token in `projects/core/tellma-core-ui-tokens/src`, then runs
+  `CI=1 node scripts/e2e.mjs …`. The walk sees the edit and rebuilds, but the build uses the old
+  generated CSS. The run tests stale styles, and the new bundle then reads as fresh until something
+  else changes. On a clean checkout the same path fails instead, with an unresolved stylesheet.
+- This was already true of `serve.mjs --prod`. But `e2e.mjs` now owns "make the bundle current", and
+  CI never meets this because it generates the CSS in an earlier step.
+- Fix: run `tools/tokens/build-css.mts` at the start of `ensureProdBuild`, before the freshness check.
+  It writes only on a change, so a CI bundle stays fresh. Alternatively, state in CONTRIBUTING.md
+  that a CI-mode run needs `tokens:build-css` first.
+
+### Responses
+
+- R1-1: fixed in "PC-F43: review 1 fixes" (this commit, child of a7ab2bed), as suggested.
+  - The new `markBuildStart(project, startedMs, root?)` in `client/scripts/prod-build.mjs` sets `index.html`'s mtime back to the moment `ng build` was started. `ensureProdBuild` calls it last, after the preload injection, and only on the build branch. A source saved while the build ran is therefore newer than the marker, and the next run rebuilds.
+  - `tmInjectFontPreloads` (`projects/core/tellma-core-tools/src/fonts/index.ts`) now skips the write when it adds no link. A reuse, or the injection run by `build:showcase` and then by `e2e.mjs`, no longer moves the marker.
+  - Tests:
+    - `prod-build.spec.mts` "rebuilds when a source was saved while the build that the marker dates ran": a source between the build's start and `index.html`'s write reads fresh until it is marked, and stale after.
+    - Also "still reuses a build dated by its start when every source predates it".
+    - `fonts/index.spec.ts` "leave index.html untouched, its modification time included, when every preload is already there".
+    - Mutation-checked: removing the `links !== ''` guard fails that test.
+  - Not changed: the npm `build:showcase` script still stamps the bundle when `ng build` ends. It is the CI gate and always builds, and CI checkouts see no edits while it runs. Locally, an edit made during a manual `build:showcase` can still be missed by a later reuse. Routing that script through `ensureProdBuild` would let a gate skip compiling, so I left it.
+- R1-2: fixed in the same commit. `fixtures` joins `NON_SOURCE_DIRS`, and the comment there says why: the folders of that name hold test-only data, and the tooling specs create and remove `fixtures/run-*` copies. The two such folders under `projects/` are test-only, and no application input may live in one. Test: "ignores a fixture copy that a test creates and removes inside the source tree". Mutation-checked: dropping `fixtures` fails it. The claim in commit 1's message ("a lint:test … run after build:showcase no longer makes the bundle look stale") was premature. It now holds, shown by the reuse run after `lint:test` below.
+- R1-3: fixed in the same commit, as suggested. `ensureProdBuild` first runs `tools/tokens/build-css.mts` (through `tsx/cli`, resolved from client/), before the freshness check. It writes only on a change, so on CI, where the job already generated the CSS, the bundle stays fresh. A token edit now reaches the build, and a fresh checkout gets its stylesheet. `serve.mjs --prod` gets the same step, since it shares `ensureProdBuild`. A failing step stops the run with its exit code.
+- Verification, all on the final tree (logs `.tmp/f43-r1-*`):
+  - The touched specs (`prod-build.spec.mts`, `serve-no-build.spec.mts` and core-tools `fonts/index.spec.ts`): 17 of 17. eslint on the touched files is clean, and so are `tsc -p tools/tsconfig.json --noEmit` and the core-tools spec typecheck.
+  - Stale run: I touched `projects/internal/showcase/src/main.ts`, then ran `CI=1 node client/scripts/e2e.mjs --project chromium --grep "alert story is axe-clean" --workers 2`.
+    - The tokens CSS was not rewritten.
+    - The run built for 302 s and passed 3 of 3.
+    - `index.html`'s mtime equals the moment the build started (10:59:22.21), and the bundle read fresh afterwards, so the build writes nothing into its own inputs.
+  - `lint:test`: 248 of 248 (39 files). During it the `fixtures/` folder's mtime moved to 11:10:09, past the marker, and the bundle still read fresh afterwards.
+  - Reuse run after that, with the same command:
+    - It printed `[e2e] reusing the existing showcase build` and passed 3 of 3.
+    - The injection added its preloads idempotently and left `index.html`'s mtime at 10:59:22.21.

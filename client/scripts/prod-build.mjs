@@ -12,9 +12,14 @@
  * BEFORE Playwright starts its web server, so a cold build never runs inside
  * the server's startup timeout; scripts/serve.mjs --prod builds on demand
  * when it is run on its own.
+ *
+ * A bundle counts as current while its index.html is newer than every build
+ * input. A build made here dates that file to the moment the build began, so
+ * a source saved while it ran still counts as newer; the tokens stylesheet,
+ * a generated input, is regenerated before the check.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync, utimesSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,8 +43,14 @@ const BUILD_INPUTS = [
   'tsconfig.json',
 ];
 
-/** Folders inside the source tree that are build OUTPUT, not build input. */
-const NON_SOURCE_DIRS = new Set(['node_modules', 'dist', '.angular']);
+/**
+ * Folders inside the source tree that no application build reads: build
+ * output, and `fixtures` folders, which hold test-only data (the tooling
+ * specs copy a fixture app into `fixtures/run-*` and remove it again, which
+ * would otherwise move the folder's mtime on every test run). An application
+ * input must never live in a folder of one of these names.
+ */
+const NON_SOURCE_DIRS = new Set(['node_modules', 'dist', '.angular', 'fixtures']);
 
 /**
  * Whether a file inside the source tree is build OUTPUT: a TypeScript
@@ -95,7 +106,8 @@ export function prodBuildDir(project, root = clientDir) {
  *
  * @param {string} project The Angular project, e.g. `showcase`.
  * @param {string} [root] The Angular workspace folder; defaults to client/.
- * @returns {boolean} True when the bundle's index.html is newer than every
+ * @returns {boolean} True when the bundle's index.html, whose mtime marks the
+ *   moment its build began (see {@link markBuildStart}), is newer than every
  *   build input.
  */
 export function isProdBuildFresh(project, root = clientDir) {
@@ -127,6 +139,23 @@ function runStep(argv, logPrefix) {
 }
 
 /**
+ * Stamps a finished build with the moment it began: sets the mtime of its
+ * index.html, the marker {@link isProdBuildFresh} reads, back to that moment.
+ * A build reads its sources over minutes and writes index.html only at the
+ * end, so a source saved during the build may be missing from the bundle;
+ * dated at the start, the marker makes such a save read as newer, and the
+ * next run rebuilds instead of reusing a bundle that lacks it.
+ *
+ * @param {string} project The Angular project, e.g. `showcase`.
+ * @param {number} startedMs When the build began, in epoch milliseconds.
+ * @param {string} [root] The Angular workspace folder; defaults to client/.
+ */
+export function markBuildStart(project, startedMs, root = clientDir) {
+  const started = new Date(startedMs);
+  utimesSync(join(prodBuildDir(project, root), 'index.html'), started, started);
+}
+
+/**
  * Makes sure dist/<project>/browser holds the production build of the current
  * sources, with its font preloads: a fresh bundle is reused, a stale or missing
  * one is built.
@@ -140,32 +169,58 @@ function runStep(argv, logPrefix) {
  */
 export function ensureProdBuild(project, { logPrefix = '[build]' } = {}) {
   // Resolved here rather than at import time, so a caller that only checks
-  // freshness never depends on the Angular CLI being installed.
-  const ng = createRequire(import.meta.url).resolve('@angular/cli/bin/ng.js', {
-    paths: [clientDir],
-  });
+  // freshness never depends on the tooling being installed.
+  const resolveTool = (specifier) =>
+    createRequire(import.meta.url).resolve(specifier, { paths: [clientDir] });
 
-  // Build only when the sources moved past the bundle.
+  // --- Generated inputs ---
+  // The tokens stylesheet is generated and gitignored, and every application
+  // build compiles against it, so it is brought up to date before the
+  // freshness check: a token edit then reaches the build, and a missing
+  // stylesheet on a fresh checkout is created. It writes only on a real
+  // change, so an unchanged stylesheet never makes a bundle look stale.
+  const tokens = runStep(
+    [resolveTool('tsx/cli'), join(clientDir, 'tools', 'tokens', 'build-css.mts')],
+    logPrefix,
+  );
+  if (tokens !== 0) {
+    return tokens;
+  }
+
+  // --- The bundle: reused when fresh, else built ---
+  let started;
   if (isProdBuildFresh(project)) {
     console.log(
       `${logPrefix} reusing the existing ${project} build (newer than every source file)`,
     );
   } else {
     console.log(`${logPrefix} building ${project} (production)…`);
-    const started = Date.now();
-    const status = runStep([ng, 'build', project], logPrefix);
+    started = Date.now();
+    const status = runStep([resolveTool('@angular/cli/bin/ng.js'), 'build', project], logPrefix);
     if (status !== 0) {
       return status;
     }
     console.log(`${logPrefix} built ${project} in ${Math.round((Date.now() - started) / 1000)} s`);
   }
 
+  // --- Font preloads ---
   // The page that SHIPS is the build plus its font preloads (`build:showcase`
   // runs both), so e2e must serve that page and not a bare `ng build` output.
   // The step is idempotent, hence unconditional: it also covers a reused
-  // bundle that was produced without it.
-  return runStep(
+  // bundle that was produced without it, and it leaves a page that already
+  // has its preloads untouched.
+  const preloads = runStep(
     [join(clientDir, 'scripts', 'inject-font-preloads.mjs'), join('dist', project, 'browser')],
     logPrefix,
   );
+  if (preloads !== 0) {
+    return preloads;
+  }
+
+  // --- The freshness marker ---
+  // Last, after every write to index.html, so nothing moves it again.
+  if (started !== undefined) {
+    markBuildStart(project, started);
+  }
+  return 0;
 }

@@ -121,7 +121,8 @@ export function tmBuiltFontUrls(browserDir: string): string[] {
  * to the built `index.html`, before `</head>`. The `crossorigin` attribute is
  * required: a font fetch is a CORS request even from the same origin, and a
  * preload in another mode would download the file twice. A URL already
- * preloaded is skipped, so the step can run twice.
+ * preloaded is skipped, so the step can run twice, and a run that adds no
+ * link leaves the file untouched, its modification time included.
  *
  * @param browserDir - The deployable output, holding `index.html`.
  * @param fragments - The font name fragments to preload, such as `latin` and `arabic`.
@@ -142,6 +143,10 @@ export function tmInjectFontPreloads(browserDir: string, fragments: readonly str
     .filter((url) => !html.includes(`href="${url}"`))
     .map((url) => `<link rel="preload" href="${url}" as="font" type="font/woff2" crossorigin>`)
     .join('');
-  writeFileSync(indexPath, html.replace(/<\/head>/i, `${links}</head>`));
+  // Rewrite only when a link is missing: callers judge a build's freshness by
+  // the page's modification time, which an identical rewrite would move.
+  if (links !== '') {
+    writeFileSync(indexPath, html.replace(/<\/head>/i, `${links}</head>`));
+  }
   return urls;
 }

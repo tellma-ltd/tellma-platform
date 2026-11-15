@@ -3,23 +3,34 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { isProdBuildFresh, prodBuildDir } from '../../scripts/prod-build.mjs';
+import { isProdBuildFresh, markBuildStart, prodBuildDir } from '../../scripts/prod-build.mjs';
 
 // The freshness rule behind the e2e production bundle: a bundle is reused
 // only while it is newer than every build input, so the e2e run never tests
 // stale code and never repeats a build for bytes that already exist.
 
+/** A whole second, so the times below round-trip through every file system exactly. */
+const NOW = Math.floor(Date.now() / 1000) * 1000;
+
 /** When every build input was last written: two hours ago. */
-const SOURCES_TIME = new Date(Date.now() - 2 * 60 * 60 * 1000);
+const SOURCES_TIME = new Date(NOW - 2 * 60 * 60 * 1000);
 
 /** When the bundle was built: one hour ago, after the sources. */
-const BUILT_TIME = new Date(Date.now() - 60 * 60 * 1000);
+const BUILT_TIME = new Date(NOW - 60 * 60 * 1000);
 
 /** The fixture's repository root; the Angular workspace is its client/ folder. */
 let repo: string;
@@ -115,6 +126,40 @@ describe('isProdBuildFresh', () => {
     for (const folder of ['projects', join('projects', 'core')]) {
       utimesSync(join(client, folder), SOURCES_TIME, SOURCES_TIME);
     }
+
+    expect(isProdBuildFresh('showcase', client)).toBe(true);
+  });
+
+  it('ignores a fixture copy that a test creates and removes inside the source tree', () => {
+    const fixtures = join(client, 'projects', 'tools', 'fixtures');
+    write(join(fixtures, 'app', 'main.ts'), 'export {};');
+    age(join(client, 'projects'), SOURCES_TIME);
+
+    // A spec copies the fixture app beside it and removes the copy again,
+    // which moves the fixtures folder's own mtime past the build.
+    write(join(fixtures, 'run-1', 'main.ts'), 'export {};');
+    rmSync(join(fixtures, 'run-1'), { recursive: true });
+
+    expect(isProdBuildFresh('showcase', client)).toBe(true);
+  });
+
+  it('rebuilds when a source was saved while the build that the marker dates ran', () => {
+    const indexHtml = join(prodBuildDir('showcase', client), 'index.html');
+    const buildStarted = new Date(BUILT_TIME.getTime() - 10 * 60 * 1000);
+    const savedDuringBuild = new Date(BUILT_TIME.getTime() - 5 * 60 * 1000);
+    const source = join(client, 'projects', 'core', 'src', 'index.ts');
+    utimesSync(source, savedDuringBuild, savedDuringBuild);
+    // Dated by when the build wrote index.html, the save looks older.
+    expect(isProdBuildFresh('showcase', client)).toBe(true);
+
+    markBuildStart('showcase', buildStarted.getTime(), client);
+
+    expect(statSync(indexHtml).mtimeMs).toBe(buildStarted.getTime());
+    expect(isProdBuildFresh('showcase', client)).toBe(false);
+  });
+
+  it('still reuses a build dated by its start when every source predates it', () => {
+    markBuildStart('showcase', BUILT_TIME.getTime() - 10 * 60 * 1000, client);
 
     expect(isProdBuildFresh('showcase', client)).toBe(true);
   });
