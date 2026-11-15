@@ -12,6 +12,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The suite that pins this plumbing drives the database-creation retry loop through its
+         internal seams (classifier, wait, jitter), without a server or a clock. -->
+    <InternalsVisibleTo Include="Tellma.Core.Testing.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- No test SDK: omitting Microsoft.NET.Test.Sdk keeps IsTestProject false, so
          `dotnet test Tellma.slnx` never tries to run it. -->
     <!-- IOptionsMonitor<T>, for the static monitor the adapters' senders take. -->

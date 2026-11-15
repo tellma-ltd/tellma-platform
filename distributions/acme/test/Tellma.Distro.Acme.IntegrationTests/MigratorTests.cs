@@ -98,8 +98,8 @@ namespace Tellma.Distro.Acme.IntegrationTests
         {
             AcmeMigrator acme = new(sql, "acme_foreign");
             _ = await acme.MigrateAsync();
-            await SqlServerFixture.ExecuteAsync(
-                sql.MasterConnectionString, $"CREATE DATABASE [{acme.TenantDatabaseName(1000)}] COLLATE SQL_Latin1_General_CP1_CI_AS;");
+            await SqlDatabaseCreation.CreateAsync(
+                sql.MasterConnectionString, acme.TenantDatabaseName(1000), "SQL_Latin1_General_CP1_CI_AS", TestContext.Current.CancellationToken);
 
             MigratorResult result = await acme.RunAsync("provision", "--name", "Acme Trading", "--category", "Live");
 

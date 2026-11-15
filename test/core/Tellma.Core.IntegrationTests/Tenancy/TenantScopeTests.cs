@@ -6,7 +6,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
-using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Tenancy;
@@ -105,10 +104,8 @@ namespace Tellma.Core.IntegrationTests.Tenancy
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_connect");
             string liveDatabase = sql.NewDatabaseName("scope_live");
             string sandboxDatabase = sql.NewDatabaseName("scope_sandbox");
-            await SqlServerFixture.ExecuteAsync(
-                sql.MasterConnectionString,
-                $"CREATE DATABASE [{liveDatabase}] COLLATE {DatabaseCollations.Platform};",
-                $"CREATE DATABASE [{sandboxDatabase}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, liveDatabase, cancellationToken: Token);
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, sandboxDatabase, cancellationToken: Token);
 
             TenantDescriptor live = await host.Catalog.RegisterAsync(
                 new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, liveDatabase, "default")), "migrator", cancellationToken: Token);
@@ -165,7 +162,7 @@ namespace Tellma.Core.IntegrationTests.Tenancy
         {
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_activity", configureServices: AddSystemConnection);
             string database = sql.NewDatabaseName("scope_traced");
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{database}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, database, cancellationToken: Token);
             TenantDescriptor tenant = await host.Catalog.RegisterAsync(
                 new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, database, "default")), "migrator", cancellationToken: Token);
             _ = await host.Catalog.SetStateAsync(tenant.Id, TenantState.Active, null, "migrator", Token);
