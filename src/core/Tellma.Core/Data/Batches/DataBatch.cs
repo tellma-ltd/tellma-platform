@@ -267,22 +267,6 @@ namespace Tellma.Core.Data.Batches
         // ===================== The caller channel =====================
 
         /// <inheritdoc />
-        public BatchResult<UpdateReceipt> Update<TEntity>(UpdateSpec<TEntity> spec)
-            where TEntity : class
-        {
-            ArgumentNullException.ThrowIfNull(spec);
-            throw NotAvailable(nameof(Update));
-        }
-
-        /// <inheritdoc />
-        public DeleteHandle Delete<TEntity>(DeleteSpec<TEntity> spec)
-            where TEntity : class
-        {
-            ArgumentNullException.ThrowIfNull(spec);
-            throw NotAvailable(nameof(Delete));
-        }
-
-        /// <inheritdoc />
         public BatchResult<RawResult> Sql(FormattableString sql, SqlOptions? options)
         {
             ArgumentNullException.ThrowIfNull(sql);
@@ -814,11 +798,11 @@ namespace Tellma.Core.Data.Batches
         {
             bool inTextTransaction = TransactionMode == TransactionMode.Auto && _written.Count > 0;
 
-            // A save's guard holds its locks to the commit and its statements stand or fall together.
+            // A write's locks hold to the commit and its statements stand or fall together.
             if (_needsTransaction && TransactionMode == TransactionMode.None)
             {
                 throw new InvalidOperationException(
-                    $"The batch carries a save, whose statements run in one transaction; a batch in {nameof(TransactionMode.None)} mode runs them in autocommit. Leave the batch in {nameof(TransactionMode.Auto)} mode.");
+                    $"The batch carries a save, an update or a delete, whose statements run in one transaction; a batch in {nameof(TransactionMode.None)} mode runs them in autocommit. Leave the batch in {nameof(TransactionMode.Auto)} mode.");
             }
 
             // A transaction head (an application lock) is held to the COMMIT of the transaction the text
@@ -838,14 +822,6 @@ namespace Tellma.Core.Data.Batches
         }
 
         // ===================== Helpers =====================
-
-        /// <summary>The refusal of a member whose statement compiler is not composed in this build.</summary>
-        /// <param name="member">The member's name.</param>
-        /// <returns>The exception.</returns>
-        private static NotSupportedException NotAvailable(string member)
-        {
-            return new NotSupportedException($"{nameof(IDataBatch)}.{member} is not available: its statement compiler is not part of this build.");
-        }
 
         /// <summary>The bumps of the writes declared outside the connect prologue's own statements, and of the explicit bumps.</summary>
         /// <returns>The plan.</returns>

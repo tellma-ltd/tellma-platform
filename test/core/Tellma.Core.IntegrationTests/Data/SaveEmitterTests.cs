@@ -276,7 +276,7 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
-        public async Task A_tree_payload_with_temporary_ids_is_inserted_with_its_references_resolved()
+        public async Task A_tree_payload_with_temporary_ids_is_inserted_with_its_references_resolved_and_pathed()
         {
             Node root = new() { Id = -1, Code = "root", Name = "root" };
             Node leaf = new() { Id = -2, Code = "leaf", Name = "leaf", ParentId = -1, Links = [new Link { OtherNodeId = -1 }] };
@@ -286,7 +286,7 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal(3, receipt.Inserted);
             Assert.Equal((root.Id, root.Id, leaf.Id), (leaf.ParentId, leaf.Links[0].OtherNodeId, leaf.Links[0].NodeId));
             Assert.Equal(
-                string.Create(CultureInfo.InvariantCulture, $"/0/{root.Id}/|/0/{leaf.Id}/"),
+                string.Create(CultureInfo.InvariantCulture, $"/{root.Id}/|/{root.Id}/{leaf.Id}/"),
                 await QueryAsync<string>("SELECT STRING_AGG([Node].ToString(), '|') WITHIN GROUP (ORDER BY [Code] DESC) FROM [fixture].[Nodes];"));
         }
 

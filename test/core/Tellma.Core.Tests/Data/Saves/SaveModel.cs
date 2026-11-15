@@ -13,7 +13,8 @@ namespace Tellma.Core.Tests.Data.Saves
 {
     // A model for the save statement: a top-level entity with a blob column, a child with a blob column
     // of its own, a grandchild, and a reference between rows of the root's table; a top-level entity
-    // with a long key and no child; a tree; and a sibling with no sequence.
+    // with a long key and no child; an activatable tree; a plain tree of a shallow depth limit with a
+    // write-once column; and a sibling with no sequence.
 
     /// <summary>Composes the save model into a composition.</summary>
     internal static class SaveModel
@@ -26,7 +27,8 @@ namespace Tellma.Core.Tests.Data.Saves
                 .Entity<Crate>()
                 .Entity<CrateExtra>()
                 .Entity<Ledger>()
-                .Entity<Area>()));
+                .Entity<Area>()
+                .Entity<Region>()));
         }
     }
 
@@ -108,7 +110,7 @@ namespace Tellma.Core.Tests.Data.Saves
         public string? Memo { get; set; }
     }
 
-    /// <summary>A tree.</summary>
+    /// <summary>An activatable tree.</summary>
     [Table("Areas", Schema = "sv")]
     [TableType]
     public class Area : ActivatableTreeEntity
@@ -116,5 +118,21 @@ namespace Tellma.Core.Tests.Data.Saves
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
+    }
+
+    /// <summary>A tree that is not activatable, four levels deep at most, with a write-once code.</summary>
+    [Table("Regions", Schema = "sv")]
+    [TableType]
+    [Tree(MaxDepth = 4)]
+    public class Region : TreeEntity
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The code, fixed when the row is created.</summary>
+        [MaxLength(10)]
+        [WriteOnce]
+        public string? Code { get; set; }
     }
 }

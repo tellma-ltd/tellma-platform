@@ -11,6 +11,7 @@ using Tellma.Core.Composition;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.Saves;
+using Tellma.Core.Data.Trees;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Data.Batches
@@ -38,6 +39,9 @@ namespace Tellma.Core.Data.Batches
             _ = services.AddSingleton<IdAllocator>();
             _ = services.AddSingleton<IIdAllocator>(static services => services.GetRequiredService<IdAllocator>());
             _ = services.AddSingleton<SaveEmitter>();
+
+            // The tree statements a batch runs on its own: the verify job's recount.
+            _ = services.AddSingleton<TreeStatements>();
 
             // A tenant frozen for a relocation or a restore may come back on another database: its buffers go.
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITenantStateListener, IdBufferTenantListener>());
