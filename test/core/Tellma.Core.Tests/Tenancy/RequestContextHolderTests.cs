@@ -229,12 +229,17 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.False(TakesTheWriteSide(typeof(Reader)));
         }
 
-        /// <summary>Every platform assembly in the suite's output except the suite itself.</summary>
+        /// <summary>
+        ///     Every platform assembly in the suite's output: not the suite itself, and not the shared
+        ///     test plumbing (<c>Tellma.Testing.*</c>), whose fixture tenant writes the context as a
+        ///     test's host would.
+        /// </summary>
         /// <returns>The assemblies.</returns>
         private static Assembly[] PlatformAssemblies()
         {
             Assembly suite = typeof(RequestContextHolderTests).Assembly;
             return [.. Directory.EnumerateFiles(AppContext.BaseDirectory, "Tellma.*.dll")
+                .Where(static file => !Path.GetFileName(file).StartsWith("Tellma.Testing.", StringComparison.Ordinal))
                 .Select(static file => Assembly.Load(new AssemblyName(Path.GetFileNameWithoutExtension(file))))
                 .Where(assembly => assembly != suite)];
         }

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { tmCompressedSize, tmContentHash, tmListFiles, tmRelativePosix } from './files.js';
-import { tmNodeProcessRunner } from './process.js';
+import { tmNodeProcessRunner, tmProcessLaunch } from './process.js';
 import { tmFormatProblem, tmHasErrors, type TmBuildProblem } from './problems.js';
 
 const problem: TmBuildProblem = {
@@ -69,8 +69,38 @@ describe('file helpers', () => {
   });
 });
 
-describe('the process runner', () => {
-  it("starts a package manager's shim with no deprecated shell option, and fails a missing program", async () => {
+describe('how the process runner starts a program', () => {
+  const env = { ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
+
+  it("starts a package manager's shim on Windows through the command interpreter, the command and its arguments after /c", () => {
+    expect(tmProcessLaunch('pnpm', ['run', 'assets:generate'], 'win32', env)).toEqual({
+      program: env.ComSpec,
+      args: ['/d', '/s', '/c', 'pnpm', 'run', 'assets:generate'],
+    });
+    for (const shim of ['npm', 'npx']) {
+      expect(tmProcessLaunch(shim, ['--version'], 'win32', env), shim).toEqual({ program: env.ComSpec, args: ['/d', '/s', '/c', shim, '--version'] });
+    }
+  });
+
+  it('names cmd.exe when ComSpec is unset', () => {
+    expect(tmProcessLaunch('pnpm', ['--version'], 'win32', {})).toEqual({ program: 'cmd.exe', args: ['/d', '/s', '/c', 'pnpm', '--version'] });
+  });
+
+  it('starts any other program on Windows, and every program elsewhere, as it is', () => {
+    expect(tmProcessLaunch('dotnet', ['run', '--project', 'x'], 'win32', env)).toEqual({ program: 'dotnet', args: ['run', '--project', 'x'] });
+    expect(tmProcessLaunch(process.execPath, ['-e', ''], 'win32', env)).toEqual({ program: process.execPath, args: ['-e', ''] });
+    for (const platform of ['linux', 'darwin'] as const) {
+      expect(tmProcessLaunch('pnpm', ['--version'], platform, env), platform).toEqual({ program: 'pnpm', args: ['--version'] });
+    }
+  });
+});
+
+// These start real programs. On a busy Windows machine pnpm takes 3-13 s to
+// answer --version from a shell, and 15 s or more beside the other spec files,
+// so vitest's 5 s default would fail them on load alone. How each program is
+// started is covered above without starting one.
+describe('the process runner', { timeout: 120_000 }, () => {
+  it("starts a package manager's shim with no deprecated shell option", async () => {
     const warnings: string[] = [];
     const listener = (warning: Error & { code?: string }): void => {
       warnings.push(warning.code ?? warning.name);
@@ -78,11 +108,17 @@ describe('the process runner', () => {
     process.on('warning', listener);
     try {
       expect(await tmNodeProcessRunner.run('pnpm', ['--version'], { cwd: process.cwd() })).toBe(0);
-      expect(await tmNodeProcessRunner.run(process.execPath, ['-e', 'process.exit(3)'], { cwd: process.cwd() })).toBe(3);
     } finally {
       process.off('warning', listener);
     }
     expect(warnings).not.toContain('DEP0190');
+  });
+
+  it("resolves with the program's exit code", async () => {
+    expect(await tmNodeProcessRunner.run(process.execPath, ['-e', 'process.exit(3)'], { cwd: process.cwd() })).toBe(3);
+  });
+
+  it('fails a program that cannot be started', async () => {
     await expect(tmNodeProcessRunner.run('tellma-no-such-program', [], { cwd: process.cwd() })).rejects.toThrow(/could not be started/);
   });
 });

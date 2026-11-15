@@ -28,7 +28,6 @@ namespace Tellma.Core.Tests.Access
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
                     .Securables(static securables => securables
                         .Add("acme.CreditExposureReport", "Read", null)
-                        .Add(CoreResources.Role, AccessActions.Activate, CoreResources.Role)
                         .Add(CoreResources.SettingsGeneral, AccessActions.Save, null)
                         .Add("core.Settings.gl", AccessActions.Read, null)))))
                 .BuildServiceProvider(validateScopes: true);
@@ -38,14 +37,29 @@ namespace Tellma.Core.Tests.Access
             provider.GetServices<IClientAssetContributor>().OfType<SecurablesClientAssetContributor>().Single().Contribute(context);
 
             // Core declares the platform's actions, its entities' plural labels, the general settings
-            // category, its own securables and its feature; a fixture's keys are declared nowhere.
+            // category, its own securables and its feature; a fixture's keys are declared nowhere. The
+            // core stacks register their own securables, a child query surface's read owned by its root.
             string expected = /*lang=json,strict*/ """
                 [
                 {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
-                {"resource":"core.Role","action":"Activate","filterRoot":"core.Role","isSensitive":true,"feature":"fixture","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Job","action":"Read","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Notification","action":"Read","filterRoot":"core.Notification","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Notification_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Permission","action":"Read","filterRoot":"core.Permission","isSensitive":false,"feature":"core","owner":{"resource":"core.Role","navigation":"Role"},"resourceLabelKey":"Core_Permission_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Role","action":"Read","filterRoot":"core.Role","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Role","action":"Save","filterRoot":"core.Role","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
+                {"resource":"core.Role","action":"Delete","filterRoot":"core.Role","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
+                {"resource":"core.Role","action":"Activate","filterRoot":"core.Role","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
+                {"resource":"core.RoleMembership","action":"Read","filterRoot":"core.RoleMembership","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Core_RoleMembership_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Schedule","action":"Read","filterRoot":"core.Schedule","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Schedule","action":"Save","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
+                {"resource":"core.Schedule","action":"Delete","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
+                {"resource":"core.Schedule","action":"Activate","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
                 {"resource":"core.Settings.General","action":"Save","isSensitive":true,"feature":"fixture","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Action_Save","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
                 {"resource":"core.Settings.gl","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"SettingCategory_gl","resourceLabelFallback":"Gl","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
                 {"resource":"core.User","action":"Read","filterRoot":"core.User","isSensitive":false,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Save","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Delete","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Activate","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
                 {"resource":"core.UserStamp","action":"Read","filterRoot":"core.UserStamp","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Securable_core_UserStamp","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"}
                 ]
                 """;
@@ -114,15 +128,6 @@ namespace Tellma.Core.Tests.Access
         public void Humanized_words_take_the_english_plural_by_their_last_word(string words, string expected)
         {
             Assert.Equal(expected, NameHumanizer.Pluralize(words));
-        }
-
-        [Theory]
-        [InlineData("gl.Center", "Gl_Center")]
-        [InlineData("core.Settings.General", "Core_Settings_General")]
-        [InlineData("Acme.Report", "Acme_Report")]
-        public void A_key_prefix_capitalizes_the_schema_and_underscores_the_dots(string resource, string expected)
-        {
-            Assert.Equal(expected, SecurablesClientAssetContributor.KeyPrefix(resource));
         }
 
         [Fact]

@@ -43,6 +43,9 @@ pnpm start              # showcase dev server (the component showcase + e2e targ
 
 `lint` and `lint:test` first compile `@tellma/core-tools` (`tsc -b`, incremental): the workspace's
 ESLint and stylelint configs load its built presets, as a distribution's would.
+`lint:test` then runs in two groups (`tools/vitest.config.mts`): every other spec file in
+parallel, then the core-tools fixture build spec alone, so its real `ng build` never competes
+with the other specs for the machine.
 
 **Changing a public API?** `api:check` fails on any drift; review the surface
 change, run `api:approve`, and commit the golden diff alongside the code. The

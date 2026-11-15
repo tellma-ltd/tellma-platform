@@ -82,6 +82,11 @@ namespace Tellma.Core.Composition
             // --- The client metadata's distribution, features and routing sections (spec 0024 §3.2) ---
             _ = contribution.Singleton<IClientAssetContributor, CoreClientAssetContributor>();
 
+            // --- The string packs in the client bundle (spec 0013 §10.4) ---
+            // The composer itself, the pack provider and the label provider are the localization
+            // composition's, registered with the framework's localizers.
+            _ = contribution.Singleton<IClientAssetContributor, StringPackClientAssetContributor>();
+
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution
                 .Model<TellmaSchemaRowConfiguration>()
@@ -106,14 +111,12 @@ namespace Tellma.Core.Composition
 
             // --- Access: the securable registry, its client metadata section, and Core's own securables ---
             // spec 0014 §1.2, §4.2. The user stamps are a query root of their own, reached through
-            // the caller's grants on the users along the stamp's User navigation. core.User × Read,
-            // the owner it needs, is also the users' stack's to register once stacks register their
-            // securables; the same registration twice is one.
+            // the caller's grants on the users along the stamp's User navigation; core.User × Read,
+            // the owner it needs, is the users' stack's, which the stack registry registers.
             _ = contribution
                 .Singleton<ISecurableRegistry, SecurableRegistry>()
                 .Singleton<IClientAssetContributor, SecurablesClientAssetContributor>()
                 .Securables(static securables => securables
-                    .Add(CoreResources.User, AccessActions.Read, CoreResources.User)
                     .Add(UserStampConfiguration.QueryexName, AccessActions.Read, UserStampConfiguration.QueryexName, owner: new SecurableOwner(CoreResources.User, "User")));
 
             // --- Version tags: the table, the registry, the process's snapshots, the prelude and the bump ---
@@ -140,8 +143,9 @@ namespace Tellma.Core.Composition
             _ = contribution.Model<BlobConfiguration>();
 
             // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
-            // spec 0021 §11. Notification is an entity without a service until its stack lands; the
-            // preferences are a platform table, never a stack. Each type is declared by the feature
+            // spec 0021 §11. Notification is a read-only stack with the platform's default service,
+            // whose read the stack registry registers (spec 0021 §8); the preferences are a platform
+            // table, never a stack. Each type is declared by the feature
             // code that raises it; core.user.added is the one this contribution declares for the
             // users' invitation. The two baseline channels and the two client events the
             // notifications and the hub publish come first.

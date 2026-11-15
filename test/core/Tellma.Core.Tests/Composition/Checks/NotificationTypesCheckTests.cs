@@ -179,9 +179,9 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
-        public async Task A_target_naming_a_child_entity_or_differing_in_case_is_refused()
+        public async Task A_target_differing_in_case_is_refused_and_one_naming_a_child_query_surface_passes()
         {
-            // A child has no stack, so the client has no route to it.
+            // A child query surface registers its resource's read, so the client can route to it.
             await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
             string child = provider.GetRequiredService<IEntityMetadataProvider>().All.First(static entity => !entity.IsTopLevel).Name;
 
@@ -190,10 +190,7 @@ namespace Tellma.Core.Tests.Composition.Checks
                 new NotificationTypeDescriptor("fixture.user.changed", "users", false, "core.user"))).From(Check);
 
             Assert.Equal(
-                [
-                    $"The notification type 'fixture.child.changed' of the feature 'fixture' targets '{child}', which is neither a stack resource nor a registered securable resource of the composition.",
-                    "The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is neither a stack resource nor a registered securable resource of the composition.",
-                ],
+                ["The notification type 'fixture.user.changed' of the feature 'fixture' targets 'core.user', which is neither a stack resource nor a registered securable resource of the composition."],
                 problems.Select(static problem => problem.Problem));
         }
 

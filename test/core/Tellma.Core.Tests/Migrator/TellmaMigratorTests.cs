@@ -176,7 +176,8 @@ namespace Tellma.Core.Tests.Migrator
 
             Assert.True(run.ExitCode == MigratorExitCodes.Converged, run.Error);
             Assert.True(File.Exists(Path.Combine(directory.Path, "tellma-metadata.ts")));
-            Assert.Equal(3, Directory.GetFiles(Path.Combine(directory.Path, "assets")).Length);
+            // The three metadata chunks and the English string pack, the only language composed here.
+            Assert.Equal(4, Directory.GetFiles(Path.Combine(directory.Path, "assets")).Length);
         }
 
         [Fact]
