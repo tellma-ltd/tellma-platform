@@ -902,7 +902,10 @@ the settings editor validates them. A row the step already completed is left alo
   scope's settings and negotiates the locale from the request's inputs, the connected user's stored
   preferences (`IUserLocalePreferences`, when the composition registers one) and the settings; it
   completes the context's language, culture, calendar, display and tenant zones, today in the
-  tenant's zone, content-language position and settings, and sets no ambient culture.
+  tenant's zone, content-language position and settings, and sets no ambient culture. The language
+  and culture are the negotiated ones (`LocalizationContext.Language`, `CultureTag`), never read back
+  from the culture's name, and today is the date of the context's `Now` in the tenant's zone, so it
+  never disagrees with `Now`.
 - **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
   default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
 

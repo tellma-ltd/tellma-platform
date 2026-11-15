@@ -83,13 +83,31 @@ namespace Tellma.Core.Settings
                 return;
             }
 
+            // --- The completed row, saved through the emitter against the stamp just read ---
+            IDataBatch write = database.CreateBatch(BatchPurpose.Persist);
+            _ = write.Save([Complete(tenant, row.ModifiedAt)]);
+            _ = await write.ExecuteAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     The tenant's completed settings row: its id and names, the seed's languages and
+        ///     calendars (else the distribution's first language and the Gregorian calendar), and UTC.
+        /// </summary>
+        /// <param name="tenant">The tenant.</param>
+        /// <param name="stamp">The placeholder's modification stamp, which the save is checked against.</param>
+        /// <returns>The row to save.</returns>
+        /// <exception cref="InvalidOperationException">The tenant's seed lists languages or calendars the settings editor would refuse.</exception>
+        internal TypedSettings Complete(TenantDescriptor tenant, DateTimeOffset stamp)
+        {
+            ArgumentNullException.ThrowIfNull(tenant);
+
             // --- The languages and calendars: the seed's, else the defaults ---
             TellmaSeedTenant? seeded = seed.Value.Tenants.FirstOrDefault(candidate => candidate.Id == tenant.Id);
             List<string> codes = seeded is { Languages.Count: > 0 } ? Languages(seeded.Languages, tenant.Id) : [languages.Offered[0].Code];
             List<string> calendarCodes = seeded is { Calendars.Count: > 0 } ? Calendars(seeded.Calendars, tenant.Id) : [CalendarCodes.Gregorian];
 
-            // --- The completed row, saved through the emitter against the stamp just read ---
-            TypedSettings completed = new()
+            // A name in a language the tenant does not have would never be shown, so it is not kept.
+            return new TypedSettings
             {
                 Id = TypedSettings.SingleRowId,
                 TenantId = tenant.Id,
@@ -102,12 +120,8 @@ namespace Tellma.Core.Settings
                 PrimaryCalendar = calendarCodes[0],
                 SecondaryCalendar = calendarCodes.Count > 1 ? calendarCodes[1] : null,
                 TimeZone = TenantSettingsStore.DefaultTimeZone,
-                ModifiedAt = row.ModifiedAt,
+                ModifiedAt = stamp,
             };
-
-            IDataBatch write = database.CreateBatch(BatchPurpose.Persist);
-            _ = write.Save([completed]);
-            _ = await write.ExecuteAsync().ConfigureAwait(false);
         }
 
         /// <summary>A seeded tenant's languages as the catalogue spells them, validated.</summary>

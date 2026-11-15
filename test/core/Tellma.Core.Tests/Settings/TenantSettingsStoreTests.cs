@@ -5,6 +5,8 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Caching;
@@ -195,6 +197,19 @@ namespace Tellma.Core.Tests.Settings
             Assert.Null(other.Get(SampleKeys.ApiKey));
             Assert.Null(plain.Get(SampleKeys.ApiKey));
             Assert.Equal(2, invalid.GetMeasurementSnapshot().Sum(static measurement => measurement.Value));
+        }
+
+        [Fact]
+        public async Task On_a_host_without_data_protection_a_secret_reads_as_its_default_and_is_reported_as_critical()
+        {
+            await using SettingsTestHost unprotected = new(withProtection: false);
+            using MetricCollector<long> invalid = new(unprotected.Services.GetRequiredService<IMeterFactory>(), CacheTelemetryNames.MeterName, CacheTelemetryNames.InvalidEntries);
+            TenantSettings settings = unprotected.Build(Row(), ("acme.erp.apiKey", unprotected.Secret("\"s3cr3t\""))).Settings;
+
+            Assert.Null(settings.Get(SampleKeys.ApiKey));
+            FakeLogRecord record = Assert.Single(unprotected.Log.Collector.GetSnapshot(), static record => record.Id.Name == "SettingsSecretUnreadable");
+            Assert.Equal(LogLevel.Critical, record.Level);
+            Assert.Equal(1, invalid.GetMeasurementSnapshot().Sum(static measurement => measurement.Value));
         }
 
         // --- The client view ---

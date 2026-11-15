@@ -5,7 +5,7 @@
 
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using System.Collections.Immutable;
 using System.Diagnostics.Metrics;
@@ -23,7 +23,7 @@ namespace Tellma.Core.Tests.Settings
 {
     /// <summary>
     ///     A composition with English and Arabic offered and the sample keys contributed, and a
-    ///     settings store over it whose data protection is <see cref="PurposeProtection" />.
+    ///     settings store over it whose data protection is <see cref="PurposeProtection" />, or none.
     /// </summary>
     internal sealed class SettingsTestHost : IAsyncDisposable
     {
@@ -34,7 +34,8 @@ namespace Tellma.Core.Tests.Settings
         private readonly ServiceProvider _provider;
 
         /// <summary>Composes the host.</summary>
-        public SettingsTestHost()
+        /// <param name="withProtection">Whether the store unprotects secrets; false for a host without data protection.</param>
+        public SettingsTestHost(bool withProtection = true)
         {
             _provider = TestComposition.Compose(static tellma => tellma
                 .Languages(["en", "ar"])
@@ -47,15 +48,18 @@ namespace Tellma.Core.Tests.Settings
                 Services.GetRequiredService<ICalendarRegistry>(),
                 Options.Create(new CacheOptions()),
                 Services.GetRequiredService<IMeterFactory>(),
-                NullLogger<TenantSettingsStore>.Instance,
-                Protection);
+                Log,
+                withProtection ? Protection : null);
         }
 
         /// <summary>The root services.</summary>
         public IServiceProvider Services => _provider;
 
-        /// <summary>The data protection the store unprotects secrets with.</summary>
+        /// <summary>The data protection secrets are protected with; the store unprotects with it unless built without.</summary>
         public PurposeProtection Protection { get; }
+
+        /// <summary>The store's log.</summary>
+        public FakeLogger<TenantSettingsStore> Log { get; } = new();
 
         /// <summary>The store under test.</summary>
         public TenantSettingsStore Store { get; }

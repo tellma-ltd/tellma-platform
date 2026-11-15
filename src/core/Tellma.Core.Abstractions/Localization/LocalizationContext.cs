@@ -21,7 +21,9 @@ namespace Tellma.Core.Abstractions.Localization
     /// </remarks>
     /// <param name="Culture">
     ///     The culture: the negotiated language and region (<c>ar-SA</c>), formatting numbers with
-    ///     Latin digits and with no bidirectional marks in its patterns.
+    ///     Latin digits and with no bidirectional marks in its patterns. On a host whose culture data
+    ///     lacks the pair it is the language's own culture, or the invariant one, so its name is not
+    ///     always the pair; <paramref name="CultureTag" /> always is.
     /// </param>
     /// <param name="Calendar">The calendar dates render in.</param>
     /// <param name="TimeZone">
@@ -36,10 +38,17 @@ namespace Tellma.Core.Abstractions.Localization
     /// <param name="ContentLanguages">
     ///     The tenant's content languages, one to three in position order; empty outside a tenant.
     /// </param>
+    /// <param name="Language">The negotiated language as the language catalogue spells it (<c>ar</c>, <c>zh-Hant</c>).</param>
+    /// <param name="CultureTag">
+    ///     The negotiated culture's tag: the language and a region offered with it (<c>ar-SA</c>),
+    ///     whatever culture the host resolved the pair to.
+    /// </param>
     public sealed record LocalizationContext(
         CultureInfo Culture,
         ICalendarSystem Calendar,
         TimeZoneInfo TimeZone,
         int ContentLanguageIndex,
-        IReadOnlyList<LanguageInfo> ContentLanguages);
+        IReadOnlyList<LanguageInfo> ContentLanguages,
+        string Language,
+        string CultureTag);
 }

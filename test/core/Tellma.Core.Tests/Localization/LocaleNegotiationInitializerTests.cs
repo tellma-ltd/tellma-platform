@@ -4,10 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Calendars;
 using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Settings;
@@ -54,7 +55,7 @@ namespace Tellma.Core.Tests.Localization
         {
             await using TenantContextHarness harness = await TenantContextHarness.CreateAsync();
             await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
-            RequestContext bound = Current(scope);
+            RequestContext bound = Current(scope) with { Now = Evening };
 
             RequestContext completed = await Initializer(scope, Riyadh).InitializeAsync(bound, RequestContextInputs.Empty, Token);
 
@@ -77,10 +78,40 @@ namespace Tellma.Core.Tests.Localization
             await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
 
             RequestContext completed = await Initializer(scope, Utc).InitializeAsync(
-                Current(scope), new RequestContextInputs(null, null, "Asia/Riyadh", "web", null, null), Token);
+                Current(scope) with { Now = Evening }, new RequestContextInputs(null, null, "Asia/Riyadh", "web", null, null), Token);
 
             Assert.Equal(("Asia/Riyadh", "UTC"), (completed.TimeZone, completed.TenantTimeZone));
             Assert.Equal(new DateOnly(2026, 3, 14), completed.Today);
+        }
+
+        [Fact]
+        public async Task Today_is_the_date_of_the_scopes_own_instant_whatever_the_clock_reads_by_then()
+        {
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync();
+            await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
+            DateTimeOffset beforeMidnight = new(2026, 3, 14, 20, 59, 59, 900, TimeSpan.Zero);
+
+            // The scope was stamped just before midnight in Riyadh; the clock has long moved on (to
+            // November), as it moves on past midnight while a cold settings load runs.
+            RequestContext completed = await Initializer(scope, Riyadh).InitializeAsync(
+                Current(scope) with { Now = beforeMidnight }, RequestContextInputs.Empty, Token);
+
+            Assert.Equal(new DateOnly(2026, 3, 14), completed.Today);
+            Assert.Equal(beforeMidnight, completed.Now);
+        }
+
+        [Fact]
+        public async Task The_language_and_culture_are_the_negotiated_pair_even_when_the_host_lacks_its_culture()
+        {
+            await using TenantContextHarness harness = await TenantContextHarness.CreateAsync();
+            await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());
+
+            // A host without the pair's culture data resolves it to the invariant culture, whose name is empty.
+            InvariantNegotiator negotiator = new("zh-Hant", "TW");
+            RequestContext completed = await Initializer(scope, Utc, negotiator: negotiator).InitializeAsync(Current(scope), RequestContextInputs.Empty, Token);
+
+            Assert.Equal(("zh-Hant", "zh-Hant-TW"), (completed.Language, completed.Culture));
+            Assert.Equal(string.Empty, completed.CultureInfo.Name);
         }
 
         [Fact]
@@ -134,20 +165,25 @@ namespace Tellma.Core.Tests.Localization
         /// <summary>UTC.</summary>
         private static TimeZoneInfo Utc => TimeZoneInfo.Utc;
 
-        /// <summary>The initializer over fixed settings in a zone, at <see cref="Evening" />.</summary>
+        /// <summary>The initializer over fixed settings in a zone.</summary>
         /// <param name="scope">The scope whose tenant the settings are for.</param>
         /// <param name="zone">The tenant's zone.</param>
         /// <param name="preferences">The stored preferences; none when null.</param>
+        /// <param name="negotiator">The negotiator; the composed one when null.</param>
         /// <returns>The initializer.</returns>
-        private static LocaleNegotiationInitializer Initializer(AsyncServiceScope scope, TimeZoneInfo zone, IUserLocalePreferences? preferences = null)
+        private static LocaleNegotiationInitializer Initializer(
+            AsyncServiceScope scope,
+            TimeZoneInfo zone,
+            IUserLocalePreferences? preferences = null,
+            ILocalizationNegotiator? negotiator = null)
         {
             IServiceProvider services = scope.ServiceProvider;
             FixedTenantSettingsCache settings = new(
                 services.GetRequiredService<IRequestContextAccessor>(),
                 services.GetRequiredService<ILanguageCatalog>(),
-                services.GetRequiredService<Abstractions.Calendars.ICalendarRegistry>(),
+                services.GetRequiredService<ICalendarRegistry>(),
                 new FixedTenantSettingsOptions { Configure = settings => settings with { TimeZone = zone } });
-            return new LocaleNegotiationInitializer(settings, services.GetRequiredService<ILocalizationNegotiator>(), new FakeTimeProvider(Evening), preferences);
+            return new LocaleNegotiationInitializer(settings, negotiator ?? services.GetRequiredService<ILocalizationNegotiator>(), preferences);
         }
 
         /// <summary>The scope's current context.</summary>
@@ -156,6 +192,19 @@ namespace Tellma.Core.Tests.Localization
         private static RequestContext Current(AsyncServiceScope scope)
         {
             return scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>().Current;
+        }
+
+        /// <summary>A negotiator that always settles on one pair, resolved as a host without its culture data does.</summary>
+        /// <param name="language">The negotiated language.</param>
+        /// <param name="region">The negotiated region.</param>
+        private sealed class InvariantNegotiator(string language, string region) : ILocalizationNegotiator
+        {
+            /// <inheritdoc />
+            public LocalizationContext Negotiate(NegotiationInput input)
+            {
+                ICalendarSystem gregorian = new GregorianCalendarSystem();
+                return new LocalizationContext(CultureInfo.InvariantCulture, gregorian, TimeZoneInfo.Utc, 1, input.Settings.Languages, language, language + "-" + region);
+            }
         }
 
         /// <summary>Stored preferences that answer every user alike and remember who was asked.</summary>

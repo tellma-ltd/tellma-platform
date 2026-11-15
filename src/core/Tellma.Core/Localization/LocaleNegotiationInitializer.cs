@@ -26,12 +26,10 @@ namespace Tellma.Core.Localization
     /// </remarks>
     /// <param name="settings">The scope's tenant settings.</param>
     /// <param name="negotiator">The locale negotiator.</param>
-    /// <param name="time">The clock today's date is read from.</param>
     /// <param name="preferences">The connected user's stored preferences; null in a composition without a user connection.</param>
     internal sealed class LocaleNegotiationInitializer(
         ITenantSettingsCache settings,
         ILocalizationNegotiator negotiator,
-        TimeProvider time,
         IUserLocalePreferences? preferences = null) : IRequestContextInitializer
     {
         /// <summary>The initializer's order: after the user connection at 100.</summary>
@@ -75,27 +73,21 @@ namespace Tellma.Core.Localization
                 inputs.MessageCalendar,
                 tenant));
 
+            // The language and culture are the negotiated ones, not read back from the culture's
+            // name, which on a host without the pair's culture data is the language's own or empty. Today is
+            // the date of the instant the scope was stamped with, so it never disagrees with Now.
             return context with
             {
-                Language = LanguageOf(locale.Culture.Name),
-                Culture = locale.Culture.Name,
+                Language = locale.Language,
+                Culture = locale.CultureTag,
                 CultureInfo = locale.Culture,
                 CalendarSystem = locale.Calendar,
                 TimeZone = locale.TimeZone.Id,
                 TenantTimeZone = tenant.TimeZone.Id,
-                Today = tenant.Today(time),
+                Today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(context.Now, tenant.TimeZone).DateTime),
                 ContentLanguageIndex = locale.ContentLanguageIndex,
                 TenantSettings = tenant,
             };
-        }
-
-        /// <summary>The language of a negotiated culture's name, <c>&lt;language&gt;-&lt;region&gt;</c>.</summary>
-        /// <param name="culture">The culture's name.</param>
-        /// <returns>The language: the name without its last subtag, or the whole name when it has one subtag.</returns>
-        private static string LanguageOf(string culture)
-        {
-            int dash = culture.LastIndexOf('-');
-            return dash > 0 ? culture[..dash] : culture;
         }
     }
 }

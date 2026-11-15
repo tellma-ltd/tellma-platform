@@ -223,12 +223,15 @@ namespace Tellma.Core.Tests.Localization
         private LocalizationContext Context(string language, params string[] contentLanguages)
         {
             ILanguageCatalog catalog = _provider.GetRequiredService<ILanguageCatalog>();
+            string region = catalog.Formats(language).DefaultRegion;
             return new LocalizationContext(
-                NegotiatedCultures.Get(language, catalog.Formats(language).DefaultRegion),
+                NegotiatedCultures.Get(language, region),
                 Gregorian,
                 TimeZoneInfo.Utc,
                 1,
-                [.. contentLanguages.Select(code => catalog.Find(code)!)]);
+                [.. contentLanguages.Select(code => catalog.Find(code)!)],
+                language,
+                language + "-" + region);
         }
 
         /// <summary>A language's symbol, as the catalogue gives it.</summary>
