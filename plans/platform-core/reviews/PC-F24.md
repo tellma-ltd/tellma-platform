@@ -341,3 +341,23 @@ The linked measure is now 41.00 KB of 41.01 (the first commit measured 40.97, an
   (`.tmp/pcf24-r1-unit-final.log`).
 - `dotnet build` (0 warnings) and `dotnet format --verify-no-changes` were green on this branch.
   No .NET file changed after that.
+
+## Integration notes
+
+- **Merge.** `git merge origin/platform-core` (65d974d8) merged cleanly, with no conflicts. That
+  version brings PC-056 (popup cell editors and the `./grid-editing` split) into the same
+  `grid-core.ts`.
+- **Interaction with PC-056, fixed.**
+  - A read-only popup view puts its pane in the cell, inside the scroller, with no editor session
+    open, so the flush ran for an arrow in that pane.
+  - A pending `activeRowId` write then moved the active cell before the key acted. That closed the
+    view under the key.
+  - The flush now also skips targets inside an overlay pane, matching `onKeydown`'s own early
+    return.
+  - An open popup editor was already covered by the editor-session check.
+  - Two new tests in `tm-grid-popup-editor.spec.ts`, which also gains `[(activeRowId)]` on its
+    host, hold the render behind a write: one covers an open popup editor, the other a read-only
+    view. With the overlay guard removed, the read-only one fails
+    (`.tmp/pcf24-int-mutant-overlay.log`).
+- **Size on the merged tree.** `./grid` measures 42.02 against its 42.03 ceiling, and
+  `./grid-editing` 7.42 against 7.52.

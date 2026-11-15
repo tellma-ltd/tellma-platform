@@ -8,7 +8,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, form, required } from '@angular/forms/signals';
 
-import type { TmCellEditor } from '@tellma/core-ui/contracts';
+import type { TmCellEditor, TmRowId } from '@tellma/core-ui/contracts';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmGridHarness } from '@tellma/core-ui-testing';
@@ -131,6 +131,7 @@ class TestFilterEditor implements TmCellEditor<string | null> {
       [field]="f"
       [rowId]="rowId"
       [readonly]="readonly()"
+      [(activeRowId)]="active"
       style="block-size: 300px"
     >
       <tm-grid-column key="user" header="User" [width]="120" />
@@ -165,6 +166,7 @@ class PopupHost {
     });
   });
   readonly readonly = signal(false);
+  readonly active = signal<TmRowId | null>(null);
   readonly rowId = (grant: Grant): number => grant.id;
   readonly windowText = (window: GrantWindow | null): string =>
     window === null || (window.startsAt === null && window.endsAt === null)
@@ -194,7 +196,12 @@ function cellAt(scroller: HTMLElement, row: number, col: number): HTMLElement | 
 }
 
 function pointerPress(target: Element): void {
-  const init: PointerEventInit = { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' };
+  const init: PointerEventInit = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    pointerType: 'mouse',
+  };
   target.dispatchEvent(new PointerEvent('pointerdown', init));
   target.dispatchEvent(new PointerEvent('pointerup', init));
 }
@@ -220,6 +227,28 @@ async function setup(): Promise<{
     '.tm-grid__scroller',
   ) as HTMLElement;
   return { fixture, host: fixture.componentInstance, scroller };
+}
+
+/**
+ * Runs `act` with every render held back, then lets the held render run and
+ * the fixture settle: the zoneless scheduler renders from a timeout raced
+ * against an animation frame, and under fake timers neither fires until
+ * released, so `act` stands for input a busy page dispatches before its next
+ * scheduled render.
+ */
+async function holdRenders(fixture: ComponentFixture<unknown>, act: () => void): Promise<void> {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'Date'],
+  });
+  try {
+    act();
+    // Microtasks run, but no render: it waits on the faked timers.
+    await Promise.resolve();
+    vi.runOnlyPendingTimers();
+  } finally {
+    vi.useRealTimers();
+  }
+  await stable(fixture);
 }
 
 /** Activates a cell by pressing it, as a user would. */
@@ -480,6 +509,22 @@ describe('tm-grid (popup editors)', () => {
     expect(cellAt(scroller, 0, 0)!.querySelector('.tm-grid__editor input')).not.toBeNull();
   });
 
+  it('keeps an arrow in an open pane while a write to activeRowId waits for the render', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activate(fixture, scroller, 0, 2);
+    keydown(cellAt(scroller, 0, 2)!, 'C');
+    await stable(fixture);
+    const textarea = pane(scroller)!.querySelector('textarea')!;
+    await holdRenders(fixture, () => {
+      // The page moves the active row while the editor is open: the arrow
+      // stays the editor's, and nothing renders the write ahead of it.
+      host.active.set(3);
+      expect(keydown(textarea, 'ArrowDown').defaultPrevented).toBe(false);
+      expect(pane(scroller)).not.toBeNull();
+      expect(textarea.value).toBe('C');
+    });
+  });
+
   describe('read-only open', () => {
     it('F2 on a readonly row opens the pane read-only; Escape closes it and nothing commits', async () => {
       const { fixture, host, scroller } = await setup();
@@ -541,6 +586,27 @@ describe('tm-grid (popup editors)', () => {
       expect(document.activeElement).toBe(cellAt(scroller, 1, 1));
     });
 
+    it('leaves an arrow in the view to the view while a write to activeRowId waits for the render', async () => {
+      const { fixture, host, scroller } = await setup();
+      host.readonly.set(true);
+      await stable(fixture);
+      await activate(fixture, scroller, 0, 1);
+      keydown(cellAt(scroller, 0, 1)!, 'F2');
+      await stable(fixture);
+      const starts = pane(scroller)!.querySelector<HTMLInputElement>('.starts')!;
+      await holdRenders(fixture, () => {
+        // A render ahead of the arrow would move the active cell to the
+        // written row and close the view under the key.
+        host.active.set(3);
+        keydown(starts, 'ArrowDown');
+        expect(pane(scroller)).not.toBeNull();
+      });
+      // The render that follows moves the active cell, and the view, which
+      // belongs to its cell, closes.
+      expect(host.active()).toBe(3);
+      expect(pane(scroller)).toBeNull();
+    });
+
     it('a press elsewhere, or focus leaving the grid, closes the view', async () => {
       const { fixture, host, scroller } = await setup();
       const before = host.model();
@@ -557,7 +623,9 @@ describe('tm-grid (popup editors)', () => {
       keydown(cellAt(scroller, 2, 1)!, 'F2');
       await stable(fixture);
       expect(pane(scroller)).not.toBeNull();
-      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#outside-input')!.focus();
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('#outside-input')!
+        .focus();
       await stable(fixture);
       expect(pane(scroller)).toBeNull();
       // Nothing wrote: the model is the very array it started as.

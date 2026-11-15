@@ -6315,7 +6315,9 @@ export class ɵTmGridCore<T>
         // Without it, the key would act on the stale active cell, and the
         // render would then move the cell to the written row, discarding the
         // move. A key that edits, clears, pastes or restructures rows keeps
-        // acting on the cell the user sees, and an open editor owns its keys.
+        // acting on the cell the user sees; an open editor owns its keys, and
+        // so does an overlay in place in the grid (a read-only popup view's
+        // pane, which a render moving the active cell would close).
         // DOM handlers run outside a tick in zoneless Angular, so the call is
         // re-entrancy-safe. It runs in a capture-phase native listener, ahead
         // of the template's `(keydown)`, because Angular's listener wrapper
@@ -6331,7 +6333,8 @@ export class ɵTmGridCore<T>
             if (
               ɵTM_GRID_FLUSH_KEY.test(event.key) &&
               (event.key !== 'Enter' || this.rowMode()) &&
-              !this.engine.edit.session()
+              !this.engine.edit.session() &&
+              !this.inOverlay(event.target as Element)
             ) {
               this.appRef.tick();
             }
