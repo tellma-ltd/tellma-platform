@@ -58,6 +58,24 @@ namespace Tellma.Identity.Tests.Infrastructure
         }
 
         [Theory]
+        [InlineData("http://127.0.0.1/callback", "http://127.0.0.1:*/callback")]
+        [InlineData("http://[::1]/callback", "http://[::1]:*/callback")]
+        [InlineData("http://localhost/cb", "http://localhost:*/cb")]
+        [InlineData("http://127.0.0.1:8400/callback", "http://127.0.0.1:8400/callback")]
+        [InlineData("https://app.example.com/callback", "https://app.example.com/callback")]
+        public void A_portless_loopback_callback_allows_every_port(string uri, string source)
+        {
+            // A native client listens on an ephemeral port, which a port-less loopback
+            // registration matches; a source naming only the default port would discard the
+            // redirect that completes the grant. Anything with a port, or off loopback, is kept
+            // exactly as registered.
+            DefaultHttpContext context = new();
+            CspFormAction.Allow(context, [uri]);
+
+            Assert.Equal([source], CspFormAction.Allowed(context));
+        }
+
+        [Theory]
         [InlineData("")]
         [InlineData("   ")]
         [InlineData("not a uri")]

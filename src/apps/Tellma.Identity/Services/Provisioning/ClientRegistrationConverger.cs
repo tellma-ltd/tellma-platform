@@ -8,8 +8,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 using Tellma.Identity.Options;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -194,6 +196,50 @@ namespace Tellma.Identity.Services.Provisioning
         }
 
         /// <summary>
+        ///     Converges a document client's row on its validated document: creates it unless the
+        ///     document-client cap is reached, rewrites it when the document changed, and writes
+        ///     nothing when it did not. The row keeps its creation time across rewrites. A row with
+        ///     the same client id that is not a document client's is never touched.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="now">The creation time a new row records.</param>
+        /// <param name="cancellationToken">Aborts the operation.</param>
+        /// <returns>What happened to the row, or why it was refused.</returns>
+        public async Task<DocumentClientConvergence> ConvergeDocumentClientAsync(
+            ClientMetadataDocument document, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            return await WithRetryAsync(
+                document.ClientId.OriginalString,
+                (converger, services) => converger.ConvergeDocumentClientOnceAsync(
+                    document, now, services.GetRequiredService<ClientMetadata.IDocumentClientStore>(), cancellationToken),
+                cancellationToken);
+        }
+
+        /// <summary>
+        ///     Whether two key sets hold the same public keys, compared as sets of their public
+        ///     members; a stored key set is read back through a serializer, so object identity and
+        ///     member order carry no meaning.
+        /// </summary>
+        /// <param name="left">One key set, or null.</param>
+        /// <param name="right">The other, or null.</param>
+        /// <returns>True when both are null or both hold the same keys.</returns>
+        internal static bool HaveSameKeys(JsonWebKeySet? left, JsonWebKeySet? right)
+        {
+            return left is null || right is null
+                ? left is null && right is null
+                : Fingerprints(left).SetEquals(Fingerprints(right));
+
+            // One string per key, of the members that identify a public key.
+            static HashSet<string> Fingerprints(JsonWebKeySet set)
+            {
+                return [.. set.Keys.Select(static key => string.Join(
+                    '|', key.Kty, key.Kid, key.Use, key.Alg, key.Crv, key.X, key.Y, key.N, key.E))];
+            }
+        }
+
+        /// <summary>
         ///     Whether two descriptors describe the same registration in every member the platform
         ///     sets, compared as sets where order carries no meaning. Secrets are compared as stored.
         /// </summary>
@@ -214,7 +260,7 @@ namespace Tellma.Identity.Services.Provisioning
                 && left.DisplayNames.Count == right.DisplayNames.Count
                 && left.DisplayNames.All(pair => right.DisplayNames.TryGetValue(pair.Key, out string? name)
                     && string.Equals(pair.Value, name, StringComparison.Ordinal))
-                && left.JsonWebKeySet is null && right.JsonWebKeySet is null
+                && HaveSameKeys(left.JsonWebKeySet, right.JsonWebKeySet)
                 && left.Permissions.SetEquals(right.Permissions)
                 && left.Requirements.SetEquals(right.Requirements)
                 && left.RedirectUris.SetEquals(right.RedirectUris)
@@ -255,8 +301,18 @@ namespace Tellma.Identity.Services.Provisioning
         ///     Runs one write point in a fresh scope, and again in another when it loses its write to
         ///     a concurrent writer, up to <see cref="MaxAttemptsPerWrite" /> attempts.
         /// </summary>
-        private async Task<T> WithRetryAsync<T>(
+        private Task<T> WithRetryAsync<T>(
             string subject, Func<ClientRegistrationConverger, Task<T>> attempt, CancellationToken cancellationToken)
+        {
+            return WithRetryAsync(subject, (converger, _) => attempt(converger), cancellationToken);
+        }
+
+        /// <summary>
+        ///     Runs one write point as the overload without services does, handing the attempt its
+        ///     scope's services as well.
+        /// </summary>
+        private async Task<T> WithRetryAsync<T>(
+            string subject, Func<ClientRegistrationConverger, IServiceProvider, Task<T>> attempt, CancellationToken cancellationToken)
         {
             for (int number = 1; ; number++)
             {
@@ -264,7 +320,7 @@ namespace Tellma.Identity.Services.Provisioning
                 try
                 {
                     await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-                    return await attempt(scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>());
+                    return await attempt(scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>(), scope.ServiceProvider);
                 }
                 catch (Exception exception) when (number < MaxAttemptsPerWrite && IsConcurrentWriteConflict(exception))
                 {
@@ -350,6 +406,56 @@ namespace Tellma.Identity.Services.Provisioning
                     }
                 },
                 cancellationToken);
+        }
+
+        /// <summary>One attempt at converging a document client's row.</summary>
+        private async Task<DocumentClientConvergence> ConvergeDocumentClientOnceAsync(
+            ClientMetadataDocument document,
+            DateTimeOffset now,
+            ClientMetadata.IDocumentClientStore documentClients,
+            CancellationToken cancellationToken)
+        {
+            string clientId = document.ClientId.OriginalString;
+            DateTimeOffset createdUtc = now;
+            object? existing = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
+            if (existing is null)
+            {
+                // The cap is checked against a count, so instances racing at the cap may each add
+                // one row past it; the bound is soft by that much.
+                if (await documentClients.CountAsync(cancellationToken) >= options.Value.ClientMetadata.MaxClients)
+                {
+                    return DocumentClientConvergence.Cap;
+                }
+            }
+            else
+            {
+                // A row this client id names that is not a document client's belongs to someone
+                // else; the document never rewrites it.
+                ImmutableDictionary<string, JsonElement> properties = await applicationManager.GetPropertiesAsync(existing, cancellationToken);
+                if (!TellmaClientProperties.IsSet(properties, TellmaClientProperties.DocumentClient))
+                {
+                    return DocumentClientConvergence.Registered;
+                }
+
+                if (DateTimeOffset.TryParse(
+                    TellmaClientProperties.Get(properties, TellmaClientProperties.CreatedUtc),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out DateTimeOffset created))
+                {
+                    createdUtc = created;
+                }
+            }
+
+            ClientConvergence outcome = await ConvergeApplicationAsync(
+                ClientDescriptorFactory.DocumentClient(document, createdUtc), adjust: null, cancellationToken);
+            return outcome switch
+            {
+                ClientConvergence.Created => DocumentClientConvergence.Created,
+                ClientConvergence.Updated => DocumentClientConvergence.Updated,
+                ClientConvergence.Unchanged => DocumentClientConvergence.Unchanged,
+                _ => throw new InvalidOperationException($"Unknown convergence outcome {outcome}."),
+            };
         }
 
         /// <summary>One attempt at converging a scope.</summary>

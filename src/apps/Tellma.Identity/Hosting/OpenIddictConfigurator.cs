@@ -168,6 +168,12 @@ namespace Tellma.Identity.Hosting
                     server.AddEventHandler(Handlers.ValidateTokenResourcesHandler.Descriptor);
                     server.AddEventHandler(Handlers.NarrowAccessTokenAudienceHandler.Descriptor);
 
+                    // Document clients: the document is resolved and the row converged before the
+                    // built-in client validation reads the row, and discovery advertises the
+                    // feature while it is on.
+                    server.AddEventHandler(Handlers.DocumentClientHandler.Descriptor);
+                    server.AddEventHandler(Handlers.AdvertiseDocumentClientsHandler.Descriptor);
+
                     // Pass-through: the engine's controllers shape every interactive protocol
                     // response while OpenIddict handles the wire format. The device-authorization
                     // endpoint itself has no pass-through (and needs none) — only the end-user

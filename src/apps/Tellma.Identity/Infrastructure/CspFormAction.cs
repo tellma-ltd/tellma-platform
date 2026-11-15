@@ -95,7 +95,20 @@ namespace Tellma.Identity.Infrastructure
                 || uri.AsSpan().ContainsAny(Unsafe)
                 || !Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed)
                 ? null
-                : parsed.Scheme is "http" or "https" ? uri : parsed.Scheme + ":";
+                : parsed.Scheme is "http" or "https" ? ToHostSource(uri, parsed) : parsed.Scheme + ":";
+        }
+
+        /// <summary>
+        ///     The source expression of an <c>http(s)</c> URI: the URI itself, except that a
+        ///     loopback one registered without a port matches any port (RFC 8252, section 7.3), so its
+        ///     source names every port — a native client's callback listens on an ephemeral one,
+        ///     and naming only the default port would discard the redirect that completes the grant.
+        /// </summary>
+        private static string ToHostSource(string uri, Uri parsed)
+        {
+            return parsed.IsDefaultPort && Services.ClientMetadata.DocumentClientRedirects.IsLoopback(parsed)
+                ? parsed.Scheme + "://" + parsed.Host + ":*" + parsed.AbsolutePath
+                : uri;
         }
     }
 }

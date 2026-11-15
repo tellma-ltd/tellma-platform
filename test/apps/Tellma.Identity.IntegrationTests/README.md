@@ -23,3 +23,8 @@ end-to-end against a real SQL Server:
   Identity external cookie a provider's handler would have written and nothing else. The round trip
   to Google is the one part of that flow a test cannot make; everything the callback then does with
   the assertion — linking, refusing, signing in — is the real code path.
+- Document clients fetch their metadata documents from `LocalDocumentServer`, which replaces the
+  primary handler of the engine's metadata client (`Tellma.Identity.ClientMetadata`) and serves
+  published documents and key sets from memory, or fails a URL as an unreachable host would. It
+  stands in for the address-checking handler as well, which `Tellma.Identity.Tests` covers; no test
+  fetches from a real host.

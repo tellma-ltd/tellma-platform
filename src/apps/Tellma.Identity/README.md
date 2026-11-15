@@ -225,6 +225,60 @@ Every interactive endpoint with error pass-through (authorization, end session) 
 which then only re-raises the refusal for the error page — it never starts an interaction, signs in
 or out, or writes state.
 
+## Document clients
+
+A client may skip registration by using the URL of its own metadata document as its `client_id`
+(an OAuth Client ID Metadata Document). `DocumentClientHandler` runs inside OpenIddict's
+authentication pipeline at the authorization, pushed authorization, token and revocation endpoints,
+before the client id and any client assertion are checked. For a client id that is an `https` URL
+with a path (`ClientIdUrl`), it resolves the document (`IClientMetadataDocumentResolver`) and
+converges an ordinary application row from it (`ClientRegistrationConverger.ConvergeDocumentClientAsync`,
+marker `tellma:document_client`, creation time `tellma:created_utc`), so OpenIddict's own checks
+then read that row. A client that names itself only in its `client_assertion` is found by the
+assertion's unvalidated issuer. Any refusal is `invalid_client`, with one generic description.
+
+- **Fetching.** The named client `Tellma.Identity.ClientMetadata` has no proxy, follows no
+  redirect and has a `SocketsHttpHandler` whose `ConnectCallback` resolves the host itself and
+  refuses the connection when any resolved address is not public (`ClientMetadataAddressPolicy`:
+  loopback, private, link-local, CGNAT, multicast, documentation and the other special ranges, and
+  their IPv4-mapped forms), then connects to the address it checked, so a rebinding resolver cannot
+  swap it. A response must be `200`, `application/json` (a key set may also be
+  `application/jwk-set+json`), at most `MaxBytes`, and arrive within `Timeout`. Each host is
+  fetched at most `FetchesPerHostPerMinute` times.
+- **Caching.** The response's `Cache-Control`/`Expires` lifetime is clamped to
+  `[MinCache, MaxCache]`, and a key set's lifetime shortens the document's. One fetch per client
+  id is in flight at a time. A redirect URI the cached document does not list fetches it again
+  before the request is refused; if that early fetch fails or is rate-limited, the unexpired copy
+  is still used. An expired document that cannot be fetched refuses the client, whatever its row
+  holds.
+- **Validation** (`ClientMetadataDocumentParser`). `client_id` must equal the URL; `redirect_uris`
+  must be absolute, without fragment or userinfo, `https` or loopback `http`; the
+  `token_endpoint_auth_method` is `none` or `private_key_jwt`, the latter with a same-origin
+  `jwks_uri` whose keys are public RSA (2048 bits or more) or EC (P-256/384/521) signing keys; a
+  secret, inline `jwks`, duplicate members or a `grant_types` beyond `authorization_code` and
+  `refresh_token` are refused. A port-less loopback redirect matches any port, as for native
+  clients.
+- **The row.** PKCE is required; the scopes are `openid`, `profile`, `email`, `offline_access` and
+  `tellma_api`; consent is always explicit, and the consent page shows the document's
+  `client_name` beside the host of its client id. At most `MaxClients` document-client rows exist:
+  at the cap a new client is refused (audit reason `cap`). A client id that a seeded or provisioned
+  client already holds is never taken over (audit reason `registered`), and a seed entry may not use
+  an `https` client id. An hourly Quartz job (`DocumentClientPruneJob`) deletes a row with no
+  authorization and no unexpired token created more than `UnusedClientLifetime` ago.
+- **Signals.** Each resolution is audited as `ClientMetadataFetched` or `ClientMetadataRejected`
+  (with the reason and the host), and counted on `tellma.identity.client_metadata.fetches`, tagged
+  with `outcome` only (`fetched`, `rejected`, `failed`), never with the client id.
+- **Discovery** advertises `client_id_metadata_document_supported: true` and `none` among the token
+  endpoint authentication methods. `ClientMetadata:Enabled=false` withdraws both and refuses every
+  `https` client id.
+
+**Testing seam.** The address guard lives in the primary handler, behind two seams:
+`IClientMetadataHostResolver` (DNS) and `IClientMetadataSocketConnector` (TCP), which the unit
+suite replaces to prove every resolved address is checked. An integration test serves documents
+from memory by replacing the named client's primary handler, which also removes the guard:
+`services.AddHttpClient(ClientMetadataHttp.ClientName).ConfigurePrimaryHttpMessageHandler(() => server)`
+(the integration suite's `LocalDocumentServer` does this). No test fetches from a real host.
+
 ## The store check and seeding
 
 Every start runs `IdentitySeeder`, and its first step is the **store check**

@@ -24,6 +24,12 @@ namespace Tellma.Identity.Options
     public sealed class TellmaIdentityOptionsValidator(IHostEnvironment? environment = null)
         : IValidateOptions<TellmaIdentityOptions>
     {
+        /// <summary>The largest <see cref="TellmaIdentityClientMetadataOptions.MaxBytes" /> accepted: 1 MiB.</summary>
+        public const int MaxClientMetadataBytes = 1024 * 1024;
+
+        /// <summary>The longest <see cref="TellmaIdentityClientMetadataOptions.Timeout" /> accepted.</summary>
+        public static readonly TimeSpan MaxClientMetadataTimeout = TimeSpan.FromSeconds(30);
+
         /// <inheritdoc />
         public ValidateOptionsResult Validate(string? name, TellmaIdentityOptions options)
         {
@@ -137,6 +143,8 @@ namespace Tellma.Identity.Options
                 failures.Add("TellmaIdentity:Lifetimes:RefreshTokenReuseLeeway must not be negative.");
             }
 
+            ValidateClientMetadata(options.ClientMetadata, failures);
+
             // Seed entries shape no registration-time decision, and their rules depend on the
             // environment (Development relaxes the origin scheme and the secrets), so they are
             // validated only once it is known: by the start-up check, over the host's final
@@ -179,6 +187,15 @@ namespace Tellma.Identity.Options
                     continue;
                 }
 
+                // An https URL is a document client's id: requests naming it are resolved through
+                // the document at that address, never through a registration, so a seeded client
+                // under such an id could never be used — and a document published there would be
+                // refused rather than allowed to take the seeded row over.
+                if (Services.ClientMetadata.ClientIdUrl.IsDocumentClientId(client.ClientId))
+                {
+                    failures.Add($"{entry}: ClientId must not be an https URL, which names a client ID metadata document.");
+                }
+
                 IEnumerable<string> clientIds = client.Kind == TellmaIdentitySeedClientKind.Distribution
                     ? [client.ClientId, client.ClientId + Services.Provisioning.DistributionClientRegistration.ServiceClientIdSuffix]
                     : [client.ClientId];
@@ -217,6 +234,54 @@ namespace Tellma.Identity.Options
                         failures.Add($"{entry}: an interim client must be a Native entry with ThirdParty set.");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        ///     Validates the client ID metadata document settings: every bound and limit positive,
+        ///     the body limit no larger than <see cref="MaxClientMetadataBytes" />, the per-fetch
+        ///     timeout no longer than <see cref="MaxClientMetadataTimeout" />, and the cache window
+        ///     well ordered.
+        /// </summary>
+        private static void ValidateClientMetadata(TellmaIdentityClientMetadataOptions metadata, List<string> failures)
+        {
+            const string Section = "TellmaIdentity:ClientMetadata";
+
+            if (metadata.MaxBytes is <= 0 or > MaxClientMetadataBytes)
+            {
+                failures.Add($"{Section}:MaxBytes must be between 1 and {MaxClientMetadataBytes}.");
+            }
+
+            // The timeout bounds a request that an unauthenticated caller can make the server wait
+            // on, so it stays short even when misconfigured.
+            if (metadata.Timeout <= TimeSpan.Zero || metadata.Timeout > MaxClientMetadataTimeout)
+            {
+                failures.Add($"{Section}:Timeout must be positive and at most {MaxClientMetadataTimeout.TotalSeconds:0} seconds.");
+            }
+
+            if (metadata.MinCache <= TimeSpan.Zero)
+            {
+                failures.Add($"{Section}:MinCache must be positive.");
+            }
+
+            if (metadata.MaxCache < metadata.MinCache)
+            {
+                failures.Add($"{Section}:MaxCache must not be shorter than MinCache.");
+            }
+
+            if (metadata.FetchesPerHostPerMinute <= 0)
+            {
+                failures.Add($"{Section}:FetchesPerHostPerMinute must be positive.");
+            }
+
+            if (metadata.MaxClients < 0)
+            {
+                failures.Add($"{Section}:MaxClients must not be negative.");
+            }
+
+            if (metadata.UnusedClientLifetime <= TimeSpan.Zero)
+            {
+                failures.Add($"{Section}:UnusedClientLifetime must be positive.");
             }
         }
 
