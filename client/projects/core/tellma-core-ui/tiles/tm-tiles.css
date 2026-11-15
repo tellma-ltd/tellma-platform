@@ -1,0 +1,365 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-tiles — a virtualized lattice of fixed-size tiles. The scroller is the
+   grid; each lattice line is an absolutely placed row at its pitch (the
+   component computes the offsets from the same tokens), and each tile a
+   cell: tree chrome, the reserved checkbox, the image, then the four
+   corners on a two-by-two grid. data-layout switches between the lattice
+   (bordered cards with gaps) and the stacked list and tree (rows split by
+   divider lines). */
+
+:host {
+  position: relative;
+  display: block;
+  font-family: var(--font-ui);
+  color: var(--tiles-text);
+}
+
+/* ---- Scroller, canvas and lines ---- */
+
+/* The stable gutter keeps the width, and so the columns, the same whether
+   or not the content overflows. */
+.tm-tiles__scroller {
+  position: relative;
+  box-sizing: border-box;
+  block-size: 100%;
+  overflow: hidden auto;
+  scrollbar-gutter: stable;
+}
+
+.tm-tiles__canvas {
+  position: relative;
+}
+
+.tm-tiles__line {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--tm-tiles-columns, 1), minmax(0, 1fr));
+  column-gap: var(--tiles-gap);
+  block-size: var(--tiles-height);
+  contain: layout style;
+}
+
+:host([data-layout='list']) .tm-tiles__line,
+:host([data-layout='tree']) .tm-tiles__line {
+  column-gap: 0;
+}
+
+/* ---- The tile ---- */
+
+/* 60px tall: a hairline, the padding, and the 40px image row. */
+.tm-tiles__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--tiles-content-gap);
+  box-sizing: border-box;
+  block-size: var(--tiles-height);
+  min-inline-size: 0;
+  padding: var(--tiles-padding);
+  border: var(--border-width) solid var(--tiles-border);
+  border-radius: var(--tiles-radius);
+  background: var(--tiles-bg);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list --
+     :focus-visible below draws an inset ring instead; a transparent outline
+     returns under forced colors. */
+  outline: none;
+}
+
+/* Stacked, the tiles are rows split by divider lines. */
+:host([data-layout='list']) .tm-tiles__item,
+:host([data-layout='tree']) .tm-tiles__item {
+  border-color: transparent;
+  border-block-end-color: var(--tiles-divider);
+}
+
+/* A tree row indents one step per level below the roots. */
+:host([data-layout='tree']) .tm-tiles__item {
+  padding-inline-start: calc(
+    var(--tiles-padding) + (var(--tm-tiles-level, 1) - 1) * var(--tiles-indent)
+  );
+}
+
+/* The consumer's emphasized row. */
+.tm-tiles__item--marked {
+  background: var(--tiles-marked-bg);
+}
+
+.tm-tiles__item--marked .tm-tiles__title {
+  font-weight: var(--tiles-marked-font-weight);
+}
+
+/* The consumer's context row: drawn muted around the rows that matter. */
+.tm-tiles__item--context,
+.tm-tiles__item--context .tm-tiles__title {
+  color: var(--tiles-context-text);
+}
+
+.tm-tiles__item:hover {
+  background: var(--tiles-hover-bg);
+}
+
+/* The active tile: the active-row tint under an accent bar at inline-start. */
+.tm-tiles__item--active {
+  background: var(--tiles-active-bg);
+}
+
+.tm-tiles__item--active::before {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--focus-ring-width);
+  background: var(--tiles-active-bar);
+  content: '';
+}
+
+/* A selected tile takes the selection tint, over the active one. */
+.tm-tiles__item--selected {
+  background: var(--tiles-selected-bg);
+}
+
+.tm-tiles__item:focus-visible {
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+/* ---- Twisty, spinner slot and checkbox ---- */
+
+/* A 24px target around a 13px chevron; on a leaf the slot stays, empty, so
+   titles align across levels. */
+.tm-tiles__twisty {
+  --icon-size: var(--tiles-twisty-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-twisty-target);
+  block-size: var(--tiles-twisty-target);
+  color: var(--tiles-twisty);
+}
+
+/* Reserved whenever children load lazily, so a spinner that comes and goes
+   moves nothing. */
+.tm-tiles__spinner-slot {
+  --spinner-size: var(--tiles-spinner-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-spinner-slot);
+}
+
+/* The checkbox: a 14px box in a 24px target, checked when selected. */
+.tm-tiles__check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-check-target);
+  block-size: var(--tiles-check-target);
+}
+
+.tm-tiles__box {
+  --icon-size: calc(var(--tiles-check-size) - var(--space-1));
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: var(--tiles-check-size);
+  block-size: var(--tiles-check-size);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--radius-xs);
+  background: var(--field-bg);
+  color: var(--color-on-primary);
+}
+
+.tm-tiles__item--selected .tm-tiles__box {
+  border-color: var(--tiles-check);
+  background: var(--tiles-check);
+}
+
+/* ---- Image ---- */
+
+.tm-tiles__image {
+  display: block;
+  flex: none;
+  inline-size: var(--tiles-image-size);
+  block-size: var(--tiles-image-size);
+}
+
+.tm-tiles__placeholder {
+  --icon-size: calc(var(--tiles-image-size) / 2);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-image-size);
+  block-size: var(--tiles-image-size);
+  background: var(--tiles-placeholder-bg);
+  color: var(--tiles-placeholder-icon);
+}
+
+/* ---- Text: the title and the three corners on a two-by-two grid ---- */
+
+.tm-tiles__text,
+.tm-tiles__body {
+  flex: 1;
+  min-inline-size: 0;
+  block-size: 100%;
+}
+
+.tm-tiles__text {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  column-gap: var(--tiles-content-gap);
+  font-size: var(--tiles-corner-font-size);
+}
+
+.tm-tiles__title,
+.tm-tiles__corner {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tm-tiles__title {
+  grid-area: 1 / 1;
+  color: var(--tiles-title-text);
+  font-size: var(--tiles-title-font-size);
+  font-weight: var(--tiles-title-font-weight);
+}
+
+.tm-tiles__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tm-tiles__link:hover {
+  text-decoration: underline;
+}
+
+.tm-tiles__corner--top-end {
+  grid-area: 1 / 2;
+  text-align: end;
+}
+
+.tm-tiles__corner--bottom-start {
+  grid-area: 2 / 1;
+  color: var(--tiles-secondary-text);
+}
+
+.tm-tiles__corner--bottom-end {
+  grid-area: 2 / 2;
+  text-align: end;
+}
+
+/* Numbers align as the grid's do: tabular, at the physical right in both
+   directions. */
+.tm-tiles__corner--numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- Skeleton tiles ---- */
+
+.tm-tiles__item--skeleton {
+  cursor: default;
+}
+
+.tm-tiles__skeleton-text {
+  flex: 1;
+}
+
+/* ---- Loading and empty layers ---- */
+
+.tm-tiles__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tm-tiles__empty {
+  color: var(--tiles-secondary-text);
+  font-size: var(--tiles-title-font-size);
+}
+
+/* ---- Flash ---- */
+
+/* The one-off pulse scrollToRow gives the tile it brings into view: it
+   starts on the flash tint and fades back to whatever the tile paints. A
+   re-flash alternates the class, whose keyframes are the same under another
+   name, so the animation restarts. */
+.tm-tiles__item--flash {
+  animation: tm-tiles-flash var(--tiles-flash-duration) ease-out;
+}
+
+.tm-tiles__item--reflash {
+  animation: tm-tiles-reflash var(--tiles-flash-duration) ease-out;
+}
+
+@keyframes tm-tiles-flash {
+  from {
+    background-color: var(--tiles-flash-bg);
+  }
+}
+
+@keyframes tm-tiles-reflash {
+  from {
+    background-color: var(--tiles-flash-bg);
+  }
+}
+
+/* Reduced motion: the tint holds still for the same time, then clears in
+   one step instead of fading. */
+@media (prefers-reduced-motion: reduce) {
+  .tm-tiles__item--flash,
+  .tm-tiles__item--reflash {
+    animation-timing-function: step-end;
+  }
+}
+
+/* ---- Forced colors ---- */
+
+/* The tints drop out: an outline keeps the selected tile, the bar keeps the
+   active one, and the box keeps its check. */
+@media (forced-colors: active) {
+  .tm-tiles__item--selected,
+  .tm-tiles__item--flash,
+  .tm-tiles__item--reflash {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-tiles__item:focus-visible {
+    outline: var(--focus-ring-width) solid CanvasText;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .tm-tiles__item--active::before {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .tm-tiles__item--selected .tm-tiles__box {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}

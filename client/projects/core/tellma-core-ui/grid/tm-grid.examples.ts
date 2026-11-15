@@ -240,3 +240,31 @@ export const ScrollToRowWithFlash = {
     </tm-grid>
   `,
 };
+
+/**
+ * An editor that needs more room than its cell — a long text, a multi-line
+ * expression, a small sub-form — opens in a pane over its cell with
+ * `editorPopup`: the pane spills past the grid while every row keeps its
+ * height, and the editor stays in edit mode, so the arrows move inside it.
+ * Tab moves among the pane's controls and commits from its last one; Enter
+ * commits unless the editor keeps it (a multi-line field inserts a line),
+ * and Mod+Enter commits. On a cell the user cannot edit, F2 opens the pane
+ * with the template's `readonly` set. `lineForm` is a Signal Forms field
+ * tree over the rows; the editor here is a single `tmInput`, and a
+ * sub-form of several controls registers as one (see `TmGridEditorDef`).
+ */
+export const PopupCellEditor = {
+  template: `
+    <tm-grid gridId="order-notes" [field]="lineForm" [rowId]="rowId" style="block-size: 320px">
+      <tm-grid-column key="status" header="Status" [width]="140" />
+      <tm-grid-column key="name" header="Notes" [width]="160" [editorPopup]="{ minWidth: 480 }">
+        <input
+          *tmGridEditor="let readonly = readonly"
+          tmInput
+          aria-label="Notes"
+          [readonly]="readonly"
+        />
+      </tm-grid-column>
+    </tm-grid>
+  `,
+};

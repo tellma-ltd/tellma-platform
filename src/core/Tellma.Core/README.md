@@ -319,9 +319,7 @@ a `RAISERROR`, which does not abort the batch, so it is probed (or reported unkn
 before it surfaces. A statement's reader stages its results on the cursor, so only the attempt that
 counts completes them. The executor meters `tellma.data.roundtrips` (per scope that resolves its
 `DataAccessScope`, recorded when the scope ends, zero included), `tellma.data.roundtrip.duration`,
-`tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`. The
-remaining statement compilers (updates, deletes) join the batch in later releases; until then
-those members throw `NotSupportedException`.
+`tellma.data.batch.statements`, `tellma.data.retries` and `tellma.data.commit.probes`.
 
 ### Ids and saves
 
@@ -361,6 +359,59 @@ root sets. Above `Tellma:Data:LargeBatchThreshold` rows in any table every data-
 carries `OPTION (RECOMPILE)`. A save needs its batch in one transaction. Once the batch ran, the
 rows carry the stamps the statement wrote and the new rows count as existing. The allocator meters
 `tellma.data.ids.*`, the emitter `tellma.data.rows.saved` and `tellma.data.concurrency.conflicts`.
+
+A tree save (`[Tree]`) runs the tree statements after its root update, in the same statement:
+the affected set (every saved row and every descendant of a saved existing row), the paths walked
+top-down from the rows whose parent lies outside it, a fence that throws `Tree.Cycle` when a row
+no walk reached closes a cycle, the old nodes, the re-path of the rows whose node changed (never
+stamped), and the recount of the old and new nodes' ancestors. A node is the ids from the root,
+`/5/12/`; a new row's provisional node lasts only until the re-path. Both recursive walks carry
+`MAXRECURSION` one below the tree's depth, so a row nested deeper than it is error 530,
+`TreeDepthExceededException`. The walks' anchor parents are U-locked to the commit, by a seek on
+the key, so a save under a node a concurrent save is moving reads the parent after the move, or
+deadlocks with it and reads it on the victim's re-run. Two concurrent saves that would together
+close a cycle likewise serialise, the second seeing the first's move, or deadlock, and the
+victim's re-run meets the fence.
+
+### Updates and deletes
+
+`IDataBatch.Update` assigns the same values to every row it selects, in one statement that skips
+the rows already holding them (null-safe, character columns compared binary), so a repeated
+activation writes no history row; the updated ids are the receipt. By ids it captures the ids the
+grant filter passes, the others skipped; all-or-nothing first selects the ids the read filter does
+not show (absent and hidden alike) and throws `50404` with them, then throws `50403` unless every
+id passes the grant filter. By query it captures at most the cap plus one keys and throws `50413`
+past the cap and `50428` on another count. It never assigns the key, the audit or tree columns, the
+parent of a tree row (a save re-paths it), a blob reference or a write-once column, nor a text
+or binary value longer than its column, an undefined enum member or a decimal with more integral
+digits than its column holds, and stamps
+`ModifiedAt`/`ModifiedById` unless the table has no audit columns (`Stamp = false`). Assigning an
+activatable tree's `IsActive` recounts the rows' ancestors.
+
+`IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
+roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
+table among its writes but needs no authority over it, except that a sibling holding a blob
+reference is deleted explicitly before its owner, so its blobs are captured too. By ids it captures the existing rows under U locks and the read filter, selects the rest
+and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
+and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
+reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree
+roots with every row under their nodes, captured under U locks, the roots checked as ids are and
+the whole closure against the grant filter. A tree's old nodes are kept for the recount of their ancestors. The
+`DeleteHandle` names the deleted keys and one capture table per blob-reference column, which a
+later statement of the batch may read. A reference from another row is `547`,
+`ForeignKeyViolationException`. A check that embeds a compiled filter takes a statement of its own,
+so one update or delete is one to two statements; every statement of a call carries
+`OPTION (RECOMPILE)` above `Tellma:Data:LargeBatchThreshold` ids or when a compiled filter asks for
+it. Updates and deletes, like saves, need their batch in one transaction; the executor meters
+`tellma.data.rows.deleted` and, for every tree statement, `tellma.data.tree.recomputes`.
+
+`TreeStatements.Verify` appends the whole-table recount of a tree on the internal channel, the
+form the weekly verify job runs in a maintenance batch; it returns how many rows it repaired,
+meters `tellma.data.tree.repairs`, and logs `TreeVerify.Repaired` at Warning when any were, since
+the persist-time statements keep the counts exact. `TreeCycleValidator<T>` is the C# form of the
+fence for the validation round trip: it loads every row's parent once, lays the payload's over
+them, and reports `Tree.Cycle` on the rows that close a cycle (a row its own parent included) and
+`Tree.TooDeep` on a row whose subtree would nest past the depth, each at the row's `ParentId`.
 
 ### Queries
 

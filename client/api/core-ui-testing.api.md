@@ -370,6 +370,15 @@ export type TmGridEditorCommitVia = 'enter' | 'tab';
 export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
 
 // @public
+export class TmGridEditorPopupHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+    isGroup(): Promise<boolean>;
+    isHidden(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+}
+
+// @public
 export class TmGridHarness extends ComponentHarness {
     activateRow(rowIndex: number): Promise<void>;
     cancelEditor(): Promise<void>;
@@ -383,6 +392,7 @@ export class TmGridHarness extends ComponentHarness {
     getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
     getCellText(rowIndex: number, colIndex: number): Promise<string>;
     getColCount(): Promise<number>;
+    getEditorPopup(): Promise<TmGridEditorPopupHarness | null>;
     getEditorText(): Promise<string>;
     getEmptyText(): Promise<string | null>;
     getErrorCount(): Promise<number>;
@@ -761,6 +771,62 @@ export class TmTabHarness extends ComponentHarness {
     isSelected(): Promise<boolean>;
     select(): Promise<void>;
 }
+
+// @public
+export type TmTileCorner = 'bottomEnd' | 'bottomStart' | 'topEnd';
+
+// @public
+export class TmTileHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    focus(): Promise<void>;
+    getCheckboxLabel(): Promise<string | null>;
+    getCornerText(corner: TmTileCorner): Promise<string | null>;
+    getHref(): Promise<string | null>;
+    getIndex(): Promise<number>;
+    getLevel(): Promise<number>;
+    getTitle(): Promise<string>;
+    hasClass(name: string): Promise<boolean>;
+    hasCornerBadge(corner: TmTileCorner): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TmTilesKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    toggleSelected(): Promise<void>;
+    static with(options?: TmTileHarnessFilters): HarnessPredicate<TmTileHarness>;
+}
+
+// @public
+export interface TmTileHarnessFilters extends BaseHarnessFilters {
+    index?: number;
+    title?: string | RegExp;
+}
+
+// @public
+export class TmTilesHarness extends ComponentHarness {
+    getActiveTile(): Promise<TmTileHarness | null>;
+    getColumnCount(): Promise<number>;
+    getEmptyText(): Promise<string | null>;
+    getLabel(): Promise<string | null>;
+    getLayout(): Promise<string | null>;
+    getLineCount(): Promise<number>;
+    getTile(filter: TmTileHarnessFilters): Promise<TmTileHarness>;
+    getTiles(filter?: TmTileHarnessFilters): Promise<TmTileHarness[]>;
+    getTileTitles(): Promise<string[]>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isShowingSkeleton(): Promise<boolean>;
+    isTree(): Promise<boolean>;
+    press(key: TmTilesKey, modifiers?: ModifierKeys): Promise<void>;
+}
+
+// @public
+export type TmTilesKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'PageDown' | 'PageUp' | 'Space';
 
 // @public
 export class TmTimeFieldHarness extends ComponentHarness {

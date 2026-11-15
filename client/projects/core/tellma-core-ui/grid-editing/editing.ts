@@ -42,6 +42,7 @@ import type {
 import {
   ɵTmGridEditorSession,
   type ɵTmGridEditorMountConfig,
+  type ɵTmGridEditorPopupVm,
   type ɵTmGridEditorTemplateContext,
   type ɵTmGridMountedEditor,
 } from './editor-session';
@@ -104,6 +105,8 @@ export interface ɵTmGridEditingColumn<T> {
   readonly entityCreate: TmEntityPickerPage | undefined;
   /** An entity column's edit page. */
   readonly entityEdit: TmEntityPickerPage | undefined;
+  /** Where the column's editor opens: a pane over the cell, or `null` for the cell box. */
+  readonly popup: ɵTmGridEditorPopupVm | null;
 }
 
 /**
@@ -237,7 +240,28 @@ export class ɵTmGridEditing<T> {
     this.host.escapedSignal.set(false);
     // The opening keystroke on a scrolled-away cell scrolls it back (§4).
     this.host.revealActiveCell();
-    return this.mount(opts);
+    return this.mount(cell, seedText, opts, false);
+  }
+
+  /**
+   * Mounts a popup column's editor over a cell the user cannot edit, its
+   * control read-only and focused, with no session: nothing it shows is
+   * ever committed. The grid marks the cell as viewed (so its outlet
+   * renders) before this runs and closes the view with `closeView`.
+   * Returns whether an editor mounted.
+   */
+  view(cell: TmRowCol): boolean {
+    if (!this.admits(cell)) {
+      return false;
+    }
+    this.host.escapedSignal.set(false);
+    this.host.revealActiveCell();
+    return this.mount(cell, undefined, undefined, true);
+  }
+
+  /** Destroys a read-only view's editor and, when asked, returns focus to the active cell. */
+  closeView(opts: { readonly refocus: boolean }): void {
+    this.close(opts);
   }
 
   /**
@@ -252,7 +276,10 @@ export class ɵTmGridEditing<T> {
       return;
     }
     try {
-      if (!this.admits(session.cell) || !this.mount(opts)) {
+      if (
+        !this.admits(session.cell) ||
+        !this.mount(session.cell, session.seedText, opts, false)
+      ) {
         engine.edit.cancel();
         return;
       }
@@ -418,25 +445,27 @@ export class ɵTmGridEditing<T> {
   }
 
   /**
-   * Mounts the open session's editor SYNCHRONOUSLY and seeds it. The outlet
-   * only exists once the session signal has rendered, so this forces one
-   * render pass via `ApplicationRef.tick()` — DOM event handlers always run
-   * outside a tick in zoneless Angular, so the call is re-entrancy-safe,
-   * and the synchronous mount is what lets an IME composition land inside
-   * the editor's input within the same task (`opts.ime`); every other open
-   * path shares it for one behavior. The editor takes focus. Returns
-   * whether an editor mounted (the session is cancelled when none did).
+   * Mounts a cell's editor SYNCHRONOUSLY and seeds it: the open session's,
+   * or a read-only view's. The outlet only exists once the session (or the
+   * view) has rendered, so this forces one render pass via
+   * `ApplicationRef.tick()` — DOM event handlers always run outside a tick
+   * in zoneless Angular, so the call is re-entrancy-safe, and the
+   * synchronous mount is what lets an IME composition land inside the
+   * editor's input within the same task (`opts.ime`); every other open path
+   * shares it for one behavior. The editor takes focus. Returns whether an
+   * editor mounted (a session is cancelled when none did).
    */
-  private mount(opts: ɵTmGridEditorOpenOptions | undefined): boolean {
+  private mount(
+    cell: TmRowCol,
+    seedText: string | undefined,
+    opts: ɵTmGridEditorOpenOptions | undefined,
+    readonly: boolean,
+  ): boolean {
     const engine = this.host.engine;
-    const session = untracked(() => engine.edit.session());
-    const column =
-      session === null ? undefined : untracked(this.host.columnsInternal)[session.cell.col];
-    if (session === null || column === undefined) {
+    const column = untracked(this.host.columnsInternal)[cell.col];
+    if (column === undefined) {
       return false;
     }
-    const cell = session.cell;
-    const seedText = session.seedText;
     const view = untracked(() => engine.model.rowAt(cell.row));
     const valueAtOpen = untracked(() => engine.model.cellValue(cell));
     // An invalid-input cell opens on its raw text, which has no value
@@ -452,7 +481,7 @@ export class ɵTmGridEditing<T> {
       config = {
         kind: 'template',
         template: column.editorDef.template,
-        context: { $implicit: valueAtOpen, row: view?.row },
+        context: { $implicit: valueAtOpen, row: view?.row, readonly },
       };
     } else if (column.type === 'entity') {
       const format = column.format;
@@ -514,12 +543,14 @@ export class ɵTmGridEditing<T> {
       config = { kind: 'text', label: header };
     }
 
-    this.session.stage(config);
+    this.session.stage(config, readonly, column.popup);
     this.host.appRef.tick(); // render the outlet now (see the method TSDoc)
     const mounted = this.session.mountIfReady();
     if (mounted === null) {
       // Nothing registered (prod fallback of the dev-mode throw).
-      engine.edit.cancel();
+      if (!readonly) {
+        engine.edit.cancel();
+      }
       return false;
     }
 
@@ -550,7 +581,8 @@ export class ɵTmGridEditing<T> {
       if (seedText !== undefined) {
         // Type-to-edit: the select opens its panel seeding the typeahead.
         editor.seed?.(seedText);
-      } else {
+      } else if (!readonly) {
+        // A read-only view only shows the value: no choices to offer.
         mounted.openDropdown();
       }
     } else if (mounted.kind === 'entity') {

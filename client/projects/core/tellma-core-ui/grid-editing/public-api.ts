@@ -23,7 +23,11 @@ export {
   type ɵTmGridEditingHost,
   type ɵTmGridEditorOpenOptions,
 } from './editing';
-export type { ɵTmGridEditorTemplateContext, ɵTmGridMountedEditor } from './editor-session';
+export type {
+  ɵTmGridEditorPopupVm,
+  ɵTmGridEditorTemplateContext,
+  ɵTmGridMountedEditor,
+} from './editor-session';
 
 // The status bar the grid's view renders in its reserved slot.
 export { ɵTmGridStatusBar, type ɵTmGridStatusSource } from './status-bar';

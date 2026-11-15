@@ -3,10 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Directive, input, type Signal } from '@angular/core';
+import { ApplicationRef, Directive, ElementRef, inject, input, type Signal } from '@angular/core';
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+
+import { ɵTM_GRID_FLUSH_KEY } from './internal/grid-core';
 
 /**
  * What a `tmGridDriver` input moves and opens: the active row of a list
@@ -48,7 +50,10 @@ export interface TmGridDriverTarget {
  * field above its results: ArrowDown and ArrowUp move the active row (from
  * none, ArrowDown starts at the first row), PageDown and PageUp move it a
  * page, and Enter opens it (with Mod, in a new tab). Every other key stays
- * with the input, and so does Enter while no row is active.
+ * with the input, and so does Enter while no row is active. A driving key
+ * renders the page's pending changes before it acts, so a key that arrives
+ * right behind a write to the list's `activeRowId` (results landing with
+ * their first row seeded) starts from the written row.
  *
  * ```html
  * <input tmInput type="search" [tmGridDriver]="grid" />
@@ -72,6 +77,33 @@ export interface TmGridDriverTarget {
 export class TmGridDriver {
   /** The list this input drives. */
   readonly tmGridDriver = input.required<TmGridDriverTarget>();
+
+  /** Registers the listener that renders pending changes ahead of the driving keys. */
+  constructor() {
+    // Render the page's pending changes before a driving key acts. A write to
+    // the list's `activeRowId` reaches it only through a render (the input
+    // binding updates there), and keys queued behind a busy page arrive
+    // before that render: without it, the key would act on the stale active
+    // row and the render would then move the row away, discarding the move.
+    // DOM handlers run outside a tick in zoneless Angular, so the call is
+    // re-entrancy-safe. It is a native listener, registered before the host
+    // `(keydown)` below, because an Angular listener marks the page's view
+    // dirty before its handler runs: a tick from there would always refresh
+    // the page. From here, a production tick with nothing pending does no
+    // work (dev mode still runs its no-changes check), so a key the handler
+    // then leaves to the input (Home, End, the horizontal arrows, or any key
+    // with a modifier) only renders sooner what was pending anyway. The
+    // listener lives on the directive's own element, so it needs no removal.
+    const appRef = inject(ApplicationRef);
+    inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement.addEventListener(
+      'keydown',
+      (event) => {
+        if (ɵTM_GRID_FLUSH_KEY.test(event.key)) {
+          appRef.tick();
+        }
+      },
+    );
+  }
 
   /** Routes the driving keys to the list and leaves the rest to the input. */
   protected onKeydown(event: KeyboardEvent): void {
@@ -107,8 +139,8 @@ export class TmGridDriver {
         // With no active row, Enter stays the input's own (a search submit).
         // A held Enter opens the row once: its repeats are consumed. Both
         // checks read the list's own active row, never `activeRowId`: that
-        // two-way model is written back on the next render, and keys queued
-        // behind a busy page (an arrow, then Enter) arrive before it.
+        // two-way model is written back from the list's effects, and the
+        // contract above does not promise it is current after a move.
         if (
           event.repeat
             ? target.activeDescendantId() === null
