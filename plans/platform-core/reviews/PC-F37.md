@@ -103,3 +103,70 @@ script `.tmp/f37-mutations.sh`, output `.tmp/f37-mutations.out`):
   (`rows !== reconciledRows`) and loads at the bind instead of deferring.
 - Whether the three tests would fail on the shared-array pattern (see the mutation checks).
 - That the row counts asserted at depth 1 (22, then 25) and at b's bind (60) follow from the seed.
+
+## Review 1
+
+Scope: commit f1e42214 only. Checked against the item's title, D-077 and the `contentKey` TSDoc
+(`client/projects/core/tellma-core-ui/grid/tm-grid-base.ts:71-81`), and PLAN.md §6-§7.
+
+What holds up, verified rather than taken from the notes:
+
+- **The contract.** `switchContent` and `onDepthChange` set the key signal and the model in the
+  same synchronous handler, so the grid's content-switch effect (`grid-core.ts:5907`,
+  `untracked(this.rows) === this.reconciledRows`) sees a new array on every key change and binds
+  with `outgoingRows` false. The same-depth early return in `onDepthChange` changes no key, so it
+  needs no array.
+- **Deviation 1 (separate a/b records) is justified.** A shallow copy of one shared array passes
+  the identity check, but the grid's `flushLoads` skips any row that already has a loaded child
+  (`tree-expansion.ts:258-268`), so b would still show a's children and load nothing. Separate
+  records are the only way the toggle can satisfy the item's intent.
+- **Deviation 2 (the loader's record capture) is correct.** The grid calls `loadChildren` inside
+  `Promise.resolve().then(...)` (`tree-expansion.ts:286-291`), outside any reactive context, so
+  reading `contentName()` there tracks nothing. Every grid flush calls `host.syncRows()` first and
+  takes its rows from the model, and the story always sets `contentName` and the model together,
+  so the captured record always owns the rows the batch came from. A record that settles while
+  parked always has a parked entry (one record is bound, the other parked, from the first switch
+  on), so `updateRecord` never drops a settle.
+- **Row counts.** The seed has 58 rows, so b's held bind shows 60 (58 + placeholder + header) and
+  63 once loaded. At depth 1 there are 8 roots and 12 level-2 rows (2+2+2+2+3, plus 911 under the
+  cycle-break root 910), so 22, then 25.
+- **The tests fail on the broken patterns.** Test 1 fails on the shared array and on a copied
+  shared array (800 already has a child, so no load is held). Test 2 fails when a depth change
+  keeps the array (one held load, not two) and when the per-record "once" check breaks (6
+  children, not 3). Test 3 fails both when a late settle is dropped and when it is routed to the
+  bound record, because b then lacks children and its re-bind holds a new load. The implementer's
+  mutation logs (`.tmp/f37-mut-shared.log`: 3 failed, 1 passed; `.tmp/f37-mut-depth-shared.log`:
+  1 failed, 3 passed) match the notes.
+- **Suites run.** `.tmp/f37-e2e.log` ends at 1093 passed. The dotnet build log shows 0 errors, and
+  no .NET project changed. This review re-ran the touched spec after `build:showcase`:
+  `CI=1 node scripts/e2e.mjs --project chromium --workers 2 e2e/specs/tree-grid.spec.ts` gave
+  20 passed and none flaky (`.tmp/r1f37-e2e-tree-grid.log`).
+- **Rules.** Every new declaration and member has TSDoc. No spec, §, PC id or decision id appears
+  in TSDoc or test names. The one spec citation added ("spec 0010 §C.9") is an inline comment,
+  which §7.1 item 5 allows.
+
+### Findings
+
+R1-1 (minor). The prose that describes when the lazy root loads still says "the first bind", which
+the change makes untrue.
+- Where: `client/projects/internal/showcase/src/app/grid/tree-grid-story.ts:129-130` (class TSDoc:
+  "a lazy root whose children load at the first bind (it starts expanded)") and the e2e file
+  header at `client/e2e/specs/tree-grid.spec.ts:33` ("the lazy root loading at the first bind").
+  The commit rewrapped the first line and extended the header block that holds the second.
+- Failure scenario: after this change the lazy root loads at the first bind of each record, and
+  again at every depth-change bind that expands it. The new test at `tree-grid.spec.ts:253`
+  asserts that second load. A reader who takes the class TSDoc at its word expects one load per
+  story lifetime, and would read the second held load in that test as a bug. The loader's own
+  TSDoc (`tree-grid-story.ts:341-342`) was already corrected to "at the bind of a content that
+  expands it".
+- Suggested fix: use the loader TSDoc's wording in both places. For example: "a lazy root whose
+  children load at the bind of each content that expands it (it starts expanded)".
+
+### Responses
+
+R1-1: fixed in the "PC-F37: review 1 fixes" commit. The class TSDoc in tree-grid-story.ts and the
+tree-grid.spec.ts file header now say the lazy root loads "at the bind of each content that
+expands it", matching the loader's TSDoc. The one remaining "first bind" in the story
+(`switchContent`: a record is "seeded on its first bind") is accurate and stays. Re-run after
+`build:showcase`: `CI=1 node scripts/e2e.mjs --project chromium --workers 2 e2e/specs/tree-grid.spec.ts`,
+20 passed, none flaky (`.tmp/f37-fix1-e2e-tree-grid.log`).

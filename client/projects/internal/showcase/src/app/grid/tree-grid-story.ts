@@ -127,8 +127,8 @@ function seedRecord(): Account[] {
  * Editable tm-tree-grid demo host: a ~4-level accounts tree over a Signal
  * Forms field tree (name required), the new-row placeholder plus
  * insert-child through `newRow(parent)`, a lazy root whose children load
- * at the first bind (it starts expanded) behind a configurable delay, a
- * held-response gate and a failure toggle, the readonly flip, a
+ * at the bind of each content that expands it (it starts expanded) behind
+ * a configurable delay, a held-response gate and a failure toggle, the readonly flip, a
  * default-depth select, contentKey switching and unmount/remount buttons
  * to exercise expansion-state persistence, `searchable` (the find bar's
  * tree deep-search), and a live JSON model dump the Playwright battery

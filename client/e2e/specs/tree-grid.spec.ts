@@ -30,7 +30,8 @@ import { appStable } from '../support/settle';
 /**
  * The tree grid (spec 0004 §13) against the accounts-tree story: DFS
  * flattening with the treegrid ARIA contract, expander + Alt+Arrow
- * expand/collapse, the lazy root loading at the first bind, insert-child
+ * expand/collapse, the lazy root loading at the bind of each content that
+ * expands it, insert-child
  * and subtree delete through the menu, full-row subtree moves with
  * re-parenting, tree paste mapping, expansion-state persistence across
  * contentKey switches and remounts, each content's own lazy load (every
