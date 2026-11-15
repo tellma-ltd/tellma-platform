@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Calendars;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
@@ -215,6 +216,157 @@ namespace Tellma.Core.Abstractions.Composition
             where TService : class
         {
             return Add(new StackContributionItem(typeof(TEntity), typeof(TService), null));
+        }
+
+        /// <summary>
+        ///     Contributes a routed service: a class marked <see cref="ApiRouteAttribute" /> whose
+        ///     <see cref="ApiActionAttribute" /> methods are projected under its route segment, each
+        ///     reached through the platform's action invoker.
+        /// </summary>
+        /// <typeparam name="TService">The service class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution ApiService<TService>()
+            where TService : class
+        {
+            return Add(new ApiServiceContributionItem(typeof(TService)));
+        }
+
+        /// <summary>
+        ///     Attaches a validator to the stack of <typeparamref name="TEntity" />. A validator generic
+        ///     over the entity, registered closed over it, runs closed over the stack's leaf.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity the validator is written against.</typeparam>
+        /// <typeparam name="TValidator">The validator class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution Validator<TEntity, TValidator>()
+            where TEntity : class
+            where TValidator : class, IEntityValidator<TEntity>
+        {
+            return Add(new ValidatorContributionItem(typeof(TEntity), typeof(TValidator), ComponentKind.Validator));
+        }
+
+        /// <summary>
+        ///     Attaches a validator to the stack of <typeparamref name="TEntity" /> by its open generic
+        ///     definition of one type parameter, for a validator whose constraints only the stack's leaf
+        ///     meets.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity whose stack the validator joins.</typeparam>
+        /// <param name="definition">The open definition, such as <c>typeof(EInvoiceRules&lt;&gt;)</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="definition" /> is null.</exception>
+        public FeatureContribution Validator<TEntity>(Type definition)
+            where TEntity : class
+        {
+            ArgumentNullException.ThrowIfNull(definition);
+            return Add(new ValidatorContributionItem(typeof(TEntity), definition, ComponentKind.Validator));
+        }
+
+        /// <summary>
+        ///     Attaches a persist effect to the stack of <typeparamref name="TEntity" />. An effect
+        ///     generic over the entity, registered closed over it, runs closed over the stack's leaf.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity the effect is written against.</typeparam>
+        /// <typeparam name="TEffect">The effect class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution PersistEffect<TEntity, TEffect>()
+            where TEntity : class
+            where TEffect : class, IPersistEffect<TEntity>
+        {
+            return Add(new ValidatorContributionItem(typeof(TEntity), typeof(TEffect), ComponentKind.PersistEffect));
+        }
+
+        /// <summary>Attaches a persist effect to the stack of <typeparamref name="TEntity" /> by its open generic definition of one type parameter.</summary>
+        /// <typeparam name="TEntity">The entity whose stack the effect joins.</typeparam>
+        /// <param name="definition">The open definition.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="definition" /> is null.</exception>
+        public FeatureContribution PersistEffect<TEntity>(Type definition)
+            where TEntity : class
+        {
+            ArgumentNullException.ThrowIfNull(definition);
+            return Add(new ValidatorContributionItem(typeof(TEntity), definition, ComponentKind.PersistEffect));
+        }
+
+        /// <summary>
+        ///     Attaches a details contributor to the stack of <typeparamref name="TEntity" />: the class
+        ///     that produces the details extras its <see cref="DetailsExtrasAttribute" /> names.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity the contributor is written against.</typeparam>
+        /// <typeparam name="TContributor">The contributor class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution DetailsContributor<TEntity, TContributor>()
+            where TEntity : class
+            where TContributor : class, IDetailsContributor<TEntity>
+        {
+            return Add(new ValidatorContributionItem(typeof(TEntity), typeof(TContributor), ComponentKind.DetailsContributor));
+        }
+
+        /// <summary>Attaches a details contributor to the stack of <typeparamref name="TEntity" /> by its open generic definition of one type parameter.</summary>
+        /// <typeparam name="TEntity">The entity whose stack the contributor joins.</typeparam>
+        /// <param name="definition">The open definition.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="definition" /> is null.</exception>
+        public FeatureContribution DetailsContributor<TEntity>(Type definition)
+            where TEntity : class
+        {
+            ArgumentNullException.ThrowIfNull(definition);
+            return Add(new ValidatorContributionItem(typeof(TEntity), definition, ComponentKind.DetailsContributor));
+        }
+
+        /// <summary>
+        ///     Attaches a named filter contributor to the stack of <typeparamref name="TEntity" />. The
+        ///     platform creates it once, at startup, from the root service provider, so its constructor
+        ///     takes singletons only.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity the contributor is written against.</typeparam>
+        /// <typeparam name="TContributor">The contributor class.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution NamedFilters<TEntity, TContributor>()
+            where TEntity : class
+            where TContributor : class, INamedFilterContributor<TEntity>
+        {
+            return Add(new ValidatorContributionItem(typeof(TEntity), typeof(TContributor), ComponentKind.NamedFilterContributor));
+        }
+
+        /// <summary>Attaches a named filter contributor to the stack of <typeparamref name="TEntity" /> by its open generic definition of one type parameter.</summary>
+        /// <typeparam name="TEntity">The entity whose stack the contributor joins.</typeparam>
+        /// <param name="definition">The open definition.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="definition" /> is null.</exception>
+        public FeatureContribution NamedFilters<TEntity>(Type definition)
+            where TEntity : class
+        {
+            ArgumentNullException.ThrowIfNull(definition);
+            return Add(new ValidatorContributionItem(typeof(TEntity), definition, ComponentKind.NamedFilterContributor));
+        }
+
+        /// <summary>
+        ///     Attaches a companion to the stack of <typeparamref name="TEntity" />: a class generic over
+        ///     the entity whose <see cref="ApiActionAttribute" /> methods are projected under the stack's
+        ///     segment and resource. The platform closes it over the stack's leaf.
+        /// </summary>
+        /// <typeparam name="TEntity">The entity whose stack the companion joins.</typeparam>
+        /// <typeparam name="TCompanion">The companion class, closed over <typeparamref name="TEntity" />.</typeparam>
+        /// <returns>This contribution, for chaining.</returns>
+        public FeatureContribution EntityCompanion<TEntity, TCompanion>()
+            where TEntity : class
+            where TCompanion : class
+        {
+            return Add(new StackCompanionContributionItem(typeof(TEntity), typeof(TCompanion)));
+        }
+
+        /// <summary>
+        ///     Declares a confirmation key: the key of a warning a caller must confirm before an
+        ///     operation proceeds. Each key is declared once in the composition, and a neutral string
+        ///     resource of a composed feature must render it.
+        /// </summary>
+        /// <param name="key">The key, dotted PascalCase, such as <c>Inventory.BackdatedRecost</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="key" /> is null.</exception>
+        public FeatureContribution Confirmation(string key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return Add(new ConfirmationContributionItem(key));
         }
 
         /// <summary>

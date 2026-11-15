@@ -24,9 +24,6 @@ namespace Tellma.Core.Tests.Localization
         /// </summary>
         private static readonly Dictionary<string, string> Pending = new(StringComparer.Ordinal)
         {
-            // --- The stacks' built-in actions (spec 0015): no stack is composed yet ---
-            ["Action_Deactivate"] = "The deactivate action of an activatable entity's stack.",
-
             // --- The permissions editor's reasons (spec 0032 §12.4) ---
             ["Access_Reason_self"] = "The permissions editor's label of a grant over the user's own records.",
 

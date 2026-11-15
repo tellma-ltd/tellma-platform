@@ -4,9 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
-using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
@@ -32,9 +35,25 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
             ISecurableRegistry registry = provider.GetRequiredService<ISecurableRegistry>();
+            // The stacks' securables, then the stamps' Core registers itself; a child surface's read is owned.
             Assert.Equal(
                 [
+                    new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Notification", "Read", "core.Notification", false, "core", null),
+                    new SecurableDescriptor("core.Permission", "Read", "core.Permission", false, "core", new SecurableOwner("core.Role", "Role")),
+                    new SecurableDescriptor("core.Role", "Read", "core.Role", false, "core", null),
+                    new SecurableDescriptor("core.Role", "Save", "core.Role", true, "core", null),
+                    new SecurableDescriptor("core.Role", "Delete", "core.Role", true, "core", null),
+                    new SecurableDescriptor("core.Role", "Activate", "core.Role", true, "core", null),
+                    new SecurableDescriptor("core.RoleMembership", "Read", "core.RoleMembership", false, "core", new SecurableOwner("core.User", "User")),
+                    new SecurableDescriptor("core.Schedule", "Read", "core.Schedule", false, "core", null),
+                    new SecurableDescriptor("core.Schedule", "Save", "core.Schedule", true, "core", null),
+                    new SecurableDescriptor("core.Schedule", "Delete", "core.Schedule", true, "core", null),
+                    new SecurableDescriptor("core.Schedule", "Activate", "core.Schedule", true, "core", null),
                     new SecurableDescriptor("core.User", "Read", "core.User", false, "core", null),
+                    new SecurableDescriptor("core.User", "Save", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Delete", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Activate", "core.User", true, "core", null),
                     new SecurableDescriptor("core.UserStamp", "Read", "core.UserStamp", false, "core", new SecurableOwner("core.User", "User")),
                 ],
                 registry.All);
@@ -44,29 +63,26 @@ namespace Tellma.Core.Tests.Composition.Checks
         [Fact]
         public async Task A_child_filter_root_without_an_owner_fails_the_gate_and_with_its_owner_passes()
         {
-            string membership = await NameOf<RoleMembership>();
-
-            IReadOnlyList<CompositionProblem> problems = await CheckAsync(builder => builder
-                .Add(membership, "Read", membership)
-                .Add(membership, "Save", membership, owner: new SecurableOwner(CoreResources.User, "User")));
+            // The line opts out of a child query surface, so the fixture's registrations are its only ones.
+            IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
+                .Add(ScModel.Lines, "Read", ScModel.Lines)
+                .Add(ScModel.Lines, "Save", ScModel.Lines, owner: new SecurableOwner(ScModel.Headers, "Header")));
 
             CompositionProblem problem = Assert.Single(problems);
-            Assert.Equal($"The securable '{membership}:Read' of the feature 'fixture' takes the filter root '{membership}', a child entity, without an owner.", problem.Problem);
+            Assert.Equal($"The securable '{ScModel.Lines}:Read' of the feature 'fixture' takes the filter root '{ScModel.Lines}', a child entity, without an owner.", problem.Problem);
         }
 
         [Fact]
         public async Task An_owner_navigation_that_is_no_path_or_leads_elsewhere_is_refused()
         {
-            string membership = await NameOf<RoleMembership>();
-
-            IReadOnlyList<CompositionProblem> problems = await CheckAsync(builder => builder
-                .Add(membership, "Read", membership, owner: new SecurableOwner(CoreResources.User, "Role"))
-                .Add(membership, "Save", membership, owner: new SecurableOwner(CoreResources.User, "User.Nothing")));
+            IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
+                .Add(ScModel.Lines, "Read", ScModel.Lines, owner: new SecurableOwner(ScModel.Headers, "User"))
+                .Add(ScModel.Lines, "Save", ScModel.Lines, owner: new SecurableOwner(ScModel.Headers, "Header.Nothing")));
 
             Assert.Equal(
                 [
-                    $"The securable '{membership}:Read' of the feature 'fixture' reaches 'core.Role' through 'Role', not 'core.User', the filter root of its owner 'core.User'.",
-                    $"The securable '{membership}:Save' of the feature 'fixture' declares the owner navigation 'User.Nothing', which is not a path of navigations from '{membership}'.",
+                    $"The securable '{ScModel.Lines}:Read' of the feature 'fixture' reaches 'core.User' through 'User', not '{ScModel.Headers}', the filter root of its owner '{ScModel.Headers}'.",
+                    $"The securable '{ScModel.Lines}:Save' of the feature 'fixture' declares the owner navigation 'Header.Nothing', which is not a path of navigations from '{ScModel.Lines}'.",
                 ],
                 problems.Select(static problem => problem.Problem));
         }
@@ -133,9 +149,9 @@ namespace Tellma.Core.Tests.Composition.Checks
         public async Task An_owner_cycle_fails_the_gate()
         {
             IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
-                .Add(CoreResources.User, "Save", CoreResources.User, owner: new SecurableOwner(CoreResources.User, "CreatedBy")));
+                .Add("fixture.Profile", "Read", CoreResources.User, owner: new SecurableOwner("fixture.Profile", "CreatedBy")));
 
-            Assert.Equal(["The owners of the securables form a cycle: 'core.User:Save' → 'core.User:Save'."], problems.Select(static problem => problem.Problem));
+            Assert.Equal(["The owners of the securables form a cycle: 'fixture.Profile:Read' → 'fixture.Profile:Read'."], problems.Select(static problem => problem.Problem));
         }
 
         [Fact]
@@ -165,10 +181,11 @@ namespace Tellma.Core.Tests.Composition.Checks
         public async Task Two_filter_roots_on_one_resource_fail_the_gate()
         {
             IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
-                .Add(CoreResources.User, "Save", CoreResources.Role));
+                .Add("fixture.Report", "Read", CoreResources.User)
+                .Add("fixture.Report", "Save", CoreResources.Role));
 
             Assert.Equal(
-                ["The securables of the resource 'core.User' take different filter roots: 'core.User' ('core.User:Read'), 'core.Role' ('core.User:Save')."],
+                ["The securables of the resource 'fixture.Report' take different filter roots: 'core.User' ('fixture.Report:Read'), 'core.Role' ('fixture.Report:Save')."],
                 problems.Select(static problem => problem.Problem));
         }
 
@@ -239,21 +256,16 @@ namespace Tellma.Core.Tests.Composition.Checks
             Assert.Equal(["Feature 'fixture' contributes securables without a configuration."], problems.Select(static problem => problem.Problem));
         }
 
-        /// <summary>The query name of an entity of the composed model.</summary>
-        /// <typeparam name="TEntity">The entity.</typeparam>
-        /// <returns>Its name.</returns>
-        private static async Task<string> NameOf<TEntity>()
-        {
-            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
-            return provider.GetRequiredService<IEntityMetadataProvider>().Get(typeof(TEntity)).Name;
-        }
-
-        /// <summary>Runs every check over a composition in which one feature, <c>fixture</c>, registers securables.</summary>
+        /// <summary>
+        ///     Runs every check over a composition in which one feature, <c>fixture</c>, stacks the
+        ///     header and registers securables.
+        /// </summary>
         /// <param name="configure">The registrations.</param>
         /// <returns>The problems of this check.</returns>
         private static async Task<IReadOnlyList<CompositionProblem>> CheckAsync(Action<SecurableRegistryBuilder> configure)
         {
             return (await TestComposition.CheckAsync(tellma => tellma.AddFeature(new TestFeature<Tag.A>("fixture", contribute: contribution => contribution
+                .Entity<ScHeader>()
                 .Securables(configure))))).From(Check);
         }
 
@@ -293,5 +305,43 @@ namespace Tellma.Core.Tests.Composition.Checks
             {
             }
         }
+    }
+    /// <summary>The securables suite's aggregate: a header whose lines opt out of a child query surface.</summary>
+    internal static class ScModel
+    {
+        /// <summary>The header's resource.</summary>
+        public const string Headers = "sc.ScHeader";
+
+        /// <summary>The line's resource.</summary>
+        public const string Lines = "sc.ScLine";
+    }
+
+    /// <summary>A header with lines.</summary>
+    [Table("Headers", Schema = "sc")]
+    [TableType]
+    public class ScHeader : TopLevelEntity
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The lines.</summary>
+        [NotMapped]
+        public List<ScLine>? Lines { get; set; }
+    }
+
+    /// <summary>A header's line, which reaches a user as well as its header.</summary>
+    [Table("Lines", Schema = "sc")]
+    [TableType]
+    [ApiResource(Queryable = false)]
+    public class ScLine : ChildEntity
+    {
+        /// <summary>The header.</summary>
+        [ParentKey]
+        public int HeaderId { get; set; }
+
+        /// <summary>The user the line is for.</summary>
+        [References(typeof(User))]
+        public int? UserId { get; set; }
     }
 }

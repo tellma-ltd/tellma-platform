@@ -44,7 +44,7 @@ namespace Tellma.Core.Composition.Realizers
             Type stepType;
             try
             {
-                stepType = CloseOverLeaves(contributed, context.Record.LeafOf);
+                stepType = LeafClosure.Close(contributed, context.Record.LeafOf);
             }
             catch (ArgumentException exception)
             {
@@ -73,26 +73,6 @@ namespace Tellma.Core.Composition.Realizers
                 stepType,
                 owner,
                 services => (ITenantProvisioningStep)services.GetRequiredService(stepType)));
-        }
-
-        /// <summary>
-        ///     A constructed generic step closed over the leaf of each type argument instead, as a
-        ///     stack's service is; any other step as it is.
-        /// </summary>
-        /// <param name="stepType">The contributed step class.</param>
-        /// <param name="leafOf">Resolves an entity to the leaf registered for it, else itself.</param>
-        /// <returns>The step class to register.</returns>
-        /// <exception cref="ArgumentException">A leaf does not satisfy a type parameter's constraints.</exception>
-        internal static Type CloseOverLeaves(Type stepType, Func<Type, Type> leafOf)
-        {
-            if (!stepType.IsConstructedGenericType)
-            {
-                return stepType;
-            }
-
-            Type[] arguments = stepType.GetGenericArguments();
-            Type[] leaves = [.. arguments.Select(leafOf)];
-            return arguments.SequenceEqual(leaves) ? stepType : stepType.GetGenericTypeDefinition().MakeGenericType(leaves);
         }
     }
 }

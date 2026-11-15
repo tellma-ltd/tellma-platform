@@ -29,6 +29,8 @@ namespace Tellma.Core.Composition
     {
         private Dictionary<Type, Type> _leaves = [];
 
+        private Func<ITellmaFeature, ITellmaFeature, bool> _requires = static (_, _) => false;
+
         /// <summary>The distribution slug.</summary>
         public string Slug { get; } = slug;
 
@@ -46,6 +48,18 @@ namespace Tellma.Core.Composition
 
         /// <summary>The entities the features contributed, in realisation order, before leaf substitution.</summary>
         public List<ContributedEntity> Entities { get; } = [];
+
+        /// <summary>The stack companions the features attached, in realisation order, before leaf substitution.</summary>
+        public List<ContributedCompanion> Companions { get; } = [];
+
+        /// <summary>The stack components the features attached, in realisation order, before leaf substitution.</summary>
+        public List<ContributedComponent> Components { get; } = [];
+
+        /// <summary>The routed services the features contributed, in realisation order.</summary>
+        public List<ContributedApiService> ApiServices { get; } = [];
+
+        /// <summary>The confirmation keys the features declared, in realisation order.</summary>
+        public List<ContributedConfirmation> Confirmations { get; } = [];
 
         /// <summary>The EF model configurations Core's features contributed, in realisation order.</summary>
         public List<ContributedType> ModelConfigurations { get; } = [];
@@ -114,15 +128,33 @@ namespace Tellma.Core.Composition
             return _leaves.TryGetValue(entityType, out Type? leaf) ? leaf : entityType;
         }
 
+        /// <summary>
+        ///     Whether one feature depends on another, directly or transitively, through what it
+        ///     requires and nests; every feature but <c>core</c> depends on <c>core</c>.
+        /// </summary>
+        /// <param name="dependent">The feature that may depend.</param>
+        /// <param name="dependency">The feature it may depend on.</param>
+        /// <returns>True when it does; false for a feature and itself.</returns>
+        public bool Requires(ITellmaFeature dependent, ITellmaFeature dependency)
+        {
+            return !ReferenceEquals(dependent, dependency) && _requires(dependent, dependency);
+        }
+
         /// <summary>Fixes the feature order, the leaf substitutions and the language declaration once the graph gate passes.</summary>
         /// <param name="features">The features in realisation order.</param>
         /// <param name="leaves">The leaf substitutions.</param>
         /// <param name="languages">What the distribution declared about languages.</param>
-        public void Settle(IReadOnlyList<ITellmaFeature> features, IReadOnlyDictionary<Type, Type> leaves, LanguageDeclaration languages)
+        /// <param name="requires">Whether a feature depends on another, transitively; null when none depends on any.</param>
+        public void Settle(
+            IReadOnlyList<ITellmaFeature> features,
+            IReadOnlyDictionary<Type, Type> leaves,
+            LanguageDeclaration languages,
+            Func<ITellmaFeature, ITellmaFeature, bool>? requires = null)
         {
             Features = [.. features];
             _leaves = new Dictionary<Type, Type>(leaves);
             Languages = languages;
+            _requires = requires ?? (static (_, _) => false);
         }
     }
 
@@ -192,6 +224,29 @@ namespace Tellma.Core.Composition
     /// <param name="Operations">The operations overriding the entity's declaration, or <see langword="null" />.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedEntity(Type EntityType, Type? ServiceType, StackOperations? Operations, ITellmaFeature Owner);
+
+    /// <summary>A stack companion a feature attached.</summary>
+    /// <param name="EntityType">The entity whose stack it joins, before leaf substitution.</param>
+    /// <param name="CompanionType">The companion class, as contributed.</param>
+    /// <param name="Owner">The feature that attached it.</param>
+    internal sealed record ContributedCompanion(Type EntityType, Type CompanionType, ITellmaFeature Owner);
+
+    /// <summary>A stack component a feature attached.</summary>
+    /// <param name="EntityType">The entity it is written against, before leaf substitution.</param>
+    /// <param name="ComponentType">The component class as contributed: closed over the entity, or an open definition of one type parameter.</param>
+    /// <param name="Kind">The contract it implements.</param>
+    /// <param name="Owner">The feature that attached it.</param>
+    internal sealed record ContributedComponent(Type EntityType, Type ComponentType, ComponentKind Kind, ITellmaFeature Owner);
+
+    /// <summary>A routed service a feature contributed.</summary>
+    /// <param name="ServiceType">The service class.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedApiService(Type ServiceType, ITellmaFeature Owner);
+
+    /// <summary>A confirmation key a feature declared.</summary>
+    /// <param name="Key">The key as declared.</param>
+    /// <param name="Owner">The feature that declared it.</param>
+    internal sealed record ContributedConfirmation(string Key, ITellmaFeature Owner);
 
     /// <summary>A shape a feature requires of another feature's entity.</summary>
     /// <param name="EntityType">The entity whose leaf must carry the shape.</param>

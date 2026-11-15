@@ -9,8 +9,8 @@ namespace Tellma.Core.Composition
 {
     /// <summary>
     ///     What the link builder needs to know of a resource: the route segment of its stack and the
-    ///     operations the stack serves. The stack registry answers it; until a composition registers
-    ///     one, <see cref="NoStackRoutes" /> answers that no resource names a stack. A singleton.
+    ///     operations the stack serves. The stack registry answers it, unless a host registered its
+    ///     own before the composition. A singleton.
     /// </summary>
     internal interface IStackRouteSource
     {
@@ -27,17 +27,4 @@ namespace Tellma.Core.Composition
     /// <param name="ResourceSegment">The stack's route segment, such as <c>sales-invoices</c>.</param>
     /// <param name="Operations">The operations the stack serves.</param>
     internal readonly record struct StackRoute(string ResourceSegment, StackOperations Operations);
-
-    /// <summary>The route source of a composition with no stack registry: no resource names a stack.</summary>
-    internal sealed class NoStackRoutes : IStackRouteSource
-    {
-        /// <inheritdoc />
-        public StackRoute? Find(string resource)
-        {
-            return null;
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyCollection<StackRoute> Routes => [];
-    }
 }
