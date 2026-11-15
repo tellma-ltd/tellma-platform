@@ -97,7 +97,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
-| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
+| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
 | `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
@@ -890,8 +890,10 @@ the settings editor validates them. A row the step already completed is left alo
 - **Resolution.** A stored value the composition cannot resolve falls back, logged `Critical`
   (`SettingsValueUnresolvable`): the primary language to English (else the first offered), a
   secondary or tertiary one ends the list, the primary calendar to Gregorian, a secondary one is
-  dropped, a zone the host cannot resolve (or convert to the Windows id SQL Server's conversions
-  take) to UTC, digits not named by `DigitStyle` to none. An entry no feature declares is dropped;
+  dropped, a zone the host's time-zone data does not have (or the query engine's pinned table,
+  `QueryexTimeZones.TryGetWindowsName`, does not map to the Windows name SQL Server's conversions
+  take; never the host ICU's mapping) to UTC, digits not named by `DigitStyle` to none. The
+  placeholder reads as the platform's defaults directly, with no event. An entry no feature declares is dropped;
   one that does not read as its key, or fails its check, is dropped, logged and counted
   (`tellma.settings.entries.invalid`).
 - **Secrets.** A secret is stored as the JSON string of its value's JSON, protected by the purpose

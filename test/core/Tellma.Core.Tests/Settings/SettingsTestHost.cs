@@ -22,7 +22,7 @@ using Tellma.Core.Tests.Infrastructure;
 namespace Tellma.Core.Tests.Settings
 {
     /// <summary>
-    ///     A composition with English and Arabic offered and the sample keys contributed, and a
+    ///     A composition with English and Arabic offered (or the languages given) and the sample keys contributed, and a
     ///     settings store over it whose data protection is <see cref="PurposeProtection" />, or none.
     /// </summary>
     internal sealed class SettingsTestHost : IAsyncDisposable
@@ -35,10 +35,12 @@ namespace Tellma.Core.Tests.Settings
 
         /// <summary>Composes the host.</summary>
         /// <param name="withProtection">Whether the store unprotects secrets; false for a host without data protection.</param>
-        public SettingsTestHost(bool withProtection = true)
+        /// <param name="languages">The languages the distribution offers; English and Arabic when null.</param>
+        public SettingsTestHost(bool withProtection = true, string[]? languages = null)
         {
-            _provider = TestComposition.Compose(static tellma => tellma
-                .Languages(["en", "ar"])
+            string[] offered = languages ?? ["en", "ar"];
+            _provider = TestComposition.Compose(tellma => tellma
+                .Languages(offered)
                 .AddFeature(SettingKeysCheckTests.Feature(typeof(SampleKeys))))
                 .BuildServiceProvider(validateScopes: true);
             Protection = new PurposeProtection();

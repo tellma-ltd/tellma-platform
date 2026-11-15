@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections.Frozen;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -18,6 +19,7 @@ using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Caching;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Settings
 {
@@ -163,10 +165,13 @@ namespace Tellma.Core.Settings
             }
 
             // --- The typed row, resolved; what cannot be resolved falls back to the platform's defaults ---
-            List<LanguageInfo> languages = ResolveLanguages(row, tenantId);
-            List<ICalendarSystem> calendars = ResolveCalendars(row, tenantId);
-            (TimeZoneInfo zone, string sqlZone) = ResolveZone(row.TimeZone, tenantId);
-            DigitStyle? digits = ResolveDigits(row.Digits, tenantId);
+            // The placeholder's values are the platform's own defaults, which the next provisioning
+            // step replaces: it reads as them directly, with no event, even in a distribution that
+            // does not offer English.
+            List<LanguageInfo> languages = isPlaceholder ? [DefaultLanguageInfo()] : ResolveLanguages(row, tenantId);
+            List<ICalendarSystem> calendars = isPlaceholder ? [GregorianCalendar()] : ResolveCalendars(row, tenantId);
+            (TimeZoneInfo zone, string sqlZone) = isPlaceholder ? (TimeZoneInfo.Utc, DefaultTimeZone) : ResolveZone(row.TimeZone, tenantId);
+            DigitStyle? digits = isPlaceholder ? null : ResolveDigits(row.Digits, tenantId);
 
             // --- The entries: undeclared ones dropped, others parsed against their keys, secrets kept as stored ---
             Dictionary<string, JsonElement> entries = ReadEntries(rows.Entries, tenantId);
@@ -322,9 +327,7 @@ namespace Tellma.Core.Settings
         /// <returns>One or two calendars.</returns>
         private List<ICalendarSystem> ResolveCalendars(SettingsRow row, int tenantId)
         {
-            ICalendarSystem primary = ResolveCalendar(nameof(SettingsRow.PrimaryCalendar), row.PrimaryCalendar, tenantId)
-                ?? _calendars.TryGet(CalendarCodes.Gregorian)
-                ?? throw new InvalidOperationException("The calendar registry holds no Gregorian calendar, which the platform always composes.");
+            ICalendarSystem primary = ResolveCalendar(nameof(SettingsRow.PrimaryCalendar), row.PrimaryCalendar, tenantId) ?? GregorianCalendar();
             List<ICalendarSystem> calendars = [primary];
             if (row.SecondaryCalendar is string code
                 && ResolveCalendar(nameof(SettingsRow.SecondaryCalendar), code, tenantId) is ICalendarSystem secondary
@@ -334,6 +337,15 @@ namespace Tellma.Core.Settings
             }
 
             return calendars;
+        }
+
+        /// <summary>The Gregorian calendar, which the platform always composes.</summary>
+        /// <returns>The calendar.</returns>
+        /// <exception cref="InvalidOperationException">The registry holds none.</exception>
+        private ICalendarSystem GregorianCalendar()
+        {
+            return _calendars.TryGet(CalendarCodes.Gregorian)
+                ?? throw new InvalidOperationException("The calendar registry holds no Gregorian calendar, which the platform always composes.");
         }
 
         /// <summary>A calendar of the registry.</summary>
@@ -352,16 +364,33 @@ namespace Tellma.Core.Settings
             return null;
         }
 
-        /// <summary>The tenant's zone and its Windows id, which SQL Server's zone conversions take; UTC when the host resolves neither.</summary>
+        /// <summary>
+        ///     Resolves a tenant's zone as the settings require it: the host's time-zone data has the
+        ///     zone, and the query engine's pinned table maps it to the Windows name SQL Server's zone
+        ///     conversions take.
+        /// </summary>
+        /// <param name="id">The IANA id.</param>
+        /// <param name="zone">The host's zone when the method returns true; otherwise null.</param>
+        /// <param name="sqlServerName">The Windows zone name when the method returns true; otherwise null.</param>
+        /// <returns>True when both resolve.</returns>
+        internal static bool TryResolveZone(string id, [NotNullWhen(true)] out TimeZoneInfo? zone, [NotNullWhen(true)] out string? sqlServerName)
+        {
+            // The Windows name is the pinned table's, never the host ICU's, so the SQL zone of the
+            // tenant's day and a query's local(..., '<id>') always name the same zone.
+            zone = null;
+            return QueryexTimeZones.TryGetWindowsName(id, out sqlServerName)
+                && TimeZoneInfo.TryFindSystemTimeZoneById(id, out zone);
+        }
+
+        /// <summary>The tenant's zone and its Windows id, which SQL Server's zone conversions take; UTC when either does not resolve.</summary>
         /// <param name="id">The stored IANA id.</param>
         /// <param name="tenantId">The tenant, for the event.</param>
         /// <returns>The zone and its Windows id.</returns>
         private (TimeZoneInfo Zone, string SqlServerName) ResolveZone(string id, int tenantId)
         {
-            if (TimeZoneInfo.TryFindSystemTimeZoneById(id, out TimeZoneInfo? zone)
-                && TimeZoneInfo.TryConvertIanaIdToWindowsId(zone.Id, out string? windowsId))
+            if (TryResolveZone(id, out TimeZoneInfo? zone, out string? sqlServerName))
             {
-                return (zone, windowsId);
+                return (zone, sqlServerName);
             }
 
             Unresolvable(nameof(SettingsRow.TimeZone), id, tenantId);
