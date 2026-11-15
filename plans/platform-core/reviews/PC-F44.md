@@ -117,9 +117,90 @@ Before the change, the largest sections by the same measure were grid-core's pop
 
 ## Review 1
 
+Reviewed commit 7bb434ddabce0397f4b4578fc764748fe7014598 against D-057, D-067, D-086, D-094, spec 0010 §C.11/§C.15 and PLAN.md §6-§7.
+
+What I checked and ran:
+- **Size, with the gate's own measurer.** `pnpm run build`, then `pnpm run size:check`: exit 0. ./grid 40.63/40.73, ./grid-editing 7.81/7.91, ./tree-grid 2.94/3.04, and both staticGraphExcludes checks OK. A byte-level probe through `tools/bundle-measure.mjs`'s `createBundleMeasurer` gives the implementer's figures exactly: ./grid 41,603 B, ./grid-editing 7,994 B, ./tree-grid 3,015 B.
+  - The ./grid ceiling (41,707 B) is truly lowered: 1,301 B under the 42 KB cap (43,008 B), and the measure is 1,405 B under it. That meets LEDGER's "at least 0.5 KB of real headroom" and D-094.
+  - Neither raise is new growth. Every line added to ./grid-editing (`popup-keys.ts`, `popupKeydown`) and to ./tree-grid (the affordance template, its CSS, the glyph constants, `treeOptions`) is moved code. ./tree-grid stays far under its spec 8.
+  - Totals fall for both consumer kinds. A tree-grid page downloads 44,618 B (was 45,175), and an editable grid 49,597 B (was 50,630).
+- **Parity of the moved pane keys.** I compared `ɵTmGridEditing.popupKeydown` (grid-editing/editing.ts:455) line by line with the removed `onPopupKeydown`:
+  - The order is the same: the session/view gate, `revealActiveCell`, the IME guard, then find.
+  - So are the `isDropdownOpen` and `openDropdown` gating, the cancel/commit paths (`commitEditor`/`cancelEditor` delegate to `editing.commit`/`cancel` once editing is installed) and the read-only branch (close, then `onBodyKeydown`).
+  - The dropped `editing === null` branch is dead. `[data-tm-popup]` renders only from grid-editing, and `installEditing` sets `this.editing` before any mount.
+  - `TAB_STOP_CANDIDATES` equals the core's `HEADER_CONTENT_SELECTOR` character for character.
+- **Tree affordance.**
+  - No CSS outside `tm-tree-grid.css` targets the moved classes. A grep of every `.css` and `.ts` under client/ finds only the e2e `.tm-grid__twisty` locator. grid-view.css has no descendant or element selectors (`button`, `tm-icon`, `span`) that the affordance's nodes used to match.
+  - `TmIcon` and `TmSpinner` inject only root-level services, so the declaration-side injector changes nothing.
+  - Angular 22.0.5's NgTemplateOutlet forwards a changed context through its proxy without recreating the view.
+- **Dev-mode folds.** Every production path is unchanged: the duplicate-gridId warning stays. The guard matches the repo's existing pattern (entity-picker, editor-session, tm-instant). The dev-only throws are still covered by passing unit tests ("requires a readonly grid", "has no key", "has no editor").
+- **e2e.** After `build:showcase` (exit 0), `CI=1 node scripts/e2e.mjs --project chromium --grep-invert "@nightly|@perf|@quarantine" --workers 2` over tree-grid, tree-grid-restore, grid-rtl, grid-glyphs and grid-popup-editor: 75 passed, 0 failed, 0 flaky. That covers the indent geometry in both directions, glyph centring, expander and lazy-load spinners, the restore paths, axe on the expanded tree, and every pane spec.
+- **Gates.** The commit lists every §7.1 item 4 gate, including the lint:test reruns (D-078/D-085) and the PR-tier e2e. ARCHITECTURE.md and the core-ui README are updated. The API golden change is limited to the two protected glyph members.
+
 ### Findings
 
+**R1-1 (minor): two branches of the moved pane-key dispatch have no test that fails if they break.**
+- The refactor rewrote both branches:
+  - Mod+F in a pane: `client/projects/core/tellma-core-ui/grid-editing/editing.ts:468` calls `host.findFromEditor`, which is the new shared helper at `client/projects/core/tellma-core-ui/grid/internal/grid-core.ts:2880-2892`. The in-cell editor path also uses it (`grid-core.ts:2829`).
+  - Alt+ArrowDown in a pane: the `openDropdown` case at `editing.ts:488-492`.
+- No unit or e2e test exercises either one:
+  - `tm-grid-popup-editor.spec.ts` and `grid-popup-editor.spec.ts` contain no Mod+F and no Alt+ArrowDown.
+  - `grid-find.spec.ts` presses Mod+F only from the grid itself.
+  - `popup-keys.spec.ts` proves only that the resolver returns `openDropdown`, not what the dispatch does with it.
+- Failure scenarios the suites would not catch:
+  - `findFromEditor`'s read-only branch commits instead of closing the view, or the find bar never opens. The browser's find dialog then shadows the grid's find from inside a pane or an in-cell editor.
+  - `popupKeydown` loses the `!viewing` gate, which opens a read-only view's dropdown. Or it loses the conditional `preventDefault`, so the key is consumed with no dropdown open.
+- The pre-move code was just as untested. This commit is the one that merged and moved these branches, though, and item (c) asks that each moved behaviour has a test.
+- Fix: add four tests to `tm-grid-popup-editor.spec.ts` on a searchable host:
+  1. Ctrl+F in an editing pane commits the pane's value, opens the find bar, and prevents the default.
+  2. Ctrl+F in a read-only view closes it with nothing committed and opens the find bar.
+  3. Alt+ArrowDown in a pane that hosts a built-in dropdown editor (select or date) opens its panel.
+  4. Alt+ArrowDown in a read-only view does nothing and leaves the default alone.
+
+  One more test, Ctrl+F from an in-cell editor committing and opening find (in `tm-grid-editing.spec.ts`), covers the other caller of the shared helper.
+
+**R1-2 (minor): the controller's file comment now says the opposite of the split.**
+- `client/projects/core/tellma-core-ui/grid-editing/editing.ts:10-11` still reads "the grid's own core keeps every path a readonly grid runs, the editing keys included".
+- After this commit a readonly grid with a popup column runs its pane's keys from this file (`popupKeydown`, `popup-keys.ts`).
+- The next re-split will plan what can move from this header, and the AGENTS.md rule that inline comments explain the logic is not met while it says otherwise.
+- Fix: amend the header to say that the popup pane's keys, which only exist once this entry point has arrived, live here. Everything else a readonly grid runs, and the in-cell editing keys, stay in the core.
+
 ### Responses
+
+**R1-1: fixed in the review 1 fixes commit.** Six tests were added. Each moved branch was then broken on purpose and the relevant spec rerun (`.tmp/f44-mutants.sh`):
+
+`grid/tm-grid-popup-editor.spec.ts`:
+- **"the find shortcut"**: the host gains `[searchable]`, off by default. Three tests:
+  - Mod+F in an editing pane commits the pane's value, closes the pane, opens the find bar and prevents the default.
+  - Mod+F in a read-only view closes it, leaves the model untouched (same array) and opens the find bar.
+  - Mod+F in a pane on a non-searchable grid stays with the browser.
+- **"a popup pane with a dropdown editor"**: a new host with a popup `enum` column. I used enum rather than date because the date picker's own input consumes Alt+ArrowDown, so the grid's branch never runs behind it. The select's trigger leaves the key to the grid. Two tests:
+  - In an editing pane, Escape first closes the panel the pane opens with (the session stays). Alt+ArrowDown then re-opens it (`aria-expanded` true) and is consumed.
+  - In a read-only view, Alt+ArrowDown leaves `aria-expanded` false and the default alone, and the model unchanged.
+
+`grid/tm-grid-editing.spec.ts`:
+- Mod+F from an in-cell editor commits it, closes it and opens the find bar. The host gains `[searchable]`, off by default.
+
+Mutation results:
+
+| Mutant | Fails |
+|---|---|
+| M2 `findFromEditor` never opens find | both pane Mod+F tests |
+| M3 drop the `!viewing` gate on `openDropdown` | read-only Alt+ArrowDown |
+| M4 always `preventDefault` on `openDropdown` | read-only Alt+ArrowDown |
+| M5 `popupKeydown` skips `findFromEditor` | both pane Mod+F tests |
+| M6 the in-cell path skips `findFromEditor` | in-cell Mod+F |
+| M1 the read-only branch calls `commitEditor` instead of `closePopupView` | none: equivalent mutant |
+
+Why M1 survives: a read-only view has no session, so `commitEditor` does nothing. `openFind` then focuses the find input, and the grid's focusout rule ("a read-only popup view closes, committing nothing") closes the view. The observable result is identical: the view closes, nothing commits, find opens. The test pins that result. The explicit close stays because it does not depend on the focus order.
+
+Reruns:
+- The two specs: 108 passed (26 popup, 82 editing).
+- lint and build: clean.
+- lint:test: 37 files, 234 tests passed.
+- size:check: OK, unchanged (./grid 40.63/40.73, ./grid-editing 7.81/7.91, ./tree-grid 2.94/3.04).
+
+**R1-2: fixed.** The `grid-editing/editing.ts` file comment now says that the popup pane's keys live in this entry point, because a pane, even a read-only grid's view, only exists once it has arrived. The core keeps every other path a readonly grid runs, and the in-cell editing keys.
 
 ## Review 2
 

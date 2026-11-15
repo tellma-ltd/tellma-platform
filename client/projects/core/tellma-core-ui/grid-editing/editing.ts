@@ -7,8 +7,10 @@
 // mounting its editor, commit (with the entity label-resolution ladder)
 // and cancel. A readonly grid never needs any of it, so it ships in this
 // entry point, which the grid preloads with import() once it is editable
-// (spec 0010 §C.11, Part C flag 6); the grid's own core keeps every path a
-// readonly grid runs, the editing keys included. The core implements
+// (spec 0010 §C.11, Part C flag 6). The popup pane's keys live here too: a
+// pane, even a readonly grid's read-only view, only exists once this entry
+// point has arrived. The grid's own core keeps every other path a readonly
+// grid runs, and the in-cell editing keys. The core implements
 // `ɵTmGridEditingHost`, the seam this controller works through, and keeps
 // a draft input for what the user types while this code is on its way
 // (`resume`, `resolveLabel`).
