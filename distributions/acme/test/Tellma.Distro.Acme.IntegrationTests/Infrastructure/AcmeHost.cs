@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.Testing.Email;
 using Tellma.Distro.Acme.Web;
@@ -34,11 +35,13 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <param name="app">The application.</param>
         /// <param name="emails">The capturing transport.</param>
         /// <param name="warnings">The host's warnings and errors.</param>
-        private AcmeHost(WebApplication app, CapturingEmailSender emails, WarningLog warnings)
+        /// <param name="probes">What the tenant probes record; null when the host maps none.</param>
+        private AcmeHost(WebApplication app, CapturingEmailSender emails, WarningLog warnings, TenantProbeLog? probes)
         {
             _app = app;
             Emails = emails;
             Warnings = warnings;
+            Probes = probes;
         }
 
         /// <summary>The mail the host sent, sign-in codes among it.</summary>
@@ -46,6 +49,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>The host's warnings and errors, for a failed assertion to report.</summary>
         public WarningLog Warnings { get; }
+
+        /// <summary>What the tenant probes recorded; null when the host maps none.</summary>
+        public TenantProbeLog? Probes { get; }
 
         /// <summary>The host's services.</summary>
         public IServiceProvider Services => _app.Services;
@@ -61,28 +67,25 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>Builds and starts a host.</summary>
         /// <param name="values">The deployment's settings, over Acme's configuration files.</param>
-        /// <param name="environment">The host environment.</param>
-        /// <param name="services">Registers what stands in for the rest of a deployment, after everything else.</param>
+        /// <param name="options">What the test adds to the host; null for nothing.</param>
         /// <returns>The started host.</returns>
-        public static async Task<AcmeHost> StartAsync(
-            IReadOnlyDictionary<string, string?> values, string environment = "Development", Action<IServiceCollection>? services = null)
+        public static async Task<AcmeHost> StartAsync(IReadOnlyDictionary<string, string?> values, AcmeHostOptions? options = null)
         {
-            AcmeHost host = Build(values, environment, services);
+            AcmeHost host = Build(values, options);
             await host._app.StartAsync(TestContext.Current.CancellationToken);
             return host;
         }
 
         /// <summary>Builds a host without starting it.</summary>
         /// <param name="values">The deployment's settings, over Acme's configuration files.</param>
-        /// <param name="environment">The host environment.</param>
-        /// <param name="services">Registers what stands in for the rest of a deployment, after everything else.</param>
+        /// <param name="options">What the test adds to the host; null for nothing.</param>
         /// <returns>The built host.</returns>
-        public static AcmeHost Build(
-            IReadOnlyDictionary<string, string?> values, string environment = "Development", Action<IServiceCollection>? services = null)
+        public static AcmeHost Build(IReadOnlyDictionary<string, string?> values, AcmeHostOptions? options = null)
         {
+            options ??= new AcmeHostOptions();
             WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
-                EnvironmentName = environment,
+                EnvironmentName = options.Environment,
                 ApplicationName = typeof(AcmeWebHostMarker).Assembly.GetName().Name,
 
                 // Acme's appsettings.json and appsettings.Development.json, copied beside the suite.
@@ -96,8 +99,16 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             {
                 ["Email:Provider"] = CapturingEmailServiceCollectionExtensions.TransportName,
             });
-            // --- Program.cs, call for call ---
-            _ = builder.AddTellma(AcmeComposition.Slug, AcmeComposition.Compose, AcmeWebComposition.Compose);
+
+            // --- Program.cs, call for call, with the test's further composition beside Acme's ---
+            _ = builder.AddTellma(
+                AcmeComposition.Slug,
+                tellma =>
+                {
+                    AcmeComposition.Compose(tellma);
+                    options.Compose?.Invoke(tellma);
+                },
+                AcmeWebComposition.Compose);
 
             // The platform's logging replaces every provider registered before it and forwards its
             // events to those registered after, so the capture joins here.
@@ -111,12 +122,27 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                 TellmaAuthentication.OidcScheme, oidc => oidc.BackchannelHttpHandler = new ServerHandler(() => host!.Server.CreateHandler()));
             _ = builder.Services.AddHttpClient(BackchannelLogoutService.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => new ServerHandler(() => host!.BackchannelLogoutSink ?? host.Server.CreateHandler()));
-            services?.Invoke(builder.Services);
+
+            // --- The tenant probes' record, one per host, so two hosts of one test keep theirs apart ---
+            TenantProbeLog? probes = options.MapsProbes ? new TenantProbeLog() : null;
+            if (probes is not null)
+            {
+                _ = builder.Services.AddSingleton(probes);
+            }
+
+            options.Services?.Invoke(builder.Services);
 
             WebApplication app = builder.Build();
             _ = app.UseTellma();
-            _ = app.MapTellma();
-            host = new AcmeHost(app, emails, warnings);
+            TellmaEndpoints groups = app.MapTellma();
+
+            // --- The test's own tenant endpoints, mapped onto the groups as a distribution maps its own ---
+            if (probes is not null)
+            {
+                TenantProbes.Map(groups);
+            }
+
+            host = new AcmeHost(app, emails, warnings, probes);
             return host;
         }
 
@@ -128,28 +154,30 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         }
 
         /// <summary>
-        ///     Creates a client at the public origin, as the identity flow driver asks for one: with
-        ///     cookies when the options say so, never following a redirect on its own.
+        ///     A protocol driver whose browser holds cookies at the public origin, with the engine at its
+        ///     path base.
         /// </summary>
-        /// <param name="options">The options.</param>
-        /// <returns>The client.</returns>
-        public HttpClient CreateClient(WebApplicationFactoryClientOptions options)
+        /// <param name="cookies">
+        ///     The browser's cookie jar, which another host's browser may share, as one browser reaches
+        ///     every instance of a deployment; null for a jar of its own.
+        /// </param>
+        /// <returns>The driver; the caller disposes it.</returns>
+        public OidcFlowClient CreateFlowClient(CookieContainer? cookies = null)
         {
-            ArgumentNullException.ThrowIfNull(options);
-            HttpMessageHandler handler = Server.CreateHandler();
-            if (options.HandleCookies)
-            {
-                handler = new CookieContainerHandler { InnerHandler = handler };
-            }
-
-            return new HttpClient(handler) { BaseAddress = new Uri(AcmeMigrator.PublicOrigin) };
+            CookieContainer jar = cookies ?? new CookieContainer();
+            return new OidcFlowClient(options => CreateClient(options, jar), Emails, "/id");
         }
 
-        /// <summary>A protocol driver whose browser holds cookies at the public origin, with the engine at its path base.</summary>
-        /// <returns>The driver; the caller disposes it.</returns>
-        public OidcFlowClient CreateFlowClient()
+        /// <summary>
+        ///     A browser at the public origin over a cookie jar another host's browser filled, as a
+        ///     deployment's load balancer sends one browser to another instance.
+        /// </summary>
+        /// <param name="cookies">The cookie jar.</param>
+        /// <returns>The client; the caller disposes it.</returns>
+        public HttpClient CreateBrowser(CookieContainer cookies)
         {
-            return new OidcFlowClient(CreateClient, Emails, "/id");
+            ArgumentNullException.ThrowIfNull(cookies);
+            return CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true }, cookies);
         }
 
         /// <inheritdoc />
@@ -157,6 +185,25 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         {
             await _app.StopAsync(CancellationToken.None);
             await _app.DisposeAsync();
+        }
+
+        /// <summary>
+        ///     Creates a client at the public origin, as the identity flow driver asks for one: with
+        ///     cookies when the options say so, never following a redirect on its own.
+        /// </summary>
+        /// <param name="options">The options.</param>
+        /// <param name="cookies">The cookie jar a client that handles cookies keeps them in.</param>
+        /// <returns>The client.</returns>
+        private HttpClient CreateClient(WebApplicationFactoryClientOptions options, CookieContainer cookies)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            HttpMessageHandler handler = Server.CreateHandler();
+            if (options.HandleCookies)
+            {
+                handler = new CookieContainerHandler(cookies) { InnerHandler = handler };
+            }
+
+            return new HttpClient(handler) { BaseAddress = new Uri(AcmeMigrator.PublicOrigin) };
         }
 
         /// <summary>A handler that forwards to one created on first use, once the test server exists.</summary>

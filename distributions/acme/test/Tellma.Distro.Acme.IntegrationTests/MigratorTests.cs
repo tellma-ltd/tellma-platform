@@ -14,7 +14,8 @@ namespace Tellma.Distro.Acme.IntegrationTests
     /// <summary>
     ///     Acme's migrator against a real server from nothing: the catalog with the identity store and
     ///     the two seed tenants Acme's Development configuration declares, tenants provisioned on
-    ///     request, every database in the platform collation, and the provisioning record.
+    ///     request, every database in the platform collation, and the provisioning record, whose bumped
+    ///     steps run again on active and read-only tenants alike.
     /// </summary>
     [Trait("Category", "Integration")]
     public sealed class MigratorTests(SqlServerFixture sql)
@@ -128,6 +129,44 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(2, await StepVersionAsync(acme, 1));
             Assert.Equal(2, await StepVersionAsync(acme, 2));
             Assert.Equal([(1, 1), (1, 2), (2, 1), (2, 2)], ProbeStep.RunsOf(acme.CatalogName).Order());
+        }
+
+        [Fact(Skip = "Needs the platform's provisioning steps: the administrator bootstrap, the tenant settings and the blob container.")]
+        public async Task The_provisioning_record_holds_the_platform_steps_with_their_versions()
+        {
+            AcmeMigrator acme = new(sql, "acme_platform_steps");
+            _ = await acme.MigrateAsync();
+
+            foreach (int tenant in new[] { 1, 2 })
+            {
+                foreach (string step in new[] { "core.bootstrap-administrator", "core.settings", "core.blob-container" })
+                {
+                    int? version = await SqlServerFixture.ScalarAsync<int?>(
+                        acme.TenantConnectionString(tenant), $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{step}';");
+                    Assert.True(version >= 1, $"Tenant {tenant} records no completion of {step}.");
+                }
+            }
+        }
+
+        [Fact]
+        public async Task Migrate_applies_a_changed_provisioning_step_on_a_read_only_tenant()
+        {
+            AcmeMigrator acme = new(sql, "acme_readonly_steps") { Compose = static builder => builder.AddFeature(new ProbeStepFeature()) };
+            acme.Values[ProbeStep.RunKeyKey] = acme.CatalogName;
+            _ = await acme.MigrateAsync();
+            await acme.SetStateAsync(1, TenantState.ReadOnly, "unpaid");
+
+            // --- A bumped step on the soft-locked tenant: platform work, which a soft lock keeps running ---
+            acme.Values[ProbeStep.VersionKey] = "2";
+            MigratorResult result = await acme.MigrateAsync();
+
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: migrated", StringComparison.Ordinal));
+            Assert.Contains((1, 2), ProbeStep.RunsOf(acme.CatalogName));
+            Assert.Equal(2, await StepVersionAsync(acme, 1));
+
+            // The step ran on the tenant as it stands, which the run leaves read-only.
+            Assert.Contains((1, TenantState.ReadOnly), ProbeStep.StatesOf(acme.CatalogName));
+            Assert.Equal("ReadOnly", await acme.StateAsync(1));
         }
 
         /// <summary>How many migrations the identity store's history records.</summary>

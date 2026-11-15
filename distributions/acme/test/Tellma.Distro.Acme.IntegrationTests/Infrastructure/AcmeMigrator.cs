@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
 using Tellma.Distro.Acme.Migrator;
@@ -152,6 +153,45 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             MigratorResult result = await RunAsync("migrate");
             Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
             return result;
+        }
+
+        /// <summary>
+        ///     Runs <c>set-state</c>, as an operator moves a tenant, and asserts that the catalog holds
+        ///     the new state.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="state">The new state.</param>
+        /// <param name="reason">Why, as the operator states it; null for none.</param>
+        /// <returns>A task that completes when the catalog holds the state.</returns>
+        public async Task SetStateAsync(int tenantId, TenantState state, string? reason = null)
+        {
+            List<string> args = ["set-state", "--tenant", tenantId.ToString(CultureInfo.InvariantCulture), "--state", state.ToString()];
+            if (reason is not null)
+            {
+                args.AddRange(["--reason", reason]);
+            }
+
+            MigratorResult result = await RunAsync([.. args]);
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            Assert.Equal(state.ToString(), await StateAsync(tenantId));
+        }
+
+        /// <summary>
+        ///     Sets a tenant's database <c>READ_ONLY</c>, as an operator does after freezing the tenant
+        ///     for a relocation.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <returns>A task that completes when the database is read-only.</returns>
+        public async Task SetDatabaseReadOnlyAsync(int tenantId)
+        {
+            await SqlServerFixture.ExecuteAsync(
+                _sql.MasterConnectionString, $"ALTER DATABASE [{TenantDatabaseName(tenantId)}] SET READ_ONLY WITH ROLLBACK IMMEDIATE;");
+
+            // The rollback ended every session on the database, the ones this process's earlier
+            // migrator runs left pooled among them; a host started next must not be handed one.
+            SqlConnection.ClearAllPools();
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(
+                _sql.MasterConnectionString, $"SELECT CONVERT(int, [is_read_only]) FROM [sys].[databases] WHERE [name] = N'{TenantDatabaseName(tenantId)}';"));
         }
 
         /// <summary>A tenant's state, as the catalog holds it.</summary>
