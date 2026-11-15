@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-087 (2026-11-14): holding does not merge or re-run gates; merge and gate once at release
+
+- Ruling (Ahmad, 2026-11-14): when an item holds after its last fix round, it does not merge origin/platform-core or re-run PLAN.md §7.1 items 2-4. It runs `git merge-tree origin/platform-core HEAD` (after `git fetch origin`), reports any conflicts it shows, and pushes only pc/PC-xxx. The merge and the gates run once, when the orchestrator releases the item (the §4.3 integration message). This replaces the merge-and-hold step for every item that holds from now on.
+- Why: throughput. Held items were merging and gating twice, once at hold and again at release, because platform-core always moves while they wait.
+- For Ahmad: none (his ruling). PROCESS.md §4 should describe this hold step.
+
 ### D-086 (2026-11-14): popup cell editors — grid-editing entry point, pane parent, composite editors (PC-056)
 
 - Ruling: popup cell editors live in the lazily loaded `./grid-editing` entry point (grid 41.93 KB, grid-editing 7.42 KB against a ceiling raised from 7.34 to 7.52 KB, with a budgetNotes entry). The pane's DOM parent is the in-cell `.tm-grid__editor` box. Composite cell editors (sub-forms in a popup, e.g. the window and filter editors of spec 0032) must shield inner tm-* controls: provide their own TM_CELL_EDITOR_HOST and register with the grid's through `{ skipSelf: true }`. TmGridEditorDef documents this, and an ngDevMode error fires when more than one control registers.
