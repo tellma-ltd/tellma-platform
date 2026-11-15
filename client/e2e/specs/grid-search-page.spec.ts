@@ -17,8 +17,11 @@ import {
   gridScroller,
   liveRegion,
   rowCheckbox,
+  rowHeader,
+  selectedCells,
   setScrollTop,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * The search-page battery against the
@@ -35,7 +38,9 @@ import {
  * `[rowHeaders]="false"`. Readouts: `activated` ("<id> via <pointer|
  * keyboard>[ in a new tab]"), `activation-count`, `active-row`, `order`
  * ("<key> <asc|desc>" or "none"), `selected-count` ("N selected") and
- * `link-clicked`.
+ * `link-clicked`. Toggles under the grid (`toggle-row-numbers`,
+ * `toggle-checkboxes`) switch the two chrome columns, and with them the
+ * row's first painted cell.
  */
 
 /** The story's search field (the `tmGridDriver` input). */
@@ -68,6 +73,60 @@ async function resolvedColor(page: Page, property: string): Promise<string> {
     probe.remove();
     return color;
   }, property);
+}
+
+/** Resolves a system color to its computed `rgb()` form under the page's current palette. */
+async function systemColor(page: Page, name: string): Promise<string> {
+  return page.evaluate((color) => {
+    const probe = document.createElement('div');
+    // Kept as authored, so the probe reads the keyword's own value.
+    probe.style.forcedColorAdjust = 'none';
+    probe.style.backgroundColor = color;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return resolved;
+  }, name);
+}
+
+/** The computed paint of a row's first painted cell and of the accent bar on it. */
+interface BarPaint {
+  /** The first cell's chrome kind: its `data-tm-*` marker. */
+  readonly first: 'rowhdr' | 'checkcell' | 'cell' | 'other';
+  /** The accent bar's color. */
+  readonly bar: string;
+  /** The accent bar's inline size. */
+  readonly barWidth: string;
+  /** The first cell's background color. */
+  readonly background: string;
+  /** The first cell's ink. */
+  readonly ink: string;
+}
+
+/** Reads a row's first painted cell and its accent bar once the app is stable. */
+async function barPaint(page: Page, viewIndex: number): Promise<BarPaint> {
+  await appStable(page);
+  return row(page, viewIndex)
+    .locator(':scope > :first-child')
+    .evaluate((first: HTMLElement): BarPaint => {
+      const style = getComputedStyle(first);
+      const bar = getComputedStyle(first, '::before');
+      const data = first.dataset;
+      return {
+        first:
+          'tmRowhdr' in data
+            ? 'rowhdr'
+            : 'tmCheckcell' in data
+              ? 'checkcell'
+              : 'tmCell' in data
+                ? 'cell'
+                : 'other',
+        bar: bar.backgroundColor,
+        barWidth: bar.width,
+        background: style.backgroundColor,
+        ink: style.color,
+      };
+    });
 }
 
 /** Lets the 400 ms same-row guard lapse, so the next activation of a row counts. */
@@ -508,3 +567,91 @@ for (const dir of ['ltr', 'rtl'] as const) {
     }
   });
 }
+
+// Forced colors: every mark the grid draws over a highlighted surface takes
+// that surface's paired ink. Some platforms (Windows) give SelectedItem and
+// Highlight one colour, so a Highlight mark on a SelectedItem surface
+// vanishes there even where the emulated palette tells the two apart; the
+// tests therefore pin the pairing, not just a difference.
+test.describe('the active row under forced colors', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await gotoGrid(page, 'grid-search-page');
+  });
+
+  test('the accent bar takes the ink of whichever cell starts the row', async ({ page }) => {
+    const highlight = await systemColor(page, 'Highlight');
+    const highlightText = await systemColor(page, 'HighlightText');
+    const selectedItem = await systemColor(page, 'SelectedItem');
+    const selectedItemText = await systemColor(page, 'SelectedItemText');
+
+    // The checkbox column starts the row: a plain chrome cell carries a
+    // Highlight bar.
+    await cell(page, 2, 0).click();
+    await expect(row(page, 2)).toHaveClass(/tm-grid__row--active/);
+    let paint = await barPaint(page, 2);
+    expect(paint.first).toBe('checkcell');
+    expect(paint.barWidth).toBe('2px');
+    expect(paint.bar).toBe(highlight);
+    expect(paint.background).not.toBe(highlight);
+
+    // Checked, the checkbox cell paints SelectedItem: the bar turns to the
+    // paired ink.
+    await rowCheckbox(page, 2).click();
+    await expect(row(page, 2)).toHaveAttribute('aria-selected', 'true');
+    await expect(row(page, 2)).toHaveClass(/tm-grid__row--active/);
+    paint = await barPaint(page, 2);
+    expect(paint.background).toBe(selectedItem);
+    expect(paint.bar).toBe(selectedItemText);
+    expect(paint.bar).toBe(paint.ink);
+
+    // Row numbers start the row: the active cell's row header is hit, so it
+    // paints SelectedItem under the bar as well.
+    await page.getByTestId('toggle-row-numbers').click();
+    await expect(rowHeader(page, 2)).toHaveClass(/tm-grid__rowhdr--hit/);
+    paint = await barPaint(page, 2);
+    expect(paint.first).toBe('rowhdr');
+    expect(paint.background).toBe(selectedItem);
+    expect(paint.bar).toBe(selectedItemText);
+    expect(paint.bar).toBe(paint.ink);
+
+    // No chrome column: the first data cell starts the row. Alone it is
+    // plain; inside the range fill it paints Highlight, and the bar its ink.
+    await page.getByTestId('toggle-row-numbers').click();
+    await page.getByTestId('toggle-checkboxes').click();
+    await expect(page.locator('[data-tm-rowhdr], [data-tm-checkcell]')).toHaveCount(0);
+    paint = await barPaint(page, 2);
+    expect(paint.first).toBe('cell');
+    expect(paint.bar).toBe(highlight);
+    expect(paint.background).not.toBe(highlight);
+
+    await cell(page, 3, 2).click({ modifiers: ['Shift'] });
+    await expect(selectedCells(page)).toHaveCount(6);
+    await expect(row(page, 2)).toHaveClass(/tm-grid__row--active/);
+    paint = await barPaint(page, 2);
+    expect(paint.background).toBe(highlight);
+    expect(paint.bar).toBe(highlightText);
+    expect(paint.bar).toBe(paint.ink);
+  });
+
+  test('a focused header keeps a visible ring over its selected column', async ({ page }) => {
+    await cell(page, 0, 0).click();
+    await expect(cell(page, 0, 0)).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(colHeader(page, 0)).toBeFocused();
+    await expect(colHeader(page, 0)).toHaveClass(/tm-grid__colhdr--hit/);
+    await appStable(page);
+
+    const header = await colHeader(page, 0).evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        outline: style.outlineStyle,
+        ring: style.outlineColor,
+      };
+    });
+    expect(header.background).toBe(await systemColor(page, 'SelectedItem'));
+    expect(header.outline).toBe('solid');
+    expect(header.ring).toBe(await systemColor(page, 'SelectedItemText'));
+  });
+});

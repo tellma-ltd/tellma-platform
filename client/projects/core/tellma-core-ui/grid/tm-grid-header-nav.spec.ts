@@ -8,6 +8,9 @@ import { Component, signal, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { cdp } from 'vitest/browser';
+// The Playwright provider's typings, which give the CDP session its methods.
+import type {} from '@vitest/browser-playwright';
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { provideTellmaUi } from '@tellma/core-ui';
@@ -319,6 +322,18 @@ async function activate(
   await stable(fixture);
   cellAt(scroller, row, col).focus();
   await stable(fixture);
+}
+
+/** Resolves a system color to its computed `rgb()` form under the page's current palette. */
+function systemColor(name: string): string {
+  const probe = document.createElement('div');
+  // Kept as authored, so the probe reads the keyword's own value.
+  probe.style.forcedColorAdjust = 'none';
+  probe.style.backgroundColor = name;
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return resolved;
 }
 
 /** A right-click on an element, at its top inline-start corner. */
@@ -1037,6 +1052,40 @@ describe('tm-grid row-end column', () => {
     expect(getComputedStyle(endCellAt(scroller, 2)).backgroundImage).toContain('rgb(7, 8, 9)');
     // Over the opaque page surface, so nothing scrolled under it shows through.
     expect(getComputedStyle(endCellAt(scroller, 2)).backgroundColor).toBe('rgb(255, 255, 255)');
+  });
+
+  it('keeps its active ring in the ink paired with a checked row under forced colors', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.selection.set(new Set([2]));
+    await activate(fixture, scroller, 2, 0);
+    await key(fixture, 'End');
+    const end = endCellAt(scroller, 2);
+    expect(end.classList).toContain('tm-grid__endcell--active');
+
+    // The ring's width token, which a unit test's page does not load.
+    (fixture.nativeElement as HTMLElement).style.setProperty('--focus-ring-width', '2px');
+    await cdp().send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'forced-colors', value: 'active' }],
+    });
+    try {
+      expect(matchMedia('(forced-colors: active)').matches).toBe(true);
+      // A checked row paints SelectedItem, which some platforms make the same
+      // colour as Highlight, so the ring takes the paired ink instead.
+      const style = getComputedStyle(end);
+      expect(style.backgroundColor).toBe(systemColor('SelectedItem'));
+      expect(style.outlineStyle).toBe('solid');
+      expect(style.outlineColor).toBe(systemColor('SelectedItemText'));
+
+      // A plain row keeps the Highlight ring.
+      await key(fixture, 'ArrowDown');
+      const plain = getComputedStyle(endCellAt(scroller, 3));
+      expect(endCellAt(scroller, 3).classList).toContain('tm-grid__endcell--active');
+      expect(plain.outlineColor).toBe(systemColor('Highlight'));
+      expect(plain.backgroundColor).not.toBe(systemColor('Highlight'));
+    } finally {
+      // The page is shared with the other suites of the run.
+      await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+    }
   });
 });
 

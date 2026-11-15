@@ -106,19 +106,25 @@
     background: Canvas;
   }
 
+  /* The active ring draws in the ink paired with the cell's background
+     (Highlight on a plain cell), as on a data cell: a Highlight ring on the
+     checked row's SelectedItem or on the range fill would vanish wherever
+     the two are one colour. */
   :host-context(.tm-grid__row--checked) {
     background: SelectedItem;
     color: SelectedItemText;
+    --tm-grid-overlay-ink: SelectedItemText;
   }
 
   :host(.tm-grid__endcell--selected) {
     background: Highlight;
     color: HighlightText;
+    --tm-grid-overlay-ink: HighlightText;
   }
 
   :host(.tm-grid__endcell--active) {
     box-shadow: none;
-    outline: var(--focus-ring-width) solid Highlight;
+    outline: var(--focus-ring-width) solid var(--tm-grid-overlay-ink, Highlight);
     outline-offset: calc(-1 * var(--focus-ring-width));
   }
 
