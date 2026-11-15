@@ -37,6 +37,40 @@ export interface TmProcessRunner {
 /** The package managers' command shims, which Windows starts as `.cmd` files through a shell. */
 const WINDOWS_SHIMS: ReadonlySet<string> = new Set(['pnpm', 'npm', 'npx']);
 
+/** The program the runner spawns for a command, and that program's arguments. */
+export interface TmProcessLaunch {
+  /** The program spawned: the command itself, or Windows' command interpreter. */
+  readonly program: string;
+  /** The arguments the spawned program takes. */
+  readonly args: readonly string[];
+}
+
+/**
+ * Works out how the runner starts a command. A command starts as it is,
+ * except that on Windows a package manager's `.cmd` shim starts through
+ * `cmd.exe`, named as the program, with the command and its arguments after
+ * `/c`.
+ *
+ * @param command - The program: an absolute path, or a name the PATH resolves.
+ * @param args - Its arguments.
+ * @param platform - The operating system, as `process.platform` names it.
+ * @param env - The environment whose `ComSpec` variable names the command interpreter; `cmd.exe` when unset.
+ * @returns The program to spawn and its arguments.
+ */
+export function tmProcessLaunch(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): TmProcessLaunch {
+  // A shim starts through cmd.exe named as the program, rather than through
+  // spawn's shell option, which Node deprecates when given an argument list.
+  if (platform === 'win32' && WINDOWS_SHIMS.has(command)) {
+    return { program: env['ComSpec'] ?? 'cmd.exe', args: ['/d', '/s', '/c', command, ...args] };
+  }
+  return { program: command, args: [...args] };
+}
+
 /**
  * The runner of real processes. Arguments never pass through a shell, except
  * that Windows needs `cmd.exe` to start a package manager's `.cmd` shim;
@@ -44,13 +78,9 @@ const WINDOWS_SHIMS: ReadonlySet<string> = new Set(['pnpm', 'npm', 'npx']);
  */
 export const tmNodeProcessRunner: TmProcessRunner = {
   run(command, args, options) {
-    // A shim starts through cmd.exe named as the program, rather than through
-    // spawn's shell option, which Node deprecates when given an argument list.
-    const shim = process.platform === 'win32' && WINDOWS_SHIMS.has(command);
-    const program = shim ? (process.env['ComSpec'] ?? 'cmd.exe') : command;
-    const programArgs = shim ? ['/d', '/s', '/c', command, ...args] : [...args];
+    const launch = tmProcessLaunch(command, args);
     return new Promise<number>((resolve, reject) => {
-      const child = spawn(program, programArgs, {
+      const child = spawn(launch.program, launch.args, {
         cwd: options.cwd,
         env: { ...process.env, ...options.env },
         stdio: 'inherit',

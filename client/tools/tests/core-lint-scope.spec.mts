@@ -23,9 +23,11 @@ async function ruleIds(eslint: ESLint, code: string, filePath: string): Promise<
   return (result?.messages ?? []).map((message) => message.ruleId ?? `fatal: ${message.message}`);
 }
 
-// The first lint loads the whole workspace config and a TypeScript program,
-// which takes several seconds on a busy machine.
-describe('the @tellma/core lint scope', { timeout: 120_000 }, () => {
+// The first lint loads the whole workspace config and a TypeScript program
+// for @tellma/core. Beside the other typed-lint specs on a busy Windows
+// machine that took 37-67 s, and it once passed 120 s, so the limit leaves
+// room for a .NET build running alongside.
+describe('the @tellma/core lint scope', { timeout: 300_000 }, () => {
   const eslint = new ESLint({
     cwd: process.cwd(),
     overrideConfig: { languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } } },

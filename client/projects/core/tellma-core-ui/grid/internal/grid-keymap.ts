@@ -36,6 +36,8 @@ export interface TmGridKeyContext {
   readonly activeIsBoolean: boolean;
   /** Whether the readonly grid opens rows (row activation is on). */
   readonly rowActivation: boolean;
+  /** Whether the active cell's column opens its editor in a pane (`editorPopup`). */
+  readonly activeIsPopup: boolean;
 }
 
 /** Where a header-row key moves the header focus. */
@@ -78,8 +80,8 @@ export type TmGridIntent =
 
 /**
  * The grid state a binding needs before it acts: an editable grid, the find
- * bar enabled, row checkboxes enabled, a tree, row activation, or focus on
- * a navigable column header.
+ * bar enabled, row checkboxes enabled, a tree, row activation, focus on a
+ * navigable column header, or an active cell whose editor opens in a pane.
  */
 export type TmGridKeyCondition =
   | 'editable'
@@ -87,7 +89,8 @@ export type TmGridKeyCondition =
   | 'selectable'
   | 'tree'
   | 'rowActivation'
-  | 'header';
+  | 'header'
+  | 'popup';
 
 /** One row of the grid's binding table. */
 export interface TmGridKeyBinding {
@@ -199,12 +202,13 @@ export const TM_GRID_KEY_BINDINGS: readonly TmGridKeyBinding[] = [
   },
   { keys: 'Shift+Enter', intent: { kind: 'enter', backward: true }, labelKey: label('moveUp') },
   // F2 edits an editable cell and, under row activation (always readonly),
-  // reaches the cell's link or button instead.
+  // reaches the cell's link or button instead; on a popup column's cell the
+  // user cannot edit, it opens the pane read-only (spec 0010 §C.15).
   {
     keys: 'F2',
     intent: { kind: 'edit', mode: 'edit' },
     labelKey: label('edit'),
-    when: ['editable', 'rowActivation'],
+    when: ['editable', 'rowActivation', 'popup'],
   },
   {
     keys: 'Alt+ArrowDown',
@@ -298,6 +302,8 @@ function conditionHolds(
       return ctx.isTree;
     case 'rowActivation':
       return ctx.rowActivation;
+    case 'popup':
+      return ctx.activeIsPopup;
     case 'header':
       return false; // header keys resolve through tmResolveHeaderKey
     default:
@@ -416,7 +422,9 @@ export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): T
     if (!shift) {
       switch (key) {
         case 'F2':
-          return ctx.editable || ctx.rowActivation ? { kind: 'edit', mode: 'edit' } : null;
+          return ctx.editable || ctx.rowActivation || ctx.activeIsPopup
+            ? { kind: 'edit', mode: 'edit' }
+            : null;
         case 'Delete':
         case 'Backspace':
           return ctx.editable ? { kind: 'clear' } : null;
@@ -605,4 +613,69 @@ export function tmResolveEditingKey(
     default:
       return null;
   }
+}
+
+/** What the popup-pane key resolver needs to know. */
+export interface TmGridPopupKeyContext {
+  /** Whether the platform is Apple's, where Mod is ⌘ rather than Ctrl. */
+  readonly apple: boolean;
+  /** Whether a built-in editor's dropdown panel is open, which owns every key. */
+  readonly isDropdownOpen: boolean;
+}
+
+/** A resolved key inside a popup editor's pane. */
+export type TmGridPopupKey =
+  | { readonly kind: 'cancel' }
+  | { readonly kind: 'commit' }
+  | { readonly kind: 'enter'; readonly backward: boolean }
+  | { readonly kind: 'tab'; readonly backward: boolean }
+  | { readonly kind: 'openDropdown' };
+
+/**
+ * Resolves a keydown inside a popup editor's pane (that the editor did not
+ * `preventDefault`) to a pane action, or `null` for keys that stay with the
+ * editor. The pane's editor is always in edit mode: the arrows, Home, End
+ * and the page keys move inside it and never commit, and F2 toggles
+ * nothing. Escape cancels; Mod+Enter commits and keeps the cell; Enter and
+ * Shift+Enter commit and move unless the editor keeps them (the core
+ * decides, as it decides whether Tab leaves the pane's first or last
+ * control); Alt+ArrowDown opens a built-in editor's dropdown.
+ */
+export function tmResolvePopupKey(
+  event: KeyboardEvent,
+  ctx: TmGridPopupKeyContext,
+): TmGridPopupKey | null {
+  if (ctx.isDropdownOpen) {
+    return null; // the open panel owns Enter, Escape, the arrows and typeahead
+  }
+  const key = event.key;
+  const mod = ctx.apple ? event.metaKey : event.ctrlKey;
+  const other = ctx.apple ? event.ctrlKey : event.metaKey;
+  const alt = event.altKey;
+  const shift = event.shiftKey;
+  if (other) {
+    return null;
+  }
+  if (key === 'ArrowDown' && alt && !mod && !shift) {
+    return { kind: 'openDropdown' };
+  }
+  if (alt) {
+    return null;
+  }
+  if (key === 'Enter') {
+    if (mod) {
+      return shift ? null : { kind: 'commit' };
+    }
+    return { kind: 'enter', backward: shift };
+  }
+  if (mod) {
+    return null;
+  }
+  if (key === 'Escape') {
+    return shift ? null : { kind: 'cancel' };
+  }
+  if (key === 'Tab') {
+    return { kind: 'tab', backward: shift };
+  }
+  return null;
 }

@@ -1,0 +1,309 @@
+stack core.User
+  segment: users
+  entity: Tellma.Core.Abstractions.Access.User
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.User, int>
+  key: int
+  description: -
+  operations: All, Enlist
+  capabilities: activatable, temporal, multilingual, blobs, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Kind:WriteOnce, Subject:ServerOwned, Email:Editable, State:DatabaseOwned, InvitedAt:ServerOwned, InviteStatus:ServerOwned, LastInviteError:ServerOwned, JoinedAt:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, ImageId:Editable, SignatureId:Editable, PreferredLanguage:Editable, PreferredCalendar:Editable, PreferredTimeZone:Editable, PreferredRegion:Editable, PreferredDigits:Editable, Gender:Editable, ContactEmail:Editable, ContactMobile:Editable, IsActive:ServerOwned
+  children: RoleMemberships(RoleMembership by UserId, max 10000)
+  searchable: Email:Contains, Name:Contains
+  natural-keys: Email, Subject
+  default-select: Id, Email, Subject, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, ImageId
+  details-expand: CreatedBy, ModifiedBy, Image, Signature, RoleMemberships.Role
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
+stack core.Role
+  segment: roles
+  entity: Tellma.Core.Abstractions.Access.Role
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.Role, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, temporal, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable, IsPublic:Editable, IsActive:ServerOwned
+  children: Permissions(Permission by RoleId, max 10000)
+  searchable: Name:Contains
+  natural-keys: Code, Name, Name2, Name3
+  default-select: Id, Code, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+stack core.Notification
+  segment: notifications
+  entity: Tellma.Core.Abstractions.Notifications.Notification
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Notifications.Notification, int>
+  key: int
+  description: -
+  operations: Query, Details
+  capabilities: -
+  properties: Id:ServerOwned, UserId:ServerOwned, Type:ServerOwned, Severity:ServerOwned, ArgumentsJson:ServerOwned, TargetResource:ServerOwned, TargetId:ServerOwned, ActorUserId:ServerOwned, DedupKey:ServerOwned, CreatedAt:ServerOwned, ReadAt:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id,Type,Severity,ArgumentsJson,TargetResource,TargetId,ActorUserId,CreatedAt,ReadAt
+  related-select: Id
+  details-expand: User, ActorUser
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: -
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+stack core.Job
+  segment: jobs
+  entity: Tellma.Core.Abstractions.Jobs.Job
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Jobs.Job, int>
+  key: int
+  description: -
+  operations: Query, Details
+  capabilities: -
+  properties: Id:ServerOwned, HandlerKey:ServerOwned, LabelKey:ServerOwned, LabelArgumentsJson:ServerOwned, Status:ServerOwned, DueAt:ServerOwned, Attempts:ServerOwned, LeaseExpiresAt:ServerOwned, LeaseOwner:ServerOwned, StartedAt:ServerOwned, CompletedAt:ServerOwned, CancelRequestedAt:ServerOwned, ArgumentsJson:ServerOwned, ProgressPercent:ServerOwned, ProgressKey:ServerOwned, ProgressArgumentsJson:ServerOwned, ErrorCode:ServerOwned, ErrorArgumentsJson:ServerOwned, ErrorTraceId:ServerOwned, PendingConfirmationsJson:ServerOwned, TraceParent:ServerOwned, RunAsUserId:ServerOwned, RequestedById:ServerOwned, ScheduleId:ServerOwned, ScheduledFor:ServerOwned, CreatedAt:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id,HandlerKey,LabelKey,LabelArgumentsJson,Status,DueAt,Attempts,LeaseExpiresAt,StartedAt,CompletedAt,CancelRequestedAt,ProgressPercent,ProgressKey,ProgressArgumentsJson,ErrorCode,ErrorArgumentsJson,ErrorTraceId,RunAsUserId,RequestedById,ScheduleId,ScheduledFor,CreatedAt
+  related-select: Id, HandlerKey, Status, ProgressPercent, LabelKey, LabelArgumentsJson, CompletedAt
+  details-expand: RunAsUser, RequestedBy, Schedule
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: -
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+stack core.Schedule
+  segment: schedules
+  entity: Tellma.Core.Abstractions.Jobs.Schedule
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Jobs.Schedule, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, temporal, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, Name2:Editable, Name3:Editable, HandlerKey:WriteOnce, ArgumentsJson:Editable, CronExpression:Editable, TimeZoneId:Editable, MissedPolicy:Editable, OverlapPolicy:Editable, CatchUpWindowMinutes:Editable, RunAsUserId:ServerOwned, PausedReason:ServerOwned, IsActive:ServerOwned
+  children: -
+  searchable: Code:Contains, Name:Contains
+  natural-keys: Code
+  default-select: Id,Code,Name,Name2,Name3,HandlerKey,CronExpression,TimeZoneId,MissedPolicy,OverlapPolicy,CatchUpWindowMinutes,RunAsUserId,PausedReason,IsActive,CreatedAt,CreatedById,ModifiedAt,ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy, RunAsUser
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
+stack fixture.Widget
+  segment: widgets
+  entity: Tellma.Testing.Entities.Widget
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Widget, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, temporal, multilingual, blobs, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Kind:Editable, Name:Editable, Name2:Editable, Name3:Editable, Subject:WriteOnce, Price:Editable, OptionalKind:Editable, DueOn:Editable, Settings:Editable, ImageId:Editable, IsActive:ServerOwned
+  children: Parts(WidgetPart by WidgetId, max 10000)
+  searchable: -
+  natural-keys: Code, Subject
+  default-select: Id, Code, Subject, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, Code, ImageId
+  details-expand: CreatedBy, ModifiedBy, Image, Parts.Drawing
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Widget>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Widget>; mcp Full, revision 0; -
+stack fixture.WidgetExtra
+  segment: widget-extras
+  entity: Tellma.Testing.Entities.WidgetExtra
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.WidgetExtra, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: excel
+  properties: Id:ServerOwned, Note:Editable
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id
+  related-select: Id
+  details-expand: -
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+stack fixture.Node
+  segment: nodes
+  entity: Tellma.Testing.Entities.Node
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Node, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, tree, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, ParentId:Editable, SubtreeCount:ServerOwned, IsActive:ServerOwned, ActiveSubtreeCount:ServerOwned, Code:Editable, Name:Editable
+  children: Links(Link by NodeId, max 10000)
+  searchable: -
+  natural-keys: Code
+  default-select: Id, Code, Name, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Code
+  details-expand: CreatedBy, ModifiedBy, Parent, Links.OtherNode
+  default-order-by: -
+  display-name: Code group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Node>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Node>; mcp Full, revision 0; -
+stack fixture.Shipment
+  segment: shipments
+  entity: Tellma.Testing.Entities.Shipment
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Shipment, long>
+  key: long
+  description: -
+  operations: All
+  capabilities: job-entity, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, State:Editable, Payload:Editable, JobId:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy, Job
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+stack fixture.Export
+  segment: exports
+  entity: Tellma.Testing.Entities.Export
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Export, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: job-entity, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, JobId:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id, Name, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy, Job
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+stack fixture.Lookup
+  segment: lookups
+  entity: Tellma.Testing.Entities.Lookup
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Lookup, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, cacheable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, IsActive:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: Code
+  default-select: Id, Code, Name, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Code
+  details-expand: CreatedBy, ModifiedBy
+  default-order-by: -
+  display-name: Code group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
+child core.RoleMembership
+  segment: role-memberships
+  entity: Tellma.Core.Abstractions.Access.RoleMembership
+  owner: core.User through User, collection RoleMemberships
+  searchable: -
+  default-select: Id, UserId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child core.Permission
+  segment: permissions
+  entity: Tellma.Core.Abstractions.Access.Permission
+  owner: core.Role through Role, collection Permissions
+  searchable: -
+  default-select: Id, RoleId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child fixture.WidgetPart
+  segment: widget-parts
+  entity: Tellma.Testing.Entities.WidgetPart
+  owner: fixture.Widget through Widget, collection Parts
+  searchable: -
+  default-select: Id, WidgetId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child fixture.WidgetPartNote
+  segment: widget-part-notes
+  entity: Tellma.Testing.Entities.WidgetPartNote
+  owner: fixture.WidgetPart through WidgetPart, collection PartNotes
+  searchable: -
+  default-select: Id, WidgetPartId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child fixture.Link
+  segment: links
+  entity: Tellma.Testing.Entities.Link
+  owner: fixture.Node through Node, collection Links
+  searchable: -
+  default-select: Id, NodeId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full

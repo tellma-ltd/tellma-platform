@@ -3,7 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Metadata;
 using Tellma.Core.Tests.Data.Metadata.Malformed;
 
@@ -278,12 +281,106 @@ namespace Tellma.Core.Tests.Data.Metadata
             Assert.Contains("Unnavigable.OwnerRef does not end in Id", MetadataModels.SingleProblem(typeof(Unnavigable), typeof(Tabled)), StringComparison.Ordinal);
         }
 
+        // --- Shadow properties ---
+
         [Fact]
-        public void A_foreign_key_over_a_shadow_column_is_refused()
+        public void A_foreign_key_a_configuration_declares_over_a_shadow_column_is_refused_once()
         {
             string problem = MetadataModels.SingleProblem(MetadataModels.Build([typeof(ShadowKeyed)], [typeof(ShadowKeyedConfiguration)]));
 
-            Assert.Contains("has a foreign key over ShadowJobId, which is not a property of the class", problem, StringComparison.Ordinal);
+            Assert.Equal(
+                "The entity Tellma.Core.Tests.Data.Metadata.Malformed.ShadowKeyed maps ShadowJobId, a shadow foreign key to Tellma.Core.Tests.Data.Metadata.MdJob that a model configuration declares by name, which no property of the class carries.",
+                problem);
+        }
+
+        [Fact]
+        public void A_navigation_without_a_foreign_key_property_is_refused_for_its_shadow_key()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(Navigating), typeof(Tabled)).Problems);
+
+            Assert.Equal(
+                "The entity Tellma.Core.Tests.Data.Metadata.Malformed.Navigating maps OwnerId, a shadow foreign key to Tellma.Core.Tests.Data.Metadata.Malformed.Tabled that EF Core adds for the navigation Navigating.Owner, since no property of the class carries it.",
+                problem.Problem);
+            Assert.Equal(
+                "Remove the navigation Navigating.Owner and declare OwnerId as a public property of Navigating, marked [References(typeof(Tabled))] or, for a child's parent, [ParentKey]: an entity carries foreign keys, never navigations.",
+                problem.Fix);
+        }
+
+        [Fact]
+        public void A_mapped_collection_is_refused_for_the_shadow_key_it_gives_the_collected_class()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(Collecting), typeof(Tabled)).Problems);
+
+            Assert.Equal(
+                "The entity Tellma.Core.Tests.Data.Metadata.Malformed.Tabled maps CollectingId, a shadow foreign key to Tellma.Core.Tests.Data.Metadata.Malformed.Collecting that EF Core adds for the navigation Collecting.Items, since no property of the class carries it.",
+                problem.Problem);
+            Assert.StartsWith("Mark Collecting.Items [NotMapped], as every child collection is, and declare CollectingId as a public property of Tabled", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_many_to_many_pair_of_collections_is_refused_once_for_its_join_table()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(Linking), typeof(Linked)).Problems);
+
+            Assert.Equal(
+                "The model maps Linked.Linkers and Linking.Links of Tellma.Core.Tests.Data.Metadata.Malformed.Linked and Tellma.Core.Tests.Data.Metadata.Malformed.Linking as a many-to-many link, for which EF Core adds the join table LinkedLinking with columns no class carries.",
+                problem.Problem);
+            Assert.Equal(
+                "Mark Linked.Linkers and Linking.Links [NotMapped], and store the link as a child entity with a [ParentKey] to one side and a [References] to the other: an entity carries foreign keys, never navigations.",
+                problem.Fix);
+        }
+
+        [Fact]
+        public void An_owned_type_is_refused_once_naming_the_navigation_that_owns_it()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build(typeof(HomeOwner)).Problems);
+
+            Assert.Equal(
+                "The entity Tellma.Core.Tests.Data.Metadata.Malformed.HomeOwner maps Tellma.Core.Tests.Data.Metadata.Malformed.Home as an owned type through HomeOwner.Homes, whose keys no class carries; the platform maps no owned types.",
+                problem.Problem);
+            Assert.Equal(
+                "Mark HomeOwner.Homes [NotMapped] and remove [Owned] or the OwnsOne/OwnsMany that makes Home owned; to store it, make Home a child entity with a [ParentKey] to its owner.",
+                problem.Fix);
+        }
+
+        [Theory]
+        [InlineData(typeof(ShadowedConfiguration), "Hidden")]
+        [InlineData(typeof(ShadowedNodeConfiguration), "Node")]
+        [InlineData(typeof(ShadowedPeriodConfiguration), "ValidFrom")]
+        [InlineData(typeof(ShadowedMachineryConfiguration), "StateJson")]
+        [InlineData(typeof(ShadowedDiscriminatorConfiguration), "Kind")]
+        public void A_shadow_column_the_platform_does_not_declare_is_refused(Type configuration, string column)
+        {
+            string problem = MetadataModels.SingleProblem(MetadataModels.Build([typeof(Shadowed)], [configuration]));
+
+            Assert.Equal($"The entity Tellma.Core.Tests.Data.Metadata.Malformed.Shadowed maps {column}, a shadow property that no property of the class carries.", problem);
+        }
+
+        [Fact]
+        public void A_shadow_property_names_its_remedy()
+        {
+            CompositionProblem problem = Assert.Single(MetadataModels.Build([typeof(Shadowed)], [typeof(ShadowedConfiguration)]).Problems);
+
+            Assert.Equal(
+                "Declare Hidden as a public property of Shadowed, or remove the model configuration that maps it: the platform's shadow columns are the period columns of a temporal entity, the node of a tree and the model-only columns of its own job and blob tables.",
+                problem.Fix);
+        }
+
+        [Fact]
+        public void The_period_columns_of_a_temporal_entity_and_the_node_of_a_tree_are_the_platforms()
+        {
+            TellmaModelDefinition definition = MetadataModels.SoundDefinition();
+            IModel model = new TellmaModelFactory(definition, MetadataModels.Deployment).BuildModel();
+
+            // The sound model holds both kinds, on a temporal aggregate and a tree, and nothing else.
+            Assert.Equal(
+                ["fixture.AccountLineNotes.ValidFrom", "fixture.AccountLineNotes.ValidTo", "fixture.AccountLines.ValidFrom", "fixture.AccountLines.ValidTo", "fixture.Accounts.ValidFrom", "fixture.Accounts.ValidTo", "geo.Regions.Node"],
+                model.GetEntityTypes()
+                    .SelectMany(static entityType => entityType.GetDeclaredProperties()
+                        .Where(static property => property.IsShadowProperty())
+                        .Select(property => $"{entityType.GetSchema()}.{entityType.GetTableName()}.{property.Name}"))
+                    .Order(StringComparer.Ordinal));
+            Assert.Empty(EntityMetadataBuilder.Build(model, definition).Problems);
         }
 
         // --- Blob references ---

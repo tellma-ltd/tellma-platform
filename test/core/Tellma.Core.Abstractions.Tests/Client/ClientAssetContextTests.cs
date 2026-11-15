@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Abstractions.Tests.Client
 {
@@ -122,9 +123,58 @@ namespace Tellma.Core.Abstractions.Tests.Client
         }
 
         [Fact]
+        public void A_string_pack_is_recorded_in_the_order_written()
+        {
+            _context.StringPack(Pack("en", /*lang=json,strict*/ """{"Greeting":"Hello"}"""));
+            _context.StringPack(Pack("zh-Hant", /*lang=json,strict*/ "{}"));
+
+            Assert.Equal(["en", "zh-Hant"], _context.StringPacks.Select(static pack => pack.Language));
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("-en")]
+        [InlineData("en-")]
+        [InlineData("e n")]
+        [InlineData("en_GB")]
+        [InlineData("../en")]
+        public void A_string_pack_language_is_a_plain_code(string language)
+        {
+            _ = Assert.Throws<ArgumentException>(() => _context.StringPack(Pack(language, "{}")));
+        }
+
+        [Theory]
+        [InlineData("[]")]
+        [InlineData(/*lang=json,strict*/ """{"Count":1}""")]
+        [InlineData(/*lang=json,strict*/ """{"Nested":{"a":"b"}}""")]
+        [InlineData("{")]
+        public void A_string_pack_is_a_flat_table_of_strings(string json)
+        {
+            _ = Assert.Throws<ArgumentException>(() => _context.StringPack(Pack("en", json)));
+        }
+
+        [Fact]
+        public void Two_string_packs_whose_languages_differ_only_in_case_collide()
+        {
+            _context.StringPack(Pack("en", "{}"));
+
+            _ = Assert.Throws<InvalidOperationException>(() => _context.StringPack(Pack("EN", "{}")));
+            _ = Assert.Throws<ArgumentNullException>(() => _context.StringPack(null!));
+        }
+
+        [Fact]
         public void The_context_needs_services()
         {
             _ = Assert.Throws<ArgumentNullException>(() => new ClientAssetContext(null!));
+        }
+
+        /// <summary>A string pack of a language and JSON text.</summary>
+        /// <param name="language">The language code.</param>
+        /// <param name="json">The pack's JSON.</param>
+        /// <returns>The pack.</returns>
+        private static StringPack Pack(string language, string json)
+        {
+            return new StringPack(language, "1.0.0", Encoding.UTF8.GetBytes(json));
         }
 
         /// <summary>A provider with no services.</summary>
