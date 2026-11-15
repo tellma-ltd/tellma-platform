@@ -7,16 +7,21 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Tellma.Core.Abstractions.Localization
 {
-    /// <summary>The string packs of the composition: one per offered language, composed once at startup.</summary>
+    /// <summary>
+    ///     The string packs of the composition: one per offered language, and one for English, every
+    ///     pack's fallback, whether or not it is offered. Composed once, on first use, and never
+    ///     changed.
+    /// </summary>
     [SuppressMessage(
         "Naming",
         "CA1716:Identifiers should not match keywords",
         Justification = "The contract's established name; providers are written in C#, where Get is not a keyword.")]
     public interface IStringPackProvider
     {
-        /// <summary>An offered language's pack.</summary>
-        /// <param name="language">The language code.</param>
-        /// <returns>The pack, or null for a language the distribution does not offer.</returns>
+        /// <summary>A language's pack.</summary>
+        /// <param name="language">The bare language code (<c>ar</c>), compared without regard to case.</param>
+        /// <returns>The pack, or null for a language other than English that the distribution does not offer.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="language" /> is null.</exception>
         StringPack? Get(string language);
     }
 }

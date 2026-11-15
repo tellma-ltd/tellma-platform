@@ -145,7 +145,7 @@ namespace Tellma.Core.Localization
                 }
             }
 
-            return new LocalizationContext(culture, Calendar(input, settings), TimeZone(input, settings), contentLanguageIndex);
+            return new LocalizationContext(culture, Calendar(input, settings), TimeZone(input, settings), contentLanguageIndex, settings.Languages);
         }
 
         /// <summary>The language the reader gets without a surface's override, and the region their header named with it.</summary>

@@ -10,9 +10,8 @@ namespace Tellma.Core.Localization
     ///     decide the first key of a label chain the client metadata emits.
     /// </summary>
     /// <remarks>
-    ///     A singleton. The default reads every composed feature assembly's neutral <c>Strings</c>
-    ///     resources; the string pack's composition, when it is registered, answers from the keys it
-    ///     merged instead.
+    ///     A singleton: the string pack composer, which answers from the English dictionary it
+    ///     merged from every composed feature assembly's neutral <c>Strings</c> resources.
     /// </remarks>
     internal interface INeutralStringKeys
     {

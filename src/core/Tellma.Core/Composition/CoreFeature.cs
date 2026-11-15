@@ -82,6 +82,11 @@ namespace Tellma.Core.Composition
             // --- The client metadata's distribution, features and routing sections (spec 0024 §3.2) ---
             _ = contribution.Singleton<IClientAssetContributor, CoreClientAssetContributor>();
 
+            // --- The string packs in the client bundle (spec 0013 §10.4) ---
+            // The composer itself, the pack provider and the label provider are the localization
+            // composition's, registered with the framework's localizers.
+            _ = contribution.Singleton<IClientAssetContributor, StringPackClientAssetContributor>();
+
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution
                 .Model<TellmaSchemaRowConfiguration>()

@@ -250,6 +250,29 @@ namespace Tellma.Core.Tests.Access
             Assert.Contains(typeof(UserPreferenceList), model.Definition.TableTypes);
         }
 
+        [Fact]
+        public void The_only_shadow_columns_are_the_period_columns_of_temporal_tables_and_the_machinerys_model_only_columns()
+        {
+            List<(IEntityType EntityType, IProperty Property)> shadows = [.. model.DesignModel.GetEntityTypes()
+                .SelectMany(static entityType => entityType.GetDeclaredProperties()
+                    .Where(static property => property.IsShadowProperty())
+                    .Select(property => (entityType, property)))];
+
+            // --- Every period column sits on a temporal table ---
+            Assert.All(
+                shadows.Where(static shadow => shadow.Property.Name is "ValidFrom" or "ValidTo"),
+                static shadow => Assert.True(shadow.EntityType.IsTemporal(), $"{shadow.EntityType.GetTableName()} is not temporal."));
+            Assert.Contains(shadows, static shadow => shadow.EntityType.GetTableName() == "Users" && shadow.Property.Name == "ValidFrom");
+
+            // --- The rest are the job's and the blob's model-only columns, exactly ---
+            Assert.Equal(
+                ["Blobs.Sha256", "Blobs.StorageKey", "Jobs.ConfirmedKeys", "Jobs.LeaseToken", "Jobs.StateJson"],
+                shadows
+                    .Where(static shadow => shadow.Property.Name is not ("ValidFrom" or "ValidTo"))
+                    .Select(static shadow => $"{shadow.EntityType.GetTableName()}.{shadow.Property.Name}")
+                    .Order(StringComparer.Ordinal));
+        }
+
         // --- Seeds ---
 
         [Fact]

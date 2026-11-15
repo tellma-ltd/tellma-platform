@@ -56,11 +56,11 @@ namespace Tellma.Core.Tests.Notifications
             IcuStringLocalizerFactory localizers = new(
                 new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], [])), loggers, _services.GetRequiredService<IMeterFactory>());
             TellmaCompositionRecord record = _harness.Services.GetRequiredService<TellmaCompositionRecord>();
-            _renderer = new NotificationRenderer(localizers, record, new NeutralStringKeys(record), loggers);
+            _renderer = new NotificationRenderer(localizers, record, _harness.Services.GetRequiredService<INeutralStringKeys>(), loggers);
         }
 
         /// <summary>A British English reader three hours ahead of UTC.</summary>
-        private static LocalizationContext English { get; } = new(NegotiatedCultures.Get("en", "GB"), Gregorian, PlusThree, 1);
+        private static LocalizationContext English { get; } = new(NegotiatedCultures.Get("en", "GB"), Gregorian, PlusThree, 1, []);
 
         /// <inheritdoc />
         public void Dispose()
@@ -94,7 +94,7 @@ namespace Tellma.Core.Tests.Notifications
         {
             UmAlQuraCalendarSystem calendar = new();
             CultureInfo arabic = NegotiatedCultures.Get("ar", "SA");
-            LocalizationContext reader = new(arabic, calendar, PlusThree, 1);
+            LocalizationContext reader = new(arabic, calendar, PlusThree, 1, []);
 
             string text = _renderer.Render(
                 Shipped,

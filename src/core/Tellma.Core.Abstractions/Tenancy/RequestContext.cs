@@ -221,13 +221,15 @@ namespace Tellma.Core.Abstractions.Tenancy
         /// <summary>
         ///     The localization text renders in for this unit of work: <see cref="CultureInfo" />,
         ///     <see cref="CalendarSystem" />, the display zone <see cref="TimeZone" /> resolved on the
-        ///     host, and <see cref="ContentLanguageIndex" />.
+        ///     host, <see cref="ContentLanguageIndex" />, and the content languages of
+        ///     <see cref="TenantSettings" /> (none before the settings are loaded, and outside a tenant).
         /// </summary>
         /// <remarks>
         ///     A display zone the host cannot resolve, which negotiation never yields because it
         ///     accepts only zones the host resolves, renders in UTC rather than failing the work.
         /// </remarks>
-        public LocalizationContext Localization => new(CultureInfo, CalendarSystem, ResolveDisplayZone(TimeZone), ContentLanguageIndex);
+        public LocalizationContext Localization => new(
+            CultureInfo, CalendarSystem, ResolveDisplayZone(TimeZone), ContentLanguageIndex, TenantSettings?.Languages ?? []);
 
         /// <summary>The tenant the work is bound to, for code that only runs inside a tenant.</summary>
         /// <returns>The bound tenant.</returns>

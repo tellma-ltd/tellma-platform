@@ -50,6 +50,9 @@ namespace Tellma.Core.Composition.Checks
         /// <summary>The declared languages are described, their regions are theirs, their strings ship, and symbols are unique.</summary>
         public const string Languages = "core.languages";
 
+        /// <summary>No shared string resource key is declared by two composed assemblies.</summary>
+        public const string StringPack = "core.string-pack";
+
         /// <summary>Calendar codes are well formed and unique, and the platform's three calendars are composed.</summary>
         public const string Calendars = "core.calendars";
 

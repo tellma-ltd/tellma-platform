@@ -94,6 +94,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 | `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
 | `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
+| `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
@@ -231,7 +232,15 @@ prefixes and `[RelatedSelect]` projections render; unique and natural keys sit o
 that is not JSON or binary, natural keys on a key-list type; navigation names collide with nothing;
 blob references are `int?` with a valid kind declared once; enums are stored by name in a sized
 `varchar`; one ownership per property, never on a parent key or a computed column; column
-annotations decorate mapped properties of the right type.
+annotations decorate mapped properties of the right type; and no mapped type, entity or not, holds
+a shadow property the platform does not declare. The declared ones are the period columns
+`ValidFrom`/`ValidTo` of a temporal entity, the `Node` of a tree, and the model-only columns of
+`core.Jobs` (`StateJson`, `LeaseToken`, `ConfirmedKeys`) and `core.Blobs` (`StorageKey`,
+`Sha256`), which the query language withholds like the period columns. Any other is refused, naming the column: above all
+the shadow foreign key EF Core adds for a navigation without a foreign-key property, since an
+entity carries foreign keys and never navigations. A many-to-many pair of mapped collections, whose
+join table no class carries, and an owned type, whose keys no class carries, are each refused once,
+naming the navigations behind them.
 
 ### The table-type binder
 
@@ -673,6 +682,53 @@ node eng/region-names/generate-region-names.mjs
 node eng/region-names/generate-region-names.mjs --check
 ```
 
+### String packs and labels
+
+`StringPackComposer` (`IStringPackProvider`, `INeutralStringKeys`) merges the `Strings` resources
+of every composed feature's assembly (each manifest ending `.Resources.Strings.resources`; a
+`ServerStrings` set never ships) into one flat dictionary per language: English, which every pack
+falls back to, then each language the distribution offers. Keys are kept verbatim, a satellite's
+value replaces the neutral one only in its own language, and the pack is its dictionary as JSON with
+the keys in ordinal order, versioned by `DeploymentVersions.DistributionVersion`. The dictionaries
+stay in memory for the server's own labels. A key belongs to the first assembly whose neutral set
+declares it, and only that assembly's translations of it are merged; a translation of a key no
+neutral set declares is left out. A key two assemblies both declare, neutrally or one of them in a
+satellite, fails startup: the `core.string-pack` check reports one problem per key and pair of
+resource sets.
+`StringPackClientAssetContributor` hands every pack to the client-asset emission, which writes
+`assets/strings-<language>-<hash>.json` and names each file in the module's `strings` map.
+
+`LabelProvider` (`ILabelProvider`) answers every label the server shows from the merged dictionaries,
+in the reader's language (the innermost `LocalizationScope`'s culture, else the thread's UI culture)
+and else English. Each label walks its key chain, the first declared key wins, then falls back to the
+humanized name (`P` is the entity's key prefix, `S` its schema's):
+
+| Label | Keys, first declared wins |
+|---|---|
+| Entity | `P_Plural`, `P` (plural); `P` (singular); a missing plural reads the singular label |
+| Property | `P_<property>`, `<property>` |
+| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>` |
+| Collection | `P_<collection>`, the child's `P_Plural`, the child's `P` |
+| Action | `P_Action_<Action>`, `Action_<Action>` |
+| Enum value | `S_<enum>_<value>` over the schemas of the entities carrying the enum |
+| Setting | the setting's label key |
+| Value-set value | the value's literal label, else its label key, else the value |
+
+A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the tenant has one
+content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
+and the twin's humanized name beyond the tenant's shape. The key-resolving twins
+(`PropertyLabelKey`, …) return the first key of the chain that English declares, a twin's being its
+primary's, and null when none is.
+
+`ConventionalStringKeys.Of(services)` lists every key a composed model derives by convention
+(entities and their members, securables and the platform's actions, stacks, settings,
+notifications, job handlers, calendars, value sets and the brand). A feature's resource audit takes
+it as the derived keys and fails a key no convention derives and no source literal names
+(`test/shared/Tellma.Testing.Resources`). Each family derives exactly the keys a lookup reads: a
+collection has no bare key (its label falls back to its child entity's), an entity's securable reads
+the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
+derived whichever entities a composition holds.
+
 ### Value sets
 
 A value set is a named enumeration over string columns (`ValueSetDescriptor`): its values, each
@@ -1083,7 +1139,7 @@ same in a `Persist` batch of its own.
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests
@@ -1093,3 +1149,8 @@ same in a `Persist` batch of its own.
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
 holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
+`test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
+(`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
+convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,
+fixtures and the showcase left out) fails it, unless it is
+listed as pending with the reason it waits.
