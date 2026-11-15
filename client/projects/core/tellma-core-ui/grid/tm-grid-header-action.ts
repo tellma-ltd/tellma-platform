@@ -12,7 +12,6 @@ import {
   ElementRef,
   inject,
   input,
-  isDevMode,
   untracked,
 } from '@angular/core';
 import { AriaDescriber } from '@angular/cdk/a11y';
@@ -20,6 +19,14 @@ import { AriaDescriber } from '@angular/cdk/a11y';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 
 import { ɵTM_GRID_HEADER_ACTIVITY } from './internal/header-activity';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the checks it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /**
  * A column header's action button — a filter or a column editor — placed in
@@ -110,7 +117,7 @@ export class TmGridHeaderAction {
       inject(DestroyRef).onDestroy(() => activity.setHeaderActionActive(this.element, false));
     }
 
-    if (isDevMode()) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
       // An icon-only button needs a name of its own.
       afterNextRender(() => {
         const hasText = (this.element.textContent ?? '').trim() !== '';
