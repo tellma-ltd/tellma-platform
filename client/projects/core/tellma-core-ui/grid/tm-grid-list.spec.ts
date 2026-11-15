@@ -255,6 +255,29 @@ function keydown(target: Element, key: string, init: KeyboardEventInit = {}): Ke
   return event;
 }
 
+/**
+ * Runs `act` with every render held back, then lets the held render run and
+ * the fixture settle. The zoneless scheduler renders from a timeout raced
+ * against an animation frame; under fake timers neither fires until
+ * released, so `act` stands for input that a busy page dispatches before its
+ * next scheduled render. The clock is faked too, so the 400 ms same-row
+ * activation guard reads a fixed time.
+ */
+async function holdRenders(fixture: ComponentFixture<unknown>, act: () => void): Promise<void> {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'Date'],
+  });
+  try {
+    act();
+    // Microtasks run, but no render: it waits on the faked timers.
+    await Promise.resolve();
+    vi.runOnlyPendingTimers();
+  } finally {
+    vi.useRealTimers();
+  }
+  await stable(fixture);
+}
+
 /** The platform's Mod key as event modifiers. */
 const mod: KeyboardEventInit & PointerEventInit = tmIsApplePlatform()
   ? { metaKey: true }
@@ -680,6 +703,55 @@ describe('tm-grid active row model and driver', () => {
       [2, 'keyboard', true],
     ]);
     expect(host.active()).toBe(2);
+  });
+
+  it('starts a driver key from a consumer write the page has not rendered yet', async () => {
+    const { fixture, host, scroller, input } = await setup();
+    input.focus();
+    await holdRenders(fixture, () => {
+      // The page seeds the active row, and the user's keys arrive before the
+      // scheduled render that would apply it: they start from the seeded row.
+      host.active.set(5);
+      expect(keydown(input, 'ArrowDown').defaultPrevented).toBe(true);
+      expect(keydown(input, 'Enter').defaultPrevented).toBe(true);
+      expect(host.activations.map((a) => [a.rowId, a.via])).toEqual([[6, 'keyboard']]);
+    });
+    expect(host.activations).toHaveLength(1);
+    expect(host.active()).toBe(6);
+    expect(cellAt(scroller, 6, 0).getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("starts the grid's own keys from a consumer write the page has not rendered yet", async () => {
+    const { fixture, host, scroller } = await setup();
+    press(cellAt(scroller, 1, 1));
+    await stable(fixture);
+    host.activations.length = 0;
+    await holdRenders(fixture, () => {
+      host.active.set(20);
+      keydown(cellAt(scroller, 1, 1), 'ArrowDown');
+      // The first key rendered the write, which scrolled the pressed cell
+      // away; the scroller takes the grid's keys wherever they land in it.
+      expect(keydown(scroller, 'Enter').defaultPrevented).toBe(true);
+      expect(host.activations.map((a) => [a.rowId, a.via])).toEqual([[21, 'keyboard']]);
+    });
+    expect(host.activations).toHaveLength(1);
+    expect(host.active()).toBe(21);
+    expect(cellAt(scroller, 21, 1).getAttribute('tabindex')).toBe('0'); // same column
+  });
+
+  it('applies an unrendered consumer write over rows that changed in the same task', async () => {
+    const { fixture, host, scroller, input } = await setup();
+    input.focus();
+    await holdRenders(fixture, () => {
+      // New results land with the row to seed: the rows reconcile before the
+      // seeded row is looked up.
+      host.rows.set(makeRows(30, 100));
+      host.active.set(110);
+      keydown(input, 'ArrowDown');
+    });
+    expect(host.active()).toBe(111);
+    expect(cellAt(scroller, 11, 0).getAttribute('tabindex')).toBe('0');
   });
 
   it('moves to the first and last rows and reports a missing row', async () => {

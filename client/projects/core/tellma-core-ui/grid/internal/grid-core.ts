@@ -2287,6 +2287,21 @@ export class ɵTmGridCore<T>
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       return;
     }
+    // Render the page's pending changes before the key acts (spec 0010
+    // §C.2): a consumer write to `activeRowId` reaches the grid only through
+    // a render, where its input binding updates, and keys queued behind a
+    // busy page arrive before that render. Without it, the key would act on
+    // the stale active cell, and the render would then move the cell to the
+    // written row, discarding the user's move. Body keys act on the active
+    // cell, not on the element focus is in, so rendering first is safe; a
+    // press is not flushed, since a render could recycle the element under
+    // the pointer and the press would land on another row.
+    // DOM handlers run outside a tick in zoneless Angular, so this is
+    // re-entrancy-safe, and with nothing pending it renders nothing. An open
+    // editor owns its keys and is left alone.
+    if (untracked(() => this.engine.edit.session()) === null) {
+      this.appRef.tick();
+    }
     // A Tab either moves within the grid, which requests focus anew, or
     // leaves it — possibly to no element at all (the end of the document
     // fires no focusin). Either way a focus request still pending from an
