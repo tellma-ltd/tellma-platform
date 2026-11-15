@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-085 (2026-11-14): other tellma-core-tools spawn-test timeouts under local load (PC-F24)
+
+- Ruling: D-078 extends to the two other tellma-core-tools specs that spawn real child processes, `build.spec` "stops with exit 3 …" and `serve.spec` "fails before the emit …". A local lint:test failure caused only by these timing out does not block, provided each passes when run alone. CI stays the authority: a failure there is stop-the-line as usual. Both are tracked as flaky rows; PC-F29 (splitting the shim test) is the model for a fix if they ever fail in CI.
+- Why: PC-F24 saw them time out only with five slots loading the machine, and both passed 25/25 alone. They test tooling that PC-F24 does not touch.
+- For Ahmad: none.
+
 ### D-084 (2026-11-14): shadow-property gate allow-list and scope (PC-F41)
 
 - **Allow-list.** The startup gate (in core.entity-metadata) allows the period columns and Node per spec 0012 §14, plus five model-only machinery columns that other specs require: Job StateJson, LeaseToken, ConfirmedKeys (spec 0020 §2.3) and Blob StorageKey, Sha256 (spec 0017 §2.1-2.2). Entries are keyed by CLR type + property name; Job and Blob are sealed and only Core can contribute model configurations.
