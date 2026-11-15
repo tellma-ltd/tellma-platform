@@ -5,9 +5,12 @@
 
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Data.Metadata;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Data.Batches;
@@ -121,9 +124,11 @@ namespace Tellma.Core.Tests.Data.Queries
             Assert.DoesNotContain(blob.Properties, static property => property.Name is "StorageKey" or "Sha256");
             Assert.Contains(blob.Properties, static property => property.Name == "ContentType");
 
-            // The job's state and lease token are withheld too, once a job entity is composed.
-            Assert.True(QueryexSchemaProvider.IsWithheld("core.Job", "StateJson"));
-            Assert.True(QueryexSchemaProvider.IsWithheld("core.Job", "LeaseToken"));
+            // Every model-only column of the machinery tables is withheld, the job's too once a job entity is composed.
+            Assert.All(
+                PlatformShadowColumns.Machinery.SelectMany(static table => table.Value.Select(column => (Entity: $"{table.Key.GetCustomAttribute<TableAttribute>()!.Schema}.{table.Key.Name}", Column: column))),
+                static column => Assert.True(QueryexSchemaProvider.IsWithheld(column.Entity, column.Column), $"{column.Entity}.{column.Column} is not withheld."));
+            Assert.True(QueryexSchemaProvider.IsWithheld("core.Job", "ConfirmedKeys"));
             Assert.False(QueryexSchemaProvider.IsWithheld("core.Job", "Id"));
             Assert.False(QueryexSchemaProvider.IsWithheld("qx.Gadget", "StateJson"));
         }

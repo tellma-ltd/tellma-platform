@@ -49,6 +49,7 @@ namespace Tellma.Core.Data.Queries
             ("core.Blob", "Sha256"),
             ("core.Job", "StateJson"),
             ("core.Job", "LeaseToken"),
+            ("core.Job", "ConfirmedKeys"),
 
             // The user's cache tags are validators of the platform's caches, never data a report shows.
             ("core.UserStamp", "PermissionsTag"),
