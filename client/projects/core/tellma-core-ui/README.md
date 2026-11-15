@@ -65,6 +65,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/tree` | `tm-tree` + `ng-template[tmTreeNode]` — a tree on the aria tree pattern whose children load lazily into a reserved spinner slot, with none, single or multiple selection, context rows and draggable rows |
 | `@tellma/core-ui/drag-drop` | `[tmDragSource]`, `[tmDropTarget]` and the `TmDragDrop` service — typed payloads over native drag and drop; a drag writes its text as `text/plain`, so text fields take it at the drop caret (global stylesheet) |
 | `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by dragging, by a grab handle's keys or by the move menu its click opens, each step announced, that also takes drops from other sources |
+| `@tellma/core-ui/tiles` | `tm-tiles` + `tmTileContent` / `tmTilesEmpty` / `tmTilesLoading` — rows as a virtualized lattice of fixed-size tiles (an image and four text corners each) that becomes a divided list on narrow containers and a single-column tree with batched lazy children, on the data grid's selection, activation and driver members |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 

@@ -376,6 +376,12 @@ export const TM_UI_STRINGS_EN: {
         readonly moveToTop: "Move to top";
         readonly moveToBottom: "Move to bottom";
     };
+    readonly tiles: {
+        readonly empty: "No items to display";
+        readonly select: "Select {label}";
+        readonly selected: "{count, number} of {total, number} selected";
+        readonly loadFailed: "Couldn't load {label}";
+    };
 };
 
 // @public

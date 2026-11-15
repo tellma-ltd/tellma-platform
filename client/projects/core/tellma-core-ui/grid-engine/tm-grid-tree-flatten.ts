@@ -4,8 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 // Internal tree derivation: adjacency-list rows → parent-resolved node maps
-// → depth-first visible flattening. Not exported from the entry point; the
-// data model is the only consumer.
+// → depth-first visible flattening. The data model consumes it directly;
+// the entry point re-exports it under ɵ names for tm-tiles' tree mode.
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 

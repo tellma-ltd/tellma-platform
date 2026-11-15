@@ -26,3 +26,12 @@ export * from './tm-grid-clipboard-serialize';
 export * from './tm-grid-paste-source';
 export * from './tm-grid-clipboard';
 export * from './tm-grid-engine';
+// The tree resolution, for list components outside the grid that show the
+// same flat adjacency-list rows as a tree (tm-tiles); not public API.
+export {
+  tmFlattenVisible as ɵtmFlattenVisible,
+  tmResolveTree as ɵtmResolveTree,
+  type TmTreeIrregularity as ɵTmTreeIrregularity,
+  type TmTreeNode as ɵTmTreeNode,
+  type TmTreeStructure as ɵTmTreeStructure,
+} from './tm-grid-tree-flatten';

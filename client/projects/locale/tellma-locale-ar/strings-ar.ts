@@ -374,4 +374,10 @@ export const TM_LOCALE_AR_STRINGS = {
     moveToTop: 'نقل إلى البداية',
     moveToBottom: 'نقل إلى النهاية',
   },
+  tiles: {
+    empty: 'لا توجد عناصر للعرض',
+    select: 'تحديد {label}',
+    selected: 'تم تحديد {count, number} من {total, number}',
+    loadFailed: 'تعذر تحميل {label}',
+  },
 } as const;
