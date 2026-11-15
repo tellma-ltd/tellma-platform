@@ -9,16 +9,27 @@ import { TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 
 import { mulberry32 } from './seeded-random';
 
+/** One demo row of the states grid. */
 interface StateRow {
+  /** The row id (the grid's `rowId`); both records use ids 0 to 49. */
   readonly id: number;
+  /** The display name, `Row <id>`. */
   readonly name: string;
+  /** A number that a refresh visibly bumps. */
   readonly qty: number;
+  /** A boolean column value (true on even ids). */
   readonly active: boolean;
+  /** A note naming the refresh generation that produced the row. */
   readonly note: string;
 }
 
+/** The two demo records the content switch toggles between (the contentKey). */
+type RecordName = 'A' | 'B';
+
+/** How many rows a record is seeded with. */
 const ROW_COUNT = 50;
 
+/** A fresh seed: a new rows array of new row objects on every call. */
 function makeRows(): readonly StateRow[] {
   return Array.from({ length: ROW_COUNT }, (_, i) => ({
     id: i,
@@ -34,25 +45,42 @@ function makeRows(): readonly StateRow[] {
  * row refreshes (same ids, new object identities), row removal, a
  * deterministic shuffle, contentKey switches, and full unmount/remount —
  * the transitions the Playwright battery asserts state memory across.
+ *
+ * Every contentKey change hands the grid a new rows array, as the grid's
+ * contentKey contract requires: A and B are separate records, each owning
+ * its rows array and row objects, so the switch binds the other record's
+ * own rows and each record keeps its own edits.
  */
 @Component({
   imports: [TmGrid, TmGridColumn],
   template: `
     <h2>Grid states</h2>
 
+    <!-- Toolbar: each button drives one state transition. -->
     <div class="toolbar">
-      <button type="button" data-testid="set-loading" (click)="toggleLoading()">Toggle loading</button>
+      <button type="button" data-testid="set-loading" (click)="toggleLoading()">
+        Toggle loading
+      </button>
       <button type="button" data-testid="set-empty" (click)="setEmpty()">Set empty</button>
       <button type="button" data-testid="restore-data" (click)="restoreData()">Restore data</button>
       <button type="button" data-testid="refresh-rows" (click)="refreshRows()">Refresh rows</button>
-      <button type="button" data-testid="remove-rows" (click)="removeMiddleRows()">Remove middle 10</button>
+      <button type="button" data-testid="remove-rows" (click)="removeMiddleRows()">
+        Remove middle 10
+      </button>
       <button type="button" data-testid="shuffle-rows" (click)="shuffleRows()">Shuffle rows</button>
-      <button type="button" data-testid="switch-content" (click)="switchContent()">Switch content</button>
-      <button type="button" data-testid="toggle-mount" (click)="toggleMount()">Mount/unmount</button>
+      <button type="button" data-testid="switch-content" (click)="switchContent()">
+        Switch content
+      </button>
+      <button type="button" data-testid="toggle-mount" (click)="toggleMount()">
+        Mount/unmount
+      </button>
     </div>
 
-    <p>Content key: <span data-testid="content-key-label">{{ contentKey() }}</span></p>
+    <p>
+      Content key: <span data-testid="content-key-label">{{ contentKey() }}</span>
+    </p>
 
+    <!-- The grid under test, bound to the current record's rows. -->
     @if (mounted()) {
       <tm-grid
         class="demo-grid"
@@ -84,26 +112,51 @@ function makeRows(): readonly StateRow[] {
   `,
 })
 export class GridStatesStory {
-  private readonly baseRows = makeRows();
+  /**
+   * Each record's own seed, which Restore data brings back. The two seeds
+   * are separate arrays of separate row objects, so no record's rows are
+   * ever another record's.
+   */
+  private readonly seeds: Readonly<Record<RecordName, readonly StateRow[]>> = {
+    A: makeRows(),
+    B: makeRows(),
+  };
+
+  /**
+   * The rows of the record that is not bound, kept while the other one is
+   * (the bound record's rows live in {@link rows}). Empty until the first
+   * switch: a record that was never bound starts from its seed.
+   */
+  private readonly parked = new Map<RecordName, readonly StateRow[]>();
+
+  /** How many refreshes have run (shared by both records); it names the notes a refresh writes. */
   private refreshGeneration = 0;
 
-  readonly rows = signal<readonly StateRow[]>(this.baseRows);
+  /** The bound record's rows, the grid's `data`. */
+  readonly rows = signal<readonly StateRow[]>(this.seeds.A);
+  /** Whether the grid shows its loading overlay. */
   readonly loading = signal(false);
-  readonly contentKey = signal<'A' | 'B'>('A');
+  /** The bound record, which is also the grid's contentKey. */
+  readonly contentKey = signal<RecordName>('A');
+  /** Whether the grid is mounted. */
   readonly mounted = signal(true);
 
+  /** Reads a row's id. */
   readonly rowId = (row: StateRow): number => row.id;
 
+  /** Toggles the loading overlay. */
   toggleLoading(): void {
     this.loading.update((value) => !value);
   }
 
+  /** Empties the bound record (a new, empty array), showing the empty overlay. */
   setEmpty(): void {
     this.rows.set([]);
   }
 
+  /** Brings the bound record back to its own seed. */
   restoreData(): void {
-    this.rows.set(this.baseRows);
+    this.rows.set(this.seeds[this.contentKey()]);
   }
 
   /** Same row ids, new object identities, visibly changed values. */
@@ -139,10 +192,23 @@ export class GridStatesStory {
     });
   }
 
+  /**
+   * Toggles the bound record: parks the outgoing record's rows and binds
+   * the incoming record's own (its seed on its first bind), in the same
+   * change as the key, so a new key never arrives over the outgoing
+   * record's array.
+   */
   switchContent(): void {
-    this.contentKey.update((key) => (key === 'A' ? 'B' : 'A'));
+    const outgoing = this.contentKey();
+    const incoming: RecordName = outgoing === 'A' ? 'B' : 'A';
+    const rows = this.parked.get(incoming) ?? this.seeds[incoming];
+    this.parked.delete(incoming);
+    this.parked.set(outgoing, this.rows());
+    this.contentKey.set(incoming);
+    this.rows.set(rows);
   }
 
+  /** Destroys or recreates the grid. */
   toggleMount(): void {
     this.mounted.update((value) => !value);
   }
