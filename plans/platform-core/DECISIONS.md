@@ -359,11 +359,17 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-088 (2026-11-14): the orchestrator folds Ahmad's rulings into PROCESS.md and PLAN.md
+
+- Ruling (Ahmad, 2026-11-14): the orchestrator may edit PROCESS.md and PLAN.md to fold in a ruling of Ahmad's (a D-nnn marked as his ruling). The "never edit" line in the §4.1 brief binds spawned agents, not the orchestrator. Edits are made in the main checkout only, cite the D-nnn in the changed text, and are committed with the next snapshot.
+- Applied first to D-087: the hold step (§4 diagram and text), the implementer brief's closing line (§4.1), the hold message and the integration note (§4.3), the release-queue rule (§5.1) and slot freeing at hold (§5.3).
+- For Ahmad: none (his ruling).
+
 ### D-087 (2026-11-14): holding does not merge or re-run gates; merge and gate once at release
 
 - Ruling (Ahmad, 2026-11-14): when an item holds after its last fix round, it does not merge origin/platform-core or re-run PLAN.md §7.1 items 2-4. It runs `git merge-tree origin/platform-core HEAD` (after `git fetch origin`), reports any conflicts it shows, and pushes only pc/PC-xxx. The merge and the gates run once, when the orchestrator releases the item (the §4.3 integration message). This replaces the merge-and-hold step for every item that holds from now on.
 - Why: throughput. Held items were merging and gating twice, once at hold and again at release, because platform-core always moves while they wait.
-- For Ahmad: none (his ruling). PROCESS.md §4 should describe this hold step.
+- For Ahmad: none (his ruling). Folded into PROCESS.md §4, §4.1, §4.3, §5.1 and §5.3 under D-088.
 
 ### D-086 (2026-11-14): popup cell editors — grid-editing entry point, pane parent, composite editors (PC-056)
 
