@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-089 (2026-11-14): ledger snapshots wait while an integration is in progress
+
+- Ruling: while an integrator is merging and gating for platform-core, the orchestrator does not push LEDGER/DECISIONS snapshots. It keeps the edits in the main checkout and pushes them right after that integration's push lands. Ahmad's rulings are still recorded at once, but their push also waits.
+- Why: PC-F29 had to merge platform-core three times, once only because of a ledger-only snapshot. Each extra merge costs the integrator a fetch, a merge and a judgement call on gates.
+- For Ahmad: none.
+
 ### D-088 (2026-11-14): the orchestrator folds Ahmad's rulings into PROCESS.md and PLAN.md
 
 - Ruling (Ahmad, 2026-11-14): the orchestrator may edit PROCESS.md and PLAN.md to fold in a ruling of Ahmad's (a D-nnn marked as his ruling). The "never edit" line in the §4.1 brief binds spawned agents, not the orchestrator. Edits are made in the main checkout only, cite the D-nnn in the changed text, and are committed with the next snapshot.
@@ -436,6 +442,7 @@ Format, one entry per ruling:
 
 - Ruling: while CI stays green, an integrator's local lint:test failure caused only by `tellma-core-tools/src/common/common.spec.ts` "starts a package manager's shim … and fails a missing program" timing out at about 5 s does not block a push, provided the file passes when run alone. PC-F29 is raised to medium and takes the next free fix slot. If the test fails in CI, it becomes a stop-the-line item as usual.
 - Why: the test spawns a real pnpm shim and exceeds its 5 s limit only when parallel slots load the machine. PC-030's change touches no tools code, and holding integrations on a known local timing flake would stall the line for nothing.
+- Update (2026-11-14): PC-F29 integrated (CI 43684370336). It split the shim test into three renamed tests with explicit timeouts and made build.fixture.spec.ts robust under load, so this waiver is no longer needed for those two tests; the flaky rows are closed. D-085 still covers the build.spec and serve.spec timeouts.
 - For Ahmad: none.
 
 ### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows
