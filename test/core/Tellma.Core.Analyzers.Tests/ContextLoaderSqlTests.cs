@@ -95,6 +95,17 @@ namespace Tellma.Core.Analyzers.Tests
             await Verify(Body, "Tellma.Core");
         }
 
+        /// <summary>The two procedures a persist batch may execute are refused: a sequence range is never given back, and a session applock outlives the read.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public Task The_batch_procedures_are_refused()
+        {
+            return Verify("""
+                loader.Sql($"DECLARE @f sql_variant; {|TELLMA0003:EXEC sys.sp_sequence_get_range @sequence_name = N'dbo.Ids', @range_size = 1000000, @range_first_value = @f OUTPUT|}; SELECT 1;");
+                loader.Sql($"{|TELLMA0003:EXEC sys.sp_getapplock @Resource = N'x', @LockMode = 'Shared', @LockOwner = 'Session'|}; SELECT 1;");
+                """);
+        }
+
         /// <summary>The batch's rules hold for the loader's text, under the loader's name.</summary>
         /// <returns>A task that completes when the check has passed.</returns>
         [Fact]

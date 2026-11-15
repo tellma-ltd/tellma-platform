@@ -649,12 +649,15 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>The key types a load accepts, their comparison, and their key-set tables.</summary>
         private static class KeySets
         {
-            /// <summary>The comparison of a key type: strings ignore case, as the database's collation does.</summary>
+            /// <summary>
+            ///     The comparison of a key type: strings compare as the platform collation compares them,
+            ///     so the key-set table's primary key and the rows the database matches agree with it.
+            /// </summary>
             /// <typeparam name="TK">The key's type.</typeparam>
             /// <returns>The comparer.</returns>
             public static IEqualityComparer<TK> Comparer<TK>()
             {
-                return typeof(TK) == typeof(string) ? (IEqualityComparer<TK>)StringComparer.OrdinalIgnoreCase : EqualityComparer<TK>.Default;
+                return typeof(TK) == typeof(string) ? (IEqualityComparer<TK>)(object)CollationKeyComparer.Instance : EqualityComparer<TK>.Default;
             }
 
             /// <summary>Refuses a key type that is not the property's, or that no key-set table holds.</summary>
@@ -717,6 +720,49 @@ namespace Tellma.Core.Crud.Validation
             public static TK Convert<TK>(object value)
             {
                 return value is TK key ? key : (TK)System.Convert.ChangeType(value, typeof(TK), CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>
+        ///     String keys compared as the platform collation, <c>Latin1_General_100_CI_AS</c>, compares
+        ///     them: ignoring case, kana type, width and trailing spaces, and minding accents, so
+        ///     <c>straße</c> meets <c>STRASSE</c> and a full-width <c>Ａ1</c> meets <c>A1</c>.
+        /// </summary>
+        internal sealed class CollationKeyComparer : IEqualityComparer<string>
+        {
+            /// <summary>The culture comparison under the collation's sensitivities.</summary>
+            private static readonly StringComparer Culture = CultureInfo.GetCultureInfo("en-US").CompareInfo
+                .GetStringComparer(CompareOptions.IgnoreCase | CompareOptions.IgnoreKanaType | CompareOptions.IgnoreWidth);
+
+            /// <summary>The one instance.</summary>
+            public static CollationKeyComparer Instance { get; } = new();
+
+            /// <inheritdoc />
+            public bool Equals(string? x, string? y)
+            {
+                return x is null || y is null ? ReferenceEquals(x, y) : Culture.Equals(Folded(x), Folded(y));
+            }
+
+            /// <inheritdoc />
+            public int GetHashCode(string obj)
+            {
+                ArgumentNullException.ThrowIfNull(obj);
+                return Culture.GetHashCode(Folded(obj));
+            }
+
+            /// <summary>
+            ///     A key without its trailing spaces, which the collation's comparison pads away, and with
+            ///     its sharp s spelled <c>ss</c>, which the collation expands it to and the culture
+            ///     comparison does not.
+            /// </summary>
+            /// <param name="value">The key.</param>
+            /// <returns>The folded key.</returns>
+            private static string Folded(string value)
+            {
+                string trimmed = value.TrimEnd(' ');
+                return trimmed.AsSpan().IndexOfAny('\u00DF', '\u1E9E') < 0
+                    ? trimmed
+                    : trimmed.Replace("\u00DF", "ss", StringComparison.Ordinal).Replace("\u1E9E", "SS", StringComparison.Ordinal);
             }
         }
     }

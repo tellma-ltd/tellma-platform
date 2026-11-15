@@ -370,8 +370,18 @@ namespace Tellma.Core.Analyzers
                     $"{refusal.What} is refused in {api} text. {refusal.Why}");
             }
 
+            // A context load reads only: even the batch's two procedures hold state past the read (a
+            // sequence range is never given back, a session applock outlives the round).
+            bool loader = string.Equals(api, LoaderSql, StringComparison.Ordinal);
             foreach (SqlExecution execution in inspector.Executions)
             {
+                if (loader && execution.Name is not null)
+                {
+                    Report(context, TellmaDiagnostics.RawSql, LocationOf(text, execution.Fragment),
+                        $"EXEC {execution.Name} is refused in {LoaderSql} text: a context load reads only, so it executes no procedure, not even sys.sp_sequence_get_range or sys.sp_getapplock. Reserve ids and take locks in the operation's persist batch.");
+                    continue;
+                }
+
                 if (execution.IsAllowed)
                 {
                     continue;

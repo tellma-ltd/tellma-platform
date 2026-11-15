@@ -26,5 +26,19 @@ namespace Tellma.Core.Crud.Validation
             Level = LogLevel.Information,
             Message = "User {UserId} confirmed the warning {Key} raised by {Operation} on {Resource} for the rows {Ids}.")]
         public static partial void ConfirmationAccepted(ILogger logger, int? userId, string resource, string operation, string key, IReadOnlyList<long> ids);
+
+        /// <summary>
+        ///     A caller confirmed a warning raised outside every write frame: the record of the consent,
+        ///     with no operation to name. Logged once per such warning, never for the system scope.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="userId">The confirming user; null for a caller with no user row.</param>
+        /// <param name="key">The warning's key.</param>
+        /// <param name="ids">The ids of the rows the warning concerns, which the message lists; empty for none.</param>
+        [LoggerMessage(
+            EventName = "ConfirmationAcceptedOutsideFrame",
+            Level = LogLevel.Information,
+            Message = "User {UserId} confirmed the warning {Key}, raised outside every write frame, for the rows [{Ids}].")]
+        public static partial void ConfirmationAcceptedOutsideFrame(ILogger logger, int? userId, string key, IReadOnlyList<long> ids);
     }
 }

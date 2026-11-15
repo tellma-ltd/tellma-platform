@@ -261,6 +261,69 @@ namespace Tellma.Core.Tests.Crud.Validation
             Assert.Equal(1, await scheduler.RunAsync());
         }
 
+        /// <summary>
+        ///     A flow a validator started and never awaited is refused when it loads after the validator
+        ///     returned: nothing is dispatched while another validator still runs, the rounds fail with
+        ///     the refusal, and a flow that outlives the rounds too is refused rather than left waiting.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task A_flow_that_outlives_its_validator_is_refused()
+        {
+            // --- Outliving its validator while another one still runs ---
+            BatchScript script = WidgetScript();
+            (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
+            TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task stray = Task.CompletedTask;
+            scheduler.Run("Acme.LeakyValidator", () =>
+            {
+                stray = LoadLaterAsync(loader, go.Task);
+                return Task.CompletedTask;
+            });
+            scheduler.Run("waiting", () => release.Task);
+            Task<int> running = scheduler.RunAsync();
+
+            go.SetResult();
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => stray);
+            Assert.EndsWith("outlived the task 'Acme.LeakyValidator'. Await the work a validator starts before it returns, or run it as a task of its own.", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(0, script.RoundTrips);
+            release.SetResult();
+            Assert.Same(refused, await Assert.ThrowsAsync<InvalidOperationException>(() => running));
+            Assert.Equal(0, script.RoundTrips);
+
+            // --- Outliving the rounds as well ---
+            (ValidationScheduler finished, ContextLoader finishedLoader) = _rig.Loader(WidgetScript());
+            TaskCompletionSource late = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task outlived = Task.CompletedTask;
+            finished.Run("Acme.LeakyValidator", () =>
+            {
+                outlived = LoadLaterAsync(finishedLoader, late.Task);
+                return Task.CompletedTask;
+            });
+            Assert.Equal(0, await finished.RunAsync());
+
+            late.SetResult();
+            Assert.Contains(
+                "outlived the task 'Acme.LeakyValidator' and the validation rounds.",
+                (await Assert.ThrowsAsync<InvalidOperationException>(() => outlived)).Message,
+                StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///     Requests a widget and awaits its load once a signal arrives, carrying the caller's task
+        ///     along, as work a validator starts without awaiting it does.
+        /// </summary>
+        /// <param name="loader">The loader.</param>
+        /// <param name="signal">The signal.</param>
+        /// <returns>A task that completes when the load has.</returns>
+        private static async Task LoadLaterAsync(ContextLoader loader, Task signal)
+        {
+            await signal;
+            _ = loader.ByIds<VmWidget, int>([1]);
+            await loader.LoadAsync();
+        }
+
         /// <summary>A collector of one validation instrument.</summary>
         /// <param name="instrument">The instrument's name.</param>
         /// <returns>The collector.</returns>

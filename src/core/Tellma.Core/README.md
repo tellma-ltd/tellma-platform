@@ -987,8 +987,9 @@ pipeline drives them:
   runs. Keyed requests (`ByIds`, `ByKey` over a property unique across the table, `ByParentIds`)
   union their keys into one table-valued key set and their selects into one select per entity and
   key, and answer every key, a missing key as an explicit absence (every parent answers, with an
-  empty list when it has no children); string keys compare ignoring case. A key already read, or
-  primed from a row the operation holds (`Prime`, which wins over a read), is served from the cache
+  empty list when it has no children); string keys compare as the platform collation does
+  (ignoring case, width, kana type and trailing spaces, minding accents, `ß` meeting `ss`). A key
+  already read, or primed from a row the operation holds (`Prime`, which wins over a read), is served from the cache
   unless the request selects more, which reads it again under the union. `Query`, `Rows`, `Count`,
   `Exists` (which shares the cap-0 count) and `Sql` merge identical requests; `Visible` conjoins the
   entity's read decision, reading nothing when it is denied; `Ancestors` reads a tree's ancestor
@@ -1003,9 +1004,13 @@ pipeline drives them:
   `ok` or `exceeded`.
 - **Confirmations.** `Confirmations` (scoped, `IConfirmations`) is seeded once per scope with the
   keys the caller confirmed; a key no feature declared is an authoring error. Under a system
-  principal every declared key counts as confirmed. `Frame(resource, operation)` collects one
-  write's warnings: a confirmed key records the user's consent in the log, an unconfirmed one
-  becomes a `ConfirmationRequest`, and `tellma.crud.confirmations` counts both by `crud.key`.
+  principal every declared key counts as confirmed. `Frame(resource, operation)` opens one
+  write's frame, which collects its warnings until it is disposed: a `Require` on the frame, or on
+  the scope while the frame is the innermost open one (so an enlisted group is raised with its
+  host), records a confirmed key's consent in the log and turns an unconfirmed one into a
+  `ConfirmationRequest`; `tellma.crud.confirmations` counts both by `crud.key`. Outside every
+  frame, `Require` keeps the warning in `Unframed`, which no outcome raises: code outside
+  validation tests `IsConfirmed` and throws itself.
   `ValidationOutcome.Raise` throws a stale stamp first, then the errors, then every unconfirmed
   warning at once in key order.
 - **Attribute walker.** `AttributeWalker` judges a saved row against its metadata facets first (a

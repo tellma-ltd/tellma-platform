@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Entities;
@@ -15,7 +17,8 @@ namespace Tellma.Core.Tests.Crud.Validation
     // walker judges (a unique code, a bounded name, a decimal(19,4) price, a range, an e-mail whose
     // string length sets its column's, a server-owned column, a class-level rule and an
     // IValidatableObject the walker must ignore), its lines (a parent key with a range nobody
-    // judges), and a tree. Two confirmation keys are declared.
+    // judges), a tree, and a part the distribution substitutes with a leaf that widens its code's
+    // column. Two confirmation keys are declared.
 
     /// <summary>Composes the validation suite's model.</summary>
     internal static class ValidationModel
@@ -30,11 +33,15 @@ namespace Tellma.Core.Tests.Crud.Validation
         /// <param name="tellma">The composition's builder.</param>
         public static void Compose(TellmaBuilder tellma)
         {
-            _ = tellma.AddFeature(new TestFeature<Tag.C>("validation", contribute: static contribution => contribution
-                .Entity<VmWidget>()
-                .Entity<VmNode>()
-                .Confirmation(Backdated)
-                .Confirmation(Overdraft)));
+            _ = tellma
+                .AddFeature(new TestFeature<Tag.C>("validation", contribute: static contribution => contribution
+                    .Entity<VmWidget>()
+                    .Entity<VmNode>()
+                    .Entity<VmPart>()
+                    .Model<VmMyPartConfiguration>()
+                    .Confirmation(Backdated)
+                    .Confirmation(Overdraft)))
+                .UseEntity<VmPart, VmMyPart>();
         }
     }
 
@@ -125,6 +132,31 @@ namespace Tellma.Core.Tests.Crud.Validation
         /// <summary>The code.</summary>
         [MaxLength(10)]
         public string Code { get; set; } = null!;
+    }
+
+    /// <summary>A part the feature ships, whose code's column is ten characters.</summary>
+    [Table("Parts", Schema = "vm")]
+    [TableType]
+    public class VmPart : TopLevelEntity
+    {
+        /// <summary>The code, at most ten characters by the feature's attribute.</summary>
+        [MaxLength(10)]
+        public string Code { get; set; } = null!;
+    }
+
+    /// <summary>The distribution's leaf of <see cref="VmPart" />, whose model widens the code's column.</summary>
+    public sealed class VmMyPart : VmPart
+    {
+    }
+
+    /// <summary>Widens the leaf's code column to thirty characters.</summary>
+    public sealed class VmMyPartConfiguration : IEntityTypeConfiguration<VmMyPart>
+    {
+        /// <inheritdoc />
+        public void Configure(EntityTypeBuilder<VmMyPart> builder)
+        {
+            _ = builder.Property(static part => part.Code).HasMaxLength(30);
+        }
     }
 
     /// <summary>A request body: attributes on its own members, a nested object, a list of them, and a cycle.</summary>

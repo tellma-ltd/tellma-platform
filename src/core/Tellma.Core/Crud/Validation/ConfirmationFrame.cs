@@ -11,9 +11,10 @@ namespace Tellma.Core.Crud.Validation
     /// <summary>
     ///     One write frame's view of its scope's confirmations: the scope's confirmed keys, and the
     ///     warnings raised under the frame and not confirmed, which the frame's validation outcome
-    ///     raises together. A group enlisted into the frame raises through the same view.
+    ///     raises together. While the frame is the scope's innermost open one, warnings raised on the
+    ///     scope land here too, so a group enlisted into the frame is raised with its host.
     /// </summary>
-    internal sealed class ConfirmationFrame : IConfirmations
+    internal sealed class ConfirmationFrame : IConfirmations, IDisposable
     {
         /// <summary>Guards the recorded warnings.</summary>
         private readonly Lock _gate = new();
@@ -68,6 +69,7 @@ namespace Tellma.Core.Crud.Validation
         }
 
         /// <inheritdoc />
+        /// <exception cref="InvalidOperationException"><paramref name="key" /> was not declared.</exception>
         public void Require(string key, IReadOnlyList<long>? rows = null, IReadOnlyDictionary<string, object?>? arguments = null)
         {
             IReadOnlyList<long> ids = rows ?? [];
@@ -81,6 +83,12 @@ namespace Tellma.Core.Crud.Validation
             {
                 _unconfirmed.Add(request);
             }
+        }
+
+        /// <summary>Closes the frame: warnings raised on the scope no longer land in it.</summary>
+        public void Dispose()
+        {
+            _scope.Close(this);
         }
     }
 }

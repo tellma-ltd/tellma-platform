@@ -136,9 +136,9 @@ namespace Tellma.Core.Tests.Crud.Validation
             _ = Assert.Throws<InvalidOperationException>(() => scope.IsConfirmed("Vm.Undeclared"));
         }
 
-        /// <summary>A key nobody declared is an authoring bug, a warning outside every frame is refused, and a scope is seeded once.</summary>
+        /// <summary>A key nobody declared is an authoring bug, on the scope or a frame, and a scope is seeded once.</summary>
         [Fact]
-        public void Undeclared_keys_unframed_warnings_and_a_second_seed_are_refused()
+        public void Undeclared_keys_and_a_second_seed_are_refused()
         {
             Confirmations scope = Scope(UserScope);
             ConfirmationFrame frame = scope.Frame("vm.VmWidget", "save");
@@ -149,12 +149,69 @@ namespace Tellma.Core.Tests.Crud.Validation
                 StringComparison.Ordinal);
             _ = Assert.Throws<InvalidOperationException>(() => scope.IsConfirmed("Vm.Undeclared"));
             _ = Assert.Throws<ArgumentException>(() => frame.Require(" "));
-            Assert.Contains("outside every write frame", Assert.Throws<InvalidOperationException>(() => scope.Require(ValidationModel.Backdated)).Message, StringComparison.Ordinal);
             _ = Assert.Throws<InvalidOperationException>(() => scope.Require("Vm.Undeclared"));
 
             scope.Seed([]);
             _ = Assert.Throws<InvalidOperationException>(() => scope.Seed([ValidationModel.Backdated]));
             Assert.Empty(frame.Unconfirmed);
+            Assert.Empty(scope.Unframed);
+        }
+
+        /// <summary>
+        ///     A warning raised on the scope lands in its innermost open frame: an enlisted target
+        ///     raising through its host's scope is raised by the host's outcome, together with the host's
+        ///     own warnings and under the host's operation.
+        /// </summary>
+        [Fact]
+        public void An_enlisted_targets_warning_is_raised_through_its_host()
+        {
+            Confirmations scope = Scope(UserScope);
+            scope.Seed([ValidationModel.Backdated]);
+            using ConfirmationFrame host = scope.Frame("vm.VmWidget", "gl.Invoice:post");
+
+            // The host raises through its frame; the enlisted target through the scope it was handed.
+            host.Require(ValidationModel.Overdraft, [1]);
+            scope.Require(ValidationModel.Overdraft, [9]);
+            scope.Require(ValidationModel.Backdated, [9]);
+
+            ConfirmationRequiredException raised = Assert.Throws<ConfirmationRequiredException>(() => ValidationOutcome.Raise(null, new ValidationErrors(), host));
+            Assert.Equal(
+                [(ValidationModel.Overdraft, "1"), (ValidationModel.Overdraft, "9")],
+                raised.Requests.Select(static request => (request.Key, string.Join(',', request.Ids))));
+            Assert.Empty(scope.Unframed);
+            Assert.Equal(
+                "User 7 confirmed the warning Vm.Backdated raised by gl.Invoice:post on vm.VmWidget for the rows [9].",
+                Assert.Single(_logger.Collector.GetSnapshot()).Message);
+        }
+
+        /// <summary>
+        ///     Frames nest: the innermost open frame takes the scope's warnings, a disposed frame takes
+        ///     none, and outside every frame an unconfirmed warning is kept on the scope while a
+        ///     confirmed one records the consent.
+        /// </summary>
+        [Fact]
+        public void The_innermost_open_frame_takes_the_scopes_warnings()
+        {
+            Confirmations scope = Scope(UserScope);
+            scope.Seed([ValidationModel.Backdated]);
+            ConfirmationFrame outer = scope.Frame("vm.VmWidget", "save");
+            ConfirmationFrame inner = scope.Frame("vm.VmWidget", "gl.Invoice:post");
+
+            scope.Require(ValidationModel.Overdraft, [1]);
+            inner.Dispose();
+            inner.Dispose();
+            scope.Require(ValidationModel.Overdraft, [2]);
+            outer.Dispose();
+            scope.Require(ValidationModel.Overdraft, [3]);
+            scope.Require(ValidationModel.Backdated, [4]);
+
+            Assert.Equal([1L], Assert.Single(inner.Unconfirmed).Ids);
+            Assert.Equal([2L], Assert.Single(outer.Unconfirmed).Ids);
+            ConfirmationRequest unframed = Assert.Single(scope.Unframed);
+            Assert.Equal((ValidationModel.Overdraft, 3L), (unframed.Key, Assert.Single(unframed.Ids)));
+            FakeLogRecord consent = Assert.Single(_logger.Collector.GetSnapshot());
+            Assert.Equal(("ConfirmationAcceptedOutsideFrame", LogLevel.Information), (consent.Id.Name, consent.Level));
+            Assert.Equal("User 7 confirmed the warning Vm.Backdated, raised outside every write frame, for the rows [4].", consent.Message);
         }
 
         /// <summary>The composition registers one confirmations per scope, over the keys its features declared.</summary>

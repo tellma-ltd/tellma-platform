@@ -185,6 +185,38 @@ namespace Tellma.Core.Tests.Crud.Validation
             Assert.False(byCode.Value.ContainsKey("zz"));
         }
 
+        /// <summary>
+        ///     String keys meet as the platform collation meets them: width, trailing spaces and the
+        ///     sharp s fold, so the key-set table never holds two keys its primary key equates, and a
+        ///     row the database matches answers the key that was asked for; accents still differ.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task String_keys_meet_as_the_collation_meets_them()
+        {
+            // The database answers with its own spelling of each key it matched.
+            Dictionary<string, string> stored = new(StringComparer.Ordinal) { ["A1"] = "A1", ["X"] = "X", ["straße"] = "STRASSE", ["é"] = "É" };
+            BatchScript script = new BatchScript().OnQuery<VmWidget>(statement =>
+                [.. statement.KeySet<StringList>().Select(static row => row.Id).Where(stored.ContainsKey).Select(id => new VmWidget { Id = 1, Code = stored[id] })]);
+            (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
+            ContextRef<IReadOnlyDictionary<string, VmWidget>>? byCode = null;
+
+            scheduler.Run("validator", async () =>
+            {
+                byCode = loader.ByKey<VmWidget, string>("Code", ["A1", "Ａ1", "X", "X ", "straße", "é", "e"]);
+                await loader.LoadAsync();
+            });
+
+            _ = await scheduler.RunAsync();
+            ScriptedStatement query = Assert.Single(script.Batches[0].Of(ScriptedKind.Query));
+            Assert.Equal(["A1", "X", "straße", "é", "e"], query.KeySet<StringList>().Select(static row => row.Id));
+            Assert.Equal("A1", byCode!.Value["Ａ1"].Code);
+            Assert.Equal("X", byCode.Value["X "].Code);
+            Assert.Equal("STRASSE", byCode.Value["straße"].Code);
+            Assert.Equal("É", byCode.Value["é"].Code);
+            Assert.False(byCode.Value.ContainsKey("e"));
+        }
+
         /// <summary>A key that is not unique on its own, a key of the wrong type, and a null key are refused.</summary>
         [Fact]
         public void Keys_that_do_not_key_one_row_are_refused()

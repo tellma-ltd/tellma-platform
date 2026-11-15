@@ -5,18 +5,22 @@
 
 using Microsoft.Extensions.Logging;
 using System.Collections.Frozen;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 
 namespace Tellma.Core.Crud.Validation
 {
-    // Spec 0015 §7.5: one IConfirmations per request scope. The entry point seeds the confirmed keys
-    // once (spec 0016's Tellma-Confirm header, MCP's token, spec 0020's job row); under a system
-    // scope every key counts as confirmed; a key nobody declared is an authoring bug. Warnings are
-    // raised through a write frame's view, so the frame's validation outcome raises them together.
+    // Spec 0015 §7.5: one IConfirmations per request scope, shared by every frame and enlisted group
+    // in it. The entry point seeds the confirmed keys once (spec 0016's Tellma-Confirm header, MCP's
+    // token, spec 0020's job row); under a system scope every key counts as confirmed; a key nobody
+    // declared is an authoring bug. Require records a warning and carries on: into the innermost open
+    // write frame, whose validation outcome raises it, or, outside every frame, onto the scope, where
+    // code running outside validation tests IsConfirmed and throws itself.
     /// <summary>
-    ///     The confirmed keys of one request scope, and the write frames' views that record the
-    ///     warnings raised under them.
+    ///     The confirmed keys of one request scope, the write frames open in it, and the warnings
+    ///     raised under them. A warning raised on the scope lands in the innermost open frame, so an
+    ///     enlisted group raising through its host's scope is raised by the host's outcome.
     /// </summary>
     /// <param name="declared">The declared keys.</param>
     /// <param name="contexts">The scope's request context, which says whether the scope is the system's and who confirms.</param>
@@ -25,7 +29,7 @@ namespace Tellma.Core.Crud.Validation
     internal sealed class Confirmations(
         DeclaredConfirmations declared, IRequestContextAccessor contexts, CrudMetrics metrics, ILogger<Confirmations> logger) : IConfirmations
     {
-        /// <summary>Guards the seed.</summary>
+        /// <summary>Guards the seed, the open frames and the warnings raised outside them.</summary>
         private readonly Lock _gate = new();
 
         /// <summary>The declared keys.</summary>
@@ -40,11 +44,33 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>The logger of the consent records.</summary>
         private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+        /// <summary>The open write frames, outermost first.</summary>
+        private readonly List<ConfirmationFrame> _frames = [];
+
+        /// <summary>The unconfirmed warnings raised outside every frame, in the order they were raised.</summary>
+        private readonly List<ConfirmationRequest> _unframed = [];
+
         /// <summary>The seeded keys, in ordinal order; null until the entry point seeds them.</summary>
         private string[]? _seeded;
 
         /// <summary>The seeded keys, for lookups.</summary>
         private FrozenSet<string> _confirmed = [];
+
+        /// <summary>
+        ///     The unconfirmed warnings raised while no write frame was open, in the order they were
+        ///     raised. No validation outcome raises them: code that runs outside validation tests
+        ///     <see cref="IsConfirmed" /> and throws itself.
+        /// </summary>
+        public IReadOnlyList<ConfirmationRequest> Unframed
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _unframed];
+                }
+            }
+        }
 
         /// <inheritdoc />
         public IReadOnlyCollection<string> Confirmed
@@ -95,27 +121,78 @@ namespace Tellma.Core.Crud.Validation
             }
         }
 
-        /// <summary>Refuses a warning raised outside every write frame, where no outcome would ever raise it.</summary>
-        /// <param name="key">The warning's key.</param>
-        /// <param name="rows">The ids of the rows it concerns.</param>
-        /// <param name="arguments">Its arguments.</param>
-        /// <exception cref="InvalidOperationException">Always: a warning is raised through a frame's confirmations.</exception>
+        /// <inheritdoc />
+        /// <remarks>
+        ///     The warning lands in the innermost open write frame, whose validation outcome raises it
+        ///     with the frame's own. Outside every frame it is kept in <see cref="Unframed" />.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException"><paramref name="key" /> was not declared.</exception>
         public void Require(string key, IReadOnlyList<long>? rows = null, IReadOnlyDictionary<string, object?>? arguments = null)
         {
             _declared.EnsureDeclared(key, nameof(key));
-            throw new InvalidOperationException(
-                $"The warning '{key}' was raised on the scope's confirmations, outside every write frame, where no validation outcome would raise it. Raise it through the frame it belongs to: a context's Host.Confirmations.");
+            ConfirmationFrame? frame;
+            lock (_gate)
+            {
+                frame = _frames.Count > 0 ? _frames[^1] : null;
+            }
+
+            // Inside a frame: the frame counts, logs and records it under its resource and operation.
+            if (frame is not null)
+            {
+                frame.Require(key, rows, arguments);
+                return;
+            }
+
+            // Outside every frame: counted and logged here, and kept on the scope when unconfirmed.
+            IReadOnlyList<long> ids = rows ?? [];
+            bool confirmed = IsConfirmed(key);
+            _metrics.CountConfirmation(key, confirmed);
+            RequestContext context = _contexts.Current;
+            if (confirmed)
+            {
+                if (!context.IsSystem)
+                {
+                    CrudLog.ConfirmationAcceptedOutsideFrame(_logger, context.UserId, key, ids);
+                }
+
+                return;
+            }
+
+            ConfirmationRequest request = new(key, ids, arguments ?? new Dictionary<string, object?>());
+            lock (_gate)
+            {
+                _unframed.Add(request);
+            }
         }
 
-        /// <summary>Opens the view a write frame raises its warnings through.</summary>
+        /// <summary>
+        ///     Opens a write frame: until it is disposed, it is the innermost frame, and warnings raised
+        ///     on the scope land in it.
+        /// </summary>
         /// <param name="resource">The resource the frame's operation runs on, for the consent record.</param>
         /// <param name="operation">The frame's operation, such as <c>gl.Invoice:post</c>.</param>
-        /// <returns>The view.</returns>
+        /// <returns>The frame, whose validation outcome raises its warnings.</returns>
         public ConfirmationFrame Frame(string resource, string operation)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(resource);
             ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-            return new ConfirmationFrame(this, resource, operation);
+            ConfirmationFrame frame = new(this, resource, operation);
+            lock (_gate)
+            {
+                _frames.Add(frame);
+            }
+
+            return frame;
+        }
+
+        /// <summary>Closes a frame, wherever it sits among the open ones; closing it twice is a no-op.</summary>
+        /// <param name="frame">The frame.</param>
+        internal void Close(ConfirmationFrame frame)
+        {
+            lock (_gate)
+            {
+                _ = _frames.Remove(frame);
+            }
         }
 
         /// <summary>

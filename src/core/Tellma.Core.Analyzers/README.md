@@ -62,13 +62,15 @@ the code spells out, a bracketed stand-in for one it does not, and a variable fo
   through `SqlOptions.UserIds` or `SqlOptions.ForCaller`.
 
 `IContextLoader.Sql`, a validator's raw read, is held to every rule above except the declared
-writes, and to three more, because a validation round never writes:
+writes, and to four more, because a validation round never writes:
 
 - No statement writes any table other than a table variable the text declares: no permanent
   table, no temporary table, and no table a hole names.
 - Its `SqlOptions.Writes`, when spelled out at the call, is empty. A set held in a field or built
   by a helper is checked by the loader at run time, which refuses any declared write.
 - No reserved name appears in the text at all, not even to be read, in `Tellma.Core` as anywhere.
+- No procedure is executed, not even `sys.sp_sequence_get_range` or `sys.sp_getapplock`: a
+  sequence range is never given back, and a session applock outlives the read.
 
 ### What the rules cannot see
 

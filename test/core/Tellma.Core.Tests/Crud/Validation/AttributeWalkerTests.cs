@@ -6,6 +6,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Validation;
@@ -92,6 +93,27 @@ namespace Tellma.Core.Tests.Crud.Validation
             Assert.Equal((ValidationCodes.MaxLength, 30), (pastColumn.Code, (int)pastColumn.Arguments["maxLength"]!));
             Assert.Equal((ValidationCodes.Invalid, "StringLength"), (tooShort.Code, (string)tooShort.Arguments["attribute"]!));
             Assert.Equal(30, _rig.Of<VmWidget>().Properties.Single(static property => property.Name == "Email").MaxLength);
+        }
+
+        /// <summary>
+        ///     A substituted leaf's widened column is judged by the leaf's metadata, not by the
+        ///     feature's attribute on the default entity.
+        /// </summary>
+        [Fact]
+        public void A_leafs_widened_column_sets_the_maximum_length()
+        {
+            EntityMetadata leaf = _rig.Of<VmPart>();
+            ValidationErrors fits = new();
+            ValidationErrors beyond = new();
+
+            _walker.CheckRow(new VmMyPart { Code = new string('a', 30) }, leaf, ValidationPath.Root.Index(0), null, fits);
+            _walker.CheckRow(new VmMyPart { Code = new string('a', 31) }, leaf, ValidationPath.Root.Index(0), null, beyond);
+
+            Assert.Equal(typeof(VmMyPart), leaf.ClrType);
+            Assert.Equal(30, leaf.Properties.Single(static property => property.Name == "Code").MaxLength);
+            Assert.False(fits.HasErrors);
+            ValidationError failure = Assert.Single(beyond.Items);
+            Assert.Equal(("[0].Code", ValidationCodes.MaxLength, 30), (failure.Path.ToString(), failure.Code, (int)failure.Arguments["maxLength"]!));
         }
 
         /// <summary>A server-owned column is neither measured nor judged: the server resets it.</summary>

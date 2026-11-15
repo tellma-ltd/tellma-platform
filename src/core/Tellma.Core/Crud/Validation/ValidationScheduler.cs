@@ -220,7 +220,8 @@ namespace Tellma.Core.Crud.Validation
         /// </summary>
         /// <returns>A task that completes when the round's loads are served.</returns>
         /// <exception cref="InvalidOperationException">
-        ///     The current flow is no task of this scheduler, or its task is parked already.
+        ///     The current flow is no task of this scheduler, its task is parked already, or the flow
+        ///     outlived its task or the rounds.
         /// </exception>
         public Task ParkAsync()
         {
@@ -229,24 +230,37 @@ namespace Tellma.Core.Crud.Validation
                 : throw new InvalidOperationException(
                     "LoadAsync was awaited outside the validation rounds. The loader serves the validators and the other tasks the pipeline runs; a hook that only requests loads leaves the awaiting to a validator.");
 
+            InvalidOperationException? stray = null;
             lock (_gate)
             {
-                if (_aborted)
+                // --- A flow that outlived its task, or the rounds, would unbalance the quiet-point count
+                // and park on a round nobody dispatches: it is an authoring bug, and stops the rounds ---
+                if (participant.State == ParticipantState.Completed || _finished)
+                {
+                    stray = new InvalidOperationException(
+                        $"LoadAsync was awaited by a flow that outlived the task '{participant.Name}'{(_finished ? " and the validation rounds" : string.Empty)}. Await the work a validator starts before it returns, or run it as a task of its own.");
+                }
+                else if (_aborted)
                 {
                     return Task.FromCanceled(Aborted);
                 }
-
-                if (participant.State == ParticipantState.Parked)
+                else if (participant.State == ParticipantState.Parked)
                 {
                     throw new InvalidOperationException(
                         $"The task '{participant.Name}' awaited LoadAsync while already parked at it. One task parks at one load at a time; run concurrent work that loads as a task of its own.");
                 }
-
-                participant.State = ParticipantState.Parked;
-                _parked.Add(participant);
-                Leave();
-                return _round.Task;
+                else
+                {
+                    participant.State = ParticipantState.Parked;
+                    _parked.Add(participant);
+                    Leave();
+                    return _round.Task;
+                }
             }
+
+            // The stray flow's own caller may never observe it, so the rounds fail with it too.
+            Fail(stray);
+            throw stray;
         }
 
         /// <summary>A gate whose continuations never run inline on the thread that releases it.</summary>
@@ -315,13 +329,17 @@ namespace Tellma.Core.Crud.Validation
                     }
                     else if (_failure is not null || (_parked.Count == 0 && !_requested))
                     {
-                        // A failure ends the rounds; with nothing parked and nothing requested, they are done.
+                        // A failure ends the rounds; with nothing parked and nothing requested, they
+                        // are done. Closed under the same gate, so no stray flow registers or parks
+                        // on a round nobody would dispatch.
+                        _finished = true;
                         return null;
                     }
                     else if (_dispatches == MaxRounds)
                     {
                         InvalidOperationException exceeded = Exceeded();
                         StopParked();
+                        _finished = true;
                         return exceeded;
                     }
                     else
@@ -359,6 +377,11 @@ namespace Tellma.Core.Crud.Validation
                     // The round's loads never ran, so its tasks cannot resume: they are torn down,
                     // the rounds stopped first so each sees the teardown for what it is.
                     Fail(exception);
+                    lock (_gate)
+                    {
+                        _finished = true;
+                    }
+
                     _ = release.TrySetCanceled(Aborted);
                     return null;
                 }
