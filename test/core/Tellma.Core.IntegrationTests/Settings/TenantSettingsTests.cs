@@ -180,9 +180,13 @@ namespace Tellma.Core.IntegrationTests.Settings
         {
             await CompleteAsync(entries: "('fixture.flag', N'true')");
 
+            // History outlives the reset (whose delete of an earlier test's entries is history too),
+            // so the change is counted against what was there before it.
+            const string Prior = "[core].[SettingEntriesHistory] WHERE [Key] = N'fixture.flag' AND [Value] = N'true'";
+            int before = await CountAsync(Prior);
             await SqlServerFixture.ExecuteAsync(fixture.Tenant.ConnectionString, "UPDATE [core].[SettingEntries] SET [Value] = N'false';");
 
-            Assert.Equal(1, await CountAsync("[core].[SettingEntriesHistory]"));
+            Assert.Equal(before + 1, await CountAsync(Prior));
         }
 
         // --- Provisioning ---
