@@ -147,6 +147,17 @@ describe('ɵtmTilesMove', () => {
     expect(ɵtmTilesMove(SHORT_LAST, 9, { kind: 'step', by: -1 }, 2).column).toBeNull();
   });
 
+  it('clamps a remembered column into a lattice that lost columns', () => {
+    // Four columns: down from tile 7 (column 3) lands on tile 9 and
+    // remembers column 3. A resize leaves two columns, so tile 9 is on
+    // line 4, and up goes to line 3's last column, tile 7.
+    const down = ɵtmTilesMove({ columns: 4, count: 10 }, 7, { kind: 'lines', by: 1 }, null);
+    expect(down).toEqual({ index: 9, column: 3 });
+    expect(
+      ɵtmTilesMove({ columns: 2, count: 10 }, down.index, { kind: 'lines', by: -1 }, down.column),
+    ).toEqual({ index: 7, column: 1 });
+  });
+
   it('restarts from the first tile when the active one is past a shrunken lattice', () => {
     expect(ɵtmTilesMove(SHORT_LAST, 40, { kind: 'lines', by: 1 }, null).index).toBe(0);
   });

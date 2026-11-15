@@ -121,8 +121,9 @@ export function ɵtmTilesMove(
       return { index: clamp(from + move.by, 0, last), column: null };
     case 'lines': {
       // Keep the column through short-line clamps: the remembered one
-      // when the previous move was vertical too.
-      const keep = column ?? from - line * columns;
+      // when the previous move was vertical too, clamped into a lattice
+      // that lost columns since.
+      const keep = Math.min(column ?? from - line * columns, columns - 1);
       const target = clamp(line + move.by, 0, ɵtmTilesLineCount(shape) - 1);
       return { index: Math.min(target * columns + keep, last), column: keep };
     }

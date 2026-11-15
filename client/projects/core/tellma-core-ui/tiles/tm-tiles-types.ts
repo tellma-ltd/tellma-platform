@@ -34,8 +34,9 @@ export interface TmTileImage {
 
 /**
  * How a row maps onto a tile: an optional image at inline-start, the title
- * at top-start and three more corners. Each reader runs once per row and is
- * read again only when the row, the layout or the data change.
+ * at top-start and three more corners. The readers run once per row, and
+ * again for that row when the row, the layout or the data change, or when a
+ * signal they read changes (a translated label across a language switch).
  */
 export interface TmTileLayout<T> {
   /** The tile's image. Absent: no image column at all; a `null` src shows a placeholder glyph. */

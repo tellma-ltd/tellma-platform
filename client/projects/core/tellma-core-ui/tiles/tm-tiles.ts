@@ -21,6 +21,7 @@ import {
   model,
   output,
   signal,
+  type Signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -66,6 +67,8 @@ const DEFAULT_GAP = 10;
 const DEFAULT_MIN_WIDTH = 220;
 /** Flash length fallback (ms) while `--tiles-flash-duration` is unresolvable. */
 const DEFAULT_FLASH_MS = 1200;
+/** Scrolling counts as settled this long (ms) after its last scroll event. */
+const SCROLL_SETTLE_MS = 100;
 
 /** Numbers each instance's element ids. */
 let nextTilesId = 0;
@@ -88,6 +91,8 @@ interface TileContent {
   readonly bottomStart: Corner | null;
   readonly bottomEnd: Corner | null;
   readonly rowClass: string | null;
+  /** The checkbox's accessible name ("Select …"); empty when not selectable. */
+  readonly checkLabel: string;
 }
 
 /** One visible row, in display order: every row when flat, the expanded sequence in tree mode. */
@@ -113,10 +118,10 @@ interface TileView<T> {
   readonly elementId: string;
   readonly tabStop: boolean;
   readonly selected: boolean;
-  /** The checkbox's accessible name ("Select …"); empty when not selectable. */
-  readonly checkLabel: string;
   readonly classes: string;
   readonly content: TileContent;
+  /** The image source to load now: `null` shows the placeholder (no source, or held while scrolling). */
+  readonly imageSrc: string | null;
   /** Tree mode: the 1-based depth, and whether the row expands, is expanded and is loading. */
   readonly level: number;
   readonly expandable: boolean;
@@ -218,6 +223,7 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
       (scroll)="onScroll()"
       (keydown)="onKeydown($event)"
       (pointerdown)="onPointerDown($event)"
+      (pointercancel)="onPointerCancel()"
       (click)="onClick($event)"
       (auxclick)="onAuxClick($event)"
       (focusin)="onFocusIn($event)"
@@ -301,9 +307,14 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                     data-tm-check
                     role="checkbox"
                     [attr.aria-checked]="tile.selected"
-                    [attr.aria-label]="tile.checkLabel"
+                    [attr.aria-label]="tile.content.checkLabel"
                   >
-                    <span class="tm-tiles__box"><tm-icon [svg]="checkGlyph" /></span>
+                    <!-- The check is drawn only when checked: the box keeps its size either way. -->
+                    <span class="tm-tiles__box">
+                      @if (tile.selected) {
+                        <tm-icon [svg]="checkGlyph" />
+                      }
+                    </span>
                   </span>
                 }
                 @if (contentDef(); as custom) {
@@ -315,63 +326,104 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                   </div>
                 } @else {
                   <!-- The built-in body: the image column, then the four corners. -->
-                  @if (tile.content.image; as image) {
+                  <!-- Static DOM throughout: no embedded view per corner, so a
+                       window of new tiles costs elements, not views. -->
+                  @let content = tile.content;
+                  @if (content.image; as image) {
                     <span class="tm-tiles__image">
-                      @if (image.src; as src) {
+                      <!-- A tile that arrives mid-scroll holds its source until
+                           scrolling settles, so a fling fetches and decodes
+                           nothing; the window already bounds the instances,
+                           so tm-image's own viewport deferral is off. -->
+                      @if (tile.imageSrc; as src) {
                         <tm-image
                           [src]="src"
                           [etag]="image.etag ?? null"
                           [alt]="image.alt"
                           [width]="imageSize"
                           [height]="imageSize"
+                          [defer]="false"
                           placeholderOnError
                         >
-                          <ng-template tmImagePlaceholder>
-                            <ng-container [ngTemplateOutlet]="placeholder" />
-                          </ng-template>
+                          <span *tmImagePlaceholder class="tm-tiles__placeholder">
+                            <tm-icon [svg]="placeholderGlyph" />
+                          </span>
                         </tm-image>
                       } @else {
-                        <ng-container [ngTemplateOutlet]="placeholder" />
+                        <span class="tm-tiles__placeholder">
+                          <tm-icon [svg]="placeholderGlyph" />
+                        </span>
                       }
                     </span>
                   }
                   <span class="tm-tiles__text">
+                    <!-- The title: plain, or as parts each isolated in its own <bdi>. -->
                     <span class="tm-tiles__title">
-                      @if (tile.content.href; as href) {
+                      @if (content.href; as href) {
                         <a class="tm-tiles__link" tabindex="-1" [href]="href">
-                          <ng-container
-                            [ngTemplateOutlet]="titleText"
-                            [ngTemplateOutletContext]="{ $implicit: tile.content }"
-                          />
+                          @if (content.titleParts; as parts) {
+                            @for (part of parts; track $index) {
+                              @if (!$first) {
+                                {{ ' - ' }}
+                              }
+                              <bdi>{{ part }}</bdi>
+                            }
+                          } @else {
+                            {{ content.title }}
+                          }
                         </a>
+                      } @else if (content.titleParts; as parts) {
+                        @for (part of parts; track $index) {
+                          @if (!$first) {
+                            {{ ' - ' }}
+                          }
+                          <bdi>{{ part }}</bdi>
+                        }
                       } @else {
-                        <ng-container
-                          [ngTemplateOutlet]="titleText"
-                          [ngTemplateOutletContext]="{ $implicit: tile.content }"
-                        />
+                        {{ content.title }}
                       }
                     </span>
-                    <ng-container
-                      [ngTemplateOutlet]="cornerText"
-                      [ngTemplateOutletContext]="{
-                        $implicit: tile.content.topEnd,
-                        place: 'top-end',
-                      }"
-                    />
-                    <ng-container
-                      [ngTemplateOutlet]="cornerText"
-                      [ngTemplateOutletContext]="{
-                        $implicit: tile.content.bottomStart,
-                        place: 'bottom-start',
-                      }"
-                    />
-                    <ng-container
-                      [ngTemplateOutlet]="cornerText"
-                      [ngTemplateOutletContext]="{
-                        $implicit: tile.content.bottomEnd,
-                        place: 'bottom-end',
-                      }"
-                    />
+                    <!-- The corners: text, numeric text (LTR, tabular,
+                         physically right), or a badge. -->
+                    @if (content.topEnd; as value) {
+                      <span
+                        class="tm-tiles__corner tm-tiles__corner--top-end"
+                        [class.tm-tiles__corner--numeric]="value.numeric"
+                        [attr.dir]="value.numeric ? 'ltr' : null"
+                      >
+                        @if (value.badge; as tone) {
+                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
+                        } @else {
+                          {{ value.text }}
+                        }
+                      </span>
+                    }
+                    @if (content.bottomStart; as value) {
+                      <span
+                        class="tm-tiles__corner tm-tiles__corner--bottom-start"
+                        [class.tm-tiles__corner--numeric]="value.numeric"
+                        [attr.dir]="value.numeric ? 'ltr' : null"
+                      >
+                        @if (value.badge; as tone) {
+                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
+                        } @else {
+                          {{ value.text }}
+                        }
+                      </span>
+                    }
+                    @if (content.bottomEnd; as value) {
+                      <span
+                        class="tm-tiles__corner tm-tiles__corner--bottom-end"
+                        [class.tm-tiles__corner--numeric]="value.numeric"
+                        [attr.dir]="value.numeric ? 'ltr' : null"
+                      >
+                        @if (value.badge; as tone) {
+                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
+                        } @else {
+                          {{ value.text }}
+                        }
+                      </span>
+                    }
                   </span>
                 }
               </div>
@@ -398,43 +450,6 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
         }
       </div>
     }
-
-    <!-- The title: plain, or as parts each isolated in its own <bdi>. -->
-    <ng-template #titleText let-content>
-      @if (content.titleParts; as parts) {
-        @for (part of parts; track $index) {
-          @if (!$first) {
-            {{ ' - ' }}
-          }
-          <bdi>{{ part }}</bdi>
-        }
-      } @else {
-        {{ content.title }}
-      }
-    </ng-template>
-
-    <!-- One corner: text, numeric text (LTR, tabular, physically right), or a badge. -->
-    <ng-template #cornerText let-value let-place="place">
-      @if (value) {
-        <span
-          class="tm-tiles__corner"
-          [class]="'tm-tiles__corner--' + place"
-          [class.tm-tiles__corner--numeric]="value.numeric"
-          [attr.dir]="value.numeric ? 'ltr' : null"
-        >
-          @if (value.badge) {
-            <tm-badge [tone]="value.badge">{{ value.text }}</tm-badge>
-          } @else {
-            {{ value.text }}
-          }
-        </span>
-      }
-    </ng-template>
-
-    <!-- The image placeholder: a glyph in the image box. -->
-    <ng-template #placeholder>
-      <span class="tm-tiles__placeholder"><tm-icon [svg]="placeholderGlyph" /></span>
-    </ng-template>
   `,
   styleUrl: './tm-tiles.css',
   host: {
@@ -505,7 +520,8 @@ export class TmTiles<T> implements TmGridDriverTarget {
    * the first bind, a written `expandedIds`, the rows a resolved batch
    * brings (so a deep expansion loads a level per batch), or the expands a
    * user makes within one task. A row that loads no children becomes a
-   * leaf. A rejection collapses the batch's rows and announces once.
+   * leaf, until a refresh binds a new object for it. A rejection collapses
+   * the batch's rows and announces once.
    */
   readonly loadChildren = input<((rows: readonly T[]) => Promise<void>) | undefined>(undefined);
   /**
@@ -552,6 +568,12 @@ export class TmTiles<T> implements TmGridDriverTarget {
   private readonly viewportHeight = signal(0);
   /** The scroller's scroll offset. */
   private readonly scrollTop = signal(0);
+  /** Whether the scroller is scrolling: set by each scroll event, cleared once they stop. */
+  private readonly scrolling = signal(false);
+  /** Clears `scrolling` once the scroll events stop. */
+  private scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Rows whose tile showed its image while scrolling was settled: they keep it through a scroll. */
+  private readonly shownImages = new WeakSet<object>();
   /** The token geometry, read on every resize. */
   private readonly geometry = signal({
     height: DEFAULT_HEIGHT,
@@ -586,8 +608,12 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** Rows whose children batch is in flight. */
   private readonly inFlight = signal<ReadonlySet<TmRowId>>(new Set());
-  /** Rows whose children loaded: one that brought none is a leaf from then on. */
-  private readonly settled = signal<ReadonlySet<TmRowId>>(new Set());
+  /**
+   * The row objects whose children batch resolved, by id: one that brought
+   * no children is a leaf while that same object stays. A refresh brings new
+   * row objects, which may load again; an append keeps them.
+   */
+  private readonly settled = signal<ReadonlyMap<TmRowId, T>>(new Map());
   /** Whether a batch flush is queued for the end of the task. */
   private flushQueued = false;
   /** Set on destroy: loads still in flight settle silently. */
@@ -625,14 +651,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const settled = this.settled();
     const rowIdOf = this.rowId();
     // A row whose children loaded and brought none is a leaf: no twisty, no
-    // second load.
+    // second load, until a refresh replaces the row object.
     const structure = ɵtmResolveTree(
       this.data(),
       rowIdOf,
       parentIdOf,
       hasChildrenOf === undefined
         ? null
-        : (row: T) => hasChildrenOf(row) && !settled.has(rowIdOf(row)),
+        : (row: T) => hasChildrenOf(row) && settled.get(rowIdOf(row)) !== row,
     );
     const posInSet = new Map<TmRowId, number>();
     const number = (ids: readonly TmRowId[]): void => {
@@ -703,12 +729,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
     this.showSkeleton() ? 0 : this.lineWindow().totalSize,
   );
 
-  /** What each row shows, read once per row while the data, the layout and `rowClass` stay. */
+  /**
+   * What each row shows, one computed per row while the data, the layout and
+   * `rowClass` stay: a row re-reads only when a signal its readers read
+   * changes (a translated label), and a window move reads only new rows.
+   */
   private readonly contentCache = computed(() => {
     this.data();
     this.layout();
     this.rowClass();
-    return new Map<T, TileContent>();
+    return new Map<T, Signal<TileContent>>();
   });
 
   /** Whether skeleton tiles stand in for the first data. */
@@ -753,6 +783,8 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const info = this.treeInfo();
     const loadingIds = this.loadingIds();
     const cache = this.contentCache();
+    const scrolling = this.scrolling();
+    const shownImages = this.shownImages;
     // One tab stop: the active tile, else the first rendered one.
     const tabStop = active ?? Math.min(window.start * columns, rows.length - 1);
     const lineIndexes = ɵtmTilesRenderedLines(
@@ -787,10 +819,9 @@ export class TmTiles<T> implements TmGridDriverTarget {
           elementId: `${this.idPrefix}-t${index}`,
           tabStop: index === tabStop,
           selected: isSelected,
-          checkLabel:
-            selected === null ? '' : this.translate('tiles.select', { label: content.title })(),
           classes,
           content,
+          imageSrc: this.imageSrcOf(row, content, scrolling, shownImages),
           level: node === undefined ? 1 : node.level + 1,
           expandable: node?.expandable === true,
           expanded: node?.expandable === true && expanded.has(id),
@@ -910,6 +941,7 @@ export class TmTiles<T> implements TmGridDriverTarget {
     destroyRef.onDestroy(() => {
       this.destroyed = true;
       clearTimeout(this.flashTimer);
+      clearTimeout(this.scrollTimer);
     });
   }
 
@@ -982,6 +1014,9 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** Tracks the scroll offset for the line window. */
   protected onScroll(): void {
     this.scrollTop.set(this.scroller().nativeElement.scrollTop);
+    this.scrolling.set(true);
+    clearTimeout(this.scrollTimer);
+    this.scrollTimer = setTimeout(() => this.scrolling.set(false), SCROLL_SETTLE_MS);
   }
 
   /** The keyboard model (one tab stop, arrows in the live direction). */
@@ -1078,8 +1113,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
     }
   }
 
+  /** A cancelled press (a scroll took the touch) is no tap to measure a click against. */
+  protected onPointerCancel(): void {
+    this.press = null;
+  }
+
   /** A click or tap: the checkbox toggles selection, the twisty expansion, anywhere else opens the tile. */
   protected onClick(event: MouseEvent): void {
+    // Each press measures one click only.
+    const press = this.press;
+    this.press = null;
     const target = event.target;
     const tile = target instanceof Element ? this.tileElement(target) : null;
     if (tile === null) {
@@ -1113,10 +1156,12 @@ export class TmTiles<T> implements TmGridDriverTarget {
     } else if (element.closest('button, input, select, textarea') !== null) {
       return; // a custom body's own control
     }
-    // A press that travelled is a drag or a text selection, not a tap.
-    const press = this.press;
+    // A press that travelled is a drag or a text selection, not a tap. A
+    // click with no press of its own (`detail` 0: a script's, or an
+    // assistive technology's default action) is never one.
     if (
       press !== null &&
+      event.detail !== 0 &&
       Math.hypot(event.clientX - press.x, event.clientY - press.y) >= CLICK_SLOP_PX
     ) {
       return;
@@ -1166,25 +1211,54 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   // ---- internals ----
 
-  /** Reads what a row shows through the layout, once per row per cache. */
-  private contentOf(row: T, cache: Map<T, TileContent>): TileContent {
+  /** What a row shows, through its cached computed: created on the row's first render. */
+  private contentOf(row: T, cache: Map<T, Signal<TileContent>>): TileContent {
     let content = cache.get(row);
     if (content === undefined) {
-      const layout = this.layout();
-      const parts = layout.titleParts?.(row) ?? null;
-      content = {
-        title: layout.title(row),
-        titleParts: parts !== null && parts.length > 0 ? parts : null,
-        href: layout.href?.(row) ?? null,
-        image: layout.image?.(row),
-        topEnd: corner(layout.topEnd?.(row)),
-        bottomStart: corner(layout.bottomStart?.(row)),
-        bottomEnd: corner(layout.bottomEnd?.(row)),
-        rowClass: this.rowClass()?.(row) ?? null,
-      };
+      content = computed(() => this.readContent(row));
       cache.set(row, content);
     }
-    return content;
+    return content();
+  }
+
+  /** Reads what a row shows through the layout, `rowClass` and the checkbox name. */
+  private readContent(row: T): TileContent {
+    const layout = this.layout();
+    const parts = layout.titleParts?.(row) ?? null;
+    const title = layout.title(row);
+    return {
+      title,
+      titleParts: parts !== null && parts.length > 0 ? parts : null,
+      href: layout.href?.(row) ?? null,
+      image: layout.image?.(row),
+      topEnd: corner(layout.topEnd?.(row)),
+      bottomStart: corner(layout.bottomStart?.(row)),
+      bottomEnd: corner(layout.bottomEnd?.(row)),
+      rowClass: this.rowClass()?.(row) ?? null,
+      checkLabel: this.selectable() ? this.translate('tiles.select', { label: title })() : '',
+    };
+  }
+
+  /**
+   * A tile's image source for this render. While scrolling settles a tile
+   * shows its image and the row keeps it from then on; a tile that arrives
+   * mid-scroll shows the placeholder until scrolling stops.
+   */
+  private imageSrcOf(
+    row: T,
+    content: TileContent,
+    scrolling: boolean,
+    shownImages: WeakSet<object>,
+  ): string | null {
+    const src = content.image?.src ?? null;
+    if (src === null || typeof row !== 'object' || row === null) {
+      return src;
+    }
+    if (!scrolling) {
+      shownImages.add(row);
+      return src;
+    }
+    return shownImages.has(row) ? src : null;
   }
 
   /** The tile element a target is in, if it is one of this list's. */
@@ -1406,7 +1480,11 @@ export class TmTiles<T> implements TmGridDriverTarget {
       }
       this.inFlight.set(remaining);
       if (resolved) {
-        this.settled.set(new Set([...this.settled(), ...ids]));
+        const next = new Map(this.settled());
+        for (const node of batch) {
+          next.set(node.id, node.row);
+        }
+        this.settled.set(next);
         return;
       }
       // The failed rows collapse and leave the expansion; the next expand
@@ -1448,7 +1526,9 @@ export class TmTiles<T> implements TmGridDriverTarget {
   private afterRender(): void {
     const scroller = this.scroller().nativeElement;
     const reveal = this.pendingReveal;
-    if (reveal !== null) {
+    // Before the first measure the lattice is one column at the fallback
+    // pitch: a reveal waits for the render the measure causes.
+    if (reveal !== null && !Number.isNaN(this.width())) {
       this.pendingReveal = null;
       const index = this.indexById().get(reveal.id);
       if (index !== undefined) {

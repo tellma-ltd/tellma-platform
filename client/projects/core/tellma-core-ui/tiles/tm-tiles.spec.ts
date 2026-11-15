@@ -106,6 +106,8 @@ class Host {
   readonly customEmpty = signal(false);
   readonly customBody = signal(false);
   readonly activations: TmGridRowActivation<Product>[] = [];
+  /** The active status label: a signal the layout reads, as a translated label is. */
+  readonly activeLabel = signal('Active');
   readonly idOf = (row: Product): number => row.id;
   readonly rowClass = (row: Product): string | null =>
     row.active ? null : 'tm-tiles__item--context';
@@ -115,7 +117,7 @@ class Host {
     href: (row) => (row.id === 1 ? '/products/1' : null),
     topEnd: (row) => ({ text: String(row.price), numeric: true }),
     bottomStart: (row) => `P-${row.id}`,
-    bottomEnd: (row) => ({ text: row.active ? 'Active' : 'Inactive', badge: 'success' }),
+    bottomEnd: (row) => ({ text: row.active ? this.activeLabel() : 'Inactive', badge: 'success' }),
   };
 
   /** Switches the host to tree mode over parent ids and lazy markers. */
@@ -143,6 +145,18 @@ afterEach(() => vi.useRealTimers());
 async function settled(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve));
   await fixture.whenStable();
+}
+
+/** Whether a tile's box lies inside the scroller's viewport. */
+function inView(scroller: HTMLElement, tile: Element): boolean {
+  const viewport = scroller.getBoundingClientRect();
+  const box = tile.getBoundingClientRect();
+  return box.top >= viewport.top && box.bottom <= viewport.bottom;
+}
+
+/** The rendered tile at a visible index. */
+function tileAt(element: Element, index: number): HTMLElement {
+  return element.querySelector<HTMLElement>(`.tm-tiles__item[data-index="${index}"]`)!;
 }
 
 async function setup(configure: (host: Host) => void = () => undefined) {
@@ -246,6 +260,15 @@ describe('tm-tiles', () => {
       expect(await (await tiles.getTile({ index: 1 })).hasClass('tm-tiles__item--context')).toBe(
         true,
       );
+    });
+
+    it('re-reads a row when a signal its layout reads changes', async () => {
+      const { fixture, host, tiles } = await setup();
+      const tile = await tiles.getTile({ index: 0 });
+      expect(await tile.getCornerText('bottomEnd')).toBe('Active');
+      host.activeLabel.set('نشط');
+      await fixture.whenStable();
+      expect(await tile.getCornerText('bottomEnd')).toBe('نشط');
     });
 
     it('renders a custom body in place of the corners', async () => {
@@ -358,6 +381,54 @@ describe('tm-tiles', () => {
     });
   });
 
+  describe('pointer rules', () => {
+    it('opens the tile in place on a plain click on its title link', async () => {
+      const { host, element } = await setup();
+      const link = element.querySelector<HTMLAnchorElement>('a.tm-tiles__link')!;
+      // Read what the tiles did, then stop any navigation they let through.
+      let prevented = false;
+      element.addEventListener(
+        'click',
+        (event) => {
+          prevented = event.defaultPrevented;
+          event.preventDefault();
+        },
+        { once: true },
+      );
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+      expect(prevented).toBe(true);
+      expect(host.activations.map((a) => [a.rowId, a.via, a.newTab])).toEqual([
+        [1, 'pointer', false],
+      ]);
+    });
+
+    it('does not open a tile whose press travelled 4px or more before the click', async () => {
+      const { host, element } = await setup();
+      const body = tileAt(element, 2).querySelector('.tm-tiles__text')!;
+      body.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 20 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, clientX: 55, clientY: 20, detail: 1 }),
+      );
+      expect(host.activations).toEqual([]);
+    });
+
+    it('opens a tile clicked with no press of its own, whatever press came before', async () => {
+      const { host, element } = await setup();
+      const body = tileAt(element, 2).querySelector('.tm-tiles__text')!;
+      body.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 20 }),
+      );
+      body.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, clientX: 50, clientY: 20, detail: 1 }),
+      );
+      // A script's or an assistive technology's click: no press, detail 0.
+      tileAt(element, 5).click();
+      expect(host.activations.map((a) => a.rowId)).toEqual([3, 6]);
+    });
+  });
+
   describe('the keyboard', () => {
     it('moves by tile across lines and keeps the column through a short last line', async () => {
       const { tiles } = await setup();
@@ -425,8 +496,17 @@ describe('tm-tiles', () => {
       host.active.set(201);
       await fixture.whenStable();
       expect(await (await tiles.getTile({ index: 200 })).isActive()).toBe(true);
-      expect(scroller.scrollTop).toBeGreaterThan(0);
+      expect(inView(scroller, tileAt(scroller, 200))).toBe(true);
       expect(document.activeElement).toBe(focused);
+    });
+
+    it('reveals an activeRowId bound before the lattice is measured', async () => {
+      const { scroller } = await setup((h) => {
+        h.rows.set(products(400));
+        h.active.set(201);
+      });
+      expect(scroller.scrollTop).toBeGreaterThan(0);
+      expect(inView(scroller, tileAt(scroller, 200))).toBe(true);
     });
 
     it('writes back an unknown id', async () => {
@@ -464,7 +544,7 @@ describe('tm-tiles', () => {
       const { fixture, host, element, scroller } = await setup((h) => h.rows.set(products(400)));
       expect(host.tiles().scrollToRow(301, { flash: true })).toBe(true);
       await fixture.whenStable();
-      expect(scroller.scrollTop).toBeGreaterThan(0);
+      expect(inView(scroller, tileAt(scroller, 300))).toBe(true);
       expect(host.active()).toBe(301);
       expect(element.querySelector('.tm-tiles__item--flash')).not.toBeNull();
       expect(host.tiles().scrollToRow(999)).toBe(false);
@@ -543,6 +623,8 @@ describe('tm-tiles', () => {
       expect(await (await tiles.getTile({ title: 'Capital' })).getLevel()).toBe(2);
       await (await tiles.getTile({ title: 'Equity' })).toggle();
       expect(host.expanded()).toEqual(new Set());
+      // The twisty toggles; it does not open the row.
+      expect(host.activations).toEqual([]);
       await fixture.whenStable();
       expect(await tiles.getTileTitles()).toEqual(['Assets', 'Liabilities', 'Equity']);
     });
@@ -580,6 +662,23 @@ describe('tm-tiles', () => {
       await settled(fixture);
       expect(await tiles.getTileTitles()).toEqual(['Assets', 'Cash', 'Liabilities', 'Equity']);
       expect(load).toHaveBeenCalledTimes(2);
+    });
+
+    it('loads a refreshed row again, even one whose earlier load brought no children', async () => {
+      const load = vi.fn<(rows: readonly Product[]) => Promise<void>>(() => Promise.resolve());
+      const { fixture, host, tiles } = await setup((h) => {
+        h.rows.set(TREE);
+        h.tree(load);
+        h.expanded.set(new Set([2]));
+      });
+      await settled(fixture);
+      expect(await (await tiles.getTile({ title: 'Liabilities' })).isExpandable()).toBe(false);
+      // A re-query brings fresh row objects: the row is lazy again and,
+      // still expanded, loads in a batch of its own.
+      host.rows.set(TREE.map((row) => ({ ...row })));
+      await settled(fixture);
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(load.mock.calls[1][0].map((row) => row.id)).toEqual([2]);
     });
 
     it('collapses a failed batch and announces it once', async () => {

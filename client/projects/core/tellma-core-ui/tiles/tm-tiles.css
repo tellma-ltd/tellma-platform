@@ -185,17 +185,9 @@
   color: var(--color-on-primary);
 }
 
-.tm-tiles__box tm-icon {
-  visibility: hidden;
-}
-
 .tm-tiles__item--selected .tm-tiles__box {
   border-color: var(--tiles-check);
   background: var(--tiles-check);
-}
-
-.tm-tiles__item--selected .tm-tiles__box tm-icon {
-  visibility: visible;
 }
 
 /* ---- Image ---- */

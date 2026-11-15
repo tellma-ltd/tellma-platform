@@ -18,7 +18,7 @@ import { storyUrl } from '../support/story-map';
  * scroll; skeleton tiles that hold the data's geometry; the narrow list;
  * tree mode in RTL with lazy loads, a failure and its announcement; the
  * selected tile under forced colors; and the 10,000-row virtualization,
- * with its long-task probe in the quarantine job.
+ * with its long-task probe in the nightly tier.
  */
 
 /** The main story's tiles. */
@@ -310,13 +310,9 @@ test.describe('10,000 rows', () => {
     expect(await cells.count()).toBeLessThan(20 * perLine);
   });
 
-  // Quarantined at the bar spec 0023 §12 sets, as the grid's tree probe is:
-  // a screen-sized wheel step replaces every rendered tile, and that step
-  // measures 90-180 ms on a production build. About a quarter is tm-image's
-  // fetch-to-blob pipeline for the photos; the rest is view creation plus the
-  // style, layout and paint of a full screen of new tiles. The probe runs in
-  // the non-blocking quarantine job until that budget is met.
-  test('@perf @quarantine scrolling 10,000 tiles produces no long task over 50 ms', async ({
+  // Spec 0023 §12's bar, in the nightly tier: each screen-sized wheel step
+  // replaces most rendered tiles, and no step may cost a task over 50 ms.
+  test('@perf scrolling 10,000 tiles produces no long task over 50 ms', async ({
     page,
     browserName,
   }) => {
