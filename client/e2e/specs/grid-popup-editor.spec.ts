@@ -6,7 +6,16 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
-import { activateCell, cell, gotoGrid, gridScroller, modelJson, setScrollTop } from '../support/grid';
+import {
+  activateCell,
+  activeCell,
+  cell,
+  gotoGrid,
+  gridScroller,
+  modelJson,
+  rowHeightOf,
+  setScrollTop,
+} from '../support/grid';
 
 /**
  * The popup-editor battery against the `grid-popup-editor` story: an
@@ -14,7 +23,8 @@ import { activateCell, cell, gotoGrid, gridScroller, modelJson, setScrollTop } f
  * the grid while every row keeps its height, flips upward at the viewport
  * edge, aligns to the cell's inline start in both directions, keeps focus
  * inside the gridcell, commits on a press outside, and hides while its
- * cell is scrolled out of the grid's view.
+ * cell is scrolled out of the grid's view or off screen, letting the
+ * pointer through.
  *
  * Story shape: 4 columns (0 user, 1 role, 2 window — a two-field popup
  * editor of least width 360, 3 filter — a multi-line popup editor of least
@@ -150,6 +160,64 @@ for (const dir of ['ltr', 'rtl'] as const) {
       await expect(pane(page)).not.toHaveClass(/tm-grid__popup--hidden/);
       await expect(cell(page, 0, 3)).toBeInViewport();
       await expect(page.getByTestId('filter-input')).toHaveValue('Kept!');
+    });
+
+    test('@cross-engine a hidden pane lets a press through to the cell under it, which commits the pane', async ({
+      page,
+    }) => {
+      await openPane(page, 0, 3);
+      await page.getByTestId('filter-input').fill('Hidden');
+      // One row down: the cell goes behind the sticky header and its pane
+      // hides, while the pane's box still spans the rows below it.
+      await setScrollTop(page, Math.ceil(await rowHeightOf(page)) + 2);
+      await expect(pane(page)).toHaveClass(/tm-grid__popup--hidden/);
+      const target = await edges(cell(page, 3, 3));
+      const x = (target.left + target.right) / 2;
+      const y = (target.top + target.bottom) / 2;
+      const paneBox = await edges(pane(page));
+      expect(paneBox.bottom).toBeGreaterThan(y);
+      expect(paneBox.top).toBeLessThan(y);
+
+      await page.mouse.click(x, y);
+      await expect(pane(page)).toHaveCount(0);
+      await expect(activeCell(page)).toHaveAttribute('data-row', '3');
+      const rows = await modelJson<Membership[]>(page);
+      expect(rows[0].filter).toBe('Hidden');
+    });
+
+    test('@cross-engine the pane hides while the page scrolls its cell off screen, and returns with it', async ({
+      page,
+    }) => {
+      const viewport = page.viewportSize()!;
+      await page.setViewportSize({ width: viewport.width, height: 330 });
+      await openPane(page, 0, 3);
+      const opened = await edges(pane(page));
+      const cellBox = await edges(cell(page, 0, 3));
+
+      // The page, not the grid, scrolls the cell above the viewport.
+      await page.evaluate((by) => window.scrollBy(0, by), Math.ceil(cellBox.bottom) + 20);
+      expect((await edges(cell(page, 0, 3))).bottom).toBeLessThan(0);
+      await expect(pane(page)).toHaveClass(/tm-grid__popup--hidden/);
+
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect(pane(page)).not.toHaveClass(/tm-grid__popup--hidden/);
+      await expect.poll(async () => Math.round((await edges(pane(page))).top)).toBe(
+        Math.round(opened.top),
+      );
+    });
+
+    test('@cross-engine a press on the pane outside its controls keeps the editor focused, its keys inside', async ({
+      page,
+    }) => {
+      await openPane(page, 1, 3);
+      await page.locator('.filter-editor__hint').click();
+      await page.keyboard.type('xyz');
+      await expect(page.getByTestId('filter-input')).toHaveValue('xyz');
+      // ArrowDown stays in the editor: no commit, no move.
+      await page.keyboard.press('ArrowDown');
+      await expect(page.getByTestId('filter-input')).toBeFocused();
+      await expect(pane(page)).toBeVisible();
+      await expect(activeCell(page)).toHaveAttribute('data-row', '1');
     });
 
     test('@cross-engine view mode opens the pane read-only on F2 and Escape closes it', async ({

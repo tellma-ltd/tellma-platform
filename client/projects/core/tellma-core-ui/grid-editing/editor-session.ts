@@ -42,6 +42,13 @@ import {
 } from './editors';
 
 /**
+ * Angular's development-mode flag. Production builds define it `false`,
+ * which drops the checks it guards; read through `typeof`, so code running
+ * where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
+
+/**
  * The context a consumer `*tmGridEditor` template renders with: the cell's
  * value when the editor opened, the row, and whether the editor only shows
  * the cell. Declared here by shape, so this entry point never imports the
@@ -250,9 +257,11 @@ export class ɵTmGridEditorSession {
     }
 
     let registered: TmCellEditor<unknown> | null = null;
+    let registrations = 0;
     const host: TmCellEditorHost = {
       register: (editor) => {
         registered = editor;
+        registrations++;
       },
     };
     const cellInjector = Injector.create({
@@ -336,6 +345,16 @@ export class ɵTmGridEditorSession {
       };
     }
 
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && registrations > 1) {
+      // A composite whose own controls registered too: the last one would
+      // silently become the cell's editor.
+      this.destroy();
+      throw new Error(
+        `tm-grid: ${registrations} controls registered as the cell editor — a composite ` +
+          'editor must provide its own TM_CELL_EDITOR_HOST to its controls and register ' +
+          "itself through the grid's, injected with { skipSelf: true }.",
+      );
+    }
     if (registered === null) {
       this.destroy();
       if (isDevMode()) {

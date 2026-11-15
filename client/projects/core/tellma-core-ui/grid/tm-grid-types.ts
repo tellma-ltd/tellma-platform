@@ -42,8 +42,9 @@ export interface TmGridSort {
  * upward when the viewport has no room below), as wide as the cell or
  * `minWidth`, whichever is wider. Bind it to `tm-grid-column`'s
  * `editorPopup`. The editor is the column's `*tmGridEditor` template, a
- * control that implements `TmCellEditor`; on a cell the user cannot edit,
- * F2 opens the pane with the template's `readonly` context set.
+ * control that implements `TmCellEditor` — a sub-form of several controls
+ * registers as one, as `TmGridEditorDef` shows; on a cell the user cannot
+ * edit, F2 opens the pane with the template's `readonly` context set.
  *
  * @example
  * ```html

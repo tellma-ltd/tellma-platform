@@ -51,6 +51,17 @@ const CONTROL_SELECTOR =
   '[role="slider"], [role="switch"], [role="checkbox"], [role="textbox"]';
 
 /**
+ * Where a press inside the pane may move focus: a control, a link, a label
+ * (which forwards focus to its control) or a focusable element. A press
+ * anywhere else (a hint, the padding between fields) keeps the editor's
+ * focus: the browser would move it to the nearest focusable ancestor, the
+ * gridcell, outside the pane and its keys.
+ */
+const PRESS_TARGETS =
+  'input, textarea, select, button, a[href], label, [tabindex], ' +
+  '[contenteditable]:not([contenteditable="false"])';
+
+/**
  * The editing cell's popup pane. The editor session creates it in the
  * cell's editor outlet while a popup column's editor is open (or its
  * read-only view) and mounts the editor into its `outlet`.
@@ -79,6 +90,7 @@ const CONTROL_SELECTOR =
         [style.inline-size.px]="inlineSize()"
         [style.min-block-size.px]="cellHeight()"
         [style.max-block-size]="maxBlockSize()"
+        (mousedown)="onPress($event)"
       >
         <ng-container #outlet />
       </div>
@@ -138,12 +150,25 @@ export class ɵTmGridEditorPane {
     origin: () => this.cell,
     positions: PANE_POSITIONS,
     keepOnScreen: true,
+    // The push margin: it must agree with --popover-viewport-margin (8px),
+    // which the size caps here and in the stylesheet read, as the library's
+    // other anchored overlays agree with it.
     viewportMargin: 8,
     popoverHost: () => ({ type: 'parent', element: this.cell }),
   });
 
   constructor() {
     const scrolls = inject(ScrollDispatcher);
+
+    // Hidden, the pane lets the pointer through to what it covers: the
+    // overlay's own pane element, which wraps the body, takes hits too.
+    effect(() => {
+      const hidden = this.hidden();
+      const element = this.overlay()?.overlayRef?.overlayElement;
+      if (element !== undefined) {
+        element.style.pointerEvents = hidden ? 'none' : '';
+      }
+    });
 
     effect((onCleanup) => {
       const body = this.body()?.nativeElement;
@@ -168,8 +193,8 @@ export class ɵTmGridEditorPane {
       mutations.observe(body, { childList: true, subtree: true });
       this.countControls(body);
       // Visibility: the CDK keeps the pane on its cell while the grid or
-      // the page scrolls; once the cell is out of the grid's view, the
-      // pane hides.
+      // the page scrolls; once the cell is out of the grid's view or off
+      // screen, the pane hides rather than being pushed away from it.
       const scrolled = scrolls.ancestorScrolled(this.cell, 0).subscribe(() => this.measureInView());
       onCleanup(() => {
         resize.disconnect();
@@ -187,8 +212,9 @@ export class ɵTmGridEditorPane {
   }
 
   /**
-   * Re-checks the cell against the grid's scroller. The sticky header
-   * covers the top band, so a cell behind it counts as out of view too.
+   * Re-checks the cell against the grid's scroller and the viewport. The
+   * sticky header covers the top band, so a cell behind it counts as out
+   * of view too.
    */
   private measureInView(): void {
     const scroller = this.cell.closest('.tm-grid__scroller');
@@ -198,10 +224,25 @@ export class ɵTmGridEditorPane {
     const cell = this.cell.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
     const header = scroller.querySelector('.tm-grid__header')?.getBoundingClientRect();
-    const top = header === undefined ? view.top : header.bottom;
+    const top = Math.max(header === undefined ? view.top : header.bottom, 0);
     this.hidden.set(
-      !(cell.bottom > top && cell.top < view.bottom && cell.right > view.left && cell.left < view.right),
+      !(
+        cell.bottom > top &&
+        cell.top < Math.min(view.bottom, innerHeight) &&
+        cell.right > Math.max(view.left, 0) &&
+        cell.left < Math.min(view.right, innerWidth)
+      ),
     );
+  }
+
+  /** A press outside the pane's controls keeps the editor's focus (see `PRESS_TARGETS`). */
+  protected onPress(event: MouseEvent): void {
+    // Only an owner inside the pane counts: the gridcell around it is
+    // focusable too.
+    const owner = (event.target as Element).closest(PRESS_TARGETS);
+    if (owner === null || !(event.currentTarget as Element).contains(owner)) {
+      event.preventDefault();
+    }
   }
 
   /**

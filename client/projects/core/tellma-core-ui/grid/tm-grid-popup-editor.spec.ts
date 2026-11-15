@@ -97,7 +97,8 @@ class TestWindowEditor implements TmCellEditor<GrantWindow> {
       [value]="value() ?? ''"
       (input)="onInput($event)"
     ></textarea>
-    <p>Leave empty for all records.</p>
+    <p class="hint">Leave empty for all records.</p>
+    <button type="button" class="clear">Clear</button>
   `,
 })
 class TestFilterEditor implements TmCellEditor<string | null> {
@@ -323,6 +324,36 @@ describe('tm-grid (popup editors)', () => {
     await stable(fixture);
     expect(host.model()[0].window.endsAt).toBe('2026-04-01');
     expect(document.activeElement).toBe(cellAt(scroller, 1, 1));
+  });
+
+  it('Enter on a button inside the pane belongs to the button: the pane stays open', async () => {
+    const { fixture, scroller } = await setup();
+    await activate(fixture, scroller, 0, 2);
+    keydown(cellAt(scroller, 0, 2)!, 'F2');
+    const button = pane(scroller)!.querySelector<HTMLButtonElement>('.clear')!;
+    button.focus();
+    expect(keydown(button, 'Enter').defaultPrevented).toBe(false);
+    await stable(fixture);
+    expect(pane(scroller)).not.toBeNull();
+  });
+
+  it('a press on the pane outside its controls keeps the editor focused', async () => {
+    const { fixture, scroller } = await setup();
+    await activate(fixture, scroller, 0, 2);
+    keydown(cellAt(scroller, 0, 2)!, 'F2');
+    await stable(fixture);
+    const body = pane(scroller)!;
+    const press = (target: Element): MouseEvent => {
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+      target.dispatchEvent(event);
+      return event;
+    };
+    // The hint and the pane's own padding: the browser would focus the gridcell.
+    expect(press(body.querySelector('.hint')!).defaultPrevented).toBe(true);
+    expect(press(body).defaultPrevented).toBe(true);
+    // A control, and a button, take the press (and the focus) as usual.
+    expect(press(body.querySelector('textarea')!).defaultPrevented).toBe(false);
+    expect(press(body.querySelector('.clear')!).defaultPrevented).toBe(false);
   });
 
   it('Escape works in stages: the editor layer first, then the pane cancels', async () => {

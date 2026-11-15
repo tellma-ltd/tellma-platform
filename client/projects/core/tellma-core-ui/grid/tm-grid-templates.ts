@@ -62,8 +62,27 @@ export interface TmGridEditorContext<T = unknown, V = unknown> {
 
 /**
  * Custom editor template for a column. The hosted control registers itself
- * through the grid-provided cell-editor host token; the grid then owns its
- * value channel and drives commit/cancel/focus.
+ * through the grid-provided cell-editor host token (`TM_CELL_EDITOR_HOST`);
+ * the grid then owns its value channel and drives commit/cancel/focus.
+ * Exactly one control registers: a composite editor (a small sub-form of
+ * tm-* controls, each of which registers itself) provides its own
+ * `TM_CELL_EDITOR_HOST` to its controls and registers itself through the
+ * grid's, injected with `{ skipSelf: true }`.
+ *
+ * @example
+ * ```ts
+ * @Component({
+ *   selector: 'app-window-editor',
+ *   providers: [{ provide: TM_CELL_EDITOR_HOST, useValue: { register: () => undefined } }],
+ *   template: `<input tmDatePicker … /> <input tmDatePicker … />`,
+ * })
+ * export class WindowEditor implements TmCellEditor<Window> {
+ *   constructor() {
+ *     inject(TM_CELL_EDITOR_HOST, { skipSelf: true, optional: true })?.register(this);
+ *   }
+ *   // value, text, commit, cancel, focus …
+ * }
+ * ```
  */
 @Directive({ selector: '[tmGridEditor]' })
 export class TmGridEditorDef<T = unknown, V = unknown> {
