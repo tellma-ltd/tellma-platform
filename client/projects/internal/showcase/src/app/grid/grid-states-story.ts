@@ -19,7 +19,10 @@ interface StateRow {
   readonly qty: number;
   /** A boolean column value (true on even ids). */
   readonly active: boolean;
-  /** A note naming the refresh generation that produced the row. */
+  /**
+   * A note naming the row, the refresh generation that produced it and its
+   * record, `note <id> v<generation> (<record>)`.
+   */
   readonly note: string;
 }
 
@@ -29,14 +32,23 @@ type RecordName = 'A' | 'B';
 /** How many rows a record is seeded with. */
 const ROW_COUNT = 50;
 
-/** A fresh seed: a new rows array of new row objects on every call. */
-function makeRows(): readonly StateRow[] {
+/** A row's note: names the row, its refresh generation and its record. */
+function noteOf(id: number, generation: number, record: RecordName): string {
+  return `note ${id} v${generation} (${record})`;
+}
+
+/**
+ * A fresh seed for a record: a new rows array of new row objects on every
+ * call. The records share ids, names and values; only the note's record
+ * marker tells their rows apart.
+ */
+function makeRows(record: RecordName): readonly StateRow[] {
   return Array.from({ length: ROW_COUNT }, (_, i) => ({
     id: i,
     name: `Row ${i}`,
     qty: 100 + i,
     active: i % 2 === 0,
-    note: `note ${i} v0`,
+    note: noteOf(i, 0, record),
   }));
 }
 
@@ -48,8 +60,9 @@ function makeRows(): readonly StateRow[] {
  *
  * Every contentKey change hands the grid a new rows array, as the grid's
  * contentKey contract requires: A and B are separate records, each owning
- * its rows array and row objects, so the switch binds the other record's
- * own rows and each record keeps its own edits.
+ * its seed, rows array and row objects (every note names its record), so
+ * the switch binds the other record's own rows, each record keeps its own
+ * edits, and Restore data brings back the bound record's own seed.
  */
 @Component({
   imports: [TmGrid, TmGridColumn],
@@ -114,12 +127,12 @@ function makeRows(): readonly StateRow[] {
 export class GridStatesStory {
   /**
    * Each record's own seed, which Restore data brings back. The two seeds
-   * are separate arrays of separate row objects, so no record's rows are
-   * ever another record's.
+   * are separate arrays of separate row objects, each marked with its
+   * record, so no record's rows are ever another record's.
    */
   private readonly seeds: Readonly<Record<RecordName, readonly StateRow[]>> = {
-    A: makeRows(),
-    B: makeRows(),
+    A: makeRows('A'),
+    B: makeRows('B'),
   };
 
   /**
@@ -159,12 +172,17 @@ export class GridStatesStory {
     this.rows.set(this.seeds[this.contentKey()]);
   }
 
-  /** Same row ids, new object identities, visibly changed values. */
+  /** Same row ids, new object identities, visibly changed values (the record marker stays). */
   refreshRows(): void {
     this.refreshGeneration += 1;
     const generation = this.refreshGeneration;
+    const record = this.contentKey();
     this.rows.update((rows) =>
-      rows.map((row) => ({ ...row, qty: row.qty + 1000, note: `note ${row.id} v${generation}` })),
+      rows.map((row) => ({
+        ...row,
+        qty: row.qty + 1000,
+        note: noteOf(row.id, generation, record),
+      })),
     );
   }
 

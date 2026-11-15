@@ -86,4 +86,58 @@ prevented by construction (per-record seeds) and stated here for review.
 
 ### Findings
 
+Scope checked: the story change against the item and D-077 / the contentKey TSDoc
+(`client/projects/core/tellma-core-ui/grid/tm-grid-base.ts:71-82`, "change `contentKey`
+together with the bound rows, never over the same array"); every transition for array sharing
+between A and B (seeds are two `makeRows()` calls; refresh, shuffle, set-empty and remove
+produce new arrays from the bound rows or keep the bound one; restore binds the bound record's
+own seed; `switchContent` sets key and rows in one handler); switching back and forth,
+set-empty / restore / mount across switches; the new test's assertions against the
+shared-array, copy, never-park and park-under-the-wrong-key mutations (each fails at a
+rowcount assertion); consistency with PC-F37's tree-grid `parked` design; TSDoc and template
+section comments; no spec, §, `docs/` or PC-id references added to TSDoc or test names. No
+blocking or major issues found. Reran `build:showcase`, then grid-virtualization, grid-a11y and
+grid-keyboard in CI mode (chromium, `--workers 2`): 40 passed, none flaky; eslint, prettier
+`--check` and `tsc -p e2e` are clean on the changed files. The implementer's mutation logs show
+both mutations failing at the first B rowcount assertion (41 instead of 51).
+
+**R1-1 (minor). Restore data's per-record seed is changed code with no test, because the two
+seeds are value-identical.**
+`client/projects/internal/showcase/src/app/grid/grid-states-story.ts:33-41` and `:120-123`
+seed A and B with identical values, and `:158-160` now restores `this.seeds[this.contentKey()]`.
+The implementer notes say that the aliasing case "is not observable on a flat grid". That is
+true of array identity, but it also makes a wrong-record restore invisible. For example, a
+regression to `this.rows.set(this.seeds.A)`, or a restore that reads the outgoing key, would
+show exactly the same cells in B. No test presses Restore data after a switch
+(`client/e2e/specs/grid-virtualization.spec.ts:172-207` never uses it). So the only behaviour
+this item changed in `restoreData` is pinned by nothing. Suggested fix: make B's seed visibly
+B's own, e.g. give `makeRows` a record argument that writes it into the note (`note 5 v0 (B)`)
+or offsets B's qty. Then extend the new test: after B's shuffle, restore in B and assert B's
+unshuffled seed (B's marker, row 0 = `Row 0`); switch to A and assert A's edits are still there
+(41 rows, `1,105`); restore in A and assert 51 rows with A's seed values. The other consumers
+(`grid-a11y.spec.ts:35-49,195-203`, `grid-keyboard.spec.ts:232-260`) only touch A, so they are
+unaffected.
+
 ### Responses
+
+R1-1: fixed in the "PC-F45: review 1 fixes" commit. The seeds are now distinguishable: every
+note names its record (`note <id> v<generation> (<record>)`, through a `noteOf` helper that
+`makeRows(record)` and the refresh both use, so a refresh keeps the marker). Ids, names and
+values stay the same in both records, so no other spec changes (grid-a11y and grid-keyboard
+assert no notes). The new test, renamed "each content binds its own rows and restores its own
+seed, never the other's", now also asserts A's marker before and after its refresh
+(`note 5 v0 (A)`, `note 5 v1 (A)`) and B's on its first bind (`note 5 v0 (B)`). After the existing
+switches it presses Restore data in B (51 rows, row 0 is `Row 0` again, `note 5 v0 (B)`), switches
+to A (41 rows, `1,105`, `note 5 v1 (A)`: B's restore left A alone) and restores in A (51 rows, qty
+105, `note 5 v0 (A)`). Mutation checks, each against a production build of the mutated story
+(`CI=1 node scripts/e2e.mjs --project chromium --workers 2 --grep "restores its own seed"
+e2e/specs/grid-virtualization.spec.ts`), with the code restored afterwards:
+- `restoreData` always binds `seeds.A`: fails on both attempts at B's restore, `note 5 v0 (B)`
+  expected, `note 5 v0 (A)` received (`.tmp/f45-e2e-mut-ra.log`).
+- `restoreData` always binds `seeds.B`: fails on both attempts at A's restore, `note 5 v0 (A)`
+  expected, `note 5 v0 (B)` received (`.tmp/f45-e2e-mut-rb2.log`; the first attempt,
+  `.tmp/f45-e2e-mut-rb.log`, timed out building in the web server under load and ran no test).
+After restoring: grid-virtualization, grid-a11y and grid-keyboard in CI mode after a fresh
+`build:showcase`, `--project chromium --project touch --workers 2`: 40 passed, none flaky
+(`.tmp/f45-e2e-3.log`); eslint,
+prettier `--check` and `tsc -p e2e` clean on the changed files.

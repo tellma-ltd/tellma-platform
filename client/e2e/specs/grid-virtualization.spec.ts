@@ -169,21 +169,25 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
   // contract, spec 0010 §C.9). The story's A and B are separate records, so
   // a switch that kept the outgoing record's array, or handed over a copy
   // of it, would show A's edits under B; this pins each record's own rows.
-  test("each content binds its own rows: one content's edits never show in the other", async ({
+  // Every note names its record, so a restore of the other record's seed
+  // shows too.
+  test("each content binds its own rows and restores its own seed, never the other's", async ({
     page,
   }) => {
     // A: drop the middle ten rows (ids 20..29), then refresh the rest.
+    await expectCellText(page, 5, 3, 'note 5 v0 (A)');
     await page.getByTestId('remove-rows').click();
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
     await page.getByTestId('refresh-rows').click();
     await expectCellText(page, 5, 1, '1,105');
+    await expectCellText(page, 5, 3, 'note 5 v1 (A)');
 
     // A → B: B's own seed, untouched by A's edits.
     await page.getByTestId('switch-content').click();
     await expect(page.getByTestId('content-key-label')).toHaveText('B');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
     await expectCellText(page, 5, 1, '105');
-    await expectCellText(page, 5, 3, 'note 5 v0');
+    await expectCellText(page, 5, 3, 'note 5 v0 (B)');
 
     // B: shuffle its own rows (the story's seeded reorder).
     const firstAfterShuffle = shuffledIds(50)[0];
@@ -204,6 +208,25 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
     await expectCellText(page, 0, 0, `Row ${firstAfterShuffle}`);
     await expectCellText(page, 0, 1, String(100 + firstAfterShuffle));
+
+    // B: Restore data brings back B's own seed, unshuffled.
+    await page.getByTestId('restore-data').click();
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 0, 0, 'Row 0');
+    await expectCellText(page, 5, 3, 'note 5 v0 (B)');
+
+    // B → A: B's restore left A's edits alone.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('content-key-label')).toHaveText('A');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
+    await expectCellText(page, 5, 1, '1,105');
+    await expectCellText(page, 5, 3, 'note 5 v1 (A)');
+
+    // A: Restore data brings back A's own seed, not B's.
+    await page.getByTestId('restore-data').click();
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 5, 1, '105');
+    await expectCellText(page, 5, 3, 'note 5 v0 (A)');
   });
 
   test('removing the active row drops activation to the nearest row, same column', async ({
