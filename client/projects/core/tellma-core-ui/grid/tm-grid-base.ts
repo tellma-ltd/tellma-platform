@@ -159,9 +159,14 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * The active cell's row, two-way. The grid writes every change of the
    * active row (a click, an arrow, a data change); a consumer write moves
    * the active cell to that row — in the current column, else the first —
-   * and scrolls it into view without moving focus. An id the grid does not
-   * hold is ignored, and the model is written back with the actual row
-   * (`null` with none).
+   * and scrolls it into view without moving focus. A write reaches the grid
+   * with the next render. A navigation key in the grid while no editor
+   * is open (an arrow, PageUp, PageDown, Home or End, and Enter under
+   * row activation), or a driving key of a `tmGridDriver`, renders pending
+   * changes first, so it starts from the written row; any other key acts on
+   * the active cell as rendered. An id the grid does not hold is
+   * ignored, and the model is written back with the actual row (`null` with
+   * none).
    */
   readonly activeRowId = model<TmRowId | null>(null);
   /**

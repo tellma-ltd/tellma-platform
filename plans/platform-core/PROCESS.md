@@ -112,6 +112,8 @@ orchestrator: assign slot, create pc/PC-nnn, LEDGER row → impl
     two-review list or escalated (§3, §4.4) only:                                   → r2
     Reviewer 2 (fresh) ── reviews commits 1+2, findings R2-n                        → fix2
     Implementer (resumed) ── fix or push back ── commit 3 "PC-nnn: review 2 fixes" ── push
+    others ahead in the release queue (§5.1, D-087) only:                           → held
+    Implementer (resumed) ── merge-tree conflict check ── push branch only, no merge or gates
   Implementer (resumed) ── integrate into platform-core ── push                     → integrated
   CI green for that sha                                                             → done
 ```
@@ -119,6 +121,12 @@ orchestrator: assign slot, create pc/PC-nnn, LEDGER row → impl
 A checkpoint off the two-review list has two commits; one on it has three. Fix commits are made
 even when a review changes nothing: they then carry only the review file with its responses.
 PC-000 and `PC-Fnn` fixes take Review 1 only.
+
+An item holds (D-087) when, after its last fix round, other items are ahead of it in the release
+queue (§5.1). A held item does not merge platform-core or re-run the gates. It checks for
+conflicts with `git merge-tree`, reports them and pushes only its branch. It merges and runs
+PLAN.md §7.1 items 2-4 once, when the orchestrator releases it with the integration message
+(§4.3).
 
 ### 4.1 Implementer brief (orchestrator fills `{}`)
 
@@ -183,7 +191,9 @@ Done means PLAN.md §7.1 items 1-6. Then:
 - Commit everything as commit 1 (format §4.6) and push: `cd {slot} && git push -u origin pc/{PC}`.
 - Return the §4.7 summary.
 
-You will be resumed twice with review findings, and then asked to integrate.
+You will be resumed twice with review findings. Then you are either asked to integrate, or told
+to hold and later released to integrate (D-087): a hold is only a conflict check and a branch
+push, so the merge and the gates run once, at integration.
 ```
 
 ### 4.2 Reviewer briefs
@@ -242,7 +252,19 @@ as fixing a right one. Record each response under that review's "### Responses" 
 (format §4.6), push with `cd {slot} && git push origin pc/{PC}`, and return the §4.7 summary.
 ```
 
-Integration (after the last fix round):
+Hold (D-087; appended to the last fix-round message when other items are ahead in the release
+queue):
+
+```
+Then hold: do not merge origin/platform-core and do not re-run the gates. Run
+`cd {slot} && git fetch origin` and `cd {slot} && git merge-tree origin/platform-core HEAD`, report
+any conflicts it shows, push only pc/{PC} with `cd {slot} && git push origin pc/{PC}`, and return
+the §4.7 summary with status=held and the pushed sha.
+```
+
+Integration (after the last fix round, or at release of a held item; D-087 makes this the item's
+only merge and gate run. A released item may be pointed at a different free slot, which it first
+switches with `cd {slot} && git switch -q -C pc/{PC} origin/pc/{PC}`):
 
 ```
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
@@ -320,6 +342,11 @@ deviations=<n>; blocks=<n>; decisions_for_orchestrator=<one line each, or none>;
 - **Pick** the highest-priority ready checkpoint (PLAN.md Appendix A order), subject to the tier
   rule (PLAN.md §4) and the usage gates (§6). Prefer a slot that last built the same area, since its
   build output is warm.
+- **Release queue (D-087).** Items that finish their last fix round while another integration is
+  in progress or queued hold (§4). Release held items one at a time, in the order they held, each
+  right after the previous integration's push, and watch each CI run. A held item is not merged
+  into platform-core, so it still counts as in flight for exclusive resources and the serialized
+  migrations until it integrates. Its branch is pushed, so its slot is free for reuse.
 - **Exclusive resources.** Two in-flight checkpoints must not own the same entry point, project
   file or migration at once. The **serialized migrations** are the shared fixture migrations
   (`test/shared/Tellma.Testing.Entities/Migrations`) and the Acme tenant migration
@@ -343,7 +370,8 @@ commit integrates like any checkpoint.
   `cd MAIN && gh run list --branch platform-core --event pull_request --limit 20 --json headSha,status,conclusion,url`.
   For each `integrated` row whose sha has a completed run, a green run moves it to `done` and a red
   one stops the line (§8.3). A pending run never blocks other integrations. A checkpoint's slot is
-  freed when the checkpoint reaches `integrated`.
+  freed when the checkpoint reaches `integrated`, or earlier when it holds (D-087: its branch is
+  pushed and it is not yet merged, so the slot holds nothing it needs).
 - On each wake (at least daily), read the latest `nightly-tier` run on `platform-core` and turn each
   new failure into a `PC-Fnn` item, prioritised by the tier of the code it covers.
 - A flaky test is never retried into green silently (CI fails a run when a test passes only on

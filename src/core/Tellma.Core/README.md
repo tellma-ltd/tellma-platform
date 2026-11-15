@@ -503,8 +503,8 @@ it.
 `Tellma:PublicOrigin`: `Tenant(42)` is `{origin}/42`, and `Target(42, "acme.SalesInvoice", 17)` is
 `{origin}/42/sales-invoices/17` when the resource names a stack whose operations include `Details`,
 and the tenant link otherwise (a null resource or id, an unknown resource, a stack without a details
-page). Which resources name a stack is answered through `IStackRouteSource`; a composition without
-a stack registry gets the empty one, so every target links to the tenant.
+page). Which resources name a stack is answered through `IStackRouteSource`, which the stack
+registry implements (see [Entity stacks](#entity-stacks)); a host may register its own first.
 
 ## Blobs: the file-system store
 
@@ -971,6 +971,63 @@ the reader's content slot, and anything else as its JSON text. A missing resourc
 key; arguments that are not a JSON object render the message without them and log
 `NotificationArgumentsInvalid` once per scope.
 
+## Entity stacks
+
+A feature stacks an entity with `Entity<TEntity>()` (the platform's default service) or
+`Entity<TEntity, TService>()`, where the service derives from `EntityService<TEntity, TKey>` and may be
+generic over the entity's leaf. It attaches a stack companion (`EntityCompanion<TEntity, TCompanion>()`,
+whose `[ApiAction]` methods the stack serves), validators, persist effects, details contributors and
+named filter contributors (`Validator`, `PersistEffect`, `DetailsContributor`, `NamedFilters`, each
+closed or open over the leaf), a routed API service (`ApiService<TService>()`, which carries
+`[ApiRoute]`) and confirmation keys (`Confirmation(key)`). An entity has one stack: a feature that
+requires the stack's registrant may register it again, replacing its service and operations, and the
+stack keeps its registrant's feature.
+
+`CrudComposition` registers, per stack, the service closed over the leaf (scoped, and as
+`EntityService<TLeaf, TKey>`), its companions, and its components under their contracts (a
+component generic over a base closes over the substituted leaf); then `StackRegistry`, the singleton
+`IStackRegistry`, built once on first resolution from the composition and the tenant model with no
+tenant scope:
+
+- **Descriptors.** A stack's operations are its `Entity<…>` item's, else its `[Stack]`'s, else
+  every operation. Its capabilities, properties, children, searchable properties, natural keys and
+  display name are read from the entity's metadata; its default select, related select and details
+  expansion from the projection attributes, else derived (the key, natural keys, name, code, active
+  flag and audit columns; the key, display-name columns and image; every reference, and every
+  child's reference at any depth). Its actions are the built-in `activate` and `deactivate` of an
+  activatable entity it saves, then the service's `[EntityAction]` and `[ApiAction]` methods, base class
+  first, then each companion's `[ApiAction]` methods. Its extras are the service's and details
+  contributors' `[DetailsExtras]`, then `permissions` when the stack serves details and writes
+  anything. Its named filters are read once from contributors created from the root provider.
+- **Child query surfaces.** A stack with `Query` exposes each child collection at every depth as a
+  read-only query surface under the child's resource and segment, owned by its parent's resource
+  through the child's parent-key navigation, unless the child's `[ApiResource(Queryable = false)]`
+  opts it, and its subtree, out. Their actions stay empty until the child-action seam is defined.
+- **Routed services and enlistments.** Each routed service's `[ApiAction]` methods are its actions,
+  each secured by a declared `Resource` and `Action`, or member-only; `Enlistments` is every declared
+  `IEnlists<TTarget>` edge between stacks, from any registered writer.
+- **Ownership.** The registry owns every action descriptor and the method behind it, matched by
+  reference; the method record says whether its last parameter is a `CancellationToken`, which
+  the invoker binds to the request's token. `OwnerOf` maps a table, root or child, to its stack.
+
+`StackSecurableContributor` registers each stack's securables: `Read` (filter root the resource,
+or none for a cacheable entity) when it queries, serves details or exports; `Save` when it saves or
+imports; `Delete`; each entity action's securable (filter root the resource when the action takes a
+filter); each `[ApiAction]`'s; each routed service's (no filter root, its feature's); and each child
+query surface's `Read`, owned by its parent through the parent-key navigation, in the root stack's
+feature.
+
+| Check | Fails when | Needs infrastructure |
+|---|---|---|
+| `core.stacks` | two features register a stack over one entity and neither requires the other, or one feature registers it twice differently; a stack is over a child entity, an abstract or keyless class, or an entity the tenant model does not map; its service does not derive from `EntityService<TLeaf, TKey>` or cannot close over the leaf; its operations include `Save` without `Details`, `Import` without `Query`, `Details` and `Save`, or `Export` without `Query`; a `[Stack]` ceiling is not positive (naming the stack and the ceiling); a resource segment, a child surface's or a routed service's first route segment, is not kebab-case or is taken twice, ignoring case; a child has no navigation through its parent key; an `EntityService` registered as a service, or one serving an entity whose stack runs the default service, that no stack runs | no |
+| `core.stack-actions` | an action's name is not kebab-case segments joined by `/`, is taken twice in a stack, or takes a segment the stack serves itself (`query`, `get`, `save`, `delete`, `export`, `import` and the rest its operations and capabilities give it); a method is not a public, non-generic instance method, has an unsupported signature or result, or carries both attributes; a single-target action returns nothing; an `[EntityAction]` is declared on a companion or a routed service; a companion has no `[ApiAction]`; an action of a stack or companion names another resource; a member-only action names a securable; a routed service has no `[ApiRoute]`, a malformed route, or an action with neither a `Resource` nor `MemberOnly`; an `[EntityRef]` argument names no stack with `Query` | no |
+| `core.stack-components` | a companion or component is attached to an entity no stack owns, or, not generic, to an entity only derived entities' stacks own; it cannot close over the stack's leaf, or does not implement its contract once closed; a service or details contributor declares an extra twice across its class and base classes, or declares `permissions`, which the platform produces; a named filter contributor cannot be created or read at startup, names a filter outside `^[a-z][a-z0-9-]*$`, gives one no tree, or shares a name with another | no |
+| `core.stack-projections` | a stack's or child surface's default select, related select or default ordering, or a named filter's text, does not validate against the query schema; a details expansion names a segment that is neither a navigation nor a child collection; a named filter goes via a non-navigation, or tests the existence of an entity through a navigation that does not lead back to the filtered one | no |
+| `core.confirmations` | a confirmation key is not dotted PascalCase, a feature declares it twice, two features declare it, or no neutral shared `Strings` resource of a composed feature declares it | no |
+| `core.entity-pipeline` | `IEntityPipelineFactory` or an `IEntityPipeline<,>` is registered with a type, an instance or a factory that is not the platform's pipeline | no |
+| `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
+| `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
+
 ## Securables
 
 A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
@@ -1007,14 +1064,17 @@ contributor once, on first resolution (the realised gate resolves it), then free
   of the sorted `Resource|Action|FilterRoot|IsSensitive|OwnerResource|OwnerNavigation` lines and
   `alias|Old|New` lines.
 
-`CoreFeature` registers `core.User` × `Read` (filter root `core.User`) and `core.UserStamp` ×
-`Read` (filter root `core.UserStamp`, owned by `core.User` through `User`).
+`CoreFeature` registers `core.UserStamp` × `Read` (filter root `core.UserStamp`, owned by
+`core.User` through `User`); the users', roles', jobs', schedules' and notifications' securables are their stacks'
+(see [Entity stacks](#entity-stacks)).
 `SecurablesClientAssetContributor` writes the `securables` section of the Core chunk: one
 `ClientSecurable` per securable, each label key the first of its chain that a neutral shared
 `Strings` resource of a composed feature declares (`INeutralStringKeys`), else the chain's first key
 with humanized English as the fallback (pluralized for an entity's plural key). Core's `Strings`
-declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Core_Role_Plural`,
-`Securable_core_UserStamp` and `Feature_core`.
+declares `Action_Read`, `Action_Save`, `Action_Delete`, the plural label of each of its stacks and
+child query surfaces (`Core_User_Plural`, `Core_Role_Plural`, `Core_RoleMembership_Plural`,
+`Core_Permission_Plural`, `Core_Job_Plural`, `Core_Schedule_Plural`, `Core_Notification_Plural`), `Securable_core_UserStamp` and
+`Feature_core`.
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
@@ -1172,8 +1232,10 @@ same in a `Persist` batch of its own.
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
+| `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |

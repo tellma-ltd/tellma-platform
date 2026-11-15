@@ -83,6 +83,44 @@ namespace Tellma.Core.Composition.Checks
         public const string Securables = "core.securables";
 
         /// <summary>
+        ///     Each entity is one stack with a service that fits its leaf, every service class is some
+        ///     stack's, operation sets are coherent, ceilings are positive, and route segments are well
+        ///     formed and unique.
+        /// </summary>
+        public const string Stacks = "core.stacks";
+
+        /// <summary>
+        ///     Every entity action, routed action and companion is declared where it may be, with a
+        ///     conforming signature and a free name, and every entity reference in an action's
+        ///     arguments names a queryable stack.
+        /// </summary>
+        public const string StackActions = "core.stack-actions";
+
+        /// <summary>
+        ///     Every component closes over the leaves it applies to, details extras are declared once
+        ///     and never as the platform's own, and named filters are well named and unique per stack.
+        /// </summary>
+        public const string StackComponents = "core.stack-components";
+
+        /// <summary>
+        ///     Every stack's projection texts and named filters validate against the tenant-independent
+        ///     query schema.
+        /// </summary>
+        public const string StackProjections = "core.stack-projections";
+
+        /// <summary>Confirmation keys are well formed, declared once, and rendered by a neutral string resource.</summary>
+        public const string Confirmations = "core.confirmations";
+
+        /// <summary>No registration replaces the platform's pipeline factory or pipelines.</summary>
+        public const string EntityPipeline = "core.entity-pipeline";
+
+        /// <summary>Every enlistment pair targets a stack that accepts enlisted writes, and the pairs form no cycle but self-pairs.</summary>
+        public const string Enlistments = "core.enlistments";
+
+        /// <summary>Every securable the stacks and routed services project is registered.</summary>
+        public const string StackSecurables = "core.stack-securables";
+
+        /// <summary>
         ///     Every cacheable entity is a top-level entity with an int key and no child collection, its
         ///     resolved row limit is within the ceiling, and its read securable has no row filter.
         /// </summary>

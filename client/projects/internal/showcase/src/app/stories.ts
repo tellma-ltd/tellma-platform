@@ -28,6 +28,7 @@ import { GridCustomEditorStory } from './grid/grid-custom-editor-story';
 import { GridEditableStory } from './grid/grid-editable-story';
 import { GridEntityStory } from './grid/grid-entity-story';
 import { GridLazyEditingStory } from './grid/grid-lazy-editing-story';
+import { GridPopupEditorStory } from './grid/grid-popup-editor-story';
 import { GridListScreenStory } from './grid/grid-list-screen-story';
 import { GridSearchPageStory } from './grid/grid-search-page-story';
 import { GridReadonlyStory } from './grid/grid-readonly-story';
@@ -207,6 +208,12 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
     id: 'grid-custom-editor',
     title: 'Grid (custom editor)',
     component: GridCustomEditorStory,
+    wide: true,
+  },
+  {
+    id: 'grid-popup-editor',
+    title: 'Grid (popup editors)',
+    component: GridPopupEditorStory,
     wide: true,
   },
   { id: 'tree-grid', title: 'Tree grid', component: TreeGridStory, wide: true },
