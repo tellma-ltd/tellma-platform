@@ -101,7 +101,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-063 | pc-f | pc/PC-063 | BLOCKED: platform-core push refused by classifier (merge 96ecbc1c pushed to pc/PC-063; Ahmad notified 2026-11-14; Core.IntegrationTests load timeouts only, each test green in some run) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
+| PC-063 | — (CI) | pc/PC-063 | CI (platform-core c6740d23; push approved by Ahmad 2026-11-14, run by orchestrator after a ledger-only merge) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F26 | pc-2 | pc/PC-F26 | impl | fix (Opus, high, launched 2026-11-14) | | 2026-11-14 |
 | PC-056 | — (pushed) | pc/PC-056 | held 3dbeb2ca (R1 0/3/3 fixed f8799723, one R1-5 sub-item pushed back; no R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-042 | pc-4 | pc/PC-042 | impl | impl (Opus, high, launched 2026-11-14) | | 2026-11-14 |
@@ -315,7 +315,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-060 | 0010-b2 | 1 | done | 8c1dddd, ed9759f, 3d7aa7b (pc) | 15.86M (impl 13.46, r1 2.40) | green at 8043295, CI 42947124853; 7 deviations; ./select 8.28/9 |
 | PC-061 | 0023-g | 1 | todo | | | |
 | PC-062 | 0015-a | 1 | done (integrated f861d40, CI 43614912992 green) | e97c3f3, 924fcd3, 2a34bc69, f861d40 (pc) |  | carry from PC-040 r1: whichever of PC-040/PC-062 integrates second deletes the analyzer suite's and the probe's pipeline stub files, adds the pipeline rows to NamePinTests and re-runs the probe |
-| PC-063 | 0015-b | 1 | blocked (push permission; 96ecbc1c) | 9bbe22e, 73a4274e, 18d39ca6 (pc/PC-063) | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
+| PC-063 | 0015-b | 1 | integrated c6740d23 (CI pending) | 9bbe22e, 73a4274e, 18d39ca6, 6959d3bf, c6740d23 (pc/PC-063) | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
 | PC-064 | 0016-b | 1 | todo | | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | todo | | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
