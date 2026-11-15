@@ -448,6 +448,9 @@
   <data name="Validation_ValueNotInSet" xml:space="preserve">
     <value>This value isn’t one of the allowed values.</value>
   </data>
+  <data name="Validation_Invalid" xml:space="preserve">
+    <value>This value isn’t valid.</value>
+  </data>
   <data name="Entity_NotFound" xml:space="preserve">
     <value>This record doesn’t exist or you can’t see it.</value>
   </data>

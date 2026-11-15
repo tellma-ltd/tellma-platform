@@ -18,7 +18,7 @@ two assemblies from this project's output folder to every project that reaches
 |---|---|
 | `TELLMA0001` | Constructing a `SqlDataRecord`, or calling its `Set*` methods or `GetOrdinal`, outside a type marked `[TableTypeBinder]`. Table-valued parameter rows bind from the model by column name. |
 | `TELLMA0002` | An EF query (`Set<T>()`, `Find`, an entity set), raw EF SQL through `Database`, or `SaveChanges`/`SaveChangesAsync` over `TellmaDbContext`, outside `Tellma.Core` and the assemblies whose name ends in `.Migrator`. |
-| `TELLMA0003` | An `IDataBatch.Sql` call that cannot be checked or breaks the batch's rules (see below). |
+| `TELLMA0003` | An `IDataBatch.Sql` or `IContextLoader.Sql` call that cannot be checked or breaks the batch's rules (see below). |
 | `TELLMA0004` | A call to a method marked `[ApiAction]` or `[EntityAction]` from outside its declaring type and `Tellma.Core`. A derived type may call one on its own instance. |
 | `TELLMA0005` | `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`, `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` of an `EntityService<,>` called from a pipeline participant: a hook override, an `[EntityAction]` method, or any member of an `IEntityValidator<>` or an `IPersistEffect<>`. |
 | `TELLMA0006` | A write into the `[Table]` of a mapped entity, or of one of its child collections, from outside `Tellma.Core` by a type that is not the table's owner. The write is an `IDataBatch.Save<T>`, `Update<T>` or `Delete<T>`, or a raw statement whose text writes the table. |
@@ -60,6 +60,15 @@ the code spells out, a bracketed stand-in for one it does not, and a variable fo
   expression over a join, is refused whatever the options declare: write the base table directly.
 - A write into a table whose entity carries `[BumpsUserVersionTag]` names the affected users,
   through `SqlOptions.UserIds` or `SqlOptions.ForCaller`.
+
+`IContextLoader.Sql`, a validator's raw read, is held to every rule above except the declared
+writes, and to three more, because a validation round never writes:
+
+- No statement writes any table other than a table variable the text declares: no permanent
+  table, no temporary table, and no table a hole names.
+- Its `SqlOptions.Writes`, when spelled out at the call, is empty. A set held in a field or built
+  by a helper is checked by the loader at run time, which refuses any declared write.
+- No reserved name appears in the text at all, not even to be read, in `Tellma.Core` as anywhere.
 
 ### What the rules cannot see
 

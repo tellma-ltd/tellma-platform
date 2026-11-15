@@ -18,7 +18,9 @@ namespace Tellma.Core.Analyzers
     ///     TELLMA0003 and TELLMA0006 over <c>IDataBatch</c>: the raw statement text of every
     ///     <c>Sql</c> call, parsed with ScriptDom and checked against the batch's rules, and every
     ///     write into a mapped entity's table (raw text, <c>Save</c>, <c>Update</c>, <c>Delete</c>)
-    ///     from a type that is not the table's owner.
+    ///     from a type that is not the table's owner. The context loader's <c>Sql</c> is checked by
+    ///     the same rules, and as a read: it writes nothing but its own table variables, declares no
+    ///     writes, and names no reserved name at all.
     /// </summary>
     /// <remarks>
     ///     The text is read from the interpolated string at the call, with a stand-in for each hole: a
@@ -41,6 +43,12 @@ namespace Tellma.Core.Analyzers
 
         /// <summary>The longest hole expression a message quotes.</summary>
         private const int QuotedExpressionLength = 60;
+
+        /// <summary>The name messages give the batch's raw statement.</summary>
+        private const string BatchSql = "IDataBatch.Sql";
+
+        /// <summary>The name messages give the context loader's raw statement.</summary>
+        private const string LoaderSql = "IContextLoader.Sql";
 
         /// <summary>The batch's entity writes, one type argument each.</summary>
         private static readonly ImmutableHashSet<string> EntityWrites = ImmutableHashSet.Create(StringComparer.Ordinal, "Save", "Update", "Delete");
@@ -81,7 +89,11 @@ namespace Tellma.Core.Analyzers
             IMethodSymbol method = invocation.TargetMethod;
             if (IsRawStatement(method))
             {
-                AnalyzeRawStatement(context, scope, invocation);
+                AnalyzeRawStatement(context, scope, invocation, BatchSql);
+            }
+            else if (IsLoaderStatement(method))
+            {
+                AnalyzeRawStatement(context, scope, invocation, LoaderSql);
             }
             else if (IsEntityWrite(method))
             {
@@ -100,10 +112,11 @@ namespace Tellma.Core.Analyzers
                 return;
             }
 
-            if (IsRawStatement(reference.Method))
+            if (IsRawStatement(reference.Method) || IsLoaderStatement(reference.Method))
             {
+                string api = IsRawStatement(reference.Method) ? BatchSql : LoaderSql;
                 Report(context, TellmaDiagnostics.RawSql, reference.Syntax.GetLocation(),
-                    "IDataBatch.Sql is taken as a delegate, so the text it is later called with cannot be checked. Call IDataBatch.Sql directly with the statement written at the call.");
+                    $"{api} is taken as a delegate, so the text it is later called with cannot be checked. Call {api} directly with the statement written at the call.");
             }
             else if (IsEntityWrite(reference.Method))
             {
@@ -120,6 +133,17 @@ namespace Tellma.Core.Analyzers
                 && method.Parameters[0].Type.Is("System", "FormattableString")
                 && method.Parameters[1].Type.Is(KnownNames.DataNamespace, KnownNames.SqlOptions)
                 && method.IsOnTypeImplementing(KnownNames.DataNamespace, KnownNames.DataBatch);
+        }
+
+        /// <summary>Whether a method is the context loader's raw read, <c>Sql(FormattableString, SqlOptions?)</c>.</summary>
+        /// <param name="method">The method.</param>
+        /// <returns>True when it is.</returns>
+        private static bool IsLoaderStatement(IMethodSymbol method)
+        {
+            return method is { Name: "Sql", Parameters.Length: 2 }
+                && method.Parameters[0].Type.Is("System", "FormattableString")
+                && method.Parameters[1].Type.Is(KnownNames.DataNamespace, KnownNames.SqlOptions)
+                && method.IsOnTypeImplementing(KnownNames.ValidationNamespace, KnownNames.ContextLoader);
         }
 
         /// <summary>Whether a method is one of the batch's entity writes, <c>Save&lt;T&gt;</c>, <c>Update&lt;T&gt;</c> or <c>Delete&lt;T&gt;</c>.</summary>
@@ -219,7 +243,8 @@ namespace Tellma.Core.Analyzers
         /// <param name="context">The operation context.</param>
         /// <param name="scope">The compilation's scope.</param>
         /// <param name="invocation">The call.</param>
-        private static void AnalyzeRawStatement(OperationAnalysisContext context, Scope scope, IInvocationOperation invocation)
+        /// <param name="api">The statement's method, for messages: the batch's, or the context loader's read.</param>
+        private static void AnalyzeRawStatement(OperationAnalysisContext context, Scope scope, IInvocationOperation invocation, string api)
         {
             IMethodSymbol method = invocation.TargetMethod;
             if (invocation.Arguments.ArgumentFor(method.Parameters[0].Name) is not IOperation argument)
@@ -231,7 +256,7 @@ namespace Tellma.Core.Analyzers
             if (SqlText.From(argument) is not SqlText text)
             {
                 Report(context, TellmaDiagnostics.RawSql, argument.Syntax.GetLocation(),
-                    "The statement text is not an interpolated string written at the call, so it cannot be parsed and checked. Write it as an interpolated string in the IDataBatch.Sql call itself; vary names with SqlIdentifier holes, never with concatenation or a FormattableString held elsewhere.");
+                    $"The statement text is not an interpolated string written at the call, so it cannot be parsed and checked. Write it as an interpolated string in the {api} call itself; vary names with SqlIdentifier holes, never with concatenation or a FormattableString held elsewhere.");
                 return;
             }
 
@@ -250,14 +275,26 @@ namespace Tellma.Core.Analyzers
             if (inspector.BatchCount > 1)
             {
                 Report(context, TellmaDiagnostics.RawSql, text.Location,
-                    "The statement text holds more than one batch: GO separates batches in client tools and is not T-SQL. One IDataBatch.Sql call holds one batch's statements.");
+                    $"The statement text holds more than one batch: GO separates batches in client tools and is not T-SQL. One {api} call holds one batch's statements.");
             }
 
+            bool loader = string.Equals(api, LoaderSql, StringComparison.Ordinal);
+            IOperation? options = invocation.Arguments.ArgumentFor(method.Parameters[1].Name);
             CheckQuotedHoles(context, text, inspector);
-            CheckStatements(context, text, inspector);
-            CheckVariables(context, scope, text, inspector);
+            CheckStatements(context, text, inspector, api);
+            CheckVariables(context, scope, text, inspector, reservedChecked: loader);
             CheckRaises(context, text, inspector);
-            CheckWrites(context, scope, text, inspector, SqlOptionsShape.From(invocation.Arguments.ArgumentFor(method.Parameters[1].Name)));
+
+            // --- The batch's statement declares its writes; the loader's reads only ---
+            if (loader)
+            {
+                CheckReservedNames(context, text, inspector);
+                CheckLoaderWrites(context, text, inspector, SqlOptionsShape.From(options), options);
+            }
+            else
+            {
+                CheckWrites(context, scope, text, inspector, SqlOptionsShape.From(options));
+            }
         }
 
         /// <summary>Reports the holes the batch cannot bind as meant.</summary>
@@ -324,12 +361,13 @@ namespace Tellma.Core.Analyzers
         /// <param name="context">The operation context.</param>
         /// <param name="text">The text.</param>
         /// <param name="inspector">The parsed text.</param>
-        private static void CheckStatements(OperationAnalysisContext context, SqlText text, SqlInspector inspector)
+        /// <param name="api">The statement's method, for messages.</param>
+        private static void CheckStatements(OperationAnalysisContext context, SqlText text, SqlInspector inspector, string api)
         {
             foreach (SqlRefusal refusal in inspector.Refusals)
             {
                 Report(context, TellmaDiagnostics.RawSql, LocationOf(text, refusal.Fragment),
-                    $"{refusal.What} is refused in IDataBatch.Sql text. {refusal.Why}");
+                    $"{refusal.What} is refused in {api} text. {refusal.Why}");
             }
 
             foreach (SqlExecution execution in inspector.Executions)
@@ -340,8 +378,8 @@ namespace Tellma.Core.Analyzers
                 }
 
                 Report(context, TellmaDiagnostics.RawSql, LocationOf(text, execution.Fragment), execution.Name is null
-                    ? "Dynamic SQL (EXEC of a string or of a procedure variable) is refused in IDataBatch.Sql text, because its statements cannot be checked. Write the statements in the text itself."
-                    : $"EXEC {execution.Name} is refused in IDataBatch.Sql text: a statement executes only sys.sp_sequence_get_range and sys.sp_getapplock. Write the statements in the text itself.");
+                    ? $"Dynamic SQL (EXEC of a string or of a procedure variable) is refused in {api} text, because its statements cannot be checked. Write the statements in the text itself."
+                    : $"EXEC {execution.Name} is refused in {api} text: a statement executes only sys.sp_sequence_get_range and sys.sp_getapplock. Write the statements in the text itself.");
             }
         }
 
@@ -350,7 +388,8 @@ namespace Tellma.Core.Analyzers
         /// <param name="scope">The compilation's scope.</param>
         /// <param name="text">The text.</param>
         /// <param name="inspector">The parsed text.</param>
-        private static void CheckVariables(OperationAnalysisContext context, Scope scope, SqlText text, SqlInspector inspector)
+        /// <param name="reservedChecked">Whether every use of a reserved name is reported elsewhere, so a declaration or an assignment is not reported twice.</param>
+        private static void CheckVariables(OperationAnalysisContext context, Scope scope, SqlText text, SqlInspector inspector, bool reservedChecked)
         {
             // --- The names written: declarations, assignments, and table variables a statement writes ---
             IEnumerable<SqlVariableUse> uses = inspector.Variables.Concat(inspector.Targets
@@ -369,7 +408,7 @@ namespace Tellma.Core.Analyzers
                             $"The text {verb} the hole {{{Quote(hole)}}}, which the batch binds as its own parameter. Declare a variable of the statement's own and assign that instead.");
                     }
                 }
-                else if (!scope.Runtime && ReservedNames.IsReserved(use.Name))
+                else if (!scope.Runtime && !reservedChecked && ReservedNames.IsReserved(use.Name))
                 {
                     Report(context, TellmaDiagnostics.RawSql, LocationOf(text, use.Fragment),
                         $"The text {verb} {use.Name}, a name reserved for the platform's own parameters and tables (@tm_, and @qx or @tb followed by digits and _). Choose another name.");
@@ -495,6 +534,74 @@ namespace Tellma.Core.Analyzers
                     Report(context, TellmaDiagnostics.OwnedTableWrite, LocationOf(text, written.Value.Fragment),
                         $"The text writes {written.Key} ({written.Value.Statement}), the table of {entry.Entity.Name}, from a type that is not its owner. A stack-owned table is written by its own service, validators, effects and companions; enlist the write with the owning stack through IEnlists<T> instead.");
                 }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // TELLMA0003 over the context loader's read
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        ///     Reports every reserved name the loader's text names: its statement rides a validation
+        ///     batch beside the platform's own, so it neither reads nor writes their names.
+        /// </summary>
+        /// <param name="context">The operation context.</param>
+        /// <param name="text">The text.</param>
+        /// <param name="inspector">The parsed text.</param>
+        private static void CheckReservedNames(OperationAnalysisContext context, SqlText text, SqlInspector inspector)
+        {
+            HashSet<string> reported = new(StringComparer.OrdinalIgnoreCase);
+            foreach (TSqlParserToken token in inspector.Tokens)
+            {
+                // Each name once, at its first use.
+                if (token.TokenType == TSqlTokenType.Variable && ReservedNames.IsReserved(token.Text) && reported.Add(token.Text))
+                {
+                    Report(context, TellmaDiagnostics.RawSql, text.LocationOf(token.Offset, token.Text.Length),
+                        $"The text names {token.Text}, a name reserved for the platform's own parameters and tables (@tm_, and @qx or @tb followed by digits and _). {LoaderSql} text names none of them, not even to read one; pass the value as a hole instead.");
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Reports every write of the loader's text other than into a table variable it declares
+        ///     itself, and writes its options declare: a validation round never writes.
+        /// </summary>
+        /// <param name="context">The operation context.</param>
+        /// <param name="text">The text.</param>
+        /// <param name="inspector">The parsed text.</param>
+        /// <param name="options">What the options show.</param>
+        /// <param name="argument">The options argument, where a declared write is reported.</param>
+        private static void CheckLoaderWrites(OperationAnalysisContext context, SqlText text, SqlInspector inspector, SqlOptionsShape options, IOperation? argument)
+        {
+            // --- The table variables the text declares are its own scratch space; every other target is a write ---
+            HashSet<string> declared = new(
+                inspector.Variables.Where(static use => use.Declared).Select(static use => use.Name),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (SqlTarget target in inspector.Targets)
+            {
+                if (target is { Kind: TargetKind.Local, Variable: string variable } && declared.Contains(variable) && text.HoleNamed(variable) is null)
+                {
+                    continue;
+                }
+
+                string written = target switch
+                {
+                    { Kind: TargetKind.Permanent, Schema: string schema, Name: string name } => new TableKey(schema, name).ToString(),
+                    { Variable: string hole } when text.HoleNamed(hole) is SqlHole bound => $"the table of the hole {{{Quote(bound)}}}",
+                    { Variable: string other } => other,
+                    { Kind: TargetKind.Local } => "a temporary table",
+                    { Kind: TargetKind.UnknownHole } => "a table named by a hole",
+                    _ => "a target it does not reduce to one table",
+                };
+                Report(context, TellmaDiagnostics.RawSql, LocationOf(text, target.Fragment),
+                    $"{LoaderSql} reads only, but the text writes {written} ({target.Statement}). A validation round never writes; its text may fill only a table variable it declares itself. Write in the operation's persist batch instead.");
+            }
+
+            // --- Declared writes: an empty list or none at all; a set the call does not show is checked at run time ---
+            if (options.Writes == WritesShape.Listed)
+            {
+                Report(context, TellmaDiagnostics.RawSql, argument?.Syntax.GetLocation() ?? text.Location,
+                    $"{LoaderSql} reads only, but its SqlOptions declare writes ({string.Join(", ", options.Listed)}). A validation round never writes, so its options declare none.");
             }
         }
 
