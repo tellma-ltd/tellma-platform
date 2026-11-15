@@ -119,6 +119,7 @@ function everything(apple: boolean): TmGridKeyContext {
     isTree: true,
     activeIsBoolean: false,
     rowActivation: true,
+    activeIsPopup: true,
   };
 }
 
@@ -149,6 +150,7 @@ function without(
     selectable: !unmet.includes('selectable'),
     isTree: !unmet.includes('tree'),
     rowActivation: !unmet.includes('rowActivation'),
+    activeIsPopup: !unmet.includes('popup'),
   };
 }
 
@@ -391,10 +393,11 @@ describe('tmResolveGridKey (type-to-edit)', () => {
 
 describe('tmResolveGridKey (readonly grids)', () => {
   const none: Modifiers = { ctrl: false, alt: false, shift: false, meta: false };
-  const readonlyGrid = (rowActivation: boolean): TmGridKeyContext => ({
+  const readonlyGrid = (rowActivation: boolean, activeIsPopup = false): TmGridKeyContext => ({
     ...everything(false),
     editable: false,
     rowActivation,
+    activeIsPopup,
   });
 
   for (const rowActivation of [false, true]) {
@@ -421,6 +424,13 @@ describe('tmResolveGridKey (readonly grids)', () => {
     const f2 = keydown(physicalKey('F2'), none);
     expect(tmResolveGridKey(f2, readonlyGrid(true))).toEqual({ kind: 'edit', mode: 'edit' });
     expect(tmResolveGridKey(f2, readonlyGrid(false))).toBeNull();
+  });
+
+  it('opens a popup cell on F2 without row activation, typing still unhandled', () => {
+    expect(tmResolveGridKey(keydown(physicalKey('F2'), none), readonlyGrid(false, true))).toEqual(
+      { kind: 'edit', mode: 'edit' },
+    );
+    expect(tmResolveGridKey(keydown(physicalKey('A'), none), readonlyGrid(false, true))).toBeNull();
   });
 });
 
@@ -515,6 +525,7 @@ describe('tmResolveGridKey (header-only bindings)', () => {
         isTree: false,
         activeIsBoolean: false,
         rowActivation: false,
+        activeIsPopup: false,
       }),
     ).toBeNull();
   });

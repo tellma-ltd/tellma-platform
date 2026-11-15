@@ -48,6 +48,9 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <summary>The fixture database's connection string.</summary>
         public string ConnectionString => Tenant.ConnectionString;
 
+        /// <summary>The server's administrative connection string, which reads every session's lock waits.</summary>
+        public string MasterConnectionString => sql.MasterConnectionString;
+
         /// <summary>The host's id allocator, a singleton whose buffers outlive a test unless the reset drops them.</summary>
         internal IdAllocator Allocator => Tenant.Services.GetRequiredService<IdAllocator>();
 

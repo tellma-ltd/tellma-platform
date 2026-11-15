@@ -80,6 +80,37 @@ function dispatchPointerPress(target: TestElement, init: PointerEventInit): void
 }
 
 /**
+ * Harness for a popup column's open editor pane (a column with
+ * `editorPopup`). Locate it through {@link TmGridHarness.getEditorPopup};
+ * the editor inside it is the column's own control, reached with that
+ * control's harness under this pane's host.
+ */
+export class TmGridEditorPopupHarness extends ComponentHarness {
+  /** The pane's body: the element the editor renders in. */
+  static hostSelector = '[data-tm-popup]';
+
+  /** Whether the pane shows its cell read-only (F2 on a cell the user cannot edit). */
+  async isReadonly(): Promise<boolean> {
+    return (await (await this.host()).getAttribute('data-tm-readonly')) !== null;
+  }
+
+  /** Whether the pane is hidden because its cell is out of the grid's view. */
+  async isHidden(): Promise<boolean> {
+    return (await this.host()).hasClass('tm-grid__popup--hidden');
+  }
+
+  /** Whether the pane holds more than one control, which makes it a `group`. */
+  async isGroup(): Promise<boolean> {
+    return (await (await this.host()).getAttribute('role')) === 'group';
+  }
+
+  /** The pane's accessible name (the column header) while it is a group, else `null`. */
+  async getLabel(): Promise<string | null> {
+    return (await this.host()).getAttribute('aria-label');
+  }
+}
+
+/**
  * Harness for a single rendered `tm-grid` cell. Locate through
  * {@link TmGridHarness.getCell} or with {@link TmGridCellHarness.with}
  * filters; the grid virtualizes rows, so only rendered cells resolve.
@@ -486,9 +517,21 @@ export class TmGridHarness extends ComponentHarness {
     }
   }
 
-  /** Whether an editor session is open (the editing cell renders its outlet). */
+  /**
+   * Whether an editor is open (the editing cell renders its outlet): a
+   * session, or a popup column's read-only pane.
+   */
   async isEditorOpen(): Promise<boolean> {
     return (await this.locatorForOptional('[data-tm-editor]')()) !== null;
+  }
+
+  /**
+   * The open popup editor's pane, or `null` while none is open: a popup
+   * column's editor, or its read-only pane (F2 on a cell the user cannot
+   * edit).
+   */
+  async getEditorPopup(): Promise<TmGridEditorPopupHarness | null> {
+    return this.locatorForOptional(TmGridEditorPopupHarness)();
   }
 
   /**

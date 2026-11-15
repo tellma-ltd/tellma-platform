@@ -359,6 +359,45 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-094 (2026-11-15): ./grid is at its cap; PC-F26 fits by savings, and a re-split is queued
+
+- Ruling: PC-F26's forced-colors rules put ./grid at 42.05 KB against its 42.03 ceiling once merged over PC-F24 (platform-core alone measures 42.02). No raise: D-057(2) and D-067 allow none without real savings or a re-split. PC-F26 gives the overlay ink a forced-colors default on the scroller and drops the per-rule Highlight fallbacks, keeping every review-1 fix; if that does not fit it stops unpushed. Fix item PC-F44 then re-splits ./grid (or takes measured savings) to restore real headroom, and PC-F42 (more grid forced-colors CSS) waits for it.
+- Outcome: PC-F26 measured every savings variant with the gate's own measurer (gzip makes savings tiny and non-additive): the best variant that keeps behaviour is 43049 bytes against a 43038-byte ceiling, and the scroller default breaks the review-1 off-glyph fix. So PC-F26 holds until PC-F44 creates headroom and is then released again; no raise, no weaker fix. PC-F44 moves ahead of other fix items.
+- Why: ./grid has crept up by hundredths of a KB per item since D-067, so each grid change now needs a ruling. Only a re-split makes room for the grid work still to come.
+- For Ahmad: none.
+
+### D-093 (2026-11-15): tenant time zones resolve through the pinned CLDR table (PC-049)
+
+- Ruling: the tenant settings store resolves a tenant zone's Windows id through the pinned CldrTimeZones table (the one Queryex and the core.TimeZone value set use), not the host ICU's TimeZoneInfo.TryConvertIanaIdToWindowsId, and the startup time-zone check tests exactly what the store requires.
+- Why: Review 2 found a host with current tzdata but older libicu passes the startup check, then silently falls back to UTC for a tenant on a newer zone (e.g. America/Coyhaique, tzdb 2025b): wrong Today and wrong SQL AT TIME ZONE. One pinned table keeps every layer on the same answer (D-015, D-029).
+- For Ahmad: spec 0013 §5.6 names TryConvertIanaIdToWindowsId; it should name the pinned table instead.
+
+### D-092 (2026-11-15): tiles bundle ceiling and the 10,000-tile scroll requirement (PC-061)
+
+- Ruling: the `./tiles` entry point's ceiling is 10.14 KB (measure 10.04 KB) with a budgetNotes entry, not spec 0023 §1's 7 KB. Review 1 measured it feature by feature: with tree mode, skeleton and flash all removed it is still 8.89 KB, so 7 KB cannot be reached without dropping spec'd behaviour. The "." ceiling follows D-072 (9.18 KB). The §12 "10,000 tiles, no long task over 50 ms" probe measured 48 long tasks in 80 wheel steps (median 71 ms, max 164 ms): a real defect, not a flake, so it is fixed in fix 1 and never quarantined. If fix 1 cannot reach 50 ms, the probe stays @perf (nightly) and failing, and a fix item is opened.
+- Why: a quarantine tag is for flaky tests (LEDGER "Flaky"); hiding a deterministic miss of a spec requirement would let it ship. The size cap is a spec estimate the implemented behaviour cannot meet.
+- Outcome (fix 1, 98bec3b0): steps 1-4 brought over-50 ms tasks from 54-75 to 6-28 per 80 steps on a quiet host, but the target is not met; the probe is un-quarantined, @perf (nightly) and asserts 50 ms. Fix item PC-F46 takes the rest and may recycle tile views if focus, selection and a11y semantics hold. The perf fixes cost 0.18 KB, so ./tiles is 10.22 KB against a 10.32 KB ceiling.
+- For Ahmad: spec 0023 §1's 7 KB cap for ./tiles should be about 10.3 KB, unless tree mode moves behind a lazy seam (which changes the spec'd `parentId` input and is needed by 0030-g anyway).
+
+### D-091 (2026-11-15): row-set routes fingerprint only their envelope (PC-064)
+
+- Ruling: every `query` route shares one contract fingerprint per (stack, action) ContractRevision pair, because a row set describes its own columns. A stack's queryable shape is not folded into the fingerprint.
+- Why: spec 0016 §3.10 builds the fingerprint from the request and response JSON contracts plus the revisions, and QueryRequest/RowPage name no stack type. The fingerprint is no client cache key: caches revalidate by version tags (0016 §6.2, 0025), and its only consumers are the Tellma-Contract 412 check and the draft save-route stamp (0031 §11.1). A stale tab querying a renamed column gets 400 query-invalid, never a silent write; it only misses the 412 reload prompt.
+- For Ahmad: spec 0016 §3.10 could state that row-set routes fingerprint only their envelope.
+
+### D-090 (2026-11-15): tree saves under RCSI take update locks; cycle write-skew; sibling blobs on cascade (PC-042)
+
+- Ruling: Review 2 of PC-042 reproduced on RCSI that a save beneath a node that a concurrent move is re-pathing keeps a stale id path for good, and Verify cannot detect it. Correctness wins over spec 0015 §12.1's "No additional locks": the tree statements take UPDLOCK in T1 and on T2's parent read (or an equally correct lock-free fix the implementer finds), with a test that fails without it. The write-skew test CHECKPOINTS names is added. If two cycle-closing saves still meet only through a 1205 deadlock and retry, the test asserts that the cycle is caught, and code comments do not repeat the spec's claim. The implementer decides sibling blob capture on cascade by the nearest rule (0012 §8.5/§9.2, 0017) and states it under Deviations.
+- Why: a stale materialized path is silent, permanent corruption of a tree. A spec line about locking cannot outrank it, and nothing waits for Ahmad.
+- Outcome (fix 2, 9279c407): T2's anchor-parent read takes UPDLOCK, ROWLOCK, FORCESEEK; T1 takes no lock (pushed back with a reason recorded in the review file). Two cycle-closing saves either serialise or meet through a 1205 deadlock whose re-run hits the fence. A sibling holding a blob is deleted explicitly, with its blob captured (deviations 17-19).
+- For Ahmad: (1) spec 0015 §12.1 must drop "No additional locks" for the tree statements, and its claim that the guard's U-locks serialise two cycle-closing saves is inaccurate (they meet through a deadlock and retry); (2) specs 0012 §8.5/§9.2 do not say whether a cascade delete captures sibling blobs; (3) Review 1 accepted PC-042's deviations #5 (MAXRECURSION is MaxDepth − 1, correcting an off-by-one in 0012 §10.2), and #8, #9 and #12 are spec gaps or signature differences listed in that checkpoint's commit message.
+
+### D-089 (2026-11-14): ledger snapshots wait while an integration is in progress
+
+- Ruling: while an integrator is merging and gating for platform-core, the orchestrator does not push LEDGER/DECISIONS snapshots. It keeps the edits in the main checkout and pushes them right after that integration's push lands. Ahmad's rulings are still recorded at once, but their push also waits.
+- Why: PC-F29 had to merge platform-core three times, once only because of a ledger-only snapshot. Each extra merge costs the integrator a fetch, a merge and a judgement call on gates.
+- For Ahmad: none.
+
 ### D-088 (2026-11-14): the orchestrator folds Ahmad's rulings into PROCESS.md and PLAN.md
 
 - Ruling (Ahmad, 2026-11-14): the orchestrator may edit PROCESS.md and PLAN.md to fold in a ruling of Ahmad's (a D-nnn marked as his ruling). The "never edit" line in the §4.1 brief binds spawned agents, not the orchestrator. Edits are made in the main checkout only, cite the D-nnn in the changed text, and are committed with the next snapshot.
@@ -436,6 +475,7 @@ Format, one entry per ruling:
 
 - Ruling: while CI stays green, an integrator's local lint:test failure caused only by `tellma-core-tools/src/common/common.spec.ts` "starts a package manager's shim … and fails a missing program" timing out at about 5 s does not block a push, provided the file passes when run alone. PC-F29 is raised to medium and takes the next free fix slot. If the test fails in CI, it becomes a stop-the-line item as usual.
 - Why: the test spawns a real pnpm shim and exceeds its 5 s limit only when parallel slots load the machine. PC-030's change touches no tools code, and holding integrations on a known local timing flake would stall the line for nothing.
+- Update (2026-11-14): PC-F29 integrated (CI 43684370336). It split the shim test into three renamed tests with explicit timeouts and made build.fixture.spec.ts robust under load, so this waiver is no longer needed for those two tests; the flaky rows are closed. D-085 still covers the build.spec and serve.spec timeouts.
 - For Ahmad: none.
 
 ### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows

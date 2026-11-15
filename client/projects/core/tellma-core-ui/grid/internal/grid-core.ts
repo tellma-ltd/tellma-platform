@@ -84,6 +84,7 @@ import type {
   ɵTmGridEditing,
   ɵTmGridEditingHost,
   ɵTmGridEditorOpenOptions,
+  ɵTmGridEditorPopupVm,
 } from '@tellma/core-ui/grid-editing';
 
 import type { TmGridColumn } from '../tm-grid-column';
@@ -100,7 +101,7 @@ import type {
   TmGridRowEndHeaderDef,
 } from '../tm-grid-templates';
 import type { TmGridStateHandle, TmGridStateStore } from '../tm-grid-state-store';
-import type { TmGridRowActivation, TmGridSort } from '../tm-grid-types';
+import type { TmGridEditorPopup, TmGridRowActivation, TmGridSort } from '../tm-grid-types';
 import { ɵTmGridAnnouncements } from './announcements';
 import { ɵTmGridClipboardDom, ɵtmGridResolvePasteSource } from './clipboard-dom';
 import { ɵTmGridColumnResize } from './column-resize';
@@ -110,6 +111,7 @@ import {
   tmResolveEditingKey,
   tmResolveGridKey,
   tmResolveHeaderKey,
+  tmResolvePopupKey,
   type TmGridEditingCommitTarget,
   type TmGridHeaderMotion,
   type TmGridIntent,
@@ -171,6 +173,14 @@ const EDGE_SCROLL_ZONE_PX = 24;
 /** Auto-scroll speed per animation frame, in px. */
 const EDGE_SCROLL_STEP_PX = 16;
 
+/**
+ * The keys a render of pending changes runs ahead of: those that move the
+ * active cell (the arrows, PageUp, PageDown, Home and End), and Enter, which
+ * opens the active row. The grid takes Enter only under row activation; a
+ * `tmGridDriver` takes the set on its input.
+ */
+export const ɵTM_GRID_FLUSH_KEY = /^(?:Arrow|Page|Home$|End$|Enter$)/;
+
 /** Column types that carry a built-in editing path. */
 const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'text',
@@ -213,6 +223,21 @@ const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, 
 
 /** What Enter or Space on a header can reach in its template: the above, and editable text. */
 const HEADER_CONTENT_SELECTOR = `${INTERACTIVE_CONTENT_SELECTOR}, [contenteditable]:not([contenteditable="false"])`;
+
+/** A popup editor pane's least inline size when the column names none, in px. */
+const POPUP_MIN_WIDTH = 320;
+
+/** A popup editor pane's greatest block size when the column names none, in px. */
+const POPUP_MAX_HEIGHT = 360;
+
+/**
+ * Content that keeps Enter inside a popup editor's pane: an editable
+ * multi-line field inserts a line, and a button, link or choice control
+ * activates itself (editable text is matched by `isContentEditable`).
+ */
+const POPUP_ENTER_OWNERS =
+  'textarea:not([readonly]), button, a[href], select, [role="button"], [role="checkbox"], ' +
+  '[role="radio"], [role="switch"], [role="tab"], [role="option"]';
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -442,6 +467,8 @@ interface ColumnInternal<T> extends ɵTmGridColumnVm {
   readonly entityAdvancedSearch: TmEntityPickerPage | undefined;
   readonly entityCreate: TmEntityPickerPage | undefined;
   readonly entityEdit: TmEntityPickerPage | undefined;
+  /** Where the column's editor opens: a pane over the cell, or `null` for the cell box. */
+  readonly popup: ɵTmGridEditorPopupVm | null;
 }
 
 /** One rendered cell's view model. */
@@ -478,7 +505,10 @@ export interface ɵTmGridCellVm {
   readonly displayTemplate: TemplateRef<TmGridDisplayContext<unknown, unknown>> | undefined;
   /** The custom display template's context. */
   readonly displayCtx: TmGridDisplayContext<unknown, unknown> | undefined;
-  /** Whether the open editor session sits on this cell (renders the outlet). */
+  /**
+   * Whether the open editor session, or a popup column's read-only view,
+   * sits on this cell (renders the outlet).
+   */
   readonly editing: boolean;
   /** Whether the cell is in error state (invalid input or field-invalid). */
   readonly invalid: boolean;
@@ -1023,6 +1053,14 @@ export class ɵTmGridCore<T>
    */
   private deferredLabels: { readonly request: TmGridResolutionRequest; readonly text: string }[] =
     [];
+  /**
+   * The cell whose popup pane shows read-only (F2 on a popup column's cell
+   * the user cannot edit), or `null`. It has no editor session: nothing it
+   * shows commits.
+   */
+  private readonly popupViewSignal = signal<TmRowCol | null>(null);
+  /** The read-only view asked for before the editing code arrived, opened when it does. */
+  private pendingPopupView: TmRowCol | null = null;
   /** The editing cell's editor outlet, or `null` while none renders. */
   editorOutlet: ViewContainerRef | null = null;
   /** The status-bar component, set when the editing code arrives. */
@@ -2282,9 +2320,23 @@ export class ɵTmGridCore<T>
     return node !== null && node.closest('.cdk-overlay-pane') !== null;
   }
 
+  /**
+   * Whether a node sits in a popup editor's pane itself, not in an overlay
+   * nested inside it (an editor's own dropdown or calendar): the nearest
+   * overlay surface around it is the pane's body.
+   */
+  private inPopupPane(node: Element): boolean {
+    return node.closest('.cdk-overlay-pane, [data-tm-popup]')?.hasAttribute('data-tm-popup') === true;
+  }
+
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
   onKeydown(event: KeyboardEvent): void {
     if (event.target instanceof Element && this.inOverlay(event.target)) {
+      // A popup editor's pane is an overlay that keeps the editing keys
+      // (spec 0010 §C.15); every other surface owns its own keys.
+      if (this.inPopupPane(event.target)) {
+        this.onPopupKeydown(event);
+      }
       return;
     }
     // A Tab either moves within the grid, which requests focus anew, or
@@ -2333,19 +2385,26 @@ export class ɵTmGridCore<T>
       this.onEditingKeydown(event, session);
       return;
     }
+    this.onBodyKeydown(event);
+  }
+
+  /** A keydown on the rows with no editor open: resolve to an intent, execute, consume. */
+  private onBodyKeydown(event: KeyboardEvent): void {
+    const engine = this.engine;
     const active = untracked(() => engine.nav.activeCell());
-    const activeIsBoolean =
-      active !== null &&
-      !untracked(this.rowEndActive) &&
-      untracked(this.columnsInternal)[active.col]?.type === 'boolean';
+    const activeColumn =
+      active === null || untracked(this.rowEndActive)
+        ? undefined
+        : untracked(this.columnsInternal)[active.col];
     const intent = tmResolveGridKey(event, {
       apple: tmIsApplePlatform(),
       editable: untracked(this.editable),
       searchable: untracked(this.deps.searchable),
       selectable: untracked(this.checkboxColumn),
       isTree: engine.model.isTree,
-      activeIsBoolean,
+      activeIsBoolean: activeColumn?.type === 'boolean',
       rowActivation: untracked(this.rowMode),
+      activeIsPopup: (activeColumn?.popup ?? null) !== null,
     });
     // After Esc parked focus on the container, Tab/Shift+Tab must leave the
     // grid natively — the engineered mid-grid exit. On an editable grid the
@@ -2777,17 +2836,185 @@ export class ɵTmGridCore<T>
         event.preventDefault();
         return;
       case 'openDropdown':
-        if (editing === null) {
-          // The draft's editor opens showing its choices when it mounts.
-          this.draftOpts = { ...this.draftOpts, dropdown: true };
-          event.preventDefault();
-        } else if (editing.openDropdown()) {
-          event.preventDefault();
-        }
+        this.openEditorDropdown(event);
         return;
       case 'commitMove':
         this.commitAndMove(resolved.target, event);
         return;
+    }
+  }
+
+  /**
+   * Alt+ArrowDown in an open editor: opens its dropdown, consuming the key
+   * when it has one. The draft's editor opens showing its choices when it
+   * mounts.
+   */
+  private openEditorDropdown(event: KeyboardEvent): void {
+    const editing = this.editing;
+    if (editing === null) {
+      this.draftOpts = { ...this.draftOpts, dropdown: true };
+      event.preventDefault();
+    } else if (editing.openDropdown()) {
+      event.preventDefault();
+    }
+  }
+
+  // ---- popup editors (spec 0010 §C.15) ----
+
+  /**
+   * A keydown inside a popup editor's pane. The pane's editor is always in
+   * edit mode, so the arrows stay inside it: Escape cancels, Mod+Enter
+   * commits and keeps the cell, Enter commits and moves unless the editor
+   * keeps it, and Tab commits and moves only from the pane's first or last
+   * control, moving natively among the others. A read-only view closes
+   * instead of committing, and its Enter and Tab then act on the cell as a
+   * readonly cell's do. A key the editor consumed stays its own, and any
+   * keystroke on a scrolled-away cell scrolls it back first.
+   */
+  private onPopupKeydown(event: KeyboardEvent): void {
+    const viewing = untracked(this.popupViewSignal) !== null;
+    if (!viewing && untracked(() => this.engine.edit.session()) === null) {
+      return;
+    }
+    this.revealActiveCell();
+    const editing = this.editing;
+    if (editing === null && !viewing) {
+      // A key in the draft is a gesture: a load that failed asks again.
+      this.loadEditing();
+    }
+    // The IME-composition sentinel, read as in `onKeydown`.
+    const imeKeyCode = (event as { readonly keyCode: number }).keyCode;
+    if (event.defaultPrevented || event.isComposing || imeKeyCode === 229) {
+      return;
+    }
+    if (untracked(this.deps.searchable) && tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
+      event.preventDefault();
+      if (viewing) {
+        this.closePopupView({ refocus: false });
+      } else {
+        this.commitEditor({ refocus: false });
+      }
+      this.openFind();
+      return;
+    }
+    const resolved = tmResolvePopupKey(event, {
+      apple: tmIsApplePlatform(),
+      isDropdownOpen: !viewing && (editing?.isDropdownOpen() ?? false),
+    });
+    if (resolved === null) {
+      return;
+    }
+    const target = event.target as Element;
+    switch (resolved.kind) {
+      case 'cancel':
+        event.preventDefault();
+        if (viewing) {
+          this.closePopupView({ refocus: true });
+        } else {
+          this.cancelEditor({ refocus: true });
+        }
+        return;
+      case 'openDropdown':
+        if (!viewing) {
+          this.openEditorDropdown(event);
+        }
+        return;
+      case 'enter':
+        if ((target instanceof HTMLElement && target.isContentEditable) || target.closest(POPUP_ENTER_OWNERS) !== null) {
+          return; // a line break, or the control's own activation
+        }
+        break;
+      case 'tab':
+        if (!this.atPopupEdge(target, resolved.backward)) {
+          return; // the browser moves focus to the pane's next control
+        }
+        break;
+      case 'commit':
+        break;
+    }
+    if (viewing) {
+      // Nothing commits: the view closes, and the key acts on the cell.
+      this.closePopupView({ refocus: true });
+      this.onBodyKeydown(event);
+    } else if (resolved.kind === 'commit') {
+      event.preventDefault();
+      this.commitEditor({ refocus: true });
+    } else if (resolved.kind === 'tab') {
+      this.commitAndMove(resolved.backward ? 'tabPrev' : 'tabNext', event);
+    } else {
+      this.commitAndMove(resolved.backward ? 'enterRunBack' : 'enterRun', event);
+    }
+  }
+
+  /**
+   * Whether a Tab from `target` leaves its popup pane: from the pane's last
+   * control forward, from its first one backward, or from anything that is
+   * not one of its tab stops. A control inside an overlay nested in the
+   * pane is not one of its stops.
+   */
+  private atPopupEdge(target: Element, backward: boolean): boolean {
+    const pane = target.closest('[data-tm-popup]');
+    if (pane === null) {
+      return true;
+    }
+    const stops = [...pane.querySelectorAll<HTMLElement>(HEADER_CONTENT_SELECTOR)].filter(
+      (element) =>
+        element.tabIndex >= 0 &&
+        !element.matches(':disabled') &&
+        element.closest('[inert]') === null &&
+        element.getClientRects().length > 0 &&
+        this.inPopupPane(element),
+    );
+    const index = stops.findIndex((stop) => stop.contains(target));
+    return index === -1 || index === (backward ? 0 : stops.length - 1);
+  }
+
+  /**
+   * Whether F2 on a cell opens its popup pane read-only: a popup column's
+   * cell that the user cannot edit — the grid or the row is readonly, or
+   * the grid opens rows.
+   */
+  private opensPopupView(cell: TmRowCol): boolean {
+    const engine = this.engine;
+    return (
+      (untracked(this.columnsInternal)[cell.col]?.popup ?? null) !== null &&
+      !(untracked(this.editable) && untracked(() => engine.model.isCellEditable(cell)))
+    );
+  }
+
+  /**
+   * Opens a popup column's pane over a cell, read-only: no session opens,
+   * and the editor's control shows the cell with its `readonly` set. Before
+   * the editing code arrives the view waits for it (see `installEditing`).
+   * Returns whether the view opened or is on its way.
+   */
+  private openPopupView(cell: TmRowCol): boolean {
+    const editing = this.editing;
+    if (editing === null) {
+      this.pendingPopupView = cell;
+      this.loadEditing();
+      return true;
+    }
+    this.closePopupView({ refocus: false });
+    this.popupViewSignal.set(cell);
+    if (!editing.view(cell)) {
+      this.popupViewSignal.set(null);
+      return false;
+    }
+    return true;
+  }
+
+  /** Closes the read-only view, and the one still waiting for the editing code. */
+  private closePopupView(opts: { refocus: boolean }): void {
+    this.pendingPopupView = null;
+    if (untracked(this.popupViewSignal) === null) {
+      return;
+    }
+    this.popupViewSignal.set(null);
+    if (this.editing !== null) {
+      this.editing.closeView(opts);
+    } else if (opts.refocus) {
+      this.requestFocusActive();
     }
   }
 
@@ -2894,10 +3121,12 @@ export class ɵTmGridCore<T>
       // through the shared handler. Range selection rides the handles.
       return;
     }
-    if (untracked(() => this.engine.edit.session()) !== null) {
+    const sessionOpen = untracked(() => this.engine.edit.session()) !== null;
+    if (sessionOpen || untracked(this.popupViewSignal) !== null) {
       // A press on the scroller's own scrollbar gutter keeps the editor open
       // (dragging the scrollbar is not a click-away commit); every other
-      // press commits first, then activation follows the press.
+      // press commits first, or closes a read-only popup view, then
+      // activation follows the press.
       const scroller = untracked(this.scrollerSignal);
       const onScrollbar =
         scroller !== null &&
@@ -2906,8 +3135,10 @@ export class ɵTmGridCore<T>
           ? event.offsetX < scroller.offsetWidth - scroller.clientWidth
           : event.offsetX >= scroller.clientWidth) ||
           event.offsetY >= scroller.clientHeight);
-      if (!onScrollbar) {
+      if (!onScrollbar && sessionOpen) {
         this.commitEditor({ refocus: false });
+      } else if (!onScrollbar) {
+        this.closePopupView({ refocus: false });
       }
     }
     // The pointer's Mod (add a range, add rows or columns): ⌘ on Apple
@@ -3155,6 +3386,7 @@ export class ɵTmGridCore<T>
         // Tapping another cell commits the open editor first (§8.4).
         this.commitEditor({ refocus: false });
       }
+      this.closePopupView({ refocus: false });
       this.escapedSignal.set(false);
       this.engine.clickCell(cell);
       this.rowEndFocusSignal.set(this.isRowEndCell(cellElement));
@@ -3391,7 +3623,8 @@ export class ɵTmGridCore<T>
    */
   onFocusOut(event: FocusEvent): void {
     const engine = this.engineInstance;
-    if (engine === null || untracked(() => engine.edit.session()) === null) {
+    const viewing = untracked(this.popupViewSignal) !== null;
+    if (engine === null || (!viewing && untracked(() => engine.edit.session()) === null)) {
       return;
     }
     const next = event.relatedTarget;
@@ -3402,7 +3635,12 @@ export class ɵTmGridCore<T>
     } else if (this.focusDroppedByRerender()) {
       return; // the editor's own overlay re-rendered under the pointer
     }
-    this.commitEditor({ refocus: false });
+    // A read-only popup view closes, committing nothing (spec 0010 §C.15).
+    if (viewing) {
+      this.closePopupView({ refocus: false });
+    } else {
+      this.commitEditor({ refocus: false });
+    }
   }
 
   /**
@@ -3689,6 +3927,7 @@ export class ɵTmGridCore<T>
     const resolveLabels = dir.resolvePastedLabels();
     const displayDef = dir.displayDef();
     const editorDef = dir.editorDef();
+    const editorPopup: TmGridEditorPopup | null = dir.editorPopup();
 
     const getValue: (row: T) => unknown =
       key !== null
@@ -3930,6 +4169,14 @@ export class ɵTmGridCore<T>
       entityAdvancedSearch,
       entityCreate,
       entityEdit,
+      popup:
+        editorPopup === null
+          ? null
+          : {
+              minWidth: editorPopup.minWidth ?? POPUP_MIN_WIDTH,
+              maxHeight: editorPopup.maxHeight ?? POPUP_MAX_HEIGHT,
+              header: dir.header,
+            },
     };
   }
 
@@ -4027,6 +4274,7 @@ export class ɵTmGridCore<T>
     const activeFind = this.findOpenSignal() ? this.activeFindMatchSignal() : null;
 
     const session = editable ? engine.edit.session() : null;
+    const popupView = this.popupViewSignal();
     // Row mode tints the active row; `rowClass` styles every rendered row.
     const activeRow = this.rowMode() && active !== null ? active.row : -1;
     const rowClassOf = this.deps.rowClass();
@@ -4160,7 +4408,10 @@ export class ɵTmGridCore<T>
           displayTemplate,
           displayCtx,
           editing:
-            session !== null && session.cell.row === viewIndex && session.cell.col === column.index,
+            (session !== null &&
+              session.cell.row === viewIndex &&
+              session.cell.col === column.index) ||
+            (popupView !== null && popupView.row === viewIndex && popupView.col === column.index),
           invalid,
           // The placeholder row included: its cells in readonly COLUMNS are
           // just as uneditable before materialization as after, and styling
@@ -4284,6 +4535,17 @@ export class ɵTmGridCore<T>
         return true;
       }
       case 'edit': {
+        const active = untracked(() => engine.nav.activeCell());
+        // F2 on a popup column's cell the user cannot edit opens its pane
+        // read-only (spec 0010 §C.15), in a row-activation grid too.
+        if (
+          active !== null &&
+          intent.seed === undefined &&
+          intent.dropdown !== true &&
+          this.opensPopupView(active)
+        ) {
+          return this.openPopupView(active);
+        }
         if (untracked(this.rowMode)) {
           // F2 in a row-activation grid actuates the cell's first link or
           // button (Enter opens the row there instead).
@@ -4291,7 +4553,6 @@ export class ɵTmGridCore<T>
         }
         // F2 / Alt+ArrowDown / type-to-edit. A readonly cell is a NO-OP,
         // not a swallow — the key may still mean something to the browser.
-        const active = untracked(() => engine.nav.activeCell());
         return (
           active !== null &&
           this.openEditor(active, intent.mode, intent.seed, { dropdown: intent.dropdown === true })
@@ -4897,6 +5158,20 @@ export class ɵTmGridCore<T>
       this.editing = editing;
     }
     this.drainDeferredLabels();
+    // A read-only popup view asked for meanwhile opens now, while its cell
+    // is still the active one and the grid still has focus.
+    const view = this.pendingPopupView;
+    this.pendingPopupView = null;
+    const active = untracked(() => this.engine.nav.activeCell());
+    if (
+      view !== null &&
+      active !== null &&
+      active.row === view.row &&
+      active.col === view.col &&
+      untracked(this.scrollerSignal)?.contains(document.activeElement) === true
+    ) {
+      this.openPopupView(view);
+    }
   }
 
   /** Resolves the entity commits made before the editing code arrived (see `commitDraft`). */
@@ -4984,10 +5259,15 @@ export class ɵTmGridCore<T>
    */
   private openEditor(
     cell: TmRowCol,
-    mode: 'edit' | 'enter',
+    requestedMode: 'edit' | 'enter',
     seedText?: string,
     opts?: ɵTmGridEditorOpenOptions,
   ): boolean {
+    this.closePopupView({ refocus: false });
+    // A popup column's editor always opens in edit mode, a typed seed
+    // included, so the arrows move inside it (spec 0010 §C.15).
+    const mode =
+      (untracked(this.columnsInternal)[cell.col]?.popup ?? null) === null ? requestedMode : 'edit';
     if (this.editing !== null) {
       return this.editing.open(cell, mode, seedText, opts);
     }
@@ -5860,12 +6140,29 @@ export class ɵTmGridCore<T>
     );
 
     // The editing code preloads once the grid is editable, when the browser
-    // is next idle, ahead of the first keystroke; a readonly grid never asks
-    // for it.
+    // is next idle, ahead of the first keystroke; a readonly grid asks for
+    // it only when a popup column can open its read-only pane (spec 0010
+    // §C.15), so F2 finds the code in place.
     effect(
       () => {
-        if (this.editable()) {
+        if (this.editable() || this.columnsInternal().some((column) => column.popup !== null)) {
           untracked(() => this.preloadEditing());
+        }
+      },
+      { injector },
+    );
+
+    // A read-only popup view belongs to its cell: the active cell moving
+    // anywhere else (a programmatic move included) closes it.
+    effect(
+      () => {
+        const view = this.popupViewSignal();
+        const active = this.engine.nav.activeCell();
+        if (
+          view !== null &&
+          (active === null || active.row !== view.row || active.col !== view.col)
+        ) {
+          untracked(() => this.closePopupView({ refocus: false }));
         }
       },
       { injector },
@@ -5882,6 +6179,11 @@ export class ɵTmGridCore<T>
       () => {
         const editable = this.editable();
         untracked(() => {
+          // A read-only popup view opened for the old mode, whose cell may
+          // edit in the new one, closes on either flip.
+          if (lastEditable !== undefined && lastEditable !== editable) {
+            this.closePopupView({ refocus: true });
+          }
           if (lastEditable === true && !editable) {
             const engine = this.engine;
             const scroller = untracked(this.scrollerSignal);
@@ -5934,13 +6236,17 @@ export class ɵTmGridCore<T>
         const active = this.engine.nav.activeCell();
         const editable = this.editable();
         const session = this.engine.edit.session();
+        const popupView = this.popupViewSignal();
         const rowEndActive = this.rowEndActive();
         this.fieldErrorCells();
         untracked(() => {
           let element: Element | null = null;
+          // A popup pane, open or read-only, shows its editor's own
+          // diagnostics: the cell's popover stays closed (spec 0010 §C.15).
           if (
             editable &&
             session === null &&
+            popupView === null &&
             active !== null &&
             !rowEndActive &&
             this.isCellInError(active)
@@ -5991,7 +6297,7 @@ export class ɵTmGridCore<T>
       { injector },
     );
 
-    // Viewport tracking on the scroller.
+    // Viewport tracking on the scroller, and the render ahead of its keys.
     effect(
       (onCleanup) => {
         const scroller = this.scrollerSignal();
@@ -6001,6 +6307,40 @@ export class ɵTmGridCore<T>
         untracked(() => this.viewportHeight.set(scroller.clientHeight));
         const observer = new ResizeObserver(() => this.viewportHeight.set(scroller.clientHeight));
         observer.observe(scroller);
+        // Render the page's pending changes before a navigation key, and
+        // before Enter where it opens the row (row activation is always
+        // readonly): a consumer write to `activeRowId` reaches the grid only
+        // through a render, where its input binding updates, and keys queued
+        // behind a busy page arrive before that render (spec 0010 §C.2).
+        // Without it, the key would act on the stale active cell, and the
+        // render would then move the cell to the written row, discarding the
+        // move. A key that edits, clears, pastes or restructures rows keeps
+        // acting on the cell the user sees; an open editor owns its keys, and
+        // so does an overlay in place in the grid (a read-only popup view's
+        // pane, which a render moving the active cell would close).
+        // DOM handlers run outside a tick in zoneless Angular, so the call is
+        // re-entrancy-safe. It runs in a capture-phase native listener, ahead
+        // of the template's `(keydown)`, because Angular's listener wrapper
+        // marks the view dirty before its handler runs: a tick from there
+        // would always refresh the whole grid view. From here, a production
+        // tick with nothing pending does no work (dev mode still runs its
+        // no-changes check). A DOM listener runs outside any reactive
+        // context, so its signal reads track nothing.
+        // The listener lives on the scroller itself, so it goes with it.
+        scroller.addEventListener(
+          'keydown',
+          (event) => {
+            if (
+              ɵTM_GRID_FLUSH_KEY.test(event.key) &&
+              (event.key !== 'Enter' || this.rowMode()) &&
+              !this.engine.edit.session() &&
+              !this.inOverlay(event.target as Element)
+            ) {
+              this.appRef.tick();
+            }
+          },
+          true,
+        );
         onCleanup(() => observer.disconnect());
       },
       { injector },
