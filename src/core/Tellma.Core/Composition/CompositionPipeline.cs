@@ -14,6 +14,7 @@ using Tellma.Core.Access;
 using Tellma.Core.Caching;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
+using Tellma.Core.Crud;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Identity;
@@ -115,7 +116,7 @@ namespace Tellma.Core.Composition
 
             IReadOnlyList<ComposedFeature> ordered = OrderFeatures();
             LanguageDeclaration languages = _builder.LanguageDeclaration;
-            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves, languages);
+            _record.Settle([.. ordered.Select(static feature => feature.Instance)], _builder.Leaves, languages, TransitiveDependencies());
 
             // --- What the distribution declared about languages, which the language catalogue reads ---
             services.AddSingleton(languages);
@@ -176,9 +177,10 @@ namespace Tellma.Core.Composition
             // --- The provisioning step runner, which the migrator drives (spec 0011 §6.2) ---
             services.TryAddSingleton<ProvisioningStepRunner>();
 
-            // --- Server-built links (spec 0011 §5.10) ---
-            // TryAdd for the stack routes: the stack registry's composition replaces the empty source.
-            services.TryAddSingleton<IStackRouteSource, NoStackRoutes>();
+            // --- Stacks: the registry, its route source, the services and components it closes, its securables (spec 0015 §2) ---
+            CrudComposition.Register(services, _record);
+
+            // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();
 
             // --- The realised gate, first among the hosted services ---
@@ -469,6 +471,48 @@ namespace Tellma.Core.Composition
         /// <returns>The features in realisation order.</returns>
         private List<ComposedFeature> OrderFeatures()
         {
+            IReadOnlyList<ComposedFeature> features = _features.Features;
+            return [.. new FeatureGraph(DirectDependencies()).Order().Select(index => features[index])];
+        }
+
+        /// <summary>
+        ///     Whether a feature depends on another, transitively, through what it requires and nests;
+        ///     every feature but <c>core</c> depends on <c>core</c>.
+        /// </summary>
+        /// <returns>The predicate, over the feature instances.</returns>
+        private Func<ITellmaFeature, ITellmaFeature, bool> TransitiveDependencies()
+        {
+            IReadOnlyList<ComposedFeature> features = _features.Features;
+            List<IReadOnlyList<int>> direct = DirectDependencies();
+
+            // One walk per feature; the graph gate refused cycles, so each ends.
+            Dictionary<ITellmaFeature, HashSet<ITellmaFeature>> reaches = new(ReferenceEqualityComparer.Instance);
+            foreach (ComposedFeature feature in features)
+            {
+                HashSet<int> reached = [];
+                Queue<int> queue = new(direct[feature.Index]);
+                while (queue.Count > 0)
+                {
+                    int next = queue.Dequeue();
+                    if (reached.Add(next))
+                    {
+                        foreach (int further in direct[next])
+                        {
+                            queue.Enqueue(further);
+                        }
+                    }
+                }
+
+                reaches[feature.Instance] = new HashSet<ITellmaFeature>(reached.Select(index => features[index].Instance), ReferenceEqualityComparer.Instance);
+            }
+
+            return (dependent, dependency) => reaches.TryGetValue(dependent, out HashSet<ITellmaFeature>? reached) && reached.Contains(dependency);
+        }
+
+        /// <summary>Each feature's direct dependencies, by index: what it requires and nests, and <c>core</c>.</summary>
+        /// <returns>The dependencies of each feature.</returns>
+        private List<IReadOnlyList<int>> DirectDependencies()
+        {
             // The graph gate passed, so every name resolves, names are unique and there is no cycle.
             IReadOnlyList<ComposedFeature> features = _features.Features;
             var byName = features.ToDictionary(static feature => feature.Name!, static feature => feature.Index, StringComparer.Ordinal);
@@ -484,7 +528,7 @@ namespace Tellma.Core.Composition
                 dependencies.Add([.. edges.Distinct()]);
             }
 
-            return [.. new FeatureGraph(dependencies).Order().Select(index => features[index])];
+            return dependencies;
         }
 
         /// <summary>Registers the platform's built-in startup checks.</summary>
@@ -506,6 +550,7 @@ namespace Tellma.Core.Composition
                 new EntityMetadataCheck(),
                 new VersionTagsCheck(),
                 new LanguagesCheck(_record, LanguagesCheck.HasCoreSatellite),
+                new StringPackCheck(),
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),
                 new NotificationTypesCheck(_record),

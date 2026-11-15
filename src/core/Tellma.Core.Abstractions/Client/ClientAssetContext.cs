@@ -6,18 +6,20 @@
 using System.Buffers;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Abstractions.Client
 {
     /// <summary>
     ///     What an <see cref="IClientAssetContributor" /> writes into: named sections of the client
-    ///     metadata chunks, and generated source files for the distribution's client project. The emit
-    ///     creates one context, runs every contributor against it, then writes the chunks and files.
+    ///     metadata chunks, the string packs, and generated source files for the distribution's client
+    ///     project. The emit creates one context, runs every contributor against it, then writes the
+    ///     chunks, packs and files.
     /// </summary>
     /// <remarks>
-    ///     Each section is written by exactly one contributor, and each file by exactly one: a second
-    ///     write of the same section or path throws, because two owners of one fact would make the
-    ///     emitted metadata depend on contributor order.
+    ///     Each section is written by exactly one contributor, and each pack and file by exactly one:
+    ///     a second write of the same section, language or path throws, because two owners of one
+    ///     fact would make the emitted metadata depend on contributor order.
     /// </remarks>
     /// <param name="services">The realised composition's services.</param>
     public sealed class ClientAssetContext(IServiceProvider services)
@@ -34,6 +36,7 @@ namespace Tellma.Core.Abstractions.Client
 
         private readonly List<ClientMetadataSection> _sections = [];
         private readonly List<ClientGeneratedFile> _files = [];
+        private readonly List<StringPack> _stringPacks = [];
 
         /// <summary>
         ///     The realised composition's services. Contributors read registries and options from
@@ -46,6 +49,9 @@ namespace Tellma.Core.Abstractions.Client
 
         /// <summary>The files written so far, in the order they were written.</summary>
         public IReadOnlyList<ClientGeneratedFile> Files => _files;
+
+        /// <summary>The string packs written so far, in the order they were written.</summary>
+        public IReadOnlyList<StringPack> StringPacks => _stringPacks;
 
         /// <summary>
         ///     Writes one member of a metadata chunk. <paramref name="write" /> runs at once and must
@@ -130,6 +136,66 @@ namespace Tellma.Core.Abstractions.Client
             }
 
             _files.Add(new ClientGeneratedFile(relativePath, content));
+        }
+
+        /// <summary>
+        ///     Writes one language's string pack, which the emit names after the language and the hash
+        ///     of its bytes, beside the chunks.
+        /// </summary>
+        /// <param name="pack">The pack: a language code of ASCII letters and digits in hyphen-separated subtags, and a flat JSON object of strings.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="pack" /> is null.</exception>
+        /// <exception cref="ArgumentException">The pack's language is not a plain code, or its JSON is not a flat object of strings.</exception>
+        /// <exception cref="InvalidOperationException">A pack of the language was already written.</exception>
+        public void StringPack(StringPack pack)
+        {
+            // --- Argument validation: the language names a file, the JSON is a flat table ---
+            ArgumentNullException.ThrowIfNull(pack);
+            if (!IsLanguageCode(pack.Language))
+            {
+                throw new ArgumentException(
+                    $"A string pack's language is ASCII letters and digits in hyphen-separated subtags, such as 'ar'; received '{pack.Language}'.",
+                    nameof(pack));
+            }
+
+            if (!IsFlatStringTable(pack.Json))
+            {
+                throw new ArgumentException($"The '{pack.Language}' string pack must be one JSON object whose every member is a string.", nameof(pack));
+            }
+
+            // Compared without case: the file names of two codes that differ only in case collide on
+            // Windows and macOS.
+            if (_stringPacks.Any(written => string.Equals(written.Language, pack.Language, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException($"The '{pack.Language}' string pack was already written.");
+            }
+
+            _stringPacks.Add(pack);
+        }
+
+        /// <summary>Whether a language code is ASCII letters and digits in non-empty, hyphen-separated subtags.</summary>
+        /// <param name="code">The candidate code.</param>
+        /// <returns>True for a plain code.</returns>
+        private static bool IsLanguageCode(string? code)
+        {
+            return !string.IsNullOrEmpty(code)
+                && code.Split('-').All(static subtag => subtag.Length > 0 && subtag.All(static c => char.IsAsciiLetterOrDigit(c)));
+        }
+
+        /// <summary>Whether JSON is one object whose every member is a string.</summary>
+        /// <param name="json">The UTF-8 JSON.</param>
+        /// <returns>True for a flat table of strings.</returns>
+        private static bool IsFlatStringTable(ReadOnlyMemory<byte> json)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                return document.RootElement.ValueKind == JsonValueKind.Object
+                    && document.RootElement.EnumerateObject().All(static member => member.Value.ValueKind == JsonValueKind.String);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
         }
 
         /// <summary>Whether a section name starts with a lowercase letter and holds only ASCII letters and digits.</summary>

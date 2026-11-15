@@ -32,13 +32,15 @@ import { TmOption, TmSelect } from '@tellma/core-ui/select';
 @Component({
   selector: 'tm-grid-text-editor',
   imports: [TmInput],
-  template: `<input tmInput class="tm-grid__editor-input" [attr.aria-label]="label()" />`,
+  template: `<input tmInput class="tm-grid__editor-input" [attr.aria-label]="label()" [readonly]="readonly()" />`,
   styleUrl: './editors.css',
   host: { class: 'tm-grid-text-editor' },
 })
 export class ɵTmGridTextEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Whether the editor shows its cell without editing it (a popup's read-only pane). */
+  readonly readonly = input(false);
 }
 
 /**
@@ -51,13 +53,15 @@ export class ɵTmGridTextEditor {
 @Component({
   selector: 'tm-grid-number-editor',
   imports: [TmNumber],
-  template: `<input tmNumber class="tm-grid__editor-input" [attr.aria-label]="label()" />`,
+  template: `<input tmNumber class="tm-grid__editor-input" [attr.aria-label]="label()" [readonly]="readonly()" />`,
   styleUrl: './editors.css',
   host: { class: 'tm-grid-number-editor' },
 })
 export class ɵTmGridNumberEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Whether the editor shows its cell without editing it (a popup's read-only pane). */
+  readonly readonly = input(false);
 }
 
 /**
@@ -73,7 +77,7 @@ export class ɵTmGridNumberEditor {
 @Component({
   selector: 'tm-grid-date-editor',
   imports: [TmDatePicker],
-  template: `<tm-date-picker [aria-label]="label()" (picked)="activated.emit()" />`,
+  template: `<tm-date-picker [aria-label]="label()" [readonly]="readonly()" (picked)="activated.emit()" />`,
   styleUrl: './editors-date.css',
   // Encapsulation OFF: the picker's inner input carries the picker's own
   // scope attribute, which a scoped stylesheet here could never match.
@@ -83,6 +87,8 @@ export class ɵTmGridNumberEditor {
 export class ɵTmGridDateEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Whether the editor shows its cell without editing it (a popup's read-only pane). */
+  readonly readonly = input(false);
   /** Emits when the user picks a date in the calendar popup (not by typing). */
   readonly activated = output<void>();
 
@@ -114,6 +120,7 @@ export class ɵTmGridDateEditor {
   template: `
     <tm-entity-picker
       [aria-label]="label()"
+      [readonly]="readonly()"
       [search]="search()"
       [itemId]="itemId()"
       [itemLabel]="itemLabel()"
@@ -135,6 +142,8 @@ export class ɵTmGridDateEditor {
 export class ɵTmGridEntityEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Whether the editor shows its cell without editing it (a popup's read-only pane). */
+  readonly readonly = input(false);
   /** The column's search facility. */
   readonly search = input.required<TmEntitySearchFn<unknown>>();
   /** Maps a search result to its id. */
@@ -198,6 +207,7 @@ export class ɵTmGridEntityEditor {
   template: `
     <tm-select
       [aria-label]="label()"
+      [readonly]="readonly()"
       (selectionChange)="activated.emit()"
       (opened)="panelOpen.set(true)"
       (closed)="panelOpen.set(false)"
@@ -213,6 +223,8 @@ export class ɵTmGridEntityEditor {
 export class ɵTmGridEnumEditor {
   /** The accessible name (the column's header text). */
   readonly label = input('');
+  /** Whether the editor shows its cell without editing it (a popup's read-only pane). */
+  readonly readonly = input(false);
   /** The column's options, in display order. */
   readonly options = input<readonly unknown[]>([]);
   /** Maps an option to its display label (`String(option)` otherwise). */

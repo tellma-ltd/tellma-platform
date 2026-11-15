@@ -24,6 +24,7 @@ import {
   TmGridHeaderDef,
   TmGridHeaderEndDef,
 } from './tm-grid-templates';
+import type { TmGridEditorPopup } from './tm-grid-types';
 
 let nextColumnId = 0;
 
@@ -195,6 +196,14 @@ export class TmGridColumn<T = unknown, V = unknown> {
    * which names the column in the sort.
    */
   readonly sortable = input(false, { transform: booleanAttribute });
+  /**
+   * Opens the column's editor in a pane over its cell instead of inside the
+   * cell box, for an editor taller than a row (a multi-line expression, a
+   * small sub-form). The pane spills past the grid's edge, every row keeps
+   * its height, and the editor always opens in edit mode, so the arrows
+   * stay inside it. `null` (the default) mounts the editor in the cell.
+   */
+  readonly editorPopup = input<TmGridEditorPopup | null>(null);
 
   /** Custom static display template. */
   readonly displayDef = contentChild(TmGridDisplayDef<T, V>);

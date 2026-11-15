@@ -109,6 +109,8 @@ lint fixtures under `src/eslint/fixtures/` are miniature packages on disk. `fixt
 minimal distribution client (`fixtures/app/`) and the data of a stand-in Migrator
 (`fixtures/migrator/`): the command specs copy the app to `fixtures/run-<name>/` (gitignored),
 answer the emit's `dotnet run` from that data, and `src/commands/build.fixture.spec.ts` runs one
-real `ng build` of it, through every later step and the output checks. The platform's own client
+real `ng build` of it, through every later step and the output checks. `lint:test` runs that spec
+in a group of its own after every other spec file, so the build and the other specs' real
+processes never compete for the machine. The platform's own client
 workspace dogfoods every preset: its ESLint and stylelint configs register this package's rules,
 and its `tsconfig.json` extends the TypeScript preset.

@@ -66,7 +66,10 @@ namespace Tellma.Core.Access
         {
             (string resourceKey, string? resourceFallback) = ResourceLabel(securable.Resource);
             (string actionKey, string? actionFallback) = Resolve(
-                [$"{KeyPrefix(securable.Resource)}_Action_{securable.Action}", $"Action_{securable.Action}"],
+                [
+                    StringKeyConventions.KeyPrefix(securable.Resource) + StringKeyConventions.ActionInfix + StringKeyConventions.ActionSegment(securable.Action),
+                    StringKeyConventions.ActionPrefix + StringKeyConventions.ActionSegment(securable.Action),
+                ],
                 NameHumanizer.Humanize(securable.Action));
             (string featureKey, string? featureFallback) = Resolve([$"Feature_{securable.Feature.Replace('.', '_')}"], NameHumanizer.Humanize(securable.Feature));
 
@@ -86,29 +89,24 @@ namespace Tellma.Core.Access
         }
 
         /// <summary>
-        ///     The prefix every key of a resource starts with: the resource with its schema, its first
-        ///     segment, capitalized and its dots written <c>_</c> (<c>gl.Center</c> is <c>Gl_Center</c>).
+        ///     The key chain of a resource's label, by the kind of resource, and its fallback. The
+        ///     conventional key list derives a resource's keys from the same chain, so the audit
+        ///     accepts exactly the keys this section looks up.
         /// </summary>
         /// <param name="resource">The resource.</param>
-        /// <returns>The prefix.</returns>
-        internal static string KeyPrefix(string resource)
+        /// <param name="metadata">The model's entity metadata, which says which resources are entities.</param>
+        /// <returns>The keys, most specific first, and the label when no key is declared.</returns>
+        internal static (string[] Chain, string Fallback) ResourceLabelChain(string resource, IEntityMetadataProvider metadata)
         {
             ArgumentNullException.ThrowIfNull(resource);
-            string underscored = resource.Replace('.', '_');
-            return underscored.Length == 0 ? underscored : char.ToUpperInvariant(underscored[0]) + underscored[1..];
-        }
+            ArgumentNullException.ThrowIfNull(metadata);
 
-        /// <summary>The key of a resource's label, by the chain its kind takes, and its fallback.</summary>
-        /// <param name="resource">The resource.</param>
-        /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
-        private (string Key, string? Fallback) ResourceLabel(string resource)
-        {
             // --- An entity: its plural label, then its singular one; the fallback goes with the
             // plural key, so it is plural too ---
             if (metadata.All.Any(entity => string.Equals(entity.Name, resource, StringComparison.OrdinalIgnoreCase)))
             {
-                string prefix = KeyPrefix(resource);
-                return Resolve([$"{prefix}_Plural", prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(LastSegment(resource))));
+                string prefix = StringKeyConventions.KeyPrefix(resource);
+                return ([prefix + StringKeyConventions.PluralSuffix, prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource))));
             }
 
             // --- A settings category: its tab's label; the general settings are the general category ---
@@ -122,12 +120,21 @@ namespace Tellma.Core.Access
 
                 if (!category.Contains('.', StringComparison.Ordinal))
                 {
-                    return Resolve([$"SettingCategory_{category}"], NameHumanizer.Humanize(category));
+                    return ([$"SettingCategory_{category}"], NameHumanizer.Humanize(category));
                 }
             }
 
             // --- Any other resource: its own key ---
-            return Resolve([$"Securable_{resource.Replace('.', '_')}"], NameHumanizer.Humanize(LastSegment(resource)));
+            return ([$"Securable_{resource.Replace('.', '_')}"], NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource)));
+        }
+
+        /// <summary>The key of a resource's label, by the chain its kind takes, and its fallback.</summary>
+        /// <param name="resource">The resource.</param>
+        /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
+        private (string Key, string? Fallback) ResourceLabel(string resource)
+        {
+            (string[] chain, string fallback) = ResourceLabelChain(resource, metadata);
+            return Resolve(chain, fallback);
         }
 
         /// <summary>The first key of a chain a neutral shared resource declares; else the chain's first key with a fallback.</summary>
@@ -145,14 +152,6 @@ namespace Tellma.Core.Access
             }
 
             return (chain[0], fallback);
-        }
-
-        /// <summary>A dotted name's last segment.</summary>
-        /// <param name="name">The name.</param>
-        /// <returns>The text after its last dot.</returns>
-        private static string LastSegment(string name)
-        {
-            return name[(name.LastIndexOf('.') + 1)..];
         }
     }
 }

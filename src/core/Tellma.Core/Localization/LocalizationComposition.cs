@@ -6,12 +6,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Localization;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Localization
 {
     /// <summary>
     ///     Registers the process's string localization: the framework's localizers, rendered through
-    ///     ICU, and the keys the neutral shared resources declare.
+    ///     ICU, the string packs merged from every composed feature's shared resources, and the
+    ///     labels resolved against them.
     /// </summary>
     internal static class LocalizationComposition
     {
@@ -35,9 +37,15 @@ namespace Tellma.Core.Localization
             _ = services.RemoveAll<IStringLocalizerFactory>();
             services.AddSingleton<IStringLocalizerFactory, IcuStringLocalizerFactory>();
 
-            // --- The keys the neutral shared resources declare, which the client metadata's label keys follow ---
-            // TryAdd: the string pack's composition, which merges the same resources, may answer instead.
-            services.TryAddSingleton<INeutralStringKeys, NeutralStringKeys>();
+            // --- The string packs: every composed feature's shared resources, merged per language (spec 0013 §10.4) ---
+            // One composer answers for the packs and for the keys the neutral resources declare,
+            // which the client metadata's label keys follow.
+            services.TryAddSingleton<StringPackComposer>();
+            services.TryAddSingleton<IStringPackProvider>(static provider => provider.GetRequiredService<StringPackComposer>());
+            services.TryAddSingleton<INeutralStringKeys>(static provider => provider.GetRequiredService<StringPackComposer>());
+
+            // --- Labels by convention, resolved against the merged resources (spec 0013 §7.6) ---
+            services.TryAddSingleton<ILabelProvider, LabelProvider>();
         }
     }
 }

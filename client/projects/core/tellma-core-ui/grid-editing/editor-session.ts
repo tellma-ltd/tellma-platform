@@ -13,9 +13,12 @@
 import {
   Injector,
   isDevMode,
+  type ComponentRef,
   type EmbeddedViewRef,
   type OutputRefSubscription,
+  type Signal,
   type TemplateRef,
+  type Type,
   type ViewContainerRef,
 } from '@angular/core';
 
@@ -29,6 +32,7 @@ import type {
   TmEntitySearchFn,
 } from '@tellma/core-ui/entity-picker';
 
+import { ɵTmGridEditorPane } from './editor-pane';
 import {
   ɵTmGridDateEditor,
   ɵTmGridEntityEditor,
@@ -38,15 +42,39 @@ import {
 } from './editors';
 
 /**
+ * Angular's development-mode flag. Production builds define it `false`,
+ * which drops the checks it guards; read through `typeof`, so code running
+ * where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
+
+/**
  * The context a consumer `*tmGridEditor` template renders with: the cell's
- * value when the editor opened and the row. Declared here by shape, so this
- * entry point never imports the grid it serves.
+ * value when the editor opened, the row, and whether the editor only shows
+ * the cell. Declared here by shape, so this entry point never imports the
+ * grid it serves.
  */
 export interface ɵTmGridEditorTemplateContext {
   /** The cell's value when the editor opened. */
   readonly $implicit: unknown;
   /** The row being edited (`undefined` on the new-row placeholder). */
   readonly row: unknown;
+  /** Whether the editor shows the cell read-only (a popup column's read-only pane). */
+  readonly readonly: boolean;
+}
+
+/**
+ * A popup column's pane, resolved against the defaults: its editor opens
+ * over the cell instead of in the cell box. Declared here by shape, as
+ * above.
+ */
+export interface ɵTmGridEditorPopupVm {
+  /** The pane's least inline size, in px. */
+  readonly minWidth: number;
+  /** The pane's greatest block size, in px; the content scrolls inside beyond it. */
+  readonly maxHeight: number;
+  /** The column header, which labels a pane holding more than one control. */
+  readonly header: Signal<string>;
 }
 
 /** Which editor source a mount resolved to. */
@@ -156,6 +184,10 @@ export interface ɵTmGridMountedEditor {
 export class ɵTmGridEditorSession {
   /** The staged mount, waiting for its outlet; `null` when none is staged. */
   private pending: ɵTmGridEditorMountConfig | null = null;
+  /** Whether the staged mount shows its cell read-only. */
+  private pendingReadonly = false;
+  /** The staged mount's popup pane, or `null` to mount in the cell box. */
+  private pendingPopup: ɵTmGridEditorPopupVm | null = null;
   /** The mounted editor, or `null` while nothing is live. */
   private mounted: ɵTmGridMountedEditor | null = null;
   /** Destroys the mounted view, or `null` while nothing is live. */
@@ -177,9 +209,20 @@ export class ɵTmGridEditorSession {
     return this.mounted;
   }
 
-  /** Stages the next mount; `mountIfReady` performs it once the outlet exists. */
-  stage(config: ɵTmGridEditorMountConfig): void {
+  /**
+   * Stages the next mount; `mountIfReady` performs it once the outlet
+   * exists. A `readonly` mount sets a built-in editor's `readonly` input (a
+   * template reads it from its context); a `popup` mount puts the editor in
+   * a pane over the cell.
+   */
+  stage(
+    config: ɵTmGridEditorMountConfig,
+    readonly = false,
+    popup: ɵTmGridEditorPopupVm | null = null,
+  ): void {
     this.pending = config;
+    this.pendingReadonly = readonly;
+    this.pendingPopup = popup;
   }
 
   /**
@@ -193,23 +236,49 @@ export class ɵTmGridEditorSession {
    */
   mountIfReady(): ɵTmGridMountedEditor | null {
     const config = this.pending;
-    const outlet = this.outlet();
-    if (config === null || outlet === null) {
+    const cellOutlet = this.outlet();
+    if (config === null || cellOutlet === null) {
       return this.mounted;
     }
     this.pending = null;
     this.destroy();
 
+    // A popup column's editor (spec 0010 §C.15) mounts inside its pane,
+    // which renders (and attaches its overlay) synchronously first.
+    const readonly = this.pendingReadonly;
+    const popup = this.pendingPopup;
+    const pane = popup === null ? null : cellOutlet.createComponent(ɵTmGridEditorPane);
+    let outlet = cellOutlet;
+    if (pane !== null) {
+      pane.setInput('popup', popup);
+      pane.setInput('readonly', readonly);
+      pane.changeDetectorRef.detectChanges();
+      outlet = pane.instance.outlet()!;
+    }
+
     let registered: TmCellEditor<unknown> | null = null;
+    let registrations = 0;
     const host: TmCellEditorHost = {
       register: (editor) => {
         registered = editor;
+        registrations++;
       },
     };
     const cellInjector = Injector.create({
       providers: [{ provide: TM_CELL_EDITOR_HOST, useValue: host }],
       parent: this.injector,
     });
+
+    // A built-in editor: created in the cell-scoped injector, named by the
+    // column header, read-only when the mount asks for it.
+    const create = <C>(type: Type<C>, label: string): ComponentRef<C> => {
+      const ref = outlet.createComponent(type, { injector: cellInjector });
+      ref.setInput('label', label);
+      if (readonly) {
+        ref.setInput('readonly', true);
+      }
+      return ref;
+    };
 
     let isDropdownOpen: () => boolean = () => false;
     let openDropdown: () => void = () => undefined;
@@ -222,18 +291,15 @@ export class ɵTmGridEditorSession {
       view.detectChanges();
       this.destroyView = () => view.destroy();
     } else if (config.kind === 'text') {
-      const ref = outlet.createComponent(ɵTmGridTextEditor, { injector: cellInjector });
-      ref.setInput('label', config.label);
+      const ref = create(ɵTmGridTextEditor, config.label);
       ref.changeDetectorRef.detectChanges();
       this.destroyView = () => ref.destroy();
     } else if (config.kind === 'number') {
-      const ref = outlet.createComponent(ɵTmGridNumberEditor, { injector: cellInjector });
-      ref.setInput('label', config.label);
+      const ref = create(ɵTmGridNumberEditor, config.label);
       ref.changeDetectorRef.detectChanges();
       this.destroyView = () => ref.destroy();
     } else if (config.kind === 'date') {
-      const ref = outlet.createComponent(ɵTmGridDateEditor, { injector: cellInjector });
-      ref.setInput('label', config.label);
+      const ref = create(ɵTmGridDateEditor, config.label);
       ref.changeDetectorRef.detectChanges();
       // The dropdown hooks make the editing keymap's dropdown gate and the
       // two-stage Esc compose for date cells exactly as for enum cells.
@@ -242,8 +308,7 @@ export class ɵTmGridEditorSession {
       openDropdown = () => ref.instance.openPopup();
       this.destroyView = () => ref.destroy();
     } else if (config.kind === 'entity') {
-      const ref = outlet.createComponent(ɵTmGridEntityEditor, { injector: cellInjector });
-      ref.setInput('label', config.label);
+      const ref = create(ɵTmGridEntityEditor, config.label);
       ref.setInput('search', config.search);
       ref.setInput('itemId', config.itemId);
       ref.setInput('itemLabel', config.itemLabel);
@@ -261,8 +326,7 @@ export class ɵTmGridEditorSession {
       adoptSearch = (text) => ref.instance.adoptSearch(text);
       this.destroyView = () => ref.destroy();
     } else {
-      const ref = outlet.createComponent(ɵTmGridEnumEditor, { injector: cellInjector });
-      ref.setInput('label', config.label);
+      const ref = create(ɵTmGridEnumEditor, config.label);
       ref.setInput('options', config.options);
       ref.setInput('optionLabel', config.optionLabel);
       ref.setInput('optionValue', config.optionValue);
@@ -272,7 +336,25 @@ export class ɵTmGridEditorSession {
       openDropdown = () => ref.instance.openPanel();
       this.destroyView = () => ref.destroy();
     }
+    if (pane !== null) {
+      // The pane goes with its editor, the overlay with it.
+      const destroyEditor = this.destroyView;
+      this.destroyView = () => {
+        destroyEditor();
+        pane.destroy();
+      };
+    }
 
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && registrations > 1) {
+      // A composite whose own controls registered too: the last one would
+      // silently become the cell's editor.
+      this.destroy();
+      throw new Error(
+        `tm-grid: ${registrations} controls registered as the cell editor — a composite ` +
+          'editor must provide its own TM_CELL_EDITOR_HOST to its controls and register ' +
+          "itself through the grid's, injected with { skipSelf: true }.",
+      );
+    }
     if (registered === null) {
       this.destroy();
       if (isDevMode()) {
