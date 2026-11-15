@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -46,15 +47,29 @@ namespace Tellma.Distro.Acme.IntegrationTests
         /// <summary>The tenant every test moves: Acme's live seed tenant.</summary>
         private const int Tenant = 1;
 
+        /// <summary>The refresh interval of the host that must see another's catalog write.</summary>
+        private static readonly TimeSpan ShortRefresh = TimeSpan.FromSeconds(1);
+
         /// <summary>
-        ///     How long a second host may take to see a catalog write, at a one-second refresh: the
-        ///     interval, with room for a loaded machine to run the timer late.
+        ///     The refresh interval of the host that receives the write: the option's maximum, so no
+        ///     refresh of its own lands within the test.
         /// </summary>
-        private static readonly TimeSpan PropagationBound = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan LongRefresh = TellmaCatalogOptions.MaxRefreshInterval;
+
+        /// <summary>
+        ///     How long the host on the short interval may take to see another's catalog write, and
+        ///     the most its refreshes may lie apart: a few of its intervals, with room for a loaded
+        ///     machine to run the timer late, and a third of the default interval, so a host that
+        ///     ignored the configured interval cannot meet it.
+        /// </summary>
+        private static readonly TimeSpan PropagationBound = TimeSpan.FromSeconds(5);
+
+        /// <summary>How long to watch the host on the short interval for two refreshes.</summary>
+        private static readonly TimeSpan CadenceWindow = TimeSpan.FromSeconds(10);
 
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-        [Fact(Skip = NeedsUserConnectionAndBootstrap)]
+        [Fact(Skip = NeedsUserConnectionAndBootstrap, SkipUnless = nameof(PlatformSeams.ServesTheAdministrator), SkipType = typeof(PlatformSeams))]
         public async Task The_first_tenant_request_binds_the_signed_in_user()
         {
             AcmeMigrator acme = new(sql, "acme_userid");
@@ -91,7 +106,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(0, host.Probes!.Writes);
         }
 
-        [Fact(Skip = NeedsUserConnectionAndBootstrap)]
+        [Fact(Skip = NeedsUserConnectionAndBootstrap, SkipUnless = nameof(PlatformSeams.ServesTheAdministrator), SkipType = typeof(PlatformSeams))]
         public async Task A_frozen_tenant_serves_a_read_against_a_database_set_read_only()
         {
             AcmeMigrator acme = new(sql, "acme_frozen_read");
@@ -129,7 +144,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(0, host.Probes!.Writes);
         }
 
-        [Fact(Skip = NeedsUserConnectionAndBootstrap)]
+        [Fact(Skip = NeedsUserConnectionAndBootstrap, SkipUnless = nameof(PlatformSeams.ServesTheAdministrator), SkipType = typeof(PlatformSeams))]
         public async Task A_read_on_a_read_only_tenant_stamps_the_user_s_activity()
         {
             AcmeMigrator acme = new(sql, "acme_readonly_stamp");
@@ -150,7 +165,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.True(before is null || after > before, $"The activity stamp stayed at {before:O}.");
         }
 
-        [Fact(Skip = NeedsProjectedActions)]
+        [Fact(Skip = NeedsProjectedActions, SkipUnless = nameof(PlatformSeams.ServesTheLocaleAction), SkipType = typeof(PlatformSeams))]
         public async Task An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant()
         {
             AcmeMigrator acme = new(sql, "acme_readonly_action");
@@ -175,7 +190,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 string.Create(CultureInfo.InvariantCulture, $"SELECT [PreferredLanguage] FROM [core].[Users] WHERE [Id] = {administrator};")));
         }
 
-        [Fact(Skip = NeedsJobWorker)]
+        [Fact(Skip = NeedsJobWorker, SkipUnless = nameof(PlatformSeams.RunsJobs), SkipType = typeof(PlatformSeams))]
         public async Task A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant()
         {
             AcmeMigrator acme = new(sql, "acme_readonly_job");
@@ -216,27 +231,43 @@ namespace Tellma.Distro.Acme.IntegrationTests
             string keyRing = Path.Combine(Path.GetTempPath(), "tellma-acme-keys-" + Guid.NewGuid().ToString("N"));
 
             // Two instances of one deployment: one key ring, so a browser's session cookie reads on
-            // both; the client secrets the deployment configures, since each in-process engine
+            // both; and the client secrets the deployment configures, since each in-process engine
             // registers its host's secrets in the one store and a per-boot secret of the later host
-            // would refuse the earlier one's; and a snapshot refreshed every second, so the test
-            // need not wait long.
+            // would refuse the earlier one's.
             acme.Values["Tellma:DataProtection:KeyRingPath"] = keyRing;
             acme.Values["Tellma:Identity:ClientSecret"] = "test-client-secret";
             acme.Values["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret";
-            acme.Values["Tellma:Catalog:RefreshInterval"] = "00:00:01";
             _ = await acme.MigrateAsync();
+
+            // The first host never refreshes on its own within the test, so only the write's own
+            // refresh can turn it; the second refreshes every second, well under the default.
+            Dictionary<string, string?> firstValues = new(acme.Values, StringComparer.OrdinalIgnoreCase)
+            {
+                ["Tellma:Catalog:RefreshInterval"] = LongRefresh.ToString("c", CultureInfo.InvariantCulture),
+                ["Tellma:Catalog:MaxStaleness"] = LongRefresh.ToString("c", CultureInfo.InvariantCulture),
+            };
+            Dictionary<string, string?> secondValues = new(acme.Values, StringComparer.OrdinalIgnoreCase)
+            {
+                ["Tellma:Catalog:RefreshInterval"] = ShortRefresh.ToString("c", CultureInfo.InvariantCulture),
+            };
 
             // A read-only tenant refuses this session's mutation for its own reason, so each host's
             // answer shows which state its snapshot holds before and after the suspension.
             await acme.SetStateAsync(Tenant, TenantState.ReadOnly, "unpaid");
             try
             {
-                await using AcmeHost first = await AcmeHost.StartAsync(acme.Values, new AcmeHostOptions { MapsProbes = true });
-                await using AcmeHost second = await AcmeHost.StartAsync(acme.Values, new AcmeHostOptions { MapsProbes = true });
+                await using AcmeHost first = await AcmeHost.StartAsync(firstValues, new AcmeHostOptions { MapsProbes = true });
+                await using AcmeHost second = await AcmeHost.StartAsync(secondValues, new AcmeHostOptions { MapsProbes = true });
+                Assert.Equal(LongRefresh, RefreshIntervalOf(first));
+                Assert.Equal(ShortRefresh, RefreshIntervalOf(second));
                 CookieContainer cookies = new();
                 using OidcFlowClient flow = first.CreateFlowClient(cookies);
                 await AcmeSignIn.SignInAsync(flow);
                 using HttpClient secondBrowser = second.CreateBrowser(cookies);
+
+                // --- The second host's snapshot is refreshed on its configured interval, not the default ---
+                TimeSpan cadence = await RefreshCadenceAsync(second);
+                Assert.True(cadence < PropagationBound, $"The second host's refreshes lay {cadence} apart.\n{second.Warnings}");
 
                 // --- Before: both hosts hold the tenant read-only ---
                 using (HttpResponseMessage write = await TenantProbes.WriteAsync(flow.Browser, Tenant))
@@ -250,18 +281,18 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 }
 
                 // --- The suspension, received by the first host ---
+                var elapsed = Stopwatch.StartNew();
                 _ = await first.Services.GetRequiredService<ITenantCatalog>()
                     .SetStateAsync(Tenant, TenantState.Suspended, "unpaid", "control-plane", Token);
 
-                // --- The first host refuses the very next request ---
+                // --- The first host refuses the very next request, by the write's refresh alone ---
                 using (HttpResponseMessage write = await TenantProbes.WriteAsync(flow.Browser, Tenant))
                 {
                     await AssertRefusedAsync(write, TenantProblemCodes.Suspended, first);
                 }
 
-                // --- The second host refuses within one refresh ---
+                // --- The second host refuses within a few of its refreshes of the write ---
                 string code = TenantProblemCodes.ReadOnly;
-                var elapsed = Stopwatch.StartNew();
                 while (code != TenantProblemCodes.Suspended && elapsed.Elapsed < PropagationBound)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(100), Token);
@@ -291,6 +322,41 @@ namespace Tellma.Distro.Acme.IntegrationTests
         {
             string answered = await TenantProbes.ProblemCodeAsync(response);
             Assert.True(response.StatusCode == HttpStatusCode.Forbidden && answered == code, $"{(int)response.StatusCode} {answered}\n{host.Warnings}");
+        }
+
+        /// <summary>The refresh interval a host resolved from its settings.</summary>
+        /// <param name="host">The host.</param>
+        /// <returns>The interval.</returns>
+        private static TimeSpan RefreshIntervalOf(AcmeHost host)
+        {
+            return host.Services.GetRequiredService<IOptions<TellmaCatalogOptions>>().Value.RefreshInterval;
+        }
+
+        /// <summary>
+        ///     Watches a host's snapshot until it is confirmed twice more, and answers how far apart the
+        ///     two confirmations lie: the interval its refresh loop actually runs on.
+        /// </summary>
+        /// <param name="host">The host, serving no request meanwhile, so only its loop confirms the snapshot.</param>
+        /// <returns>The time between the two confirmations.</returns>
+        private static async Task<TimeSpan> RefreshCadenceAsync(AcmeHost host)
+        {
+            ITenantRegistry registry = host.Services.GetRequiredService<ITenantRegistry>();
+            DateTimeOffset? seen = registry.SnapshotLoadedAt;
+            List<DateTimeOffset> confirmations = [];
+            var elapsed = Stopwatch.StartNew();
+            while (confirmations.Count < 2 && elapsed.Elapsed < CadenceWindow)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), Token);
+                DateTimeOffset? loaded = registry.SnapshotLoadedAt;
+                if (loaded is DateTimeOffset confirmed && loaded != seen)
+                {
+                    confirmations.Add(confirmed);
+                    seen = loaded;
+                }
+            }
+
+            Assert.True(confirmations.Count == 2, $"The host's snapshot was confirmed {confirmations.Count} time(s) in {CadenceWindow}.\n{host.Warnings}");
+            return confirmations[1] - confirmations[0];
         }
 
         /// <summary>A response's status and body, with the host's warnings, for a failed assertion.</summary>

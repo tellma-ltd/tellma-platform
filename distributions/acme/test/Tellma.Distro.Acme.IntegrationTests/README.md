@@ -11,7 +11,7 @@ Windows runner).
 |---|---|
 | `MigratorTests` | `migrate` from an empty server creating the catalog, the identity engine's schema at its last migration and the two seed tenants, active; every database in the platform collation; a second `migrate` applying no identity migration; `provision` drawing 1000 from the sequence and refusing a requested id in the sequence's band, taken or free, as `tenant-registration-refused`; `provision` into an existing database in another collation failing without migrating it; the provisioning record holding a step's version and a bumped step running again on every tenant, a `ReadOnly` one included, which stays `ReadOnly`. |
 | `WebHostTests` | A sign-in through the BFF with the engine in process (`/bff/login`, the engine's email-code sign-in, the callback, `/bff/user`); a global sign-out at the engine ending the host's session over the back channel; a refresh the engine rejects ending the session; a host whose identity store lacks the engine's last migration failing startup with the `migrate` command; a host started before its catalog exists turning ready once the catalog is migrated (standalone identity mode, the identity server's metadata standing in as already read). |
-| `TenantStateTests` | The state verdicts on tenant data for a signed-in session: a `Frozen` tenant whose database is set `READ_ONLY` refusing a mutation as `403 tenant-frozen` before the endpoint runs; a `ReadOnly` tenant refusing one as `403 tenant-read-only`; a suspension refusing the next request on the host that received it and the same session on a second host (one key ring, configured client secrets, a one-second catalog refresh) within one refresh. |
+| `TenantStateTests` | The state verdicts on tenant data for a signed-in session: a `Frozen` tenant whose database is set `READ_ONLY` refusing a mutation as `403 tenant-frozen` before the endpoint runs; a `ReadOnly` tenant refusing one as `403 tenant-read-only`; a suspension refusing the next request on the host that received it, by the write's own refresh (that host's interval is the option's one-hour maximum), and the same session on a second host (one key ring, configured client secrets, a one-second catalog refresh, asserted as resolved and as the cadence its snapshot is confirmed on) within five seconds of the write, a third of the default interval. |
 
 `AcmeHost` builds the web host call for call as `Program.cs` does, on a test server that also
 answers what the host reaches at its own public origin: the OpenID Connect handler's back channel
@@ -25,8 +25,12 @@ endpoints. Two hosts of one test can share a browser's cookie jar (`CreateFlowCl
 the identity suite's `OidcFlowClient` (`test/apps/Tellma.Identity.TestSupport`), signed in by
 `AcmeSignIn`.
 
-Some tests are skipped, each naming the capability it waits for, and join as those capabilities are
-composed: in `TenantStateTests`, the first tenant request binding the signed-in user, a `Frozen`
+Some tests are skipped, each naming the capability it waits for, and run as soon as Acme's
+composition holds it: `PlatformSeams` builds the web host once per run over placeholder settings,
+never starting it, and reads off it whether an initializer binds tenant requests to their users,
+which provisioning steps are composed, whether the users stack's `users/me/locale` action is mapped,
+and whether the jobs worker is hosted. A capability it cannot read off the composition counts as
+present, so its tests run and say for themselves. The skipped tests are, in `TenantStateTests`, the first tenant request binding the signed-in user, a `Frozen`
 tenant serving a read against its `READ_ONLY` database, a read on a `ReadOnly` tenant stamping the
 user's activity, an action a `ReadOnly` tenant allows (setting one's own locale) succeeding there,
 and a job whose handler runs when read-only (`ProbeJobHandler`) succeeding on a `ReadOnly` tenant;

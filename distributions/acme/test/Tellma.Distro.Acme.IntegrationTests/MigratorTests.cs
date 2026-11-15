@@ -131,7 +131,10 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal([(1, 1), (1, 2), (2, 1), (2, 2)], ProbeStep.RunsOf(acme.CatalogName).Order());
         }
 
-        [Fact(Skip = "Needs the platform's provisioning steps: the administrator bootstrap, the tenant settings and the blob container.")]
+        [Fact(
+            Skip = "Needs the platform's provisioning steps: the administrator bootstrap, the tenant settings and the blob container.",
+            SkipUnless = nameof(PlatformSeams.ComposesPlatformSteps),
+            SkipType = typeof(PlatformSeams))]
         public async Task The_provisioning_record_holds_the_platform_steps_with_their_versions()
         {
             AcmeMigrator acme = new(sql, "acme_platform_steps");
@@ -139,7 +142,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
             foreach (int tenant in new[] { 1, 2 })
             {
-                foreach (string step in new[] { "core.bootstrap-administrator", "core.settings", "core.blob-container" })
+                foreach (string step in PlatformSeams.PlatformSteps)
                 {
                     int? version = await SqlServerFixture.ScalarAsync<int?>(
                         acme.TenantConnectionString(tenant), $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{step}';");
