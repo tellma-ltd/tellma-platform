@@ -259,7 +259,7 @@ namespace Tellma.Core.Migrator
         /// <returns>The held lock.</returns>
         private Task<MigrationLock> LockAsync(int tenantId, CancellationToken cancellationToken)
         {
-            return MigrationLock.AcquireAsync(Services.GetRequiredService<CatalogConnection>().ConnectionString, MigrationLock.TenantResource(tenantId), cancellationToken);
+            return MigrationLock.AcquireAsync(Services.GetRequiredService<CatalogConnection>().ConnectionString, MigrationLock.TenantResource(tenantId), context.Options.CommandTimeout, cancellationToken);
         }
 
         /// <summary>The tenant's row as the catalog holds it now, read from the store rather than the snapshot.</summary>

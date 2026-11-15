@@ -10,6 +10,7 @@ using System.Collections.Concurrent;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Migrator;
+using Tellma.Core.Migrator.Sql;
 
 namespace Tellma.Core.IntegrationTests.Migrator
 {
@@ -17,12 +18,21 @@ namespace Tellma.Core.IntegrationTests.Migrator
     ///     The migrator's database creation while the server's <c>model</c> database is locked, as it
     ///     is while another creation copies it: a creation that cannot take the lock is run again
     ///     after a logged wait and converges once the lock is free, one out of attempts gives up
-    ///     having created nothing, and a creation that runs past its bound is never run again.
+    ///     having created nothing, one that finds its database created by another while it waited
+    ///     counts it as existing, and a creation that runs past its bound is never run again.
     /// </summary>
     /// <remarks>
-    ///     A session whose database is <c>model</c> holds a lock on it that every creation on the
-    ///     server needs exclusively, so it stalls every other suite's creations while it is open: the
-    ///     suite runs alone, after the parallel ones.
+    ///     <para>
+    ///         A session whose database is <c>model</c> holds a lock on it that every creation on the
+    ///         server needs exclusively, so it stalls every other suite's creations while it is open:
+    ///         the suite runs alone, after the parallel ones, and only on a container of its own,
+    ///         since another assembly may share a server named by the fixture's variable.
+    ///     </para>
+    ///     <para>
+    ///         Every run refreshes its tenant registry each second, so a refresh tick always falls
+    ///         inside a creation's wait for the lock: nothing may open the catalog before the
+    ///         command has created it.
+    ///     </para>
     /// </remarks>
     /// <param name="sql">The suite's server.</param>
     [Trait("Category", "Integration")]
@@ -35,6 +45,16 @@ namespace Tellma.Core.IntegrationTests.Migrator
         /// <summary>The event a creation that ran out of attempts logs.</summary>
         private const string GaveUp = "MigratorDatabaseCreationGaveUp";
 
+        /// <summary>The event a run logs when it created a database.</summary>
+        private const string Created = "MigratorDatabaseCreated";
+
+        /// <summary>The events a tenant registry logs when a refresh could not read the catalog.</summary>
+        private static readonly string[] RefreshFailures = ["TenantSnapshotRefreshFailed", "TenantSnapshotRefreshFailedStale"];
+
+        /// <summary>Why the suite does not run against a server it does not own.</summary>
+        private const string SharedServerReason =
+            $"Holds the model database's lock, which would stall other suites' creations on the shared server {SqlServerFixture.ServerVariable} names; runs on a container of its own (unset {SqlServerFixture.ServerVariable}, Docker required).";
+
         /// <summary>
         ///     Two runs create their catalogs while <c>model</c> is held. The one allowed a single
         ///     attempt gives up and creates nothing; the one allowed the default attempts logs its
@@ -45,10 +65,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
         [Fact]
         public async Task A_creation_that_finds_the_model_database_locked_is_run_again_and_converges_once_it_is_free()
         {
+            Assert.SkipUnless(sql.OwnsContainer, SharedServerReason);
             EventRecorder patientLog = new(Retrying);
-            MigratorHarness patient = new(sql, "ml_patient") { Services = patientLog.Register };
+            MigratorHarness patient = Harness("ml_patient", patientLog);
             EventRecorder loneLog = new(Retrying);
-            MigratorHarness lone = new(sql, "ml_lone") { Services = loneLog.Register };
+            MigratorHarness lone = Harness("ml_lone", loneLog);
             lone.Values[$"{MigratorOptions.SectionPath}:{nameof(MigratorOptions.CreateDatabaseAttempts)}"] = "1";
 
             // --- Both runs create their catalogs while model is held ---
@@ -77,7 +98,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             IReadOnlyDictionary<string, object?> gaveUp = Assert.Single(loneLog.Named(GaveUp));
             Assert.Equal(lone.CatalogName, gaveUp["Database"]);
             Assert.Equal(1, gaveUp["Attempts"]);
-            Assert.Null(await SqlServerFixture.ScalarAsync<int?>(sql.MasterConnectionString, $"SELECT DB_ID(N'{lone.CatalogName}');"));
+            Assert.Null(await SqlServerFixture.ScalarAsync<short?>(sql.MasterConnectionString, $"SELECT DB_ID(N'{lone.CatalogName}');"));
 
             // --- The patient run waited, then converged with its catalog prepared ---
             Assert.True(patientWaited, patientResult.ToString());
@@ -89,6 +110,12 @@ namespace Tellma.Core.IntegrationTests.Migrator
             TimeSpan delay = Assert.IsType<TimeSpan>(retried["RetryDelay"]);
             Assert.InRange(delay, TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(2.5));
             Assert.Empty(patientLog.Named(GaveUp));
+            Assert.Equal(patient.CatalogName, Assert.Single(patientLog.Named(Created))["Database"]);
+
+            // The registry read nothing while the catalog was missing: a read of a missing
+            // database fails, and SqlClient would then fail the next opens of that connection
+            // string with the cached error, the command's own open of the new catalog among them.
+            Assert.All(RefreshFailures, failure => Assert.Empty(patientLog.Named(failure)));
             Assert.Equal(DatabaseCollations.Platform, await SqlServerFixture.ScalarAsync<string>(sql.MasterConnectionString, $"SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(N'{patient.CatalogName}', 'Collation'));"));
             Assert.True(await SqlServerFixture.ScalarAsync<bool>(sql.MasterConnectionString, $"SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = N'{patient.CatalogName}';"));
         }
@@ -102,8 +129,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
         [Fact]
         public async Task A_creation_that_runs_past_its_bound_is_not_run_again()
         {
+            Assert.SkipUnless(sql.OwnsContainer, SharedServerReason);
             EventRecorder log = new(Retrying);
-            MigratorHarness migrator = new(sql, "ml_timeout") { Services = log.Register };
+            MigratorHarness migrator = Harness("ml_timeout", log);
             migrator.Values[$"{MigratorOptions.SectionPath}:{nameof(MigratorOptions.DatabaseCommandTimeout)}"] = "00:00:01";
 
             MigratorResult result;
@@ -118,6 +146,59 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.Contains("Execution Timeout Expired", failure, StringComparison.Ordinal);
             Assert.Empty(log.Named(Retrying));
             Assert.Empty(log.Named(GaveUp));
+        }
+
+        /// <summary>
+        ///     Two creations of one database wait for <c>model</c> together, as two runs creating one
+        ///     catalog do. Once it is free, one creates the database and the other, told it exists,
+        ///     counts it as existing rather than failing.
+        /// </summary>
+        /// <returns>A task that completes when the test has run.</returns>
+        [Fact]
+        public async Task A_creation_that_finds_its_database_created_by_another_while_it_waited_counts_it_as_existing()
+        {
+            Assert.SkipUnless(sql.OwnsContainer, SharedServerReason);
+            string name = sql.NewDatabaseName("ml_adopt");
+            string target = sql.ConnectionString(name);
+            MigratorOptions bounds = new();
+
+            // Short waits: both creations are back on the lock within a second of its release.
+            CreateDatabaseRetry retry = new(10, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
+            EventRecorder firstLog = new(Retrying);
+            EventRecorder secondLog = new(Retrying);
+
+            // --- Both creations fail on the held lock and wait; then the lock is released ---
+            Task<bool> first;
+            Task<bool> second;
+            SqlConnection holder = await HoldModelAsync();
+            await using (holder.ConfigureAwait(false))
+            {
+                first = new TargetDatabase(target, bounds).EnsureExistsAsync(create: true, createDatabaseOptions: null, retry, firstLog.CreateLogger(MigratorLog.Category), TestContext.Current.CancellationToken);
+                second = new TargetDatabase(target, bounds).EnsureExistsAsync(create: true, createDatabaseOptions: null, retry, secondLog.CreateLogger(MigratorLog.Category), TestContext.Current.CancellationToken);
+
+                // Bounded, so a lock that never held fails the test instead of hanging it.
+                await Task.WhenAll(firstLog.Awaited, secondLog.Awaited).WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
+            }
+
+            bool[] created = await Task.WhenAll(first, second);
+
+            // --- Exactly one created it; the other counted it as existing ---
+            _ = Assert.Single(created, static made => made);
+            Assert.NotNull(await SqlServerFixture.ScalarAsync<short?>(sql.MasterConnectionString, $"SELECT DB_ID(N'{name}');"));
+        }
+
+        /// <summary>
+        ///     A harness whose runs log to a recorder and refresh their tenant registry every second,
+        ///     the shortest interval, so any read of the catalog before it exists would happen.
+        /// </summary>
+        /// <param name="prefix">The prefix identifying the test.</param>
+        /// <param name="log">Where the runs' migrator events go.</param>
+        /// <returns>The harness.</returns>
+        private MigratorHarness Harness(string prefix, EventRecorder log)
+        {
+            MigratorHarness harness = new(sql, prefix) { Services = log.Register };
+            harness.Values["Tellma:Catalog:RefreshInterval"] = "00:00:01";
+            return harness;
         }
 
         /// <summary>
@@ -147,8 +228,8 @@ namespace Tellma.Core.IntegrationTests.Migrator
         }
 
         /// <summary>
-        ///     Records the migrator's events by name with their structured values, and completes a
-        ///     task when the event awaited first arrives.
+        ///     Records every named event a run logs, the migrator's and its services', with its
+        ///     structured values, and completes a task when the event awaited first arrives.
         /// </summary>
         /// <param name="awaited">The name of the event <see cref="Awaited" /> waits for.</param>
         private sealed class EventRecorder(string awaited) : ILoggerProvider
@@ -180,8 +261,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             /// <inheritdoc />
             public ILogger CreateLogger(string categoryName)
             {
-                // Only the migrator's own category is recorded; every other logger discards its events.
-                return new Logger(categoryName == MigratorLog.Category ? this : null);
+                return new Logger(this);
             }
 
             /// <inheritdoc />
@@ -201,9 +281,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 }
             }
 
-            /// <summary>A logger that hands every named event's structured values to its recorder, if it has one.</summary>
-            /// <param name="recorder">The recorder; null for a category that is not recorded.</param>
-            private sealed class Logger(EventRecorder? recorder) : ILogger
+            /// <summary>A logger that hands every named event's structured values to its recorder.</summary>
+            /// <param name="recorder">The recorder.</param>
+            private sealed class Logger(EventRecorder recorder) : ILogger
             {
                 /// <inheritdoc />
                 public IDisposable? BeginScope<TState>(TState state)
@@ -215,16 +295,23 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 /// <inheritdoc />
                 public bool IsEnabled(LogLevel logLevel)
                 {
-                    return recorder is not null;
+                    return true;
                 }
 
                 /// <inheritdoc />
                 public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
                 {
                     // A named event's state is its message's values, each under its placeholder's name.
-                    if (recorder is not null && eventId.Name is { } name && state is IEnumerable<KeyValuePair<string, object?>> values)
+                    if (eventId.Name is { } name && state is IEnumerable<KeyValuePair<string, object?>> values)
                     {
-                        recorder.Record(name, values.ToDictionary(StringComparer.Ordinal));
+                        // Another library's state may repeat a key; the last value is kept.
+                        Dictionary<string, object?> recorded = new(StringComparer.Ordinal);
+                        foreach (KeyValuePair<string, object?> value in values)
+                        {
+                            recorded[value.Key] = value.Value;
+                        }
+
+                        recorder.Record(name, recorded);
                     }
                 }
             }

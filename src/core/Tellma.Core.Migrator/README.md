@@ -70,16 +70,28 @@ stopped by the run's cancellation; when it fails or runs out of time, the run lo
 
 ### Statement bounds and the model lock
 
-Every statement the migrator sends itself, other than its locks' (which carry their own waits),
-runs under an explicit bound from `Tellma:Migrator` (each a `TimeSpan` from 1 second to 1 day,
-validated by the startup gate, so a bad value exits `3`):
+Every statement the migrator's own code sends runs under an explicit bound from
+`Tellma:Migrator` (each a `TimeSpan` from 1 second to 1 day, validated by the startup gate, so a bad
+value exits `3`):
 
 | Key | Default | Bounds |
 |---|---|---|
-| `CommandTimeout` | 5 minutes | Reads of the server and the database (edition, existence, collation, freshness), the role, the application principal, the grants, the fingerprint row, and every read `status` makes. |
+| `CommandTimeout` | 5 minutes | Reads of the server and the database (edition, existence, collation, freshness), the role, the application principal, the grants, the fingerprint row, the migration locks' checks and releases, and `status`'s own reads (the fingerprints and the pending migrations). |
 | `DatabaseCommandTimeout` | 30 minutes | `CREATE DATABASE` and the `ALTER DATABASE` of read-committed snapshot and the query store, which wait for the database's other sessions and, on Azure SQL Database, for the service. |
 | `MigrationCommandTimeout` | 1 hour | Each statement of the catalog's, the identity store's and a tenant's migrations. The identity store creates its own commands, so it is given the catalog's connection string with this bound as its `Command Timeout`. |
 | `VersionTagBumpTimeout` | 30 seconds | The version-tag move on the way out of a failed tenant run. |
+
+A migration lock's take waits up to 10 minutes for another run, under a command bound just past
+that wait. The statements the migrator runs through `Tellma.Core`'s services keep those services'
+own bounds: the catalog store's (the tenant listing `status` and `migrate` read, registrations and
+state transitions), the membership hints, the provisioning records and steps, the version-tag
+seeder (its move on a failed run aside) and the registry's refresh.
+
+Nothing in the migrator reads the catalog before the command has created it: its host loads no
+snapshot at startup, and the registry's refresh loop lets its ticks pass until the command's own
+first load. A read of a missing catalog would fail, and on SQL Server and LocalDB SqlClient then
+fails the next opens of the same connection string with that cached error for up to a minute (its
+`PoolBlockingPeriod`), the command's own open of the catalog it has just created among them.
 
 `CREATE DATABASE` copies `model` under an exclusive lock, so creations on one server queue on it,
 as `migrate --parallelism` provisioning several tenants does. A creation that cannot take the lock

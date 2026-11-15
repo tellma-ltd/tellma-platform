@@ -150,7 +150,7 @@ namespace Tellma.Core.Migrator.Commands
                 }
             }
 
-            await using MigrationLock held = await MigrationLock.AcquireAsync(catalog.ConnectionString, MigrationLock.CatalogResource, cancellationToken).ConfigureAwait(false);
+            await using MigrationLock held = await MigrationLock.AcquireAsync(catalog.ConnectionString, MigrationLock.CatalogResource, bounds.CommandTimeout, cancellationToken).ConfigureAwait(false);
 
             // --- The role, and the application's user in a fresh catalog ---
             connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
