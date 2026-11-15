@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Access;
+using Tellma.Core.Api;
 using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
@@ -86,6 +87,13 @@ namespace Tellma.Core.Composition
             // The composer itself, the pack provider and the label provider are the localization
             // composition's, registered with the framework's localizers.
             _ = contribution.Singleton<IClientAssetContributor, StringPackClientAssetContributor>();
+
+            // --- The web surface's route model and the client metadata's contracts (spec 0016 §3.10) ---
+            // One model over the stack registry; the endpoint projection maps its routes and the
+            // contributor writes their fingerprints, long and idempotent lists.
+            _ = contribution
+                .Singleton<IRouteContracts, RouteContracts>()
+                .Singleton<IClientAssetContributor, ContractsClientAssetContributor>();
 
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution

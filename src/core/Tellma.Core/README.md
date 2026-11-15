@@ -977,6 +977,30 @@ feature.
 | `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
 | `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
 
+## The route model
+
+`IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from
+the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
+projects its standard operations as its operations and capabilities imply them (`query`, and
+`get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
+`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+built-in ones and its companions' included; each child query surface projects `query`, then its
+actions; each routed service its actions. A route's template is
+`POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
+securable (null for a member-only action), and the facts consumers read: the reads are idempotent
+and not mutations, the writes mutations and not idempotent, an action's facts are its descriptor's.
+
+The fingerprint is the first 12 characters of the base64url SHA-256 of a canonical description
+(`ContractDescriber`): the request's and response's JSON contracts under `TellmaJson.Options`
+(each member's JSON name, kind and nullability and each enum's values, sorted, transitively; an
+entities result with its ids in the key type and the related projection of every entity its
+stack's details expansion reaches), with the stack's, child surface's and action's
+`ContractRevision`. The description holds no assembly versions, so it is the same in every process
+and on every operating system; the suite pins the fingerprints as goldens.
+
+`ContractsClientAssetContributor` writes the client metadata's Contracts chunk from the same
+routes: `fingerprints` (template to fingerprint), `long` and `idempotent`.
+
 ## Securables
 
 A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
@@ -1185,6 +1209,7 @@ same in a `Persist` batch of its own.
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
+| `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
