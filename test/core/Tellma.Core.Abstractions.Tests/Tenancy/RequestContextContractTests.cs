@@ -7,9 +7,11 @@ using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Abstractions.Tests.Tenancy
@@ -161,6 +163,32 @@ namespace Tellma.Core.Abstractions.Tests.Tenancy
                 (Tenantless with { TimeZone = "Asia/Riyadh" }).Localization.TimeZone,
                 (Tenantless with { TimeZone = "Asia/Riyadh" }).Localization.TimeZone);
             Assert.Equal(TimeZoneInfo.Utc, (Tenantless with { TimeZone = "Not/A_Zone" }).Localization.TimeZone);
+        }
+
+        [Fact]
+        public void The_localization_carries_the_tenants_content_languages_and_none_before_its_settings_load()
+        {
+            LanguageInfo english = new("en", "English", "E", false);
+            LanguageInfo arabic = new("ar", "العربية", "ع", true);
+            RequestContext context = Tenantless with
+            {
+                TenantSettings = new TenantSettings
+                {
+                    TenantId = 17,
+                    Tag = VersionTag.New(),
+                    Names = ["Acme", "أكمي", null],
+                    Languages = [english, arabic],
+                    Shape = MultilingualShape.PrimaryAndSecondary,
+                    Calendars = [],
+                    TimeZone = TimeZoneInfo.Utc,
+                    SqlServerTimeZoneName = "UTC",
+                    ModifiedAt = DateTimeOffset.UnixEpoch,
+                    Entries = new Dictionary<string, JsonElement>(),
+                },
+            };
+
+            Assert.Equal([english, arabic], context.Localization.ContentLanguages);
+            Assert.Empty(Tenantless.Localization.ContentLanguages);
         }
 
         [Fact]

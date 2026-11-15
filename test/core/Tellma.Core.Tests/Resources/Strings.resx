@@ -28,4 +28,36 @@
   <data name="Notification_acme_raw" xml:space="preserve">
     <value>{payload} | {list} | {note} | {ratio} | {stamp}</value>
   </data>
+  <!-- The neutral (English) labels the label provider tests resolve for the fixture model's
+       entities, which another assembly declares: the keys reach them through the merged pack. -->
+  <data name="Fixture_Widget" xml:space="preserve">
+    <value>Contraption</value>
+  </data>
+  <data name="Fixture_Widget_Plural" xml:space="preserve">
+    <value>Contraptions</value>
+  </data>
+  <data name="Fixture_Widget_Name" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Fixture_Widget_Parts" xml:space="preserve">
+    <value>Components</value>
+  </data>
+  <data name="Fixture_Widget_Action_TakeOver" xml:space="preserve">
+    <value>Seize</value>
+  </data>
+  <data name="Fixture_WidgetKind_Fancy" xml:space="preserve">
+    <value>Deluxe</value>
+  </data>
+  <data name="Fixture_WidgetPartNote_Plural" xml:space="preserve">
+    <value>Remarks</value>
+  </data>
+  <data name="Fixture_Node_Parent" xml:space="preserve">
+    <value>Parent node</value>
+  </data>
+  <data name="Fixture_Link_OtherNodeId" xml:space="preserve">
+    <value>Counterpart</value>
+  </data>
+  <data name="Setting_fixture_widgets_autoNumber" xml:space="preserve">
+    <value>Number widgets automatically</value>
+  </data>
 </root>

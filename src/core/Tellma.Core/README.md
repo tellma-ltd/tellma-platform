@@ -94,6 +94,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.entity-shapes` | the leaf registered for an entity does not implement a shape another feature requires of it; the fix lists the members | no |
 | `core.model-contributors` | a model configuration Core contributes is not one the tenant model can apply: a concrete entity type configuration, closed, or open over exactly the entity it configures with that parameter constrained to the replaceable default, and with a parameterless constructor | no |
 | `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
+| `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
@@ -231,7 +232,15 @@ prefixes and `[RelatedSelect]` projections render; unique and natural keys sit o
 that is not JSON or binary, natural keys on a key-list type; navigation names collide with nothing;
 blob references are `int?` with a valid kind declared once; enums are stored by name in a sized
 `varchar`; one ownership per property, never on a parent key or a computed column; column
-annotations decorate mapped properties of the right type.
+annotations decorate mapped properties of the right type; and no mapped type, entity or not, holds
+a shadow property the platform does not declare. The declared ones are the period columns
+`ValidFrom`/`ValidTo` of a temporal entity, the `Node` of a tree, and the model-only columns of
+`core.Jobs` (`StateJson`, `LeaseToken`, `ConfirmedKeys`) and `core.Blobs` (`StorageKey`,
+`Sha256`), which the query language withholds like the period columns. Any other is refused, naming the column: above all
+the shadow foreign key EF Core adds for a navigation without a foreign-key property, since an
+entity carries foreign keys and never navigations. A many-to-many pair of mapped collections, whose
+join table no class carries, and an owned type, whose keys no class carries, are each refused once,
+naming the navigations behind them.
 
 ### The table-type binder
 
@@ -443,8 +452,8 @@ it.
 `Tellma:PublicOrigin`: `Tenant(42)` is `{origin}/42`, and `Target(42, "acme.SalesInvoice", 17)` is
 `{origin}/42/sales-invoices/17` when the resource names a stack whose operations include `Details`,
 and the tenant link otherwise (a null resource or id, an unknown resource, a stack without a details
-page). Which resources name a stack is answered through `IStackRouteSource`; a composition without
-a stack registry gets the empty one, so every target links to the tenant.
+page). Which resources name a stack is answered through `IStackRouteSource`, which the stack
+registry implements (see [Entity stacks](#entity-stacks)); a host may register its own first.
 
 ## Blobs: the file-system store
 
@@ -673,6 +682,53 @@ node eng/region-names/generate-region-names.mjs
 node eng/region-names/generate-region-names.mjs --check
 ```
 
+### String packs and labels
+
+`StringPackComposer` (`IStringPackProvider`, `INeutralStringKeys`) merges the `Strings` resources
+of every composed feature's assembly (each manifest ending `.Resources.Strings.resources`; a
+`ServerStrings` set never ships) into one flat dictionary per language: English, which every pack
+falls back to, then each language the distribution offers. Keys are kept verbatim, a satellite's
+value replaces the neutral one only in its own language, and the pack is its dictionary as JSON with
+the keys in ordinal order, versioned by `DeploymentVersions.DistributionVersion`. The dictionaries
+stay in memory for the server's own labels. A key belongs to the first assembly whose neutral set
+declares it, and only that assembly's translations of it are merged; a translation of a key no
+neutral set declares is left out. A key two assemblies both declare, neutrally or one of them in a
+satellite, fails startup: the `core.string-pack` check reports one problem per key and pair of
+resource sets.
+`StringPackClientAssetContributor` hands every pack to the client-asset emission, which writes
+`assets/strings-<language>-<hash>.json` and names each file in the module's `strings` map.
+
+`LabelProvider` (`ILabelProvider`) answers every label the server shows from the merged dictionaries,
+in the reader's language (the innermost `LocalizationScope`'s culture, else the thread's UI culture)
+and else English. Each label walks its key chain, the first declared key wins, then falls back to the
+humanized name (`P` is the entity's key prefix, `S` its schema's):
+
+| Label | Keys, first declared wins |
+|---|---|
+| Entity | `P_Plural`, `P` (plural); `P` (singular); a missing plural reads the singular label |
+| Property | `P_<property>`, `<property>` |
+| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>` |
+| Collection | `P_<collection>`, the child's `P_Plural`, the child's `P` |
+| Action | `P_Action_<Action>`, `Action_<Action>` |
+| Enum value | `S_<enum>_<value>` over the schemas of the entities carrying the enum |
+| Setting | the setting's label key |
+| Value-set value | the value's literal label, else its label key, else the value |
+
+A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the tenant has one
+content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
+and the twin's humanized name beyond the tenant's shape. The key-resolving twins
+(`PropertyLabelKey`, …) return the first key of the chain that English declares, a twin's being its
+primary's, and null when none is.
+
+`ConventionalStringKeys.Of(services)` lists every key a composed model derives by convention
+(entities and their members, securables and the platform's actions, stacks, settings,
+notifications, job handlers, calendars, value sets and the brand). A feature's resource audit takes
+it as the derived keys and fails a key no convention derives and no source literal names
+(`test/shared/Tellma.Testing.Resources`). Each family derives exactly the keys a lookup reads: a
+collection has no bare key (its label falls back to its child entity's), an entity's securable reads
+the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
+derived whichever entities a composition holds.
+
 ### Value sets
 
 A value set is a named enumeration over string columns (`ValueSetDescriptor`): its values, each
@@ -864,6 +920,63 @@ the reader's content slot, and anything else as its JSON text. A missing resourc
 key; arguments that are not a JSON object render the message without them and log
 `NotificationArgumentsInvalid` once per scope.
 
+## Entity stacks
+
+A feature stacks an entity with `Entity<TEntity>()` (the platform's default service) or
+`Entity<TEntity, TService>()`, where the service derives from `EntityService<TEntity, TKey>` and may be
+generic over the entity's leaf. It attaches a stack companion (`EntityCompanion<TEntity, TCompanion>()`,
+whose `[ApiAction]` methods the stack serves), validators, persist effects, details contributors and
+named filter contributors (`Validator`, `PersistEffect`, `DetailsContributor`, `NamedFilters`, each
+closed or open over the leaf), a routed API service (`ApiService<TService>()`, which carries
+`[ApiRoute]`) and confirmation keys (`Confirmation(key)`). An entity has one stack: a feature that
+requires the stack's registrant may register it again, replacing its service and operations, and the
+stack keeps its registrant's feature.
+
+`CrudComposition` registers, per stack, the service closed over the leaf (scoped, and as
+`EntityService<TLeaf, TKey>`), its companions, and its components under their contracts (a
+component generic over a base closes over the substituted leaf); then `StackRegistry`, the singleton
+`IStackRegistry`, built once on first resolution from the composition and the tenant model with no
+tenant scope:
+
+- **Descriptors.** A stack's operations are its `Entity<…>` item's, else its `[Stack]`'s, else
+  every operation. Its capabilities, properties, children, searchable properties, natural keys and
+  display name are read from the entity's metadata; its default select, related select and details
+  expansion from the projection attributes, else derived (the key, natural keys, name, code, active
+  flag and audit columns; the key, display-name columns and image; every reference, and every
+  child's reference at any depth). Its actions are the built-in `activate` and `deactivate` of an
+  activatable entity it saves, then the service's `[EntityAction]` and `[ApiAction]` methods, base class
+  first, then each companion's `[ApiAction]` methods. Its extras are the service's and details
+  contributors' `[DetailsExtras]`, then `permissions` when the stack serves details and writes
+  anything. Its named filters are read once from contributors created from the root provider.
+- **Child query surfaces.** A stack with `Query` exposes each child collection at every depth as a
+  read-only query surface under the child's resource and segment, owned by its parent's resource
+  through the child's parent-key navigation, unless the child's `[ApiResource(Queryable = false)]`
+  opts it, and its subtree, out. Their actions stay empty until the child-action seam is defined.
+- **Routed services and enlistments.** Each routed service's `[ApiAction]` methods are its actions,
+  each secured by a declared `Resource` and `Action`, or member-only; `Enlistments` is every declared
+  `IEnlists<TTarget>` edge between stacks, from any registered writer.
+- **Ownership.** The registry owns every action descriptor and the method behind it, matched by
+  reference; the method record says whether its last parameter is a `CancellationToken`, which
+  the invoker binds to the request's token. `OwnerOf` maps a table, root or child, to its stack.
+
+`StackSecurableContributor` registers each stack's securables: `Read` (filter root the resource,
+or none for a cacheable entity) when it queries, serves details or exports; `Save` when it saves or
+imports; `Delete`; each entity action's securable (filter root the resource when the action takes a
+filter); each `[ApiAction]`'s; each routed service's (no filter root, its feature's); and each child
+query surface's `Read`, owned by its parent through the parent-key navigation, in the root stack's
+feature.
+
+| Check | Fails when | Needs infrastructure |
+|---|---|---|
+| `core.stacks` | two features register a stack over one entity and neither requires the other, or one feature registers it twice differently; a stack is over a child entity, an abstract or keyless class, or an entity the tenant model does not map; its service does not derive from `EntityService<TLeaf, TKey>` or cannot close over the leaf; its operations include `Save` without `Details`, `Import` without `Query`, `Details` and `Save`, or `Export` without `Query`; a `[Stack]` ceiling is not positive (naming the stack and the ceiling); a resource segment, a child surface's or a routed service's first route segment, is not kebab-case or is taken twice, ignoring case; a child has no navigation through its parent key; an `EntityService` registered as a service, or one serving an entity whose stack runs the default service, that no stack runs | no |
+| `core.stack-actions` | an action's name is not kebab-case segments joined by `/`, is taken twice in a stack, or takes a segment the stack serves itself (`query`, `get`, `save`, `delete`, `export`, `import` and the rest its operations and capabilities give it); a method is not a public, non-generic instance method, has an unsupported signature or result, or carries both attributes; a single-target action returns nothing; an `[EntityAction]` is declared on a companion or a routed service; a companion has no `[ApiAction]`; an action of a stack or companion names another resource; a member-only action names a securable; a routed service has no `[ApiRoute]`, a malformed route, or an action with neither a `Resource` nor `MemberOnly`; an `[EntityRef]` argument names no stack with `Query` | no |
+| `core.stack-components` | a companion or component is attached to an entity no stack owns, or, not generic, to an entity only derived entities' stacks own; it cannot close over the stack's leaf, or does not implement its contract once closed; a service or details contributor declares an extra twice across its class and base classes, or declares `permissions`, which the platform produces; a named filter contributor cannot be created or read at startup, names a filter outside `^[a-z][a-z0-9-]*$`, gives one no tree, or shares a name with another | no |
+| `core.stack-projections` | a stack's or child surface's default select, related select or default ordering, or a named filter's text, does not validate against the query schema; a details expansion names a segment that is neither a navigation nor a child collection; a named filter goes via a non-navigation, or tests the existence of an entity through a navigation that does not lead back to the filtered one | no |
+| `core.confirmations` | a confirmation key is not dotted PascalCase, a feature declares it twice, two features declare it, or no neutral shared `Strings` resource of a composed feature declares it | no |
+| `core.entity-pipeline` | `IEntityPipelineFactory` or an `IEntityPipeline<,>` is registered with a type, an instance or a factory that is not the platform's pipeline | no |
+| `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
+| `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
+
 ## Securables
 
 A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
@@ -900,14 +1013,17 @@ contributor once, on first resolution (the realised gate resolves it), then free
   of the sorted `Resource|Action|FilterRoot|IsSensitive|OwnerResource|OwnerNavigation` lines and
   `alias|Old|New` lines.
 
-`CoreFeature` registers `core.User` × `Read` (filter root `core.User`) and `core.UserStamp` ×
-`Read` (filter root `core.UserStamp`, owned by `core.User` through `User`).
+`CoreFeature` registers `core.UserStamp` × `Read` (filter root `core.UserStamp`, owned by
+`core.User` through `User`); the users', roles', jobs', schedules' and notifications' securables are their stacks'
+(see [Entity stacks](#entity-stacks)).
 `SecurablesClientAssetContributor` writes the `securables` section of the Core chunk: one
 `ClientSecurable` per securable, each label key the first of its chain that a neutral shared
 `Strings` resource of a composed feature declares (`INeutralStringKeys`), else the chain's first key
 with humanized English as the fallback (pluralized for an entity's plural key). Core's `Strings`
-declares `Action_Read`, `Action_Save`, `Action_Delete`, `Core_User_Plural`, `Core_Role_Plural`,
-`Securable_core_UserStamp` and `Feature_core`.
+declares `Action_Read`, `Action_Save`, `Action_Delete`, the plural label of each of its stacks and
+child query surfaces (`Core_User_Plural`, `Core_Role_Plural`, `Core_RoleMembership_Plural`,
+`Core_Permission_Plural`, `Core_Job_Plural`, `Core_Schedule_Plural`, `Core_Notification_Plural`), `Securable_core_UserStamp` and
+`Feature_core`.
 
 | Check | Fails when | Needs infrastructure |
 |---|---|---|
@@ -1065,8 +1181,10 @@ same in a `Persist` batch of its own.
 | Folder | Contents |
 |---|---|
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
-| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
+| `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
+| `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
@@ -1083,7 +1201,7 @@ same in a `Persist` batch of its own.
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, and the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the neutral string keys and the name humanizer. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests
@@ -1093,3 +1211,8 @@ same in a `Persist` batch of its own.
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
 holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
+`test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
+(`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
+convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,
+fixtures and the showcase left out) fails it, unless it is
+listed as pending with the reason it waits.

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Migrator.Emit
 {
@@ -19,9 +20,10 @@ namespace Tellma.Core.Migrator.Emit
 
     /// <summary>
     ///     The files one emit writes into a distribution's generated folder: the
-    ///     three metadata chunks under <c>assets/</c>, each named after the hash of its bytes; the
-    ///     loaders module <c>tellma-metadata.ts</c> that names them; and every contributor's generated
-    ///     file. Every byte is a function of the sections and files alone.
+    ///     three metadata chunks and one string pack per language under <c>assets/</c>, each named
+    ///     after the hash of its bytes; the loaders module <c>tellma-metadata.ts</c> that names them;
+    ///     and every contributor's generated file. Every byte is a function of the sections, packs and
+    ///     files alone.
     /// </summary>
     internal sealed partial class ClientAssetBundle
     {
@@ -86,12 +88,18 @@ namespace Tellma.Core.Migrator.Emit
         ///     takes the format's member.
         /// </summary>
         /// <param name="sections">The sections the contributors wrote.</param>
+        /// <param name="stringPacks">The string packs the contributors wrote, one per language.</param>
         /// <param name="files">The generated files the contributors wrote.</param>
         /// <param name="problems">Every problem; empty when the bundle was built.</param>
         /// <returns>The bundle, or null when there are problems.</returns>
-        public static ClientAssetBundle? Create(IReadOnlyList<ClientMetadataSection> sections, IReadOnlyList<ClientGeneratedFile> files, out IReadOnlyList<string> problems)
+        public static ClientAssetBundle? Create(
+            IReadOnlyList<ClientMetadataSection> sections,
+            IReadOnlyList<StringPack> stringPacks,
+            IReadOnlyList<ClientGeneratedFile> files,
+            out IReadOnlyList<string> problems)
         {
             ArgumentNullException.ThrowIfNull(sections);
+            ArgumentNullException.ThrowIfNull(stringPacks);
             ArgumentNullException.ThrowIfNull(files);
             List<string> found = [];
 
@@ -127,8 +135,18 @@ namespace Tellma.Core.Migrator.Emit
                 served[chunk] = $"{ServedFolder}/{name}";
             }
 
+            // --- The string packs, each named after its language and its hash ---
+            SortedDictionary<string, string> packs = new(StringComparer.Ordinal);
+            foreach (StringPack pack in stringPacks)
+            {
+                byte[] content = Canonical(pack.Json);
+                string name = $"strings-{pack.Language}-{ContentHash.Of(content)}.json";
+                emitted.Add(new EmittedFile($"{AssetsFolder}/{name}", content));
+                packs[pack.Language] = $"{ServedFolder}/{name}";
+            }
+
             // --- The loaders module, then the contributors' files ---
-            emitted.Add(new EmittedFile(ModulePath, Utf8.GetBytes(Module(served))));
+            emitted.Add(new EmittedFile(ModulePath, Utf8.GetBytes(Module(served, packs))));
             emitted.AddRange(files.Select(static file => new EmittedFile(file.RelativePath, Utf8.GetBytes(file.Content.ReplaceLineEndings("\n")))));
 
             return new ClientAssetBundle([.. emitted.OrderBy(static file => file.RelativePath, StringComparer.Ordinal)]);
@@ -200,13 +218,37 @@ namespace Tellma.Core.Migrator.Emit
             return [.. buffer.WrittenSpan, (byte)'\n'];
         }
 
-        /// <summary>The loaders module, naming each chunk by its served path.</summary>
-        /// <param name="served">Each chunk's served path.</param>
-        /// <returns>The module's text.</returns>
-        private static string Module(Dictionary<ClientMetadataChunk, string> served)
+        /// <summary>A JSON value's bytes in canonical form, ending in a line feed, as every chunk's are.</summary>
+        /// <param name="json">The JSON.</param>
+        /// <returns>The bytes.</returns>
+        private static byte[] Canonical(ReadOnlyMemory<byte> json)
         {
-            // Paths hold only the served folder, a chunk name, a dash, base32 and '.json', so they
-            // need no escaping inside single quotes. No string pack is written yet.
+            ArrayBufferWriter<byte> buffer = new();
+            using (Utf8JsonWriter writer = new(buffer, WriterOptions))
+            {
+                using var value = JsonDocument.Parse(json);
+                CanonicalJson.Write(writer, value.RootElement);
+            }
+
+            return [.. buffer.WrittenSpan, (byte)'\n'];
+        }
+
+        /// <summary>The loaders module, naming each chunk and each language's string pack by its served path.</summary>
+        /// <param name="served">Each chunk's served path.</param>
+        /// <param name="packs">Each language's served pack path, in ordinal order of the languages.</param>
+        /// <returns>The module's text.</returns>
+        private static string Module(Dictionary<ClientMetadataChunk, string> served, SortedDictionary<string, string> packs)
+        {
+            // Paths hold only the served folder, a chunk name or 'strings-' and a language code of
+            // letters, digits and hyphens, a dash, base32 and '.json', so they need no escaping inside
+            // single quotes. A language code with a hyphen is quoted to be a property name.
+            string strings = packs.Count == 0
+                ? "{}"
+                : string.Concat(
+                    "{\n",
+                    string.Concat(packs.Select(static pack => $"    {(pack.Key.Contains('-', StringComparison.Ordinal) ? $"'{pack.Key}'" : pack.Key)}: '{pack.Value}',\n")),
+                    "  }");
+
             return $$"""
                 // Written by the migrator's emit-client-assets; every build rewrites it.
 
@@ -217,7 +259,7 @@ namespace Tellma.Core.Migrator.Emit
                   core: '{{served[ClientMetadataChunk.Core]}}',
                   entities: '{{served[ClientMetadataChunk.Entities]}}',
                   contracts: '{{served[ClientMetadataChunk.Contracts]}}',
-                  strings: {},
+                  strings: {{strings}},
                 });
 
                 """.ReplaceLineEndings("\n");

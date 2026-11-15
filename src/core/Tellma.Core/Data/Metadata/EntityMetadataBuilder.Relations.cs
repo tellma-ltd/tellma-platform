@@ -12,7 +12,7 @@ using Tellma.Core.Composition;
 
 namespace Tellma.Core.Data.Metadata
 {
-    /// <summary>Phases 4 and 5 of the build: the parts that name other entities, and the warnings.</summary>
+    /// <summary>Phases 4 and 6 of the build: the parts that name other entities, and the warnings.</summary>
     internal sealed partial class EntityMetadataBuilder
     {
         /// <summary>The suffix a foreign-key property's navigation name drops.</summary>
@@ -157,6 +157,12 @@ namespace Tellma.Core.Data.Metadata
 
                 if (!leaf.Properties.TryGetValue(dependent.Name, out PropertyMetadata? column))
                 {
+                    // A shadow key the platform does not declare is phase 5's to report, with its cause.
+                    if (dependent.IsShadowProperty() && !PlatformShadowColumns.IsDeclared(foreignKey.DeclaringEntityType, dependent.Name))
+                    {
+                        continue;
+                    }
+
                     Report(
                         $"The entity {Display(leaf)} has a foreign key over {dependent.Name}, which is not a property of the class.",
                         $"Declare {dependent.Name} on the class and reference the target with [References].");
@@ -239,7 +245,7 @@ namespace Tellma.Core.Data.Metadata
         }
 
         /// <summary>
-        ///     Phase 5: warns for every entity a reference points at that has no natural key, since its
+        ///     Phase 6: warns for every entity a reference points at that has no natural key, since its
         ///     rows then travel between spreadsheets and tenants by surrogate id alone.
         /// </summary>
         /// <param name="described">Every leaf with metadata.</param>

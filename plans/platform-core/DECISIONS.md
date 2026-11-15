@@ -359,6 +359,36 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-089 (2026-11-14): ledger snapshots wait while an integration is in progress
+
+- Ruling: while an integrator is merging and gating for platform-core, the orchestrator does not push LEDGER/DECISIONS snapshots. It keeps the edits in the main checkout and pushes them right after that integration's push lands. Ahmad's rulings are still recorded at once, but their push also waits.
+- Why: PC-F29 had to merge platform-core three times, once only because of a ledger-only snapshot. Each extra merge costs the integrator a fetch, a merge and a judgement call on gates.
+- For Ahmad: none.
+
+### D-088 (2026-11-14): the orchestrator folds Ahmad's rulings into PROCESS.md and PLAN.md
+
+- Ruling (Ahmad, 2026-11-14): the orchestrator may edit PROCESS.md and PLAN.md to fold in a ruling of Ahmad's (a D-nnn marked as his ruling). The "never edit" line in the §4.1 brief binds spawned agents, not the orchestrator. Edits are made in the main checkout only, cite the D-nnn in the changed text, and are committed with the next snapshot.
+- Applied first to D-087: the hold step (§4 diagram and text), the implementer brief's closing line (§4.1), the hold message and the integration note (§4.3), the release-queue rule (§5.1) and slot freeing at hold (§5.3).
+- For Ahmad: none (his ruling).
+
+### D-087 (2026-11-14): holding does not merge or re-run gates; merge and gate once at release
+
+- Ruling (Ahmad, 2026-11-14): when an item holds after its last fix round, it does not merge origin/platform-core or re-run PLAN.md §7.1 items 2-4. It runs `git merge-tree origin/platform-core HEAD` (after `git fetch origin`), reports any conflicts it shows, and pushes only pc/PC-xxx. The merge and the gates run once, when the orchestrator releases the item (the §4.3 integration message). This replaces the merge-and-hold step for every item that holds from now on.
+- Why: throughput. Held items were merging and gating twice, once at hold and again at release, because platform-core always moves while they wait.
+- For Ahmad: none (his ruling). Folded into PROCESS.md §4, §4.1, §4.3, §5.1 and §5.3 under D-088.
+
+### D-086 (2026-11-14): popup cell editors — grid-editing entry point, pane parent, composite editors (PC-056)
+
+- Ruling: popup cell editors live in the lazily loaded `./grid-editing` entry point (grid 41.93 KB, grid-editing 7.42 KB against a ceiling raised from 7.34 to 7.52 KB, with a budgetNotes entry). The pane's DOM parent is the in-cell `.tm-grid__editor` box. Composite cell editors (sub-forms in a popup, e.g. the window and filter editors of spec 0032) must shield inner tm-* controls: provide their own TM_CELL_EDITOR_HOST and register with the grid's through `{ skipSelf: true }`. TmGridEditorDef documents this, and an ngDevMode error fires when more than one control registers.
+- Why: TM_CELL_EDITOR_HOST is last-registration-wins, so an unshielded sub-form would steal the cell's editor session; the split keeps editing code off read-only grids.
+- For Ahmad: spec 0010 §C.15 and ARCHITECTURE.md disagree on three points that need aligning: (1) opening a readonly column's popup cell shows a read-only view mode; (2) a readonly grid that has a popup column still preloads grid-editing; (3) the pane's DOM parent is the in-cell editor box.
+
+### D-085 (2026-11-14): other tellma-core-tools spawn-test timeouts under local load (PC-F24)
+
+- Ruling: D-078 extends to the two other tellma-core-tools specs that spawn real child processes, `build.spec` "stops with exit 3 …" and `serve.spec` "fails before the emit …". A local lint:test failure caused only by these timing out does not block, provided each passes when run alone. CI stays the authority: a failure there is stop-the-line as usual. Both are tracked as flaky rows; PC-F29 (splitting the shim test) is the model for a fix if they ever fail in CI.
+- Why: PC-F24 saw them time out only with five slots loading the machine, and both passed 25/25 alone. They test tooling that PC-F24 does not touch.
+- For Ahmad: none.
+
 ### D-084 (2026-11-14): shadow-property gate allow-list and scope (PC-F41)
 
 - **Allow-list.** The startup gate (in core.entity-metadata) allows the period columns and Node per spec 0012 §14, plus five model-only machinery columns that other specs require: Job StateJson, LeaseToken, ConfirmedKeys (spec 0020 §2.3) and Blob StorageKey, Sha256 (spec 0017 §2.1-2.2). Entries are keyed by CLR type + property name; Job and Blob are sealed and only Core can contribute model configurations.
@@ -412,6 +442,7 @@ Format, one entry per ruling:
 
 - Ruling: while CI stays green, an integrator's local lint:test failure caused only by `tellma-core-tools/src/common/common.spec.ts` "starts a package manager's shim … and fails a missing program" timing out at about 5 s does not block a push, provided the file passes when run alone. PC-F29 is raised to medium and takes the next free fix slot. If the test fails in CI, it becomes a stop-the-line item as usual.
 - Why: the test spawns a real pnpm shim and exceeds its 5 s limit only when parallel slots load the machine. PC-030's change touches no tools code, and holding integrations on a known local timing flake would stall the line for nothing.
+- Update (2026-11-14): PC-F29 integrated (CI 43684370336). It split the shim test into three renamed tests with explicit timeouts and made build.fixture.spec.ts robust under load, so this waiver is no longer needed for those two tests; the flaky rows are closed. D-085 still covers the build.spec and serve.spec timeouts.
 - For Ahmad: none.
 
 ### D-077 (PC-054, 2026-11-14): remembered tree expansion loads with the new content's rows

@@ -7,13 +7,14 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Client;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Migrator.Emit;
 
 namespace Tellma.Core.Tests.Migrator
 {
     /// <summary>
-    ///     The emitted client metadata: canonical chunks named by their hash, the defaults every chunk
-    ///     carries, the loaders module, and the paths the emit keeps for itself.
+    ///     The emitted client metadata: canonical chunks and string packs named by their hash, the
+    ///     defaults every chunk carries, the loaders module, and the paths the emit keeps for itself.
     /// </summary>
     public class ClientAssetBundleTests
     {
@@ -135,6 +136,42 @@ namespace Tellma.Core.Tests.Migrator
             }
 
             Assert.DoesNotContain("\r", module, StringComparison.Ordinal);
+            Assert.Contains("  strings: {},\n", module, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_string_pack_is_written_canonically_and_named_after_its_language_and_hash()
+        {
+            ClientAssetBundle bundle = Create(static context =>
+                context.StringPack(new StringPack("ar", "1.0.0", Encoding.UTF8.GetBytes(/*lang=json,strict*/ """{ "b": "باء", "a": "<a>" }"""))));
+
+            EmittedFile pack = Assert.Single(bundle.Files, static file => file.RelativePath.StartsWith("assets/strings-", StringComparison.Ordinal));
+            Assert.Equal($"assets/strings-ar-{ContentHash.Of(pack.Content.Span)}.json", pack.RelativePath);
+            Assert.Equal(/*lang=json,strict*/ "{\"a\":\"\\u003Ca\\u003E\",\"b\":\"باء\"}\n", Encoding.UTF8.GetString(pack.Content.Span));
+            Assert.True(ClientAssetBundle.IsEmittedAsset(Path.GetFileName(pack.RelativePath)));
+        }
+
+        [Fact]
+        public void The_loaders_module_names_each_string_pack_by_its_language_in_ordinal_order()
+        {
+            ClientAssetBundle bundle = Create(static context =>
+            {
+                context.StringPack(new StringPack("en", "1.0.0", "{}"u8.ToArray()));
+                context.StringPack(new StringPack("zh-Hant", "1.0.0", "{}"u8.ToArray()));
+                context.StringPack(new StringPack("ar", "1.0.0", "{}"u8.ToArray()));
+            });
+            string module = Encoding.UTF8.GetString(Assert.Single(bundle.Files, static file => file.RelativePath == ClientAssetBundle.ModulePath).Content.Span);
+            string Served(string language)
+            {
+                return "tm-metadata/" + Path.GetFileName(
+                    Assert.Single(bundle.Files, file => file.RelativePath.StartsWith($"assets/strings-{language}-", StringComparison.Ordinal)).RelativePath);
+            }
+
+            // A code with a hyphen is quoted, as a property name must be.
+            Assert.Contains(
+                $"  strings: {{\n    ar: '{Served("ar")}',\n    en: '{Served("en")}',\n    'zh-Hant': '{Served("zh-Hant")}',\n  }},\n",
+                module,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -156,7 +193,7 @@ namespace Tellma.Core.Tests.Migrator
             ClientAssetContext context = new(new ServiceCollection().BuildServiceProvider());
             context.File(path, "x");
 
-            Assert.Null(ClientAssetBundle.Create(context.Sections, context.Files, out IReadOnlyList<string> problems));
+            Assert.Null(ClientAssetBundle.Create(context.Sections, context.StringPacks, context.Files, out IReadOnlyList<string> problems));
             Assert.Contains(path, Assert.Single(problems), StringComparison.Ordinal);
         }
 
@@ -166,7 +203,7 @@ namespace Tellma.Core.Tests.Migrator
             ClientAssetContext context = new(new ServiceCollection().BuildServiceProvider());
             context.Section(ClientMetadataChunk.Core, "formatVersion", static writer => writer.WriteNumberValue(2));
 
-            Assert.Null(ClientAssetBundle.Create(context.Sections, context.Files, out IReadOnlyList<string> problems));
+            Assert.Null(ClientAssetBundle.Create(context.Sections, context.StringPacks, context.Files, out IReadOnlyList<string> problems));
             Assert.Contains("formatVersion", Assert.Single(problems), StringComparison.Ordinal);
         }
 
@@ -190,7 +227,7 @@ namespace Tellma.Core.Tests.Migrator
         {
             ClientAssetContext context = new(new ServiceCollection().BuildServiceProvider());
             contribute(context);
-            var bundle = ClientAssetBundle.Create(context.Sections, context.Files, out IReadOnlyList<string> problems);
+            var bundle = ClientAssetBundle.Create(context.Sections, context.StringPacks, context.Files, out IReadOnlyList<string> problems);
             Assert.Empty(problems);
             return bundle!;
         }

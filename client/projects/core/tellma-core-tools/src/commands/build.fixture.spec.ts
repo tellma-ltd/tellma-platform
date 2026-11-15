@@ -77,7 +77,10 @@ beforeAll(async () => {
   let err = '';
   const code = await tmRunCli(['build'], { out: (text) => (out += text), err: (text) => (err += text) }, { cwd: app, runner });
   first = { code, out, err };
-  // A cold ng build of the fixture takes minutes on a busy machine.
+  // A cold ng build of the fixture takes under a minute on a CI runner and
+  // minutes on a busy machine. The lint:test config runs this file in a group
+  // of its own after every other spec file, so no other file competes with
+  // the build, and the limit covers only load from outside the suite.
 }, 1_200_000);
 
 afterAll(() => {
