@@ -343,6 +343,39 @@ export const TM_UI_STRINGS_EN: {
         readonly date: "Date";
         readonly time: "Time";
     };
+    readonly pager: {
+        readonly range: "{from, number}–{to, number} / {total, number}";
+        readonly rangeAtLeast: "{from, number}–{to, number} / {total, number}+";
+        readonly item: "{index, number} / {total, number}";
+        readonly itemAtLeast: "{index, number} / {total, number}+";
+        readonly rangeSentence: "Items {from, number} to {to, number} of {total, number}";
+        readonly rangeSentenceAtLeast: "Items {from, number} to {to, number} of {total, number} or more";
+        readonly itemSentence: "Item {index, number} of {total, number}";
+        readonly itemSentenceAtLeast: "Item {index, number} of {total, number} or more";
+        readonly previousPage: "Previous page";
+        readonly nextPage: "Next page";
+        readonly previousItem: "Previous item";
+        readonly nextItem: "Next item";
+        readonly pageSize: "Page size";
+        readonly perPage: "{size, number} per page";
+    };
+    readonly tree: {
+        readonly loading: "Loading";
+        readonly loadFailed: "Couldn't load {label}";
+    };
+    readonly reorderList: {
+        readonly handle: "Reorder {label}";
+        readonly instructions: "Press Space to pick up. Use the arrow keys to move, Space to drop, and Escape to cancel.";
+        readonly grabbed: "{label} picked up. Position {index, number} of {count, number}.";
+        readonly position: "Position {index, number} of {count, number}";
+        readonly dropped: "{label} dropped at position {index, number} of {count, number}.";
+        readonly cancelled: "Move cancelled. {label} is back at position {index, number}.";
+        readonly moveMenu: "Move {label}";
+        readonly moveUp: "Move up";
+        readonly moveDown: "Move down";
+        readonly moveToTop: "Move to top";
+        readonly moveToBottom: "Move to bottom";
+    };
 };
 
 // @public

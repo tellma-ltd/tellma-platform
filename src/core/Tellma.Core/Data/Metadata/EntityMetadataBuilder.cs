@@ -25,8 +25,9 @@ namespace Tellma.Core.Data.Metadata
     ///         (which mapped types are entities); each leaf's own parts (table, properties and ownership,
     ///         multilingual groups, unique indexes, natural keys, blob references, tree, table type,
     ///         display name); the entity names and the lookup by base class; the parts that name other
-    ///         entities (child collections, references, navigation names); and the warnings. The provider
-    ///         is created only when no phase reported a problem.
+    ///         entities (child collections, references, navigation names); the shadow properties of every
+    ///         mapped type, entity or not; and the warnings. The provider is created only when no phase
+    ///         reported a problem.
     ///     </para>
     ///     <para>
     ///         The conventions have already refused, by throwing, what no model can be built with. This
@@ -112,7 +113,10 @@ namespace Tellma.Core.Data.Metadata
                 CheckNavigationNames(leaf, described);
             }
 
-            // --- Phase 5: warnings ---
+            // --- Phase 5: the model's shadow properties, over every mapped type ---
+            CheckShadowProperties();
+
+            // --- Phase 6: warnings ---
             WarnUnkeyedTargets(described);
 
             if (_problems.Count > 0)
@@ -297,6 +301,137 @@ namespace Tellma.Core.Data.Metadata
                         $"Map one leaf per class: register the leaf that replaces {TypeDisplay.Short(type)} with UseEntity<{TypeDisplay.Short(type)}, TLeaf>(), or derive the others from a class of their own.");
                 }
             }
+        }
+
+        /// <summary>
+        ///     Phase 5: the platform declares every column of the model that no property of a class
+        ///     carries. Any other is implicit: EF Core adds a shadow foreign key for a navigation that has
+        ///     no foreign-key property, a join table for a many-to-many pair of collections, and a table of
+        ///     shadow keys for an owned type, and a model configuration can map a column by name alone.
+        ///     Covers every mapped type, the platform's own tables included. A join table and an owned type
+        ///     are reported once each, naming the navigations behind them; any other column is reported
+        ///     once, on the type that declares it.
+        /// </summary>
+        private void CheckShadowProperties()
+        {
+            // --- The join tables of many-to-many navigations, with the navigations through each ---
+            Dictionary<IEntityType, List<ISkipNavigation>> joins = [];
+            foreach (ISkipNavigation skip in _model.GetEntityTypes().SelectMany(static entityType => entityType.GetDeclaredSkipNavigations()))
+            {
+                if (!joins.TryGetValue(skip.JoinEntityType, out List<ISkipNavigation>? through))
+                {
+                    joins[skip.JoinEntityType] = through = [];
+                }
+
+                through.Add(skip);
+            }
+
+            foreach (IEntityType entityType in _model.GetEntityTypes())
+            {
+                // --- A join table or an owned type is one problem; its keys follow from it ---
+                if (joins.TryGetValue(entityType, out List<ISkipNavigation>? navigations))
+                {
+                    ReportJoin(entityType, navigations);
+                    continue;
+                }
+
+                if (entityType.IsOwned())
+                {
+                    ReportOwned(entityType);
+                    continue;
+                }
+
+                // --- Every other column no property carries: shadow, or an indexer property of a property bag ---
+                foreach (IProperty property in entityType.GetDeclaredProperties())
+                {
+                    if (!(property.IsShadowProperty() || property.IsIndexerProperty()) || PlatformShadowColumns.IsDeclared(entityType, property.Name))
+                    {
+                        continue;
+                    }
+
+                    // A hierarchy's discriminator is the shadow column EF Core adds for a derived type,
+                    // which phase 1 already refuses with the type named.
+                    if (property == entityType.FindDiscriminatorProperty() && entityType.GetDerivedTypes().Any())
+                    {
+                        continue;
+                    }
+
+                    ReportShadow(entityType, property);
+                }
+            }
+        }
+
+        /// <summary>Reports the join table EF Core adds for a many-to-many pair of collections, naming them.</summary>
+        /// <param name="join">The join entity type.</param>
+        /// <param name="navigations">The many-to-many navigations through it.</param>
+        private void ReportJoin(IEntityType join, List<ISkipNavigation> navigations)
+        {
+            string named = string.Join(" and ", navigations.Select(static skip => $"{TypeDisplay.Short(skip.DeclaringEntityType.ClrType)}.{skip.Name}"));
+            string entities = string.Join(" and ", navigations.Select(static skip => TypeDisplay.Qualified(skip.DeclaringEntityType.ClrType)).Distinct());
+            Report(
+                $"The model maps {named} of {entities} as a many-to-many link, for which EF Core adds the join table {join.GetTableName()} with columns no class carries.",
+                $"Mark {named} [NotMapped], and store the link as a child entity with a [ParentKey] to one side and a [References] to the other: an entity carries foreign keys, never navigations.");
+        }
+
+        /// <summary>Reports an owned type, naming the navigation that owns it.</summary>
+        /// <param name="owned">The owned entity type.</param>
+        private void ReportOwned(IEntityType owned)
+        {
+            string type = TypeDisplay.Short(owned.ClrType);
+            IForeignKey? ownership = owned.FindOwnership();
+            string navigation = ownership?.PrincipalToDependent is INavigation toOwned
+                ? $"{TypeDisplay.Short(ownership.PrincipalEntityType.ClrType)}.{toOwned.Name}"
+                : type;
+            string owner = ownership is null ? "The model" : $"The entity {TypeDisplay.Qualified(ownership.PrincipalEntityType.ClrType)}";
+            Report(
+                $"{owner} maps {TypeDisplay.Qualified(owned.ClrType)} as an owned type through {navigation}, whose keys no class carries; the platform maps no owned types.",
+                $"Mark {navigation} [NotMapped] and remove [Owned] or the OwnsOne/OwnsMany that makes {type} owned; to store it, make {type} a child entity with a [ParentKey] to its owner.");
+        }
+
+        /// <summary>Reports one shadow property the platform does not declare, with the cause when it is a foreign key.</summary>
+        /// <param name="entityType">The type that declares the property.</param>
+        /// <param name="property">The property.</param>
+        private void ReportShadow(IEntityType entityType, IProperty property)
+        {
+            string entity = entityType.HasSharedClrType ? entityType.Name : TypeDisplay.Qualified(entityType.ClrType);
+            string owner = entityType.HasSharedClrType ? entityType.Name : TypeDisplay.Short(entityType.ClrType);
+            string name = property.Name;
+
+            // --- A shadow foreign key: from a navigation without a key property, or a configuration naming the column ---
+            if (property.GetContainingForeignKeys().FirstOrDefault() is IForeignKey foreignKey)
+            {
+                string target = TypeDisplay.Qualified(foreignKey.PrincipalEntityType.ClrType);
+                string principal = TypeDisplay.Short(foreignKey.PrincipalEntityType.ClrType);
+                string declare = $"declare {name} as a public property of {owner}, marked [References(typeof({principal}))] or, for a child's parent, [ParentKey]";
+
+                // The navigation on the dependent: the reference it stands for is the property.
+                if (foreignKey.DependentToPrincipal is INavigation toPrincipal)
+                {
+                    Report(
+                        $"The entity {entity} maps {name}, a shadow foreign key to {target} that EF Core adds for the navigation {owner}.{toPrincipal.Name}, since no property of the class carries it.",
+                        $"Remove the navigation {owner}.{toPrincipal.Name} and {declare}: an entity carries foreign keys, never navigations.");
+                    return;
+                }
+
+                // The navigation on the principal: a collection of children is never mapped.
+                if (foreignKey.PrincipalToDependent is INavigation toDependent)
+                {
+                    Report(
+                        $"The entity {entity} maps {name}, a shadow foreign key to {target} that EF Core adds for the navigation {principal}.{toDependent.Name}, since no property of the class carries it.",
+                        $"Mark {principal}.{toDependent.Name} [NotMapped], as every child collection is, and {declare}: an entity carries foreign keys, never navigations.");
+                    return;
+                }
+
+                Report(
+                    $"The entity {entity} maps {name}, a shadow foreign key to {target} that a model configuration declares by name, which no property of the class carries.",
+                    $"Declare {name} as a public property of {owner}, and name that property in the configuration's HasForeignKey.");
+                return;
+            }
+
+            // --- Any other shadow column ---
+            Report(
+                $"The entity {entity} maps {name}, a shadow property that no property of the class carries.",
+                $"Declare {name} as a public property of {owner}, or remove the model configuration that maps it: the platform's shadow columns are the period columns of a temporal entity, the node of a tree and the model-only columns of its own job and blob tables.");
         }
 
         /// <summary>Whether a class is one of the platform's entity bases, where the entity lookup stops.</summary>

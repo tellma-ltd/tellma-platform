@@ -1,6 +1,6 @@
 # Tellma.Testing.Support
 
-Test doubles shared across the email and webhook suites, and the SQL Server fixture every
+Test doubles shared across the email, webhook and host suites, and the SQL Server fixture every
 integration suite shares. Not a test project — it carries no test SDK,
 so `dotnet test` never tries to run it — and not a shipped package either: it is referenced only by
 projects under `test/`.
@@ -14,6 +14,7 @@ plumbing those suites happen to need to drive a specific transport, which no con
 | Folder | Contents |
 |---|---|
 | `Http/` | [ScriptedHttpMessageHandler](Http/ScriptedHttpMessageHandler.cs) — answers from a script, synchronously or asynchronously, and records every request: bodies and request headers, plus content headers and a per-exchange snapshot on `Exchanges`. An asynchronous responder is what lets a suite hold a response open while it arranges something else — a second caller reaching a single-flight gate, a clock advanced past a timeout — rather than racing a real one. One handler drives both HTTP-based transports: the SendGrid client takes an `HttpClient` directly, and the Azure pipeline accepts one through its transport. [SingleClientHttpClientFactory](Http/SingleClientHttpClientFactory.cs) — hands that one client to an adapter that resolves `IHttpClientFactory`, whatever name it asks for. |
+| `Logging/` | [StateCapturingLoggerProvider](Logging/StateCapturingLoggerProvider.cs) — a logger provider enabled at every level that keeps, for each event and scope, every text its structured state carries alongside the rendered message: the key and value of each pair and dictionary entry, each element of a nested sequence (such as a header's values), and each readable public property of any other object, as a destructuring sink writes it; each object once, to a bounded depth. So a suite can assert a secret reaches no log in any form a structured sink would serialise. Its walk is pinned by `Tellma.Core.Testing.Tests`. |
 | `Observability/` | [AlertQueries](Observability/AlertQueries.cs) — reads the checked-in `.kql` alert queries under `infra/monitoring/` (comment lines dropped) and resolves every metric name, dimension key and compared value against what a suite says its code emits, and lists the instruments no query covers. The email and host suites each link their folder's queries into their output and run the same check. |
 | `Options/` | [StaticOptionsMonitor](Options/StaticOptionsMonitor.cs) — an `IOptionsMonitor<T>` over a fixed instance, so a sender that reads options per batch can be driven without a configuration stack. |
 | `Sql/` | [SqlServerFixture](Sql/SqlServerFixture.cs) — one SQL Server for a suite, registered as an assembly or collection fixture: a Testcontainers container by default (`TELLMA_TEST_SQL_IMAGE` overrides the image), or the server `TELLMA_TEST_SQL` names. It hands out uniquely named databases (`NewDatabaseName`, `ReserveDatabase` for a host that creates its own, `CreateDatabaseAsync` in a stated collation), drops them at the end on an existing server, and runs batches and scalar queries. Referencing it brings Testcontainers and xunit's extensibility core along. |

@@ -32,7 +32,8 @@ English.
 
 1. **Collect.** Registers `DeploymentIdentity(slug, environment)` and `DeploymentVersions`, adds
    `CoreFeature` (`core`) first, and runs the composition method. Selection is explicit: there is no
-   assembly scanning.
+   assembly scanning. Before any of it, the HTTP client factory's default loggers are removed from
+   every client as a default (see [Outbound HTTP logging](#outbound-http-logging)).
 2. **Declare.** Each feature's `Declare` records its `Requires` edges and options bindings, and its
    `Contribute` its data-only items. A nested feature (`contribution.Feature(...)`) joins the same
    two steps.
@@ -61,6 +62,23 @@ for a host that is not started, optionally skipping those with `RequiresInfrastr
 
 `TellmaComposition.Validate` runs the same composition host-free and returns, rather than throws,
 every problem `AddTellma` would throw.
+
+### Outbound HTTP logging
+
+`AddTellma` registers `ConfigureHttpClientDefaults(http => http.RemoveAllLoggers())`, so no HTTP
+client of a host that composes a distribution (the web host, the migrator, and the migrator's
+`emit-client-assets`) logs through the HTTP client factory's default loggers. At Trace those
+loggers write each request and response header into the event's structured state with its raw
+value; only the rendered message reads `Authorization: *`. So a bearer token, an API key or a
+basic credential would reach any sink that serialises state (Serilog's properties, OpenTelemetry
+log attributes) as soon as an operator enables Trace for `System.Net.Http`.
+
+**What operators see change:** the per-request `Start processing HTTP request` / `End processing
+HTTP request` lines (and their Trace header lines) are gone from every log, at every level.
+Outbound requests remain observable through the HttpClient instrumentation's spans and metrics
+wherever an exporter is configured, and each connector logs its own failures (SendGrid's refusals
+at Warning, for one). The default applies before each client's own configuration, whenever the
+client is registered: a client may add a logger of its own, which then decides what it writes.
 
 ### Built-in startup checks
 
@@ -213,7 +231,15 @@ prefixes and `[RelatedSelect]` projections render; unique and natural keys sit o
 that is not JSON or binary, natural keys on a key-list type; navigation names collide with nothing;
 blob references are `int?` with a valid kind declared once; enums are stored by name in a sized
 `varchar`; one ownership per property, never on a parent key or a computed column; column
-annotations decorate mapped properties of the right type.
+annotations decorate mapped properties of the right type; and no mapped type, entity or not, holds
+a shadow property the platform does not declare. The declared ones are the period columns
+`ValidFrom`/`ValidTo` of a temporal entity, the `Node` of a tree, and the model-only columns of
+`core.Jobs` (`StateJson`, `LeaseToken`, `ConfirmedKeys`) and `core.Blobs` (`StorageKey`,
+`Sha256`), which the query language withholds like the period columns. Any other is refused, naming the column: above all
+the shadow foreign key EF Core adds for a navigation without a foreign-key property, since an
+entity carries foreign keys and never navigations. A many-to-many pair of mapped collections, whose
+join table no class carries, and an owned type, whose keys no class carries, are each refused once,
+naming the navigations behind them.
 
 ### The table-type binder
 

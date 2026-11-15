@@ -154,7 +154,7 @@ namespace Tellma.Connector.SendGrid.Adapter
                     {
                         Interlocked.Increment(ref state.SentCount);
                     }
-                    else if (_logger.IsEnabled(LogLevel.Debug))
+                    else if (_logger.IsEnabled(LogLevel.Warning))
                     {
                         string? error = response.DescribeErrors();
                         SendGridEmailLog.RequestFailed(_logger, response.StatusCode, error);

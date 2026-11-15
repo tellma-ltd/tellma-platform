@@ -28,7 +28,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <!-- The bounded private caches of the version-tag snapshots. -->
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
-    <!-- IHttpClientFactory and the named client the identity-server client sends through. -->
+    <!-- IHttpClientFactory and the named client the identity-server client sends through; and
+         ConfigureHttpClientDefaults, with which the composition removes the factory's default
+         loggers, which carry raw header values, from every host's clients. -->
     <PackageReference Include="Microsoft.Extensions.Http" />
     <!-- Options binding from configuration (Bind) for the options a feature declares. -->
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
