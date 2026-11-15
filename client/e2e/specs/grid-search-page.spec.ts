@@ -654,4 +654,74 @@ test.describe('the active row under forced colors', () => {
     expect(header.outline).toBe('solid');
     expect(header.ring).toBe(await systemColor(page, 'SelectedItemText'));
   });
+
+  test('a header action keeps its glyph, on state and ring over its selected column', async ({
+    page,
+  }) => {
+    const highlight = await systemColor(page, 'Highlight');
+    const selectedItem = await systemColor(page, 'SelectedItem');
+    const selectedItemText = await systemColor(page, 'SelectedItemText');
+    const region = page.getByTestId('region-filter');
+    const manager = page.getByTestId('manager-filter');
+    // The action's computed paint, read once the app is stable.
+    const actionPaint = async (
+      action: Locator,
+    ): Promise<{ ink: string; border: string; background: string; ring: string }> => {
+      await appStable(page);
+      return action.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return {
+          ink: style.color,
+          border: style.borderTopColor,
+          background: style.backgroundColor,
+          ring: style.outlineColor,
+        };
+      });
+    };
+
+    // Filter Region; Escape returns keyboard focus to its action.
+    await region.click();
+    await page.getByTestId('region-filter-select').selectOption('North');
+    await expect(region).toHaveClass(/tm-grid-header-action--active/);
+    await page.keyboard.press('Escape');
+    await expect(region).toBeFocused();
+
+    // On a plain header the on state is Highlight, ring included.
+    await expect(colHeader(page, 3)).not.toHaveClass(/tm-grid__colhdr--hit/);
+    let paint = await actionPaint(region);
+    expect(paint.ink).toBe(highlight);
+    expect(paint.border).toBe(highlight);
+    expect(paint.ring).toBe(highlight);
+
+    // A cell of the column hits its header (SelectedItem): every mark of the
+    // action turns to the paired ink, over the header's own surface.
+    await cell(page, 0, 3).click();
+    await expect(cell(page, 0, 3)).toBeFocused();
+    await expect(colHeader(page, 3)).toHaveClass(/tm-grid__colhdr--hit/);
+    await expect(colHeader(page, 3)).toHaveCSS('background-color', selectedItem);
+    paint = await actionPaint(region);
+    // Transparent (forced colors keep the alpha), so the header shows through.
+    expect(paint.background).toMatch(/^rgba\(\d+, \d+, \d+, 0\)$/);
+    expect(paint.ink).toBe(selectedItemText);
+    expect(paint.border).toBe(selectedItemText);
+
+    // Its focus ring too, with the column still selected.
+    await page.keyboard.press('ArrowUp');
+    await expect(colHeader(page, 3)).toBeFocused();
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect(page.getByTestId('region-filter-select')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(region).toBeFocused();
+    await expect(colHeader(page, 3)).toHaveClass(/tm-grid__colhdr--hit/);
+    paint = await actionPaint(region);
+    expect(paint.ring).toBe(selectedItemText);
+
+    // An off action in a hit header draws its glyph in the paired ink as well.
+    await cell(page, 0, 4).click();
+    await expect(colHeader(page, 4)).toHaveClass(/tm-grid__colhdr--hit/);
+    await expect(manager).not.toHaveClass(/tm-grid-header-action--active/);
+    paint = await actionPaint(manager);
+    expect(paint.ink).toBe(selectedItemText);
+    expect(paint.border).not.toBe(selectedItemText);
+  });
 });
