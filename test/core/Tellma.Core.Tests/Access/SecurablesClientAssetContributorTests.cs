@@ -130,15 +130,6 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal(expected, NameHumanizer.Pluralize(words));
         }
 
-        [Theory]
-        [InlineData("gl.Center", "Gl_Center")]
-        [InlineData("core.Settings.General", "Core_Settings_General")]
-        [InlineData("Acme.Report", "Acme_Report")]
-        public void A_key_prefix_capitalizes_the_schema_and_underscores_the_dots(string resource, string expected)
-        {
-            Assert.Equal(expected, SecurablesClientAssetContributor.KeyPrefix(resource));
-        }
-
         [Fact]
         public async Task The_neutral_keys_are_those_of_the_composed_features_assemblies()
         {

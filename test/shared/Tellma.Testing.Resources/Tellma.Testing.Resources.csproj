@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The resource audit every feature's suite runs over its own shared string resources: each neutral key is one the composed model derives by convention or one the source spells as a string literal, and each satellite key is one its neutral file declares. Reads .resx files and source text alone, so it references nothing beyond the base class library.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references no test framework at all, so the global using
+         would not compile. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <!-- No references of any kind: the audit reads files, so any suite, of Core, of a pack or of a
+       distribution, references it without taking a second copy of anything. Omitting
+       Microsoft.NET.Test.Sdk keeps IsTestProject false, so `dotnet test Tellma.slnx` never tries to
+       run this project. -->
+
+</Project>

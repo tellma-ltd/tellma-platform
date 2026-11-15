@@ -230,8 +230,9 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         /// <summary>
-        ///     Every platform assembly in the suite's output: not the suite itself, nor the shared test
-        ///     harnesses (<c>Tellma.Testing.*</c>), whose fixtures bind a context as a test's host would.
+        ///     Every platform assembly in the suite's output: not the suite itself, and not the shared
+        ///     test plumbing (<c>Tellma.Testing.*</c>), whose fixture tenant writes the context as a
+        ///     test's host would.
         /// </summary>
         /// <returns>The assemblies.</returns>
         private static Assembly[] PlatformAssemblies()

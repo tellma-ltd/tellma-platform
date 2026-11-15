@@ -238,6 +238,16 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Fact]
+        public void The_negotiated_context_carries_the_tenants_content_languages_in_position_order()
+        {
+            LocalizationNegotiator negotiator = Negotiator(["en", "ar", "am"]);
+
+            LocalizationContext context = negotiator.Negotiate(Input(acceptLanguage: "am", settings: Tenant(languages: ["ar", "en", "am"])));
+
+            Assert.Equal(["ar", "en", "am"], context.ContentLanguages.Select(static language => language.Code));
+        }
+
+        [Fact]
         public void A_reader_whose_language_is_none_of_the_tenants_reads_the_primary_content_language()
         {
             Assert.Equal(1, _negotiator.Negotiate(Input(acceptLanguage: "ar", settings: Tenant(languages: ["en"]))).ContentLanguageIndex);

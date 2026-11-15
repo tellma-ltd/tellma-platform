@@ -90,7 +90,7 @@ namespace Tellma.Core.Migrator.Commands
                 ClientAssetBundle? bundle = null;
                 if (problems.Count == 0)
                 {
-                    bundle = ClientAssetBundle.Create(context.Sections, context.Files, out IReadOnlyList<string> bundleProblems);
+                    bundle = ClientAssetBundle.Create(context.Sections, context.StringPacks, context.Files, out IReadOnlyList<string> bundleProblems);
                     problems.AddRange(bundleProblems.Select(static problem => new CompositionProblem(ProblemSource, problem, null)));
                 }
 
