@@ -11,8 +11,9 @@ using Tellma.Testing.Support.Sql;
 namespace Tellma.Core.Testing.Tests.Sql
 {
     /// <summary>
-    ///     The shared database creation under real contention for the <c>model</c> lock, on a server
-    ///     of its own: SQL Server's own 1807 is classified as transient, a bound of one run surfaces
+    ///     The shared database creation against a real server: its preparation runs every batch on
+    ///     one session; and, under real contention for the <c>model</c> lock on a container of the
+    ///     class's own, SQL Server's own 1807 is classified as transient, a bound of one run surfaces
     ///     it unchanged, and concurrent creations it blocked are retried and all succeed once
     ///     <c>model</c> is free.
     /// </summary>
@@ -20,18 +21,40 @@ namespace Tellma.Core.Testing.Tests.Sql
     ///     The contention is made deterministic by a session whose database is <c>model</c>: it holds
     ///     a shared lock there, so every <c>CREATE DATABASE</c> waits out the server's own lock wait
     ///     (about 25 seconds) and fails with 1807, as a creation queued behind a suite's parallel
-    ///     creations does. The server is the class's own, because the held lock would stall every
-    ///     other suite's creations on a shared one.
+    ///     creations does. That test runs only on a container the fixture started, and is skipped on
+    ///     a server named by <c>TELLMA_TEST_SQL</c>: the held lock would stall every other suite's
+    ///     creations on a shared server.
     /// </remarks>
-    /// <param name="sql">The class's own server.</param>
+    /// <param name="sql">The class's server: its own container unless an existing server is named.</param>
     [Trait("Category", "Integration")]
-    public sealed class CreateDatabaseContentionTests(SqlServerFixture sql) : IClassFixture<SqlServerFixture>
+    public sealed class SqlDatabaseCreationServerTests(SqlServerFixture sql) : IClassFixture<SqlServerFixture>
     {
         /// <summary>How many creations contend at once.</summary>
         private const int Contenders = 6;
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+        /// <summary>
+        ///     A database's preparation runs its batches in order on one session, so a later batch
+        ///     sees what an earlier one left in the session.
+        /// </summary>
+        /// <returns>A task that completes when the test is done.</returns>
+        [Fact]
+        public async Task Preparation_runs_every_batch_on_one_session()
+        {
+            string name = sql.NewDatabaseName("prepared");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, name, cancellationToken: Token);
+
+            // A temporary table lives only as long as its session: the second batch finds it only on the same one.
+            await SqlDatabaseCreation.PrepareAsync(
+                sql.ConnectionString(name),
+                Token,
+                "CREATE TABLE #session (Id int NOT NULL);",
+                "SELECT Id INTO dbo.Survivor FROM #session;");
+
+            Assert.NotNull(await SqlServerFixture.ScalarAsync<int?>(sql.ConnectionString(name), "SELECT OBJECT_ID(N'dbo.Survivor');"));
+        }
 
         /// <summary>
         ///     While a session holds <c>model</c>, a one-run creation surfaces SQL Server's 1807 as
@@ -42,6 +65,11 @@ namespace Tellma.Core.Testing.Tests.Sql
         [Fact]
         public async Task Creations_blocked_on_the_model_lock_are_retried_and_all_exist_once_it_is_free()
         {
+            // Never hold model on a server other suites may share.
+            Assert.SkipUnless(
+                sql.OwnsContainer,
+                $"Holds the model database's lock, which would stall other suites' creations on the shared server {SqlServerFixture.ServerVariable} names; runs on a container of its own (unset {SqlServerFixture.ServerVariable}, Docker required).");
+
             // Short waits keep the test inside the server's own lock wait plus a few seconds.
             CreateDatabaseRetry patient = new(4, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
             CreateDatabaseRetry single = new(1, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));

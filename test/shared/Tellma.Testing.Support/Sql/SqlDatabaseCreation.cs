@@ -55,40 +55,34 @@ namespace Tellma.Testing.Support.Sql
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
-            ArgumentException.ThrowIfNullOrWhiteSpace(database);
-            ArgumentException.ThrowIfNullOrWhiteSpace(collation);
             ArgumentNullException.ThrowIfNull(retry);
             ArgumentNullException.ThrowIfNull(log);
 
-            // A collation is spliced in unquoted, so only a collation name's own characters pass.
-            if (!collation.All(static character => char.IsAsciiLetterOrDigit(character) || character == '_'))
-            {
-                throw new ArgumentException("A collation name holds only ASCII letters, digits and underscores.", nameof(collation));
-            }
-
-            string statement = $"CREATE DATABASE {Quote(database)} COLLATE {collation};";
-            return retry.RunAsync(token => ExecuteAsync(masterConnectionString, statement, token), $"CREATE DATABASE {Quote(database)}", log, cancellationToken);
+            string statement = CreateStatement(database, collation);
+            return retry.RunAsync(
+                token => ExecuteAsync(masterConnectionString, [statement], token),
+                $"CREATE DATABASE {Quote(database)}",
+                log,
+                cancellationToken);
         }
 
         /// <summary>
         ///     Runs the statements that prepare a database a fixture just created, such as
-        ///     <c>ALTER DATABASE … SET READ_COMMITTED_SNAPSHOT ON</c> or a role, each a batch of its own
-        ///     on one connection, under <see cref="CommandTimeout" />. A busy server can hold such a
-        ///     statement past the 30-second default as it holds a creation. Nothing is retried: these
-        ///     statements fail only for real.
+        ///     <c>ALTER DATABASE … SET READ_COMMITTED_SNAPSHOT ON</c> or a role, each a batch of its own,
+        ///     in order on one connection, so a later batch sees the session state an earlier one set,
+        ///     each under <see cref="CommandTimeout" />. A busy server can hold such a statement past
+        ///     the 30-second default as it holds a creation. Nothing is retried: these statements fail
+        ///     only for real.
         /// </summary>
         /// <param name="connectionString">The connection string: <c>master</c> for an <c>ALTER DATABASE</c>, the database itself for what lives in it.</param>
         /// <param name="cancellationToken">Cancels the statements.</param>
         /// <param name="batches">The statements, in order.</param>
         /// <returns>A task that completes when every statement ran.</returns>
-        public static async Task PrepareAsync(string connectionString, CancellationToken cancellationToken, params string[] batches)
+        public static Task PrepareAsync(string connectionString, CancellationToken cancellationToken, params string[] batches)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
             ArgumentNullException.ThrowIfNull(batches);
-            foreach (string batch in batches)
-            {
-                await ExecuteAsync(connectionString, batch, cancellationToken).ConfigureAwait(false);
-            }
+            return ExecuteAsync(connectionString, batches, cancellationToken);
         }
 
         /// <summary>
@@ -109,23 +103,53 @@ namespace Tellma.Testing.Support.Sql
             }
         }
 
-        /// <summary>Runs one statement on a fresh connection under the creation bound.</summary>
-        /// <param name="connectionString">The connection string.</param>
+        /// <summary>
+        ///     The creation statement: <c>CREATE DATABASE [name] COLLATE collation;</c>, the name
+        ///     bracketed and the collation checked, since it is spliced in unquoted.
+        /// </summary>
+        /// <param name="database">The database's exact name.</param>
+        /// <param name="collation">The collation: ASCII letters, digits and underscores only.</param>
+        /// <returns>The statement.</returns>
+        /// <exception cref="ArgumentException">The name or the collation is blank, or the collation holds any other character.</exception>
+        internal static string CreateStatement(string database, string collation)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(database);
+            ArgumentException.ThrowIfNullOrWhiteSpace(collation);
+            return collation.All(static character => char.IsAsciiLetterOrDigit(character) || character == '_')
+                ? $"CREATE DATABASE {Quote(database)} COLLATE {collation};"
+                : throw new ArgumentException("A collation name holds only ASCII letters, digits and underscores.", nameof(collation));
+        }
+
+        /// <summary>A command for one statement on a connection, under the creation bound.</summary>
+        /// <param name="connection">The connection; open or not.</param>
         /// <param name="statement">The statement.</param>
-        /// <param name="cancellationToken">Cancels the statement.</param>
-        /// <returns>A task that completes when the statement ran.</returns>
-        private static async Task ExecuteAsync(string connectionString, string statement, CancellationToken cancellationToken)
+        /// <returns>The command; the caller disposes it.</returns>
+        internal static SqlCommand CreateCommand(SqlConnection connection, string statement)
+        {
+            SqlCommand command = connection.CreateCommand();
+            command.CommandText = statement;
+            command.CommandTimeout = (int)CommandTimeout.TotalSeconds;
+            return command;
+        }
+
+        /// <summary>Runs statements, each a batch of its own, in order on one fresh connection, under the creation bound.</summary>
+        /// <param name="connectionString">The connection string.</param>
+        /// <param name="statements">The statements.</param>
+        /// <param name="cancellationToken">Cancels the statements.</param>
+        /// <returns>A task that completes when every statement ran.</returns>
+        private static async Task ExecuteAsync(string connectionString, IReadOnlyList<string> statements, CancellationToken cancellationToken)
         {
             SqlConnection connection = new(connectionString);
             await using (connection.ConfigureAwait(false))
             {
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                SqlCommand command = connection.CreateCommand();
-                await using (command.ConfigureAwait(false))
+                foreach (string statement in statements)
                 {
-                    command.CommandText = statement;
-                    command.CommandTimeout = (int)CommandTimeout.TotalSeconds;
-                    _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    SqlCommand command = CreateCommand(connection, statement);
+                    await using (command.ConfigureAwait(false))
+                    {
+                        _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
         }

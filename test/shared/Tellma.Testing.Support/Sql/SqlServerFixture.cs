@@ -43,6 +43,12 @@ namespace Tellma.Testing.Support.Sql
         public string MasterConnectionString =>
             _masterConnectionString ?? throw new InvalidOperationException("The fixture is not initialized.");
 
+        /// <summary>
+        ///     Whether the server is a container this fixture started, so no other suite shares it; false
+        ///     when <see cref="ServerVariable" /> named an existing server.
+        /// </summary>
+        public bool OwnsContainer => _container is not null;
+
         /// <summary>The server the connection strings name, as a catalog row would hold it.</summary>
         public string Server => new SqlConnectionStringBuilder(MasterConnectionString).DataSource;
 
