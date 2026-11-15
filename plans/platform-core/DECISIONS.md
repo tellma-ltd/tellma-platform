@@ -376,7 +376,8 @@ Format, one entry per ruling:
 
 - Ruling: the `./tiles` entry point's ceiling is 10.14 KB (measure 10.04 KB) with a budgetNotes entry, not spec 0023 §1's 7 KB. Review 1 measured it feature by feature: with tree mode, skeleton and flash all removed it is still 8.89 KB, so 7 KB cannot be reached without dropping spec'd behaviour. The "." ceiling follows D-072 (9.18 KB). The §12 "10,000 tiles, no long task over 50 ms" probe measured 48 long tasks in 80 wheel steps (median 71 ms, max 164 ms): a real defect, not a flake, so it is fixed in fix 1 and never quarantined. If fix 1 cannot reach 50 ms, the probe stays @perf (nightly) and failing, and a fix item is opened.
 - Why: a quarantine tag is for flaky tests (LEDGER "Flaky"); hiding a deterministic miss of a spec requirement would let it ship. The size cap is a spec estimate the implemented behaviour cannot meet.
-- For Ahmad: spec 0023 §1's 7 KB cap for ./tiles should be about 10 KB, unless tree mode moves behind a lazy seam (which changes the spec'd `parentId` input and is needed by 0030-g anyway).
+- Outcome (fix 1, 98bec3b0): steps 1-4 brought over-50 ms tasks from 54-75 to 6-28 per 80 steps on a quiet host, but the target is not met; the probe is un-quarantined, @perf (nightly) and asserts 50 ms. Fix item PC-F46 takes the rest and may recycle tile views if focus, selection and a11y semantics hold. The perf fixes cost 0.18 KB, so ./tiles is 10.22 KB against a 10.32 KB ceiling.
+- For Ahmad: spec 0023 §1's 7 KB cap for ./tiles should be about 10.3 KB, unless tree mode moves behind a lazy seam (which changes the spec'd `parentId` input and is needed by 0030-g anyway).
 
 ### D-091 (2026-11-15): row-set routes fingerprint only their envelope (PC-064)
 
