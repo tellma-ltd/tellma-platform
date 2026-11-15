@@ -103,7 +103,6 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-063 | pc-f | pc/PC-063 | integrating (released 2026-11-14) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F26 | pc-2 | pc/PC-F26 | impl | fix (Opus, high, launched 2026-11-14) | | 2026-11-14 |
-| PC-046 | — (CI) | pc/PC-046 | CI (platform-core 11ae1269) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-056 | pc-4 | pc/PC-056 | fix1 + merge (held) (R1 0/3/3: hidden pane takes clicks; page scroll detaches pane; press on pane content breaks edit mode; composite sub-form docs; test gaps; margin twice. No R2) | impl (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F29 | pc-f2 | pc/PC-F29 | held ec989b1 (fix1 31e4343: core-lint-scope describe 300 s, measured 37-67 s; merge ledger-only; lint:test 234/234 397 s) | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
 | PC-F34 | pc-3 | pc/PC-F34 | fix1 + merge (held) (R1 0/0/2: shadow-root ancestry; detached-press ancestor test) | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
@@ -296,7 +295,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-043 | 0014-c | 1 | done 8c086c4 (CI green at 362aabc after PC-F32; the red run on 8c086c4 was PC-F32's client flake) | 1ee46fa, 0af47f3, 8633134, 8c086c4 (pc) |  |  |
 | PC-044 | 0013-e | 1 | done (integrated 018f0fd, CI 43579957646 green) | 0855b68, 9336510, a4181b7, 45f91c4 (pc/PC-044), 018f0fd (pc) |  |  |
 | PC-045 | 0010-c2 | 1 | done | 761c33a, 8c6809f, c6807ad, 9299989 (pc) | 20.29M (impl+fix+int 18.53, r1 1.76; Opus) | CI 43039915850 red (client-windows: new no-platform-sniffing scope test fails on Windows → PC-F19; Linux jobs: Ubuntu mirror DNS outage installing Chromium); type-to-edit only on a typed character (no Ctrl/Alt/Meta; AltGraph off Apple; Option without Cmd/Ctrl on Apple); @perf probe @quarantine (PC-F17); CI 43039915850 red (PC-F19), green at 67fa80d (43056016205) |
-| PC-046 | 0013-g | 1 | held a507c3c | f102347, eb5ae0f, 554bcfa, a507c3c (pc/PC-046) | | |
+| PC-046 | 0013-g | 1 | done (CI 43669041748) | f102347, eb5ae0f, 554bcfa, a507c3c, 11ae126 (pc/PC-046) | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | todo |  |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
