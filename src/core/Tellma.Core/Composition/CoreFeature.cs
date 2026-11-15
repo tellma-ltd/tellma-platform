@@ -138,8 +138,9 @@ namespace Tellma.Core.Composition
             _ = contribution.Model<BlobConfiguration>();
 
             // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
-            // spec 0021 §11. Notification is an entity without a service until its stack lands; the
-            // preferences are a platform table, never a stack. Each type is declared by the feature
+            // spec 0021 §11. Notification is a read-only stack with the platform's default service,
+            // whose read the stack registry registers (spec 0021 §8); the preferences are a platform
+            // table, never a stack. Each type is declared by the feature
             // code that raises it; core.user.added is the one this contribution declares for the
             // users' invitation. The two baseline channels and the two client events the
             // notifications and the hub publish come first.

@@ -43,6 +43,7 @@ namespace Tellma.Core.Tests.Access
                 [
                 {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
                 {"resource":"core.Job","action":"Read","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Notification","action":"Read","filterRoot":"core.Notification","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Notification_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.Permission","action":"Read","filterRoot":"core.Permission","isSensitive":false,"feature":"core","owner":{"resource":"core.Role","navigation":"Role"},"resourceLabelKey":"Core_Permission_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.Role","action":"Read","filterRoot":"core.Role","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.Role","action":"Save","filterRoot":"core.Role","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Role_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},

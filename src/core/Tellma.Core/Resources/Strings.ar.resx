@@ -183,6 +183,9 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>الجداول الزمنية</value>
   </data>
+  <data name="Core_Notification_Plural" xml:space="preserve">
+    <value>الإشعارات</value>
+  </data>
   <data name="Securable_core_UserStamp" xml:space="preserve">
     <value>نشاط المستخدمين</value>
   </data>

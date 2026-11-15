@@ -46,6 +46,28 @@ stack core.Role
   feature: core
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+stack core.Notification
+  segment: notifications
+  entity: Tellma.Core.Abstractions.Notifications.Notification
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Notifications.Notification, int>
+  key: int
+  description: -
+  operations: Query, Details
+  capabilities: -
+  properties: Id:ServerOwned, UserId:ServerOwned, Type:ServerOwned, Severity:ServerOwned, ArgumentsJson:ServerOwned, TargetResource:ServerOwned, TargetId:ServerOwned, ActorUserId:ServerOwned, DedupKey:ServerOwned, CreatedAt:ServerOwned, ReadAt:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id,Type,Severity,ArgumentsJson,TargetResource,TargetId,ActorUserId,CreatedAt,ReadAt
+  related-select: Id
+  details-expand: User, ActorUser
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: -
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job

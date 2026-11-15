@@ -183,6 +183,9 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
   </data>
+  <data name="Core_Notification_Plural" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
   <data name="Securable_core_UserStamp" xml:space="preserve">
     <value>User activity</value>
   </data>

@@ -958,7 +958,7 @@ contributor once, on first resolution (the realised gate resolves it), then free
   `alias|Old|New` lines.
 
 `CoreFeature` registers `core.UserStamp` × `Read` (filter root `core.UserStamp`, owned by
-`core.User` through `User`); the users', roles', jobs' and schedules' securables are their stacks'
+`core.User` through `User`); the users', roles', jobs', schedules' and notifications' securables are their stacks'
 (see [Entity stacks](#entity-stacks)).
 `SecurablesClientAssetContributor` writes the `securables` section of the Core chunk: one
 `ClientSecurable` per securable, each label key the first of its chain that a neutral shared
@@ -966,7 +966,7 @@ contributor once, on first resolution (the realised gate resolves it), then free
 with humanized English as the fallback (pluralized for an entity's plural key). Core's `Strings`
 declares `Action_Read`, `Action_Save`, `Action_Delete`, the plural label of each of its stacks and
 child query surfaces (`Core_User_Plural`, `Core_Role_Plural`, `Core_RoleMembership_Plural`,
-`Core_Permission_Plural`, `Core_Job_Plural`, `Core_Schedule_Plural`), `Securable_core_UserStamp` and
+`Core_Permission_Plural`, `Core_Job_Plural`, `Core_Schedule_Plural`, `Core_Notification_Plural`), `Securable_core_UserStamp` and
 `Feature_core`.
 
 | Check | Fails when | Needs infrastructure |
