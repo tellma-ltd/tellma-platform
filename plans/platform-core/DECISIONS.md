@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-086 (2026-11-14): popup cell editors — grid-editing entry point, pane parent, composite editors (PC-056)
+
+- Ruling: popup cell editors live in the lazily loaded `./grid-editing` entry point (grid 41.93 KB, grid-editing 7.42 KB against a ceiling raised from 7.34 to 7.52 KB, with a budgetNotes entry). The pane's DOM parent is the in-cell `.tm-grid__editor` box. Composite cell editors (sub-forms in a popup, e.g. the window and filter editors of spec 0032) must shield inner tm-* controls: provide their own TM_CELL_EDITOR_HOST and register with the grid's through `{ skipSelf: true }`. TmGridEditorDef documents this, and an ngDevMode error fires when more than one control registers.
+- Why: TM_CELL_EDITOR_HOST is last-registration-wins, so an unshielded sub-form would steal the cell's editor session; the split keeps editing code off read-only grids.
+- For Ahmad: spec 0010 §C.15 and ARCHITECTURE.md disagree on three points that need aligning: (1) opening a readonly column's popup cell shows a read-only view mode; (2) a readonly grid that has a popup column still preloads grid-editing; (3) the pane's DOM parent is the in-cell editor box.
+
 ### D-085 (2026-11-14): other tellma-core-tools spawn-test timeouts under local load (PC-F24)
 
 - Ruling: D-078 extends to the two other tellma-core-tools specs that spawn real child processes, `build.spec` "stops with exit 3 …" and `serve.spec` "fails before the emit …". A local lint:test failure caused only by these timing out does not block, provided each passes when run alone. CI stays the authority: a failure there is stop-the-line as usual. Both are tracked as flaky rows; PC-F29 (splitting the shim test) is the model for a fix if they ever fail in CI.
