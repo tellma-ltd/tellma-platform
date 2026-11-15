@@ -347,7 +347,13 @@ namespace Tellma.Core.Tests.Data.Writes
             _ = Assert.Throws<ArgumentException>(() => batch.Update(new UpdateSpec<Crate>.ByIds([1], null, null, Assign(("Name", 5)))));
             _ = Assert.Throws<ArgumentException>(() => batch.Update(new UpdateSpec<Crate>.ByIds([1], null, null, Assign(("Name", null)))));
             _ = Assert.Throws<ArgumentException>(() => batch.Update(new UpdateSpec<Crate>.ByIds([1], null, null, Assign())));
+            ArgumentException tooLong = Assert.Throws<ArgumentException>(() => batch.Update(new UpdateSpec<Crate>.ByIds([1], null, null, Assign(("Name", new string('x', 256))))));
+            Assert.Contains("longer than its column's 255", tooLong.Message, StringComparison.Ordinal);
             Assert.Empty(batch.Statements);
+
+            // A value of exactly the column's length is the column's to hold.
+            _ = batch.Update(new UpdateSpec<Crate>.ByIds([1], null, null, Assign(("Name", new string('x', 255)))));
+            _ = Assert.Single(batch.Statements);
         }
 
         [Fact]

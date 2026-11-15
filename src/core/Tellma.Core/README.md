@@ -378,18 +378,19 @@ grant filter passes, the others skipped; all-or-nothing first selects the ids th
 not show (absent and hidden alike) and throws `50404` with them, then throws `50403` unless every
 id passes the grant filter. By query it captures at most the cap plus one keys and throws `50413`
 past the cap and `50428` on another count. It never assigns the key, the audit or tree columns, the
-parent of a tree row (a save re-paths it), a blob reference or a write-once column, and stamps
+parent of a tree row (a save re-paths it), a blob reference or a write-once column, nor a text
+or binary value longer than its column, and stamps
 `ModifiedAt`/`ModifiedById` unless the table has no audit columns (`Stamp = false`). Assigning an
 activatable tree's `IsActive` recounts the rows' ancestors.
 
 `IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
 roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
-table. By ids it captures the existing rows under U locks and the read filter, selects the rest
+table among its writes but needs no authority over it. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree
-roots with every row under their nodes, the roots checked as ids are and the whole closure against
-the grant filter. A tree's old nodes are kept for the recount of their ancestors. The
+roots with every row under their nodes, captured under U locks, the roots checked as ids are and
+the whole closure against the grant filter. A tree's old nodes are kept for the recount of their ancestors. The
 `DeleteHandle` names the deleted keys and one capture table per blob-reference column, which a
 later statement of the batch may read. A reference from another row is `547`,
 `ForeignKeyViolationException`. A check that embeds a compiled filter takes a statement of its own,

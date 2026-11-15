@@ -166,8 +166,8 @@ namespace Tellma.Core.Tests.Data.Writes
                 );
                 IF @@ROWCOUNT > 0 THROW 50404, N'Entity.NotFound', 1;
                 INSERT INTO @tb0_keys ([Id])
-                SELECT d.[Id] FROM [sv].[Areas] AS d
-                WHERE EXISTS (SELECT 1 FROM [sv].[Areas] AS a JOIN @tb0_t0 AS s ON s.[Id] = a.[Id]
+                SELECT d.[Id] FROM [sv].[Areas] AS d WITH (UPDLOCK, ROWLOCK)
+                WHERE EXISTS (SELECT 1 FROM [sv].[Areas] AS a WITH (UPDLOCK, ROWLOCK) JOIN @tb0_t0 AS s ON s.[Id] = a.[Id]
                               WHERE d.[Node].IsDescendantOf(a.[Node]) = 1);
 
                 """,
@@ -257,6 +257,27 @@ namespace Tellma.Core.Tests.Data.Writes
 
             Assert.StartsWith("DECLARE @tb0_keys TABLE ([Id] bigint PRIMARY KEY);", batch.Statements[0].Text, StringComparison.Ordinal);
             Assert.Equal(2, batch.Statements[0].Parameters[0].Rows);
+        }
+
+        [Fact]
+        public void A_sibling_owned_by_a_stack_never_refuses_its_owners_delete_but_an_owned_aggregate_table_does()
+        {
+            // The sibling's rows go by the database's cascade, so its stack never authorizes the delete.
+            using BatchHarness siblingOwned = new(new MapOwners(new() { [new TableName("sv", "CrateExtras")] = "extras" }), compose: SaveModel.Compose);
+            DataBatch batch = siblingOwned.Batch(BatchPurpose.Persist);
+
+            _ = batch.Delete(new DeleteSpec<Crate>.ByIds([1], null, null));
+
+            Assert.Contains(new TableName("sv", "CrateExtras"), batch.Statements[^1].Writes);
+
+            // A table the delete's own statements name needs the caller's authority.
+            using BatchHarness childOwned = new(new MapOwners(new() { [new TableName("sv", "Items")] = "items" }), compose: SaveModel.Compose);
+            DataBatch refused = childOwned.Batch(BatchPurpose.Persist);
+
+            InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() => refused.Delete(new DeleteSpec<Crate>.ByIds([1], null, null)));
+
+            Assert.Contains("sv.Items", refusal.Message, StringComparison.Ordinal);
+            Assert.Empty(refused.Statements);
         }
 
         [Fact]

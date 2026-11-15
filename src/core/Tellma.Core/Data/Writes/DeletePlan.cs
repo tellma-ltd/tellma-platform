@@ -31,7 +31,8 @@ namespace Tellma.Core.Data.Writes
             Nodes = nodes;
 
             // --- The siblings: a sibling's rows leave with their owner's by its cascading key ---
-            HashSet<TableName> writes = [.. nodes.Select(static node => node.Entity.Table)];
+            HashSet<TableName> aggregate = [.. nodes.Select(static node => node.Entity.Table)];
+            HashSet<TableName> writes = [.. aggregate];
             foreach (EntityMetadata candidate in metadata.All)
             {
                 if (EntityShapes.GetAttribute<SiblingAttribute>(candidate.ClrType) is { } sibling
@@ -41,6 +42,7 @@ namespace Tellma.Core.Data.Writes
                 }
             }
 
+            Aggregate = aggregate.ToFrozenSet();
             Writes = writes.ToFrozenSet();
             Captures = [.. nodes.SelectMany(static node => node.BlobColumns.Select(column => new DeleteCapture(node, column)))];
         }
@@ -51,7 +53,14 @@ namespace Tellma.Core.Data.Writes
         /// <summary>Every node, the root first, in pre-order.</summary>
         public IReadOnlyList<DeleteNode> Nodes { get; }
 
-        /// <summary>The tables a delete writes: the aggregate's and its siblings'.</summary>
+        /// <summary>
+        ///     The aggregate's own tables, which the delete's statements name: the ones its caller needs
+        ///     the authority to write. A sibling's rows go by the database's cascade, which its owning
+        ///     feature declared, so a sibling's stack never has to authorize its owner's deletes.
+        /// </summary>
+        public IReadOnlySet<TableName> Aggregate { get; }
+
+        /// <summary>The tables a delete writes, for its tags and change tracking: the aggregate's and its siblings'.</summary>
         public IReadOnlySet<TableName> Writes { get; }
 
         /// <summary>The blob captures, one per blob column of every table of the aggregate, in node order.</summary>

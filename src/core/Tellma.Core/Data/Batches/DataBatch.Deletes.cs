@@ -30,9 +30,11 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(spec);
             (EntityMetadata metadata, EntityDescriptor root) = WriteTarget<TEntity>(nameof(Delete));
 
-            // --- The plan, and the authority over every table it writes ---
+            // --- The plan, and the authority over the tables its statements name ---
+            // A sibling's rows leave by the cascade its owning feature declared, so the caller needs no
+            // authority over a sibling's table; the sibling still counts among the writes, for tags.
             var plan = DeletePlan.For(metadata, _executor.Queries.Metadata);
-            CheckAuthority(plan.Writes);
+            CheckAuthority(plan.Aggregate);
 
             // --- The statements: the keys and their checks, then the deletes ---
             bool isLong = metadata.Key.ClrType == typeof(long);
@@ -278,6 +280,9 @@ namespace Tellma.Core.Data.Batches
             long[] keys = KeyValues(ids, isLong, parameterName);
 
             // --- The roots' check, then the closure: every row at or under a root's node ---
+            // The closure takes U locks on its rows and roots, as a by-ids capture does, so a concurrent
+            // move out of the subtree waits for the delete instead of being undone by it. The node is
+            // uniquely indexed, so each root's descendants are a range seek and the locks stay on them.
             int ordinal = _statements.Count;
             string list = ReservedSqlNames.Statement(ordinal, ReservedSqlNames.StatementNames.TableValued(0));
             string keysTable = ReservedSqlNames.Statement(ordinal, ReservedSqlNames.StatementNames.Keys);
@@ -288,8 +293,8 @@ namespace Tellma.Core.Data.Batches
             _ = text.Append(CultureInfo.InvariantCulture, $"DECLARE {keysTable} TABLE ([Id] {plan.Root.KeyType} PRIMARY KEY);\n");
             WriteNotFoundCheck(text, list, readable, recompile);
             _ = text.Append(CultureInfo.InvariantCulture, $"INSERT INTO {keysTable} ([Id])\n")
-                .Append(CultureInfo.InvariantCulture, $"SELECT d.[Id] FROM {plan.Root.Table} AS d\n")
-                .Append(CultureInfo.InvariantCulture, $"WHERE EXISTS (SELECT 1 FROM {plan.Root.Table} AS a JOIN {list} AS s ON s.[Id] = a.[Id]\n")
+                .Append(CultureInfo.InvariantCulture, $"SELECT d.[Id] FROM {plan.Root.Table} AS d WITH (UPDLOCK, ROWLOCK)\n")
+                .Append(CultureInfo.InvariantCulture, $"WHERE EXISTS (SELECT 1 FROM {plan.Root.Table} AS a WITH (UPDLOCK, ROWLOCK) JOIN {list} AS s ON s.[Id] = a.[Id]\n")
                 .Append(CultureInfo.InvariantCulture, $"              WHERE d.{node}.IsDescendantOf(a.{node}) = 1)")
                 .Append(Hint(recompile))
                 .Append(";\n");

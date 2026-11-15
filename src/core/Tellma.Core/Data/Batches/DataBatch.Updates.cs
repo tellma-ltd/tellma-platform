@@ -274,6 +274,22 @@ namespace Tellma.Core.Data.Batches
                         $"The update of {metadata.Name} assigns '{name}' {(value is null ? "null" : $"a {value.GetType().Name}")}, which its {property.ClrType.Name} column does not hold.",
                         parameterName);
                 }
+
+                // A sized text or binary column holds no longer value: refused here rather than
+                // truncated or failed by the database. A string's length counts UTF-16 code units, as
+                // an nvarchar column's length does.
+                int? length = value switch
+                {
+                    string text => text.Length,
+                    byte[] bytes => bytes.Length,
+                    _ => null,
+                };
+                if (length > property.MaxLength)
+                {
+                    throw new ArgumentException(
+                        $"The update of {metadata.Name} assigns '{name}' a value of length {length}, longer than its column's {property.MaxLength}.",
+                        parameterName);
+                }
             }
 
             return [.. metadata.Properties.Where(property => assignments.ContainsKey(property.Name)).Select(property => (property, assignments[property.Name]))];

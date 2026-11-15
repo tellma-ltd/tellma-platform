@@ -236,6 +236,55 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
+        public async Task A_saved_row_under_another_moved_row_of_its_payload_is_pathed_once_under_the_new_parent()
+        {
+            // root > a > b > c, and other: the payload moves a under other and renames c, whose parent b is not in the payload.
+            Node root = NewNode("root", null);
+            Node other = NewNode("other", null);
+            _ = await CreateAsync(root, other);
+            Node a = NewNode("a", root.Id);
+            _ = await CreateAsync(a);
+            Node b = NewNode("b", a.Id);
+            _ = await CreateAsync(b);
+            Node c = NewNode("c", b.Id);
+            _ = await CreateAsync(c);
+
+            a.ParentId = other.Id;
+            c.Name = "renamed";
+            _ = await SaveAsync(a, c);
+
+            Assert.Equal($"/{other.Id}/{a.Id}/", await PathAsync(a.Id));
+            Assert.Equal($"/{other.Id}/{a.Id}/{b.Id}/", await PathAsync(b.Id));
+            Assert.Equal($"/{other.Id}/{a.Id}/{b.Id}/{c.Id}/", await PathAsync(c.Id));
+            Assert.Equal("renamed", await ScalarAsync<string>(string.Create(CultureInfo.InvariantCulture, $"SELECT [Name] FROM [fixture].[Nodes] WHERE [Id] = {c.Id};")));
+            Assert.Equal("a:3:3|b:2:2|c:1:1|other:4:4|root:1:1", await CountsAsync());
+        }
+
+        [Fact]
+        public async Task An_update_by_query_of_another_count_is_refused_and_one_that_matches_updates_its_rows()
+        {
+            Widget first = NewWidget("w1", "a");
+            Widget second = NewWidget("w2", "b");
+            Widget third = NewWidget("w3", "z");
+            _ = await CreateAsync(first, second, third);
+            Dictionary<string, object?> rename = new() { ["Name"] = "c" };
+            var query = FilterTree.Leaf("Name != 'z'");
+
+            // --- Another count than expected, under the cap: refused, nothing written ---
+            BatchAssertionFailedException mismatch = await Assert.ThrowsAsync<BatchAssertionFailedException>(
+                () => RunAsync(batch => batch.Update(new UpdateSpec<Widget>.ByQuery(query, null, rename, Cap: 5, ExpectedCount: 3))));
+            Assert.Equal(TellmaSqlErrors.UpdateCountMismatchCode, mismatch.Code);
+            Assert.Equal(0, await ScalarAsync<int>("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Name] = 'c';"));
+
+            // --- The expected count, stamped: the matching rows take the value, the others keep theirs ---
+            BatchResult<UpdateReceipt>? receipt = null;
+            _ = await RunAsync(batch => receipt = batch.Update(new UpdateSpec<Widget>.ByQuery(query, null, rename, Cap: 2, ExpectedCount: 2)));
+            Assert.Equal([first.Id, second.Id], receipt!.Value.UpdatedIds.Order());
+            Assert.Equal("w1:c|w2:c|w3:z", await ScalarAsync<string>("SELECT STRING_AGG(CONCAT([Subject], ':', [Name]), '|') WITHIN GROUP (ORDER BY [Subject]) FROM [fixture].[Widgets];"));
+            Assert.NotEqual(first.ModifiedAt, await StampAsync(first.Id));
+        }
+
+        [Fact]
         public async Task A_save_that_closes_a_cycle_is_refused_by_the_fence()
         {
             Node root = NewNode("root", null);
