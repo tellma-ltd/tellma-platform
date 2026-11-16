@@ -102,10 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-F26 | — (pushed) | pc/PC-F26 | held 1c382e55; PC-F44 done 46705997 (./grid ceiling 40.73), so back in the release queue (after PC-141) | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
-| PC-F47 | — (pushed) | pc/PC-F47 | integrated 12783cb3 (merge 66bef133 clean; gate surfaced a load flake in F47's own contention test, fixed in 12783cb3 with 12 attempts/6 min, shared policy unchanged; no 1807 elsewhere; Identity IT 9 m vs 38 m); CI pending | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
-| PC-141 | pc-3 | pc/PC-141 | released → integrating (held 15d1369d) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
+| PC-141 | — (pushed) | pc/PC-141 | integrated 478b0ab0 (merge clean but for the Acme test README; gate green; §6.4 step stays with PC-089 per D-096); CI pending | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F48 | — (pushed) | pc/PC-F48 | held 49772346 (merge-tree clean vs platform-core 91f8bbe8; vs pc/PC-F47 conflicts only in test/shared/Tellma.Testing.Support/README.md Sql/ row: whichever of F47/F48 integrates second keeps both rows' text); release queue after PC-F47 | impl (Opus, high, launched 2026-11-15) | R2 done (inherit, xhigh) | 2026-11-15 |
-| PC-173 | pc-f | pc/PC-173 | fix1 (R1 0/3/6: first-page count checked after writing/spooling, spool files 0644 on Linux, integration suites unlisted) → hold | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
+| PC-173 | — (pushed) | pc/PC-173 | held 437a88f2 (R1 0/3/6 fixed except R1-8 carried to PC-175/PC-191; merge-tree clean vs platform-core; Linux 0600 file-mode test not yet run, CI ubuntu covers it); release queue T3 after PC-193 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
 | PC-050 | — (pushed) | pc/PC-050 | held b12dedfc (R2 0/0/7 fixed; dev 13 withdrawn via a test-only CacheEvictor contributor; IScopeConnection.ReadOf applies a failed round trip's prologue; nightly FrozenTenantTests passed locally); merge-tree clean; release queue (T1) | impl (Opus, high, launched 2026-11-15) | R2 done (Fable) | 2026-11-15 |
 | PC-094 | — (pushed) | pc/PC-094 | held da754e8e (Migrator Private=false + build-output test + CI publish check; full JSON secret scan; last-line port parse; ar-SA determinism); merge-tree clean; release queue: T1, ahead of the T3 holds | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
 | PC-151 | — (pushed) | pc/PC-151 | held c678bc77 (R1 0/3/5 fixed, each gate shown red; chord-modifier probe bug fixed; two-way registry; @perf CI multiplier; @tmWiring docs tag); merge-tree clean; release queue (T2, after the T1 holds) | impl (Opus, high, launched 2026-11-15) | R1 done; no R2 | 2026-11-15 |
@@ -162,7 +161,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F44 | ./grid is at its 42.03 KB cap (42.02 at a1cf6850): re-split ./grid (move more editable- or tree-only code to secondary entry points) or take measured savings until it has at least 0.5 KB of real headroom under spec 0010 §C.11's 42 KB, per D-057(2)/D-067 | done 46705997 (CI 43781728816 green) | 7bb434d, ed35098 (pc/PC-F44), 4670599 (pc) | | from PC-F26 integrate (D-094) |
 | PC-F45 | showcase grid-states-story.ts switches contentKey A/B over one shared rows array, against the contentKey TSDoc contract (harmless today: a flat grid has no lazy loads); hand each switch its own record, as PC-F37 did for the tree-grid story | done (2058ee78; CI 43858194307 green) | b4e9ef7, dcb30c4 (pc/PC-F45) | | from PC-F37 impl; impl notes: prettier is enforced by no gate, though ARCHITECTURE.md says lint includes it |
 | PC-F46 | tiles: spec 0023 §12 "10,000 tiles, no long task over 50 ms" still fails after PC-061 fix 1 (6-28 long tasks per 80 wheel steps on a quiet host, median 55-58 ms, max ~78; nightly @perf probe asserts 50 ms). Remaining cost is ~36 tile creations per step: time-slice large jumps, share one tm-image object URL per blob, and recycle tile views if needed (allowed by D-092 if focus, selection and a11y semantics hold) | held | 9645e838, bcd207ba (pc/PC-F46) | | from PC-061 fix1 |
-| PC-F47 | test infra: integration fixtures fail with SQL error 1807 "Could not obtain exclusive lock on database 'model'" when several slots create databases at once (37 failures in Tellma.Core.IntegrationTests on PC-066's gate; the 3 classes passed alone). CREATE DATABASE needs an exclusive lock on model; retry it with backoff on 1807 in the shared fixture's database creation | integrated 12783cb3 (CI pending) | b153b6e, abd089d (pc/PC-F47) | | from PC-066 impl |
+| PC-F47 | test infra: integration fixtures fail with SQL error 1807 "Could not obtain exclusive lock on database 'model'" when several slots create databases at once (37 failures in Tellma.Core.IntegrationTests on PC-066's gate; the 3 classes passed alone). CREATE DATABASE needs an exclusive lock on model; retry it with backoff on 1807 in the shared fixture's database creation | done (12783cb3; CI 43871886742 green) | b153b6e, abd089d (pc/PC-F47) | | from PC-066 impl |
 | PC-F48 | migrator (production): TargetDatabase.EnsureExistsAsync runs CREATE DATABASE with no retry on SQL 1807 (model locked) while MigrateCommand provisions tenants with Parallel.ForEachAsync (--parallelism, default 4), and its later statements (read-committed snapshot, query store, EF catalog migrations) run on SqlClient's 30 s default command timeout; seen as "catalog: failed (Execution Timeout Expired)" in MigratorTests/VersionTagSeedTests under load. Add a bounded, logged 1807 retry (timeouts not retried: the server may finish an abandoned statement) and explicit command bounds, with tests | held | 59c9672f, 49772346 (pc/PC-F48) | | from PC-F47 impl |
 | PC-F49 | tree-grid e2e tree-grid.spec.ts:281 '@cross-engine a load that settles after its content switched away lands in that content' passed only on retry in CI 43814037969 (first try: element not found after 5 s), in PC-F37's area (story contentKey switching over shared rows); line stopped (§8.3) | done (291435b9; CI 43841571799 green; line reopened) | f3c8d699, 291435b9 (pc/PC-F49) | | red CI on platform-core |
 | PC-F50 | ./tiles re-split (D-031 revisit clause): born at 10.14 KB over spec 0023's 7 KB cap, then raised to 10.32 (PC-061) and 10.35 (PC-F46 R1). Split the lazy parts (sliced jumps, recycling, keyboard paging) or the shared grid-engine tree resolution into their own chunk, or ask Ahmad to rule a new cap; also the 50 ms @perf bar if the platform-core nightly fails it (D-100) | todo (low; after PC-F46 integrates) | | | from PC-F46 R1 |
@@ -256,6 +255,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | e2e grid-entity.spec.ts:58 type-to-edit … Enter commits with NO move | 2026-11-08 | fixed by PC-F02 |
 | e2e grid-keyboard.spec.ts:258 single tab stop with link column | 2026-11-08 | fixed by PC-F02 |
 | e2e modal.spec.ts:135 focus trapped and restored to opener | 2026-11-08 | fixed by PC-F02 |
+| dotnet Tellma.Core.Testing.Tests SqlDatabaseCreationServerTests contention test (model-lock retry) timed out waiting for every contender's first retry (2 min) in a loaded merged gate; 2/2 alone; no 1807 seen | 2026-11-16 (PC-141 integrate) | watch; local only so far; a second hit opens a fix (wider wait or fewer contenders) |
 
 ## Deferred tests
 
@@ -410,7 +410,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-138 | 0032-f | 1 | todo | | | |
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
-| PC-141 | 0011-h | 2 | held 15d1369d | bb2a2d6, 15d1369 (pc/PC-141) | | |
+| PC-141 | 0011-h | 2 | integrated 478b0ab0 (CI pending) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | todo | | | |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
@@ -442,9 +442,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-170 | 0030-i | 2 | todo | | | |
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
-| PC-173 | 0019-a | 3 | fix1 (pc-f) | 8f3e494 (pc/PC-173) | | |
+| PC-173 | 0019-a | 3 | held | 8f3e494, 437a88f2 (pc/PC-173) | | |
 | PC-174 | 0015-j | 3 | todo | | | |
-| PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too) |
+| PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
 | PC-176 | 0019-c | 3 | todo | | | |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
