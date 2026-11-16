@@ -49,8 +49,12 @@
     <Project Path="src/defaults/Tellma.Defaults.Azure/Tellma.Defaults.Azure.csproj" />
     <Project Path="src/defaults/Tellma.Defaults.Azure.AspNetCore/Tellma.Defaults.Azure.AspNetCore.csproj" />
   </Folder>
+  <Folder Name="/distributions/acme/">
+    <File Path="distributions/acme/Directory.Build.props" />
+  </Folder>
   <Folder Name="/distributions/acme/src/">
     <Project Path="distributions/acme/src/Tellma.Distro.Acme/Tellma.Distro.Acme.csproj" />
+    <Project Path="distributions/acme/src/Tellma.Distro.Acme.Client/Tellma.Distro.Acme.Client.esproj" Type="54A90642-561A-4BB1-A94E-469ADEE60C69" />
     <Project Path="distributions/acme/src/Tellma.Distro.Acme.Migrator/Tellma.Distro.Acme.Migrator.csproj" />
     <Project Path="distributions/acme/src/Tellma.Distro.Acme.Web/Tellma.Distro.Acme.Web.csproj" />
   </Folder>

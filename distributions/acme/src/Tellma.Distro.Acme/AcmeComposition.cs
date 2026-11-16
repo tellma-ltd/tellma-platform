@@ -18,8 +18,8 @@ namespace Tellma.Distro.Acme
         public const string Slug = "acme";
 
         /// <summary>
-        ///     Composes the distribution: the Azure defaults and the offered languages, English (United
-        ///     Kingdom) by default and Arabic (Saudi Arabia).
+        ///     Composes the distribution: the Azure defaults, the offered languages, English (United
+        ///     Kingdom) by default and Arabic (Saudi Arabia), and Acme's own feature.
         /// </summary>
         /// <remarks>
         ///     Only what both hosts compose belongs here: features, entities and the services the
@@ -29,7 +29,7 @@ namespace Tellma.Distro.Acme
         public static void Compose(TellmaBuilder tellma)
         {
             ArgumentNullException.ThrowIfNull(tellma);
-            _ = tellma.UseAzureDefaults().Languages(["en-GB", "ar-SA"]);
+            _ = tellma.UseAzureDefaults().Languages(["en-GB", "ar-SA"]).AddFeature<AcmeFeature>();
         }
     }
 }

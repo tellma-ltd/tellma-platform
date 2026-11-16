@@ -1,0 +1,32 @@
+<!--
+  Acme's single-page app as an MSBuild project, so the web project's reference publishes the built app
+  into its wwwroot. The JavaScript SDK runs BuildCommand at publish (and at build, when
+  ShouldRunBuildScript is true) and takes BuildOutputFolder's files as the app's static web assets.
+-->
+<Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk">
+
+  <PropertyGroup>
+    <!-- tellma-client build, without building the Migrator again: the reference below built it, in
+         this configuration, which the emit's dotnet run must then name to find that build. -->
+    <BuildCommand>pnpm run build:esproj --configuration $(Configuration)</BuildCommand>
+    <StartupCommand>pnpm start</StartupCommand>
+    <!-- The deployable output; the source maps, the metafile and the worker configuration sit beside
+         it, outside what is published. -->
+    <BuildOutputFolder>$(MSBuildProjectDirectory)\dist\acme\browser</BuildOutputFolder>
+    <!-- A build of the solution needs neither Node nor a production build of the app: the app builds
+         when the web project publishes, or when a build asks for it with
+         -p:ShouldRunBuildScript=true, a global property, which wins over this one. (The SDK's own
+         props have already set it, so a default here cannot be conditional.) -->
+    <ShouldRunBuildScript>false</ShouldRunBuildScript>
+    <!-- The repository's one pnpm install, at its root, installs this project's packages. -->
+    <ShouldRunNpmInstall>false</ShouldRunNpmInstall>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The emit runs the Migrator, so MSBuild builds it first; no assembly flows into the app. The
+         JavaScript SDK declares an older target framework than the Migrator's, which only matters
+         to an assembly reference, so the framework check is skipped. -->
+    <ProjectReference Include="..\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+</Project>

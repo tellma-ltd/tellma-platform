@@ -56,15 +56,24 @@ namespace Tellma.Distro.Acme.Web.Tests
             Assert.Equal(isSecret, Secret(path, value) is not null);
         }
 
-        /// <summary>The distribution's tracked configuration files: settings and launch profiles, outside build output.</summary>
+        /// <summary>
+        ///     The distribution's tracked configuration files: the hosts' settings and launch profiles,
+        ///     outside build output. The client app's JSON (its package, workspace and compiler files,
+        ///     its manifest and the metadata it is built from) configures no host and ships to every
+        ///     browser, so it is not scanned.
+        /// </summary>
         /// <returns>The files.</returns>
         private static IEnumerable<string> ConfigurationFiles()
         {
             return Directory.EnumerateFiles(Path.Combine(AcmePaths.Distribution, "src"), "*.json", SearchOption.AllDirectories)
                 .Where(static file =>
                 {
+                    // Only the files the .NET configuration and launch profiles read.
+                    string name = Path.GetFileName(file);
+                    bool configuration = name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
+                        || name.Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase);
                     string[] segments = file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    return !segments.Contains("bin") && !segments.Contains("obj") && !segments.Contains("node_modules");
+                    return configuration && !segments.Contains("bin") && !segments.Contains("obj") && !segments.Contains("node_modules");
                 });
         }
 

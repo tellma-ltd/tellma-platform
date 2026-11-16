@@ -160,6 +160,17 @@ relative path arguments resolve against `client/`.
 node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
 ```
 
+The reference distribution's client app builds end to end through MSBuild, on Linux and Windows:
+publishing the web project builds the Migrator, runs `tellma-client build` through the Client esproj
+(any build problem fails it) and copies the app into `wwwroot`. Then its lint and unit tests, which
+need the `generated/` folder the build writes:
+
+```bash
+dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o artifacts/acme-web
+pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
+pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+```
+
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with

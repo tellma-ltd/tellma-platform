@@ -38,13 +38,15 @@ namespace Tellma.Distro.Acme.Web.Tests
         public void The_web_host_s_project_references_reach_no_migrations_or_design_project()
         {
             // --- The closure of project references, walked from the web project ---
+            // Only references that bring an assembly: the client app's references the Migrator for
+            // its build order alone, and nothing of it reaches the web host.
             HashSet<string> closure = new(StringComparer.OrdinalIgnoreCase);
             Stack<string> pending = new([Path.Combine(AcmePaths.Web, "Tellma.Distro.Acme.Web.csproj")]);
             while (pending.TryPop(out string? project))
             {
                 if (closure.Add(project))
                 {
-                    foreach (string reference in ProjectReferences(project))
+                    foreach (string reference in ProjectReferences(project, assembliesOnly: true))
                     {
                         pending.Push(reference);
                     }
@@ -86,11 +88,13 @@ namespace Tellma.Distro.Acme.Web.Tests
 
         /// <summary>A project's project references, as full paths.</summary>
         /// <param name="project">The project file.</param>
+        /// <param name="assembliesOnly">Whether to leave out the references that bring no assembly (<c>ReferenceOutputAssembly="false"</c>).</param>
         /// <returns>The referenced project files.</returns>
-        private static IEnumerable<string> ProjectReferences(string project)
+        private static IEnumerable<string> ProjectReferences(string project, bool assembliesOnly = false)
         {
             string folder = Path.GetDirectoryName(project)!;
             return XDocument.Load(project).Descendants("ProjectReference")
+                .Where(reference => !assembliesOnly || !string.Equals((string?)reference.Attribute("ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase))
                 .Select(static reference => (string?)reference.Attribute("Include"))
                 .OfType<string>()
                 .Select(include => Path.GetFullPath(Path.Combine(folder, include.Replace('\\', Path.DirectorySeparatorChar))));

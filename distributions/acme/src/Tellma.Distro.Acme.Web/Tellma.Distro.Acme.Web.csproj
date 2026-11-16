@@ -9,6 +9,19 @@
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 
+  <!-- The SPA proxy of Development: it starts the client dev server (tellma-client serve) and sends
+       the browser to it. The dev server listens on ACME_CLIENT from the worktree's .dev-ports.local,
+       else 4200, and the proxy waits for that same port; the web host's public origin follows it at
+       startup. -->
+  <PropertyGroup>
+    <SpaRoot>..\Tellma.Distro.Acme.Client\</SpaRoot>
+    <SpaProxyLaunchCommand>pnpm start</SpaProxyLaunchCommand>
+    <_AcmeDevPortsFile>$([MSBuild]::GetPathOfFileAbove('.dev-ports.local', '$(MSBuildProjectDirectory)'))</_AcmeDevPortsFile>
+    <_AcmeClientPort Condition="'$(_AcmeDevPortsFile)' != ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AcmeDevPortsFile)')), '(?m)^[ \t]*ACME_CLIENT[ \t]*=\W*([0-9]+)').Groups[1].Value)</_AcmeClientPort>
+    <_AcmeClientPort Condition="'$(_AcmeClientPort)' == ''">4200</_AcmeClientPort>
+    <SpaProxyServerUrl>https://localhost:$(_AcmeClientPort)</SpaProxyServerUrl>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Distro.Acme\Tellma.Distro.Acme.csproj" />
     <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
@@ -16,6 +29,12 @@
     <!-- The in-proc identity engine, selected by Tellma:Identity:Mode. Never its migrations: the
          engine's store check reads a constant, and the migrator migrates the store. -->
     <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The client app: no assembly, only its build, which publish copies into wwwroot. -->
+    <ProjectReference Include="..\Tellma.Distro.Acme.Client\Tellma.Distro.Acme.Client.esproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy" />
   </ItemGroup>
 
   <ItemGroup>
