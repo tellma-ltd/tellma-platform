@@ -98,8 +98,9 @@ namespace Tellma.Core.Access
                 throw new TenantNotFoundException(tenant.Id);
             }
 
-            // --- The cached connection; every batch's prologue re-validates it ---
-            if (services.Connections.Find(tenant.Id, subject) is ConnectedUser cached)
+            // --- The cached connection; every batch's prologue re-validates it. An entry naming another
+            // user than the one the scope is bound to is never connected: the round trip below decides ---
+            if (services.Connections.Find(tenant.Id, subject) is ConnectedUser cached && (context.UserId is not int bound || bound == cached.UserId))
             {
                 Connected(ConnectionMode.Subject, cached);
                 return cached;
@@ -111,6 +112,13 @@ namespace Tellma.Core.Access
                 subject,
                 token => RoundTripAsync(ConnectPremises.Cold(subject, ExpectedSettingsTag(context), StampAllowed(context, null), FlipAllowed(context)), token),
                 cancellationToken).ConfigureAwait(false);
+
+            // A flight another scope started may resolve the subject to another user than this scope's.
+            if (context.UserId is int boundUser && boundUser != user.UserId)
+            {
+                throw Refused(tenant.Id, boundUser, AccessTelemetryNames.ResultUnknownSubject);
+            }
+
             Connected(ConnectionMode.Subject, user);
             return user;
         }
@@ -135,7 +143,14 @@ namespace Tellma.Core.Access
                 ExpectedSettingsTag(context));
 
             ConnectedUser user = await RoundTripAsync(new ConnectPremises.ForUser(userId, expected, access is not null && IsAged(access)), cancellationToken).ConfigureAwait(false);
-            Connected(ConnectionMode.User, user);
+
+            // Only the user the scope is bound to becomes its connected user; another user's load
+            // (evaluating or explaining their permissions) leaves the scope's caller in place.
+            if (context.UserId == userId)
+            {
+                Connected(ConnectionMode.User, user);
+            }
+
             return user;
         }
 
@@ -168,7 +183,14 @@ namespace Tellma.Core.Access
                 throw new ArgumentException("The batch is not one of the platform's tenant batches.", nameof(batch));
             }
 
+            // The system's premises omit the permissions expectation and the caller re-check: only the
+            // platform's own work may carry them.
             RequestContext context = accessor.Current;
+            if (premises is ConnectPremises.ForSystem && !context.IsSystem)
+            {
+                throw new InvalidOperationException("Only the platform's own work composes a batch under the system's premises; the scope runs for another principal.");
+            }
+
             int tenantId = context.RequireTenant().Id;
             if (data.Connection.TenantId != tenantId)
             {
@@ -177,7 +199,7 @@ namespace Tellma.Core.Access
 
             // --- The caller's own tags go into the batch's outcome; another user's (a load of their permissions) never do ---
             bool reportUserTags = premises is ConnectPremises.ForSubject
-                || (premises is ConnectPremises.ForUser forUser && (context.UserId is null || context.UserId == forUser.UserId));
+                || (premises is ConnectPremises.ForUser forUser && context.UserId == forUser.UserId);
             ConnectReading reading = new(
                 services.Time,
                 reportUserTags,
@@ -189,13 +211,13 @@ namespace Tellma.Core.Access
         /// <inheritdoc />
         public ConnectedUser Apply(ConnectResult result)
         {
-            return Apply(result, Current);
+            return Apply(result, Current, missingIsNull: false)!;
         }
 
         /// <inheritdoc />
         ConnectedUser IScopeConnection.Apply(ConnectResult result, ConnectedUser basis)
         {
-            return Apply(result, basis);
+            return Apply(result, basis, missingIsNull: false)!;
         }
 
         /// <inheritdoc />
@@ -282,6 +304,9 @@ namespace Tellma.Core.Access
             TenantUserCacheKey key = new(tenantId, user.UserId);
             services.Permissions.Remove(key);
             services.Profiles.Remove(key);
+
+            // Counted and logged as every other refusal of a deactivated user is.
+            _ = Refused(tenantId, user.UserId, AccessTelemetryNames.ResultDeactivated);
         }
 
         /// <summary>Whether a subject can be bound as the column's type: 1 to 255 printable ASCII characters.</summary>
@@ -316,8 +341,17 @@ namespace Tellma.Core.Access
         /// <summary>Records how the scope connected, and as whom.</summary>
         /// <param name="mode">How.</param>
         /// <param name="user">The connected user.</param>
+        /// <exception cref="InvalidOperationException">The scope's context is bound to another user.</exception>
         private void Connected(ConnectionMode mode, ConnectedUser user)
         {
+            // A scope bound to a user never runs as another: its batches would compose under the
+            // other user's permission set while its writes are stamped with the bound user. The
+            // platform's own work may run as any user it names, under the system's set.
+            if (mode != ConnectionMode.System && accessor.Current.UserId is int bound && bound != user.UserId)
+            {
+                throw new InvalidOperationException("The scope is bound to another user than the one it would connect as.");
+            }
+
             _mode = mode;
             Current = user;
         }
@@ -372,16 +406,39 @@ namespace Tellma.Core.Access
             IDataBatch batch = database.CreateBatch(BatchPurpose.Read);
             BatchResult<ConnectResult> result = Contribute(batch, premises);
             _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
-            return Apply(result.Value, Current);
+            if (Apply(result.Value, Current, missingIsNull: true) is ConnectedUser user)
+            {
+                return user;
+            }
+
+            // --- The confirmed set or profile left this instance's caches since the premises were
+            // built (an eviction): one more round trip, expecting nothing, returns them fresh ---
+            ConnectPremises cold = premises switch
+            {
+                ConnectPremises.ForSubject subject => ConnectPremises.Cold(subject.Subject, subject.Expected.SettingsTag, stampActivity: false, allowStateFlip: false),
+                ConnectPremises.ForUser forUser => forUser with { Expected = new ConnectExpectations(null, null, null, forUser.Expected.SettingsTag), ReloadPermissions = false },
+                ConnectPremises.ForSystem => throw new InvalidOperationException("The system's connection confirms no cached entry."),
+                _ => throw new InvalidOperationException("The premises are not one of the three cases."),
+            };
+
+            batch = database.CreateBatch(BatchPurpose.Read);
+            result = Contribute(batch, cold);
+            _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return Apply(result.Value, Current, missingIsNull: false)!;
         }
 
         /// <summary>Applies a result over the connected user its batch was composed for.</summary>
         /// <param name="result">The result.</param>
         /// <param name="basis">The connected user the batch was composed for; null for none.</param>
-        /// <returns>The connected user the result describes.</returns>
+        /// <param name="missingIsNull">
+        ///     Whether a set or profile the prologue confirmed but this instance no longer holds
+        ///     returns null, for the caller to re-connect cold; otherwise it throws.
+        /// </param>
+        /// <returns>The connected user the result describes; null for a missing confirmed entry when asked.</returns>
         /// <exception cref="ArgumentException">The result is not one of this connector's.</exception>
-        /// <exception cref="TenantNotFoundException">The result names no user, or an inactive one.</exception>
-        private ConnectedUser Apply(ConnectResult result, ConnectedUser? basis)
+        /// <exception cref="TenantNotFoundException">The result names no user, or an inactive one, or the system user outside the platform's own scope.</exception>
+        /// <exception cref="InvalidOperationException">A confirmed entry is missing and <paramref name="missingIsNull" /> is false.</exception>
+        private ConnectedUser? Apply(ConnectResult result, ConnectedUser? basis, bool missingIsNull)
         {
             ArgumentNullException.ThrowIfNull(result);
             if (!_origins.TryGetValue(result, out Origin? origin))
@@ -430,6 +487,21 @@ namespace Tellma.Core.Access
                 throw Refused(tenantId, userId, AccessTelemetryNames.ResultDeactivated);
             }
 
+            // The system user's set is the platform's own: a row of the system kind read for any other
+            // scope (an id lookup of row 1) is refused as no user.
+            if (kind == UserKind.System && !context.IsSystem)
+            {
+                throw Refused(tenantId, userId, AccessTelemetryNames.ResultUnknownSubject);
+            }
+
+            // The tags the premises expected: what a part the prologue found current is named by.
+            ConnectExpectations? expected = origin.Premises switch
+            {
+                ConnectPremises.ForSubject forSubject => forSubject.Expected,
+                ConnectPremises.ForUser forUser => forUser.Expected,
+                _ => null,
+            };
+
             // A basis of another tenant or user confirms nothing.
             ConnectedUser? own = basis is not null && basis.UserId == userId && (basis.Access.IsSystem || basis.Access.TenantId == tenantId) ? basis : null;
             DateTimeOffset now = services.Time.GetUtcNow();
@@ -452,9 +524,18 @@ namespace Tellma.Core.Access
             }
             else
             {
-                access = (own?.Access is UserAccess held && held.Tag == tenantTag && held.UserTag == userTag ? held : null)
-                    ?? services.Permissions.Peek(key, set => set.Tag == tenantTag && set.UserTag == userTag)
-                    ?? throw new InvalidOperationException("The connect prologue confirmed a permission set this instance no longer holds.");
+                // Not stale: the prologue confirmed the tags the premises expected, which name the set.
+                // The tags of set 1 are a later read and may already have moved.
+                Guid confirmedTag = expected?.PermissionsTag ?? tenantTag;
+                Guid confirmedUserTag = expected?.UserPermissionsTag ?? userTag;
+                UserAccess? confirmed = (own?.Access is UserAccess held && held.Tag == confirmedTag && held.UserTag == confirmedUserTag ? held : null)
+                    ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
+                if (confirmed is null)
+                {
+                    return missingIsNull ? null : throw new InvalidOperationException("The connect prologue confirmed a permission set this instance no longer holds.");
+                }
+
+                access = confirmed;
             }
 
             // A prologue that read the set's own tags validates it.
@@ -473,9 +554,16 @@ namespace Tellma.Core.Access
             }
             else
             {
-                profile = (own is not null && own.PreferencesTag == preferencesTag ? own.Profile : null)
-                    ?? services.Profiles.Peek(key, new VersionTag(preferencesTag))
-                    ?? throw new InvalidOperationException("The connect prologue confirmed a profile this instance no longer holds.");
+                // Not stale: the prologue confirmed the expected tag, which names the profile.
+                preferencesTag = expected?.PreferencesTag ?? preferencesTag;
+                UserProfile? confirmed = (own is not null && own.PreferencesTag == preferencesTag ? own.Profile : null)
+                    ?? services.Profiles.Peek(key, new VersionTag(preferencesTag));
+                if (confirmed is null)
+                {
+                    return missingIsNull ? null : throw new InvalidOperationException("The connect prologue confirmed a profile this instance no longer holds.");
+                }
+
+                profile = confirmed;
             }
 
             // --- The throttle memo: a prologue that stamped leaves the stamp within the interval ---
@@ -494,7 +582,7 @@ namespace Tellma.Core.Access
 
                 Connected(ConnectionMode.Subject, user);
             }
-            else if (context.UserId is null || context.UserId == userId)
+            else if (context.UserId == userId)
             {
                 Connected(ConnectionMode.User, user);
             }

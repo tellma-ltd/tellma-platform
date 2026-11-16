@@ -257,9 +257,13 @@ namespace Tellma.Core.Access
                 lines.Add("    END;");
             }
 
-            lines.Add($"    SET @tm_PermissionsStale = CASE WHEN {ReservedSqlNames.ExpectedPermissionsTag} IS NULL OR {ReservedSqlNames.ExpectedPermissionsTag} <> @tm_PermissionsTag");
+            // A user the premises did not expect is stale in every part: the cached set and profile
+            // describe someone else, so the rows and the profile always come back for them.
+            lines.Add($"    SET @tm_PermissionsStale = CASE WHEN {ReservedSqlNames.ExpectedUserId} IS NULL OR {ReservedSqlNames.UserId} <> {ReservedSqlNames.ExpectedUserId}");
+            lines.Add($"                                      OR {ReservedSqlNames.ExpectedPermissionsTag} IS NULL OR {ReservedSqlNames.ExpectedPermissionsTag} <> @tm_PermissionsTag");
             lines.Add($"                                      OR {ReservedSqlNames.ExpectedUserPermissionsTag} IS NULL OR {ReservedSqlNames.ExpectedUserPermissionsTag} <> @tm_UserPermissionsTag THEN 1 ELSE 0 END;");
-            lines.Add($"    SET @tm_ProfileStale = CASE WHEN {ReservedSqlNames.ExpectedPreferencesTag} IS NULL OR {ReservedSqlNames.ExpectedPreferencesTag} <> @tm_PreferencesTag THEN 1 ELSE 0 END;");
+            lines.Add($"    SET @tm_ProfileStale = CASE WHEN {ReservedSqlNames.ExpectedUserId} IS NULL OR {ReservedSqlNames.UserId} <> {ReservedSqlNames.ExpectedUserId}");
+            lines.Add($"                                OR {ReservedSqlNames.ExpectedPreferencesTag} IS NULL OR {ReservedSqlNames.ExpectedPreferencesTag} <> @tm_PreferencesTag THEN 1 ELSE 0 END;");
             lines.Add($"    SET @tm_SettingsStale = CASE WHEN @tm_SettingsTag <> {ReservedSqlNames.ExpectedSettingsTag} THEN 1 ELSE 0 END;");
             lines.Add($"    SET {ReservedSqlNames.Guard} = CASE WHEN {ReservedSqlNames.UserId} = {ReservedSqlNames.ExpectedUserId} AND @tm_PermissionsStale = 0");
             lines.Add($"                          AND ({ReservedSqlNames.SettingsStrict} = 0 OR @tm_SettingsStale = 0) THEN 1 ELSE 0 END;");

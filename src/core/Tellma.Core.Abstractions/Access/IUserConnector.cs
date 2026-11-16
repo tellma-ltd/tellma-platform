@@ -28,12 +28,15 @@ namespace Tellma.Core.Abstractions.Access
         Task<ConnectedUser> ConnectAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        ///     Connects a background scope that runs as a user, by id: one prologue-only round trip,
-        ///     which never stamps the user's activity and never records a first request.
+        ///     Connects a user by id: one prologue-only round trip, which never stamps the user's
+        ///     activity and never records a first request. The scope is connected as the user only
+        ///     when its context is bound to that user, as a background scope that runs as them is;
+        ///     for any other user (another user's permissions loaded to explain or evaluate them) the
+        ///     user is returned and cached, and the scope's own connected user is left as it was.
         /// </summary>
         /// <param name="userId">The user's id.</param>
         /// <param name="cancellationToken">Cancels the connection.</param>
-        /// <returns>The connected user.</returns>
+        /// <returns>The user with that id.</returns>
         /// <exception cref="TenantNotFoundException">No active user of the tenant has the id.</exception>
         /// <exception cref="InvalidOperationException">The scope is not a user's or a service account's.</exception>
         Task<ConnectedUser> ConnectAsUserAsync(int userId, CancellationToken cancellationToken = default);
@@ -56,16 +59,23 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="premises">What the prologue assumes.</param>
         /// <returns>What the prologue read, complete once the batch executed.</returns>
         /// <exception cref="ArgumentException">The batch is not one of the platform's tenant batches.</exception>
-        /// <exception cref="InvalidOperationException">The batch already has statements, or is a maintenance batch.</exception>
+        /// <exception cref="InvalidOperationException">
+        ///     The batch already has statements, or is a maintenance batch; or the premises are the
+        ///     system's and the scope is not the platform's own.
+        /// </exception>
         BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises);
 
         /// <summary>
         ///     Applies what a prologue read: the connect, permission and profile cache entries are
-        ///     replaced from it, and the scope's connected user becomes the one it describes.
+        ///     replaced from it, and the scope's connected user becomes the one it describes when that
+        ///     is the user the scope's context is bound to (or the scope is not bound yet).
         /// </summary>
         /// <param name="result">A result <see cref="Contribute" /> of this connector returned.</param>
         /// <returns>The connected user the result describes.</returns>
-        /// <exception cref="TenantNotFoundException">The result names no user, or an inactive one; the user's entries are dropped.</exception>
+        /// <exception cref="TenantNotFoundException">
+        ///     The result names no user, or an inactive one, whose entries are dropped; or the system
+        ///     user outside the platform's own scope.
+        /// </exception>
         /// <exception cref="ArgumentException">The result is not one of this connector's.</exception>
         ConnectedUser Apply(ConnectResult result);
     }

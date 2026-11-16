@@ -65,14 +65,7 @@ namespace Tellma.Core.IntegrationTests.Access
             }
 
             _tenants = tenants;
-
-            // --- The composition, with both tenants behind the connection seams ---
-            ServiceCollection services = [];
-            _ = services.AddLogging();
-            _ = FixtureComposition.Compose(services);
-            _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new Factory(tenants)));
-            _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(provider => new Provider(tenants, provider.GetRequiredService<IRequestContextAccessor>())));
-            _provider = services.BuildServiceProvider(validateScopes: true);
+            _provider = Compose(tenants);
 
             // --- The databases: migrated, the settings completed and every registered tag seeded ---
             string fingerprint = _provider.GetRequiredService<IEntityMetadataProvider>().StorageFingerprint;
@@ -91,6 +84,70 @@ namespace Tellma.Core.IntegrationTests.Access
         public ValueTask DisposeAsync()
         {
             return _provider?.DisposeAsync() ?? ValueTask.CompletedTask;
+        }
+
+        /// <summary>
+        ///     Another instance of the platform over the same databases: its own caches and single
+        ///     flights, as a second process has. The caller disposes it.
+        /// </summary>
+        /// <returns>The instance's composition.</returns>
+        public ServiceProvider CreateInstance()
+        {
+            return Compose(_tenants ?? throw new InvalidOperationException("The databases are not created yet."));
+        }
+
+        /// <summary>
+        ///     A scope of a tenant whose context names a caller, completed by the initializers as a
+        ///     request's is: the connection at 100, then the locale negotiation.
+        /// </summary>
+        /// <param name="subject">The caller's subject; null for a background scope that carries a user id.</param>
+        /// <param name="userId">The run-as user of a background scope; null for a request.</param>
+        /// <param name="kind">The principal's kind.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="state">The state the request sees the tenant in.</param>
+        /// <param name="background">Whether the request is a background one that stamps no activity.</param>
+        /// <param name="services">The instance the scope is of; this fixture's own when null.</param>
+        /// <returns>The scope.</returns>
+        public async Task<AsyncServiceScope> ScopeAsync(
+            string? subject,
+            int? userId = null,
+            PrincipalKind kind = PrincipalKind.User,
+            int tenantId = TenantA,
+            TenantState state = TenantState.Active,
+            bool background = false,
+            IServiceProvider? services = null)
+        {
+            AsyncServiceScope scope = (services ?? Services).CreateAsyncScope();
+            try
+            {
+                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+                RequestContext context = holder.Current with { Tenant = Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId };
+                holder.Set(context);
+                _ = await RequestContextInitialization.RunAsync(
+                    holder,
+                    scope.ServiceProvider.GetServices<IRequestContextInitializer>(),
+                    context,
+                    new RequestContextInputs(null, null, null, null, null, null, SuppressActivityStamp: background),
+                    TestContext.Current.CancellationToken);
+                return scope;
+            }
+            catch
+            {
+                await scope.DisposeAsync();
+                throw;
+            }
+        }
+
+        /// <summary>Seeds a user of the first tenant under a fresh id and subject.</summary>
+        /// <param name="name">The user's name.</param>
+        /// <param name="joined">Whether the user has joined.</param>
+        /// <returns>The id and the subject.</returns>
+        public async Task<(int UserId, string Subject)> SeedCallerAsync(string name, bool joined = true)
+        {
+            int userId = NextUserId();
+            string subject = string.Create(CultureInfo.InvariantCulture, $"sub-{userId}");
+            await SeedUserAsync(TenantA, userId, subject, name, joined: joined);
+            return (userId, subject);
         }
 
         /// <summary>A tenant database's connection string.</summary>
@@ -157,6 +214,19 @@ namespace Tellma.Core.IntegrationTests.Access
                     INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], @role, 'core.Users', 'Read');
                     INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {userId}, @role);
                     """));
+        }
+
+        /// <summary>A composition of the platform, with both tenants behind the connection seams.</summary>
+        /// <param name="tenants">The tenants.</param>
+        /// <returns>The composition.</returns>
+        private static ServiceProvider Compose(Dictionary<int, TenantInfo> tenants)
+        {
+            ServiceCollection services = [];
+            _ = services.AddLogging();
+            _ = FixtureComposition.Compose(services);
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new Factory(tenants)));
+            _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(provider => new Provider(tenants, provider.GetRequiredService<IRequestContextAccessor>())));
+            return services.BuildServiceProvider(validateScopes: true);
         }
 
         /// <summary>The connection factory over both databases.</summary>

@@ -52,7 +52,7 @@ namespace Tellma.Core.Access
         /// <exception cref="TenantNotFoundException">The scope's caller is no longer an active user of the tenant.</exception>
         Task<ConnectedUser> ReconnectColdAsync(CancellationToken cancellationToken);
 
-        /// <summary>Drops a user's entries after a persist re-check found the user deactivated.</summary>
+        /// <summary>Drops a user's entries after a persist re-check found the user deactivated, counting and logging the refusal.</summary>
         /// <param name="user">The user.</param>
         void Drop(ConnectedUser user);
     }

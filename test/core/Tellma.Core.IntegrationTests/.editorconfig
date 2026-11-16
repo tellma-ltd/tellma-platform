@@ -6,3 +6,8 @@
 [{Data,Caching}/**.cs]
 dotnet_diagnostic.TELLMA0003.severity = none
 dotnet_diagnostic.TELLMA0006.severity = none
+
+# The guarded runner's persist tests likewise write the platform's and the fixture's entity tables
+# from a test class that owns no stack.
+[Access/GuardedPersistTests.cs]
+dotnet_diagnostic.TELLMA0006.severity = none

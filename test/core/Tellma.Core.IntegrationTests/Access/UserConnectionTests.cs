@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Options;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
@@ -13,15 +14,14 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Settings;
-using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.IntegrationTests.Access
 {
     /// <summary>
     ///     The connect prologue, its caches and the guarded runner against real tenant databases:
     ///     a cold connect and the warm batches after it, each stale part refreshed in the round trip
-    ///     that found it, the refusals, the bookkeeping writes, and two tenants that reuse each
-    ///     other's ids yet never share an entry.
+    ///     that found it, the refusals, the scope bound to its own user, the bookkeeping writes, and
+    ///     two tenants that reuse each other's ids yet never share an entry.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -155,6 +155,33 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.True(store.IsCurrent(ConnectDatabase.TenantA, new VersionTag(await TagAsync("settings"))));
         }
 
+        [Fact]
+        public async Task A_set_older_than_its_maximum_age_reloads_its_rows_in_the_batch_that_found_it_and_the_batch_runs()
+        {
+            (_, string subject) = await SeedAsync("Ely");
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+            ConnectedUser before = await CurrentAsync(scope);
+
+            // --- Every set is aged under a maximum age of one tick ---
+            AccessOptions options = fixture.Services.GetRequiredService<IOptions<AccessOptions>>().Value;
+            TimeSpan maxAge = options.PermissionsMaxAge;
+            options.PermissionsMaxAge = TimeSpan.FromTicks(1);
+            try
+            {
+                (ConnectedUser after, int roundTrips) = await ReadAsync(scope, static (user, outcome) => (user, outcome.RoundTrips));
+
+                Assert.Equal(1, roundTrips);
+                Assert.NotSame(before.Access, after.Access);
+                Assert.True(after.Access.ComputedAt >= before.Access.ComputedAt);
+                Assert.Equal(before.Access.Tag, after.Access.Tag);
+                Assert.Equal(AccessTelemetryNames.ResultWarm, Results()[^1]);
+            }
+            finally
+            {
+                options.PermissionsMaxAge = maxAge;
+            }
+        }
+
         // --- Refusals ---
 
         [Fact]
@@ -176,6 +203,68 @@ namespace Tellma.Core.IntegrationTests.Access
             _ = await Assert.ThrowsAsync<TenantNotFoundException>(() => ScopeAsync(subject));
 
             Assert.Equal([AccessTelemetryNames.ResultCold, AccessTelemetryNames.ResultDeactivated, AccessTelemetryNames.ResultDeactivated], Results());
+        }
+
+        [Fact]
+        public async Task A_job_scope_running_as_the_system_users_row_finds_no_tenant()
+        {
+            _ = await Assert.ThrowsAsync<TenantNotFoundException>(() => ScopeAsync(subject: null, userId: WellKnownIds.SystemUserId));
+
+            Assert.Equal([AccessTelemetryNames.ResultUnknownSubject], Results());
+        }
+
+        // --- The scope's own user ---
+
+        [Fact]
+        public async Task Loading_another_users_set_in_a_callers_scope_returns_it_and_leaves_the_scope_on_the_caller()
+        {
+            (int callerId, string subject) = await SeedAsync("Max");
+            (int otherId, _) = await SeedAsync("Ned");
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+
+            ConnectedUser other = await scope.ServiceProvider.GetRequiredService<IUserConnector>().ConnectAsUserAsync(otherId, Token);
+            ConnectedUser next = await ReadAsync(scope, static (user, _) => user);
+
+            Assert.Equal((otherId, "Ned"), (other.UserId, other.Profile.Name));
+            Assert.Equal((callerId, "Max"), (next.UserId, next.Profile.Name));
+        }
+
+        [Fact]
+        public async Task A_cached_connection_naming_another_user_than_the_scopes_is_never_connected()
+        {
+            (int callerId, string subject) = await SeedAsync("Oli");
+            (int otherId, _) = await SeedAsync("Pam");
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+            IUserConnector connector = scope.ServiceProvider.GetRequiredService<IUserConnector>();
+            fixture.Services.GetRequiredService<ConnectCache>().Set(ConnectDatabase.TenantA, subject, await connector.ConnectAsUserAsync(otherId, Token));
+            int before = Variants().Count;
+
+            ConnectedUser connected = await connector.ConnectAsync(Token);
+
+            Assert.Equal(callerId, connected.UserId);
+            Assert.Equal(1, Variants().Count - before);
+        }
+
+        [Fact]
+        public async Task A_subject_moved_to_another_user_with_the_same_tags_is_refused_to_the_scope_bound_to_the_first_and_connects_the_next_request_as_the_second()
+        {
+            (int firstId, string subject) = await SeedAsync("Quy");
+            (int secondId, _) = await SeedAsync("Rae");
+            await using AsyncServiceScope bound = await ScopeAsync(subject);
+
+            // --- The second user takes the subject, with the first's own tags, as one bulk edit stamps every user it touches ---
+            await fixture.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                Sql($"UPDATE [core].[Users] SET [Subject] = 'gone-{firstId}' WHERE [Id] = {firstId};"),
+                Sql($"UPDATE [core].[Users] SET [Subject] = '{subject}' WHERE [Id] = {secondId};"),
+                Sql($"UPDATE s SET s.[PermissionsTag] = f.[PermissionsTag], s.[PreferencesTag] = f.[PreferencesTag] FROM [core].[UserStamps] AS s CROSS JOIN [core].[UserStamps] AS f WHERE s.[UserId] = {secondId} AND f.[UserId] = {firstId};"));
+
+            _ = await Assert.ThrowsAsync<TenantNotFoundException>(() => ReadAsync(bound, static (user, _) => user));
+            Assert.Equal(AccessTelemetryNames.ResultUnknownSubject, Results()[^1]);
+
+            await using AsyncServiceScope next = await ScopeAsync(subject);
+            ConnectedUser user = await ReadAsync(next, static (user, _) => user);
+            Assert.Equal((secondId, "Rae"), (user.UserId, user.Profile.Name));
         }
 
         // --- The other variants ---
@@ -247,6 +336,24 @@ namespace Tellma.Core.IntegrationTests.Access
         }
 
         [Fact]
+        public async Task Two_instances_first_requests_flip_the_state_exactly_once()
+        {
+            (int userId, string subject) = await SeedAsync("Hap", joined: false);
+
+            // --- Each instance single-flights its own requests, so both instances' flips reach the database together ---
+            await using ServiceProvider other = fixture.CreateInstance();
+            AsyncServiceScope[] scopes = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => ScopeAsync(subject, services: i % 2 == 0 ? fixture.Services : other)));
+            ConnectedUser[] users = await Task.WhenAll(scopes.Select(CurrentAsync));
+            foreach (AsyncServiceScope scope in scopes)
+            {
+                await scope.DisposeAsync();
+            }
+
+            Assert.All(users, static user => Assert.Equal(UserState.Joined, user.State));
+            Assert.Equal(1, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, Sql($"SELECT COUNT(*) FROM [core].[UsersHistory] WHERE [Id] = {userId};")));
+        }
+
+        [Fact]
         public async Task The_activity_stamp_is_written_once_per_interval_however_many_batches_run_and_adds_no_history()
         {
             (int userId, string subject) = await SeedAsync("Ida");
@@ -265,6 +372,26 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.NotNull(last);
             Assert.True(last == first || last - first >= TimeSpan.FromSeconds(60), $"Stamped at {first:O}, then again at {last:O}.");
             Assert.Equal(0, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, Sql($"SELECT COUNT(*) FROM [core].[UsersHistory] WHERE [Id] = {userId};")));
+        }
+
+        [Fact]
+        public async Task A_stamp_within_the_interval_is_never_asked_for_again_although_the_column_would_admit_it()
+        {
+            (int userId, string subject) = await SeedAsync("Ike");
+            await using (AsyncServiceScope first = await ScopeAsync(subject))
+            {
+                Assert.NotNull(await StampAsync(userId));
+            }
+
+            // --- The column forgets the stamp; only the instance's memo of it holds the next batches back ---
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, Sql($"UPDATE [core].[UserStamps] SET [LastActiveAt] = NULL WHERE [UserId] = {userId};"));
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+            for (int i = 0; i < 3; i++)
+            {
+                _ = await ReadAsync(scope, static (_, outcome) => outcome.RoundTrips);
+            }
+
+            Assert.Null(await StampAsync(userId));
         }
 
         [Fact]
@@ -325,6 +452,28 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.Equal(new VersionTag(await TagAsync("permissions", ConnectDatabase.TenantA)), snapshots.Current(ConnectDatabase.TenantA)[VersionTagNames.Permissions]);
             Assert.Equal(new VersionTag(await TagAsync("permissions", ConnectDatabase.TenantB)), snapshots.Current(ConnectDatabase.TenantB)[VersionTagNames.Permissions]);
             Assert.NotEqual(users[0].Access.Tag, users[1].Access.Tag);
+
+            // --- One user id's stamps are read per tenant ---
+            IUserVersionTagSnapshots stamps = fixture.Services.GetRequiredService<IUserVersionTagSnapshots>();
+            Assert.Equal(new VersionTag(await UserTagAsync(userId, "PermissionsTag", ConnectDatabase.TenantA)), stamps.Current(ConnectDatabase.TenantA, userId)?.Permissions);
+            Assert.Equal(new VersionTag(await UserTagAsync(userId, "PermissionsTag", ConnectDatabase.TenantB)), stamps.Current(ConnectDatabase.TenantB, userId)?.Permissions);
+            Assert.NotEqual(stamps.Current(ConnectDatabase.TenantA, userId), stamps.Current(ConnectDatabase.TenantB, userId));
+
+            // --- A bump in one tenant's database moves that tenant's snapshots and never the other's ---
+            VersionTag otherTenant = snapshots.Current(ConnectDatabase.TenantB)[VersionTagNames.Permissions];
+            UserVersionTagSnapshot? otherUser = stamps.Current(ConnectDatabase.TenantB, userId);
+            await fixture.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                Sql($"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'permissions'; UPDATE [core].[UserStamps] SET [PermissionsTag] = NEWID() WHERE [UserId] = {userId};"));
+            await using (AsyncServiceScope a = await ScopeAsync(subject, tenantId: ConnectDatabase.TenantA))
+            {
+                _ = await ReadAsync(a, static (user, _) => user);
+            }
+
+            Assert.Equal(new VersionTag(await TagAsync("permissions", ConnectDatabase.TenantA)), snapshots.Current(ConnectDatabase.TenantA)[VersionTagNames.Permissions]);
+            Assert.Equal(new VersionTag(await UserTagAsync(userId, "PermissionsTag", ConnectDatabase.TenantA)), stamps.Current(ConnectDatabase.TenantA, userId)?.Permissions);
+            Assert.Equal(otherTenant, snapshots.Current(ConnectDatabase.TenantB)[VersionTagNames.Permissions]);
+            Assert.Equal(otherUser, stamps.Current(ConnectDatabase.TenantB, userId));
         }
 
         // --- Helpers ---
@@ -374,56 +523,34 @@ namespace Tellma.Core.IntegrationTests.Access
             return RunAsync(scope, BatchPurpose.Read, read);
         }
 
-        /// <summary>
-        ///     A scope of a tenant whose context names a caller, completed by the initializers as a
-        ///     request's is: the connection at 100, then the locale negotiation.
-        /// </summary>
+        /// <summary>A scope whose context names a caller, completed by the initializers.</summary>
         /// <param name="subject">The caller's subject; null for a background scope that carries a user id.</param>
         /// <param name="userId">The run-as user of a background scope; null for a request.</param>
         /// <param name="kind">The principal's kind.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="state">The state the request sees the tenant in.</param>
         /// <param name="background">Whether the request is a background one that stamps no activity.</param>
+        /// <param name="services">The instance the scope is of; the fixture's own when null.</param>
         /// <returns>The scope.</returns>
-        private async Task<AsyncServiceScope> ScopeAsync(
+        private Task<AsyncServiceScope> ScopeAsync(
             string? subject,
             int? userId = null,
             PrincipalKind kind = PrincipalKind.User,
             int tenantId = ConnectDatabase.TenantA,
             TenantState state = TenantState.Active,
-            bool background = false)
+            bool background = false,
+            IServiceProvider? services = null)
         {
-            AsyncServiceScope scope = fixture.Services.CreateAsyncScope();
-            try
-            {
-                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-                RequestContext context = holder.Current with { Tenant = ConnectDatabase.Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId };
-                holder.Set(context);
-                _ = await RequestContextInitialization.RunAsync(
-                    holder,
-                    scope.ServiceProvider.GetServices<IRequestContextInitializer>(),
-                    context,
-                    new RequestContextInputs(null, null, null, null, null, null, SuppressActivityStamp: background),
-                    Token);
-                return scope;
-            }
-            catch
-            {
-                await scope.DisposeAsync();
-                throw;
-            }
+            return fixture.ScopeAsync(subject, userId, kind, tenantId, state, background, services);
         }
 
         /// <summary>Seeds a user of the first tenant under a fresh id and subject.</summary>
         /// <param name="name">The user's name.</param>
         /// <param name="joined">Whether the user has joined.</param>
         /// <returns>The id and the subject.</returns>
-        private async Task<(int UserId, string Subject)> SeedAsync(string name, bool joined = true)
+        private Task<(int UserId, string Subject)> SeedAsync(string name, bool joined = true)
         {
-            int userId = fixture.NextUserId();
-            string subject = string.Create(CultureInfo.InvariantCulture, $"sub-{userId}");
-            await fixture.SeedUserAsync(ConnectDatabase.TenantA, userId, subject, name, joined: joined);
-            return (userId, subject);
+            return fixture.SeedCallerAsync(name, joined);
         }
 
         /// <summary>Connects a subject and runs one batch for it, so the next scope starts warm.</summary>
@@ -457,10 +584,11 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <summary>A user's own tag as stored.</summary>
         /// <param name="userId">The user.</param>
         /// <param name="column">The stamp column.</param>
+        /// <param name="tenantId">The tenant.</param>
         /// <returns>The tag.</returns>
-        private async Task<Guid> UserTagAsync(int userId, string column)
+        private async Task<Guid> UserTagAsync(int userId, string column, int tenantId = ConnectDatabase.TenantA)
         {
-            return await fixture.ScalarAsync<Guid>(ConnectDatabase.TenantA, Sql($"SELECT [{column}] FROM [core].[UserStamps] WHERE [UserId] = {userId};"));
+            return await fixture.ScalarAsync<Guid>(tenantId, Sql($"SELECT [{column}] FROM [core].[UserStamps] WHERE [UserId] = {userId};"));
         }
 
         /// <summary>A user's activity stamp as stored.</summary>

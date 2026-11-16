@@ -9,17 +9,20 @@ using System.Data.Common;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Settings;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Data.Batches;
 
 namespace Tellma.Core.Tests.Access
 {
     /// <summary>
     ///     The connect prologue with no database: the three texts and their parameters, each the
-    ///     same for every batch of its variant, and the reader against scripted result sets in every
-    ///     combination of the sets that are present only sometimes.
+    ///     same for every batch of its variant, the reader against scripted result sets in every
+    ///     combination of the sets that are present only sometimes, and the connector applying what
+    ///     the reader read.
     /// </summary>
     public sealed class ConnectPrologueTests : IDisposable
     {
@@ -110,6 +113,16 @@ namespace Tellma.Core.Tests.Access
                 Assert.Equal(Shape(first), Shape(second));
                 Assert.Equal(BatchSection.Prologue, first.Section);
                 Assert.True(first.Idempotent);
+            }
+        }
+
+        [Fact]
+        public void A_user_the_premises_did_not_expect_reads_stale_in_every_part_of_both_user_variants()
+        {
+            foreach (string text in new[] { ConnectPrologue.SubjectText, ConnectPrologue.UserIdText })
+            {
+                Assert.Contains("SET @tm_PermissionsStale = CASE WHEN @tm_ExpectedUserId IS NULL OR @tm_UserId <> @tm_ExpectedUserId", text, StringComparison.Ordinal);
+                Assert.Contains("SET @tm_ProfileStale = CASE WHEN @tm_ExpectedUserId IS NULL OR @tm_UserId <> @tm_ExpectedUserId", text, StringComparison.Ordinal);
             }
         }
 
@@ -358,6 +371,32 @@ namespace Tellma.Core.Tests.Access
             Assert.Null(batch.ReadUserVersionTags);
         }
 
+        // --- Applied by the connector ---
+
+        [Fact]
+        public async Task A_set_the_prologue_confirmed_is_found_by_the_tags_it_compared_although_the_tag_set_read_after_them_moved()
+        {
+            using IServiceScope scope = ConnectorScope();
+            UserConnector connector = scope.ServiceProvider.GetRequiredService<UserConnector>();
+
+            // --- Cold: the rows and the profile come back, and the set is cached under the tags read ---
+            ConnectedUser cold = await ApplyAsync(
+                scope,
+                new ConnectPremises.ForUser(7, new ConnectExpectations(null, null, null, SettingsTag.Value), false),
+                [ConnectRow(7, "Individual", true, "Joined", true, true, false, true), Tags(), PermissionRows(), Profile()]);
+
+            // --- Warm: the prologue confirmed the cached tags, then a role save moved the tenant's tag
+            // before the tag set, a later statement, read it ---
+            ConnectedUser warm = await ApplyAsync(
+                scope,
+                connector.PremisesFor(cold),
+                [ConnectRow(7, "Individual", true, "Joined", false, false, false, true), Tags(permissionsTag: Guid.NewGuid())]);
+
+            Assert.Same(cold.Access, warm.Access);
+            Assert.Same(cold.Profile, warm.Profile);
+            Assert.Same(warm, connector.Current);
+        }
+
         // --- Helpers ---
 
         /// <summary>The reading options of a test.</summary>
@@ -454,13 +493,14 @@ namespace Tellma.Core.Tests.Access
         }
 
         /// <summary>Set 1.</summary>
+        /// <param name="permissionsTag">The tenant-level permissions tag; the scripted one when null.</param>
         /// <returns>The set.</returns>
-        private static DataTable Tags()
+        private static DataTable Tags(Guid? permissionsTag = null)
         {
             DataTable table = new();
             _ = table.Columns.Add("Name", typeof(string));
             _ = table.Columns.Add("Tag", typeof(Guid));
-            _ = table.Rows.Add(VersionTagNames.Permissions, PermissionsTag);
+            _ = table.Rows.Add(VersionTagNames.Permissions, permissionsTag ?? PermissionsTag);
             _ = table.Rows.Add(VersionTagNames.Settings, SettingsTag.Value);
             return table;
         }
@@ -554,6 +594,36 @@ namespace Tellma.Core.Tests.Access
                 store.Offer(1, store.Build(1, false, tag, new SettingsRows(
                     new SettingsRow(1, 1, "Acme", null, null, "en", null, null, "gc", null, "UTC", null, null, Start, 1, Start, 1), [])), tag);
             }
+        }
+
+        /// <summary>A scope of tenant 1 whose context is bound to user 7, as a background scope running as the user is.</summary>
+        /// <returns>The scope.</returns>
+        private IServiceScope ConnectorScope()
+        {
+            IServiceScope scope = _harness.Services.CreateScope();
+            IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+            holder.Set(holder.Current with
+            {
+                Tenant = new TenantDescriptor(1, "Acme", null, null, ["en"], TenantCategory.Live, TenantState.Active, null),
+                Kind = PrincipalKind.User,
+                UserId = 7,
+            });
+            return scope;
+        }
+
+        /// <summary>Composes the scope connector's prologue for the premises, reads the scripted sets, and applies the result.</summary>
+        /// <param name="scope">The scope whose connector composes and applies.</param>
+        /// <param name="premises">The premises.</param>
+        /// <param name="sets">The scripted sets.</param>
+        /// <returns>The connected user the connector applied.</returns>
+        private async Task<ConnectedUser> ApplyAsync(IServiceScope scope, ConnectPremises premises, List<DataTable> sets)
+        {
+            UserConnector connector = scope.ServiceProvider.GetRequiredService<UserConnector>();
+            DataBatch batch = _harness.Batch(BatchPurpose.Read, scope.ServiceProvider.GetServices<IDataBatchContributor>().OfType<SettingsColdLoadContributor>().Single());
+            BatchResult<ConnectResult> handle = connector.Contribute(batch, premises);
+            BatchAssembly assembly = await BatchHarness.SealAsync(batch);
+            _ = await ReadAsync(assembly, batch, sets);
+            return connector.Apply(handle.Value);
         }
 
         /// <summary>A fresh batch of the harness whose scope holds the settings cold load.</summary>
