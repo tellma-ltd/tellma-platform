@@ -5,6 +5,7 @@
 
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Spreadsheet;
+using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 
@@ -34,28 +35,33 @@ namespace Tellma.Core.Excel
         /// <summary>
         ///     Writes an entity export: its data sheets in plan order and the hidden manifest. The
         ///     parent sheet's query is pulled page by page; each child sheet's rows ride its pages as
-        ///     the dependents the child sheet's query stands for.
+        ///     the dependents the child sheet's query stands for. The first page is pulled before the
+        ///     destination is opened or any scratch file created, so a capped count it carries refuses
+        ///     the export having written nothing anywhere.
         /// </summary>
         /// <param name="plan">The plan.</param>
         /// <param name="rows">The row source; each row lists one value per column of its sheet.</param>
         /// <param name="context">The request's context.</param>
-        /// <param name="destination">The writable stream the package is written to.</param>
+        /// <param name="openDestination">
+        ///     Opens the writable stream the package is written to; called once, after the first page
+        ///     passes the cap. The stream stays open and stays the caller's.
+        /// </param>
         /// <param name="cancellationToken">Stops the write between pages.</param>
         /// <returns>The data rows written to the parent sheet.</returns>
         /// <exception cref="ArgumentException">A child sheet's query is not among the dependents of the parent sheet's query, or two sheets share a query.</exception>
         /// <exception cref="LimitExceededException">A sheet's rows exceed its cap.</exception>
-        /// <exception cref="InvalidOperationException">The row source yields a row or page that does not fit its query.</exception>
+        /// <exception cref="InvalidOperationException">The row source yields a row or page that does not fit its query, or the destination factory returns no stream.</exception>
         public async Task<int> WriteAsync(
             ExcelWorkbookPlan plan,
             IExcelRowSource rows,
             ExcelContext context,
-            Stream destination,
+            Func<Stream> openDestination,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(plan);
             ArgumentNullException.ThrowIfNull(rows);
             ArgumentNullException.ThrowIfNull(context);
-            ArgumentNullException.ThrowIfNull(destination);
+            ArgumentNullException.ThrowIfNull(openDestination);
 
             // --- Names: the manifest's is reserved first, so no data sheet can take it ---
             SheetNames names = new();
@@ -85,7 +91,18 @@ namespace Tellma.Core.Excel
                 child.Cap = childCap;
             }
 
-            using XlsxPackage package = new(destination, context.Now);
+            // --- The first page decides before anything is opened: a capped count over the cap refuses the export ---
+            IAsyncEnumerator<ExcelPage> pages = rows.Pages(root, cancellationToken).GetAsyncEnumerator(cancellationToken);
+            await using ConfiguredAsyncDisposable releasePages = pages.ConfigureAwait(false);
+            ExcelPage? page = await pages.MoveNextAsync().ConfigureAwait(false) ? pages.Current : null;
+            if (page?.Count is int count && count > sheets[0].Cap)
+            {
+                throw new LimitExceededException(ExcelErrorCodes.ExportRowLimitExceeded, count, sheets[0].Cap);
+            }
+
+            Stream destination = openDestination() ?? throw new InvalidOperationException("The destination factory returned no stream.");
+            XlsxPackage package = new(destination, context.Now);
+            bool closed = false;
             try
             {
                 package.WriteStructure(sheets.Count + 1);
@@ -104,24 +121,17 @@ namespace Tellma.Core.Excel
                 parent.Writer = new WorksheetWriter(parent.Part, parent.Layout);
                 parent.WriteHeader();
 
-                bool first = true;
-                await foreach (ExcelPage page in rows.Pages(root, cancellationToken).WithCancellation(cancellationToken).ConfigureAwait(false))
+                // --- Each page's rows, the first one's included, then its dependents' ---
+                while (page is not null)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
-                    // A by-query export's first page carries the capped count, which decides before any row is written.
-                    if (first && page.Count is int count && count > parent.Cap)
-                    {
-                        throw new LimitExceededException(ExcelErrorCodes.ExportRowLimitExceeded, count, parent.Cap);
-                    }
-
-                    first = false;
                     foreach (IReadOnlyList<object?> row in page.Rows)
                     {
                         parent.WriteRow(row);
                     }
 
                     WriteDependents(root, page, children);
+                    page = await pages.MoveNextAsync().ConfigureAwait(false) ? pages.Current : null;
                 }
 
                 parent.Finish();
@@ -130,24 +140,30 @@ namespace Tellma.Core.Excel
                 foreach (DataSheet child in sheets.Skip(1))
                 {
                     child.Finish();
-                    using Stream part = package.CreatePart(XlsxPackage.WorksheetPath(child.Number));
+                    child.Part = package.CreatePart(XlsxPackage.WorksheetPath(child.Number));
                     child.Spool!.Position = 0;
-                    child.Spool.CopyTo(part);
+                    child.Spool.CopyTo(child.Part);
                     child.Release();
                 }
 
-                // --- The manifest, the styles and the workbook close the package ---
+                // --- The manifest, the styles and the workbook, then the central directory closes the package ---
                 WriteManifest(package, plan, sheets, sheets.Count + 1);
                 WriteStyles(package, styles);
                 WriteWorkbook(package, sheets, manifest: true);
+                package.Dispose();
+                closed = true;
                 return parent.Rows;
             }
             finally
             {
-                // A failed write releases every spool, whose files the system then deletes.
-                foreach (DataSheet sheet in sheets)
+                if (!closed)
                 {
-                    sheet.Release();
+                    // A failed write abandons the package, whose destination the caller discards, and
+                    // lets go of every sheet's part and spool; nothing they throw hides the failure.
+                    foreach (DataSheet sheet in sheets)
+                    {
+                        sheet.Abandon();
+                    }
                 }
             }
         }
@@ -659,15 +675,49 @@ namespace Tellma.Core.Excel
                 Part = null;
             }
 
-            /// <summary>Releases the writer, the part and the spool; the system deletes a spool's file.</summary>
+            /// <summary>Closes a copied child sheet's part, then releases its spool, whose file goes with it, whatever the close throws.</summary>
             public void Release()
             {
-                Writer?.Dispose();
+                try
+                {
+                    Part?.Dispose();
+                    Part = null;
+                }
+                finally
+                {
+                    Spool?.Dispose();
+                    Spool = null;
+                }
+            }
+
+            /// <summary>
+            ///     Lets go of the part and the spool of a sheet whose write failed, each on its own and
+            ///     swallowing what it throws, so the spool's file always goes and the failure that
+            ///     stopped the write is the one the caller sees. The worksheet writer is dropped
+            ///     unflushed: what it holds is discarded with the package.
+            /// </summary>
+            public void Abandon()
+            {
                 Writer = null;
-                Part?.Dispose();
+                Quietly(Part);
                 Part = null;
-                Spool?.Dispose();
+                Quietly(Spool);
                 Spool = null;
+            }
+
+            /// <summary>Disposes a resource, swallowing what it throws.</summary>
+            /// <param name="resource">The resource; null for none.</param>
+            private static void Quietly(IDisposable? resource)
+            {
+                try
+                {
+                    resource?.Dispose();
+                }
+                catch (Exception)
+                {
+                    // A failed write is already propagating; a second failure while letting go of a
+                    // broken stream (a full volume, a refused destination) would only hide it.
+                }
             }
         }
     }

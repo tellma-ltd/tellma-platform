@@ -31,12 +31,17 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     Writes a planned workbook, pulling the parent sheet's query page by page with each child
-        ///     sheet's query riding it, so memory holds one page and its dependents.
+        ///     sheet's query riding it, so memory holds one page and its dependents. The first page is
+        ///     pulled before the destination is opened, so a capped count over the cap refuses the
+        ///     export before any file exists.
         /// </summary>
         /// <param name="plan">The plan.</param>
         /// <param name="rows">The row source the plan's queries run through.</param>
         /// <param name="context">The request's context, the one the plan was made in.</param>
-        /// <param name="destination">A writable stream the package is written to, a scratch file as a rule.</param>
+        /// <param name="openDestination">
+        ///     Opens the writable stream the package is written to, a scratch file as a rule; called
+        ///     once, after the first page passes the cap. The stream stays open and stays the caller's.
+        /// </param>
         /// <param name="cancellationToken">Stops the write between rows.</param>
         /// <returns>The data rows written to the parent sheet.</returns>
         /// <exception cref="Abstractions.Errors.LimitExceededException">A sheet's rows exceed its cap.</exception>
@@ -44,7 +49,7 @@ namespace Tellma.Core.Excel
             ExcelWorkbookPlan plan,
             IExcelRowSource rows,
             ExcelContext context,
-            Stream destination,
+            Func<Stream> openDestination,
             CancellationToken cancellationToken = default);
 
         /// <summary>Writes a report's one-sheet table, its rows streamed forward-only.</summary>

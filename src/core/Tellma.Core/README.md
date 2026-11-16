@@ -1383,15 +1383,21 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   164, and each distinct style one `cellXfs` entry.
 - **The writer.** `WorkbookWriter` streams an entity export: the parent sheet into the package as the
   row source's pages arrive, each child sheet through a scratch file of its own copied in afterwards,
-  then the hidden, protected `_tellma` manifest, the styles and the workbook. Each data sheet has a
+  then the hidden, protected `_tellma` manifest, the styles and the workbook. A scratch file is
+  unshared and deleted by the system on close on Windows; elsewhere it is owner-only (`0600`) and
+  unlinked as soon as it is open, so a killed process leaves nothing. A failed or cancelled write lets
+  go of every part and spool, and the failure that stopped it is the one thrown. Each data sheet has a
   bold header frozen below it, an auto filter named as Excel names it, the editable shape's
   validation lists and length checks, a hidden stamp column, and right-to-left views for a
-  right-to-left culture. A by-query export's capped count is checked before the first row, and the
-  row past a sheet's cap is refused. Sheet names are scrubbed of what Excel refuses, kept within 31
+  right-to-left culture. A by-query export's capped count is checked on the first page, before the
+  destination is opened (the writer takes a factory for it) or any scratch file made, and the row
+  past a sheet's cap is refused. A sheet or table wider than 16,384 columns is refused by its record.
+  Sheet names are scrubbed of what Excel refuses and of what XML cannot carry, kept within 31
   characters, never `History`, and made unique ignoring case. `WriteTableAsync` writes a report's
   table: several bold header rows, the pane frozen below them and after the frozen columns, each row
   style's font, fill and border, and no manifest. File names are the stem's ASCII form and the
-  request's local time (`Widgets 2026-11-16 0930.xlsx`), `report` when the stem keeps nothing.
+  request's local time (`Widgets 2026-11-16 0930.xlsx`), `report` when the stem keeps nothing, the
+  stem cut so the name fits 255 characters.
 
 ## Layout
 

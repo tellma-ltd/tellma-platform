@@ -20,7 +20,7 @@ namespace Tellma.Core.Excel
     /// </remarks>
     /// <param name="Name">The sheet's name before scrubbing: an entity's plural label, or the labels of a collection path.</param>
     /// <param name="Collection">The collection path the sheet holds (<c>WidgetParts.WidgetPartNotes</c>); null for the parent sheet.</param>
-    /// <param name="Columns">The sheet's columns, in order; at least one.</param>
+    /// <param name="Columns">The sheet's columns, in order; at least one, and at most the 16,384 a worksheet holds.</param>
     /// <param name="NumberFormats">Parallel to <paramref name="Columns" />: a column's number format; null for the format its type takes.</param>
     /// <param name="Query">
     ///     The query the sheet's rows come from: the parent sheet's root query, or, for a child
@@ -28,8 +28,8 @@ namespace Tellma.Core.Excel
     /// </param>
     /// <exception cref="ArgumentException">
     ///     <paramref name="Name" /> is blank, <paramref name="Collection" /> is empty or white space,
-    ///     <paramref name="Columns" /> is empty or holds a null entry, or
-    ///     <paramref name="NumberFormats" /> is not parallel to it.
+    ///     <paramref name="Columns" /> is empty, holds a null entry or more columns than a worksheet
+    ///     holds, or <paramref name="NumberFormats" /> is not parallel to it.
     /// </exception>
     /// <exception cref="ArgumentNullException"><paramref name="NumberFormats" /> or <paramref name="Query" /> is null.</exception>
     public sealed record ExcelSheetPlan(
@@ -47,8 +47,7 @@ namespace Tellma.Core.Excel
             Collection is null ? null : NotBlank(Collection, nameof(Collection));
 
         /// <inheritdoc cref="ExcelSheetPlan(string, string?, IReadOnlyList{ExcelColumnSpec}, IReadOnlyList{string?}, ExcelQuery)" />
-        public IReadOnlyList<ExcelColumnSpec> Columns { get; init => field = ReadOnlyCopies.OfEntries(value, requireOne: true, nameof(Columns)); } =
-            ReadOnlyCopies.OfEntries(Columns, requireOne: true, nameof(Columns));
+        public IReadOnlyList<ExcelColumnSpec> Columns { get; init => field = ValidColumns(value, nameof(Columns)); } = ValidColumns(Columns, nameof(Columns));
 
         /// <inheritdoc cref="ExcelSheetPlan(string, string?, IReadOnlyList{ExcelColumnSpec}, IReadOnlyList{string?}, ExcelQuery)" />
         public IReadOnlyList<string?> NumberFormats { get; init => field = Formats(value, Columns.Count, nameof(NumberFormats)); } =
@@ -66,6 +65,18 @@ namespace Tellma.Core.Excel
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(value, name);
             return value;
+        }
+
+        /// <summary>Copies the columns, refusing none, a null entry and more than a worksheet holds.</summary>
+        /// <param name="value">The columns.</param>
+        /// <param name="name">The member it came from.</param>
+        /// <returns>A read-only copy.</returns>
+        private static ReadOnlyCollection<ExcelColumnSpec> ValidColumns(IReadOnlyList<ExcelColumnSpec> value, string name)
+        {
+            ReadOnlyCollection<ExcelColumnSpec> columns = ReadOnlyCopies.OfEntries(value, requireOne: true, name);
+            return columns.Count <= ColumnLetters.MaxColumns
+                ? columns
+                : throw new ArgumentException("A worksheet holds at most 16,384 columns.", name);
         }
 
         /// <summary>Copies the number formats, refusing a list not parallel to the columns.</summary>

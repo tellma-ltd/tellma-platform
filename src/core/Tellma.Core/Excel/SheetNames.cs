@@ -34,18 +34,29 @@ namespace Tellma.Core.Excel
         /// <summary>The names taken so far, compared ignoring case.</summary>
         private readonly HashSet<string> _taken = new(StringComparer.OrdinalIgnoreCase) { Reserved };
 
-        /// <summary>Scrubs a name: the refused characters and control characters dropped, the apostrophes Excel refuses at either end trimmed, cut to 31 characters.</summary>
+        /// <summary>
+        ///     Scrubs a name: the characters Excel refuses, control characters and what XML cannot carry
+        ///     (a lone surrogate, U+FFFE, U+FFFF) dropped, the apostrophes Excel refuses at either end
+        ///     trimmed, cut to 31 characters.
+        /// </summary>
         /// <param name="name">The name.</param>
         /// <returns>The scrubbed name; <c>Sheet</c> when nothing is left.</returns>
         public static string Scrub(string name)
         {
             ArgumentNullException.ThrowIfNull(name);
 
-            // --- Drop what Excel refuses anywhere in a name ---
+            // --- Drop what Excel refuses anywhere in a name, and what the workbook's XML cannot carry ---
             StringBuilder builder = new(name.Length);
-            foreach (char c in name)
+            for (int i = 0; i < name.Length; i++)
             {
-                if (!Refused.Contains(c) && !char.IsControl(c))
+                char c = name[i];
+                if (char.IsHighSurrogate(c) && i + 1 < name.Length && char.IsLowSurrogate(name[i + 1]))
+                {
+                    // A well-formed pair is one character outside the basic plane, and is kept.
+                    _ = builder.Append(c).Append(name[i + 1]);
+                    i++;
+                }
+                else if (!char.IsSurrogate(c) && XmlStrings.IsXmlChar(c) && !char.IsControl(c) && !Refused.Contains(c))
                 {
                     _ = builder.Append(c);
                 }

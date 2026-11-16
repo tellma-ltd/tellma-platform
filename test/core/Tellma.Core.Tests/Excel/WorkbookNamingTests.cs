@@ -35,6 +35,17 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public void A_sheet_name_drops_what_xml_cannot_carry_and_keeps_a_whole_surrogate_pair()
+        {
+            Assert.Equal("ab", SheetNames.Scrub("a\uD800b"));
+            Assert.Equal("ab", SheetNames.Scrub("a\uDC00b"));
+            Assert.Equal("ab", SheetNames.Scrub("a\uFFFEb"));
+            Assert.Equal("ab", SheetNames.Scrub("a\uFFFFb"));
+            Assert.Equal("a\uD83D\uDE00b", SheetNames.Scrub("a\uD83D\uDE00b"));
+            Assert.Equal("Sheet", SheetNames.Scrub("\uD800\uFFFF"));
+        }
+
+        [Fact]
         public void Sheet_names_are_unique_ignoring_case_and_never_history()
         {
             SheetNames names = new();
@@ -73,6 +84,20 @@ namespace Tellma.Core.Tests.Excel
 
             Assert.Equal("report 2026-11-16 0905.xlsx", ExcelFileNames.Compose("تقرير المبيعات", ExcelFileNames.ReportStem, now, TimeZoneInfo.Utc));
             _ = Assert.Throws<ArgumentException>(() => ExcelFileNames.Compose("تقرير", "تقرير", now, TimeZoneInfo.Utc));
+        }
+
+        [Fact]
+        public void A_long_stem_is_cut_so_the_file_name_fits_255_characters()
+        {
+            DateTimeOffset now = new(2026, 11, 16, 9, 5, 0, TimeSpan.Zero);
+
+            string name = ExcelFileNames.Compose(new string('x', 300), ExcelFileNames.ReportStem, now, TimeZoneInfo.Utc);
+            Assert.Equal(ExcelFileNames.MaxLength, name.Length);
+            Assert.Equal(new string('x', 234) + " 2026-11-16 0905.xlsx", name);
+
+            // A cut that ends in a space drops it, so the stem never ends in a gap.
+            string spaced = ExcelFileNames.Compose(new string('x', 233) + " tail", ExcelFileNames.ReportStem, now, TimeZoneInfo.Utc);
+            Assert.Equal(new string('x', 233) + " 2026-11-16 0905.xlsx", spaced);
         }
 
         [Theory]

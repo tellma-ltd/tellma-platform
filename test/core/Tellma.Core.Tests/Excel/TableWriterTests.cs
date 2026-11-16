@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using DocumentFormat.OpenXml.Spreadsheet;
+using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Excel;
 using Tellma.Core.Queryex;
 using static Tellma.Core.Tests.Excel.ExcelTestKit;
@@ -136,6 +138,29 @@ namespace Tellma.Core.Tests.Excel
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => spec with { FrozenColumns = 4 });
             _ = Assert.Throws<ArgumentException>(() => spec with { SheetName = " " });
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => new ExcelTableRow([], ExcelRowStyle.Normal, ExcelTableRow.MaxIndent + 1));
+
+            // A worksheet's columns and rows bound the table: every column must have a letter, and a data row must fit below the headers.
+            ExcelColumnSpec[] widest = [.. Enumerable.Repeat(spec.Columns[0], ColumnLetters.MaxColumns)];
+            Assert.Equal(ColumnLetters.MaxColumns, (spec with { Columns = widest, NumberFormats = new string?[widest.Length], FrozenColumns = 0 }).Columns.Count);
+            ArgumentException tooWide = Assert.Throws<ArgumentException>(() => spec with { Columns = [.. widest, spec.Columns[0]] });
+            Assert.Equal("Columns", tooWide.ParamName);
+            ArgumentException tooTall = Assert.Throws<ArgumentException>(() => spec with { HeaderRows = [.. Enumerable.Repeat<IReadOnlyList<string?>>([], ColumnLetters.MaxRows)] });
+            Assert.Equal("HeaderRows", tooTall.ParamName);
+        }
+
+        [Fact]
+        public async Task The_row_past_the_worksheets_last_row_is_refused()
+        {
+            // The header rows fill the worksheet to its last row but one, so the second data row has nowhere to go.
+            ExcelTableSpec spec = Spec() with { HeaderRows = [.. Enumerable.Repeat<IReadOnlyList<string?>>([], ColumnLetters.MaxRows - 1)] };
+            using CountingStream sink = new();
+
+            LimitExceededException refused = await Assert.ThrowsAsync<LimitExceededException>(
+                () => WorkbookWriter.WriteTableAsync(spec, Rows(), Context(), sink, TestContext.Current.CancellationToken));
+
+            Assert.Equal(ExcelErrorCodes.ExportRowLimitExceeded, refused.Limit);
+            Assert.Equal(2, refused.Actual);
+            Assert.Equal(1, refused.Maximum);
         }
 
         /// <summary>The sales table: two header rows, a region column frozen, a share and an amount.</summary>

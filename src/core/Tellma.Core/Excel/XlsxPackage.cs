@@ -47,13 +47,17 @@ namespace Tellma.Core.Excel
         /// <summary>The time every entry is stamped with: the request's, never the clock's.</summary>
         private readonly DateTimeOffset _timestamp;
 
-        /// <summary>Opens a package over a writable stream.</summary>
+        /// <summary>
+        ///     Opens a package over a writable stream. The first write the stream refuses is thrown and
+        ///     every later write dropped, so the parts closed while that failure propagates cannot throw
+        ///     over it; the package is then abandoned, never disposed.
+        /// </summary>
         /// <param name="destination">The stream; left open when the package is disposed.</param>
         /// <param name="timestamp">The time every entry is stamped with.</param>
         public XlsxPackage(Stream destination, DateTimeOffset timestamp)
         {
             ArgumentNullException.ThrowIfNull(destination);
-            _zip = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
+            _zip = new ZipArchive(new LatchingStream(destination), ZipArchiveMode.Create, leaveOpen: true);
 
             // A zip entry's time is a DOS time, which starts in 1980.
             DateTimeOffset floor = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -184,6 +188,105 @@ namespace Tellma.Core.Excel
             writer.WriteAttributeString("Type", RelationshipTypes + type);
             writer.WriteAttributeString("Target", target);
             writer.WriteEndElement();
+        }
+
+        /// <summary>
+        ///     The destination as the archive sees it: every call passes through until a write or
+        ///     flush throws, which is rethrown; from then on writes and flushes are dropped, since the
+        ///     package is lost and only the first failure says why.
+        /// </summary>
+        /// <param name="inner">The destination; never disposed here.</param>
+        private sealed class LatchingStream(Stream inner) : Stream
+        {
+            /// <summary>Whether a write or flush has failed.</summary>
+            private bool _faulted;
+
+            /// <inheritdoc />
+            public override bool CanRead => false;
+
+            /// <inheritdoc />
+            public override bool CanSeek => inner.CanSeek;
+
+            /// <inheritdoc />
+            public override bool CanWrite => inner.CanWrite;
+
+            /// <inheritdoc />
+            public override long Length => inner.Length;
+
+            /// <inheritdoc />
+            public override long Position
+            {
+                get => inner.Position;
+                set => inner.Position = value;
+            }
+
+            /// <inheritdoc />
+            public override void Flush()
+            {
+                if (_faulted)
+                {
+                    return;
+                }
+
+                try
+                {
+                    inner.Flush();
+                }
+                catch
+                {
+                    _faulted = true;
+                    throw;
+                }
+            }
+
+            /// <inheritdoc />
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                Write(buffer.AsSpan(offset, count));
+            }
+
+            /// <inheritdoc />
+            public override void Write(ReadOnlySpan<byte> buffer)
+            {
+                if (_faulted)
+                {
+                    return;
+                }
+
+                try
+                {
+                    inner.Write(buffer);
+                }
+                catch
+                {
+                    _faulted = true;
+                    throw;
+                }
+            }
+
+            /// <inheritdoc />
+            public override void WriteByte(byte value)
+            {
+                Write([value]);
+            }
+
+            /// <inheritdoc />
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                return inner.Seek(offset, origin);
+            }
+
+            /// <inheritdoc />
+            public override void SetLength(long value)
+            {
+                inner.SetLength(value);
+            }
+
+            /// <inheritdoc />
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }

@@ -452,4 +452,73 @@ namespace Tellma.Core.Tests.Excel
             base.Dispose(disposing);
         }
     }
+
+    /// <summary>
+    ///     A write-only stream that cannot seek and takes a budget of bytes, then refuses every write
+    ///     with a new exception, as a full volume does; it records the first it threw.
+    /// </summary>
+    /// <param name="budget">The bytes accepted before the first refusal.</param>
+    internal sealed class FailingStream(long budget) : Stream
+    {
+        /// <summary>The bytes accepted.</summary>
+        private long _length;
+
+        /// <summary>The first exception thrown; null until then.</summary>
+        public IOException? FirstFault { get; private set; }
+
+        /// <inheritdoc />
+        public override bool CanRead => false;
+
+        /// <inheritdoc />
+        public override bool CanSeek => false;
+
+        /// <inheritdoc />
+        public override bool CanWrite => true;
+
+        /// <inheritdoc />
+        public override long Length => _length;
+
+        /// <inheritdoc />
+        public override long Position
+        {
+            get => _length;
+            set => throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (_length + count > budget)
+            {
+                IOException fault = new("There is not enough space on the volume.");
+                FirstFault ??= fault;
+                throw fault;
+            }
+
+            _length += count;
+        }
+
+        /// <inheritdoc />
+        public override void Flush()
+        {
+        }
+
+        /// <inheritdoc />
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
+    }
 }

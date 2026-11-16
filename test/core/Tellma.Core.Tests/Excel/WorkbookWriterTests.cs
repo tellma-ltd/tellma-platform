@@ -234,15 +234,37 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
-        public async Task A_capped_count_on_the_first_page_is_refused_before_any_row()
+        public async Task A_capped_count_on_the_first_page_is_refused_before_the_destination_opens_or_any_scratch_file_is_made()
         {
             ExcelWorkbookPlan plan = EditablePlan(countCap: 1);
+            bool opened = false;
 
-            LimitExceededException refused = await Assert.ThrowsAsync<LimitExceededException>(() => Write(plan, SampleSource(plan, firstCount: 2)));
+            // The source checks, as it hands over the first page, that nothing is open or spooled yet.
+            PagedSource source = SampleSource(plan, firstCount: 2) with
+            {
+                BeforeFirst = () =>
+                {
+                    Assert.False(opened);
+                    Assert.Empty(Directory.EnumerateFiles(_scratch));
+                },
+            };
+            WorkbookWriter writer = new(new ExcelOptions(), _scratch);
+
+            LimitExceededException refused = await Assert.ThrowsAsync<LimitExceededException>(() => writer.WriteAsync(
+                plan,
+                source,
+                Context(),
+                () =>
+                {
+                    opened = true;
+                    return Stream.Null;
+                },
+                TestContext.Current.CancellationToken));
 
             Assert.Equal(ExcelErrorCodes.ExportRowLimitExceeded, refused.Limit);
             Assert.Equal(2, refused.Actual);
             Assert.Equal(1, refused.Maximum);
+            Assert.False(opened);
             Assert.Empty(Directory.EnumerateFiles(_scratch));
         }
 
@@ -295,6 +317,132 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public async Task A_destination_that_fails_releases_every_spool_and_its_first_failure_is_the_one_thrown()
+        {
+            // Enough rows that the parent sheet reaches the destination while the child sheet spools.
+            ExcelWorkbookPlan plan = EditablePlan(countCap: 200_000);
+            GeneratedSource source = new(plan.Sheets[0].Query, 20, static _ => { });
+            using FailingStream destination = new(budget: 16 * 1024);
+            WorkbookWriter writer = new(new ExcelOptions(), _scratch);
+
+            IOException thrown = await Assert.ThrowsAsync<IOException>(
+                () => writer.WriteAsync(plan, source, Context(), () => destination, TestContext.Current.CancellationToken));
+
+            Assert.Same(destination.FirstFault, thrown);
+            Assert.Empty(Directory.EnumerateFiles(_scratch));
+        }
+
+        [Fact]
+        public async Task Cancelling_mid_stream_stops_the_write_and_releases_every_spool()
+        {
+            ExcelWorkbookPlan plan = EditablePlan(countCap: 200_000);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            int spooled = -1;
+            GeneratedSource source = new(plan.Sheets[0].Query, 10, page =>
+            {
+                if (page == 3)
+                {
+                    spooled = Directory.EnumerateFiles(_scratch).Count();
+                    cancel.Cancel();
+                }
+            });
+            using CountingStream sink = new();
+            WorkbookWriter writer = new(new ExcelOptions(), _scratch);
+
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => writer.WriteAsync(plan, source, Context(), () => sink, cancel.Token));
+
+            // Windows keeps a spool's name until its stream closes; elsewhere the name goes as the file opens.
+            Assert.Equal(OperatingSystem.IsWindows() ? 1 : 0, spooled);
+            Assert.Empty(Directory.EnumerateFiles(_scratch));
+        }
+
+        [Fact]
+        public async Task Text_xml_cannot_carry_is_escaped_on_its_way_through_the_writer_and_reads_back()
+        {
+            const string Name = "a\u0001b\uD800c_x0041_d\uFFFFe";
+            ExcelWorkbookPlan plan = EditablePlan();
+
+            // The sheet name's lone surrogate and noncharacter are dropped, as the workbook part cannot carry them.
+            ExcelWorkbookPlan renamed = plan with { Sheets = [plan.Sheets[0] with { Name = "Wid\uFFFFgets\uD800" }, plan.Sheets[1]] };
+            object?[] widget = Widget(1, "W-1");
+            widget[3] = Name;
+            ExcelPage page = new([widget], [new ExcelPage([], [], null)], null);
+
+            byte[] bytes = (await Write(renamed, new PagedSource(plan.Sheets[0].Query, [page]))).Bytes;
+            using WrittenWorkbook workbook = new(bytes);
+
+            Assert.Empty(workbook.ValidationErrors());
+            Assert.Equal(["Widgets", "Parts", "_tellma"], workbook.Sheets.Select(static s => s.Name!.Value));
+            Assert.Equal("a_x0001_b_xD800_c_x005F_x0041_d_xFFFF_e", workbook.Cell("Widgets", "D2").InnerText);
+            Assert.Equal(new ExcelRawCell(ExcelCellKind.Text, Name), workbook.Rows("Widgets")[1]["D"]);
+        }
+
+        [Fact]
+        public async Task A_collection_two_levels_down_is_its_own_sheet_fed_by_its_owner_sheets_dependents()
+        {
+            ExcelWorkbookPlan plan = EditablePlan();
+            ExcelQuery notesQuery = new("WidgetPartNote", ["WidgetPart.Ordinal", "Text"], "WidgetPartId,Id", null, null, null, null, null);
+            ExcelQuery partsQuery = plan.Sheets[1].Query with { Dependents = [notesQuery] };
+            ExcelQuery root = plan.Sheets[0].Query with { Dependents = [partsQuery] };
+            ExcelColumnSpec[] noteColumns =
+            [
+                new ExcelColumnSpec("Part", QueryexType.QxNumeric, null, ["WidgetPart", "Ordinal"])
+                {
+                    Role = ExcelColumnRole.ParentReference,
+                    ReferenceEntity = "WidgetPart",
+                    KeyKind = ExcelKeyKind.Natural,
+                },
+                new ExcelColumnSpec("Text", QueryexType.QxString, null, ["Text"]),
+            ];
+            ExcelWorkbookPlan deep = plan with
+            {
+                Sheets =
+                [
+                    plan.Sheets[0] with { Query = root },
+                    plan.Sheets[1] with { Query = partsQuery },
+                    new ExcelSheetPlan("Part notes", "Parts.PartNotes", noteColumns, new string?[noteColumns.Length], notesQuery),
+                ],
+            };
+
+            // Two pages, each part page carrying the notes of its parts as its own dependent page.
+            ExcelPage first = new([Widget(1, "W-1")], [new ExcelPage([["W-1", 1, "first"]], [new ExcelPage([[1, "n-1"], [1, "n-2"]], [], null)], null)], null);
+            ExcelPage second = new([Widget(2, "W-2")], [new ExcelPage([["W-2", 1, "x"]], [new ExcelPage([[1, "n-3"]], [], null)], null)], null);
+
+            byte[] bytes = (await Write(deep, new PagedSource(root, [first, second]))).Bytes;
+            using WrittenWorkbook workbook = new(bytes);
+
+            Assert.Empty(workbook.ValidationErrors());
+            Assert.Equal(["Widgets", "Parts", "Part notes", "_tellma"], workbook.Sheets.Select(static s => s.Name!.Value));
+            Assert.Equal(["Notes", "first", "x"], workbook.Rows("Parts").Select(static r => r["C"].Text));
+            Assert.Equal(["Text", "n-1", "n-2", "n-3"], workbook.Rows("Part notes").Select(static r => r["B"].Text));
+            Assert.Contains(workbook.Rows("_tellma"), static r => r.TryGetValue("A", out ExcelRawCell sheet) && sheet.Text == "Part notes" && r["B"].Text == "Parts.PartNotes");
+        }
+
+        [Fact]
+        public async Task An_editable_date_and_time_in_the_ethiopian_calendar_is_iso_text_and_the_manifest_records_its_pattern()
+        {
+            ExcelContext context = Context(AmEt, Ethiopian);
+            ExcelColumnSpec at = Typed(typeof(DateTime), QueryexType.QxDateTime, name: "At");
+            ExcelQuery root = new("Widget", ["At"], "Id", null, null, null, 10, null);
+            ExcelWorkbookPlan plan = new(
+                Widgets,
+                ExportKind.ForImport,
+                "Widgets 2026-11-16 0930.xlsx",
+                [new ExcelSheetPlan("Widgets", null, [at], [null], root)],
+                ExcelManifest.Header(Widgets, ExportKind.ForImport, context, "1.0.0-test"));
+            ExcelPage page = new([[new DateTime(2025, 6, 26, 14, 30, 0)]], [], 1);
+
+            byte[] bytes = (await Write(plan, new PagedSource(root, [page]), context)).Bytes;
+            using WrittenWorkbook workbook = new(bytes);
+
+            Assert.Empty(workbook.ValidationErrors());
+            Assert.Equal(new ExcelRawCell(ExcelCellKind.Text, "2025-06-26T14:30:00"), workbook.Rows("Widgets")[1]["A"]);
+            IReadOnlyDictionary<string, ExcelRawCell> column = workbook.Rows("_tellma").Single(static r => r.TryGetValue("E", out ExcelRawCell path) && path.Text == "At");
+            Assert.Equal(nameof(ExcelDateEncoding.Text), column["K"].Text);
+            Assert.Equal(CellCodec.IsoDateTimePattern, column["L"].Text);
+        }
+
+        [Fact]
         public async Task Memory_stays_flat_however_many_rows_stream_through()
         {
             // 60,000 parent rows and as many child rows, a thousand of each per page, written to a
@@ -316,7 +464,7 @@ namespace Tellma.Core.Tests.Excel
             });
 
             using CountingStream sink = new();
-            int rows = await new WorkbookWriter(new ExcelOptions(), _scratch).WriteAsync(plan, source, Context(), sink, TestContext.Current.CancellationToken);
+            int rows = await new WorkbookWriter(new ExcelOptions(), _scratch).WriteAsync(plan, source, Context(), () => sink, TestContext.Current.CancellationToken);
 
             Assert.Equal(Pages * 1000, rows);
             Assert.True(sink.Length > 1_000_000);
@@ -424,23 +572,33 @@ namespace Tellma.Core.Tests.Excel
         private async Task<(byte[] Bytes, int Rows)> Write(ExcelWorkbookPlan plan, IExcelRowSource source, ExcelContext? context = null, ExcelOptions? options = null)
         {
             using CountingStream destination = new(keep: true);
-            int rows = await new WorkbookWriter(options ?? new ExcelOptions(), _scratch).WriteAsync(plan, source, context ?? Context(), destination, TestContext.Current.CancellationToken);
+            int rows = await new WorkbookWriter(options ?? new ExcelOptions(), _scratch).WriteAsync(plan, source, context ?? Context(), () => destination, TestContext.Current.CancellationToken);
             Assert.Empty(Directory.EnumerateFiles(_scratch));
             return (destination.ToArray(), rows);
         }
 
         /// <summary>A row source over fixed pages of one query.</summary>
-        /// <param name="query">The query the pages answer.</param>
-        /// <param name="pages">The pages.</param>
-        private sealed class PagedSource(ExcelQuery query, IReadOnlyList<ExcelPage> pages) : IExcelRowSource
+        /// <param name="Query">The query the pages answer.</param>
+        /// <param name="PageList">The pages.</param>
+        private sealed record PagedSource(ExcelQuery Query, IReadOnlyList<ExcelPage> PageList) : IExcelRowSource
         {
+            /// <summary>Called as the first page is handed over; null for nothing.</summary>
+            public Action? BeforeFirst { get; init; }
+
             /// <inheritdoc />
             public async IAsyncEnumerable<ExcelPage> Pages(ExcelQuery requested, [EnumeratorCancellation] CancellationToken cancellationToken = default)
             {
-                Assert.Same(query, requested);
-                foreach (ExcelPage page in pages)
+                Assert.Same(Query, requested);
+                bool first = true;
+                foreach (ExcelPage page in PageList)
                 {
                     await Task.Yield();
+                    if (first)
+                    {
+                        BeforeFirst?.Invoke();
+                        first = false;
+                    }
+
                     yield return page;
                 }
             }

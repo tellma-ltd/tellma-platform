@@ -68,6 +68,17 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public void A_sheet_plan_holds_at_most_the_columns_a_worksheet_holds()
+        {
+            ExcelColumnSpec[] widest = [.. Enumerable.Repeat(Computed(QueryexType.QxString), ColumnLetters.MaxColumns)];
+
+            Assert.Equal(ColumnLetters.MaxColumns, new ExcelSheetPlan("Widgets", null, widest, new string?[widest.Length], Query).Columns.Count);
+            ArgumentException refused = Assert.Throws<ArgumentException>(
+                () => new ExcelSheetPlan("Widgets", null, [.. widest, Computed(QueryexType.QxString)], new string?[widest.Length + 1], Query));
+            Assert.Equal("Columns", refused.ParamName);
+        }
+
+        [Fact]
         public void A_workbook_plan_is_an_entity_shape_with_the_parent_sheet_first_and_only_first()
         {
             ExcelSheetPlan parent = new("Widgets", null, [Computed(QueryexType.QxString)], [null], Query);

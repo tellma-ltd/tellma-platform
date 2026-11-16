@@ -100,10 +100,10 @@ namespace Tellma.Core.Excel
             return false;
         }
 
-        /// <summary>Whether a character, taken alone, is one XML allows.</summary>
+        /// <summary>Whether a character, taken alone, is one XML allows; a surrogate is allowed only as half of a pair.</summary>
         /// <param name="c">The character.</param>
         /// <returns>True for tab, line feed, carriage return and the characters from space up, less U+FFFE and U+FFFF.</returns>
-        private static bool IsXmlChar(char c)
+        public static bool IsXmlChar(char c)
         {
             return c is '\t' or '\n' or '\r' or (>= ' ' and not '\uFFFE' and not '\uFFFF');
         }
