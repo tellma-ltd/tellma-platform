@@ -154,9 +154,7 @@ function withoutSizeParam(url: string): string {
  * Blobs on screen are shared: every instance showing one blob shares its
  * object URL and its decode (`show` and `hide`, reference-counted; the last
  * to let go revokes the URL), and so does every instance loading that URL
- * under the same stamp. While a URL's latest blob is on screen, and storage
- * has taken no other bytes for the URL since, it stands in for the stored
- * body under an unknown stamp, which still revalidates.
+ * under the same stamp.
  *
  * Concurrent fetches of one URL coalesce into one request, and concurrent
  * revalidations into one conditional request; both are reference-counted.
@@ -189,9 +187,8 @@ export class ɵTmImageBlobCache {
    * Puts a blob on screen for the sized URL it was served for, loaded under
    * the record stamp `version`: the first instance creates its object URL
    * and decodes it, and every other one showing the same blob, or the same
-   * URL under the same known stamp, shares both. While it is shown, it
-   * stands in for the stored bytes under an unknown stamp. Pair each call
-   * with one {@link hide}.
+   * URL under the same known stamp, shares both. Pair each call with one
+   * {@link hide}.
    */
   show(src: string, blob: Blob, version: string | null): ɵTmShownBlob {
     let shown = this.onScreen.get(src);
@@ -257,9 +254,9 @@ export class ɵTmImageBlobCache {
         return match.blob();
       }
       if (version === null) {
-        // The bytes on screen for the URL now stand in for the stored body,
-        // so their object URL is shared.
-        const blob = this.onScreen.get(url)?.blob ?? (await match.blob());
+        // Served from storage, always: under an unknown stamp only storage
+        // and the revalidation below know which bytes are current.
+        const blob = await match.blob();
         // An instance that left meanwhile never joins the revalidation.
         signal?.throwIfAborted();
         this.revalidate(cache, url, match.headers.get(ETAG_HEADER), options);
@@ -350,9 +347,6 @@ export class ɵTmImageBlobCache {
     version: string | null,
     etag: string | null,
   ): Promise<void> {
-    // Storage takes other bytes for the URL: the blob on screen stops
-    // standing in for them (its instances keep it until they let go).
-    this.onScreen.delete(url);
     const headers = new Headers({ 'content-type': blob.type || 'application/octet-stream' });
     if (version !== null && version !== '') {
       // An absent header means "stamp unknown" — never store '' where a

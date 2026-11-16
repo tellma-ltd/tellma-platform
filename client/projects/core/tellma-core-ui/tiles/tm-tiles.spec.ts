@@ -518,6 +518,50 @@ describe('tm-tiles', () => {
       expect(host.activations).toEqual([]);
     });
 
+    it('opens nothing when the pressed tile shows another row by the release', async () => {
+      const { fixture, host, element } = await setup();
+      /** Presses and releases on tile 2's body, with `between` run in between. */
+      const tap = async (button: number, between: () => Promise<void>): Promise<void> => {
+        const body = tileAt(element, 2).querySelector('.tm-tiles__text')!;
+        body.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, button, clientX: 50, clientY: 20 }),
+        );
+        await between();
+        // The same element, re-bound in place, takes the release.
+        body.dispatchEvent(
+          new MouseEvent(button === 0 ? 'click' : 'auxclick', {
+            bubbles: true,
+            button,
+            clientX: 50,
+            clientY: 20,
+            detail: 1,
+          }),
+        );
+      };
+      const arrive = async (): Promise<void> => {
+        host.rows.update((rows) => [{ ...rows[0], id: -rows.length, name: 'New' }, ...rows]);
+        await fixture.whenStable();
+      };
+      await tap(0, arrive);
+      await tap(1, arrive);
+      expect(host.activations).toEqual([]);
+      // With nothing in between, the same taps open the row (a second apart,
+      // past the repeat guard).
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(1_000_000);
+        await tap(0, async () => undefined);
+        vi.setSystemTime(1_001_000);
+        await tap(1, async () => undefined);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(host.activations.map((a) => [a.rowId, a.newTab])).toEqual([
+        [1, false],
+        [1, true],
+      ]);
+    });
+
     it('opens a tile clicked with no press of its own, whatever press came before', async () => {
       const { host, element } = await setup();
       const body = tileAt(element, 2).querySelector('.tm-tiles__text')!;
@@ -767,6 +811,32 @@ describe('tm-tiles', () => {
       const next = document.activeElement as HTMLElement;
       expect(next.dataset['index']).toBe('6');
       expect(shownTitle(next)).toBe('Product 7');
+    });
+
+    it('announces an arrow move that re-binds the focused tile in place, and keeps focus there', async () => {
+      const { fixture, host, tiles, scroller } = await setup((h) => h.rows.set(products(10_000)));
+      await (await tiles.getTile({ index: 5 })).focus();
+      await fixture.whenStable();
+      const focused = document.activeElement as HTMLElement;
+      // Scrolled away, the focused line stays rendered off the window; the
+      // line below it then takes its slot, and with it the focused element.
+      await scrollTo(fixture, scroller, 1_000 * 70);
+      const entered: Element[] = [];
+      scroller.addEventListener('focusin', (event) => entered.push(event.target as Element));
+      await (await tiles.getTile({ index: 5 })).press('ArrowDown');
+      await fixture.whenStable();
+      const next = document.activeElement as HTMLElement;
+      const index = Number(next.dataset['index']);
+      expect(index).toBeGreaterThan(5);
+      expect(shownTitle(next)).toBe(`Product ${index + 1}`);
+      expect(next).toBe(focused);
+      // The move fires focus on the tile, so assistive technology reads it.
+      expect(entered).toContain(next);
+      // A page moving the active tile elsewhere never moves focus from it.
+      host.active.set(index + 2);
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(next);
+      expect(shownTitle(next)).toBe(`Product ${index + 1}`);
     });
 
     it('moves focus with its row when rows arrive above the focused tile', async () => {

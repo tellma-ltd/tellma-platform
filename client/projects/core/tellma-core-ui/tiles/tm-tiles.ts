@@ -582,8 +582,12 @@ export class TmTiles<T> implements TmGridDriverTarget {
   private focusWithin = false;
   /** The row whose tile last took focus: a tile re-bound to another row under focus hands it on. */
   private focusedId: TmRowId | undefined;
-  /** The press a click is measured against for the tap slop. */
-  private press: { readonly x: number; readonly y: number } | null = null;
+  /** The press a click is measured against: the tap slop, and the row pressed. */
+  private press: {
+    readonly x: number;
+    readonly y: number;
+    readonly id: TmRowId | undefined;
+  } | null = null;
   /** The last activation, for the repeat guard. */
   private lastActivation: { readonly id: TmRowId; readonly at: number } | null = null;
   /** The flashing tile and its keyframes (`1` or `2`, alternating so a re-flash restarts). */
@@ -1121,15 +1125,15 @@ export class TmTiles<T> implements TmGridDriverTarget {
     event.preventDefault();
   }
 
-  /** Records a press for the tap slop; keeps a middle press from starting autoscroll. */
+  /** Records a press and its row for the click; keeps a middle press from starting autoscroll. */
   protected onPointerDown(event: PointerEvent): void {
-    this.press = { x: event.clientX, y: event.clientY };
+    const row = this.rowAt(event.target);
+    this.press = { x: event.clientX, y: event.clientY, id: row?.id };
     if (
       event.button === 1 &&
       event.pointerType !== 'touch' &&
-      event.target instanceof Element &&
-      event.target.closest('a[href]') === null &&
-      this.tileElement(event.target) !== null
+      row &&
+      (event.target as Element).closest('a[href]') === null
     ) {
       event.preventDefault();
     }
@@ -1145,16 +1149,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
     // Each press measures one click only.
     const press = this.press;
     this.press = null;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
+    const row = this.rowAt(event.target);
+    // A click on another row than the press's (its tile re-bound in place
+    // between press and release, as when rows arrive above) is no click on
+    // either row.
+    if (row === undefined || this.pressedElsewhere(press, row.id, event)) {
       return;
     }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row === undefined) {
-      return;
-    }
-    const element = target as Element;
+    const element = event.target as Element;
     if (element.closest('[data-tm-check]') !== null) {
       this.toggleSelected(row.id);
       return;
@@ -1193,15 +1195,13 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** A middle click outside a link opens the tile in a new tab; on a link it is the browser's. */
   protected onAuxClick(event: MouseEvent): void {
-    if (event.button !== 1 || !(event.target instanceof Element)) {
-      return;
-    }
-    const tile = this.tileElement(event.target);
-    if (tile === null || event.target.closest('a[href]') !== null) {
-      return;
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row !== undefined) {
+    const row = this.rowAt(event.target);
+    if (
+      event.button === 1 &&
+      row &&
+      (event.target as Element).closest('a[href]') === null &&
+      !this.pressedElsewhere(this.press, row.id, event)
+    ) {
       this.activate(row.id, 'pointer', true);
     }
   }
@@ -1209,15 +1209,12 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** Focus entering a tile makes it active; focus on its title link moves to the tile. */
   protected onFocusIn(event: FocusEvent): void {
     this.focusWithin = true;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
-      return;
+    // Focus lands on elements only.
+    const target = event.target as Element;
+    if (target.classList.contains('tm-tiles__title')) {
+      this.tileElement(target)?.focus({ preventScroll: true });
     }
-    if (target !== tile && (target as Element).classList.contains('tm-tiles__title')) {
-      tile.focus({ preventScroll: true });
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
+    const row = this.rowAt(target);
     this.focusedId = row?.id;
     if (row !== undefined && row.id !== this.activeId()) {
       this.setActive(row.id, { reveal: false, focus: false });
@@ -1288,6 +1285,24 @@ export class TmTiles<T> implements TmGridDriverTarget {
       return src;
     }
     return shownImages.has(row) ? src : null;
+  }
+
+  /** The row the tile holding `target` shows now, if `target` is in a tile. */
+  private rowAt(target: EventTarget | null): VisibleRow<T> | undefined {
+    const tile = target instanceof Element ? this.tileElement(target) : null;
+    return tile === null ? undefined : this.visible()[Number(tile.dataset['index'])];
+  }
+
+  /**
+   * Whether a pointer click's press was on another row than `id`; a click
+   * with no press of its own (`detail` 0) never is.
+   */
+  private pressedElsewhere(
+    press: { readonly id: TmRowId | undefined } | null,
+    id: TmRowId,
+    event: MouseEvent,
+  ): boolean {
+    return press !== null && event.detail !== 0 && press.id !== id;
   }
 
   /** The tile element a target is in, if it is one of this list's. */
@@ -1583,17 +1598,19 @@ export class TmTiles<T> implements TmGridDriverTarget {
     // focus onto <body>, or re-bound the focused tile to another row, moves
     // it to the active tile.
     const focused = document.activeElement;
-    const focusedTile = focused && this.tileElement(focused);
-    const stale =
-      focusedTile !== null &&
-      this.visible()[Number(focusedTile.dataset['index'])]?.id !== this.focusedId;
+    const shown = this.rowAt(focused);
+    const stale = shown !== undefined && shown.id !== this.focusedId;
     const focusActive =
       this.pendingFocus || (this.focusWithin && (focused === document.body || stale));
     this.pendingFocus = false;
     if (focusActive) {
       const id = this.activeDescendantId();
       const tile = id === null ? null : scroller.querySelector<HTMLElement>(`#${id}`);
-      if (tile !== null && document.activeElement !== tile) {
+      // A focused tile re-bound in place to the active row is focused
+      // already but has announced nothing: it is left and entered again, so
+      // the move fires its focus events and focusin records the row.
+      if (tile !== null && (focused !== tile || stale)) {
+        tile.blur();
         tile.focus({ preventScroll: true });
       }
     }

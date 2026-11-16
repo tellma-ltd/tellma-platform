@@ -585,18 +585,20 @@ describe('ɵTmImageBlobCache', () => {
       expect(cache.show(url, makeBlob('other'), '')).not.toBe(unknown);
     });
 
-    it('stand in for the stored body under an unknown stamp, which still revalidates', async () => {
+    it('never stand in for the stored body under an unknown stamp, which still revalidates', async () => {
       const { cache, fetcher } = setup(new FakeCacheStorage());
       const blob = await cache.getImage(url, 'v1');
       cache.show(url, blob, 'v1');
       fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
-      expect(await cache.getImage(url, null)).toBe(blob);
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(blob);
+      expect(await text(served)).toBe(await text(blob));
       await flush();
       expect(fetcher.calls).toHaveLength(2);
       expect(fetcher.calls[1].options?.ifNoneMatch).toBe('W/"http-etag"');
     });
 
-    it('stop standing in once storage takes other bytes for their URL', async () => {
+    it('leave the stored bytes to an unknown stamp once storage takes others for their URL', async () => {
       const { cache, fetcher } = setup(new FakeCacheStorage());
       const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
       // A load under a newer stamp stores new bytes that never reach the screen.
@@ -609,7 +611,44 @@ describe('ɵTmImageBlobCache', () => {
       cache.hide(old);
     });
 
-    it('hand their URL to the refreshed blob, the old one staying until its instances let go', async () => {
+    it('leave bytes stored behind the cache (another tab) to an unknown stamp, and revalidate those', async () => {
+      const storage = new FakeCacheStorage();
+      const { cache, fetcher } = setup(storage);
+      const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      // Another tab's refresh writes the shared storage directly.
+      const store = await storage.open('tm-images-v1');
+      await store.put(
+        url,
+        new Response(makeBlob('tab 2 bytes'), {
+          headers: { 'content-type': 'image/png', 'x-tm-etag': 'W/"e2"' },
+        }),
+      );
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(old.blob);
+      expect(await text(served)).toBe('tab 2 bytes');
+      await flush();
+      expect(fetcher.calls[1].options?.ifNoneMatch).toBe('W/"e2"');
+      cache.hide(old);
+    });
+
+    it('never serve bytes read before storage took others, whenever they reach the screen', async () => {
+      const storage = new FakeCacheStorage();
+      const { cache, fetcher } = setup(storage);
+      await cache.getImage(url, 'v1');
+      // A read of the stored bytes that reaches the screen only after a
+      // refresh has replaced them in storage.
+      const late = await cache.getImage(url, 'v1');
+      fetcher.script(async () => ({ status: 200, blob: makeBlob('refreshed'), etag: 'W/"e2"' }));
+      await cache.getImage(url, null);
+      await flush();
+      const old = cache.show(url, late, 'v1');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      expect(await text(await cache.getImage(url, null))).toBe('refreshed');
+      cache.hide(old);
+    });
+
+    it('give a refreshed blob its own URL, the old one staying until its instances let go', async () => {
       const { cache, fetcher } = setup(new FakeCacheStorage());
       const revoke = vi.spyOn(URL, 'revokeObjectURL');
       try {
@@ -620,18 +659,19 @@ describe('ɵTmImageBlobCache', () => {
           etag: 'W/"e2"',
         }));
         const refreshed: Blob[] = [];
-        expect(await cache.getImage(url, null, { onRefresh: (blob) => refreshed.push(blob) })).toBe(
-          old.blob,
-        );
+        const stored = await cache.getImage(url, null, {
+          onRefresh: (blob) => refreshed.push(blob),
+        });
+        expect(await text(stored)).toBe(await text(old.blob));
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(refreshed).toHaveLength(1);
         const fresh = cache.show(url, refreshed[0], null);
         expect(fresh.url).not.toBe(old.url);
         fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
-        expect(await cache.getImage(url, null)).toBe(refreshed[0]);
+        expect(await text(await cache.getImage(url, null))).toBe(`new:${url}`);
         cache.hide(old);
         expect(revoke).toHaveBeenCalledExactlyOnceWith(old.url);
-        expect(await cache.getImage(url, null)).toBe(refreshed[0]);
+        expect(cache.show(url, refreshed[0], null)).toBe(fresh);
       } finally {
         revoke.mockRestore();
       }
