@@ -8,8 +8,9 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, form, required } from '@angular/forms/signals';
 
-import type { TmCellEditor } from '@tellma/core-ui/contracts';
+import type { TmCellEditor, TmRowId } from '@tellma/core-ui/contracts';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
+import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
@@ -131,6 +132,8 @@ class TestFilterEditor implements TmCellEditor<string | null> {
       [field]="f"
       [rowId]="rowId"
       [readonly]="readonly()"
+      [searchable]="searchable()"
+      [(activeRowId)]="active"
       style="block-size: 300px"
     >
       <tm-grid-column key="user" header="User" [width]="120" />
@@ -165,6 +168,8 @@ class PopupHost {
     });
   });
   readonly readonly = signal(false);
+  readonly searchable = signal(false);
+  readonly active = signal<TmRowId | null>(null);
   readonly rowId = (grant: Grant): number => grant.id;
   readonly windowText = (window: GrantWindow | null): string =>
     window === null || (window.startsAt === null && window.endsAt === null)
@@ -194,7 +199,12 @@ function cellAt(scroller: HTMLElement, row: number, col: number): HTMLElement | 
 }
 
 function pointerPress(target: Element): void {
-  const init: PointerEventInit = { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' };
+  const init: PointerEventInit = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    pointerType: 'mouse',
+  };
   target.dispatchEvent(new PointerEvent('pointerdown', init));
   target.dispatchEvent(new PointerEvent('pointerup', init));
 }
@@ -220,6 +230,28 @@ async function setup(): Promise<{
     '.tm-grid__scroller',
   ) as HTMLElement;
   return { fixture, host: fixture.componentInstance, scroller };
+}
+
+/**
+ * Runs `act` with every render held back, then lets the held render run and
+ * the fixture settle: the zoneless scheduler renders from a timeout raced
+ * against an animation frame, and under fake timers neither fires until
+ * released, so `act` stands for input a busy page dispatches before its next
+ * scheduled render.
+ */
+async function holdRenders(fixture: ComponentFixture<unknown>, act: () => void): Promise<void> {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'Date'],
+  });
+  try {
+    act();
+    // Microtasks run, but no render: it waits on the faked timers.
+    await Promise.resolve();
+    vi.runOnlyPendingTimers();
+  } finally {
+    vi.useRealTimers();
+  }
+  await stable(fixture);
 }
 
 /** Activates a cell by pressing it, as a user would. */
@@ -480,6 +512,75 @@ describe('tm-grid (popup editors)', () => {
     expect(cellAt(scroller, 0, 0)!.querySelector('.tm-grid__editor input')).not.toBeNull();
   });
 
+  it('keeps an arrow in an open pane while a write to activeRowId waits for the render', async () => {
+    const { fixture, host, scroller } = await setup();
+    await activate(fixture, scroller, 0, 2);
+    keydown(cellAt(scroller, 0, 2)!, 'C');
+    await stable(fixture);
+    const textarea = pane(scroller)!.querySelector('textarea')!;
+    await holdRenders(fixture, () => {
+      // The page moves the active row while the editor is open: the arrow
+      // stays the editor's, and nothing renders the write ahead of it.
+      host.active.set(3);
+      expect(keydown(textarea, 'ArrowDown').defaultPrevented).toBe(false);
+      expect(pane(scroller)).not.toBeNull();
+      expect(textarea.value).toBe('C');
+    });
+  });
+
+  describe('the find shortcut', () => {
+    const mod: KeyboardEventInit = tmIsApplePlatform() ? { metaKey: true } : { ctrlKey: true };
+
+    it('Mod+F in an editing pane commits it and opens the grid find, not the browser find', async () => {
+      const { fixture, host, scroller } = await setup();
+      host.searchable.set(true);
+      await stable(fixture);
+      await activate(fixture, scroller, 0, 2);
+      keydown(cellAt(scroller, 0, 2)!, 'F2');
+      const textarea = pane(scroller)!.querySelector('textarea')!;
+      typeInto(textarea, 'C = 3');
+
+      expect(keydown(textarea, 'f', mod).defaultPrevented).toBe(true);
+      await stable(fixture);
+      expect(pane(scroller)).toBeNull();
+      expect(host.model()[0].filter).toBe('C = 3');
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-tm-find-input]')).not.toBeNull();
+    });
+
+    it('Mod+F in a read-only view closes it, commits nothing and opens the grid find', async () => {
+      const { fixture, host, scroller } = await setup();
+      const before = host.model();
+      host.searchable.set(true);
+      await stable(fixture);
+      await activate(fixture, scroller, 1, 2);
+      keydown(cellAt(scroller, 1, 2)!, 'F2');
+      await stable(fixture);
+      const textarea = pane(scroller)!.querySelector('textarea')!;
+      expect(textarea.readOnly).toBe(true);
+
+      expect(keydown(textarea, 'f', mod).defaultPrevented).toBe(true);
+      await stable(fixture);
+      expect(pane(scroller)).toBeNull();
+      expect(host.model()).toBe(before);
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-tm-find-input]')).not.toBeNull();
+    });
+
+    it('Mod+F in a pane of a grid that is not searchable stays with the browser', async () => {
+      const { fixture, scroller } = await setup();
+      await activate(fixture, scroller, 0, 2);
+      keydown(cellAt(scroller, 0, 2)!, 'F2');
+      const textarea = pane(scroller)!.querySelector('textarea')!;
+
+      expect(keydown(textarea, 'f', mod).defaultPrevented).toBe(false);
+      await stable(fixture);
+      expect(pane(scroller)).not.toBeNull();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-tm-find-input]')).toBeNull();
+    });
+  });
+
   describe('read-only open', () => {
     it('F2 on a readonly row opens the pane read-only; Escape closes it and nothing commits', async () => {
       const { fixture, host, scroller } = await setup();
@@ -541,6 +642,27 @@ describe('tm-grid (popup editors)', () => {
       expect(document.activeElement).toBe(cellAt(scroller, 1, 1));
     });
 
+    it('leaves an arrow in the view to the view while a write to activeRowId waits for the render', async () => {
+      const { fixture, host, scroller } = await setup();
+      host.readonly.set(true);
+      await stable(fixture);
+      await activate(fixture, scroller, 0, 1);
+      keydown(cellAt(scroller, 0, 1)!, 'F2');
+      await stable(fixture);
+      const starts = pane(scroller)!.querySelector<HTMLInputElement>('.starts')!;
+      await holdRenders(fixture, () => {
+        // A render ahead of the arrow would move the active cell to the
+        // written row and close the view under the key.
+        host.active.set(3);
+        keydown(starts, 'ArrowDown');
+        expect(pane(scroller)).not.toBeNull();
+      });
+      // The render that follows moves the active cell, and the view, which
+      // belongs to its cell, closes.
+      expect(host.active()).toBe(3);
+      expect(pane(scroller)).toBeNull();
+    });
+
     it('a press elsewhere, or focus leaving the grid, closes the view', async () => {
       const { fixture, host, scroller } = await setup();
       const before = host.model();
@@ -557,11 +679,108 @@ describe('tm-grid (popup editors)', () => {
       keydown(cellAt(scroller, 2, 1)!, 'F2');
       await stable(fixture);
       expect(pane(scroller)).not.toBeNull();
-      (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#outside-input')!.focus();
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('#outside-input')!
+        .focus();
       await stable(fixture);
       expect(pane(scroller)).toBeNull();
       // Nothing wrote: the model is the very array it started as.
       expect(host.model()).toBe(before);
     });
+  });
+});
+
+// Section: a popup column whose pane hosts a built-in editor with a dropdown
+// panel: the select, whose trigger leaves Alt+ArrowDown to the grid.
+
+interface Packing {
+  readonly id: number;
+  readonly unit: string | null;
+}
+
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid
+      gridId="popup-dropdown-spec"
+      [field]="f"
+      [rowId]="rowId"
+      [readonly]="readonly()"
+      style="block-size: 300px"
+    >
+      <tm-grid-column
+        key="unit"
+        type="enum"
+        header="Unit"
+        [options]="units"
+        [width]="140"
+        [editorPopup]="{}"
+      />
+    </tm-grid>
+  `,
+})
+class DropdownPopupHost {
+  readonly model = signal<Packing[]>([{ id: 1, unit: 'kg' }]);
+  readonly f = form(this.model, () => {});
+  readonly readonly = signal(false);
+  readonly units = ['kg', 'pcs', 'ltr'];
+  readonly rowId = (row: Packing): number => row.id;
+}
+
+describe('tm-grid (a popup pane with a dropdown editor)', () => {
+  async function setupDropdown(): Promise<{
+    fixture: ComponentFixture<DropdownPopupHost>;
+    host: DropdownPopupHost;
+    scroller: HTMLElement;
+  }> {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(DropdownPopupHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    return { fixture, host: fixture.componentInstance, scroller };
+  }
+
+  it('Alt+ArrowDown in an editing pane opens the editor dropdown and consumes the key', async () => {
+    const { fixture, scroller } = await setupDropdown();
+    await activate(fixture, scroller, 0, 0);
+    keydown(cellAt(scroller, 0, 0)!, 'F2');
+    await stable(fixture);
+    const body = pane(scroller)!;
+    const focused = document.activeElement!;
+    expect(body.contains(focused)).toBe(true);
+    // The pane opens with the select's panel open; its first Escape closes
+    // only the panel, leaving the pane in edit mode with the panel closed.
+    keydown(focused, 'Escape');
+    await stable(fixture);
+    expect(pane(scroller)).not.toBeNull();
+    expect(focused.getAttribute('aria-expanded')).toBe('false');
+
+    expect(keydown(focused, 'ArrowDown', { altKey: true }).defaultPrevented).toBe(true);
+    await stable(fixture);
+    expect(focused.getAttribute('aria-expanded')).toBe('true');
+    expect(pane(scroller)).not.toBeNull();
+  });
+
+  it('Alt+ArrowDown in a read-only view opens nothing and leaves the key alone', async () => {
+    const { fixture, host, scroller } = await setupDropdown();
+    host.readonly.set(true);
+    await stable(fixture);
+    await activate(fixture, scroller, 0, 0);
+    keydown(cellAt(scroller, 0, 0)!, 'F2');
+    await stable(fixture);
+    const body = pane(scroller)!;
+    expect(body.hasAttribute('data-tm-readonly')).toBe(true);
+    const focused = document.activeElement!;
+    expect(body.contains(focused)).toBe(true);
+
+    expect(focused.getAttribute('aria-expanded')).toBe('false');
+
+    expect(keydown(focused, 'ArrowDown', { altKey: true }).defaultPrevented).toBe(false);
+    await stable(fixture);
+    expect(focused.getAttribute('aria-expanded')).toBe('false');
+    expect(pane(scroller)).not.toBeNull();
+    expect(host.model()[0].unit).toBe('kg');
   });
 });

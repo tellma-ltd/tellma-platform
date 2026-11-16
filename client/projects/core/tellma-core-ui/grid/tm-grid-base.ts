@@ -14,7 +14,6 @@ import {
   inject,
   Injector,
   input,
-  isDevMode,
   model,
   output,
   signal,
@@ -46,6 +45,14 @@ import {
 } from './tm-grid-templates';
 import { TmGridStateStore } from './tm-grid-state-store';
 import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the checks it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /**
  * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
@@ -159,9 +166,14 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * The active cell's row, two-way. The grid writes every change of the
    * active row (a click, an arrow, a data change); a consumer write moves
    * the active cell to that row — in the current column, else the first —
-   * and scrolls it into view without moving focus. An id the grid does not
-   * hold is ignored, and the model is written back with the actual row
-   * (`null` with none).
+   * and scrolls it into view without moving focus. A write reaches the grid
+   * with the next render. A navigation key in the grid while no editor
+   * is open (an arrow, PageUp, PageDown, Home or End, and Enter under
+   * row activation), or a driving key of a `tmGridDriver`, renders pending
+   * changes first, so it starts from the written row; any other key acts on
+   * the active cell as rendered. An id the grid does not hold is
+   * ignored, and the model is written back with the actual row (`null` with
+   * none).
    */
   readonly activeRowId = model<TmRowId | null>(null);
   /**
@@ -280,7 +292,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     this.activeDescendantId = this.core.activeDescendantId;
     this.pageStep = this.core.pageSize;
 
-    if (isDevMode()) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
       // Exactly one of data/field must be bound — a configuration error,
       // surfaced loudly in dev mode.
       effect(() => {

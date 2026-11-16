@@ -116,8 +116,16 @@ handler marked (`OutcomeOf`, a [JobItemOutcome](Jobs/JobItemOutcome.cs)) and the
 queued for success. It reads and writes what the worker does and nothing more: an unmarked item
 stays unmarked, where the worker would settle it from how the handler ended.
 
-These two read EF Core's relational model and migration operations, which is why the package
+The two pins read EF Core's relational model and migration operations, which is why the package
 references `Microsoft.EntityFrameworkCore.Relational` (never a provider).
+
+**[FixedTenantSettingsCache](Settings/FixedTenantSettingsCache.cs)** serves a tenant's settings
+without a tenant database, so a host composed over an in-memory catalog can complete its tenant
+scopes: every tenant scope runs the locale negotiation, which reads the tenant's settings. It builds
+the settings from the scope's tenant descriptor (its declared languages, the platform's first
+calendar, UTC, no stored entries) and serves them as a hit under one fixed tag.
+`UseFixedTenantSettings(configure)` replaces the composed cache after the composition; `configure`
+reshapes the settings, such as a zone or a region a test needs.
 
 ## Rules this package lives by
 

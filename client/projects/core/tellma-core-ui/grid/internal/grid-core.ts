@@ -12,7 +12,6 @@ import {
   ErrorHandler,
   InjectionToken,
   Injector,
-  isDevMode,
   PendingTasks,
   signal,
   untracked,
@@ -111,12 +110,19 @@ import {
   tmResolveEditingKey,
   tmResolveGridKey,
   tmResolveHeaderKey,
-  tmResolvePopupKey,
   type TmGridEditingCommitTarget,
   type TmGridHeaderMotion,
   type TmGridIntent,
 } from './grid-keymap';
 import { ɵTM_GRID_HEADER_ACTIVITY, type ɵTmGridHeaderActivity } from './header-activity';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the warnings it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /** What the grid takes from its on-demand editing code. */
 export interface ɵTmGridEditingCode {
@@ -173,6 +179,14 @@ const EDGE_SCROLL_ZONE_PX = 24;
 /** Auto-scroll speed per animation frame, in px. */
 const EDGE_SCROLL_STEP_PX = 16;
 
+/**
+ * The keys a render of pending changes runs ahead of: those that move the
+ * active cell (the arrows, PageUp, PageDown, Home and End), and Enter, which
+ * opens the active row. The grid takes Enter only under row activation; a
+ * `tmGridDriver` takes the set on its input.
+ */
+export const ɵTM_GRID_FLUSH_KEY = /^(?:Arrow|Page|Home$|End$|Enter$)/;
+
 /** Column types that carry a built-in editing path. */
 const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'text',
@@ -221,15 +235,6 @@ const POPUP_MIN_WIDTH = 320;
 
 /** A popup editor pane's greatest block size when the column names none, in px. */
 const POPUP_MAX_HEIGHT = 360;
-
-/**
- * Content that keeps Enter inside a popup editor's pane: an editable
- * multi-line field inserts a line, and a button, link or choice control
- * activates itself (editable text is matched by `isContentEditable`).
- */
-const POPUP_ENTER_OWNERS =
-  'textarea:not([readonly]), button, a[href], select, [role="button"], [role="checkbox"], ' +
-  '[role="radio"], [role="switch"], [role="tab"], [role="option"]';
 
 /** Rows whose field nodes one error-tally warm-up slice touches (§16). */
 const WARMUP_ROWS_PER_SLICE = 500;
@@ -621,20 +626,35 @@ export interface ɵTmGridHeaderSortVm {
 }
 
 /**
+ * What a hierarchy cell's tree affordance renders from: the cell's view
+ * model, whose `level`, `expander` and `loadingChildren` it draws.
+ */
+export interface ɵTmGridTreeAffordanceContext {
+  /** The hierarchy cell. */
+  readonly $implicit: ɵTmGridCellVm;
+}
+
+/**
  * The tree bindings a tree-grid shell contributes to the composition root.
  * Every member is a deferred read: the subclass's input signals do not
  * exist yet when the base class constructs the core, so the shell hands
  * over closures and the core reads them lazily.
  */
 export interface ɵTmGridTreeConfig<T> {
-  /** Reads a row's parent id; `null` marks a root. */
-  readonly parentId: SignalLike<(row: T) => TmRowId | null>;
-  /** The model property holding the parent id (editable-tree re-parenting). */
-  readonly parentIdKey: SignalLike<string | undefined>;
-  /** Marks rows whose children may not be loaded yet. */
-  readonly hasChildren: SignalLike<((row: T) => boolean) | undefined>;
-  /** How deep the tree starts expanded; `undefined` = fully expanded. */
-  readonly defaultExpandedDepth: SignalLike<number | undefined>;
+  /**
+   * The engine's tree options over the shell's inputs. `parentId` and
+   * `hasChildren` read the current input inside the engine's derivations
+   * (a rebind recomputes the structure); `parentIdKey` and
+   * `defaultExpandedDepth` are getters read per use, untracked.
+   */
+  readonly options: TmGridTreeOptions<T>;
+  /**
+   * The tree affordance every hierarchy cell starts with — the level
+   * indent, the pointer-only expander (`data-tm-expander`) and the reserved
+   * slot of the lazy-loading spinner — declared by the shell, so a flat
+   * grid carries none of its markup, styles or glyphs.
+   */
+  readonly affordance: SignalLike<TemplateRef<ɵTmGridTreeAffordanceContext>>;
   /**
    * Builds the tree's expansion controller over the core's tree face. It
    * runs while the core constructs, so it must not read the shell's inputs
@@ -787,6 +807,8 @@ export interface ɵTmGridCoreDeps<T> {
 export interface ɵTmGridViewCore {
   /** The container role: `treegrid` when the core carries a tree config. */
   readonly gridRole: Signal<'grid' | 'treegrid'>;
+  /** The tree affordance a hierarchy cell starts with, or `null` in a flat grid. */
+  readonly treeAffordance: SignalLike<TemplateRef<ɵTmGridTreeAffordanceContext> | null>;
   /** Whether the grid is editable (field bound and not readonly). */
   readonly editable: Signal<boolean>;
   /** The loading flag. */
@@ -1050,7 +1072,7 @@ export class ɵTmGridCore<T>
    * the user cannot edit), or `null`. It has no editor session: nothing it
    * shows commits.
    */
-  private readonly popupViewSignal = signal<TmRowCol | null>(null);
+  readonly popupViewSignal = signal<TmRowCol | null>(null);
   /** The read-only view asked for before the editing code arrived, opened when it does. */
   private pendingPopupView: TmRowCol | null = null;
   /** The editing cell's editor outlet, or `null` while none renders. */
@@ -1185,6 +1207,8 @@ export class ɵTmGridCore<T>
   readonly rows: Signal<readonly T[]>;
   /** The container role: `treegrid` when the core carries a tree config. */
   readonly gridRole: Signal<'grid' | 'treegrid'>;
+  /** The tree affordance a hierarchy cell starts with, or `null` in a flat grid. */
+  readonly treeAffordance: SignalLike<TemplateRef<ɵTmGridTreeAffordanceContext> | null>;
   /** Whether the grid is editable (field bound and not readonly). */
   readonly editable: Signal<boolean>;
   /** The loading flag. */
@@ -1370,6 +1394,7 @@ export class ɵTmGridCore<T>
     this.checkColIndex = computed(() => (deps.rowHeaders() ? 2 : 1));
     this.rowActivationHint = deps.translate('grid.rowActivationHint');
     this.gridRole = computed(() => (this.engine.model.isTree ? 'treegrid' : 'grid'));
+    this.treeAffordance = deps.tree?.affordance ?? (() => null);
     this.loading = deps.loading;
     this.emptyDef = deps.emptyDef;
     this.loadingDef = deps.loadingDef;
@@ -2136,7 +2161,7 @@ export class ɵTmGridCore<T>
       if (options.column !== undefined) {
         const column = untracked(this.columnsInternal).find((c) => c.key === options.column);
         if (column === undefined) {
-          if (isDevMode()) {
+          if (typeof ngDevMode !== 'undefined' && ngDevMode) {
             console.warn(`tm-grid: scrollToRow: no column '${options.column}'`);
           }
         } else {
@@ -2317,7 +2342,7 @@ export class ɵTmGridCore<T>
    * nested inside it (an editor's own dropdown or calendar): the nearest
    * overlay surface around it is the pane's body.
    */
-  private inPopupPane(node: Element): boolean {
+  inPopupPane(node: Element): boolean {
     return node.closest('.cdk-overlay-pane, [data-tm-popup]')?.hasAttribute('data-tm-popup') === true;
   }
 
@@ -2325,9 +2350,10 @@ export class ɵTmGridCore<T>
   onKeydown(event: KeyboardEvent): void {
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       // A popup editor's pane is an overlay that keeps the editing keys
-      // (spec 0010 §C.15); every other surface owns its own keys.
+      // (spec 0010 §C.15); every other surface owns its own keys. Only the
+      // editing code renders a pane, so its keys are the editing code's.
       if (this.inPopupPane(event.target)) {
-        this.onPopupKeydown(event);
+        this.editing?.popupKeydown(event);
       }
       return;
     }
@@ -2381,7 +2407,7 @@ export class ɵTmGridCore<T>
   }
 
   /** A keydown on the rows with no editor open: resolve to an intent, execute, consume. */
-  private onBodyKeydown(event: KeyboardEvent): void {
+  onBodyKeydown(event: KeyboardEvent): void {
     const engine = this.engine;
     const active = untracked(() => engine.nav.activeCell());
     const activeColumn =
@@ -2800,15 +2826,7 @@ export class ɵTmGridCore<T>
       // A key in the draft is a gesture: a load that failed asks again.
       this.loadEditing();
     }
-    if (event.defaultPrevented) {
-      return;
-    }
-    // Mod+F opens the grid find even from inside an editor — the editor input
-    // must not let the browser's find dialog shadow it: commit, then open.
-    if (untracked(this.deps.searchable) && tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
-      event.preventDefault();
-      this.commitEditor({ refocus: false });
-      this.openFind();
+    if (event.defaultPrevented || this.findFromEditor(event)) {
       return;
     }
     const resolved = tmResolveEditingKey(event, {
@@ -2854,111 +2872,23 @@ export class ɵTmGridCore<T>
   // ---- popup editors (spec 0010 §C.15) ----
 
   /**
-   * A keydown inside a popup editor's pane. The pane's editor is always in
-   * edit mode, so the arrows stay inside it: Escape cancels, Mod+Enter
-   * commits and keeps the cell, Enter commits and moves unless the editor
-   * keeps it, and Tab commits and moves only from the pane's first or last
-   * control, moving natively among the others. A read-only view closes
-   * instead of committing, and its Enter and Tab then act on the cell as a
-   * readonly cell's do. A key the editor consumed stays its own, and any
-   * keystroke on a scrolled-away cell scrolls it back first.
+   * Mod+F from inside an open editor, its draft or a popup pane: the grid's
+   * find opens rather than the browser's find dialog. A read-only view
+   * closes first and an editor commits first. Returns whether the key was
+   * the find shortcut on a searchable grid, and so consumed.
    */
-  private onPopupKeydown(event: KeyboardEvent): void {
-    const viewing = untracked(this.popupViewSignal) !== null;
-    if (!viewing && untracked(() => this.engine.edit.session()) === null) {
-      return;
+  findFromEditor(event: KeyboardEvent): boolean {
+    if (!untracked(this.deps.searchable) || !tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
+      return false;
     }
-    this.revealActiveCell();
-    const editing = this.editing;
-    if (editing === null && !viewing) {
-      // A key in the draft is a gesture: a load that failed asks again.
-      this.loadEditing();
-    }
-    // The IME-composition sentinel, read as in `onKeydown`.
-    const imeKeyCode = (event as { readonly keyCode: number }).keyCode;
-    if (event.defaultPrevented || event.isComposing || imeKeyCode === 229) {
-      return;
-    }
-    if (untracked(this.deps.searchable) && tmKeysMatch(event, TM_GRID_FIND_KEYS)) {
-      event.preventDefault();
-      if (viewing) {
-        this.closePopupView({ refocus: false });
-      } else {
-        this.commitEditor({ refocus: false });
-      }
-      this.openFind();
-      return;
-    }
-    const resolved = tmResolvePopupKey(event, {
-      apple: tmIsApplePlatform(),
-      isDropdownOpen: !viewing && (editing?.isDropdownOpen() ?? false),
-    });
-    if (resolved === null) {
-      return;
-    }
-    const target = event.target as Element;
-    switch (resolved.kind) {
-      case 'cancel':
-        event.preventDefault();
-        if (viewing) {
-          this.closePopupView({ refocus: true });
-        } else {
-          this.cancelEditor({ refocus: true });
-        }
-        return;
-      case 'openDropdown':
-        if (!viewing) {
-          this.openEditorDropdown(event);
-        }
-        return;
-      case 'enter':
-        if ((target instanceof HTMLElement && target.isContentEditable) || target.closest(POPUP_ENTER_OWNERS) !== null) {
-          return; // a line break, or the control's own activation
-        }
-        break;
-      case 'tab':
-        if (!this.atPopupEdge(target, resolved.backward)) {
-          return; // the browser moves focus to the pane's next control
-        }
-        break;
-      case 'commit':
-        break;
-    }
-    if (viewing) {
-      // Nothing commits: the view closes, and the key acts on the cell.
-      this.closePopupView({ refocus: true });
-      this.onBodyKeydown(event);
-    } else if (resolved.kind === 'commit') {
-      event.preventDefault();
-      this.commitEditor({ refocus: true });
-    } else if (resolved.kind === 'tab') {
-      this.commitAndMove(resolved.backward ? 'tabPrev' : 'tabNext', event);
+    event.preventDefault();
+    if (untracked(this.popupViewSignal) !== null) {
+      this.closePopupView({ refocus: false });
     } else {
-      this.commitAndMove(resolved.backward ? 'enterRunBack' : 'enterRun', event);
+      this.commitEditor({ refocus: false });
     }
-  }
-
-  /**
-   * Whether a Tab from `target` leaves its popup pane: from the pane's last
-   * control forward, from its first one backward, or from anything that is
-   * not one of its tab stops. A control inside an overlay nested in the
-   * pane is not one of its stops.
-   */
-  private atPopupEdge(target: Element, backward: boolean): boolean {
-    const pane = target.closest('[data-tm-popup]');
-    if (pane === null) {
-      return true;
-    }
-    const stops = [...pane.querySelectorAll<HTMLElement>(HEADER_CONTENT_SELECTOR)].filter(
-      (element) =>
-        element.tabIndex >= 0 &&
-        !element.matches(':disabled') &&
-        element.closest('[inert]') === null &&
-        element.getClientRects().length > 0 &&
-        this.inPopupPane(element),
-    );
-    const index = stops.findIndex((stop) => stop.contains(target));
-    return index === -1 || index === (backward ? 0 : stops.length - 1);
+    this.openFind();
+    return true;
   }
 
   /**
@@ -2997,7 +2927,7 @@ export class ɵTmGridCore<T>
   }
 
   /** Closes the read-only view, and the one still waiting for the editing code. */
-  private closePopupView(opts: { refocus: boolean }): void {
+  closePopupView(opts: { refocus: boolean }): void {
     this.pendingPopupView = null;
     if (untracked(this.popupViewSignal) === null) {
       return;
@@ -3027,7 +2957,7 @@ export class ɵTmGridCore<T>
   }
 
   /** Commits the session, then executes the key's move. */
-  private commitAndMove(target: TmGridEditingCommitTarget, event: KeyboardEvent): void {
+  commitAndMove(target: TmGridEditingCommitTarget, event: KeyboardEvent): void {
     const engine = this.engine;
     this.commitEditor({ refocus: true });
     switch (target) {
@@ -3827,30 +3757,6 @@ export class ɵTmGridCore<T>
     }, TRANSIENT_NOTICE_MS);
   }
 
-  /**
-   * The engine's tree options over the shell's deferred input closures, or
-   * `undefined` for the flat grid. `parentId`/`hasChildren` read the
-   * CURRENT input inside the engine's derivations (rebinds recompute the
-   * structure); the scalar members are getters read per use, untracked
-   * (they are consumed from event pipelines and seeding, never reactively).
-   */
-  private buildTreeOptions(): TmGridTreeOptions<T> | undefined {
-    const config = this.deps.tree;
-    if (config === undefined) {
-      return undefined;
-    }
-    return {
-      parentId: (row: T) => config.parentId()(row),
-      hasChildren: (row: T) => config.hasChildren()?.(row) ?? false,
-      get parentIdKey(): string | undefined {
-        return untracked(config.parentIdKey);
-      },
-      get defaultExpandedDepth(): number | undefined {
-        return untracked(config.defaultExpandedDepth);
-      },
-    };
-  }
-
   private createEngine(): TmGridEngine<T> {
     return new TmGridEngine<T>({
       rows: () => this.rows(),
@@ -3864,7 +3770,7 @@ export class ɵTmGridCore<T>
       distributionKey: this.deps.distributionKey,
       direction: () => this.deps.direction(),
       pageSize: () => this.pageSize(),
-      tree: this.buildTreeOptions(),
+      tree: this.deps.tree?.options,
       host: {
         // The field binding gets the field-tree writer; the data binding
         // stays writer-less, so every engine mutation is a structural
@@ -3891,7 +3797,7 @@ export class ɵTmGridCore<T>
         },
         onReveal: () => this.requestReveal(),
         onWarn: (warning) => {
-          if (isDevMode()) {
+          if (typeof ngDevMode !== 'undefined' && ngDevMode) {
             console.warn(
               `tm-grid[${untracked(this.deps.gridId)}]: data irregularity '${warning.kind}' ` +
                 `(rowId: ${String(warning.rowId)})`,
@@ -3967,7 +3873,13 @@ export class ɵTmGridCore<T>
       }
     }
 
-    if (isDevMode() && format === undefined && type === 'entity' && !this.warnedColumns.has(id)) {
+    if (
+      typeof ngDevMode !== 'undefined' &&
+      ngDevMode &&
+      format === undefined &&
+      type === 'entity' &&
+      !this.warnedColumns.has(id)
+    ) {
       this.warnedColumns.add(id);
       console.warn(
         `tm-grid: column "${id}" of type '${type}' has no [format]; ` +
@@ -6289,7 +6201,7 @@ export class ɵTmGridCore<T>
       { injector },
     );
 
-    // Viewport tracking on the scroller.
+    // Viewport tracking on the scroller, and the render ahead of its keys.
     effect(
       (onCleanup) => {
         const scroller = this.scrollerSignal();
@@ -6299,6 +6211,40 @@ export class ɵTmGridCore<T>
         untracked(() => this.viewportHeight.set(scroller.clientHeight));
         const observer = new ResizeObserver(() => this.viewportHeight.set(scroller.clientHeight));
         observer.observe(scroller);
+        // Render the page's pending changes before a navigation key, and
+        // before Enter where it opens the row (row activation is always
+        // readonly): a consumer write to `activeRowId` reaches the grid only
+        // through a render, where its input binding updates, and keys queued
+        // behind a busy page arrive before that render (spec 0010 §C.2).
+        // Without it, the key would act on the stale active cell, and the
+        // render would then move the cell to the written row, discarding the
+        // move. A key that edits, clears, pastes or restructures rows keeps
+        // acting on the cell the user sees; an open editor owns its keys, and
+        // so does an overlay in place in the grid (a read-only popup view's
+        // pane, which a render moving the active cell would close).
+        // DOM handlers run outside a tick in zoneless Angular, so the call is
+        // re-entrancy-safe. It runs in a capture-phase native listener, ahead
+        // of the template's `(keydown)`, because Angular's listener wrapper
+        // marks the view dirty before its handler runs: a tick from there
+        // would always refresh the whole grid view. From here, a production
+        // tick with nothing pending does no work (dev mode still runs its
+        // no-changes check). A DOM listener runs outside any reactive
+        // context, so its signal reads track nothing.
+        // The listener lives on the scroller itself, so it goes with it.
+        scroller.addEventListener(
+          'keydown',
+          (event) => {
+            if (
+              ɵTM_GRID_FLUSH_KEY.test(event.key) &&
+              (event.key !== 'Enter' || this.rowMode()) &&
+              !this.engine.edit.session() &&
+              !this.inOverlay(event.target as Element)
+            ) {
+              this.appRef.tick();
+            }
+          },
+          true,
+        );
         onCleanup(() => observer.disconnect());
       },
       { injector },

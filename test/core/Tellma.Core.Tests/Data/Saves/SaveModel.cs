@@ -13,7 +13,9 @@ namespace Tellma.Core.Tests.Data.Saves
 {
     // A model for the save statement: a top-level entity with a blob column, a child with a blob column
     // of its own, a grandchild, and a reference between rows of the root's table; a top-level entity
-    // with a long key and no child; a tree; and a sibling with no sequence.
+    // with a long key and no child; an activatable tree; a plain tree of a shallow depth limit with a
+    // write-once column; a sibling with no sequence; and a top-level entity with an enum, a sized
+    // decimal and a binary column, whose sibling holds a blob reference.
 
     /// <summary>Composes the save model into a composition.</summary>
     internal static class SaveModel
@@ -26,7 +28,10 @@ namespace Tellma.Core.Tests.Data.Saves
                 .Entity<Crate>()
                 .Entity<CrateExtra>()
                 .Entity<Ledger>()
-                .Entity<Area>()));
+                .Entity<Area>()
+                .Entity<Region>()
+                .Entity<Gauge>()
+                .Entity<GaugeCard>()));
         }
     }
 
@@ -108,7 +113,7 @@ namespace Tellma.Core.Tests.Data.Saves
         public string? Memo { get; set; }
     }
 
-    /// <summary>A tree.</summary>
+    /// <summary>An activatable tree.</summary>
     [Table("Areas", Schema = "sv")]
     [TableType]
     public class Area : ActivatableTreeEntity
@@ -116,5 +121,57 @@ namespace Tellma.Core.Tests.Data.Saves
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
+    }
+
+    /// <summary>A tree that is not activatable, four levels deep at most, with a write-once code.</summary>
+    [Table("Regions", Schema = "sv")]
+    [TableType]
+    [Tree(MaxDepth = 4)]
+    public class Region : TreeEntity
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The code, fixed when the row is created.</summary>
+        [MaxLength(10)]
+        [WriteOnce]
+        public string? Code { get; set; }
+    }
+
+    /// <summary>The shape of a gauge's face.</summary>
+    public enum GaugeShade
+    {
+        /// <summary>A round face.</summary>
+        Round,
+
+        /// <summary>A square face.</summary>
+        Square,
+    }
+
+    /// <summary>A top-level entity whose columns an update's values must fit: an enum, a sized decimal and a binary column.</summary>
+    [Table("Gauges", Schema = "sv")]
+    [TableType]
+    public class Gauge : TopLevelEntity
+    {
+        /// <summary>The face's shape.</summary>
+        public GaugeShade? Shade { get; set; }
+
+        /// <summary>The last reading, seven integral digits at most.</summary>
+        [Column(TypeName = "decimal(9,2)")]
+        public decimal? Reading { get; set; }
+
+        /// <summary>The calibration seal, <c>varbinary</c>.</summary>
+        public byte[]? Seal { get; set; }
+    }
+
+    /// <summary>A gauge's sibling row with a blob column, whose rows a gauge's delete removes and captures itself.</summary>
+    [Table("GaugeCards", Schema = "sv")]
+    [Sibling(typeof(Gauge), "Card")]
+    public class GaugeCard : Entity<int>
+    {
+        /// <summary>The scanned card.</summary>
+        [BlobReference("save-card", BlobPreset.Photo)]
+        public int? ScanId { get; set; }
     }
 }

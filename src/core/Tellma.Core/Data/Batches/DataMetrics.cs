@@ -8,12 +8,12 @@ using Tellma.Core.Abstractions.Data;
 
 namespace Tellma.Core.Data.Batches
 {
-    // The instruments are spec 0012 §12.1's executor, allocator and emitter rows; the tree
-    // instruments belong to the tree statements.
+    // The instruments are spec 0012 §12.1's executor, allocator, emitter, delete and tree rows.
     /// <summary>
     ///     The data layer's instruments on the runtime meter: round trips per unit of work, each round
-    ///     trip's duration, statements per batch, re-runs, commit probes, the allocator's ids and the
-    ///     emitter's saved rows and conflicts. No instrument carries a tenant or a user.
+    ///     trip's duration, statements per batch, re-runs, commit probes, the allocator's ids, the
+    ///     emitter's saved rows and conflicts, the deleted rows, and the tree statements' recomputes
+    ///     and repairs. No instrument carries a tenant or a user.
     /// </summary>
     internal sealed class DataMetrics
     {
@@ -92,6 +92,15 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Rows a concurrency guard found in conflict.</summary>
         private readonly Counter<long> _conflicts;
 
+        /// <summary>Root rows deletes removed.</summary>
+        private readonly Counter<long> _rowsDeleted;
+
+        /// <summary>Tree statements run.</summary>
+        private readonly Counter<long> _treeRecomputes;
+
+        /// <summary>Tree rows whose counts the verify job repaired.</summary>
+        private readonly Counter<long> _treeRepairs;
+
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
         public DataMetrics(IMeterFactory meterFactory)
@@ -153,6 +162,18 @@ namespace Tellma.Core.Data.Batches
                 DataTelemetryNames.ConcurrencyConflicts,
                 "{conflict}",
                 "Rows a save's concurrency guard refused, by root entity and outcome.");
+            _rowsDeleted = meter.CreateCounter<long>(
+                DataTelemetryNames.RowsDeleted,
+                "{row}",
+                "Root rows deletes removed, by entity; the child rows that went with them are not counted.");
+            _treeRecomputes = meter.CreateCounter<long>(
+                DataTelemetryNames.TreeRecomputes,
+                "{statement}",
+                "Tree statements run after a save, an update or a delete, and by the verify job, by tree entity.");
+            _treeRepairs = meter.CreateCounter<long>(
+                DataTelemetryNames.TreeRepairs,
+                "{row}",
+                "Tree rows whose counts the verify job found drifted and repaired, by tree entity.");
         }
 
         /// <summary>The probe outcome tag of a verdict.</summary>
@@ -275,6 +296,32 @@ namespace Tellma.Core.Data.Batches
                     missing,
                     new KeyValuePair<string, object?>(DataTelemetryNames.EntityTag, entity),
                     new KeyValuePair<string, object?>(DataTelemetryNames.OutcomeTag, MissingOutcome));
+            }
+        }
+
+        /// <summary>Records the root rows one delete removed.</summary>
+        /// <param name="entity">The entity's name.</param>
+        /// <param name="rows">The rows.</param>
+        public void RecordRowsDeleted(string entity, long rows)
+        {
+            _rowsDeleted.Add(rows, new KeyValuePair<string, object?>(DataTelemetryNames.EntityTag, entity));
+        }
+
+        /// <summary>Records one tree statement that ran.</summary>
+        /// <param name="entity">The tree entity's name.</param>
+        public void RecordTreeRecompute(string entity)
+        {
+            _treeRecomputes.Add(1, new KeyValuePair<string, object?>(DataTelemetryNames.EntityTag, entity));
+        }
+
+        /// <summary>Records the tree rows one verify repaired; none records nothing.</summary>
+        /// <param name="entity">The tree entity's name.</param>
+        /// <param name="rows">The rows.</param>
+        public void RecordTreeRepairs(string entity, long rows)
+        {
+            if (rows > 0)
+            {
+                _treeRepairs.Add(rows, new KeyValuePair<string, object?>(DataTelemetryNames.EntityTag, entity));
             }
         }
     }

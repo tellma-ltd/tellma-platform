@@ -42,6 +42,15 @@ namespace Tellma.Core.Data.Batches
             return name.Length > 1 && name[0] == '@' && IsPlainWord(name.AsSpan(1));
         }
 
+        /// <summary>Bracket-quotes one identifier, such as a column, doubling each closing bracket: <c>Id</c> becomes <c>[Id]</c>.</summary>
+        /// <param name="identifier">The bare identifier, taken whole: a dot is part of it.</param>
+        /// <returns>The quoted identifier.</returns>
+        public static string Quote(string identifier)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(identifier);
+            return $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
+        }
+
         /// <summary>
         ///     Bracket-quotes an object name part by part, doubling each closing bracket:
         ///     <c>fixture.Widgets</c> becomes <c>[fixture].[Widgets]</c>.
