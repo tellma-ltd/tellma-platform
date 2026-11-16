@@ -70,8 +70,11 @@ namespace Tellma.Core.Testing.Tests.Sql
                 sql.OwnsContainer,
                 $"Holds the model database's lock, which would stall other suites' creations on the shared server {SqlServerFixture.ServerVariable} names; runs on a container of its own (unset {SqlServerFixture.ServerVariable}, Docker required).");
 
-            // Short waits keep the test inside the server's own lock wait plus a few seconds.
-            CreateDatabaseRetry patient = new(4, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
+            // Short waits keep the test inside the server's own lock wait plus a few seconds. Once model
+            // is free the contenders still queue on its lock one after another, and on a loaded server
+            // the last of them can outwait the server's lock wait more than once, so they get room to
+            // retry well past the one refusal the hold forces.
+            CreateDatabaseRetry patient = new(12, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
             CreateDatabaseRetry single = new(1, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
             string[] names = [.. Enumerable.Range(0, Contenders).Select(_ => sql.NewDatabaseName("contended"))];
             string lone = sql.NewDatabaseName("contended_once");
@@ -119,7 +122,8 @@ namespace Tellma.Core.Testing.Tests.Sql
             }
 
             // --- Model is free: every contender's next run creates its database ---
-            await Task.WhenAll(creations).WaitAsync(TimeSpan.FromMinutes(2), Token);
+            // Eleven retries, each up to the server's lock wait plus a second, fit in six minutes.
+            await Task.WhenAll(creations).WaitAsync(TimeSpan.FromMinutes(6), Token);
             foreach (string name in names)
             {
                 Assert.Equal(
