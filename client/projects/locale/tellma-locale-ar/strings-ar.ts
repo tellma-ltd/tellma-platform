@@ -374,4 +374,13 @@ export const TM_LOCALE_AR_STRINGS = {
     moveToTop: 'نقل إلى البداية',
     moveToBottom: 'نقل إلى النهاية',
   },
+  pivot: {
+    subtotal: 'إجمالي {label}',
+    direct: '(مباشر)',
+    notActivatable: 'في هذا التقرير، تفتح الخلايا الأكثر تفصيلا فقط صفوفها.',
+    rowExpanded: `تم توسيع {label}، ${rowsCounted}`,
+    columnExpanded:
+      'تم توسيع {label}، {count, plural, zero {# عمود} one {عمود واحد} two {عمودين} few {# أعمدة} many {# عمودا} other {# عمود}}',
+    collapsed: 'تم طي {label}',
+  },
 } as const;

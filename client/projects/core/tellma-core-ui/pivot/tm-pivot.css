@@ -1,0 +1,333 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-pivot — a fixed-layout table inside a scroller. The header rows stick
+   to the top and the leading columns the component marks sticky to the
+   inline start; every cell is one row tall, clipped with an ellipsis, and
+   painted in one of five looks: total, subtotal-1, subtotal-2, leaf and
+   phantom. */
+
+:host {
+  /* The size ladder, re-pointed once per step. */
+  --tm-pivot-row-height: var(--pivot-row-height);
+
+  display: block;
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  font-family: var(--font-ui);
+  font-size: var(--pivot-font-size);
+  color: var(--pivot-leaf-text);
+}
+
+:host(.tm-pivot--sm) {
+  --tm-pivot-row-height: var(--pivot-row-height-sm);
+}
+
+:host(.tm-pivot--lg) {
+  --tm-pivot-row-height: var(--pivot-row-height-lg);
+}
+
+/* ---- The scroller and the table ---- */
+
+/* A stable gutter, so a scrollbar that comes and goes never moves the
+   columns. */
+.tm-pivot__scroller {
+  box-sizing: border-box;
+  block-size: 100%;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: var(--pivot-leaf-bg);
+}
+
+.tm-pivot__table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* ---- Cells ---- */
+
+.tm-pivot__cell {
+  /* Anchors the total rules and the resize handle. */
+  position: relative;
+  box-sizing: border-box;
+  block-size: var(--tm-pivot-row-height);
+  padding-block: 0;
+  padding-inline: var(--pivot-cell-padding-x);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+  line-height: calc(var(--tm-pivot-row-height) - var(--border-width));
+  vertical-align: middle;
+  cursor: default;
+  border-block-end: var(--border-width) solid var(--pivot-line);
+  border-inline-end: var(--border-width) solid var(--pivot-line);
+  /* The focus ring is the inset shadow below; a transparent outline stays
+     for forced colors, where it turns visible. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.tm-pivot__cell:focus-visible {
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+/* A cell's flex content: twisty, label and a level's name. */
+.tm-pivot__content {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  block-size: calc(var(--tm-pivot-row-height) - var(--border-width));
+}
+
+/* A label clips itself, so a header's twisty never scrolls away with it. */
+.tm-pivot__label {
+  display: block;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-pivot__level {
+  flex: none;
+  margin-inline-start: auto;
+  padding-inline-start: var(--pivot-cell-padding-x);
+}
+
+/* The twisty: a chevron in a fixed slot; on a leaf row the slot stays,
+   empty, so labels align across levels. */
+.tm-pivot__twisty {
+  --icon-size: var(--pivot-twisty-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--pivot-twisty-size);
+  margin-inline-end: var(--pivot-twisty-gap);
+  color: var(--pivot-twisty);
+}
+
+.tm-pivot__twisty[data-tm-toggle],
+.tm-pivot__label[data-tm-toggle] {
+  cursor: pointer;
+}
+
+/* A phantom's "(direct)" suffix is part of its label. */
+.tm-pivot__direct {
+  white-space: pre;
+}
+
+/* ---- Header rows and the corner ---- */
+
+/* Every header cell sticks to the top, at its row's offset. */
+.tm-pivot__header-row > th {
+  position: sticky;
+  z-index: 2;
+  font-size: var(--pivot-header-font-size);
+  font-weight: var(--weight-semibold);
+  background: var(--pivot-header-bg);
+  color: var(--pivot-header-text);
+  border-block-end-color: var(--pivot-header-line);
+}
+
+/* The corner's attribute headers span every header row, their names on
+   the last one. */
+.tm-pivot__corner--attribute {
+  vertical-align: bottom;
+}
+
+/* A column header for an expandable member. */
+.tm-pivot__header--expandable {
+  cursor: default;
+}
+
+/* The resize handle on a header's inline end. */
+.tm-pivot__resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 1;
+  inline-size: var(--pivot-handle-size);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* ---- Body rows ---- */
+
+/* The row header indents one step per level below the first. */
+.tm-pivot__row-header {
+  padding-inline-start: calc(var(--pivot-cell-padding-x) + var(--tm-pivot-level, 0) * var(--pivot-indent));
+  font-weight: inherit;
+}
+
+/* Values: tabular figures, right-aligned physically, as the grid's number
+   columns are in either direction. */
+.tm-pivot__value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A gap row stands in for the unrendered rows at their full height. */
+.tm-pivot__gap > td {
+  padding: 0;
+  border: 0;
+}
+
+/* A spacer stands in for unrendered columns. */
+.tm-pivot__spacer {
+  padding: 0;
+}
+
+/* ---- Sticky leading columns ---- */
+
+.tm-pivot__sticky {
+  position: sticky;
+  z-index: 1;
+}
+
+/* A sticky corner cell sticks both ways, above both bands. */
+.tm-pivot__header-row > .tm-pivot__sticky {
+  z-index: 3;
+}
+
+/* The sticky block's last column draws the full-strength rule, so the
+   data passing under it stays separable. */
+.tm-pivot__sticky--last {
+  border-inline-end-color: var(--pivot-header-line);
+}
+
+/* ---- The five looks ---- */
+
+.tm-pivot__cell--leaf {
+  background: var(--pivot-leaf-bg);
+  color: var(--pivot-leaf-text);
+  font-weight: var(--pivot-leaf-font-weight);
+}
+
+.tm-pivot__cell--phantom {
+  background: var(--pivot-leaf-bg);
+  color: var(--pivot-phantom-text);
+  font-weight: var(--pivot-leaf-font-weight);
+}
+
+/* A phantom member's label, wherever it heads a row or a column, is
+   italic. */
+.tm-pivot__cell--phantom .tm-pivot__label {
+  font-style: italic;
+}
+
+.tm-pivot__cell--subtotal-2 {
+  background: var(--pivot-subtotal-2-bg);
+  color: var(--pivot-subtotal-2-text);
+  font-weight: var(--pivot-subtotal-2-font-weight);
+}
+
+.tm-pivot__cell--subtotal-1 {
+  background: var(--pivot-subtotal-1-bg);
+  color: var(--pivot-subtotal-1-text);
+  font-weight: var(--pivot-subtotal-1-font-weight);
+}
+
+.tm-pivot__cell--total {
+  background: var(--pivot-total-bg);
+  color: var(--pivot-total-text);
+  font-weight: var(--pivot-total-font-weight);
+}
+
+/* Header cells keep the header band's paint; their weight follows their
+   look. */
+.tm-pivot__header-row > .tm-pivot__header {
+  background: var(--pivot-header-bg);
+  color: var(--pivot-header-text);
+}
+
+.tm-pivot__header-row > .tm-pivot__cell--leaf,
+.tm-pivot__header-row > .tm-pivot__cell--phantom {
+  font-weight: var(--pivot-leaf-font-weight);
+}
+
+/* The grand total's rule: on the block-start edge of its row, and on the
+   inline-start edge of its column. */
+.tm-pivot__rule-block::before,
+.tm-pivot__rule-inline::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background: var(--pivot-total-rule);
+}
+
+.tm-pivot__rule-block::before {
+  inset-block-start: 0;
+  inset-inline: 0;
+  block-size: var(--pivot-total-rule-width);
+}
+
+.tm-pivot__rule-inline::after {
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: var(--pivot-total-rule-width);
+}
+
+/* ---- Drill targets ---- */
+
+/* A value cell that drills: on hover or focus, the hover fill, link text,
+   an underline and the accent ring. A refused cell has none of these. */
+.tm-pivot__value--link {
+  cursor: pointer;
+}
+
+.tm-pivot__value--link:hover,
+.tm-pivot__value--link:focus-visible {
+  background: var(--pivot-hover-bg);
+  color: var(--pivot-link-text);
+  text-decoration: underline;
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--pivot-ring);
+}
+
+/* ---- The probe ---- */
+
+/* Styled like a value cell at the strongest weight, padding and rule
+   included, and never seen. */
+.tm-pivot__probe {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  display: inline-block;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  padding-inline: var(--pivot-cell-padding-x);
+  border-inline-end: var(--border-width) solid transparent;
+  font-size: var(--pivot-font-size);
+  font-weight: var(--pivot-total-font-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Forced colors: rules and states keep system colours ---- */
+
+@media (forced-colors: active) {
+  .tm-pivot__cell {
+    border-color: CanvasText;
+  }
+
+  .tm-pivot__rule-block::before,
+  .tm-pivot__rule-inline::after {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .tm-pivot__cell:focus-visible,
+  .tm-pivot__value--link:hover {
+    outline-color: Highlight;
+  }
+}

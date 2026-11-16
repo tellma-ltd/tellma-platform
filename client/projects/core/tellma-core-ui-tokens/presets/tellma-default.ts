@@ -769,6 +769,49 @@ export const tmTokensDefault: TmTokens = {
       statusIconSize: '14px',
       twistySize: '15px',
     },
+    // tm-pivot: the grid's row ladder (30 px at the default density) and
+    // the five looks of spec 0034 §6.3. A data cell takes the stronger of
+    // its row's and its column's look; the grand total's 2px rule sits on
+    // its row's block-start edge and its column's inline-start edge.
+    pivot: {
+      rowHeight: '34px',
+      rowHeightSm: '30px',
+      rowHeightLg: '38px',
+      // One indent step per depth, sized to sit under the 13px twisty.
+      indent: '16px',
+      twistySize: '13px',
+      twistyGap: '4px',
+      twisty: '{text.secondary}',
+      cellPaddingX: '8px',
+      fontSize: '12px',
+      headerFontSize: '11.5px',
+      // A resize handle's hit area on a header's inline end.
+      handleSize: '8px',
+      headerBg: '{surface.sunken}',
+      headerText: '{text.secondary}',
+      line: '{border.subtle}',
+      headerLine: '{border.default}',
+      totalBg: '{surface.sunken}',
+      totalText: '{text.strong}',
+      totalFontWeight: '{font.weight.semibold}',
+      totalRule: '{border.strong}',
+      totalRuleWidth: '2px',
+      subtotal1Bg: '{surface.sunken}',
+      subtotal1Text: '{text.strong}',
+      subtotal1FontWeight: '{font.weight.semibold}',
+      subtotal2Bg: '{surface.card}',
+      subtotal2Text: '{text.body}',
+      subtotal2FontWeight: '{font.weight.semibold}',
+      leafBg: '{surface.card}',
+      leafText: '{text.body}',
+      leafFontWeight: '{font.weight.regular}',
+      phantomText: '{text.secondary}',
+      // A value cell that drills, hovered or focused: the hover fill, link
+      // text, an underline and the accent ring.
+      hoverBg: '{surface.hover}',
+      linkText: '{action.primary}',
+      ring: '{action.accent}',
+    },
     // tm-dropzone: drop-region geometry; colors ride the field/surface
     // semantics in the component CSS.
     files: {

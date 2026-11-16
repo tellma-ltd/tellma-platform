@@ -58,3 +58,4 @@ export * from './search-field-harness';
 export * from './date-range-harness';
 export * from './time-field-harness';
 export * from './date-time-field-harness';
+export * from './pivot-harness';

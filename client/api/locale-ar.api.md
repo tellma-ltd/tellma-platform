@@ -326,6 +326,14 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly moveToTop: "نقل إلى البداية";
         readonly moveToBottom: "نقل إلى النهاية";
     };
+    readonly pivot: {
+        readonly subtotal: "إجمالي {label}";
+        readonly direct: "(مباشر)";
+        readonly notActivatable: "في هذا التقرير، تفتح الخلايا الأكثر تفصيلا فقط صفوفها.";
+        readonly rowExpanded: "تم توسيع {label}، {count, plural, zero {# صف} one {صف واحد} two {صفين} few {# صفوف} many {# صفا} other {# صف}}";
+        readonly columnExpanded: "تم توسيع {label}، {count, plural, zero {# عمود} one {عمود واحد} two {عمودين} few {# أعمدة} many {# عمودا} other {# عمود}}";
+        readonly collapsed: "تم طي {label}";
+    };
 };
 
 ```
