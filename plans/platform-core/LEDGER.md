@@ -102,19 +102,18 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-F26 | — (pushed) | pc/PC-F26 | held: waits for PC-F44 (./grid 43059 B vs 43038 B ceiling after merging a1cf6850; D-094); merge 1c382e55 | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
-| PC-066 | — (pushed) | pc/PC-066 | held a1abbefc (R1 0/1/7 all fixed; rewrite <1/10, no R2; merge-tree clean; D-095) | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
-| PC-049 | pc-1 (free) | pc/PC-049 | integrated 9edabb18 (merge 18b909bf clean; no migration regenerated; order-dependent history test fixed); CI pending; serialized migrations released | impl (Opus, high, launched 2026-11-14) | R2 done (Opus, xhigh) | 2026-11-14 |
+| PC-066 | pc-1 | pc/PC-066 | released → integrating (held a1abbefc) | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
 | PC-064 | pc-2 | pc/PC-064 | push blocked (a887ad18 over 10d88fb3; notified); platform-core has since moved (PC-061 5db7d9ef, PC-049 next), so on approval re-merge and re-run the touched gates before pushing | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
 | PC-F37 | — (pushed) | pc/PC-F37 | held 15f8918e (R1 0/0/1 fixed; merge-tree clean) | fix (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F43 | — (pushed) | pc/PC-F43 | held 6649571f (R1 0/0/3 fixed; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F47 | — (pushed) | pc/PC-F47 | held abd089d6 (R1 0/1/3 fixed; rewrite ~15%, no R2; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F45 | — (pushed) | pc/PC-F45 | held dcb30c43 (R1 0/0/1 fixed; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-141 | — (pushed) | pc/PC-141 | held 15d1369d (R1 0/2/1 fixed; conditional skips; rewrite ~3% + additions, no R2; merge-tree clean; D-096) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
-| PC-F48 | pc-4 | pc/PC-F48 | fix1 (R1 1/0/3: retry then cached 4060 from the refresh loop's pool block; escalated to R2 per §4.4) | impl (Opus, high, launched 2026-11-15) | R1 done; R2 next (inherit, xhigh) | 2026-11-15 |
-| PC-217 | pc-3 | pc/PC-217 | impl (T3: no T1/T2 work ready; security-bound, two reviews) | impl (Opus, high, launched 2026-11-15) | | 2026-11-15 |
+| PC-F48 | pc-4 | pc/PC-F48 | fix2 (R2 0/0/3; CreateDatabaseRetry name clash with PC-F47 fixed on F48's side) → hold | impl (Opus, high, launched 2026-11-15) | R2 done (inherit, xhigh) | 2026-11-15 |
+| PC-217 | pc-3 | pc/PC-217 | fix1 (R1 0/2/4: fetch rate limiter starvation and full-table refusal) → R2 Fable | impl (Opus, high, launched 2026-11-15) | R1 done; R2 Fable next | 2026-11-15 |
 | PC-193 | pc-f | pc/PC-193 | impl (T3: no T1/T2 work ready) | impl (Opus, high, launched 2026-11-15) | | 2026-11-15 |
 | PC-F46 | pc-f2 | pc/PC-F46 | impl | impl (Opus, high, launched 2026-11-15) | — | 2026-11-15 |
-| PC-F44 | pc-1 | pc/PC-F44 | released → integrating (held ed350984) | fix (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
+| PC-F44 | pc-1 (free) | pc/PC-F44 | integrated 46705997; CI pending (e2e 1107/1108: locale-ar networkidle timeout, 3/3 alone) | fix (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 
 ## Fix items
 
@@ -162,11 +161,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F41 | startup gate: refuse any EF shadow property other than the period columns and Node (spec 0012 §14 "no implicit shadow properties"); ARCHITECTURE.md:779 promised an analyzer, withdrawn by D-081 | done (CI 43659275146; medium) | 8fbefe3, 6195980, a0f11cf, 13b531a, 9a32fab (pc/PC-F41) | | from PC-040 r1 |
 | PC-F42 | forced colors: the scrollToRow flash outline (grid-flash.css, Highlight over the whole row) vanishes on checked or filled rows, and no single system colour fits a mixed row; also the checked checkbox box (Highlight) on a checked checkcell (SelectedItem) loses its outline on Windows (glyph still shows). Found by PC-F26 | todo (low; waits for PC-F44, D-094) | | | follow-up |
 | PC-F43 | client e2e: the CI-mode Playwright webServer (serve.mjs --prod) times out at 300 s when it must build the showcase itself on a loaded host (twice in a row on PC-056's integration); run build:showcase right before e2e, or size the timeout to a cold build | held 6649571f (low) | a7ab2be, 6649571 (pc/PC-F43) | | from PC-056 integrate |
-| PC-F44 | ./grid is at its 42.03 KB cap (42.02 at a1cf6850): re-split ./grid (move more editable- or tree-only code to secondary entry points) or take measured savings until it has at least 0.5 KB of real headroom under spec 0010 §C.11's 42 KB, per D-057(2)/D-067 | held ed350984 (medium) | 7bb434d, ed35098 (pc/PC-F44) | | from PC-F26 integrate (D-094) |
+| PC-F44 | ./grid is at its 42.03 KB cap (42.02 at a1cf6850): re-split ./grid (move more editable- or tree-only code to secondary entry points) or take measured savings until it has at least 0.5 KB of real headroom under spec 0010 §C.11's 42 KB, per D-057(2)/D-067 | integrated 46705997 (CI pending) | 7bb434d, ed35098 (pc/PC-F44), 4670599 (pc) | | from PC-F26 integrate (D-094) |
 | PC-F45 | showcase grid-states-story.ts switches contentKey A/B over one shared rows array, against the contentKey TSDoc contract (harmless today: a flat grid has no lazy loads); hand each switch its own record, as PC-F37 did for the tree-grid story | held dcb30c43 (low) | b4e9ef7, dcb30c4 (pc/PC-F45) | | from PC-F37 impl; impl notes: prettier is enforced by no gate, though ARCHITECTURE.md says lint includes it |
 | PC-F46 | tiles: spec 0023 §12 "10,000 tiles, no long task over 50 ms" still fails after PC-061 fix 1 (6-28 long tasks per 80 wheel steps on a quiet host, median 55-58 ms, max ~78; nightly @perf probe asserts 50 ms). Remaining cost is ~36 tile creations per step: time-slice large jumps, share one tm-image object URL per blob, and recycle tile views if needed (allowed by D-092 if focus, selection and a11y semantics hold) | impl (pc-f2; medium) | | | from PC-061 fix1 |
 | PC-F47 | test infra: integration fixtures fail with SQL error 1807 "Could not obtain exclusive lock on database 'model'" when several slots create databases at once (37 failures in Tellma.Core.IntegrationTests on PC-066's gate; the 3 classes passed alone). CREATE DATABASE needs an exclusive lock on model; retry it with backoff on 1807 in the shared fixture's database creation | held abd089d6 (low) | b153b6e, abd089d (pc/PC-F47) | | from PC-066 impl |
-| PC-F48 | migrator (production): TargetDatabase.EnsureExistsAsync runs CREATE DATABASE with no retry on SQL 1807 (model locked) while MigrateCommand provisions tenants with Parallel.ForEachAsync (--parallelism, default 4), and its later statements (read-committed snapshot, query store, EF catalog migrations) run on SqlClient's 30 s default command timeout; seen as "catalog: failed (Execution Timeout Expired)" in MigratorTests/VersionTagSeedTests under load. Add a bounded, logged 1807 retry (timeouts not retried: the server may finish an abandoned statement) and explicit command bounds, with tests | fix1 → R2 (pc-4; medium; escalated) | 77de323 (pc/PC-F48) | | from PC-F47 impl |
+| PC-F48 | migrator (production): TargetDatabase.EnsureExistsAsync runs CREATE DATABASE with no retry on SQL 1807 (model locked) while MigrateCommand provisions tenants with Parallel.ForEachAsync (--parallelism, default 4), and its later statements (read-committed snapshot, query store, EF catalog migrations) run on SqlClient's 30 s default command timeout; seen as "catalog: failed (Execution Timeout Expired)" in MigratorTests/VersionTagSeedTests under load. Add a bounded, logged 1807 retry (timeouts not retried: the server may finish an abandoned statement) and explicit command bounds, with tests | fix2 (pc-4; medium; escalated) | 77de323, 59c9672 (pc/PC-F48) | | from PC-F47 impl |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -209,6 +208,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | tellma-core-tools build.spec "stops with exit 3 …" (local load-only timeout) | 2026-11-14 | D-085 |
 | integration fixtures: CREATE DATABASE fails with SQL 1807 (model locked) under concurrent slots (local only) | 2026-11-15 | PC-F47 |
 | Identity InvitationDeliveryStatusApiTests.A_delivered_invitation_reports_what_the_provider_said (expectsDeliveryEvents) under load; passed alone 6/6 | 2026-11-15 | watch |
+| client e2e locale-ar.spec.ts:22 networkidle wait timed out at 30 s twice under load (PC-F44 integration); passed 3/3 alone | 2026-11-15 | watch |
 | tellma-core-tools serve.spec "fails before the emit …" (local load-only timeout) | 2026-11-14 | D-085 |
 | dotnet Tellma.Core.Tests: xUnit launcher "Catastrophic failure" when it runs first in a chain of test runs (local Windows, PC-F41 fix1, 2x; passes alone) | 2026-11-14 | watch |
 | dotnet Tellma.Core.IntegrationTests VersionTagSeedTests: SqlClient post-login connection timeout on the catalog connection (Testcontainers, local, PC-F41 R1; passed 6/6 on rerun) | 2026-11-14 | watch |
@@ -317,7 +317,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-046 | 0013-g | 1 | done (CI 43669041748) | f102347, eb5ae0f, 554bcfa, a507c3c, 11ae126 (pc/PC-046) | | |
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
-| PC-049 | 0013-f | 1 | integrated 9edabb18 (CI pending) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
+| PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
 | PC-050 | 0014-d | 1 | todo | | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
@@ -485,4 +485,4 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-214 | 0022-c | 3 | todo | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
 | PC-216 | 0025-f | 3 | todo | | | |
-| PC-217 | 0010-a4 | 3 | impl (pc-3) | | | |
+| PC-217 | 0010-a4 | 3 | fix1 (pc-3) | 59bbd79 (pc/PC-217) | | |
