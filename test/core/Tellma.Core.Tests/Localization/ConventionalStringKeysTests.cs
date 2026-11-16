@@ -94,6 +94,26 @@ namespace Tellma.Core.Tests.Localization
             AssertAdds(expected, new With(_provider, typeof(ISettingKeyRegistry), new OneSettingKey(key, category)));
         }
 
+        [Theory]
+        // No stated group: the middle segments name the card.
+        [InlineData("fixture.gadgets.autoNumber", "SettingGroup_fixture_gadgets")]
+        [InlineData("fixture.gadgets.posting.autoNumber", "SettingGroup_fixture_gadgets_posting")]
+        // Two segments leave no middle, so the key sits on no card.
+        [InlineData("fixture.limit", null)]
+        public void An_ungrouped_setting_key_derives_the_group_its_name_names(string name, string? group)
+        {
+            SettingKey<bool> key = new(name, false, category: "fixture");
+            SettingCategoryDescriptor category = new("fixture", "fixture.Settings.fixture", 1, "SettingCategory_fixture");
+            string label = "Setting_" + name.Replace('.', '_');
+            HashSet<string> expected = [label, label + "_Description", "SettingCategory_fixture"];
+            if (group is not null)
+            {
+                _ = expected.Add(group);
+            }
+
+            AssertAdds(expected, new With(_provider, typeof(ISettingKeyRegistry), new OneSettingKey(key, category)));
+        }
+
         [Fact]
         public void A_composed_stack_action_derives_its_labels_and_its_argument_fields_labels()
         {

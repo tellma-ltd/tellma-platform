@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Collections.Frozen;
+using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Api;
 
 namespace Tellma.Core.Abstractions.Data
 {
@@ -16,6 +18,7 @@ namespace Tellma.Core.Abstractions.Data
     ///     every instance then carries. The reader that fills it deduplicates instances by key before
     ///     adding them. Not thread-safe while it is filled.
     /// </remarks>
+    [JsonConverter(typeof(RelatedEntitiesJsonConverter))]
     public sealed class RelatedEntities
     {
         private readonly Dictionary<string, RelatedEntitySet> _sets = new(StringComparer.Ordinal);

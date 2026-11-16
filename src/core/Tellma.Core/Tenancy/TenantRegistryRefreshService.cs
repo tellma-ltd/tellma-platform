@@ -19,12 +19,22 @@ namespace Tellma.Core.Tenancy
     ///         a failed refresh is logged by the registry and the loop goes on, so a transient outage
     ///         ends as soon as the catalog answers.
     ///     </para>
+    ///     <para>
+    ///         A host that does not load at startup, the migrator, leaves the first load to its
+    ///         command, which may have to create the catalog first. Its loop lets every tick pass until
+    ///         a snapshot has been loaded, so nothing reads a catalog that does not exist yet: a failed
+    ///         open would leave SqlClient failing the next opens of the same connection string with the
+    ///         cached error for up to a minute, the command's own open of the catalog it just created
+    ///         among them.
+    ///     </para>
     ///     <para>Stopping cancels the loop's wait; a refresh in flight finishes on its own.</para>
     /// </remarks>
     /// <param name="registry">The registry.</param>
     /// <param name="catalogOptions">The catalog options: the refresh interval.</param>
+    /// <param name="startupOptions">The startup options: whether the host loads at startup.</param>
     /// <param name="time">The clock the timer runs on.</param>
-    internal sealed class TenantRegistryRefreshService(TenantRegistry registry, IOptions<TellmaCatalogOptions> catalogOptions, TimeProvider time)
+    internal sealed class TenantRegistryRefreshService(
+        TenantRegistry registry, IOptions<TellmaCatalogOptions> catalogOptions, IOptions<TenantRegistryStartupOptions> startupOptions, TimeProvider time)
         : IHostedService, IDisposable
     {
         private readonly CancellationTokenSource _stopping = new();
@@ -65,6 +75,12 @@ namespace Tellma.Core.Tenancy
             {
                 while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
                 {
+                    // --- Without a startup load, the host's own first load starts the refreshes ---
+                    if (!startupOptions.Value.LoadOnStart && registry.SnapshotLoadedAt is null)
+                    {
+                        continue;
+                    }
+
                     try
                     {
                         await registry.RefreshAsync(force: false, stoppingToken).ConfigureAwait(false);

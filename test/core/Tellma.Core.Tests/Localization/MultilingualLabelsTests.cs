@@ -55,7 +55,7 @@ namespace Tellma.Core.Tests.Localization
             // --- Each admitted column reads as the primary's label, suffixed once there are two languages ---
             ILabelProvider labels = _provider.GetRequiredService<ILabelProvider>();
             using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(
-                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, languages));
+                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, languages, "en", "en-GB"));
             string[] expected = shape == MultilingualShape.Primary
                 ? ["Title"]
                 : [.. languages.Select(static language => $"Title ({language.Symbol})")];
@@ -71,7 +71,7 @@ namespace Tellma.Core.Tests.Localization
             ILabelProvider labels = _provider.GetRequiredService<ILabelProvider>();
             ILanguageCatalog catalog = _provider.GetRequiredService<ILanguageCatalog>();
             using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(
-                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, [catalog.Find("en")!, catalog.Find("ar")!]));
+                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, [catalog.Find("en")!, catalog.Find("ar")!], "en", "en-GB"));
 
             Assert.Equal("Title (E)", labels.PropertyLabel(typeof(Widget), "Name"));
             Assert.Equal("Title (ع)", labels.PropertyLabel(typeof(Widget), "Name2"));
@@ -83,7 +83,7 @@ namespace Tellma.Core.Tests.Localization
             ILabelProvider labels = _provider.GetRequiredService<ILabelProvider>();
             ILanguageCatalog catalog = _provider.GetRequiredService<ILanguageCatalog>();
             using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(
-                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, [catalog.Find("en")!, catalog.Find("ar")!]));
+                NegotiatedCultures.Get("en", "GB"), new GregorianCalendarSystem(), TimeZoneInfo.Utc, 1, [catalog.Find("en")!, catalog.Find("ar")!], "en", "en-GB"));
 
             // No shape offers it, so no caller asks; were one to, it gets the column's own name.
             Assert.Equal("Name3", labels.PropertyLabel(typeof(Widget), "Name3"));

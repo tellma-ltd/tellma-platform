@@ -8,8 +8,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud.Checks;
+using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Metadata;
 
 namespace Tellma.Core.Crud
@@ -17,7 +19,7 @@ namespace Tellma.Core.Crud
     /// <summary>
     ///     Registers the stacks of a realised composition: each stack's service, companions and
     ///     components closed over its leaf, the routed services, the stack registry, its securables,
-    ///     and the startup checks that judge them.
+    ///     the validation stage's services, and the startup checks that judge them.
     /// </summary>
     internal static class CrudComposition
     {
@@ -65,6 +67,15 @@ namespace Tellma.Core.Crud
             services.TryAddSingleton<IStackRouteSource>(static provider => provider.GetRequiredService<StackRegistry>());
             services.AddSingleton<ISecurableContributor>(static provider => new StackSecurableContributor(provider.GetRequiredService<IStackRegistry>()));
             services.AddSingleton(new RegisteredServices(services));
+
+            // --- The validation stage: its instruments, the attribute walker's cached plans, and the
+            // scope's confirmations over the keys the features declared ---
+            _ = services.AddMetrics();
+            services.TryAddSingleton<CrudMetrics>();
+            services.TryAddSingleton<AttributeWalker>();
+            services.AddSingleton(new DeclaredConfirmations(record.Confirmations.Select(static confirmation => confirmation.Key)));
+            services.TryAddScoped<Confirmations>();
+            services.TryAddScoped<IConfirmations>(static provider => provider.GetRequiredService<Confirmations>());
 
             // --- The checks, in the order they report, after the built-in checks of the record ---
             IStartupCheck[] checks =

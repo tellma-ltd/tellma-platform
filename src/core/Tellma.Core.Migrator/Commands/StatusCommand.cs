@@ -44,6 +44,8 @@ namespace Tellma.Core.Migrator.Commands
             {
                 await using (var migrations = CatalogDbContext.Create(catalog.ConnectionString))
                 {
+                    // Reading the history is a statement like any other, not a migration.
+                    migrations.Database.SetCommandTimeout(context.Options.CommandTimeout);
                     WritePending("catalog", [.. await migrations.Database.GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false)]);
                 }
 
@@ -99,7 +101,8 @@ namespace Tellma.Core.Migrator.Commands
                 return false;
             }
 
-            TargetDatabase database = new(tenant.ConnectionString);
+            MigratorOptions bounds = context.Options;
+            TargetDatabase database = new(tenant.ConnectionString, bounds);
             SqlConnection connection;
             try
             {
@@ -115,13 +118,13 @@ namespace Tellma.Core.Migrator.Commands
             // --- The recorded fingerprints, newest first, against the model's ---
             await using (connection.ConfigureAwait(false))
             {
-                if (await TargetDatabase.IsFreshAsync(connection, ApplicationGrants.DefaultSchema, cancellationToken).ConfigureAwait(false))
+                if (await database.IsFreshAsync(connection, ApplicationGrants.DefaultSchema, cancellationToken).ConfigureAwait(false))
                 {
                     context.WriteLine($"{prefix}: fingerprint none (not migrated)");
                 }
                 else
                 {
-                    IReadOnlyList<SchemaFingerprintRow> rows = await SchemaFingerprints.ReadAsync(connection, cancellationToken).ConfigureAwait(false);
+                    IReadOnlyList<SchemaFingerprintRow> rows = await SchemaFingerprints.ReadAsync(connection, bounds.CommandTimeout, cancellationToken).ConfigureAwait(false);
                     if (rows.Count == 0)
                     {
                         context.WriteLine($"{prefix}: fingerprint none");
@@ -139,6 +142,7 @@ namespace Tellma.Core.Migrator.Commands
 
             // --- The pending migrations ---
             await using TellmaDbContext migrations = models.CreateMigrationContext(tenant.ConnectionString, context.MigrationsAssembly);
+            migrations.Database.SetCommandTimeout(bounds.CommandTimeout);
             WritePending(prefix, [.. await migrations.Database.GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false)]);
             return true;
         }
