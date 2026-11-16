@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-100 (orchestrator, 2026-11-15): PC-F46 goes to review with the nightly tiles probe unproven on a loaded host
+
+- Situation: PC-F46 cut the 10,000-tile scroll cost from 35-67 to 1-7 tasks over 50 ms per 80 wheel steps, interleaved on the same host (median task 26-31 ms, was 32-56). The nightly @perf probe, which asserts zero, still sees 2-26 long tasks on this host. The host is loaded by five concurrent slots, so the number is noise-bound. The implementer reported status=blocked for that reason. Every PR-tier gate passes.
+- Ruling: the item goes to Review 1 as usual. The probe is nightly-tier (PLAN.md §6), so it does not gate a PR-tier checkpoint. Its first verdict on a quiet host is the platform-core nightly after integration, recorded under Flaky as a watch. If it fails there, a follow-up item chooses between a spec 0023 §12 bound Ahmad would rule on (a count or percentile) and re-binding tm-image in place (a tiles budget raise under D-031). The ARCHITECTURE.md tiles sentence and the spec 0005 §7.2/§7.4 deviations (shared object URLs; the on-screen blob stands in under an unknown stamp) are reviewed with the item.
+
 ### D-099 (orchestrator, 2026-11-15): PC-217 holds with three spec 0010 §A.3 gaps for Ahmad
 
 PC-217 (client ID metadata documents) holds at a94fb9e4 after two reviews. Spec 0010 §A.3 should be brought in line with the code in three places (docs/ is not edited in the run):
