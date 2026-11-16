@@ -5,7 +5,8 @@
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -94,5 +95,17 @@ describe('the brand files', () => {
       },
     ]);
     expect(tmResolveBrandFiles(publicDir, null).filter((file) => file.source === null)).toHaveLength(3);
+  });
+
+  it("default to @tellma/core's four files, which pass every check", () => {
+    // The platform's own package, beside this one in the workspace.
+    const defaults = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'tellma-core', 'brand');
+    dir = mkdtempSync(join(tmpdir(), 'tm-brand-'));
+
+    const files = tmResolveBrandFiles(join(dir, 'public'), defaults);
+    expect(files.map((file) => ({ name: file.name, override: file.override, found: file.source !== null }))).toEqual(
+      TM_BRAND_FILES.map((name) => ({ name, override: false, found: true })),
+    );
+    expect(tmCheckBrandFiles(files, (file) => file.name, 'acme')).toEqual([]);
   });
 });

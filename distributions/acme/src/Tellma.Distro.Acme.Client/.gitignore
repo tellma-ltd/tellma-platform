@@ -1,0 +1,8 @@
+# The emit's output, the build's output and Angular's cache: all rebuilt by `tellma-client`.
+/generated/
+/dist/
+/.angular/
+/node_modules/
+/obj/
+/bin/
+/out-tsc/

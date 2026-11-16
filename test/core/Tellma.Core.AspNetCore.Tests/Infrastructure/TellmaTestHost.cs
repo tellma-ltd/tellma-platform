@@ -22,6 +22,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
@@ -157,6 +158,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
             // --- What stands in for the tenant database's settings, read by the locale negotiation ---
             _ = builder.Services.UseFixedTenantSettings();
+
+            // --- The real user connection, which needs a tenant database with users, gives way to the stand-in ---
+            _ = builder.Services.Remove(builder.Services.Single(static descriptor => descriptor.ImplementationType == typeof(ConnectInitializer)));
 
             // --- What stands in for the catalog's sessions and memberships, and the reconciliation's lock ---
             builder.Services.Replace(ServiceDescriptor.Singleton<ISessionRows>(new InMemorySessionRows(time)));

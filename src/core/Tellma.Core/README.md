@@ -1253,6 +1253,38 @@ logged (`PermissionDrift`, event 3101, category `Tellma.Core.Access`) once per t
 tenant's permissions, permission and problem; each build records `tellma.access.set.build.duration`
 and `tellma.access.set.grants` and logs `AccessSetBuilt` (3106) at Debug.
 
+A request reaches its caller's set through the connection. `ConnectInitializer` (Order 100, before
+the locale negotiation at 200) connects the scope through `IUserConnector`: by subject for a request
+(a service account's subject is its client id), by id for a background scope that carries its run-as
+user, and as the system for a system scope. The connected user (`ConnectedUser`: id, kind, state,
+profile, permission set, the tenant's tags) comes from the process's connect cache when present, and
+otherwise from one prologue-only round trip that the concurrent first requests of one subject share.
+Every guarded batch then carries the connect prologue as its first statement, one fixed text per
+variant (by subject, by id, the system), bound with the same parameters every time: it resolves the
+user, stamps the activity at most once per `ActivityStampInterval` (never under a `Frozen` tenant or
+for a background request), records an invited user's first request (never under `Frozen`), reads every
+tenant tag, and returns the permission rows, the profile and the settings only when the cached ones
+are stale, so a stale part is refreshed in the round trip that found it. The guard around the body
+passes when the user is the expected one, the permissions are current, and, for a validation or a
+persist, the settings are too; a read runs under the settings it composed with. The bookkeeping
+writes are autocommit, are audited, never count among the batch's written tables and bump nothing;
+an `Explicit` batch that carries the subject prologue is refused. The permission sets
+(`PermissionsCache`) and profiles (`ProfileCache`) are versioned caches keyed by tenant and user,
+so two tenants that reuse an id never share an entry.
+
+`IGuardedBatchRunner` runs a read, a validation or a persist for the scope's caller: it composes the
+prologue and the caller's statements, executes, applies what the prologue read, and returns the
+caller's read when the guard passed. A failed guard, a persist whose in-transaction re-check finds a
+moved tag (`50412`, after a cold re-connect) and a read or validation whose re-run input moved each
+cost one recompose from the fresh state; when the round trip brought newer settings, the initializers
+after the connection run again first. A second failure in the same call is a `StaleContextException`,
+counted (`tellma.access.connect.results`, `result` = `guard_thrash`), metered as exhausted and logged
+(`GuardThrash`, 3102). A persist whose re-check finds the caller deactivated (`50401`) drops the
+caller's entries and answers `tenant-not-found`. Each prologue round trip records
+`tellma.access.connect.prologue.duration` by `variant`; each connect counts one result (`warm`,
+`cold`, `stale_permissions`, `stale_settings`, `stale_profile`, `unknown_subject`, `deactivated`),
+and a refusal logs `ConnectRejected` (3105) without the subject.
+
 `AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
@@ -1378,7 +1410,7 @@ same in a `Persist` batch of its own.
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
-| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, and the permission set build: the classifier, the builder, the interner and the access instruments and logs. |
+| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the key conventions and the name humanizer. |

@@ -12,7 +12,8 @@ namespace Tellma.Distro.Acme.Web.Tests
 {
     /// <summary>
     ///     The distribution's tracked configuration holds no secret: no password, key, token or
-    ///     client secret, in a configuration file or a launch profile, in any form a reader could use.
+    ///     client secret, in a host's configuration file or launch profile or in the client app's JSON,
+    ///     in any form a reader could use.
     /// </summary>
     public sealed partial class ConfigurationTests
     {
@@ -20,7 +21,10 @@ namespace Tellma.Distro.Acme.Web.Tests
         public void The_tracked_configuration_holds_no_secret()
         {
             string[] files = [.. ConfigurationFiles()];
+            // The hosts' settings and the client app's files are both read.
             Assert.Contains(files, static file => file.EndsWith("appsettings.Development.json", StringComparison.Ordinal));
+            Assert.Contains(files, static file => file.EndsWith("angular.json", StringComparison.Ordinal));
+            Assert.Contains(files, static file => file.EndsWith("manifest.webmanifest", StringComparison.Ordinal));
 
             List<string> secrets = [];
             foreach (string file in files)
@@ -51,20 +55,34 @@ namespace Tellma.Distro.Acme.Web.Tests
         [InlineData("Email:AcsEmail:Webhook:Tokens:0", "token-value", true)]
         [InlineData("Tellma:DataProtection:KeyId", "https://vault.vault.azure.net/keys/ring", false)]
         [InlineData("TellmaIdentity:Keys:Signing:Source", "DevelopmentSelfSigned", false)]
+        [InlineData("compilerOptions:paths:@tellma/core-ui-tokens:0", "../../../../client/projects/core/tellma-core-ui/tokens/index.ts", false)]
+        [InlineData("compilerOptions:apiToken", "abc", true)]
+        [InlineData("projects:acme:architect:build:options:define:API_KEY", "abc", true)]
+        [InlineData("projects:acme:architect:build:options:define:client-secret", "abc", true)]
+        [InlineData("projects:acme:architect:build:options:define:TOKEN_TTL_SECONDS", "3600", false)]
         public void The_scan_tells_a_secret_from_a_setting(string path, string value, bool isSecret)
         {
             Assert.Equal(isSecret, Secret(path, value) is not null);
         }
 
-        /// <summary>The distribution's tracked configuration files: settings and launch profiles, outside build output.</summary>
+        /// <summary>
+        ///     The distribution's tracked configuration files: every JSON file and web manifest under
+        ///     its sources (the hosts' settings and launch profiles, and the client app's package,
+        ///     workspace, compiler and manifest files, whose values a build may bundle for every
+        ///     browser), outside installed packages and build output.
+        /// </summary>
         /// <returns>The files.</returns>
         private static IEnumerable<string> ConfigurationFiles()
         {
-            return Directory.EnumerateFiles(Path.Combine(AcmePaths.Distribution, "src"), "*.json", SearchOption.AllDirectories)
-                .Where(static file =>
+            string[] skipped = ["bin", "obj", "node_modules", "generated", "dist", ".angular"];
+            return Directory.EnumerateFiles(Path.Combine(AcmePaths.Distribution, "src"), "*", SearchOption.AllDirectories)
+                .Where(file =>
                 {
+                    string extension = Path.GetExtension(file);
+                    bool json = extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".webmanifest", StringComparison.OrdinalIgnoreCase);
                     string[] segments = file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    return !segments.Contains("bin") && !segments.Contains("obj") && !segments.Contains("node_modules");
+                    return json && !segments.Intersect(skipped, StringComparer.OrdinalIgnoreCase).Any();
                 });
         }
 
@@ -102,14 +120,16 @@ namespace Tellma.Distro.Acme.Web.Tests
         /// <returns>The reason, or null.</returns>
         private static string? Secret(string path, string value)
         {
-            if (string.IsNullOrWhiteSpace(value))
+            // An empty value, or a TypeScript path mapping, whose keys are module specifiers, not settings.
+            if (string.IsNullOrWhiteSpace(value) || path.StartsWith("compilerOptions:paths:", StringComparison.Ordinal))
             {
                 return null;
             }
 
-            // A key that names a secret, holding a value; KeyId names a key, it is not one.
+            // A key that names a secret, holding a value, in any spelling (ApiKey, API_KEY, api-key);
+            // KeyId names a key, it is not one.
             string leaf = path.Split(':').Last(static segment => !int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out _));
-            if (SecretName().IsMatch(leaf))
+            if (SecretName().IsMatch(leaf.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal)))
             {
                 return "names a secret and holds a value";
             }

@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-102 (orchestrator, 2026-11-16): ./tiles re-split under D-031 lands at 9.24 KB, with a tiles-tree entry point; the 7 KB cap goes to Ahmad
+
+- Ruling: PC-F50 moves the tree inputs (parentId, hasChildren, expandedIds, loadChildren) off TmTiles onto a TmTilesTree directive (selector `tm-tiles[parentId]`) in a new `@tellma/core-ui/tiles-tree` entry point. ./tiles drops from 10,576 B to 9,359 B (ceiling 10.35 → 9.24 KB); ./tiles-tree is 2,323 B (ceiling 2.37 KB). A static-graph exclude and an eslint ban keep the tree, grid-engine and spinner out of ./tiles. The run proceeds on 9.24 KB.
+- Why not 7 KB: the class core, template, about 1.3 KB of styles, the skeleton and the synchronous pointer path are needed at first paint. Everything lazy-able totals 877 B before loader cost, and a lazy-keyboard prototype netted 81 B (22 B with idle preload). R1 confirmed the numbers and found no further honest split; D-092's independent measurement (8.89 KB with tree, skeleton and flash removed) agrees.
+- Carries: PC-131 and PC-132 (spec 0030 tiles views) import TmTilesTree only where trees of tiles are shown, behind `@defer` or a tree-only component, or a tree page pays 11,682 B and the saving is lost. `tiles.loadFailed` is now read only by ./tiles-tree; whichever of PC-193 (the `ɵtmRegisterUiStrings` seam, D-098) and PC-F50 integrates second moves it into ./tiles-tree's own registration with its Arabic string and the parity test.
+- For Ahmad: (1) spec 0023 §1 still says 7 KB for ./tiles; rule the cap (proposed 9.24 KB). (2) Spec 0023 §1 needs a tiles-tree row (2.37 KB), and the tiles row drops spinner and grid-engine; §8.5's four tree inputs now live on TmTilesTree.
+
 ### D-101 (orchestrator, 2026-11-16): PC-094 and PC-151 spec misalignments for Ahmad
 
 - Spec 0011 §2.2 says the deployment version comes from the entry assembly. PC-094's DeploymentVersionsReader reads the composition method's assembly first, because under test hosts and tools the entry assembly is not the distribution. Spec 0024 §3.1 and 0011 §2.2 should agree on that order.
