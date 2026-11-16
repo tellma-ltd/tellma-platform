@@ -376,14 +376,6 @@ export const TM_UI_STRINGS_EN: {
         readonly moveToTop: "Move to top";
         readonly moveToBottom: "Move to bottom";
     };
-    readonly pivot: {
-        readonly subtotal: "{label} total";
-        readonly direct: "(direct)";
-        readonly notActivatable: "Only the finest cells open their rows in this report.";
-        readonly rowExpanded: "{label} expanded, {count, plural, one {# row} other {# rows}}";
-        readonly columnExpanded: "{label} expanded, {count, plural, one {# column} other {# columns}}";
-        readonly collapsed: "{label} collapsed";
-    };
 };
 
 // @public

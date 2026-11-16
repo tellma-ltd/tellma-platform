@@ -10,7 +10,7 @@ import type { ValidationError } from '@angular/forms/signals';
 
 import { tmResolveFieldErrors } from '../forms/field-errors';
 import { provideTellmaUi } from '../providers/provide-tellma-ui';
-import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE } from './tm-ui-translate';
+import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE, tmEnglishString, ɵtmRegisterUiStrings } from './tm-ui-translate';
 
 @Component({ template: `` })
 class Host {
@@ -149,6 +149,44 @@ describe('TM_UI_TRANSLATE (Transloco-backed default)', () => {
     expect(text()).toBe('myCustomKind');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe('strings an entry point registers', () => {
+  // Registered once for the file, as an entry point's component registers on construction.
+  beforeAll(() =>
+    ɵtmRegisterUiStrings('sample', {
+      greeting: 'Hello {name}',
+      nested: { count: '{count, plural, one {# item} other {# items}}' },
+    }),
+  );
+
+  it('resolve as English on the Transloco-less path', () => {
+    const translate = TestBed.inject(TM_UI_TRANSLATE);
+    expect(translate('sample.greeting', { name: 'Sara' })()).toBe('Hello Sara');
+    expect(translate('sample.nested.count', { count: 2 })()).toBe('2 items');
+  });
+
+  it('resolve as English through Transloco, and a tmUi translation overrides them', async () => {
+    const host = await setup();
+    const greeting = host.translate('sample.greeting', { name: 'Sara' });
+    expect(greeting()).toBe('Hello Sara');
+    host.transloco.setTranslation(
+      { [TM_UI_I18N_SCOPE]: { sample: { greeting: 'XX {name}' } } },
+      'xx',
+      { merge: true },
+    );
+    host.transloco.setActiveLang('xx');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(greeting()).toBe('XX Sara');
+    // A key the translation lacks falls back to the registered English.
+    expect(host.translate('sample.nested.count', { count: 1 })()).toBe('1 item');
+  });
+
+  it('never shadow the core table', () => {
+    ɵtmRegisterUiStrings('errors', { required: 'Shadowed' });
+    expect(tmEnglishString('errors.required')).toBe('This field is required');
+    expect(tmEnglishString('sample.missing')).toBeNull();
   });
 });
 

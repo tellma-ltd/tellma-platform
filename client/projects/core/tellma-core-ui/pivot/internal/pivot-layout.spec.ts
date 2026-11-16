@@ -11,6 +11,7 @@ import {
   ɵtmPivotFlattenRows,
   ɵtmPivotHeaderAt,
   ɵtmPivotStronger,
+  ɵtmPivotVisibleUnder,
   type ɵTmPivotStyle,
 } from './pivot-layout';
 
@@ -148,6 +149,27 @@ describe('ɵtmPivotFlattenRows', () => {
     const rows = ɵtmPivotFlattenRows(deep, ɵtmPivotExpandableIds(deep));
     expect(rows.map((row) => row.style)).toEqual(['subtotal-1', 'subtotal-2', 'leaf', 'leaf']);
     expect(rows[2].expandable).toBe(true);
+  });
+});
+
+describe('ɵtmPivotVisibleUnder', () => {
+  const axis = ɵtmPivotAxis(REGIONS);
+
+  it('counts the children an expansion reveals, and theirs while expanded', () => {
+    // Riyadh is index 1, Olaya index 2.
+    expect(ɵtmPivotVisibleUnder(axis, 1, new Set([1]))).toBe(2);
+    expect(ɵtmPivotVisibleUnder(axis, 1, new Set([1, 11]))).toBe(4);
+    expect(ɵtmPivotVisibleUnder(axis, 6, new Set([2]))).toBe(0);
+  });
+
+  it('counts a member with 500,000 expanded grandchildren without spreading them into a call', () => {
+    // One spread argument per child overflows an engine's argument limit
+    // (JavaScriptCore's is 65,536; V8's sits near its stack size).
+    const members: TmPivotMember[] = [m(1, null), m(2, 1)];
+    for (let id = 3; id < 500_003; id++) {
+      members.push(m(id, 2));
+    }
+    expect(ɵtmPivotVisibleUnder(ɵtmPivotAxis(members), 0, new Set([1, 2]))).toBe(1 + 500_000);
   });
 });
 

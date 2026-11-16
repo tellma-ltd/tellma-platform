@@ -34,8 +34,9 @@ const rowsCounted =
 
 /**
  * The Arabic translations of the library's built-in strings — same shape as
- * `TM_UI_STRINGS_EN`; registered under the tmUi namespace of the 'ar'
- * language resources by `provideTellmaLocaleAr()`.
+ * `TM_UI_STRINGS_EN` with the entry points' own tables beside it (the
+ * pivot's `TM_PIVOT_STRINGS_EN` under `pivot`); registered under the tmUi
+ * namespace of the 'ar' language resources by `provideTellmaLocaleAr()`.
  */
 export const TM_LOCALE_AR_STRINGS = {
   errors: {

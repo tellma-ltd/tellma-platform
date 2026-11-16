@@ -183,8 +183,9 @@
   border: 0;
 }
 
-/* A spacer stands in for unrendered columns. */
+/* A spacer stands in for unrendered columns; it anchors the total's rule. */
 .tm-pivot__spacer {
+  position: relative;
   padding: 0;
 }
 

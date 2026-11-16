@@ -8,6 +8,16 @@ import * as _angular_core from '@angular/core';
 import * as lucide from 'lucide';
 
 // @public
+export const TM_PIVOT_STRINGS_EN: {
+    readonly subtotal: "{label} total";
+    readonly direct: "(direct)";
+    readonly notActivatable: "Only the finest cells open their rows in this report.";
+    readonly rowExpanded: "{label} expanded, {count, plural, one {# row} other {# rows}}";
+    readonly columnExpanded: "{label} expanded, {count, plural, one {# column} other {# columns}}";
+    readonly collapsed: "{label} collapsed";
+};
+
+// @public
 export class TmPivot {
     constructor();
     readonly activatable: _angular_core.InputSignalWithTransform<boolean, unknown>;

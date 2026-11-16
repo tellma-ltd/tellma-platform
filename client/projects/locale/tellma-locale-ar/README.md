@@ -38,9 +38,10 @@ changes.
 
 Copy this package's structure:
 
-1. `strings-xx.ts` — translate every key of `TM_UI_STRINGS_EN`; keep the ICU
-   categories your language needs; branch on `{gender}` only where grammar
-   requires it.
+1. `strings-xx.ts` — translate every key of `TM_UI_STRINGS_EN` and of the
+   tables entry points ship beside it (`TM_PIVOT_STRINGS_EN`, under `pivot`);
+   keep the ICU categories your language needs; branch on `{gender}` only
+   where grammar requires it.
 2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.

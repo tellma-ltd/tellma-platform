@@ -124,11 +124,14 @@ the components ship no hardcoded sizes or colors.
   `provideTellmaUi({ theme: { initial } })`; the app persists the choice.
 - **Strings.** `provideTellmaUi({ translations })` registers the app's
   loader; loaded tables merge with the built-in English and installed locale
-  packs. ICU MessageFormat is interpreted, never compiled to code, so it
-  runs under a Content Security Policy without `'unsafe-eval'`. Typed
-  arguments (`number`, `date`, `time`) format through
-  `TM_UI_ARGUMENT_FORMATTER`: numbers with `Intl`, dates and times as ISO
-  8601 by default, which an app replaces with its calendar-aware formatting.
+  packs. An entry point whose strings only it reads ships them itself (the
+  pivot's `TM_PIVOT_STRINGS_EN`) and registers them beside the core table,
+  so they translate and fall back exactly as the core's do. ICU
+  MessageFormat is interpreted, never compiled to code, so it runs under
+  a Content Security Policy without `'unsafe-eval'`. Typed arguments
+  (`number`, `date`, `time`) format through `TM_UI_ARGUMENT_FORMATTER`:
+  numbers with `Intl`, dates and times as ISO 8601 by default, which an app
+  replaces with its calendar-aware formatting.
 - **Direction.** Flip `document.documentElement.dir` (and `lang`): the root
   `Directionality` follows live, so open modals mirror in place and every
   overlay opened afterwards takes the new direction.

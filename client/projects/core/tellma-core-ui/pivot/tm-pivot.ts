@@ -26,7 +26,7 @@ import {
 } from '@angular/core';
 import { ChevronDown, ChevronRight } from 'lucide';
 
-import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, type TmControlSize } from '@tellma/core-ui';
+import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, ɵtmRegisterUiStrings, type TmControlSize } from '@tellma/core-ui';
 import { tmComputeAxisWindow, type TmAxisWindow } from '@tellma/core-ui/grid-engine';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmIsApplePlatform, tmKeysMatch } from '@tellma/core-ui/kbd';
@@ -38,7 +38,7 @@ import {
   ɵtmPivotExpandableIds,
   ɵtmPivotFlattenRows,
   ɵtmPivotStronger,
-  type ɵTmPivotAxis,
+  ɵtmPivotVisibleUnder,
   type ɵTmPivotHeaderCell,
   type ɵTmPivotRow,
   type ɵTmPivotStyle,
@@ -61,6 +61,7 @@ import {
   type ɵTmPivotWidthPlan,
 } from './internal/pivot-widths';
 import { ɵtmPivotHeaderPieces, ɵtmPivotSegments } from './internal/pivot-window';
+import { TM_PIVOT_STRINGS_EN } from './tm-pivot-strings';
 import type {
   TmPivotAxis,
   TmPivotCell,
@@ -541,11 +542,11 @@ export class TmPivot {
   private readonly scroll = signal({ top: 0, left: 0 });
   /** The row height in force, from the density's row-height token. */
   private readonly rowHeight = signal(DEFAULT_ROW_HEIGHT);
-  /** Each measure's fit as measured so far, by measure label; it only widens. */
-  private readonly fitState = signal<{ readonly labels: readonly string[]; readonly widths: readonly number[] }>({
-    labels: [],
-    widths: [],
-  });
+  /**
+   * Each measure's fit as measured so far, by measure index as the user
+   * widths are; it only widens while the measure count holds.
+   */
+  private readonly fitState = signal<readonly number[]>([]);
   /** The resize in progress, if any. */
   private readonly drag = signal<Drag | null>(null);
 
@@ -559,6 +560,8 @@ export class TmPivot {
   private tooltip: CellTooltip | null = null;
   /** Set by Mod+C until the native copy event takes it. */
   private copyPending = false;
+  /** Set while the fits could not be measured because the pivot was not rendered (inside `display: none`). */
+  private unmeasured = false;
 
   // ---- structure ----
 
@@ -611,13 +614,11 @@ export class TmPivot {
 
   // ---- widths ----
 
-  /** Each measure's fit for the current measures (0 until measured). */
+  /** Each measure's fit for the current measure count (0 until measured). */
   private readonly fits = computed(() => {
-    const measures = this.model().measures;
     const state = this.fitState();
-    return Array.from({ length: this.measureCount() }, (_, index) =>
-      state.labels[index] === measures[index] ? (state.widths[index] ?? 0) : 0,
-    );
+    const count = this.measureCount();
+    return Array.from({ length: count }, (_, index) => (state.length === count ? (state[index] ?? 0) : 0));
   });
 
   /** The user's widths with a drag in progress applied. */
@@ -876,7 +877,9 @@ export class TmPivot {
         cells.push({
           key: `a${index}`,
           kind: 'attribute',
-          classes: this.leadClasses(`tm-pivot__attribute ${this.styleClass(row.style)}`, index + 1, plan),
+          classes:
+            this.leadClasses(`tm-pivot__attribute ${this.styleClass(row.style)}`, index + 1, plan) +
+            (row.style === 'total' ? ' tm-pivot__rule-block' : ''),
           column: index + 1,
           text: member.attributes?.[index] ?? '',
           start: index + 1 < plan.sticky ? leadOffsets[index + 1] : null,
@@ -886,7 +889,9 @@ export class TmPivot {
       // column, with its text read once while it stays rendered.
       for (const column of segments) {
         if (column.kind === 'gap') {
-          cells.push({ key: `g${column.from}`, kind: 'spacer', classes: 'tm-pivot__spacer', column: -1, text: null, start: null });
+          // The grand total's rule runs across the spacers too.
+          const classes = row.style === 'total' ? 'tm-pivot__spacer tm-pivot__rule-block' : 'tm-pivot__spacer';
+          cells.push({ key: `g${column.from}`, kind: 'spacer', classes, column: -1, text: null, start: null });
           continue;
         }
         const slot = columns.slots[Math.floor(column.index / measures)];
@@ -895,14 +900,15 @@ export class TmPivot {
         const key = row.index * stride + slot.index * measures + measure;
         let text = cache.get(key);
         if (text === undefined) {
-          text = model.text(member.id, columnId, measure);
+          // The model's callbacks run untracked: a new model is what re-reads them.
+          text = untracked(() => model.text(member.id, columnId, measure));
         }
         texts.set(key, text);
         const style = ɵtmPivotStronger(row.style, slot.style);
         let classes = `tm-pivot__cell tm-pivot__value ${this.styleClass(style)}`;
         if (drills) {
           classes +=
-            model.activatable === undefined || model.activatable(member.id, columnId)
+            model.activatable === undefined || untracked(() => model.activatable!(member.id, columnId))
               ? ' tm-pivot__value--link'
               : ' tm-pivot__value--refused';
         }
@@ -946,6 +952,8 @@ export class TmPivot {
   /** Wires the fit measurement, the size observers and the font re-measure. */
   constructor() {
     const destroyRef = inject(DestroyRef);
+    // The pivot's strings ship with it, beside the core table.
+    ɵtmRegisterUiStrings('pivot', TM_PIVOT_STRINGS_EN);
 
     // Section: development-mode shape checks, once per model.
     effect(() => {
@@ -975,18 +983,9 @@ export class TmPivot {
       earlyRead: () => {
         const model = this.model();
         this.resolvedSize();
-        return untracked(() => ({ labels: model.measures, widths: this.measureWidest(model) }));
+        return untracked(() => this.measureWidest(model));
       },
-      write: (measured) => {
-        const next = measured();
-        const previous = untracked(this.fitState);
-        this.fitState.set({
-          labels: next.labels,
-          widths: next.widths.map((width, index) =>
-            previous.labels[index] === next.labels[index] ? Math.max(width, previous.widths[index] ?? 0) : width,
-          ),
-        });
-      },
+      write: (measured) => this.widen(measured()),
     });
 
     // Section: the host and viewport sizes, read in the first frame and
@@ -996,7 +995,13 @@ export class TmPivot {
       write: (sizes) => {
         this.applySizes(sizes);
         const scroller = this.scroller().nativeElement;
-        const observer = new ResizeObserver(() => this.applySizes(this.readSizes()));
+        // A pivot first rendered hidden measures its fits once it shows.
+        const observer = new ResizeObserver(() => {
+          this.applySizes(this.readSizes());
+          if (this.unmeasured) {
+            this.widen(this.measureWidest(untracked(this.model)));
+          }
+        });
         observer.observe(this.host);
         observer.observe(scroller);
         destroyRef.onDestroy(() => observer.disconnect());
@@ -1006,16 +1011,7 @@ export class TmPivot {
     // Section: fonts that arrive after the first measure may widen a measure.
     const fonts = typeof document === 'undefined' ? undefined : document.fonts;
     if (fonts !== undefined) {
-      const remeasure = (): void => {
-        const model = untracked(this.model);
-        const widths = this.measureWidest(model);
-        this.fitState.update((state) => ({
-          labels: model.measures,
-          widths: widths.map((width, index) =>
-            state.labels[index] === model.measures[index] ? Math.max(width, state.widths[index] ?? 0) : width,
-          ),
-        }));
-      };
+      const remeasure = (): void => this.widen(this.measureWidest(untracked(this.model)));
       fonts.addEventListener('loadingdone', remeasure);
       destroyRef.onDestroy(() => fonts.removeEventListener('loadingdone', remeasure));
     }
@@ -1140,7 +1136,7 @@ export class TmPivot {
     }
     // Section: Mod+C copies through the native copy event, with the
     // clipboard API as the fallback where no copy event follows.
-    if (tmKeysMatch(event, 'Mod+C')) {
+    if (tmKeysMatch(event, 'Mod+C') && !this.hasUserSelection()) {
       this.copyPending = true;
       setTimeout(() => {
         if (this.copyPending) {
@@ -1201,15 +1197,20 @@ export class TmPivot {
 
   /** The native copy: the active cell's full text, unless the user selected text themselves. */
   protected onCopy(event: ClipboardEvent): void {
-    const selection = typeof window === 'undefined' ? null : window.getSelection();
-    if (selection !== null && !selection.isCollapsed && this.host.contains(selection.anchorNode)) {
+    this.copyPending = false;
+    if (this.hasUserSelection()) {
       return;
     }
-    this.copyPending = false;
     if (event.clipboardData !== null) {
       event.clipboardData.setData('text/plain', this.activeText());
       event.preventDefault();
     }
+  }
+
+  /** Whether the user selected text inside the pivot: a copy of it is left to the browser. */
+  private hasUserSelection(): boolean {
+    const selection = typeof window === 'undefined' ? null : window.getSelection();
+    return selection !== null && !selection.isCollapsed && this.host.contains(selection.anchorNode);
   }
 
   /** A press on a header's handle starts a resize. */
@@ -1332,7 +1333,7 @@ export class TmPivot {
     }
     this.expandedRows.set(next);
     this.announceToggle(member.label, !row.expanded, 'pivot.rowExpanded', () =>
-      this.visibleUnder(axis, row.index, next),
+      ɵtmPivotVisibleUnder(axis, row.index, next),
     );
     this.refocusAfterRender();
   }
@@ -1363,7 +1364,7 @@ export class TmPivot {
       }
     }
     this.announceToggle(member.label, !expanded, 'pivot.columnExpanded', () =>
-      this.visibleUnder(axis, index, next),
+      ɵtmPivotVisibleUnder(axis, index, next),
     );
     this.refocusAfterRender();
   }
@@ -1374,24 +1375,6 @@ export class TmPivot {
       ? untracked(this.translate(key, { label, count: count() }))
       : untracked(this.translate('pivot.collapsed', { label }));
     void this.announcer.announce(text, 'polite');
-  }
-
-  /**
-   * How many rows, or column groups, a member's expansion reveals: its
-   * children, and theirs while expanded. On the column axis an expanded
-   * descendant shows as its subtotal column, so the count is the same.
-   */
-  private visibleUnder(axis: ɵTmPivotAxis, index: number, expanded: ReadonlySet<number>): number {
-    let count = 0;
-    const stack = [...axis.children[index]];
-    while (stack.length > 0) {
-      const child = stack.pop() as number;
-      count += 1;
-      if (axis.children[child].length > 0 && expanded.has(axis.members[child].id)) {
-        stack.push(...axis.children[child]);
-      }
-    }
-    return count;
   }
 
   // ---- the active cell ----
@@ -1625,17 +1608,33 @@ export class TmPivot {
     }
   }
 
+  /** Takes measured fits: each measure only widens, unless the measure count changed. Ignores an unmeasured result. */
+  private widen(widths: readonly number[] | null): void {
+    if (widths !== null) {
+      this.fitState.update((previous) =>
+        previous.length === widths.length ? widths.map((width, index) => Math.max(width, previous[index] ?? 0)) : widths,
+      );
+    }
+  }
+
   /**
    * Each measure's widest value measured in the probe: text, padding and
    * rule. The values are asked of the model once per model; a font that
-   * arrives later, or a double-click fit, measures them again.
+   * arrives later, the pivot showing after a hidden first render, or a
+   * double-click fit measures them again. `null` while the probe is not
+   * rendered (the pivot sits inside `display: none`), which marks the fits
+   * unmeasured.
    */
-  private measureWidest(model: TmPivotModel): readonly number[] {
+  private measureWidest(model: TmPivotModel): readonly number[] | null {
     if (this.widestCache?.model !== model) {
       const values = Array.from({ length: Math.max(1, model.measures.length) }, (_, index) => model.widest(index));
       this.widestCache = { model, values };
     }
     const probe = this.probe().nativeElement;
+    this.unmeasured = probe.getClientRects().length === 0;
+    if (this.unmeasured) {
+      return null;
+    }
     const widths: number[] = [];
     for (const widest of this.widestCache.values) {
       if (widest === null || widest === '') {
@@ -1653,7 +1652,7 @@ export class TmPivot {
   private contentWidth(target: ɵTmPivotResizeTarget): number {
     const model = untracked(this.model);
     if (target.kind === 'measure') {
-      return this.measureWidest(model)[target.index] ?? 0;
+      return this.measureWidest(model)?.[target.index] ?? 0;
     }
     // Labels need no tabular figures, so a canvas measures them in bulk.
     const probe = this.probe().nativeElement;

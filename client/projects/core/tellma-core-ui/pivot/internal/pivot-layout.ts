@@ -188,6 +188,28 @@ export function ɵtmPivotExpandableIds(axis: ɵTmPivotAxis): ReadonlySet<number>
   return ids;
 }
 
+/**
+ * How many rows, or column groups, a member's expansion reveals: its
+ * children, and theirs while expanded. On the column axis an expanded
+ * descendant shows as its subtotal column, so the count is the same.
+ * Children are pushed one by one, so a member with any number of them
+ * never overflows a call's argument limit.
+ */
+export function ɵtmPivotVisibleUnder(axis: ɵTmPivotAxis, index: number, expanded: ReadonlySet<number>): number {
+  let count = 0;
+  const stack = [index];
+  while (stack.length > 0) {
+    const children = axis.children[stack.pop() as number];
+    count += children.length;
+    for (const child of children) {
+      if (axis.children[child].length > 0 && expanded.has(axis.members[child].id)) {
+        stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+
 /** One visible body row, in display order. */
 export interface ɵTmPivotRow {
   /** The member's index on the row axis. */

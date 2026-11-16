@@ -9,6 +9,7 @@ import type { ModifierKeys } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Component, signal, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { TranslocoService } from '@jsverse/transloco';
 
 import { provideTellmaUi, type TmControlSize } from '@tellma/core-ui';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
@@ -116,7 +117,12 @@ function flat(count: number, prefix: string, from = 1): TmPivotMember[] {
 @Component({
   imports: [Dir, TmPivot],
   template: `
-    <div [dir]="dir()" [style.inline-size.px]="width()" [style.block-size.px]="height()">
+    <div
+      [dir]="dir()"
+      [style.inline-size.px]="width()"
+      [style.block-size.px]="height()"
+      [style.display]="hidden() ? 'none' : null"
+    >
       <tm-pivot
         ariaLabel="Sales"
         [model]="model()"
@@ -139,6 +145,8 @@ class Host {
   readonly width = signal(1000);
   /** The host's block size, px. */
   readonly height = signal(420);
+  /** Whether the pivot sits inside `display: none`, as in an unselected tab panel. */
+  readonly hidden = signal(false);
   /** The model rendered. */
   readonly model = signal<TmPivotModel>(cube().model);
   /** Whether value cells drill. */
@@ -328,6 +336,9 @@ describe('tm-pivot', () => {
       const rule = getComputedStyle(await cell('Total', 0), '::before');
       expect(rule.height).toBe('2px');
       expect(rule.backgroundColor).toBe(colorOf(resolved('--border-strong')));
+      // The row's rule runs across its attribute cell too, unbroken.
+      const totalRow = await (await pivot.getValueCell('Total', 0)).getRow();
+      expect(getComputedStyle(cellAt(element, totalRow, 1), '::before').height).toBe('2px');
       // The total column's rule sits on its inline-start edge.
       const column = getComputedStyle(await cell('Tower', 2), '::after');
       expect(column.width).toBe('2px');
@@ -647,6 +658,57 @@ describe('tm-pivot', () => {
       expect(event.defaultPrevented).toBe(true);
       expect(event.clipboardData!.getData('text/plain')).toBe('1,234,567,890.12 long enough to be cut');
     });
+
+    it('writes the focused cell’s text through the clipboard API when no copy event follows Mod+C', async () => {
+      const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+      try {
+        const { element, pivot } = await setup();
+        await pivot.press('ArrowRight');
+        await pivot.press('ArrowRight');
+        const text = cellAt(element, 2, 2).textContent!.trim();
+        // A copy event that follows the keys takes the copy: nothing is written.
+        await pivot.press('c', MOD);
+        cellAt(element, 2, 2).dispatchEvent(
+          new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() }),
+        );
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(write).not.toHaveBeenCalled();
+        // Without one, the fallback writes the cell's text.
+        await pivot.press('c', MOD);
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(write).toHaveBeenCalledExactlyOnceWith(text);
+      } finally {
+        write.mockRestore();
+      }
+    });
+
+    it('leaves a text selection the user made inside the pivot to the browser on Mod+C', async () => {
+      const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+      try {
+        const { element, pivot } = await setup();
+        await pivot.press('ArrowRight');
+        await pivot.press('ArrowRight');
+        // The user drags across two value cells.
+        const range = document.createRange();
+        range.setStartBefore(cellAt(element, 2, 2).firstChild!);
+        range.setEndAfter(cellAt(element, 2, 3).lastChild!);
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+        await pivot.press('c', MOD);
+        expect(window.getSelection()!.isCollapsed).toBe(false);
+        // No fallback is armed: nothing is written, whether or not a copy event follows.
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(write).not.toHaveBeenCalled();
+        const copy = new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() });
+        cellAt(element, 2, 2).dispatchEvent(copy);
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(copy.defaultPrevented).toBe(false);
+        expect(write).not.toHaveBeenCalled();
+      } finally {
+        window.getSelection()!.removeAllRanges();
+        write.mockRestore();
+      }
+    });
   });
 
   describe('widths', () => {
@@ -691,6 +753,30 @@ describe('tm-pivot', () => {
       host.model.set(wide('-1,234,567,890,123,456,789,000,000.45').model);
       await settle(fixture);
       expect(await (await pivot.getValueCell('Row 1', 0)).getWidth()).toBe(150);
+    });
+
+    it('measures the fits once a pivot first rendered hidden is shown', async () => {
+      const long = '-1,234,567,890,123.45';
+      const visible = await setup((h) => h.model.set(wide(long).model));
+      const fitted = await (await visible.pivot.getValueCell('Row 1', 0)).getWidth();
+      expect(fitted).toBeGreaterThan(112);
+      TestBed.resetTestingModule();
+      const { fixture, host, pivot } = await setup((h) => {
+        h.hidden.set(true);
+        h.model.set(wide(long).model);
+      });
+      host.hidden.set(false);
+      await settle(fixture);
+      expect(await (await pivot.getValueCell('Row 1', 0)).getWidth()).toBe(fitted);
+    });
+
+    it('keeps a measure’s width when a later result renames it with narrower values', async () => {
+      const { fixture, host, pivot } = await setup((h) => h.model.set(wide('-1,234,567,890,123.45').model));
+      const width = await (await pivot.getValueCell('Row 1', 0)).getWidth();
+      // A language switch: the measure's label is translated, its widest value shorter.
+      host.model.set(wide('1', ['المبلغ']).model);
+      await settle(fixture);
+      expect(await (await pivot.getValueCell('Row 1', 0)).getWidth()).toBe(width);
     });
 
     it('resizes every column of a measure by its handle, writing the user’s widths', async () => {
@@ -808,6 +894,39 @@ describe('tm-pivot', () => {
       await settle(fixture);
       expect(await pivot.getStickyColumnCount()).toBe(0);
       expect(await (await pivot.getCell({ role: 'rowheader', text: 'A' })).getWidth()).toBe(120);
+    });
+  });
+
+  describe('the model’s callbacks', () => {
+    it('run untracked, so a callback may write a signal of its own', async () => {
+      const calls = signal(0);
+      const model = cube({
+        text: (row, column, measure) => {
+          calls.update((count) => count + 1);
+          return `${row}/${column}/${measure}`;
+        },
+        activatable: () => {
+          calls.update((count) => count + 1);
+          return true;
+        },
+      }).model;
+      const { element } = await setup((h) => h.model.set(model));
+      expect(renderedTexts(element).length).toBeGreaterThan(0);
+      expect(calls()).toBeGreaterThan(renderedTexts(element).length);
+    });
+  });
+
+  describe('strings', () => {
+    it('are the pivot’s own English, which a tmUi translation overrides', async () => {
+      const { fixture, pivot, announce } = await setup();
+      await pivot.press('Enter');
+      expect(announce).toHaveBeenLastCalledWith('Riyadh expanded, 2 rows', 'polite');
+      TestBed.inject(TranslocoService).setTranslation({ tmUi: { pivot: { collapsed: '{label} folded' } } }, 'en', {
+        merge: true,
+      });
+      await fixture.whenStable();
+      await pivot.press('Enter');
+      expect(announce).toHaveBeenLastCalledWith('Riyadh folded', 'polite');
     });
   });
 

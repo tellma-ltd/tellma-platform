@@ -165,11 +165,20 @@ export function ɵtmPivotWidthPlan(input: ɵTmPivotWidthInput): ɵTmPivotWidthPl
     measures = fixed.map((width, index) => width ?? Math.max(MEASURE_SCROLLING_MIN, fit(index)));
   }
   const slotWidth = measures.reduce((sum, width) => sum + width, 0);
-  // Section: the sticky block, decided on default widths only.
-  const sticky = ɵtmPivotStickyCount(input.hostWidth, input.attributeCount);
+  // Section: the sticky block, decided on default widths only. A user width
+  // a resize could not reach (set at a wider host, or restored from page
+  // state) never lets it leave the data less than 112 px: only the prefix
+  // that still leaves that room sticks, and the user width is kept.
+  let sticky = 0;
   let stickyWidth = 0;
-  for (let index = 0; index < sticky; index++) {
-    stickyWidth += index === 0 ? rowHeader : attributes[index - 1];
+  const stickyDefault = ɵtmPivotStickyCount(input.hostWidth, input.attributeCount);
+  while (sticky < stickyDefault) {
+    const width = sticky === 0 ? rowHeader : attributes[sticky - 1];
+    if (stickyWidth + width > input.hostWidth - STICKY_RESERVE) {
+      break;
+    }
+    stickyWidth += width;
+    sticky++;
   }
   return {
     rowHeader,

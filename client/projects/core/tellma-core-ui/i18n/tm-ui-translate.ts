@@ -19,6 +19,7 @@ import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 import { TM_UI_STRINGS_EN } from './strings-en';
 import { TM_ACTIVE_LOCALE } from './tm-active-locale';
 import { ɵtmFormatMessage } from './tm-icu';
+import type { TmUiTranslationTable } from './tm-translations-loader';
 import { TM_UI_ARGUMENT_FORMATTER } from './tm-ui-argument-formatter';
 
 /**
@@ -61,12 +62,33 @@ export const TM_UI_MESSAGE_CONTEXT = new InjectionToken<Signal<TmUiMessageContex
 );
 
 /**
+ * Every built-in English string by its top-level key: the core table's,
+ * then the tables entry points registered beside it.
+ */
+const ENGLISH: Record<string, TmUiTranslationTable> = { ...TM_UI_STRINGS_EN };
+
+/**
+ * Registers an entry point's English default strings under a top-level key
+ * of the library's strings (`'pivot'` serves `'pivot.subtotal'`), so the
+ * strings ship with the entry point that reads them rather than in the
+ * core table. They resolve exactly as the core's do: a translation under
+ * the tmUi namespace (a locale pack's or the app's own) wins, and the
+ * registered English is the fallback. A key the core table already has is
+ * never shadowed. Internal to the library's entry points.
+ */
+export function ɵtmRegisterUiStrings(scope: string, strings: TmUiTranslationTable): void {
+  // A key already taken (a core table's) keeps its strings.
+  ENGLISH[scope] ??= strings;
+}
+
+/**
  * Resolves a key against the packaged English strings ('errors.required' →
- * the English default). Returns null when even English lacks the key (a
- * missing CUSTOM kind — the caller decides the last-resort guard).
+ * the English default), those entry points registered included. Returns
+ * null when even English lacks the key (a missing CUSTOM kind — the caller
+ * decides the last-resort guard).
  */
 export function tmEnglishString(key: string): string | null {
-  let node: unknown = TM_UI_STRINGS_EN;
+  let node: unknown = ENGLISH;
   for (const part of key.split('.')) {
     if (node === null || typeof node !== 'object' || !(part in node)) {
       return null;

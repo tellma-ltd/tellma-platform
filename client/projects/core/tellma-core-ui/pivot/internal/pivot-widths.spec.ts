@@ -114,6 +114,23 @@ describe('ɵtmPivotWidthPlan', () => {
     expect(wide.sticky).toBe(3);
     expect(wide.stickyWidth).toBe(600 + 96 + 96);
   });
+
+  it('sticks only the prefix that leaves the data 112px when a user width is wider than a resize allows', () => {
+    // A 600px row header restored into a 500px host: nothing sticks, and the width is kept.
+    const restored = ɵtmPivotWidthPlan(input({ hostWidth: 500, available: 500, user: { rowHeader: 600 } }));
+    expect(restored.sticky).toBe(0);
+    expect(restored.stickyWidth).toBe(0);
+    expect(restored.rowHeader).toBe(600);
+    // At 1,180px the defaults stick three columns, and 1,068px is the room:
+    // 600 + 400 fits, the second attribute's 96 more does not.
+    const attribute = ɵtmPivotWidthPlan(input({ hostWidth: 1180, user: { rowHeader: 600, attributes: [400] } }));
+    expect(attribute.sticky).toBe(2);
+    expect(attribute.stickyWidth).toBe(1000);
+    // At 1,000px the defaults stick two, and 888px is the room: 600 + 400 does not fit.
+    const both = ɵtmPivotWidthPlan(input({ hostWidth: 1000, user: { rowHeader: 600, attributes: [400] } }));
+    expect(both.sticky).toBe(1);
+    expect(both.stickyWidth).toBe(600);
+  });
 });
 
 describe('resizing', () => {

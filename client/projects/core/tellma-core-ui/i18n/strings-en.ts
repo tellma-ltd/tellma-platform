@@ -364,18 +364,4 @@ export const TM_UI_STRINGS_EN = {
     moveToTop: 'Move to top',
     moveToBottom: 'Move to bottom',
   },
-  pivot: {
-    // A column member's subtotal header; the label is the member's.
-    subtotal: '{label} total',
-    // Follows a phantom member's label: the parent's own facts, apart from its children's.
-    direct: '(direct)',
-    // A value cell that does not drill: its tooltip, its description, and what Enter announces.
-    notActivatable: 'Only the finest cells open their rows in this report.',
-    // Announced when a row member expands, with the rows it reveals.
-    rowExpanded: '{label} expanded, {count, plural, one {# row} other {# rows}}',
-    // Announced when a column member expands, with the columns it reveals.
-    columnExpanded: '{label} expanded, {count, plural, one {# column} other {# columns}}',
-    // Announced when a member collapses.
-    collapsed: '{label} collapsed',
-  },
 } as const;
