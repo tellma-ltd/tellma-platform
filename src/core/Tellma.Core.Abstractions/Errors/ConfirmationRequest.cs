@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Collections.ObjectModel;
+using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Internal;
 
 namespace Tellma.Core.Abstractions.Errors
@@ -28,6 +30,8 @@ namespace Tellma.Core.Abstractions.Errors
         public string Key { get; } = ValidateKey(Key);
 
         /// <inheritdoc cref="ConfirmationRequest(string, IReadOnlyList{long}, IReadOnlyDictionary{string, object?})" />
+        /// <remarks>On the wire each id is a JSON number within ±(2^53 − 1), else a string (<see cref="DisplayIds" />).</remarks>
+        [JsonConverter(typeof(DisplayIdListJsonConverter))]
         public IReadOnlyList<long> Ids { get; } = CopyIds(Ids);
 
         /// <inheritdoc cref="ConfirmationRequest(string, IReadOnlyList{long}, IReadOnlyDictionary{string, object?})" />

@@ -7,6 +7,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Core.Abstractions.Tests.Api
 {
@@ -45,13 +46,13 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Fact]
-        public void An_entities_result_writes_its_ids_as_wire_strings_and_its_rows()
+        public void An_entities_result_writes_its_ids_in_the_key_type_and_its_rows()
         {
-            EntitiesResult<Row> result = new() { Ids = [4], Entities = [new Row { Name = "east" }] };
+            EntitiesResult<KeyedRow> result = new() { Ids = [4], Entities = [new KeyedRow { Id = 4, Name = "east" }] };
 
-            Assert.Equal(/*lang=json,strict*/ """{"ids":["4"],"entities":[{"name":"east"}]}""", Write(result));
-            _ = Assert.Throws<ArgumentNullException>(() => new EntitiesResult<Row> { Ids = null!, Entities = [] });
-            _ = Assert.Throws<ArgumentNullException>(() => new EntitiesResult<Row> { Ids = [], Entities = null! });
+            Assert.Equal(/*lang=json,strict*/ """{"ids":[4],"entities":[{"name":"east","id":4}]}""", Write(result));
+            _ = Assert.Throws<ArgumentNullException>(() => new EntitiesResult<KeyedRow> { Ids = null!, Entities = [] });
+            _ = Assert.Throws<ArgumentNullException>(() => new EntitiesResult<KeyedRow> { Ids = [], Entities = null! });
         }
 
         /// <summary>Serializes a value with the platform's options.</summary>
@@ -74,6 +75,13 @@ namespace Tellma.Core.Abstractions.Tests.Api
 
         /// <summary>A row of a save body.</summary>
         public sealed class Row
+        {
+            /// <summary>A scalar.</summary>
+            public string? Name { get; set; }
+        }
+
+        /// <summary>A row of an entities result: an entity, whose key type the result writes its ids in.</summary>
+        public sealed class KeyedRow : Entity<int>
         {
             /// <summary>A scalar.</summary>
             public string? Name { get; set; }

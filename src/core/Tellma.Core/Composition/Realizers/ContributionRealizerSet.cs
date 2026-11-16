@@ -29,6 +29,7 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new ModelContributionRealizer())
                 .Add(new CalendarContributionRealizer())
                 .Add(new ValueSetContributionRealizer())
+                .Add(new SettingKeysContributionRealizer())
                 .Add(new NotificationTypeContributionRealizer())
                 .Add(new NotificationChannelContributionRealizer())
                 .Add(new ClientEventContributionRealizer())

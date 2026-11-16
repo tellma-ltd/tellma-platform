@@ -107,6 +107,12 @@ namespace Tellma.Core.Abstractions.Data
         public const string Visible = "@tm_visible";
 
         /// <summary>
+        ///     Whether the connect prologue returns the tenant's settings rows: bound to 1 when the
+        ///     process holds no current settings for the tenant when the batch is composed.
+        /// </summary>
+        public const string LoadSettings = "@tm_LoadSettings";
+
+        /// <summary>
         ///     The three reserved prefixes. <see cref="EnginePrefix" /> and <see cref="StatementPrefix" />
         ///     reserve a name only when a batch ordinal and <c>_</c> follow them (<c>@qx0_</c>,
         ///     <c>@tb12_</c>); <see cref="BatchPrefix" /> reserves every name it begins.

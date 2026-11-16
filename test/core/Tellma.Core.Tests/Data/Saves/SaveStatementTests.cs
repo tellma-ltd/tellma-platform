@@ -221,8 +221,10 @@ namespace Tellma.Core.Tests.Data.Saves
                 StringComparison.Ordinal);
             Assert.Contains("hierarchyid::Parse('/0/' + CAST(s.[Id] AS varchar(20)) + '/')", text, StringComparison.Ordinal);
 
-            // The node is the tree statements' to maintain: never in a SET list.
-            Assert.DoesNotContain("t.[Node] =", text, StringComparison.Ordinal);
+            // The node is the tree statements' to maintain: the one assignment is the re-path from the walked paths.
+            int assignment = text.IndexOf("t.[Node] =", StringComparison.Ordinal);
+            Assert.Equal(assignment, text.LastIndexOf("t.[Node] =", StringComparison.Ordinal));
+            Assert.StartsWith("UPDATE t SET t.[Node] = hierarchyid::Parse(x.[Path])", text[(assignment - "UPDATE t SET ".Length)..], StringComparison.Ordinal);
         }
 
         [Fact]

@@ -48,7 +48,7 @@ namespace Tellma.Core.Analyzers
             category: DataAccess,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true,
-            description: "IDataBatch.Sql text is parsed with ScriptDom. It must be an interpolated string whose holes are values, identifiers or table-valued parameters; it declares every table it writes; it runs no MERGE, no dynamic SQL and no procedure other than sp_sequence_get_range and sp_getapplock; it leaves the transaction and the isolation level to the executor; it declares and assigns no reserved name; and it raises errors only with THROW inside the platform and distribution bands.");
+            description: "IDataBatch.Sql text is parsed with ScriptDom. It must be an interpolated string whose holes are values, identifiers or table-valued parameters; it declares every table it writes; it runs no MERGE, no dynamic SQL and no procedure other than sp_sequence_get_range and sp_getapplock; it leaves the transaction and the isolation level to the executor; it declares and assigns no reserved name; and it raises errors only with THROW inside the platform and distribution bands. IContextLoader.Sql text is held to the same rules and reads only: it writes no table but a table variable it declares, its options declare no writes, it executes no procedure, and it names no reserved name at all.");
 
         /// <summary>TELLMA0004: a direct call to an action method.</summary>
         public static readonly DiagnosticDescriptor ActionCall = new(

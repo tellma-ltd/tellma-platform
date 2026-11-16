@@ -27,7 +27,8 @@ import { appStable } from '../support/settle';
 /**
  * Virtualization structure (spec 0004 §4: window + overscan + the
  * always-rendered active row; the CI-gated structural half of DoD 1) and
- * the §12 state-lifetime walk over the grid-states story.
+ * the §12 state-lifetime walk over the grid-states story, whose A and B
+ * contents are separate records that each bind their own rows.
  */
 
 /** The story's seeded Fisher–Yates, replicated to predict the shuffle. */
@@ -66,9 +67,7 @@ test.describe('windowed rendering (100k rows)', () => {
     expect(Math.abs(spacerHeight - 100_000 * rowHeight)).toBeLessThanOrEqual(rowHeight);
   });
 
-  test('scrolling to the middle renders that window, aria-rowindex following', async ({
-    page,
-  }) => {
+  test('scrolling to the middle renders that window, aria-rowindex following', async ({ page }) => {
     const rowHeight = await rowHeightOf(page);
     const clientHeight = await clientHeightOf(page);
     const bound = Math.ceil(clientHeight / rowHeight) + 10;
@@ -128,9 +127,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     await gotoGrid(page, 'grid-states');
   });
 
-  test('scroll and active cell survive unmount/remount for the same content', async ({
-    page,
-  }) => {
+  test('scroll and active cell survive unmount/remount for the same content', async ({ page }) => {
     await setScrollTop(page, 256);
     await cell(page, 20, 1).click();
     await expect(cell(page, 20, 1)).toBeFocused();
@@ -166,6 +163,70 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     await expect.poll(() => scrollTopOf(page)).toBe(128);
     await expect(activeCell(page)).toHaveAttribute('data-row', '5');
     await expect(activeCell(page)).toHaveAttribute('data-col', '1');
+  });
+
+  // A new contentKey comes with its own rows array (the grid's contentKey
+  // contract, spec 0010 §C.9). The story's A and B are separate records, so
+  // a switch that kept the outgoing record's array, or handed over a copy
+  // of it, would show A's edits under B; this pins each record's own rows.
+  // Every note names its record, so a restore of the other record's seed
+  // shows too.
+  test("each content binds its own rows and restores its own seed, never the other's", async ({
+    page,
+  }) => {
+    // A: drop the middle ten rows (ids 20..29), then refresh the rest.
+    await expectCellText(page, 5, 3, 'note 5 v0 (A)');
+    await page.getByTestId('remove-rows').click();
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
+    await page.getByTestId('refresh-rows').click();
+    await expectCellText(page, 5, 1, '1,105');
+    await expectCellText(page, 5, 3, 'note 5 v1 (A)');
+
+    // A → B: B's own seed, untouched by A's edits.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('content-key-label')).toHaveText('B');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 5, 1, '105');
+    await expectCellText(page, 5, 3, 'note 5 v0 (B)');
+
+    // B: shuffle its own rows (the story's seeded reorder).
+    const firstAfterShuffle = shuffledIds(50)[0];
+    expect(firstAfterShuffle).not.toBe(0); // the shuffle visibly moves row 0
+    await page.getByTestId('shuffle-rows').click();
+    await expectCellText(page, 0, 0, `Row ${firstAfterShuffle}`);
+
+    // B → A: A kept its edits, and B's shuffle is not among them.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('content-key-label')).toHaveText('A');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
+    await expectCellText(page, 0, 0, 'Row 0');
+    await expectCellText(page, 5, 1, '1,105');
+
+    // A → B: B kept its shuffle, and A's refresh is not in it.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('content-key-label')).toHaveText('B');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 0, 0, `Row ${firstAfterShuffle}`);
+    await expectCellText(page, 0, 1, String(100 + firstAfterShuffle));
+
+    // B: Restore data brings back B's own seed, unshuffled.
+    await page.getByTestId('restore-data').click();
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 0, 0, 'Row 0');
+    await expectCellText(page, 5, 3, 'note 5 v0 (B)');
+
+    // B → A: B's restore left A's edits alone.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('content-key-label')).toHaveText('A');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '41');
+    await expectCellText(page, 5, 1, '1,105');
+    await expectCellText(page, 5, 3, 'note 5 v1 (A)');
+
+    // A: Restore data brings back A's own seed, not B's.
+    await page.getByTestId('restore-data').click();
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '51');
+    await expectCellText(page, 5, 1, '105');
+    await expectCellText(page, 5, 3, 'note 5 v0 (A)');
   });
 
   test('removing the active row drops activation to the nearest row, same column', async ({
@@ -217,9 +278,7 @@ test.describe('state lifetimes (§12 walk on grid-states)', () => {
     await expect(cell(page, target, 2)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('column widths survive remount AND content switches (keyed by gridId)', async ({
-    page,
-  }) => {
+  test('column widths survive remount AND content switches (keyed by gridId)', async ({ page }) => {
     const header = colHeader(page, 0); // Name, fixed width 140
     const before = (await header.boundingBox())!;
 

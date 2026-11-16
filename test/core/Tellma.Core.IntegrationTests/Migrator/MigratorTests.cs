@@ -49,7 +49,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Migrate_turns_on_read_committed_snapshot_in_a_fresh_catalog_another_connection_holds_open()
         {
             MigratorHarness migrator = new(sql, "mig_held");
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{migrator.CatalogName}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, migrator.CatalogName, cancellationToken: Token);
 
             // A web host started before the catalog existed: its connection stays open in the database.
             SqlConnectionStringBuilder unpooled = new(migrator.CatalogConnectionString) { Pooling = false };
@@ -66,7 +66,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Migrate_refuses_an_existing_catalog_in_another_collation()
         {
             MigratorHarness migrator = new(sql, "mig_collation");
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{migrator.CatalogName}] COLLATE SQL_Latin1_General_CP1_CI_AS;");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, migrator.CatalogName, "SQL_Latin1_General_CP1_CI_AS", Token);
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
@@ -374,7 +374,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // --- An operator's database: a history table, read-committed snapshot and the query store off ---
             string name = migrator.TenantDatabaseName(5);
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{name}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, name, cancellationToken: Token);
             await SqlServerFixture.ExecuteAsync(
                 migrator.TenantConnectionString(5),
                 "ALTER DATABASE CURRENT SET QUERY_STORE = OFF;",
@@ -569,10 +569,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
+            // The platform's own settings step runs beside the three.
             Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
-            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 3 step(s)", StringComparison.Ordinal));
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 4 step(s)", StringComparison.Ordinal));
             Assert.Equal(
-                ["probe.counter", "probe.seed-a", "probe.seed-b"],
+                ["core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
                 await ListAsync(migrator.TenantConnectionString(1), "SELECT [Step] FROM [dbo].[__TellmaProvisioning] ORDER BY [Step];"));
         }
 
