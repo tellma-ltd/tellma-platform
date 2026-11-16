@@ -22,7 +22,7 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide';
+import { ArrowDown, ArrowUp } from 'lucide';
 
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmMenu } from '@tellma/core-ui/menu';
@@ -34,13 +34,6 @@ import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
 import { ɵTmGridEndCell } from './grid-end-cell';
 import { ɵTmGridTouchHandles } from './touch-handles';
-
-// The tree expander's two glyphs, shared by every grid so tm-icon validates
-// each once. Expanded points down; collapsed points along the reading
-// direction, so it mirrors in right-to-left text (the down chevron is
-// symmetric and never needs to).
-const EXPANDED_GLYPH: TmIconSource = ChevronDown;
-const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
 
 /** The ascending sort indicator: a vertical arrow, which never mirrors. */
 const SORT_ASC_GLYPH: TmIconSource = ArrowUp;
@@ -288,37 +281,11 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                   [style.text-align]="cell.align"
                 >
                   @if (cell.hierarchy) {
-                    <!-- Tree affordance: level indent, the pointer-only
-                         expander, and a RESERVED lazy-loading spinner slot,
-                         so the spinner appearing shifts nothing. -->
-                    <span
-                      class="tm-grid__indent"
-                      aria-hidden="true"
-                      [style.--grid-level]="cell.level"
-                    ></span>
-                    <span class="tm-grid__twisty" aria-hidden="true">
-                      @if (cell.expander !== null) {
-                        <!-- Two glyphs, swapped: expanded points down, and
-                             collapsed points along the reading direction,
-                             mirrored under the live computed direction. -->
-                        <button
-                          type="button"
-                          class="tm-grid__expander"
-                          data-tm-expander
-                          tabindex="-1"
-                        >
-                          <tm-icon
-                            class="tm-grid__expander-glyph"
-                            [svg]="cell.expander === 'expanded' ? expandedGlyph : collapsedGlyph"
-                          />
-                        </button>
-                      }
-                    </span>
-                    <span class="tm-grid__childspin" aria-hidden="true">
-                      @if (cell.loadingChildren) {
-                        <tm-spinner class="tm-grid__childspin-spinner" data-tm-childspin />
-                      }
-                    </span>
+                    <!-- The tree affordance, which the tree grid declares. -->
+                    <ng-container
+                      [ngTemplateOutlet]="core().treeAffordance()"
+                      [ngTemplateOutletContext]="{ $implicit: cell }"
+                    />
                   }
                   @if (cell.editing) {
                     <div class="tm-grid__editor" data-tm-editor>
@@ -488,10 +455,6 @@ export class ɵTmGridView {
   /** The composition root this view renders from (built by the grid shell). */
   readonly core = input.required<ɵTmGridViewCore>();
 
-  /** The tree expander's glyph on an expanded row: a chevron pointing down. */
-  protected readonly expandedGlyph = EXPANDED_GLYPH;
-  /** The tree expander's glyph on a collapsed row, mirrored in right-to-left text. */
-  protected readonly collapsedGlyph = COLLAPSED_GLYPH;
   /** The ascending sort indicator: an up arrow. */
   protected readonly sortAscGlyph = SORT_ASC_GLYPH;
   /** The descending sort indicator: a down arrow. */

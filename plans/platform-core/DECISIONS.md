@@ -359,6 +359,50 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-101 (orchestrator, 2026-11-16): PC-094 and PC-151 spec misalignments for Ahmad
+
+- Spec 0011 §2.2 says the deployment version comes from the entry assembly. PC-094's DeploymentVersionsReader reads the composition method's assembly first, because under test hosts and tools the entry assembly is not the distribution. Spec 0024 §3.1 and 0011 §2.2 should agree on that order.
+- Spec 0011 §1.2 has the SPA proxy port resolved at runtime. PC-094 computes it in MSBuild from .dev-ports.local, because the SPA proxy reads it before the host runs.
+- PC-094's interim client stand-ins (main.ts with bootstrapApplication, local tmEnglish/tmArabic, the angular.json style list, the minimal server AcmeFeature) carry to PC-103, PC-104 and PC-092 (LEDGER Status notes).
+- PC-151 exempts the date-range and date-time pickers (Alt+ArrowDown) from spec 0023 §12's keydown-to-paint gate: only aria-expanded flips in the key's frame, because spec 0005 §16 loads the calendar popup through @defer (on immediate). Painting in the key's frame would need the popup chunk un-deferred, which changes spec 0005's performance rule and the date pickers' budget. The exemption is tracked; Ahmad rules if he wants the paint. (Corrected 2026-11-16 after PC-151 R1-4: the @defer is from spec 0005 §16, not spec 0010, and date-time is affected too.)
+
+### D-100 (orchestrator, 2026-11-15): PC-F46 goes to review with the nightly tiles probe unproven on a loaded host
+
+- Situation: PC-F46 cut the 10,000-tile scroll cost from 35-67 to 1-7 tasks over 50 ms per 80 wheel steps, interleaved on the same host (median task 26-31 ms, was 32-56). The nightly @perf probe, which asserts zero, still sees 2-26 long tasks on this host. The host is loaded by five concurrent slots, so the number is noise-bound. The implementer reported status=blocked for that reason. Every PR-tier gate passes.
+- Ruling: the item goes to Review 1 as usual. The probe is nightly-tier (PLAN.md §6), so it does not gate a PR-tier checkpoint. Its first verdict on a quiet host is the platform-core nightly after integration, recorded under Flaky as a watch. If it fails there, a follow-up item chooses between a spec 0023 §12 bound Ahmad would rule on (a count or percentile) and re-binding tm-image in place (a tiles budget raise under D-031). The ARCHITECTURE.md tiles sentence and the spec 0005 §7.2/§7.4 deviations (shared object URLs; the on-screen blob stands in under an unknown stamp) are reviewed with the item.
+
+### D-099 (orchestrator, 2026-11-15): PC-217 holds with three spec 0010 §A.3 gaps for Ahmad
+
+PC-217 (client ID metadata documents) holds at a94fb9e4 after two reviews. Spec 0010 §A.3 should be brought in line with the code in three places (docs/ is not edited in the run):
+- (a) The option list lacks MaxConcurrentFetches (default 16, with separate slots for the refresh and probe budgets) and MaxInFlightPerHost (2 per host within each budget). Both exist so that published documents cannot starve real clients.
+- (b) The per-host limit is split into a refresh budget and a probe budget, so one instance can fetch up to twice the spec's per-host rate. The refresh budget is only for clients whose row holds an authorization; otherwise an attacker's own ids would buy protected slots after one probe.
+- (c) §A.3 allows http://[::1] loopback redirects for native clients, but Chromium ignores an IPv6 literal in CSP form-action, so the consent and resumed sign-in pages cannot let such a redirect through. The code emits no source for an IPv6-literal host (pinned by an E2E test). Native clients must use 127.0.0.1 or localhost for browser consent.
+Other choices, recorded in the review file: rows carry a fetched-at stamp and an older copy never overwrites a newer row; the metadata cache is LRU and evicts unauthorized entries first; an expired copy is not served on a purely local refusal.
+
+### D-098 (orchestrator, 2026-11-15): entry points register their own UI strings; no "." raise for strings only a lazy entry point reads
+
+- Situation: PC-193 (tm-pivot) raised "." from 9.14 to 9.33 KB (measured 9.23) to hold English strings that only the lazily loaded ./pivot reads. It would be the seventh raise on ".", past D-031's limit of three before a re-split. The cause is structural: English comes from the single TM_UI_STRINGS_EN table in ".", and an entry point has no way to register its own strings. ./pivot has about 1.1 KB of room under its spec ceiling.
+- Ruling: PC-193 adds a small string-registration seam to "." so an entry point can contribute its own default strings, typed and overridable through the same localisation path as the core table. The pivot strings move into ./pivot. "." may rise only by the seam's own bytes, under D-031's conditions (budgetNotes entry, reviewer checks the measurement). The 9.33 raise is withdrawn. Later entry points with strings that only they read follow the same seam. This is the re-split D-031 asks for, applied to strings, which are what has driven the "." raises.
+- Revisit if: "." rises again for anything other than strings every entry point reads.
+
+### D-097 (2026-11-15): PC-064 is released over the cap, alongside PC-066's integration
+
+Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy agents. He also widened the allowlist for `git push -q origin HEAD:platform-core`. That breaks two rules for this one item: the cap, and one release at a time. Both releases merge and gate independently, and whichever pushes second gets a non-fast-forward rejection. That item fetches, merges again, re-runs the gates the new merge touched (the full gate if any C# project or the client changed), and pushes again. Nothing is forced. The CI watch, ledger snapshot and next release follow each landed push as usual.
+
+### D-096 (2026-11-15): spec 0017 §6.4 BlobContainerStep goes to PC-089; PC-141's skipped rows carry to their seam checkpoints
+
+- Ruling: spec 0017 §6.4 (the `core.blob-container` provisioning step, BlobContainerStep) is in no checkpoint's Sections: PC-017 covers §6.1-§6.2 and PC-089 §6.3. PC-089 takes it, since it builds the per-tenant containers and EnsureTenant the step drives. The carry is on PC-089's status row.
+- Carries: PC-141 left six Acme §10 rows on conditional skips (PlatformSeams, keyed on each seam's presence), so each runs once its seam lands. The checkpoint that lands each seam must see it run green: PC-078 (first request binds UserId, Frozen read, ReadOnly read stamps activity), PC-090 (AllowWhenReadOnly action), PC-100 (RunsWhenReadOnly job), and PC-089 for the provisioning-record row (it needs core.bootstrap-administrator from PC-078, core.settings from PC-049 and core.blob-container from PC-089, and PC-089 lands last of the three).
+- Why: a skipped row with no owner never runs. The conditional skip makes the row run by itself; the carry makes its owner responsible for seeing it pass.
+
+### D-095 (2026-11-15): PC-066 holds with two spec gaps for Ahmad; re-homing moves to PC-077
+
+- Ruling: PC-066 (0015-c) is not on the two-review list. Review 1 found 0/1/7, all fixed, and fix 1 rewrote under a tenth of commit 1 (about 450 of 5,900 lines), so no Review 2. It holds at a1abbefc; merge-tree is clean.
+- Scope: the §7.3 error re-homing view is deferred to PC-077, whose deliverables list an "error re-homing view" (PC-066 deviation 15). The carry is on PC-077's status row.
+- For Ahmad (1): spec 0015 §6.6 step 5 says to use ByKey on a child, scoped to the parent key in C#. ByKey's `IReadOnlyDictionary<TK,T>` holds one row per value, so it refuses a property that is unique only within its parent, and step 5 fails for every child `[Unique]`. PC-066 deviation 6 leaves a Later seam for the write pipeline: an internal `ByValues<T,TK>(property, values)` returning `IReadOnlyDictionary<TK, IReadOnlyList<T>>` through the same key-set restriction and comparer, scoped by parent in C#. Step 5's signature needs amending.
+- For Ahmad (2): spec 0015 §7.5 names no log event for a consent given outside every write frame. PC-066 logs it as `ConfirmationAcceptedOutsideFrame`, because the log generator refuses two methods with one event name (SYSLIB1025).
+- Why: both are spec contradictions with a working code answer, so nothing waits. The write pipeline needs the ByValues seam before it validates child uniqueness.
+
 ### D-094 (2026-11-15): ./grid is at its cap; PC-F26 fits by savings, and a re-split is queued
 
 - Ruling: PC-F26's forced-colors rules put ./grid at 42.05 KB against its 42.03 ceiling once merged over PC-F24 (platform-core alone measures 42.02). No raise: D-057(2) and D-067 allow none without real savings or a re-split. PC-F26 gives the overlay ink a forced-colors default on the scroller and drops the per-rule Highlight fallbacks, keeping every review-1 fix; if that does not fit it stops unpushed. Fix item PC-F44 then re-splits ./grid (or takes measured savings) to restore real headroom, and PC-F42 (more grid forced-colors CSS) waits for it.

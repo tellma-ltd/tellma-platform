@@ -315,6 +315,32 @@ export default defineConfig(
     },
   },
 
+  // Tiles boundary (spec 0023 §1, §8.5): tm-tiles mirrors the data grid's
+  // members and implements its driver interface, but carries no grid code,
+  // so it reaches the grid and the tree grid as types alone. The size gate's
+  // static-graph check (staticGraphExcludes) catches a value import through
+  // any path; this rule names the mistake where it is made.
+  {
+    files: ['projects/core/tellma-core-ui/tiles/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid',
+            '@tellma/core-ui/tree-grid',
+            '@tellma/core-ui/grid-editing',
+          ].map((name) => ({
+            name,
+            allowTypeImports: true,
+            message: 'The tiles carry no grid code: import the grid as a type only.',
+          })),
+        },
+      ],
+    },
+  },
+
   // Grid-engine entry-point boundary (spec 0004 §1, DoD 14): pure TypeScript
   // plus @angular/core SIGNALS only — no DOM, no dependency injection, no
   // components, no other @tellma packages except the contracts types. The

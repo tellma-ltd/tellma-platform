@@ -34,8 +34,9 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task A_host_that_migrates_creates_a_missing_store_in_the_platform_collation_with_snapshot_isolation()
         {
-            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstorenew");
-            string connectionString = factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"]!;
+            // Reserved, not pre-created: this test proves the engine's own creation.
+            string connectionString = fixture.ReserveDatabase("idstorenew");
+            using StandaloneFactory factory = Factory(connectionString, applyMigrations: true);
 
             using (factory.CreateClient())
             {

@@ -39,6 +39,7 @@ export {
   type ɵTmGridEditingCode,
   type ɵTmGridHeaderSortVm,
   type ɵTmGridRowVm,
+  type ɵTmGridTreeAffordanceContext,
   type ɵTmGridTreeConfig,
   type ɵTmGridTreeExpansion,
   type ɵTmGridTreeHost,

@@ -276,7 +276,8 @@ jobs:
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
-      # Production showcase build + post-build font preload injection.
+      # Production showcase build + post-build font preload injection. The e2e script below finds
+      # this bundle newer than every source file and serves it as it is, without rebuilding.
       - run: pnpm run build:showcase
       # Called directly rather than through `pnpm run e2e`, so the grep pattern reaches Playwright
       # without a second round of shell parsing. The tokens CSS that the `pree2e` hook would

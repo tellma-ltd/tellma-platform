@@ -135,7 +135,8 @@ namespace Tellma.Testing.Support.Sql
         /// <summary>
         ///     Creates a unique, empty database in an explicit collation and returns a connection
         ///     string to it. The collation is stated because a test server's default is not the
-        ///     platform's.
+        ///     platform's. The creation runs through <see cref="SqlDatabaseCreation" />, which outlasts
+        ///     a busy server and retries the <c>model</c> lock parallel creations queue on.
         /// </summary>
         /// <param name="prefix">The prefix identifying the test.</param>
         /// <param name="collation">The collation; the platform collation unless a test needs another.</param>
@@ -143,7 +144,7 @@ namespace Tellma.Testing.Support.Sql
         public async Task<string> CreateDatabaseAsync(string prefix, string collation = DatabaseCollations.Platform)
         {
             string name = NewDatabaseName(prefix);
-            await ExecuteAsync(MasterConnectionString, $"CREATE DATABASE [{name}] COLLATE {collation};").ConfigureAwait(false);
+            await SqlDatabaseCreation.CreateAsync(MasterConnectionString, name, collation, TestContext.Current.CancellationToken).ConfigureAwait(false);
             return ConnectionString(name);
         }
 
