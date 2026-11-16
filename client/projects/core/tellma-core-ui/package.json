@@ -151,7 +151,8 @@
         "./number": "styles/tm-number.css",
         "./search-field": "styles/tm-search.css",
         "./description-list": "styles/tm-description-list.css",
-        "./drag-drop": "styles/tm-drop-target.css"
+        "./drag-drop": "styles/tm-drop-target.css",
+        "./tiles-tree": "tiles-tree/tree-affordance.css"
       }
     }
   }

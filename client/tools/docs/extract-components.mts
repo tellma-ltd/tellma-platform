@@ -39,8 +39,10 @@ const uiDir = join(clientDir, 'projects', 'core', 'tellma-core-ui');
  * component/directive source (tm-*.ts) of every @tellma/core-ui entry point.
  * Entry points without decorated classes (contracts, the primary) simply
  * contribute nothing; harnesses pair by the `<ClassName>Harness` convention,
- * and a directive's global stylesheet (it has no styleUrl) is declared in
- * the package's "tellma".docs.globalStyles.
+ * and the stylesheet a directive's tokens come from (it has no styleUrl) is
+ * declared in the package's "tellma".docs.globalStyles: a global stylesheet,
+ * or the stylesheet of the internal component that draws the directive's
+ * chrome (the tiles' tree mode).
  */
 const coreUi = discoverLibraries(clientDir).find(
   (library: { name: string }) => library.name === '@tellma/core-ui',
@@ -58,7 +60,18 @@ const TESTING_SOURCE = readdirSync(testingDir)
   .map((name) => readFileSync(join(testingDir, name), 'utf8'))
   .join('\n');
 const GLOBAL_STYLES: Record<string, string> = coreUi.tellma?.docs?.globalStyles ?? {};
-const SOURCES: { file: string; entryPoint: string; styles?: string }[] = coreUi.entryPoints.flatMap(
+/** One documented source file: its entry point and the stylesheet its directives' tokens come from. */
+export interface DocumentedSource {
+  /** The tm-*.ts file. */
+  readonly file: string;
+  /** The entry point's import path. */
+  readonly entryPoint: string;
+  /** The "tellma".docs.globalStyles stylesheet of the entry point, if any. */
+  readonly styles?: string;
+}
+
+/** Every documented source, in entry-point order. */
+export const SOURCES: readonly DocumentedSource[] = coreUi.entryPoints.flatMap(
   (entryPoint: { id: string; dir: string; importPath: string }) =>
     readdirSync(entryPoint.dir)
       .filter(
@@ -314,60 +327,18 @@ function extractA11y(cls: ClassDeclaration, template: string): ComponentDoc['a11
   };
 }
 
-export function extractComponents(): ComponentsJson {
-  const project = new Project({
+/** A ts-morph project over the client's tsconfig, with no files added yet. */
+export function createDocsProject(): Project {
+  return new Project({
     tsConfigFilePath: join(clientDir, 'tsconfig.json'),
     skipAddingFilesFromTsConfig: true,
   });
+}
 
-  const components: ComponentDoc[] = [];
-
-  for (const source of SOURCES) {
-    const filePath = source.file;
-    const sourceFile = project.addSourceFileAtPath(filePath);
-    for (const cls of sourceFile.getClasses()) {
-      const decorated = decoratorMeta(cls);
-      if (!decorated || !cls.isExported()) {
-        continue;
-      }
-      const { kind, meta } = decorated;
-      const selector = metaString(meta, 'selector') ?? '';
-      const template = metaString(meta, 'template') ?? '';
-      const { inputs, outputs, formControl } = extractProps(cls);
-
-      // Multi-selectors ('input[tmInput], textarea[tmInput]') derive the
-      // display name from their FIRST part — the whole-string strip would
-      // mangle it into 'tmInput], textarea[tmInput'.
-      const primarySelector = selector.split(',')[0].trim();
-      components.push({
-        name: primarySelector.startsWith('input[')
-          ? primarySelector.replace(/^input\[|\]$/g, '')
-          : selector,
-        kind,
-        // Unchecked here: docs:build validates the closed set against the
-        // schema and names the offending component.
-        group: (jsDocTag(cls, 'tmGroup') ?? 'form-control') as ComponentDoc['group'],
-        selector,
-        entryPoint: source.entryPoint,
-        formControl,
-        description: jsDocText(cls),
-        inputs,
-        outputs,
-        slots: extractSlots(template, cls.getText()),
-        tokens: extractTokens(
-          dirname(filePath),
-          meta,
-          source.styles,
-        ),
-        a11y: extractA11y(cls, template),
-        examples: extractExamples(project, filePath),
-        harness: TESTING_SOURCE.includes(`class ${cls.getName()}Harness`)
-          ? `${cls.getName()}Harness`
-          : null,
-        status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
-      });
-    }
-  }
+/** Extracts every documented component and directive of @tellma/core-ui. */
+export function extractComponents(): ComponentsJson {
+  const project = createDocsProject();
+  const components = SOURCES.flatMap((source) => extractSource(project, source));
 
   const uiPackage = JSON.parse(readFileSync(join(uiDir, 'package.json'), 'utf8')) as {
     version: string;
@@ -378,4 +349,50 @@ export function extractComponents(): ComponentsJson {
     libraryVersion: uiPackage.version,
     components,
   };
+}
+
+/** The documented components and directives of one source file, in declaration order. */
+export function extractSource(project: Project, source: DocumentedSource): ComponentDoc[] {
+  const components: ComponentDoc[] = [];
+  const filePath = source.file;
+  const sourceFile = project.addSourceFileAtPath(filePath);
+  for (const cls of sourceFile.getClasses()) {
+    const decorated = decoratorMeta(cls);
+    if (!decorated || !cls.isExported()) {
+      continue;
+    }
+    const { kind, meta } = decorated;
+    const selector = metaString(meta, 'selector') ?? '';
+    const template = metaString(meta, 'template') ?? '';
+    const { inputs, outputs, formControl } = extractProps(cls);
+
+    // Multi-selectors ('input[tmInput], textarea[tmInput]') derive the
+    // display name from their FIRST part — the whole-string strip would
+    // mangle it into 'tmInput], textarea[tmInput'.
+    const primarySelector = selector.split(',')[0].trim();
+    components.push({
+      name: primarySelector.startsWith('input[')
+        ? primarySelector.replace(/^input\[|\]$/g, '')
+        : selector,
+      kind,
+      // Unchecked here: docs:build validates the closed set against the
+      // schema and names the offending component.
+      group: (jsDocTag(cls, 'tmGroup') ?? 'form-control') as ComponentDoc['group'],
+      selector,
+      entryPoint: source.entryPoint,
+      formControl,
+      description: jsDocText(cls),
+      inputs,
+      outputs,
+      slots: extractSlots(template, cls.getText()),
+      tokens: extractTokens(dirname(filePath), meta, source.styles),
+      a11y: extractA11y(cls, template),
+      examples: extractExamples(project, filePath),
+      harness: TESTING_SOURCE.includes(`class ${cls.getName()}Harness`)
+        ? `${cls.getName()}Harness`
+        : null,
+      status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
+    });
+  }
+  return components;
 }
