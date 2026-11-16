@@ -40,7 +40,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
-| `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
+| `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session, the popup pane's keys and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
 | `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
@@ -65,6 +65,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/tree` | `tm-tree` + `ng-template[tmTreeNode]` — a tree on the aria tree pattern whose children load lazily into a reserved spinner slot, with none, single or multiple selection, context rows and draggable rows |
 | `@tellma/core-ui/drag-drop` | `[tmDragSource]`, `[tmDropTarget]` and the `TmDragDrop` service — typed payloads over native drag and drop; a drag writes its text as `text/plain`, so text fields take it at the drop caret (global stylesheet) |
 | `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by dragging, by a grab handle's keys or by the move menu its click opens, each step announced, that also takes drops from other sources |
+| `@tellma/core-ui/tiles` | `tm-tiles` + `tmTileContent` / `tmTilesEmpty` / `tmTilesLoading` — rows as a virtualized lattice of fixed-size tiles (an image and four text corners each) that becomes a divided list on narrow containers and a single-column tree with batched lazy children, on the data grid's selection, activation and driver members |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 

@@ -60,6 +60,12 @@ namespace Tellma.Core.Composition.Checks
         public const string ValueSets = "core.value-sets";
 
         /// <summary>
+        ///     Every setting key is well declared (its name, type, default, category, group, reference
+        ///     and visibility) and uniquely named.
+        /// </summary>
+        public const string SettingKeys = "core.setting-keys";
+
+        /// <summary>
         ///     Notification type keys and categories are well formed, keys are unique, every target
         ///     names a routable entity with an integer key or a registered securable resource, and
         ///     channel-only types follow their rule.

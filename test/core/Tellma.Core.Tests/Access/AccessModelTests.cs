@@ -278,16 +278,17 @@ namespace Tellma.Core.Tests.Access
         [Fact]
         public void Every_seeded_row_lies_in_the_reserved_band()
         {
-            // Every seeded table's key is an int column: the entity's Id, or a stamp's UserId.
+            // Every seeded entity's key is an int column: the entity's Id, or a stamp's UserId. The
+            // calendar months are reference data keyed by calendar, year and month, outside the band.
             List<(string Table, int Key)> seeded = [];
-            foreach (IEntityType entityType in model.DesignModel.GetEntityTypes())
+            foreach (IEntityType entityType in model.DesignModel.GetEntityTypes().Where(static type => type.GetTableName() != "CalendarMonths"))
             {
                 IProperty key = entityType.FindPrimaryKey()!.Properties[0];
                 seeded.AddRange(entityType.GetSeedData().Select(row => (entityType.GetTableName()!, (int)row[key.Name]!)));
             }
 
             Assert.Equal(
-                [("JobWorkerState", 1), ("Permissions", 1), ("RoleMemberships", 1), ("Roles", 1), ("UserStamps", 1), ("Users", 1)],
+                [("JobWorkerState", 1), ("Permissions", 1), ("RoleMemberships", 1), ("Roles", 1), ("Settings", 1), ("UserStamps", 1), ("Users", 1)],
                 seeded.OrderBy(static row => row.Table, StringComparer.Ordinal));
             Assert.All(seeded, static row => Assert.InRange(row.Key, 1, WellKnownIds.ReservedIdBandEnd));
         }

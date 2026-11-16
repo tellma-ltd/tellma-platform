@@ -14,7 +14,9 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Api;
 using Tellma.Core.Blobs;
@@ -26,6 +28,7 @@ using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Provisioning;
+using Tellma.Core.Settings;
 
 namespace Tellma.Core.Composition
 {
@@ -146,6 +149,24 @@ namespace Tellma.Core.Composition
             _ = contribution
                 .Singleton<CacheableEntityStore, CacheableEntityStore>()
                 .Scoped<ICacheableEntities, CacheableEntities>();
+
+            // --- Tenant settings: the two tables, the store and the scope's view, the cold load and the negotiation ---
+            // spec 0013 §1.2 and §5. Settings and SettingEntry are mapped leaves, never stacks; the
+            // cold load rides the settings store's own batch after the prelude (§5.7), and the
+            // initializer at 200 negotiates the locale once the user is connected (§9.3).
+            _ = contribution
+                .Model<SettingsConfiguration>()
+                .Model<SettingEntryConfiguration>()
+                .Singleton<ISettingKeyRegistry, SettingKeyRegistry>()
+                .Singleton<TenantSettingsStore, TenantSettingsStore>()
+                .Scoped<ITenantSettingsCache, TenantSettingsCache>()
+                .Scoped<IDataBatchContributor, SettingsColdLoadContributor>()
+                .Scoped<IRequestContextInitializer, LocaleNegotiationInitializer>()
+                .ProvisioningStep<SettingsProvisioningStep>()
+                .Singleton<IClientAssetContributor, SettingsClientAssetContributor>();
+
+            // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
+            _ = contribution.Model<CalendarMonthRowConfiguration>();
 
             // --- Blobs: the table every blob reference resolves to; never a stack ---
             _ = contribution.Model<BlobConfiguration>();

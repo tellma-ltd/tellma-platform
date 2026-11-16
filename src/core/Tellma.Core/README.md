@@ -97,7 +97,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
-| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
+| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
 | `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
@@ -908,6 +908,63 @@ it replaces; a base reads one view of the same instances.
 child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, or has a `Read`
 securable with a filter root. It also creates the store, so a store that cannot be created (another
 live `entities` cache on the host's meter) fails the host at startup rather than at its first read.
+
+## Tenant settings
+
+Each tenant database holds its settings in two temporal tables, both bumping the `settings` tag:
+`core.Settings`, one typed row (`CK_Settings_SingleRow`: `Id = 1`) with the tenant's id, its names
+in up to three content languages, the languages (`CK_Settings_Languages`: a tertiary needs a
+secondary, none repeats), one or two calendars (`CK_Settings_Calendars`), the IANA zone, and the
+optional region and digits; and `core.SettingEntries`, one JSON value per declared key. The
+migrations seed the row as a placeholder for tenant `0` (English, Gregorian, UTC); the
+`core.settings` provisioning step (order 15) completes it with the tenant's id and name and the
+distribution's first language, or the languages and calendars a seeded tenant lists, validated as
+the settings editor validates them. A row the step already completed is left alone.
+
+- **Keys.** A feature declares its keys as `public static readonly SettingKey<T>` fields of a holder
+  type and contributes it with `contribution.SettingKeys(typeof(Holder))`. `ISettingKeyRegistry`
+  lists them in contribution and declaration order, the tabs (`general` first, then each category
+  as its first key appears), and the descriptors the client renders. `core.setting-keys` reports a
+  field holding no key, a name that is not dotted camelCase of two segments or more (at most 128
+  characters), an undefined visibility, a type admitted only with a serialization contract of its
+  own, a default that contradicts the type's nullability, a secret with a default or a reference, a
+  category or group outside the grammar, a reference that is not an int id of an int-keyed stack, a
+  name declared twice, and a category spelled two ways.
+- **The store.** `TenantSettingsStore` (the `settings` kind) keeps one `TenantSettings` per tenant,
+  with its client view serialized once. A miss loads through one read batch whose contributor
+  (`SettingsColdLoadContributor`, after the prelude) appends the row and the entries, stamped with
+  the prelude's tag. `ITenantSettingsCache` is the scoped façade (`GetAsync`, `GetForClientAsync`,
+  `Peek`).
+- **The routing guard.** A row whose tenant id is not the routed tenant's fails closed
+  (`TenantDatabaseMismatchException`, logged `Critical`). The placeholder is served only to the
+  platform's own work and never cached, so a provisioned database is read again at once.
+- **Resolution.** A stored value the composition cannot resolve falls back, logged `Critical`
+  (`SettingsValueUnresolvable`): the primary language to English (else the first offered), a
+  secondary or tertiary one ends the list, the primary calendar to Gregorian, a secondary one is
+  dropped, a zone the host's time-zone data does not have (or the query engine's pinned table,
+  `QueryexTimeZones.TryGetWindowsName`, does not map to the Windows name SQL Server's conversions
+  take; never the host ICU's mapping) to UTC, digits not named by `DigitStyle` to none. The
+  placeholder reads as the platform's defaults directly, with no event. An entry no feature declares is dropped;
+  one that does not read as its key, or fails its check, is dropped, logged and counted
+  (`tellma.settings.entries.invalid`).
+- **Secrets.** A secret is stored as the JSON string of its value's JSON, protected by the purpose
+  `Tellma.Core.Settings.Secret` and the tenant id, kept protected in memory, and unprotected on its
+  first `Get<T>`. One that does not unprotect reads as its default, logged `Critical`. A secret is
+  never in the client view, and its default is never in the client metadata.
+- **Negotiation.** `LocaleNegotiationInitializer` (order 200, after the user connection) ensures the
+  scope's settings and negotiates the locale from the request's inputs, the connected user's stored
+  preferences (`IUserLocalePreferences`, when the composition registers one) and the settings; it
+  completes the context's language, culture, calendar, display and tenant zones, today in the
+  tenant's zone, content-language position and settings, and sets no ambient culture. The language
+  and culture are the negotiated ones (`LocalizationContext.Language`, `CultureTag`), never read back
+  from the culture's name, and today is the date of the context's `Now` in the tenant's zone, so it
+  never disagrees with `Now`.
+- **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
+  default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+
+`core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
+by calendar, year and month, with the month's first Gregorian day and the day after its last; the
+query language seeks it by calendar and first day. Only the migrations write it.
 
 ## Notifications and client events
 

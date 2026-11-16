@@ -22,6 +22,11 @@ namespace Tellma.Distro.Acme.IntegrationTests
         /// <summary>The query that reads a database's collation.</summary>
         private const string CollationQuery = "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'));";
 
+        /// <summary>A tenant database's settings: its tenant, languages and calendars, an unset one as <c>-</c>.</summary>
+        private const string SettingsQuery =
+            "SELECT CONCAT([TenantId], '|', [PrimaryLanguage], '|', ISNULL([SecondaryLanguage], '-'), '|', ISNULL([TertiaryLanguage], '-'), "
+            + "'|', [PrimaryCalendar], '|', ISNULL([SecondaryCalendar], '-')) FROM [core].[Settings];";
+
         [Fact]
         public async Task Migrate_from_an_empty_server_creates_the_catalog_the_identity_store_and_both_seed_tenants()
         {
@@ -36,6 +41,12 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal("Active", await acme.StateAsync(2));
             Assert.Equal("Acme", await SqlServerFixture.ScalarAsync<string>(acme.CatalogConnectionString, "SELECT [Name] FROM [catalog].[Tenants] WHERE [Id] = 1;"));
             Assert.Equal("Sandbox", await SqlServerFixture.ScalarAsync<string>(acme.CatalogConnectionString, "SELECT [Category] FROM [catalog].[Tenants] WHERE [Id] = 2;"));
+
+            // --- Each tenant's settings completed with its seed's languages and calendars, in order ---
+            foreach (int tenantId in (int[])[1, 2])
+            {
+                Assert.Equal($"{tenantId}|en|ar|-|gc|uq", await SqlServerFixture.ScalarAsync<string>(acme.TenantConnectionString(tenantId), SettingsQuery));
+            }
 
             // --- The identity engine's schema, migrated to its last migration in the catalog ---
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(

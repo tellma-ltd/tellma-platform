@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Access;
 using Tellma.Core.Jobs;
+using Tellma.Core.Settings;
 
 namespace Tellma.Core.Localization
 {
@@ -223,9 +224,10 @@ namespace Tellma.Core.Localization
             foreach (SettingKey key in registry.Keys)
             {
                 keys.UnionWith([key.LabelKey, key.LabelKey + "_Description"]);
-                if (key.Group is { } group)
+                // The card's label: the stated group, else the one the key's name derives.
+                if (SettingKeyRegistry.GroupOf(key) is { } group)
                 {
-                    _ = keys.Add($"SettingGroup_{key.Category}_{group.Replace('.', '_')}");
+                    _ = keys.Add($"SettingGroup_{SettingKeyRegistry.CategoryOf(key)}_{group.Replace('.', '_')}");
                 }
             }
 
