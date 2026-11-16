@@ -130,6 +130,19 @@ namespace Tellma.Identity.Tests.Provisioning
         }
 
         [Fact]
+        public async Task A_client_id_differing_from_a_stored_one_only_in_case_is_refused_as_a_collision()
+        {
+            const string Stored = "https://agent.example.com/oauth/Client.json";
+            const string Variant = "https://agent.example.com/oauth/client.json";
+            Assert.Equal(DocumentClientConvergence.Created, await ConvergeAsync(Document(clientId: Stored), Created));
+
+            // Both spellings are canonical URLs (a path is case-sensitive), but the store's unique
+            // index is not: the second would fail its create, so it is refused before it tries.
+            Assert.Equal(DocumentClientConvergence.Collision, await ConvergeAsync(Document(clientId: Variant), Created));
+            Assert.Equal(Stored, Assert.Single(Applications.Rows).ClientId);
+        }
+
+        [Fact]
         public async Task A_document_client_row_is_created_left_alone_and_rewritten_when_its_document_changes()
         {
             Assert.Equal(DocumentClientConvergence.Created, await ConvergeAsync(Document(), Created));
@@ -258,6 +271,15 @@ namespace Tellma.Identity.Tests.Provisioning
                 return Task.FromResult(applications.Rows.Count(static row =>
                     row.ClientId!.StartsWith("https://", StringComparison.Ordinal)
                     && TellmaClientProperties.IsSet(row.Properties, TellmaClientProperties.DocumentClient)));
+            }
+
+            /// <inheritdoc />
+            public Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken)
+            {
+                // The store's collation ignores case.
+                return Task.FromResult(applications.Rows
+                    .Select(static row => row.ClientId)
+                    .FirstOrDefault(stored => string.Equals(stored, clientId, StringComparison.OrdinalIgnoreCase)));
             }
 
             /// <inheritdoc />

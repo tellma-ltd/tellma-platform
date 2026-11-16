@@ -420,6 +420,16 @@ namespace Tellma.Identity.Services.Provisioning
             object? existing = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
             if (existing is null)
             {
+                // The manager matches a client id exactly, but the store's unique index ignores
+                // case: a row holding another spelling of this id would refuse the create. Such a
+                // row belongs to another client, so this one is refused instead. A row holding
+                // this exact id appeared since the lookup, and the create's conflict retries.
+                string? stored = await documentClients.FindClientIdAsync(clientId, cancellationToken);
+                if (stored is not null && !string.Equals(stored, clientId, StringComparison.Ordinal))
+                {
+                    return DocumentClientConvergence.Collision;
+                }
+
                 // The cap is checked against a count, so instances racing at the cap may each add
                 // one row past it; the bound is soft by that much.
                 if (await documentClients.CountAsync(cancellationToken) >= options.Value.ClientMetadata.MaxClients)

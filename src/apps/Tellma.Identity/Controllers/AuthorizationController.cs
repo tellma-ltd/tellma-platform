@@ -233,8 +233,13 @@ namespace Tellma.Identity.Controllers
                     // redirect is discarded and the user sits on the consent page watching
                     // "Allow" do nothing, while the server records a perfectly good grant. Name
                     // the client's own registered callbacks — never anything off the request —
-                    // so the policy widens only by where this grant could always have landed.
-                    CspFormAction.Allow(HttpContext, await applicationManager.GetRedirectUrisAsync(application));
+                    // so the policy widens only by where this grant could always have landed. A
+                    // native client's port-less loopback callback lands on any port, so only its
+                    // source names every port.
+                    CspFormAction.Allow(
+                        HttpContext,
+                        await applicationManager.GetRedirectUrisAsync(application),
+                        await applicationManager.HasApplicationTypeAsync(application, ApplicationTypes.Native));
 
                     // A document client names itself; the host its document is published on is
                     // what a person can check that name against, so the page shows both.

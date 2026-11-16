@@ -27,6 +27,7 @@ namespace Tellma.Identity.Tests.Options
             Assert.Equal(TimeSpan.FromMinutes(1), defaults.MinCache);
             Assert.Equal(TimeSpan.FromHours(24), defaults.MaxCache);
             Assert.Equal(10, defaults.FetchesPerHostPerMinute);
+            Assert.Equal(16, defaults.MaxConcurrentFetches);
             Assert.Equal(10000, defaults.MaxClients);
             Assert.Equal(TimeSpan.FromHours(1), defaults.UnusedClientLifetime);
             Assert.Equal(ValidateOptionsResult.Success, _validator.Validate(null, ValidOptions()));
@@ -40,6 +41,8 @@ namespace Tellma.Identity.Tests.Options
         [InlineData("MinCache")]
         [InlineData("MaxCache")]
         [InlineData("FetchesPerHostPerMinute")]
+        [InlineData("MaxConcurrentFetches")]
+        [InlineData("MaxConcurrentFetchesTooMany")]
         [InlineData("MaxClients")]
         [InlineData("UnusedClientLifetime")]
         public void An_out_of_range_value_fails_startup(string setting)
@@ -68,6 +71,12 @@ namespace Tellma.Identity.Tests.Options
                     break;
                 case "FetchesPerHostPerMinute":
                     metadata.FetchesPerHostPerMinute = 0;
+                    break;
+                case "MaxConcurrentFetches":
+                    metadata.MaxConcurrentFetches = 0;
+                    break;
+                case "MaxConcurrentFetchesTooMany":
+                    metadata.MaxConcurrentFetches = TellmaIdentityOptionsValidator.MaxClientMetadataConcurrentFetches + 1;
                     break;
                 case "MaxClients":
                     metadata.MaxClients = -1;

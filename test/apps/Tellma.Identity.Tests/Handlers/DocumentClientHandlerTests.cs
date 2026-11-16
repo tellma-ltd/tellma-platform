@@ -286,6 +286,12 @@ namespace Tellma.Identity.Tests.Handlers
             }
 
             /// <inheritdoc />
+            public Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
+            /// <inheritdoc />
             public Task<int> PruneAsync(DateTimeOffset createdBefore, DateTimeOffset now, CancellationToken cancellationToken)
             {
                 return Task.FromResult(0);

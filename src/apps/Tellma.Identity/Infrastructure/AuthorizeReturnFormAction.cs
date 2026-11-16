@@ -67,8 +67,12 @@ namespace Tellma.Identity.Infrastructure
                 return;
             }
 
+            // As on the consent page, only a native client's port-less loopback callback names
+            // every port.
             CspFormAction.Allow(
-                context, await applicationManager.GetRedirectUrisAsync(application, cancellationToken));
+                context,
+                await applicationManager.GetRedirectUrisAsync(application, cancellationToken),
+                await applicationManager.HasApplicationTypeAsync(application, OpenIddictConstants.ApplicationTypes.Native, cancellationToken));
         }
 
         /// <summary>

@@ -137,6 +137,8 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             services.AddMetrics();
             services.AddSingleton(Audit);
             services.AddScoped<IAuditLogger>(static provider => provider.GetRequiredService<AuditRecorder>());
+            services.AddSingleton(Rows);
+            services.AddScoped<IDocumentClientStore>(static provider => provider.GetRequiredService<StoredRows>());
             _provider = services.BuildServiceProvider();
 
             IMeterFactory meterFactory = _provider.GetRequiredService<IMeterFactory>();
@@ -150,12 +152,14 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             Cache = new ClientMetadataCache(options);
             Resolver = new ClientMetadataDocumentResolver(
                 Fetcher,
+                RateLimiter,
                 Cache,
                 new ClientMetadataAuditor(_provider.GetRequiredService<IServiceScopeFactory>()),
                 new IdentityMetrics(meterFactory),
                 options,
                 Time,
-                new HttpContextAccessor());
+                new HttpContextAccessor(),
+                _provider.GetRequiredService<IServiceScopeFactory>());
         }
 
         /// <summary>The engine options.</summary>
@@ -172,6 +176,9 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
 
         /// <summary>The audit rows written.</summary>
         public AuditRecorder Audit { get; } = new();
+
+        /// <summary>The client ids the store holds rows for.</summary>
+        public StoredRows Rows { get; } = new();
 
         /// <summary>The fetch counter's measurements.</summary>
         public Microsoft.Extensions.Diagnostics.Metrics.Testing.MetricCollector<long> Fetches { get; }
@@ -193,7 +200,47 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         {
             Fetches.Dispose();
             _provider.Dispose();
+            RateLimiter.Dispose();
             Server.Dispose();
+        }
+    }
+
+    /// <summary>
+    ///     A document-client store holding only client ids, compared as the database compares
+    ///     them, ignoring case.
+    /// </summary>
+    public sealed class StoredRows : IDocumentClientStore
+    {
+        /// <summary>The stored client ids.</summary>
+        private readonly ConcurrentDictionary<string, bool> _ids = new(StringComparer.Ordinal);
+
+        /// <summary>How many lookups were made.</summary>
+        public int Lookups { get; private set; }
+
+        /// <summary>Stores a row for a client id.</summary>
+        /// <param name="clientId">The client id.</param>
+        public void Add(string clientId)
+        {
+            _ids[clientId] = true;
+        }
+
+        /// <inheritdoc />
+        public Task<int> CountAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_ids.Count);
+        }
+
+        /// <inheritdoc />
+        public Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken)
+        {
+            Lookups++;
+            return Task.FromResult(_ids.Keys.FirstOrDefault(stored => string.Equals(stored, clientId, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <inheritdoc />
+        public Task<int> PruneAsync(DateTimeOffset createdBefore, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
         }
     }
 

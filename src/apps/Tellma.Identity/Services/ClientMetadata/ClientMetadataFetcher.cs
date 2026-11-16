@@ -52,11 +52,13 @@ namespace Tellma.Identity.Services.ClientMetadata
         /// <summary>Fetches a URL.</summary>
         /// <param name="url">The document or key-set URL.</param>
         /// <param name="resource">What is fetched.</param>
+        /// <param name="budget">The host budget the fetch draws on.</param>
         /// <param name="cancellationToken">Aborts the fetch.</param>
         /// <returns>The guarded body.</returns>
         /// <exception cref="ClientMetadataException">A guard refused the fetch or its response, or the fetch failed.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-        public async Task<ClientMetadataFetchResult> FetchAsync(Uri url, ClientMetadataResource resource, CancellationToken cancellationToken)
+        public async Task<ClientMetadataFetchResult> FetchAsync(
+            Uri url, ClientMetadataResource resource, ClientMetadataFetchBudget budget, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(url);
 
@@ -74,7 +76,7 @@ namespace Tellma.Identity.Services.ClientMetadata
                     $"The metadata URL '{url}' is not an https URL with a host name.");
             }
 
-            if (!rateLimiter.TryAcquire(url.IdnHost))
+            if (!rateLimiter.TryAcquire(budget, url.IdnHost))
             {
                 throw new ClientMetadataException(
                     ClientMetadataRejectionReasons.RateLimited,

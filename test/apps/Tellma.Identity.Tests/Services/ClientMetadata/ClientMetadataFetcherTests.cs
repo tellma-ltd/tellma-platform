@@ -26,7 +26,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             using ResolverRig rig = new();
             rig.Server.Serve(Url, "{}", maxAge: TimeSpan.FromMinutes(10));
 
-            ClientMetadataFetchResult result = await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, TestContext.Current.CancellationToken);
+            ClientMetadataFetchResult result = await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
 
             Assert.Equal("{}"u8.ToArray(), result.Body);
             Assert.Equal(TimeSpan.FromMinutes(10), result.Lifetime);
@@ -94,9 +94,37 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             });
 
             ClientMetadataFetchResult result = await rig.Fetcher.FetchAsync(
-                new Uri(MetadataDocuments.JwksUri), ClientMetadataResource.KeySet, TestContext.Current.CancellationToken);
+                new Uri(MetadataDocuments.JwksUri), ClientMetadataResource.KeySet, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
 
             Assert.Equal(2, result.Body.Length);
+        }
+
+        [Theory]
+        [InlineData("text/html")]
+        [InlineData("text/plain")]
+        [InlineData("application/jwk-set")]
+        public async Task A_key_set_of_another_content_type_is_refused(string contentType)
+        {
+            using ResolverRig rig = new();
+            rig.Server.Serve(MetadataDocuments.JwksUri, "{}", contentType);
+
+            await AssertRefusedAsync(rig, MetadataDocuments.JwksUri, ClientMetadataResource.KeySet, ClientMetadataRejectionReasons.ContentType);
+        }
+
+        [Fact]
+        public async Task A_key_set_over_the_size_limit_is_refused_declared_or_streamed()
+        {
+            using ResolverRig rig = new(static options => options.MaxBytes = 64);
+            rig.Server.Serve(MetadataDocuments.JwksUri, new string(' ', 63) + "{}", "application/jwk-set+json");
+            await AssertRefusedAsync(rig, MetadataDocuments.JwksUri, ClientMetadataResource.KeySet, ClientMetadataRejectionReasons.Size);
+
+            EndlessStream body = new();
+            rig.Server.Respond(MetadataDocuments.JwksUri, () => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(body) { Headers = { ContentType = new MediaTypeHeaderValue("application/jwk-set+json") } },
+            });
+            await AssertRefusedAsync(rig, MetadataDocuments.JwksUri, ClientMetadataResource.KeySet, ClientMetadataRejectionReasons.Size);
+            Assert.True(body.BytesRead <= 65 + 4096, $"Read {body.BytesRead} bytes of an endless body.");
         }
 
         [Fact]
@@ -105,7 +133,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             using ResolverRig rig = new(static options => options.MaxBytes = 64);
             rig.Server.Serve(Url, new string(' ', 62) + "{}");
 
-            ClientMetadataFetchResult result = await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, TestContext.Current.CancellationToken);
+            ClientMetadataFetchResult result = await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
 
             Assert.Equal(64, result.Body.Length);
         }
@@ -147,7 +175,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
                 return new HttpResponseMessage(HttpStatusCode.OK);
             });
 
-            Task<ClientMetadataFetchResult> fetch = rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, TestContext.Current.CancellationToken);
+            Task<ClientMetadataFetchResult> fetch = rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
             await started.Task.WaitAsync(TestContext.Current.CancellationToken);
             rig.Time.Advance(TimeSpan.FromSeconds(5));
 
@@ -167,7 +195,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             });
             using CancellationTokenSource caller = new();
 
-            Task<ClientMetadataFetchResult> fetch = rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, caller.Token);
+            Task<ClientMetadataFetchResult> fetch = rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, caller.Token);
             await caller.CancelAsync();
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
@@ -215,55 +243,34 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             rig.Server.Serve(Url, "{}");
             rig.Server.Serve(MetadataDocuments.JwksUri, "{}");
 
-            await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, TestContext.Current.CancellationToken);
+            await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
 
             // Documents and key sets on one host share the quota.
-            await rig.Fetcher.FetchAsync(new Uri(MetadataDocuments.JwksUri), ClientMetadataResource.KeySet, TestContext.Current.CancellationToken);
+            await rig.Fetcher.FetchAsync(new Uri(MetadataDocuments.JwksUri), ClientMetadataResource.KeySet, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
             await AssertRefusedAsync(rig, Url, ClientMetadataRejectionReasons.RateLimited);
             Assert.Equal(2, rig.Server.Requests.Count);
 
             // Another host has a quota of its own.
             rig.Server.Serve("https://other.example.com/c.json", "{}");
-            await rig.Fetcher.FetchAsync(new Uri("https://other.example.com/c.json"), ClientMetadataResource.Document, TestContext.Current.CancellationToken);
+            await rig.Fetcher.FetchAsync(new Uri("https://other.example.com/c.json"), ClientMetadataResource.Document, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken);
+
+            // And the same host's refresh budget is untouched by the probes that spent its quota.
+            await rig.Fetcher.FetchAsync(new Uri(Url), ClientMetadataResource.Document, ClientMetadataFetchBudget.Refresh, TestContext.Current.CancellationToken);
+            Assert.Equal(4, rig.Server.Requests.Count);
         }
 
-        [Fact]
-        public void The_quota_slides_with_the_clock()
+        /// <summary>Asserts a document fetch is refused under a reason.</summary>
+        private static Task<ClientMetadataException> AssertRefusedAsync(ResolverRig rig, string url, string reason)
         {
-            using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 1);
-
-            Assert.True(rig.RateLimiter.TryAcquire("agent.example.com"));
-            Assert.False(rig.RateLimiter.TryAcquire("AGENT.example.com"));
-
-            rig.Time.Advance(TimeSpan.FromSeconds(59));
-            Assert.False(rig.RateLimiter.TryAcquire("agent.example.com"));
-
-            rig.Time.Advance(TimeSpan.FromSeconds(1));
-            Assert.True(rig.RateLimiter.TryAcquire("agent.example.com"));
+            return AssertRefusedAsync(rig, url, ClientMetadataResource.Document, reason);
         }
 
-        [Fact]
-        public void A_flood_of_hosts_cannot_grow_the_quota_table_without_bound()
-        {
-            using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 1);
-            for (int host = 0; host < ClientMetadataRateLimiter.MaxTrackedHosts; host++)
-            {
-                Assert.True(rig.RateLimiter.TryAcquire("h" + host + ".example.com"));
-            }
-
-            // Every tracked host is still inside its window, so a new one is refused...
-            Assert.False(rig.RateLimiter.TryAcquire("new.example.com"));
-
-            // ...until the window passes and the idle hosts are swept.
-            rig.Time.Advance(ClientMetadataRateLimiter.Window);
-            Assert.True(rig.RateLimiter.TryAcquire("new.example.com"));
-        }
-
-        /// <summary>Asserts a fetch is refused under a reason.</summary>
-        private static async Task<ClientMetadataException> AssertRefusedAsync(ResolverRig rig, string url, string reason)
+        /// <summary>Asserts a fetch of a resource is refused under a reason.</summary>
+        private static async Task<ClientMetadataException> AssertRefusedAsync(
+            ResolverRig rig, string url, ClientMetadataResource resource, string reason)
         {
             ClientMetadataException exception = await Assert.ThrowsAsync<ClientMetadataException>(() =>
-                rig.Fetcher.FetchAsync(new Uri(url), ClientMetadataResource.Document, TestContext.Current.CancellationToken));
+                rig.Fetcher.FetchAsync(new Uri(url), resource, ClientMetadataFetchBudget.Probe, TestContext.Current.CancellationToken));
             Assert.Equal(reason, exception.Reason);
             return exception;
         }

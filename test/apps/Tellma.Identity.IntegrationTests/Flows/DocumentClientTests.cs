@@ -209,6 +209,55 @@ namespace Tellma.Identity.IntegrationTests.Flows
             });
 
             Assert.Equal(OpenIddictConstants.Errors.InvalidClient, error);
+
+            // The refusal is OpenIddict's client authentication, not a failed resolution: the
+            // document and its key set were fetched, and the row the request left behind is a
+            // confidential client holding the published key.
+            Assert.Contains(server.Fetched, static url => url.AbsoluteUri == JwksUri);
+            using IServiceScope scope = factory.Services.CreateScope();
+            IOpenIddictApplicationManager applications = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+            object row = (await applications.FindByClientIdAsync(ClientId, TestContext.Current.CancellationToken))!;
+            Assert.NotNull(row);
+            Assert.True(await applications.HasClientTypeAsync(row, OpenIddictConstants.ClientTypes.Confidential, TestContext.Current.CancellationToken));
+            JsonWebKeySet keys = (await applications.GetJsonWebKeySetAsync(row, TestContext.Current.CancellationToken))!;
+            Assert.Equal("agent-key", Assert.Single(keys.Keys).Kid);
+        }
+
+        [Fact]
+        public async Task A_client_id_differing_from_a_stored_one_only_in_case_is_invalid_client()
+        {
+            const string Stored = "https://agent.example.com/oauth/Client.json";
+            const string Variant = "https://agent.example.com/oauth/client.json";
+            LocalDocumentServer server = new();
+            server.Publish(Stored, Document(Stored, "First Agent", [ListedRedirect]));
+            server.Publish(Variant, Document(Variant, "Second Agent", [ListedRedirect]));
+            using StandaloneFactory factory = CreateFactory("iddoccase", server);
+            using OidcFlowClient flow = factory.CreateFlowClient();
+            await PushAsync(flow, Stored, PortedRedirect);
+
+            // Both are valid document URLs, but the store holds client ids without regard to case,
+            // so the second can never have a row of its own; it is refused rather than failing.
+            using HttpClient client = factory.CreateClient();
+            (_, string challenge) = OidcFlowClient.CreatePkcePair();
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/par", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = Variant,
+                    ["redirect_uri"] = PortedRedirect,
+                    ["response_type"] = "code",
+                    ["scope"] = "openid profile",
+                    ["code_challenge"] = challenge,
+                    ["code_challenge_method"] = "S256",
+                }),
+                TestContext.Current.CancellationToken);
+
+            // A client the server cannot accept is answered 401 at the pushed-request endpoint.
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(OpenIddictConstants.Errors.InvalidClient, body.RootElement.GetProperty("error").GetString());
+            (string? name, _) = await ReadRowAsync(factory, Stored);
+            Assert.Equal("First Agent", name);
         }
 
         [Fact]

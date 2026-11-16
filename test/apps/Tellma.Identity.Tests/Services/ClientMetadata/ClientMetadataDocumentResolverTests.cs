@@ -229,6 +229,31 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             Assert.Equal(ClientMetadataRejectionReasons.KeySet, exception.Reason);
         }
 
+        [Theory]
+        [InlineData("text/html", ClientMetadataRejectionReasons.ContentType)]
+        [InlineData("oversize", ClientMetadataRejectionReasons.Size)]
+        public async Task A_key_set_the_fetch_guards_refuse_refuses_the_client(string answer, string reason)
+        {
+            using ResolverRig rig = new(static options => options.MaxBytes = 1024);
+            rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.PrivateKeyJwt().ToJsonString());
+            string keySet = MetadataDocuments.KeySet(MetadataDocuments.RsaKey());
+            if (answer == "oversize")
+            {
+                rig.Server.Serve(MetadataDocuments.JwksUri, keySet + new string(' ', 1024), "application/jwk-set+json");
+            }
+            else
+            {
+                rig.Server.Serve(MetadataDocuments.JwksUri, keySet, answer);
+            }
+
+            ClientMetadataException exception = await Assert.ThrowsAsync<ClientMetadataException>(() =>
+                rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken));
+
+            // The key set is fetched under the same guards as the document it belongs to.
+            Assert.Equal(reason, exception.Reason);
+            Assert.Equal([new Uri(MetadataDocuments.ClientId), new Uri(MetadataDocuments.JwksUri)], rig.Server.Requests);
+        }
+
         [Fact]
         public async Task A_client_id_over_100_characters_is_refused_before_any_fetch()
         {

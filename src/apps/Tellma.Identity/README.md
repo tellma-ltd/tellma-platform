@@ -243,8 +243,16 @@ assertion's unvalidated issuer. Any refusal is `invalid_client`, with one generi
   loopback, private, link-local, CGNAT, multicast, documentation and the other special ranges, and
   their IPv4-mapped forms), then connects to the address it checked, so a rebinding resolver cannot
   swap it. A response must be `200`, `application/json` (a key set may also be
-  `application/jwk-set+json`), at most `MaxBytes`, and arrive within `Timeout`. Each host is
-  fetched at most `FetchesPerHostPerMinute` times.
+  `application/jwk-set+json`), at most `MaxBytes`, and arrive within `Timeout`.
+- **Limits** (`ClientMetadataRateLimiter`, per instance). Anyone can name a client id, so the
+  fetches anyone can cause are kept apart from the ones known clients need. Each host has two
+  budgets of `FetchesPerHostPerMinute` fetches a minute: the *refresh* budget re-fetches the
+  document of a client the engine holds (a cached copy, or a row holding exactly that id) whose
+  copy is missing or expired, at most once per client id a minute; the *probe* budget takes every
+  other fetch — a first-time id, an early re-fetch for an unlisted redirect URI, a repeated
+  refresh. Each budget also has `MaxConcurrentFetches` resolution slots across all hosts: a probe
+  with no free slot is refused at once, a refresh waits up to `Timeout`. The tables are bounded
+  and forget the least recently used host, so a flood of hosts never refuses a new one.
 - **Caching.** The response's `Cache-Control`/`Expires` lifetime is clamped to
   `[MinCache, MaxCache]`, and a key set's lifetime shortens the document's. One fetch per client
   id is in flight at a time. A redirect URI the cached document does not list fetches it again
@@ -262,8 +270,9 @@ assertion's unvalidated issuer. Any refusal is `invalid_client`, with one generi
   `tellma_api`; consent is always explicit, and the consent page shows the document's
   `client_name` beside the host of its client id. At most `MaxClients` document-client rows exist:
   at the cap a new client is refused (audit reason `cap`). A client id that a seeded or provisioned
-  client already holds is never taken over (audit reason `registered`), and a seed entry may not use
-  an `https` client id. An hourly Quartz job (`DocumentClientPruneJob`) deletes a row with no
+  client already holds is never taken over (audit reason `registered`), one that differs from a
+  stored id only in letter case is refused, since the store's unique index ignores case (audit
+  reason `client_id_collision`), and a seed entry may not use an `https` client id. An hourly Quartz job (`DocumentClientPruneJob`) deletes a row with no
   authorization and no unexpired token created more than `UnusedClientLifetime` ago.
 - **Signals.** Each resolution is audited as `ClientMetadataFetched` or `ClientMetadataRejected`
   (with the reason and the host), and counted on `tellma.identity.client_metadata.fetches`, tagged

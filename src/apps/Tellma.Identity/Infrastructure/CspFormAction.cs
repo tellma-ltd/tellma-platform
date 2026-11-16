@@ -41,10 +41,25 @@ namespace Tellma.Identity.Infrastructure
         private static readonly System.Buffers.SearchValues<char> Unsafe =
             System.Buffers.SearchValues.Create(" \t\r\n;,'\"");
 
+        /// <summary>
+        ///     Names additional form-submission destinations this response's policy must allow,
+        ///     each exactly as given.
+        /// </summary>
+        /// <param name="context">The request context.</param>
+        /// <param name="uris">Absolute URIs: a destination, or a client's registered redirect URIs.</param>
+        public static void Allow(HttpContext context, IEnumerable<string> uris)
+        {
+            Allow(context, uris, anyLoopbackPort: false);
+        }
+
         /// <summary>Names additional form-submission destinations this response's policy must allow.</summary>
         /// <param name="context">The request context.</param>
         /// <param name="uris">Absolute URIs, typically a client's registered redirect URIs.</param>
-        public static void Allow(HttpContext context, IEnumerable<string> uris)
+        /// <param name="anyLoopbackPort">
+        ///     Whether the URIs are a native client's redirect registrations, where a port-less
+        ///     loopback one matches any port, so its source names every port.
+        /// </param>
+        public static void Allow(HttpContext context, IEnumerable<string> uris, bool anyLoopbackPort)
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(uris);
@@ -56,7 +71,7 @@ namespace Tellma.Identity.Infrastructure
 
             foreach (string uri in uris)
             {
-                if (ToSource(uri) is { } source && !sources.Contains(source, StringComparer.Ordinal))
+                if (ToSource(uri, anyLoopbackPort) is { } source && !sources.Contains(source, StringComparer.Ordinal))
                 {
                     sources.Add(source);
                 }
@@ -68,7 +83,7 @@ namespace Tellma.Identity.Infrastructure
             }
         }
 
-        /// <summary>Reads back what <see cref="Allow" /> recorded, if anything.</summary>
+        /// <summary>Reads back what <see cref="Allow(HttpContext, IEnumerable{string}, bool)" /> recorded, if anything.</summary>
         /// <param name="context">The request context.</param>
         /// <returns>The extra sources, or null when the page named none.</returns>
         internal static IReadOnlyList<string>? Allowed(HttpContext context)
@@ -83,8 +98,9 @@ namespace Tellma.Identity.Infrastructure
         ///     become one.
         /// </summary>
         /// <param name="uri">The registered URI.</param>
+        /// <param name="anyLoopbackPort">Whether a port-less loopback URI matches any port.</param>
         /// <returns>The source expression, or null.</returns>
-        private static string? ToSource(string uri)
+        private static string? ToSource(string uri, bool anyLoopbackPort)
         {
             // An http(s) URI is emitted whole, so the match stays as narrow as the registration
             // (a source path that does not end in '/' must match exactly). Any other scheme — a
@@ -95,18 +111,19 @@ namespace Tellma.Identity.Infrastructure
                 || uri.AsSpan().ContainsAny(Unsafe)
                 || !Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed)
                 ? null
-                : parsed.Scheme is "http" or "https" ? ToHostSource(uri, parsed) : parsed.Scheme + ":";
+                : parsed.Scheme is "http" or "https" ? ToHostSource(uri, parsed, anyLoopbackPort) : parsed.Scheme + ":";
         }
 
         /// <summary>
-        ///     The source expression of an <c>http(s)</c> URI: the URI itself, except that a
-        ///     loopback one registered without a port matches any port (RFC 8252, section 7.3), so its
-        ///     source names every port — a native client's callback listens on an ephemeral one,
-        ///     and naming only the default port would discard the redirect that completes the grant.
+        ///     The source expression of an <c>http(s)</c> URI: the URI itself, except that a native
+        ///     client's loopback redirect registered without a port matches any port (RFC 8252,
+        ///     section 7.3), so its source names every port — the callback listens on an ephemeral
+        ///     one, and naming only the default port would discard the redirect that completes the
+        ///     grant. Any other destination is an exact address and stays one.
         /// </summary>
-        private static string ToHostSource(string uri, Uri parsed)
+        private static string ToHostSource(string uri, Uri parsed, bool anyLoopbackPort)
         {
-            return parsed.IsDefaultPort && Services.ClientMetadata.DocumentClientRedirects.IsLoopback(parsed)
+            return anyLoopbackPort && parsed.IsDefaultPort && Services.ClientMetadata.DocumentClientRedirects.IsLoopback(parsed)
                 ? parsed.Scheme + "://" + parsed.Host + ":*" + parsed.AbsolutePath
                 : uri;
         }

@@ -112,6 +112,7 @@ namespace Tellma.Identity.Handlers
             {
                 DocumentClientConvergence.Cap => ClientMetadataRejectionReasons.Cap,
                 DocumentClientConvergence.Registered => ClientMetadataRejectionReasons.Registered,
+                DocumentClientConvergence.Collision => ClientMetadataRejectionReasons.ClientIdCollision,
                 DocumentClientConvergence.Created or DocumentClientConvergence.Updated or DocumentClientConvergence.Unchanged => null,
                 _ => throw new InvalidOperationException($"Unknown document-client convergence outcome {outcome}."),
             };

@@ -35,10 +35,19 @@ namespace Tellma.Identity.Options
         public TimeSpan MaxCache { get; set; } = TimeSpan.FromHours(24);
 
         /// <summary>
-        ///     How many fetches one host may be sent per minute, documents and key sets together. A
-        ///     fetch past the limit is not sent.
+        ///     How many fetches one host may be sent per minute, documents and key sets together, in
+        ///     each of two budgets: one for re-fetching the documents of clients the engine already
+        ///     holds, one for every other fetch, so fetches anyone can cause never starve the
+        ///     clients already in use. A fetch past the limit is not sent.
         /// </summary>
         public int FetchesPerHostPerMinute { get; set; } = 10;
+
+        /// <summary>
+        ///     How many documents may be resolved at once across all hosts, in each of the same two
+        ///     budgets. A first-time or early fetch that finds no free slot is refused; a refresh of
+        ///     a known client waits for one up to <see cref="Timeout" />.
+        /// </summary>
+        public int MaxConcurrentFetches { get; set; } = 16;
 
         /// <summary>
         ///     The most document-client rows the store holds. At the cap a new document client is

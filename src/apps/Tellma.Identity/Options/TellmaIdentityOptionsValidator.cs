@@ -30,6 +30,9 @@ namespace Tellma.Identity.Options
         /// <summary>The longest <see cref="TellmaIdentityClientMetadataOptions.Timeout" /> accepted.</summary>
         public static readonly TimeSpan MaxClientMetadataTimeout = TimeSpan.FromSeconds(30);
 
+        /// <summary>The largest <see cref="TellmaIdentityClientMetadataOptions.MaxConcurrentFetches" /> accepted.</summary>
+        public const int MaxClientMetadataConcurrentFetches = 1024;
+
         /// <inheritdoc />
         public ValidateOptionsResult Validate(string? name, TellmaIdentityOptions options)
         {
@@ -272,6 +275,11 @@ namespace Tellma.Identity.Options
             if (metadata.FetchesPerHostPerMinute <= 0)
             {
                 failures.Add($"{Section}:FetchesPerHostPerMinute must be positive.");
+            }
+
+            if (metadata.MaxConcurrentFetches is <= 0 or > MaxClientMetadataConcurrentFetches)
+            {
+                failures.Add($"{Section}:MaxConcurrentFetches must be between 1 and {MaxClientMetadataConcurrentFetches}.");
             }
 
             if (metadata.MaxClients < 0)

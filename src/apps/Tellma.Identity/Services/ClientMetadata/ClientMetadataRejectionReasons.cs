@@ -85,5 +85,8 @@ namespace Tellma.Identity.Services.ClientMetadata
 
         /// <summary>A registered client already holds this client id, so no document may take its row over.</summary>
         public const string Registered = "registered";
+
+        /// <summary>A stored client id differs from this one only in letter case.</summary>
+        public const string ClientIdCollision = "client_id_collision";
     }
 }

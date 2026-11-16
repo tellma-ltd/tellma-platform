@@ -104,6 +104,12 @@ namespace Tellma.Identity.Services.Provisioning
 
         /// <summary>A row with this client id exists and is not a document client's; nothing was written.</summary>
         Registered = 4,
+
+        /// <summary>
+        ///     A row holds this client id in another letter case, which the store's unique index
+        ///     treats as the same id; nothing was written.
+        /// </summary>
+        Collision = 5,
     }
 
     /// <summary>What converging a distribution's registrations did to the store.</summary>

@@ -21,6 +21,16 @@ namespace Tellma.Identity.Services.ClientMetadata
         Task<int> CountAsync(CancellationToken cancellationToken);
 
         /// <summary>
+        ///     Finds the stored client id that a client id matches under the store's own
+        ///     comparison, which ignores case: the id itself when a row holds it exactly, another
+        ///     spelling of it when a row holds that, or null when no row matches.
+        /// </summary>
+        /// <param name="clientId">The client id.</param>
+        /// <param name="cancellationToken">Aborts the query.</param>
+        /// <returns>The stored client id, or null.</returns>
+        Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken);
+
+        /// <summary>
         ///     Deletes the document-client rows that hold no authorization and no unexpired token
         ///     and were created before <paramref name="createdBefore" />, together with the expired
         ///     tokens such a row still holds.
@@ -56,6 +66,20 @@ namespace Tellma.Identity.Services.ClientMetadata
         public Task<int> CountAsync(CancellationToken cancellationToken)
         {
             return DocumentClients.CountAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(clientId);
+
+            // The comparison runs in the database, under the column's collation, which is the one
+            // the unique index enforces.
+            return context.Set<OpenIddictEntityFrameworkCoreApplication>()
+                .AsNoTracking()
+                .Where(application => application.ClientId == clientId)
+                .Select(static application => application.ClientId)
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         /// <inheritdoc />
