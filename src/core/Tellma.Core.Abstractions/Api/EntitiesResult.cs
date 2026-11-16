@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Data;
 
 namespace Tellma.Core.Abstractions.Api
@@ -17,9 +18,12 @@ namespace Tellma.Core.Abstractions.Api
     ///     <see cref="Ids" /> is in input order for a save and in request order for a get by ids, an
     ///     absent or hidden id omitted; <see cref="Entities" /> is parallel to it, or empty when the
     ///     caller asked for ids alone. Ids are written in the stack's key type: a JSON number for an
-    ///     <see cref="int" /> key, a string for a <see cref="long" /> key.
+    ///     <see cref="int" /> key, a string for a <see cref="long" /> key; <see cref="Related" /> and
+    ///     <see cref="Extras" /> are absent when null. The result is written to JSON only, and only
+    ///     over an entity type, whose key type it needs.
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
+    [JsonConverter(typeof(EntitiesResultJsonConverterFactory))]
     public sealed class EntitiesResult<TEntity>
     {
         /// <summary>The rows' ids, in the operation's order.</summary>

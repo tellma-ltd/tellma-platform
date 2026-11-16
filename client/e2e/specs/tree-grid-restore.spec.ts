@@ -73,8 +73,8 @@ interface FlashRecord {
   readonly atStart: string;
   /** The first cell's background with its flash animation sought to 90 %, or `null` for none. */
   readonly nearEnd: string | null;
-  /** The row's outline style as the flash began. */
-  readonly outline: string;
+  /** The style of the flash ring's band (the row's `::after` border) as the flash began. */
+  readonly ring: string;
   /** Milliseconds from the trigger's click to the flash class leaving the row. */
   readonly heldFor: number;
 }
@@ -161,7 +161,7 @@ async function watchFlash(page: Page, rowId: number, triggerTestId: string): Pro
             animationDuration: total,
             atStart,
             nearEnd,
-            outline: getComputedStyle(row).outlineStyle,
+            ring: getComputedStyle(row, '::after').borderTopStyle,
           };
         } else if (!flashing && watch.record !== null && watch.heldFor === null) {
           watch.heldFor = performance.now() - (watch.clickedAt ?? Number.NaN);
@@ -333,14 +333,21 @@ for (const dir of ['ltr', 'rtl'] as const) {
       expect(flash.nearEnd).toBe(flash.tint);
       // The class stayed on for at least --grid-flash-duration, then left.
       expect(flash.heldFor).toBeGreaterThanOrEqual(flash.duration);
+      // The tint alone marks the row: the forced-colors ring stays off.
+      expect(flash.ring).toBe('none');
       await expect(target).not.toHaveClass(/tm-grid__row--flash/);
     });
 
-    test('scrollToRow outlines the flashing row under forced colors', async ({ page }) => {
+    test('scrollToRow rings the flashing row, untinted, under forced colors', async ({ page }) => {
       await page.emulateMedia({ forcedColors: 'active' });
       await watchFlash(page, 212, 'scroll-go');
       await page.getByTestId('scroll-go').click();
-      expect((await flashRecord(page)).outline).toBe('solid');
+      const flash = await flashRecord(page);
+      expect(flash.ring).toBe('solid');
+      // The ring replaces the tint: no animation paints over the cells.
+      expect(flash.animationName).toBeNull();
+      expect(flash.atStart).not.toBe(flash.tint);
+      expect(flash.heldFor).toBeGreaterThanOrEqual(flash.duration);
     });
 
     test('scrollToRow reports a row that has not loaded', async ({ page }) => {

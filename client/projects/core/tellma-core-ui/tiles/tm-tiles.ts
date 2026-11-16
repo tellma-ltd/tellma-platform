@@ -20,6 +20,7 @@ import {
   input,
   model,
   output,
+  PendingTasks,
   signal,
   type Signal,
   untracked,
@@ -32,7 +33,6 @@ import { TmBadge, type TmBadgeTone } from '@tellma/core-ui/badge';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridDriverTarget, TmGridRowActivation } from '@tellma/core-ui/grid';
 import {
-  tmComputeAxisWindow,
   ɵtmFlattenVisible,
   ɵtmResolveTree,
   type ɵTmTreeStructure,
@@ -44,17 +44,17 @@ import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import {
+  ɵtmTilesAssignSlots,
   ɵtmTilesColumns,
   ɵtmTilesLineCount,
   ɵtmTilesMove,
   ɵtmTilesRenderedLines,
+  ɵtmTilesSpan,
   type ɵTmTilesMove,
 } from './internal/tm-tiles-lattice';
 import { TmTileContent, TmTilesEmpty, TmTilesLoading } from './tm-tiles-templates';
 import type { TmTileImage, TmTileLayout, TmTileText } from './tm-tiles-types';
 
-/** Lattice lines rendered beyond the visible ones on each side. */
-const OVERSCAN_LINES = 3;
 /** A second activation of the same row within this window (ms) is ignored. */
 const ACTIVATION_GUARD_MS = 400;
 /** A press that travels this far (px) before its click is a drag or a text selection, not a tap. */
@@ -75,6 +75,8 @@ let nextTilesId = 0;
 
 /** One corner's text, normalized from {@link TmTileText}. */
 interface Corner {
+  /** Where it sits: the suffix of its `tm-tiles__corner--` class. */
+  readonly place: 'top-end' | 'bottom-start' | 'bottom-end';
   readonly text: string;
   readonly numeric: boolean;
   readonly badge: TmBadgeTone | null;
@@ -87,9 +89,8 @@ interface TileContent {
   readonly href: string | null;
   /** `undefined`: the layout has no image column. */
   readonly image: TmTileImage | undefined;
-  readonly topEnd: Corner | null;
-  readonly bottomStart: Corner | null;
-  readonly bottomEnd: Corner | null;
+  /** The corners that have text, in reading order. */
+  readonly corners: readonly Corner[];
   readonly rowClass: string | null;
   /** The checkbox's accessible name ("Select …"); empty when not selectable. */
   readonly checkLabel: string;
@@ -114,14 +115,17 @@ interface TileView<T> {
   readonly id: TmRowId;
   /** The position in the visible sequence. */
   readonly index: number;
-  readonly column: number;
   readonly elementId: string;
   readonly tabStop: boolean;
   readonly selected: boolean;
   readonly classes: string;
   readonly content: TileContent;
-  /** The image source to load now: `null` shows the placeholder (no source, or held while scrolling). */
-  readonly imageSrc: string | null;
+  /**
+   * The image source to load now, as at most one entry keyed by itself, so
+   * a tile that moves to another row's image gets a fresh `tm-image`; empty
+   * shows the placeholder (no source, or held while scrolling).
+   */
+  readonly images: readonly string[];
   /** Tree mode: the 1-based depth, and whether the row expands, is expanded and is loading. */
   readonly level: number;
   readonly expandable: boolean;
@@ -132,6 +136,8 @@ interface TileView<T> {
 /** One rendered lattice line. */
 interface LineView<T> {
   readonly index: number;
+  /** What the line's element is tracked by: a slot the line keeps while rendered, then hands on. */
+  readonly slot: number;
   readonly top: number;
   readonly tiles: readonly TileView<T>[];
   /** Tree mode's row attributes, from the line's one tile; `null` when flat. */
@@ -144,15 +150,18 @@ interface LineView<T> {
   } | null;
 }
 
-/** Normalizes one corner. */
-function corner(value: TmTileText | null | undefined): Corner | null {
-  if (value === null || value === undefined) {
-    return null;
+/** Normalizes one corner into the list of those with text. */
+function corner(
+  corners: Corner[],
+  place: Corner['place'],
+  value: TmTileText | null | undefined,
+): void {
+  // No corner for null, undefined or empty text.
+  if (!value) {
+    return;
   }
-  if (typeof value === 'string') {
-    return value === '' ? null : { text: value, numeric: false, badge: null };
-  }
-  return { text: value.text, numeric: value.numeric === true, badge: value.badge ?? null };
+  const { text, numeric, badge } = typeof value === 'string' ? { text: value } : value;
+  corners.push({ place, text, numeric: numeric === true, badge: badge ?? null });
 }
 
 /** Reads a px length token, or the fallback while it is unresolvable. */
@@ -227,7 +236,7 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
       (click)="onClick($event)"
       (auxclick)="onAuxClick($event)"
       (focusin)="onFocusIn($event)"
-      (focusout)="onFocusOut($event)"
+      (focusout)="onFocusOut()"
     >
       <div class="tm-tiles__canvas" [style.block-size.px]="extent()">
         <!-- Skeleton tiles hold the final geometry while the first data loads. -->
@@ -255,8 +264,13 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
           }
         }
 
-        <!-- The windowed lines, plus the active tile's line wherever it is. -->
-        @for (line of lines(); track line.index) {
+        <!-- The windowed lines, plus the active tile's line wherever it is.
+             Lines are tracked by slot and built-in tiles by position, so a
+             scroll re-binds the elements of the lines that leave to the
+             lines that enter instead of rebuilding them; the DOM stays in
+             line order for the reading order. A custom body's tiles are
+             tracked by row: its views are never re-bound to another row. -->
+        @for (line of lines(); track line.slot) {
           <div
             class="tm-tiles__line"
             role="row"
@@ -268,14 +282,14 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
             [attr.aria-busy]="line.tree?.busy ? 'true' : null"
             [style.transform]="'translateY(' + line.top + 'px)'"
           >
-            @for (tile of line.tiles; track tile.id) {
+            @for (tile of line.tiles; track contentDef() ? tile.id : $index) {
               <div
                 role="gridcell"
                 class="tm-tiles__item"
                 [class]="tile.classes"
                 [id]="tile.elementId"
                 [attr.data-index]="tile.index"
-                [attr.aria-colindex]="tile.column + 1"
+                [attr.aria-colindex]="$index + 1"
                 [attr.aria-selected]="selectable() ? tile.selected : null"
                 [attr.tabindex]="tile.tabStop ? 0 : -1"
                 [style.--tm-tiles-level]="tile.level"
@@ -326,16 +340,18 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                   </div>
                 } @else {
                   <!-- The built-in body: the image column, then the four corners. -->
-                  <!-- Static DOM throughout: no embedded view per corner, so a
-                       window of new tiles costs elements, not views. -->
+                  <!-- Inline markup, no shared templates: a reused tile
+                       re-binds its title and corners in place. -->
                   @let content = tile.content;
                   @if (content.image; as image) {
                     <span class="tm-tiles__image">
                       <!-- A tile that arrives mid-scroll holds its source until
                            scrolling settles, so a fling fetches and decodes
                            nothing; the window already bounds the instances,
-                           so tm-image's own viewport deferral is off. -->
-                      @if (tile.imageSrc; as src) {
+                           so tm-image's own viewport deferral is off. The
+                           image is keyed by its source: a re-bound tile never
+                           shows its previous row's image. -->
+                      @for (src of tile.images; track src) {
                         <tm-image
                           [src]="src"
                           [etag]="image.etag ?? null"
@@ -349,7 +365,7 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                             <tm-icon [svg]="placeholderGlyph" />
                           </span>
                         </tm-image>
-                      } @else {
+                      } @empty {
                         <span class="tm-tiles__placeholder">
                           <tm-icon [svg]="placeholderGlyph" />
                         </span>
@@ -357,22 +373,15 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                     </span>
                   }
                   <span class="tm-tiles__text">
-                    <!-- The title: plain, or as parts each isolated in its own <bdi>. -->
-                    <span class="tm-tiles__title">
-                      @if (content.href; as href) {
-                        <a class="tm-tiles__link" tabindex="-1" [href]="href">
-                          @if (content.titleParts; as parts) {
-                            @for (part of parts; track $index) {
-                              @if (!$first) {
-                                {{ ' - ' }}
-                              }
-                              <bdi>{{ part }}</bdi>
-                            }
-                          } @else {
-                            {{ content.title }}
-                          }
-                        </a>
-                      } @else if (content.titleParts; as parts) {
+                    <!-- The title, a link when the row has one (without an
+                         href the <a> is no link and takes no focus): plain,
+                         or as parts each isolated in its own <bdi>. -->
+                    <a
+                      class="tm-tiles__title"
+                      [attr.href]="content.href"
+                      [attr.tabindex]="content.href === null ? null : -1"
+                    >
+                      @if (content.titleParts; as parts) {
                         @for (part of parts; track $index) {
                           @if (!$first) {
                             {{ ' - ' }}
@@ -382,38 +391,14 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                       } @else {
                         {{ content.title }}
                       }
-                    </span>
+                    </a>
                     <!-- The corners: text, numeric text (LTR, tabular,
-                         physically right), or a badge. -->
-                    @if (content.topEnd; as value) {
+                         physically right), or a badge. They hold no state of
+                         their own, so they re-bind in place by position. -->
+                    @for (value of content.corners; track $index) {
                       <span
-                        class="tm-tiles__corner tm-tiles__corner--top-end"
-                        [class.tm-tiles__corner--numeric]="value.numeric"
-                        [attr.dir]="value.numeric ? 'ltr' : null"
-                      >
-                        @if (value.badge; as tone) {
-                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
-                        } @else {
-                          {{ value.text }}
-                        }
-                      </span>
-                    }
-                    @if (content.bottomStart; as value) {
-                      <span
-                        class="tm-tiles__corner tm-tiles__corner--bottom-start"
-                        [class.tm-tiles__corner--numeric]="value.numeric"
-                        [attr.dir]="value.numeric ? 'ltr' : null"
-                      >
-                        @if (value.badge; as tone) {
-                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
-                        } @else {
-                          {{ value.text }}
-                        }
-                      </span>
-                    }
-                    @if (content.bottomEnd; as value) {
-                      <span
-                        class="tm-tiles__corner tm-tiles__corner--bottom-end"
+                        class="tm-tiles__corner"
+                        [class]="'tm-tiles__corner--' + value.place"
                         [class.tm-tiles__corner--numeric]="value.numeric"
                         [attr.dir]="value.numeric ? 'ltr' : null"
                       >
@@ -595,8 +580,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
   private pendingFocus = false;
   /** Whether focus is inside the scroller, so a re-render that drops it gets it back. */
   private focusWithin = false;
-  /** The press a click is measured against for the tap slop. */
-  private press: { readonly x: number; readonly y: number } | null = null;
+  /** The row whose tile last took focus: a tile re-bound to another row under focus hands it on. */
+  private focusedId: TmRowId | undefined;
+  /** The press a click is measured against: the tap slop, and the row pressed. */
+  private press: {
+    readonly x: number;
+    readonly y: number;
+    readonly id: TmRowId | undefined;
+  } | null = null;
   /** The last activation, for the repeat guard. */
   private lastActivation: { readonly id: TmRowId; readonly at: number } | null = null;
   /** The flashing tile and its keyframes (`1` or `2`, alternating so a re-flash restarts). */
@@ -710,23 +701,40 @@ export class TmTiles<T> implements TmGridDriverTarget {
     ɵtmTilesLineCount({ columns: this.columns(), count: this.visible().length }),
   );
 
+  /**
+   * The offset a scroll started at, while its own frame holds the overscan
+   * back: set by the scroll and cleared in the next task, so a jump's frame
+   * re-binds only lines it already has and the overscan follows in a task
+   * of its own.
+   */
+  private readonly sliceFrom = signal<number | null>(null);
+  /** Keeps the application unstable until the held-back overscan renders. */
+  private readonly pendingTasks = inject(PendingTasks);
+
   /** The windowed lines over the scroll position. */
   private readonly lineWindow = computed(
     () =>
-      tmComputeAxisWindow({
-        scrollOffset: this.scrollTop(),
-        viewportSize: this.viewportHeight(),
-        itemSize: this.pitch(),
-        itemCount: this.lineCount(),
-        overscan: OVERSCAN_LINES,
-      }),
+      ɵtmTilesSpan(
+        this.scrollTop(),
+        this.sliceFrom(),
+        this.pitch(),
+        this.lineCount(),
+        this.viewportHeight(),
+      ),
     // A scroll within the same lines renders nothing new.
-    { equal: (a, b) => a.start === b.start && a.end === b.end && a.totalSize === b.totalSize },
+    { equal: (a, b) => a.start === b.start && a.end === b.end },
   );
+
+  /**
+   * The slot each line had in the last render, by line in rendering order:
+   * the lines a render keeps hold their slots, and the lines it brings in
+   * take the slots of those it drops.
+   */
+  private lineSlots = new Map<number, number>();
 
   /** The canvas height: every line at the pitch. */
   protected readonly extent = computed(() =>
-    this.showSkeleton() ? 0 : this.lineWindow().totalSize,
+    this.showSkeleton() ? 0 : this.lineCount() * this.pitch(),
   );
 
   /**
@@ -787,12 +795,19 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const shownImages = this.shownImages;
     // One tab stop: the active tile, else the first rendered one.
     const tabStop = active ?? Math.min(window.start * columns, rows.length - 1);
-    const lineIndexes = ɵtmTilesRenderedLines(
-      window.start,
-      window.end,
-      active === null ? null : Math.floor(active / columns),
+    // The windowed lines, plus the active tile's line wherever it is, each
+    // with its slot. Slots follow from the last render's, and the same lines
+    // keep the same slots, so re-running this for another reason (a
+    // selection) re-binds nothing.
+    this.lineSlots = ɵtmTilesAssignSlots(
+      ɵtmTilesRenderedLines(
+        window.start,
+        window.end,
+        active === null ? null : Math.floor(active / columns),
+      ),
+      this.lineSlots,
     );
-    return lineIndexes.map((line): LineView<T> => {
+    return Array.from(this.lineSlots, ([line, slot]): LineView<T> => {
       const tiles: TileView<T>[] = [];
       const end = Math.min(rows.length, (line + 1) * columns);
       for (let index = line * columns; index < end; index++) {
@@ -811,17 +826,17 @@ export class TmTiles<T> implements TmGridDriverTarget {
         if (flash !== null && flash.id === id) {
           classes += flash.keyframes === 1 ? ' tm-tiles__item--flash' : ' tm-tiles__item--reflash';
         }
+        const src = this.imageSrcOf(row, content, scrolling, shownImages);
         tiles.push({
           row,
           id,
+          images: src === null ? [] : [src],
           index,
-          column: index - line * columns,
           elementId: `${this.idPrefix}-t${index}`,
           tabStop: index === tabStop,
           selected: isSelected,
           classes,
           content,
-          imageSrc: this.imageSrcOf(row, content, scrolling, shownImages),
           level: node === undefined ? 1 : node.level + 1,
           expandable: node?.expandable === true,
           expanded: node?.expandable === true && expanded.has(id),
@@ -832,6 +847,7 @@ export class TmTiles<T> implements TmGridDriverTarget {
       const parent = parentOf(info, first?.id);
       return {
         index: line,
+        slot,
         top: line * pitch,
         tiles,
         tree:
@@ -1013,6 +1029,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** Tracks the scroll offset for the line window. */
   protected onScroll(): void {
+    // The scroll's own frame re-binds the lines it has; the overscan
+    // renders in the next task, so a jump splits into two shorter tasks.
+    if (this.sliceFrom() === null) {
+      this.sliceFrom.set(this.scrollTop());
+      const done = this.pendingTasks.add();
+      setTimeout(() => {
+        this.sliceFrom.set(null);
+        done();
+      });
+    }
     this.scrollTop.set(this.scroller().nativeElement.scrollTop);
     this.scrolling.set(true);
     clearTimeout(this.scrollTimer);
@@ -1099,15 +1125,15 @@ export class TmTiles<T> implements TmGridDriverTarget {
     event.preventDefault();
   }
 
-  /** Records a press for the tap slop; keeps a middle press from starting autoscroll. */
+  /** Records a press and its row for the click; keeps a middle press from starting autoscroll. */
   protected onPointerDown(event: PointerEvent): void {
-    this.press = { x: event.clientX, y: event.clientY };
+    const row = this.rowAt(event.target);
+    this.press = { x: event.clientX, y: event.clientY, id: row?.id };
     if (
       event.button === 1 &&
       event.pointerType !== 'touch' &&
-      event.target instanceof Element &&
-      event.target.closest('a[href]') === null &&
-      this.tileElement(event.target) !== null
+      row &&
+      (event.target as Element).closest('a[href]') === null
     ) {
       event.preventDefault();
     }
@@ -1123,16 +1149,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
     // Each press measures one click only.
     const press = this.press;
     this.press = null;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
+    const row = this.rowAt(event.target);
+    // A click on another row than the press's (its tile re-bound in place
+    // between press and release, as when rows arrive above) is no click on
+    // either row.
+    if (row === undefined || this.pressedElsewhere(press, row.id, event)) {
       return;
     }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row === undefined) {
-      return;
-    }
-    const element = target as Element;
+    const element = event.target as Element;
     if (element.closest('[data-tm-check]') !== null) {
       this.toggleSelected(row.id);
       return;
@@ -1171,15 +1195,13 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** A middle click outside a link opens the tile in a new tab; on a link it is the browser's. */
   protected onAuxClick(event: MouseEvent): void {
-    if (event.button !== 1 || !(event.target instanceof Element)) {
-      return;
-    }
-    const tile = this.tileElement(event.target);
-    if (tile === null || event.target.closest('a[href]') !== null) {
-      return;
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row !== undefined) {
+    const row = this.rowAt(event.target);
+    if (
+      event.button === 1 &&
+      row &&
+      (event.target as Element).closest('a[href]') === null &&
+      !this.pressedElsewhere(this.press, row.id, event)
+    ) {
       this.activate(row.id, 'pointer', true);
     }
   }
@@ -1187,26 +1209,28 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** Focus entering a tile makes it active; focus on its title link moves to the tile. */
   protected onFocusIn(event: FocusEvent): void {
     this.focusWithin = true;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
-      return;
+    // Focus lands on elements only.
+    const target = event.target as Element;
+    if (target.classList.contains('tm-tiles__title')) {
+      this.tileElement(target)?.focus({ preventScroll: true });
     }
-    if (target !== tile && (target as Element).classList.contains('tm-tiles__link')) {
-      tile.focus({ preventScroll: true });
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
+    const row = this.rowAt(target);
+    this.focusedId = row?.id;
     if (row !== undefined && row.id !== this.activeId()) {
       this.setActive(row.id, { reveal: false, focus: false });
     }
   }
 
-  /** Focus leaving the list ends the focus reclaim. */
-  protected onFocusOut(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    if (!(next instanceof Node) || !this.scroller().nativeElement.contains(next)) {
-      this.focusWithin = false;
-    }
+  /**
+   * Focus leaving the list ends the focus reclaim, decided once the focus
+   * change settles: a render that moves the focused tile's element to
+   * another place in the list blurs it on the way, and gets focus back
+   * before the task ends.
+   */
+  protected onFocusOut(): void {
+    queueMicrotask(() => {
+      this.focusWithin = this.scroller().nativeElement.contains(document.activeElement);
+    });
   }
 
   // ---- internals ----
@@ -1226,14 +1250,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const layout = this.layout();
     const parts = layout.titleParts?.(row) ?? null;
     const title = layout.title(row);
+    const corners: Corner[] = [];
+    corner(corners, 'top-end', layout.topEnd?.(row));
+    corner(corners, 'bottom-start', layout.bottomStart?.(row));
+    corner(corners, 'bottom-end', layout.bottomEnd?.(row));
     return {
       title,
       titleParts: parts !== null && parts.length > 0 ? parts : null,
       href: layout.href?.(row) ?? null,
       image: layout.image?.(row),
-      topEnd: corner(layout.topEnd?.(row)),
-      bottomStart: corner(layout.bottomStart?.(row)),
-      bottomEnd: corner(layout.bottomEnd?.(row)),
+      corners,
       rowClass: this.rowClass()?.(row) ?? null,
       checkLabel: this.selectable() ? this.translate('tiles.select', { label: title })() : '',
     };
@@ -1259,6 +1285,24 @@ export class TmTiles<T> implements TmGridDriverTarget {
       return src;
     }
     return shownImages.has(row) ? src : null;
+  }
+
+  /** The row the tile holding `target` shows now, if `target` is in a tile. */
+  private rowAt(target: EventTarget | null): VisibleRow<T> | undefined {
+    const tile = target instanceof Element ? this.tileElement(target) : null;
+    return tile === null ? undefined : this.visible()[Number(tile.dataset['index'])];
+  }
+
+  /**
+   * Whether a pointer click's press was on another row than `id`; a click
+   * with no press of its own (`detail` 0) never is.
+   */
+  private pressedElsewhere(
+    press: { readonly id: TmRowId | undefined } | null,
+    id: TmRowId,
+    event: MouseEvent,
+  ): boolean {
+    return press !== null && event.detail !== 0 && press.id !== id;
   }
 
   /** The tile element a target is in, if it is one of this list's. */
@@ -1550,13 +1594,23 @@ export class TmTiles<T> implements TmGridDriverTarget {
         }
       }
     }
+    // Focus follows the row, not the element: a re-render that dropped
+    // focus onto <body>, or re-bound the focused tile to another row, moves
+    // it to the active tile.
+    const focused = document.activeElement;
+    const shown = this.rowAt(focused);
+    const stale = shown !== undefined && shown.id !== this.focusedId;
     const focusActive =
-      this.pendingFocus || (this.focusWithin && document.activeElement === document.body);
+      this.pendingFocus || (this.focusWithin && (focused === document.body || stale));
     this.pendingFocus = false;
     if (focusActive) {
       const id = this.activeDescendantId();
       const tile = id === null ? null : scroller.querySelector<HTMLElement>(`#${id}`);
-      if (tile !== null && document.activeElement !== tile) {
+      // A focused tile re-bound in place to the active row is focused
+      // already but has announced nothing: it is left and entered again, so
+      // the move fires its focus events and focusin records the row.
+      if (tile !== null && (focused !== tile || stale)) {
+        tile.blur();
         tile.focus({ preventScroll: true });
       }
     }

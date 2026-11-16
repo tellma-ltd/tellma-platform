@@ -16,7 +16,7 @@ namespace Tellma.Core.Abstractions.Composition
     ///     Components are redeclared get-only, so a <c>with</c> expression cannot blank them.
     /// </remarks>
     /// <param name="PlatformVersion">The informational version of the platform runtime assembly.</param>
-    /// <param name="DistributionVersion">The informational version of the distribution's entry assembly.</param>
+    /// <param name="DistributionVersion">The informational version of the distribution's composition library, the assembly declaring its composition method.</param>
     public sealed record DeploymentVersions(string PlatformVersion, string DistributionVersion)
     {
         /// <inheritdoc cref="DeploymentVersions(string, string)" />

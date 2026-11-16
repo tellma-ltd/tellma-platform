@@ -77,7 +77,7 @@ export class TmTileHarness extends ComponentHarness {
   /** The title element. */
   private readonly title = this.locatorForOptional('.tm-tiles__title');
   /** The title link, when the layout gives an `href`. */
-  private readonly link = this.locatorForOptional('a.tm-tiles__link');
+  private readonly link = this.locatorForOptional('a.tm-tiles__title[href]');
   /** The reserved checkbox. */
   private readonly checkbox = this.locatorForOptional('[role="checkbox"]');
   /** The tree twisty. */

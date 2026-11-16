@@ -28,7 +28,7 @@ import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 
-import { ɵTmImageBlobCache } from './internal/blob-cache';
+import { ɵTmImageBlobCache, type ɵTmShownBlob } from './internal/blob-cache';
 import { tmMaxMegabytes } from './internal/byte-size';
 import { tmCoverFit } from './internal/fit';
 import { tmDefaultSrcForSize, tmSizeBucket } from './internal/size-buckets';
@@ -335,8 +335,10 @@ export class TmImage {
 
   /** View pipeline state. */
   private readonly status = signal<'empty' | 'pending' | 'ready' | 'error'>('empty');
-  /** Object URL of the fetched rendition currently on screen. */
+  /** The shared object URL of the fetched rendition on screen. */
   protected readonly displayUrl = signal<string | null>(null);
+  /** The blob on screen: this instance's hold on its shared object URL. */
+  private onScreen: ɵTmShownBlob | null = null;
   /** Whether the box is near the viewport (always, without `defer`). */
   private readonly visible = signal(false);
   /** Bumped by every new or abandoned load, so a stale one swaps nothing in. */
@@ -419,15 +421,15 @@ export class TmImage {
     let observer: IntersectionObserver | null = null;
     destroyRef.onDestroy(() => {
       // Invalidate in-flight loads FIRST: a fetch/decode resolving after
-      // this point must revoke its own object URL (the token check in
-      // swapIn), not adopt it — otherwise the URL and the blob it pins
-      // leak for the life of the tab. The abort releases this instance's
+      // this point must release its own hold on the object URL (the token
+      // check in swapIn), not adopt it — otherwise the URL and the blob it
+      // pins leak for the life of the tab. The abort releases this instance's
       // hold on the shared request and on any background revalidation.
       this.abortLoad();
       this.lifetime.abort();
       this.destroyed = true;
       observer?.disconnect();
-      this.setDisplayUrl(null);
+      this.setOnScreen(null);
       this.discardPreview();
       this.discardFitting();
     });
@@ -477,7 +479,7 @@ export class TmImage {
         }
         if (src === '') {
           this.status.set('empty');
-          this.setDisplayUrl(null);
+          this.setOnScreen(null);
           this.clearLoadError();
           return;
         }
@@ -535,11 +537,11 @@ export class TmImage {
       const blob = await this.cache.getImage(url, load.etag, {
         signal: load.controller.signal,
         onRefresh: (refreshed) => {
-          void this.swapIn(refreshed, token);
+          void this.swapIn(refreshed, token, url, null);
         },
       });
       load.awaitingBytes = false;
-      await this.swapIn(blob, token);
+      await this.swapIn(blob, token, url, load.etag);
     } catch {
       // An abandoned load is not a failure: no glyph, no announcement.
       if (!load.controller.signal.aborted) {
@@ -551,23 +553,31 @@ export class TmImage {
     }
   }
 
-  /** Decodes off-DOM, then swaps — no flash of a partially decoded image. */
-  private async swapIn(blob: Blob, token: number): Promise<void> {
-    const url = URL.createObjectURL(blob);
+  /**
+   * Decodes off-DOM, then swaps — no flash of a partially decoded image.
+   * Every instance showing the same blob, or the same URL under the same
+   * stamp, shares its object URL and its one decode, so a list of the same
+   * image decodes it once.
+   */
+  private async swapIn(
+    blob: Blob,
+    token: number,
+    url: string,
+    version: string | null,
+  ): Promise<void> {
+    const shown = this.cache.show(url, blob, version);
     try {
-      const probe = new Image();
-      probe.src = url;
-      await probe.decode();
+      await shown.decoded;
     } catch {
-      URL.revokeObjectURL(url);
+      this.cache.hide(shown);
       this.failLoad(token);
       return;
     }
     if (token !== this.loadToken) {
-      URL.revokeObjectURL(url);
+      this.cache.hide(shown);
       return;
     }
-    this.setDisplayUrl(url);
+    this.setOnScreen(shown);
     this.status.set('ready');
     this.clearLoadError();
   }
@@ -584,7 +594,7 @@ export class TmImage {
       return;
     }
     this.status.set('error');
-    this.setDisplayUrl(null);
+    this.setOnScreen(null);
     if (!untracked(this.fallsBackOnError)) {
       this.noticeKey.set({ key: 'image.error' });
     }
@@ -601,13 +611,18 @@ export class TmImage {
     }
   }
 
-  /** Swaps the display URL, revoking the replaced object URL. */
-  private setDisplayUrl(url: string | null): void {
-    const previous = untracked(this.displayUrl);
-    if (previous !== null && previous !== url) {
-      URL.revokeObjectURL(previous);
+  /**
+   * Puts a shown blob on screen (or clears the box), then releases the one
+   * it replaces: the last instance to let go of a blob revokes its object
+   * URL.
+   */
+  private setOnScreen(next: ɵTmShownBlob | null): void {
+    const previous = this.onScreen;
+    this.onScreen = next;
+    this.displayUrl.set(next?.url ?? null);
+    if (previous !== null) {
+      this.cache.hide(previous);
     }
-    this.displayUrl.set(url);
   }
 
   // ---- edit mode ----
@@ -782,11 +797,11 @@ export class TmImage {
 
   /** Leaving the fitting state moves focus back onto the chrome. */
   private async restoreFocusToChrome(): Promise<void> {
-    await new Promise((resolve) => afterNextRender(() => resolve(undefined), {
-      injector: this.injector,
-    }));
-    this.host.nativeElement
-      .querySelector<HTMLElement>('[data-tm-image-action="replace"]')
-      ?.focus();
+    await new Promise((resolve) =>
+      afterNextRender(() => resolve(undefined), {
+        injector: this.injector,
+      }),
+    );
+    this.host.nativeElement.querySelector<HTMLElement>('[data-tm-image-action="replace"]')?.focus();
   }
 }

@@ -27,9 +27,6 @@ namespace Tellma.Distro.Acme.IntegrationTests
     [Trait("Category", "Integration")]
     public sealed class WebHostTests(SqlServerFixture sql)
     {
-        /// <summary>The administrator Acme's Development configuration seeds in the identity engine.</summary>
-        private const string Administrator = "admin@localhost";
-
         /// <summary>The identity server a deployment with the engine elsewhere names.</summary>
         private const string Authority = "https://identity.example.com";
 
@@ -43,13 +40,13 @@ namespace Tellma.Distro.Acme.IntegrationTests
             await using AcmeHost host = await AcmeHost.StartAsync(acme.Values);
             using OidcFlowClient flow = host.CreateFlowClient();
 
-            await SignInAsync(flow);
+            await AcmeSignIn.SignInAsync(flow);
 
             using HttpResponseMessage user = await flow.Browser.GetAsync(new Uri("/bff/user", UriKind.Relative), Token);
             string body = await user.Content.ReadAsStringAsync(Token);
             Assert.True(user.StatusCode == HttpStatusCode.OK, body);
             using var document = JsonDocument.Parse(body);
-            Assert.Equal(Administrator, document.RootElement.GetProperty("email").GetString());
+            Assert.Equal(AcmeSignIn.Administrator, document.RootElement.GetProperty("email").GetString());
         }
 
         [Fact]
@@ -59,7 +56,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             _ = await acme.MigrateAsync();
             await using AcmeHost host = await AcmeHost.StartAsync(acme.Values);
             using OidcFlowClient flow = host.CreateFlowClient();
-            await SignInAsync(flow);
+            await AcmeSignIn.SignInAsync(flow);
 
             // The engine posts its logout token to the host's receiver, which ends the session.
             await SignOutAtTheEngineAsync(flow);
@@ -80,7 +77,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             await using AcmeHost host = await AcmeHost.StartAsync(values);
             host.BackchannelLogoutSink = new DiscardingHandler();
             using OidcFlowClient flow = host.CreateFlowClient();
-            await SignInAsync(flow);
+            await AcmeSignIn.SignInAsync(flow);
 
             using (HttpResponseMessage refreshed = await flow.Browser.GetAsync(new Uri("/bff/user", UriKind.Relative), Token))
             {
@@ -141,8 +138,12 @@ namespace Tellma.Distro.Acme.IntegrationTests
             {
                 // The engine runs elsewhere, so its metadata stands in as already read: only the
                 // catalog decides readiness here.
-                await using AcmeHost host = await AcmeHost.StartAsync(values, "Production", static services => services.Configure<JwtBearerOptions>(
-                    TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority }));
+                await using AcmeHost host = await AcmeHost.StartAsync(values, new AcmeHostOptions
+                {
+                    Environment = "Production",
+                    Services = static services => services.Configure<JwtBearerOptions>(
+                        TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority }),
+                });
                 using HttpClient client = host.Server.CreateClient();
 
                 using (HttpResponseMessage before = await client.GetAsync(new Uri("/health/ready", UriKind.Relative), Token))
@@ -171,53 +172,6 @@ namespace Tellma.Distro.Acme.IntegrationTests
                     Directory.Delete(keyRing, recursive: true);
                 }
             }
-        }
-
-        /// <summary>
-        ///     Signs the administrator in through the BFF: the login's redirect to the engine, the
-        ///     engine's email-code sign-in, and the authorization response delivered to the host's
-        ///     callback, which starts the session.
-        /// </summary>
-        /// <param name="flow">The browser.</param>
-        /// <returns>A task that completes when the browser holds a session.</returns>
-        private static async Task SignInAsync(OidcFlowClient flow)
-        {
-            // --- The BFF's login pushes the request and sends the browser to the engine ---
-            string authorize;
-            using (HttpResponseMessage login = await flow.Browser.GetAsync(new Uri("/bff/login", UriKind.Relative), Token))
-            {
-                Assert.True(login.StatusCode == HttpStatusCode.Redirect, await login.Content.ReadAsStringAsync(Token));
-                authorize = login.Headers.Location!.ToString();
-            }
-
-            string loginPage;
-            using (HttpResponseMessage challenge = await flow.Browser.GetAsync(new Uri(authorize, UriKind.RelativeOrAbsolute), Token))
-            {
-                Assert.True(challenge.StatusCode == HttpStatusCode.Redirect, await challenge.Content.ReadAsStringAsync(Token));
-                loginPage = challenge.Headers.Location!.ToString();
-            }
-
-            // --- The engine signs the user in, then answers the authorization request ---
-            string returned = await flow.SignInWithEmailCodeAsync(Administrator, loginPage);
-            using HttpResponseMessage answer = await flow.Browser.GetAsync(new Uri(returned, UriKind.RelativeOrAbsolute), Token);
-
-            // --- The callback: a redirect to it, or a form the browser posts to it ---
-            using HttpResponseMessage callback = answer.StatusCode == HttpStatusCode.Redirect
-                ? await flow.Browser.GetAsync(answer.Headers.Location!, Token)
-                : await PostAsync(flow, answer);
-            Assert.True(callback.StatusCode == HttpStatusCode.Redirect, await callback.Content.ReadAsStringAsync(Token));
-            Assert.DoesNotContain("/bff/login", callback.Headers.Location!.ToString(), StringComparison.Ordinal);
-        }
-
-        /// <summary>Posts the form a page carries, as a browser posts an authorization response.</summary>
-        /// <param name="flow">The browser.</param>
-        /// <param name="page">The page.</param>
-        /// <returns>The response.</returns>
-        private static async Task<HttpResponseMessage> PostAsync(OidcFlowClient flow, HttpResponseMessage page)
-        {
-            Assert.True(page.StatusCode == HttpStatusCode.OK, await page.Content.ReadAsStringAsync(Token));
-            (string action, Dictionary<string, string> fields) = await OidcFlowClient.ParseFormAsync(page, "form");
-            return await flow.PostFormAsync(action, fields);
         }
 
         /// <summary>Signs the browser out at the engine, which ends its session there and tells every client.</summary>

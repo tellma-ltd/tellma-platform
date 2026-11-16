@@ -58,6 +58,52 @@ namespace Tellma.Identity.Tests.Infrastructure
         }
 
         [Theory]
+        [InlineData("http://127.0.0.1/callback", "http://127.0.0.1:*/callback")]
+        [InlineData("http://localhost/cb", "http://localhost:*/cb")]
+        [InlineData("http://127.0.0.1:8400/callback", "http://127.0.0.1:8400/callback")]
+        [InlineData("https://app.example.com/callback", "https://app.example.com/callback")]
+        public void A_native_clients_portless_loopback_callback_allows_every_port(string uri, string source)
+        {
+            // A native client listens on an ephemeral port, which a port-less loopback
+            // registration matches; a source naming only the default port would discard the
+            // redirect that completes the grant. Anything with a port, or off loopback, is kept
+            // exactly as registered.
+            DefaultHttpContext context = new();
+            CspFormAction.Allow(context, [uri], anyLoopbackPort: true);
+
+            Assert.Equal([source], CspFormAction.Allowed(context));
+        }
+
+        [Theory]
+        [InlineData("http://127.0.0.1/callback")]
+        [InlineData("http://localhost/cb")]
+        public void Any_other_loopback_destination_is_kept_exactly(string uri)
+        {
+            // A web client's callback, an invitation or passkey destination and a post-logout
+            // address are matched exactly, so their sources name only the port they were given.
+            DefaultHttpContext context = new();
+            CspFormAction.Allow(context, [uri]);
+
+            Assert.Equal([uri], CspFormAction.Allowed(context));
+        }
+
+        [Theory]
+        [InlineData("http://[::1]/callback", true)]
+        [InlineData("http://[::1]:8400/callback", true)]
+        [InlineData("http://[::1]/callback", false)]
+        [InlineData("https://[2001:db8::1]/callback", false)]
+        public void An_ipv6_literal_destination_is_dropped(string uri, bool anyLoopbackPort)
+        {
+            // CSP's host-source grammar has no bracketed IPv6 form, and a browser ignores such a
+            // source, so it is never emitted; a client redirected from a page rendered here must
+            // register 127.0.0.1 or localhost instead.
+            DefaultHttpContext context = new();
+            CspFormAction.Allow(context, [uri], anyLoopbackPort);
+
+            Assert.Null(CspFormAction.Allowed(context));
+        }
+
+        [Theory]
         [InlineData("")]
         [InlineData("   ")]
         [InlineData("not a uri")]

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Before any element that loads a URL, so a deep link loads every file from the root. -->
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#001722" />
+    <title>Acme</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
+    <!-- The boot script decides the session, language, theme and target before the app loads. -->
+    <script src="tm-boot.js"></script>
+  </head>
+  <body>
+    <tm-app></tm-app>
+  </body>
+</html>

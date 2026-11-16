@@ -8,6 +8,9 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, form, required } from '@angular/forms/signals';
+import { cdp } from 'vitest/browser';
+// The Playwright provider's typings, which give the CDP session its methods.
+import type {} from '@vitest/browser-playwright';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmGridHarness } from '@tellma/core-ui-testing';
@@ -169,6 +172,18 @@ function rowElementAt(scroller: HTMLElement, viewIndex: number): HTMLElement | n
 
 function findInput(root: HTMLElement): HTMLInputElement | null {
   return root.querySelector<HTMLInputElement>('[data-tm-find-input]');
+}
+
+/** Resolves a system color to its computed `rgb()` form under the page's current palette. */
+function systemColor(name: string): string {
+  const probe = document.createElement('div');
+  // Kept as authored, so the probe reads the keyword's own value.
+  probe.style.forcedColorAdjust = 'none';
+  probe.style.backgroundColor = name;
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return resolved;
 }
 
 function click(target: Element, init: MouseEventInit = {}): void {
@@ -381,6 +396,39 @@ describe('tm-grid (row checkbox selection §8.8)', () => {
     expect(await grid.getActiveCell()).toEqual({ row: 1, col: 0 });
     expect(await (await grid.getCell(1, 0)).isActive()).toBe(true);
     expect(host.selection().size).toBe(0);
+  });
+
+  it("keeps a checked box's edge in its cell's paired ink under forced colors", async () => {
+    const { fixture, host, scroller } = await setupSelectable();
+    host.selection.set(new Set([1]));
+    await stable(fixture);
+    await cdp().send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'forced-colors', value: 'active' }],
+    });
+    try {
+      expect(matchMedia('(forced-colors: active)').matches).toBe(true);
+      // A checked row's checkbox cell paints SelectedItem, which some
+      // platforms make the same colour as the box's Highlight, so the box's
+      // edge takes the cell's paired ink; the glyph keeps the box's own.
+      const cell = checkCellAt(scroller, 1)!;
+      const box = cell.querySelector('.tm-grid__check')!;
+      expect(box.classList).toContain('tm-grid__check--on');
+      expect(getComputedStyle(cell).backgroundColor).toBe(systemColor('SelectedItem'));
+      expect(getComputedStyle(box).backgroundColor).toBe(systemColor('Highlight'));
+      expect(getComputedStyle(box).borderTopColor).toBe(systemColor('SelectedItemText'));
+      expect(getComputedStyle(box, '::after').backgroundColor).toBe(systemColor('HighlightText'));
+
+      // The mixed select-all box sits on the plain header: a Highlight edge.
+      const all = scroller.querySelector('[data-tm-checkall]')!;
+      expect(all.classList).toContain('tm-grid__check--mixed');
+      expect(getComputedStyle(all).borderTopColor).toBe(systemColor('Highlight'));
+      expect(getComputedStyle(all.parentElement!).backgroundColor).not.toBe(
+        systemColor('Highlight'),
+      );
+    } finally {
+      // The page is shared with the other suites of the run.
+      await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+    }
   });
 });
 

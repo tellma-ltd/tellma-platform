@@ -3,6 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Api;
+
 namespace Tellma.Core.Abstractions.Errors
 {
     /// <summary>
@@ -10,7 +13,10 @@ namespace Tellma.Core.Abstractions.Errors
     ///     loaded it, with who changed it, so a client can offer "Sara changed this record;
     ///     overwrite?" and resend under <c>Override</c>.
     /// </summary>
-    /// <param name="Id">The row's id. Display data on the wire: a client never matches it to loaded rows.</param>
+    /// <param name="Id">
+    ///     The row's id. Display data on the wire, a client never matching it to loaded rows: a JSON
+    ///     number within ±(2^53 − 1), else a string (<see cref="DisplayIds" />).
+    /// </param>
     /// <param name="ModifiedAt">The stored stamp as the opaque string the client echoes back; null when the row is missing.</param>
     /// <param name="ModifiedById">The user who last modified the row; null when the row is missing.</param>
     /// <param name="ModifiedByName">That user's name in the request's language; null when the row is missing.</param>
@@ -19,5 +25,5 @@ namespace Tellma.Core.Abstractions.Errors
     ///     when every row is missing, the outcome is a not-found instead.
     /// </param>
     public sealed record ConcurrencyConflict(
-        long Id, string? ModifiedAt, int? ModifiedById, string? ModifiedByName, bool IsMissing);
+        [property: JsonConverter(typeof(DisplayIdJsonConverter))] long Id, string? ModifiedAt, int? ModifiedById, string? ModifiedByName, bool IsMissing);
 }

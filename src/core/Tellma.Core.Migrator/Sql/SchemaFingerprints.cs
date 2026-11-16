@@ -60,10 +60,11 @@ namespace Tellma.Core.Migrator.Sql
         /// <param name="fingerprint">The model's storage fingerprint.</param>
         /// <param name="migrationId">The migrator's own last migration.</param>
         /// <param name="platformVersion">The running platform version; cut to the column's length.</param>
+        /// <param name="timeout">The statement's bound.</param>
         /// <param name="cancellationToken">Cancels the write.</param>
         /// <returns>True when the database's history ends at <paramref name="migrationId" /> and the row is in place; false when the database is ahead.</returns>
         public static async Task<bool> RecordAsync(
-            SqlConnection connection, string fingerprint, string migrationId, string platformVersion, CancellationToken cancellationToken)
+            SqlConnection connection, string fingerprint, string migrationId, string platformVersion, TimeSpan timeout, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(connection);
             ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
@@ -72,6 +73,7 @@ namespace Tellma.Core.Migrator.Sql
 
             await using SqlCommand command = connection.CreateCommand();
             command.CommandText = RecordStatement;
+            command.CommandTimeout = MigratorOptions.Seconds(timeout);
             _ = command.Parameters.Add(new SqlParameter("@fingerprint", SqlDbType.Char, 64) { Value = fingerprint });
             _ = command.Parameters.Add(new SqlParameter("@migrationId", SqlDbType.NVarChar, 150) { Value = migrationId });
             _ = command.Parameters.Add(new SqlParameter("@platformVersion", SqlDbType.NVarChar, ProvisioningRecords.MaxPlatformVersionLength)
@@ -84,15 +86,17 @@ namespace Tellma.Core.Migrator.Sql
 
         /// <summary>Reads every recorded fingerprint, newest first.</summary>
         /// <param name="connection">An open connection to the tenant database.</param>
+        /// <param name="timeout">The statement's bound.</param>
         /// <param name="cancellationToken">Cancels the read.</param>
         /// <returns>The rows.</returns>
-        public static async Task<IReadOnlyList<SchemaFingerprintRow>> ReadAsync(SqlConnection connection, CancellationToken cancellationToken)
+        public static async Task<IReadOnlyList<SchemaFingerprintRow>> ReadAsync(SqlConnection connection, TimeSpan timeout, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
             List<SchemaFingerprintRow> rows = [];
             await using SqlCommand command = connection.CreateCommand();
             command.CommandText = ReadStatement;
+            command.CommandTimeout = MigratorOptions.Seconds(timeout);
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {

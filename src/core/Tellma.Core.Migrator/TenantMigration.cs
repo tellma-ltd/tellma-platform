@@ -26,9 +26,6 @@ namespace Tellma.Core.Migrator
     /// <param name="context">The run.</param>
     internal sealed class TenantMigration(MigratorContext context)
     {
-        /// <summary>The longest a migration's statements may run; a large table's rebuild takes a while.</summary>
-        private static readonly TimeSpan MigrationCommandTimeout = TimeSpan.FromHours(1);
-
         private IServiceProvider Services => context.Services;
 
         /// <summary>
@@ -70,7 +67,7 @@ namespace Tellma.Core.Migrator
 
                 // --- The database and what a fresh one gets before its first migration ---
                 TargetDatabase database = Target(tenant);
-                bool created = await database.EnsureExistsAsync(create: true, SqlOptions.CreateDatabaseOptions, cancellationToken).ConfigureAwait(false);
+                bool created = await database.EnsureExistsAsync(create: true, SqlOptions.CreateDatabaseOptions, context.Options.CreateDatabaseRetryPolicy(), context.Logger, cancellationToken).ConfigureAwait(false);
                 if (created)
                 {
                     MigratorLog.DatabaseCreated(context.Logger, database.Name, database.Server);
@@ -166,7 +163,7 @@ namespace Tellma.Core.Migrator
 
                 // --- The database must exist: only provisioning creates one ---
                 TargetDatabase database = Target(tenant);
-                _ = await database.EnsureExistsAsync(create: false, SqlOptions.CreateDatabaseOptions, cancellationToken).ConfigureAwait(false);
+                _ = await database.EnsureExistsAsync(create: false, SqlOptions.CreateDatabaseOptions, context.Options.CreateDatabaseRetryPolicy(), context.Logger, cancellationToken).ConfigureAwait(false);
                 await PrepareAsync(database, provisioning: false, cancellationToken).ConfigureAwait(false);
 
                 // --- Migrations, fingerprint, grants, the seed, then (unless suspended) the due steps ---
@@ -262,7 +259,7 @@ namespace Tellma.Core.Migrator
         /// <returns>The held lock.</returns>
         private Task<MigrationLock> LockAsync(int tenantId, CancellationToken cancellationToken)
         {
-            return MigrationLock.AcquireAsync(Services.GetRequiredService<CatalogConnection>().ConnectionString, MigrationLock.TenantResource(tenantId), cancellationToken);
+            return MigrationLock.AcquireAsync(Services.GetRequiredService<CatalogConnection>().ConnectionString, MigrationLock.TenantResource(tenantId), context.Options.CommandTimeout, cancellationToken);
         }
 
         /// <summary>The tenant's row as the catalog holds it now, read from the store rather than the snapshot.</summary>
@@ -275,15 +272,15 @@ namespace Tellma.Core.Migrator
             return tenants.FirstOrDefault(tenant => tenant.Id == tenantId);
         }
 
-        /// <summary>The tenant's database, over the connection string the registry composed for it.</summary>
+        /// <summary>The tenant's database, over the connection string the registry composed for it, under the run's statement bounds.</summary>
         /// <param name="tenant">The tenant.</param>
         /// <returns>The database.</returns>
         /// <exception cref="MigratorFailureException">The registry could not compose the tenant's connection string.</exception>
-        private static TargetDatabase Target(TenantInfo tenant)
+        private TargetDatabase Target(TenantInfo tenant)
         {
             return string.IsNullOrEmpty(tenant.ConnectionString)
                 ? throw new MigratorFailureException($"Tenant {tenant.Id}'s catalog row names a location this deployment refuses ({tenant.Location.Server}, {tenant.Location.Database}, profile '{tenant.Location.CredentialProfile}').")
-                : new TargetDatabase(tenant.ConnectionString);
+                : new TargetDatabase(tenant.ConnectionString, context.Options);
         }
 
         /// <summary>
@@ -301,20 +298,20 @@ namespace Tellma.Core.Migrator
             await using (connection.ConfigureAwait(false))
             {
                 await database.CheckCollationAsync(connection, cancellationToken).ConfigureAwait(false);
-                bool fresh = provisioning && await TargetDatabase.IsFreshAsync(connection, ApplicationGrants.DefaultSchema, cancellationToken).ConfigureAwait(false);
+                bool fresh = provisioning && await database.IsFreshAsync(connection, ApplicationGrants.DefaultSchema, cancellationToken).ConfigureAwait(false);
 
                 // --- A fresh database: its isolation and its query store, before anything else connects ---
                 if (fresh)
                 {
-                    await TargetDatabase.EnableReadCommittedSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
-                    await TargetDatabase.EnableQueryStoreAsync(connection, cancellationToken).ConfigureAwait(false);
+                    await database.EnableReadCommittedSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
+                    await database.EnableQueryStoreAsync(connection, cancellationToken).ConfigureAwait(false);
                 }
 
                 // --- The role, then the application's user in it ---
-                await TargetDatabase.ExecuteAsync(connection, ApplicationGrants.EnsureRole, cancellationToken).ConfigureAwait(false);
+                await database.ExecuteAsync(connection, ApplicationGrants.EnsureRole, cancellationToken).ConfigureAwait(false);
                 if (fresh && SqlOptions.ApplicationPrincipal is { Length: > 0 } principal)
                 {
-                    await TargetDatabase.ExecuteAsync(connection, ApplicationGrants.ForPrincipal(principal, database.EngineEdition), cancellationToken).ConfigureAwait(false);
+                    await database.ExecuteAsync(connection, ApplicationGrants.ForPrincipal(principal, database.EngineEdition), cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -389,7 +386,7 @@ namespace Tellma.Core.Migrator
                     // Not the run's token: a cancelled run still leaves the changes it committed, and
                     // one update moves the tags. Bounded instead, so a live transaction holding a tag
                     // row delays the failure by seconds, not by the command timeout.
-                    using CancellationTokenSource bound = new(context.VersionTagBumpTimeout);
+                    using CancellationTokenSource bound = new(context.Options.VersionTagBumpTimeout);
                     await tags.BumpAllAsync(tenantId, bound.Token).ConfigureAwait(false);
                 }
                 catch (Exception bumpFailure)
@@ -413,13 +410,15 @@ namespace Tellma.Core.Migrator
         private async Task<MigrationResult> MigrateDatabaseAsync(TenantInfo tenant, MigrationLock held, TagMove move, CancellationToken cancellationToken)
         {
             TellmaModelFactory models = Services.GetRequiredService<TellmaModelFactory>();
+            MigratorOptions bounds = context.Options;
+            TargetDatabase database = new(tenant.ConnectionString, bounds);
             string last;
             int applied;
 
             // --- The migrations ---
             await using (TellmaDbContext migrations = models.CreateMigrationContext(tenant.ConnectionString, context.MigrationsAssembly))
             {
-                migrations.Database.SetCommandTimeout(MigrationCommandTimeout);
+                migrations.Database.SetCommandTimeout(bounds.MigrationCommandTimeout);
                 last = migrations.Database.GetMigrations().LastOrDefault()
                     ?? throw new MigratorFailureException($"The assembly {context.MigrationsAssembly.GetName().Name} carries no migration of the tenant model; scaffold one with dotnet ef migrations add.");
 
@@ -432,13 +431,12 @@ namespace Tellma.Core.Migrator
 
             if (applied > 0)
             {
-                string database = new SqlConnectionStringBuilder(tenant.ConnectionString).InitialCatalog;
-                MigratorLog.MigrationsApplied(context.Logger, database, applied);
+                MigratorLog.MigrationsApplied(context.Logger, database.Name, applied);
             }
 
             // --- The fingerprint, then the grants; a migration that outlived the lock's session writes neither ---
             await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
-            SqlConnection connection = await new TargetDatabase(tenant.ConnectionString).OpenAsync(cancellationToken).ConfigureAwait(false);
+            SqlConnection connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
             {
                 bool current = await SchemaFingerprints.RecordAsync(
@@ -446,9 +444,10 @@ namespace Tellma.Core.Migrator
                     Services.GetRequiredService<IEntityMetadataProvider>().StorageFingerprint,
                     last,
                     Services.GetRequiredService<DeploymentVersions>().PlatformVersion,
+                    bounds.CommandTimeout,
                     cancellationToken).ConfigureAwait(false);
 
-                await TargetDatabase.ExecuteAsync(connection, ApplicationGrants.ForTenant(models.BuildModel()), cancellationToken).ConfigureAwait(false);
+                await database.ExecuteAsync(connection, ApplicationGrants.ForTenant(models.BuildModel()), cancellationToken).ConfigureAwait(false);
                 return new MigrationResult(applied, current, last);
             }
         }

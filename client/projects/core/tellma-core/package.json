@@ -18,6 +18,9 @@
     "./boot/tm-boot.template.js": {
       "default": "./boot/tm-boot.template.js"
     },
+    "./brand/*": {
+      "default": "./brand/*"
+    },
     "./styles/tm-boot-page.css": {
       "default": "./styles/tm-boot-page.css"
     }

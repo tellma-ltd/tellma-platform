@@ -18,7 +18,8 @@ import { storyUrl } from '../support/story-map';
  * scroll; skeleton tiles that hold the data's geometry; the narrow list;
  * tree mode in RTL with lazy loads, a failure and its announcement; the
  * selected tile under forced colors; and the 10,000-row virtualization,
- * with its long-task probe in the nightly tier.
+ * with its reused tiles kept true to their rows under focus and selection,
+ * and its long-task probe in the nightly tier.
  */
 
 /** The main story's tiles. */
@@ -310,8 +311,113 @@ test.describe('10,000 rows', () => {
     expect(await cells.count()).toBeLessThan(20 * perLine);
   });
 
+  // Scrolling re-binds the elements of the lines that leave to the lines
+  // that enter: a focused tile must keep its row and focus, and every tile
+  // must show its own row's title, code and selection after each step.
+  test('wheel scrolling keeps focus on its row and every tile true to its own row', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('tiles-large'));
+    const grid = tiles(page, 'tiles-large').locator('[role="grid"]');
+    await expect(grid.locator('[role="gridcell"]').first()).toBeVisible();
+
+    // Section: select two customers and focus a third, near the top.
+    await tile(page, 2, 'tiles-large').locator('[role="checkbox"]').click();
+    await tile(page, 7, 'tiles-large').locator('[role="checkbox"]').click();
+    await tile(page, 3, 'tiles-large').focus();
+    await appStable(page);
+
+    // Section: wheel away and back a screen at a time, checking every rendered tile.
+    const box = (await grid.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (const direction of [1, -1]) {
+      for (let step = 0; step < 12; step++) {
+        await page.mouse.wheel(0, direction * box.height);
+        await appStable(page);
+        const report = await grid.evaluate((element) => {
+          const wrong: string[] = [];
+          for (const cell of element.querySelectorAll<HTMLElement>('[role="gridcell"]')) {
+            const id = Number(cell.dataset['index']) + 1;
+            const title = cell.querySelector('.tm-tiles__title')!.textContent!.trim();
+            const code = cell.querySelector('.tm-tiles__corner--bottom-start')!.textContent!.trim();
+            const selected = cell.getAttribute('aria-selected') === 'true';
+            if (
+              title !== `Customer ${id}` ||
+              code !== `C${String(id).padStart(5, '0')}` ||
+              selected !== (id === 2 || id === 7)
+            ) {
+              wrong.push(`${id}: ${title}, ${code}, selected ${selected}`);
+            }
+          }
+          const focused = document.activeElement as HTMLElement | null;
+          return {
+            wrong,
+            focused: focused?.querySelector('.tm-tiles__title')?.textContent?.trim() ?? null,
+          };
+        });
+        expect(report).toEqual({ wrong: [], focused: 'Customer 3' });
+      }
+    }
+    await expect(tile(page, 3, 'tiles-large')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(tile(page, 4, 'tiles-large')).toBeFocused();
+  });
+
+  // An arrow move from a focused tile scrolled out of view can re-bind that
+  // very element to the new row: the move must still fire focus on it (so a
+  // screen reader reads the new tile), and a page's later activeRowId write
+  // must leave focus where it is.
+  test('an arrow move that re-binds the focused tile fires focus, and a page write leaves it', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('tiles'));
+    const grid = tiles(page).locator('[role="grid"]');
+    await tile(page, 33).focus();
+    await appStable(page);
+
+    // Section: wheel to the end, so the focused line is kept off the window.
+    const box = (await grid.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let step = 0; step < 8; step++) {
+      await page.mouse.wheel(0, box.height);
+      await appStable(page);
+    }
+    await expect(tile(page, 33)).toBeFocused();
+
+    // Section: record focus entering tiles, then move down a line.
+    await grid.evaluate((element) => {
+      const entered: string[] = [];
+      (window as unknown as { tmFocusIns: string[] }).tmFocusIns = entered;
+      element.addEventListener('focusin', (event) =>
+        entered.push((event.target as HTMLElement).dataset['index'] ?? ''),
+      );
+    });
+    await page.keyboard.press('ArrowDown');
+    await appStable(page);
+    const index = await page.evaluate(
+      () => (document.activeElement as HTMLElement).dataset['index'] ?? '',
+    );
+    const id = Number(index) + 1;
+    expect(id).toBeGreaterThan(33);
+    await expect(tile(page, id)).toBeFocused();
+    await expect(tile(page, id).locator('.tm-tiles__title')).toHaveText(`Customer ${id}`);
+    expect(
+      await page.evaluate(() => (window as unknown as { tmFocusIns: string[] }).tmFocusIns),
+    ).toContain(index);
+
+    // Section: a script's activeRowId write (the jump button, clicked
+    // without moving focus) scrolls the list but leaves focus on the tile.
+    await page.getByTestId('jump').evaluate((button: HTMLElement) => button.click());
+    await appStable(page);
+    await expect(page.getByTestId('active')).toHaveText('41');
+    if (id !== 41) {
+      await expect(tile(page, id)).toBeFocused();
+    }
+  });
+
   // Spec 0023 §12's bar, in the nightly tier: each screen-sized wheel step
-  // replaces most rendered tiles, and no step may cost a task over 50 ms.
+  // re-binds most rendered tiles to new rows, and no step may cost a task
+  // over 50 ms.
   test('@perf scrolling 10,000 tiles produces no long task over 50 ms', async ({
     page,
     browserName,

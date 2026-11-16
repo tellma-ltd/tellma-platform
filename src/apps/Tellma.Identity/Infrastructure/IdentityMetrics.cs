@@ -42,6 +42,19 @@ namespace Tellma.Identity.Infrastructure
         /// </summary>
         public const string ApiOutcomeTag = "outcome";
 
+        /// <summary>
+        ///     The name of the counter of document-client metadata resolutions that went to the
+        ///     network or were refused, tagged <see cref="ClientMetadataOutcomeTag" /> alone: a
+        ///     client id is an unbounded, caller-chosen URL and is never a tag.
+        /// </summary>
+        public const string ClientMetadataFetchesInstrumentName = "tellma.identity.client_metadata.fetches";
+
+        /// <summary>
+        ///     The <see cref="ClientMetadataFetchesInstrumentName" /> tag naming the outcome, one of
+        ///     the closed set in <see cref="ClientMetadataFetchOutcomes" />.
+        /// </summary>
+        public const string ClientMetadataOutcomeTag = "outcome";
+
         private readonly Counter<long> _loginAttempts;
         private readonly Counter<long> _tokensIssued;
         private readonly Counter<long> _refreshReuseDetected;
@@ -49,6 +62,7 @@ namespace Tellma.Identity.Infrastructure
         private readonly Counter<long> _invitations;
         private readonly Counter<long> _backchannelLogoutDeliveries;
         private readonly Counter<long> _apiCalls;
+        private readonly Counter<long> _clientMetadataFetches;
 
         /// <summary>Creates the metric instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
@@ -64,6 +78,7 @@ namespace Tellma.Identity.Infrastructure
             _invitations = meter.CreateCounter<long>("tellma.identity.invitations", description: "Invitations by status.");
             _backchannelLogoutDeliveries = meter.CreateCounter<long>("tellma.identity.backchannel_logout.deliveries", description: "Back-channel logout deliveries by result.");
             _apiCalls = meter.CreateCounter<long>(ApiCallsInstrumentName, description: "Management API calls by version, endpoint and outcome.");
+            _clientMetadataFetches = meter.CreateCounter<long>(ClientMetadataFetchesInstrumentName, description: "Document-client metadata resolutions by outcome.");
         }
 
         /// <summary>Records a sign-in attempt.</summary>
@@ -121,5 +136,25 @@ namespace Tellma.Identity.Infrastructure
                 new KeyValuePair<string, object?>(ApiEndpointTag, endpoint),
                 new KeyValuePair<string, object?>(ApiOutcomeTag, outcome));
         }
+
+        /// <summary>Records one document-client metadata resolution.</summary>
+        /// <param name="outcome">The outcome, one of <see cref="ClientMetadataFetchOutcomes" />.</param>
+        public void ClientMetadataFetch(string outcome)
+        {
+            _clientMetadataFetches.Add(1, new KeyValuePair<string, object?>(ClientMetadataOutcomeTag, outcome));
+        }
+    }
+
+    /// <summary>The closed set of outcomes of the client metadata fetch counter.</summary>
+    public static class ClientMetadataFetchOutcomes
+    {
+        /// <summary>The document (and its key set) was fetched and passed validation.</summary>
+        public const string Fetched = "fetched";
+
+        /// <summary>A guard, the document's validation or the rate limit refused it.</summary>
+        public const string Rejected = "rejected";
+
+        /// <summary>The fetch itself failed: a timeout, an unreachable host or a status other than 200.</summary>
+        public const string Failed = "failed";
     }
 }

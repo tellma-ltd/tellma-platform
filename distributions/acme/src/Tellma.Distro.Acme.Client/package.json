@@ -1,0 +1,45 @@
+{
+  "name": "tellma-distro-acme-client",
+  "version": "0.0.0",
+  "description": "The Acme reference distribution's single-page app: its features, languages, manifest and theme over the Tellma app framework.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tellma-client serve",
+    "build": "tellma-client build",
+    "build:esproj": "tellma-client build --no-dotnet-build",
+    "test": "ng test",
+    "lint": "eslint . && stylelint \"src/**/*.css\""
+  },
+  "tellma": {
+    "migrator": "../Tellma.Distro.Acme.Migrator"
+  },
+  "dependencies": {
+    "@angular/aria": "catalog:",
+    "@angular/cdk": "catalog:",
+    "@angular/common": "catalog:",
+    "@angular/core": "catalog:",
+    "@angular/forms": "catalog:",
+    "@angular/platform-browser": "catalog:",
+    "@angular/router": "catalog:",
+    "@angular/service-worker": "catalog:",
+    "@internationalized/date": "catalog:",
+    "@jsverse/transloco": "catalog:",
+    "lucide": "catalog:",
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "@angular/build": "catalog:",
+    "@angular/cli": "catalog:",
+    "@angular/compiler": "catalog:",
+    "@angular/compiler-cli": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tellma/core-tools": "workspace:*",
+    "@vitest/browser-playwright": "catalog:",
+    "eslint": "catalog:",
+    "stylelint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
