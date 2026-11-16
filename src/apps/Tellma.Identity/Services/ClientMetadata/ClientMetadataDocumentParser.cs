@@ -242,9 +242,10 @@ namespace Tellma.Identity.Services.ClientMetadata
 
         /// <summary>
         ///     What is wrong with a documented redirect URI, or null when it is acceptable: it must
-        ///     be absolute, free of whitespace and control characters, without a fragment, user
-        ///     information or an <c>iss</c> query parameter (which the engine adds itself), not in
-        ///     a scheme that runs script or reaches files, and plain <c>http</c> only on loopback.
+        ///     be absolute, free of whitespace and control characters, written in ASCII (it is
+        ///     carried in a response header), without a fragment, user information or an
+        ///     <c>iss</c> query parameter (which the engine adds itself), not in a scheme that runs
+        ///     script or reaches files, and plain <c>http</c> only on loopback.
         /// </summary>
         /// <param name="raw">The redirect URI as written.</param>
         /// <returns>A short description of the problem, or null.</returns>
@@ -254,6 +255,7 @@ namespace Tellma.Identity.Services.ClientMetadata
 
             // The first problem found, in the order the doc comment lists them.
             return raw.Length == 0 || raw.Any(static c => char.IsWhiteSpace(c) || char.IsControl(c)) ? "whitespace"
+                : !raw.All(char.IsAscii) ? "non_ascii"
                 : raw.Contains('#', StringComparison.Ordinal) ? "fragment"
                 : !Uri.TryCreate(raw, UriKind.Absolute, out Uri? uri) ? "relative"
                 : RefusedRedirectSchemes.Contains(uri.Scheme) ? "scheme"
@@ -424,10 +426,14 @@ namespace Tellma.Identity.Services.ClientMetadata
             return ((bytes.Length - start - 1) * 8) + leading;
         }
 
-        /// <summary>Whether a query string carries an <c>iss</c> parameter.</summary>
+        /// <summary>
+        ///     Whether a query string carries an <c>iss</c> parameter. Pairs are separated by
+        ///     <c>&amp;</c> or <c>;</c>, as the protocol engine itself splits them when it checks
+        ///     the same rule on the stored registration.
+        /// </summary>
         private static bool HasIssParameter(string query)
         {
-            foreach (string pair in query.TrimStart('?').Split('&'))
+            foreach (string pair in query.TrimStart('?').Split(['&', ';']))
             {
                 string name = pair.Split('=', 2)[0];
                 if (string.Equals(Uri.UnescapeDataString(name), "iss", StringComparison.Ordinal))

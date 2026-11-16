@@ -165,6 +165,39 @@ namespace Tellma.Identity.Tests.Provisioning
         }
 
         [Fact]
+        public async Task An_older_copy_never_rewrites_a_row_written_from_a_newer_one()
+        {
+            // Each instance converges on its own cached copy. One holding the older copy must not
+            // undo what one holding the newer copy wrote, or the row would flip on every request.
+            Assert.Equal(DocumentClientConvergence.Created, await ConvergeAsync(Document(), Created));
+            Assert.Equal(
+                DocumentClientConvergence.Updated,
+                await ConvergeAsync(Document(name: "Renamed Agent", fetchedAt: Created.AddMinutes(10)), Created.AddMinutes(10)));
+            int updates = Applications.Updates;
+
+            Assert.Equal(
+                DocumentClientConvergence.Stale,
+                await ConvergeAsync(Document(fetchedAt: Created.AddMinutes(5)), Created.AddMinutes(11)));
+            Assert.Equal(updates, Applications.Updates);
+            Assert.Equal("Renamed Agent", Applications.Find(MetadataDocuments.ClientId)!.DisplayName);
+
+            // An older copy that matches the row is simply unchanged.
+            Assert.Equal(
+                DocumentClientConvergence.Unchanged,
+                await ConvergeAsync(Document(name: "Renamed Agent", fetchedAt: Created.AddMinutes(5)), Created.AddMinutes(11)));
+
+            // A newer copy still rewrites it, and stamps the row with its own fetch time.
+            Assert.Equal(
+                DocumentClientConvergence.Updated,
+                await ConvergeAsync(Document(fetchedAt: Created.AddMinutes(20)), Created.AddMinutes(20)));
+            InMemoryApplication row = Applications.Find(MetadataDocuments.ClientId)!;
+            Assert.Equal("Example Agent", row.DisplayName);
+            Assert.Equal(
+                Created.AddMinutes(20),
+                DateTimeOffset.Parse(TellmaClientProperties.Get(row.Properties, TellmaClientProperties.FetchedUtc)!, CultureInfo.InvariantCulture));
+        }
+
+        [Fact]
         public async Task A_rotated_key_set_rewrites_the_row()
         {
             const string clientId = "https://agent.example.com/jwt.json";
@@ -240,8 +273,10 @@ namespace Tellma.Identity.Tests.Provisioning
             string clientId = MetadataDocuments.ClientId,
             string? name = "Example Agent",
             string[]? redirectUris = null,
-            JsonWebKeySet? keys = null)
+            JsonWebKeySet? keys = null,
+            DateTimeOffset? fetchedAt = null)
         {
+            DateTimeOffset fetched = fetchedAt ?? Created;
             return new ClientMetadataDocument(
                 new Uri(clientId),
                 name,
@@ -249,8 +284,8 @@ namespace Tellma.Identity.Tests.Provisioning
                 keys is null ? ClientMetadataDocumentParser.AuthMethodNone : ClientMetadataDocumentParser.AuthMethodPrivateKeyJwt,
                 keys is null ? null : new Uri(clientId.Replace(".json", ".jwks", StringComparison.Ordinal)),
                 keys,
-                Created,
-                Created.AddHours(1));
+                fetched,
+                fetched.AddHours(1));
         }
 
         /// <summary>Converges a document's row the way the handler does.</summary>
@@ -280,6 +315,12 @@ namespace Tellma.Identity.Tests.Provisioning
                 return Task.FromResult(applications.Rows
                     .Select(static row => row.ClientId)
                     .FirstOrDefault(stored => string.Equals(stored, clientId, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            /// <inheritdoc />
+            public Task<bool> IsAuthorizedAsync(string clientId, CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException();
             }
 
             /// <inheritdoc />

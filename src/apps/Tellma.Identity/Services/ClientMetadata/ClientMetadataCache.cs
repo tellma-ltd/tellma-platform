@@ -12,17 +12,23 @@ namespace Tellma.Identity.Services.ClientMetadata
     /// <summary>
     ///     The in-memory cache of validated documents, keyed by client id (compared ordinally,
     ///     since only a canonical client id is accepted). It holds at most as many entries as
-    ///     there may be document-client rows; when full, the entry nearest its expiry makes room.
-    ///     It is per instance, like the rate limit.
+    ///     there may be document-client rows. When it is full, expired entries are swept; when
+    ///     none has expired, the entry used least recently among those of clients no signed-in
+    ///     user has authorized makes room, so documents anyone can publish never evict an
+    ///     authorized client's copy while one of theirs is left. It is per instance, like the rate
+    ///     limit.
     /// </summary>
     /// <param name="options">The engine options.</param>
     public sealed class ClientMetadataCache(IOptions<TellmaIdentityOptions> options)
     {
-        /// <summary>Guards <see cref="_entries" />.</summary>
+        /// <summary>Guards <see cref="_index" /> and <see cref="_order" />.</summary>
         private readonly Lock _gate = new();
 
-        /// <summary>The cached documents by client id.</summary>
-        private readonly Dictionary<string, ClientMetadataDocument> _entries = new(StringComparer.Ordinal);
+        /// <summary>The cached entries by client id.</summary>
+        private readonly Dictionary<string, LinkedListNode<Entry>> _index = new(StringComparer.Ordinal);
+
+        /// <summary>The cached entries, most recently used first.</summary>
+        private readonly LinkedList<Entry> _order = new();
 
         /// <summary>The most entries held: <see cref="TellmaIdentityClientMetadataOptions.MaxClients" />, and at least one.</summary>
         public int Capacity => Math.Max(1, options.Value.ClientMetadata.MaxClients);
@@ -34,12 +40,12 @@ namespace Tellma.Identity.Services.ClientMetadata
             {
                 lock (_gate)
                 {
-                    return _entries.Count;
+                    return _index.Count;
                 }
             }
         }
 
-        /// <summary>Looks up a client id's cached document, which may have expired.</summary>
+        /// <summary>Looks up a client id's cached document, which may have expired, and marks it used.</summary>
         /// <param name="clientId">The client id.</param>
         /// <param name="document">The cached document.</param>
         /// <returns>Whether one is cached.</returns>
@@ -49,26 +55,63 @@ namespace Tellma.Identity.Services.ClientMetadata
 
             lock (_gate)
             {
-                return _entries.TryGetValue(clientId, out document);
+                if (_index.TryGetValue(clientId, out LinkedListNode<Entry>? node))
+                {
+                    Touch(node);
+                    document = node.Value.Document;
+                    return true;
+                }
+
+                document = null;
+                return false;
             }
         }
 
-        /// <summary>Caches a document, replacing the client id's previous one.</summary>
+        /// <summary>Whether a client id's cached copy was stored as that of an authorized client.</summary>
+        /// <param name="clientId">The client id.</param>
+        /// <returns>True when a copy is cached and marked authorized.</returns>
+        public bool IsAuthorized(string clientId)
+        {
+            ArgumentNullException.ThrowIfNull(clientId);
+
+            lock (_gate)
+            {
+                return _index.TryGetValue(clientId, out LinkedListNode<Entry>? node) && node.Value.Authorized;
+            }
+        }
+
+        /// <summary>Caches the document of a client not known to be authorized, replacing the client id's previous one.</summary>
         /// <param name="document">The validated document.</param>
         /// <param name="now">The current time, which decides which entries have expired.</param>
         public void Set(ClientMetadataDocument document, DateTimeOffset now)
+        {
+            Set(document, now, authorized: false);
+        }
+
+        /// <summary>Caches a document, replacing the client id's previous one, and marks it used.</summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="now">The current time, which decides which entries have expired.</param>
+        /// <param name="authorized">Whether a signed-in user has authorized the client, which keeps its copy from eviction while another's can go.</param>
+        public void Set(ClientMetadataDocument document, DateTimeOffset now, bool authorized)
         {
             ArgumentNullException.ThrowIfNull(document);
 
             string key = document.ClientId.OriginalString;
             lock (_gate)
             {
-                if (!_entries.ContainsKey(key) && _entries.Count >= Capacity)
+                if (_index.TryGetValue(key, out LinkedListNode<Entry>? node))
+                {
+                    node.Value = new Entry(key, document, authorized);
+                    Touch(node);
+                    return;
+                }
+
+                if (_index.Count >= Capacity)
                 {
                     MakeRoom(now);
                 }
 
-                _entries[key] = document;
+                _index[key] = _order.AddFirst(new Entry(key, document, authorized));
             }
         }
 
@@ -80,27 +123,72 @@ namespace Tellma.Identity.Services.ClientMetadata
 
             lock (_gate)
             {
-                _entries.Remove(clientId);
+                if (_index.Remove(clientId, out LinkedListNode<Entry>? node))
+                {
+                    _order.Remove(node);
+                }
             }
         }
 
         /// <summary>
-        ///     Sweeps the expired entries, or, when none has expired, evicts the one nearest its
-        ///     expiry, which is the cheapest to fetch again soonest. Called under the lock.
+        ///     Sweeps the expired entries, or, when none has expired, evicts the entry used least
+        ///     recently among the unauthorized ones, and only when there is none of those the
+        ///     authorized one used least recently. Recency, not nearness to expiry, decides: a
+        ///     publisher can choose its documents' lifetimes, but not how often real users sign in
+        ///     with its clients. Called under the lock.
         /// </summary>
         private void MakeRoom(DateTimeOffset now)
         {
-            List<string> expired = [.. _entries.Where(entry => entry.Value.ExpiresAt <= now).Select(static entry => entry.Key)];
-            foreach (string key in expired)
+            List<LinkedListNode<Entry>> expired = [];
+            for (LinkedListNode<Entry>? node = _order.First; node is not null; node = node.Next)
             {
-                _entries.Remove(key);
+                if (node.Value.Document.ExpiresAt <= now)
+                {
+                    expired.Add(node);
+                }
             }
 
-            if (expired.Count == 0)
+            foreach (LinkedListNode<Entry> node in expired)
             {
-                string nearest = _entries.MinBy(static entry => entry.Value.ExpiresAt).Key;
-                _entries.Remove(nearest);
+                Evict(node);
+            }
+
+            if (expired.Count > 0)
+            {
+                return;
+            }
+
+            // From the least recently used end: the first unauthorized entry, else the last entry.
+            LinkedListNode<Entry>? victim = _order.Last;
+            while (victim is not null && victim.Value.Authorized)
+            {
+                victim = victim.Previous;
+            }
+
+            Evict(victim ?? _order.Last!);
+        }
+
+        /// <summary>Removes an entry. Called under the lock.</summary>
+        private void Evict(LinkedListNode<Entry> node)
+        {
+            _ = _index.Remove(node.Value.Key);
+            _order.Remove(node);
+        }
+
+        /// <summary>Moves an entry to the most recently used end. Called under the lock.</summary>
+        private void Touch(LinkedListNode<Entry> node)
+        {
+            if (!ReferenceEquals(_order.First, node))
+            {
+                _order.Remove(node);
+                _order.AddFirst(node);
             }
         }
+
+        /// <summary>One cached document.</summary>
+        /// <param name="Key">The client id.</param>
+        /// <param name="Document">The validated document.</param>
+        /// <param name="Authorized">Whether a signed-in user had authorized the client when it was cached.</param>
+        private sealed record Entry(string Key, ClientMetadataDocument Document, bool Authorized);
     }
 }

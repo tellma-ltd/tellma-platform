@@ -110,6 +110,12 @@ namespace Tellma.Identity.Services.Provisioning
         ///     treats as the same id; nothing was written.
         /// </summary>
         Collision = 5,
+
+        /// <summary>
+        ///     The row differs from the document but was written from a copy fetched later than
+        ///     this one, so this older copy did not overwrite it; nothing was written.
+        /// </summary>
+        Stale = 6,
     }
 
     /// <summary>What converging a distribution's registrations did to the store.</summary>

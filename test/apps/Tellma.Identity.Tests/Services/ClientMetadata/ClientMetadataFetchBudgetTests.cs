@@ -11,16 +11,17 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
 {
     /// <summary>
     ///     The resolver's fetch budgets under the attacks they exist for: anyone can name a client
-    ///     id, so first-time ids, early re-fetches and a known id whose document keeps failing
-    ///     must never spend what a host's known clients need to refresh, and a flood of slow
-    ///     first-time fetches must never take the slots a known client's refresh runs in.
+    ///     id or publish documents, so first-time ids, ids that were only ever fetched, early
+    ///     re-fetches and an authorized id whose document keeps failing must never spend what a
+    ///     host's authorized clients need to refresh, and a flood of slow fetches must never take
+    ///     the slots an authorized client's refresh runs in.
     /// </summary>
     public sealed class ClientMetadataFetchBudgetTests
     {
         private static readonly Uri ClientId = new(MetadataDocuments.ClientId);
 
         [Fact]
-        public async Task Unknown_ids_spending_a_hosts_budget_do_not_stop_a_cached_client_from_refreshing()
+        public async Task Unknown_ids_spending_a_hosts_budget_do_not_stop_an_authorized_client_from_refreshing()
         {
             using ResolverRig rig = new(static options =>
             {
@@ -30,12 +31,15 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
             await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken);
 
+            // A user signs in with the client and consents.
+            rig.Rows.Add(MetadataDocuments.ClientId);
+
             // The client's copy expires while the host's first-time quota is still spent, and an
             // unknown id on the same host is refused for it.
             rig.Time.Advance(TimeSpan.FromSeconds(11));
             await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-1"), ClientMetadataRejectionReasons.RateLimited);
 
-            // The known client refreshes on a budget of its own.
+            // The authorized client refreshes on a budget of its own.
             ClientMetadataDocument? refreshed = await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken);
 
             Assert.NotNull(refreshed);
@@ -43,13 +47,128 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         }
 
         [Fact]
-        public async Task A_stored_client_the_cache_has_forgotten_refreshes_on_its_own_budget()
+        public async Task A_client_that_was_only_ever_fetched_refreshes_on_the_probe_budget()
+        {
+            using ResolverRig rig = new(static options =>
+            {
+                options.FetchesPerHostPerMinute = 1;
+                options.MinCache = TimeSpan.FromSeconds(10);
+            });
+            rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
+            await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken);
+
+            // Its document was valid, so it has a cached copy and a row, but no user has
+            // authorized it: anyone publishing documents gets that far.
+            rig.Rows.Add(MetadataDocuments.ClientId, authorized: false);
+            rig.Time.Advance(TimeSpan.FromSeconds(11));
+
+            await AssertRefusedAsync(rig, ClientId, ClientMetadataRejectionReasons.RateLimited);
+            Assert.Single(rig.Server.Requests);
+        }
+
+        [Fact]
+        public async Task Slow_refreshes_of_fetched_only_ids_holding_every_slot_do_not_stop_an_authorized_client()
+        {
+            const string First = "https://a1.attacker.example/c.json";
+            const string Second = "https://a2.attacker.example/c.json";
+            using ResolverRig rig = new(static options =>
+            {
+                options.MaxConcurrentFetches = 2;
+                options.MinCache = TimeSpan.FromSeconds(10);
+            });
+            rig.Server.Serve(First, MetadataDocuments.Public(First).ToJsonString());
+            rig.Server.Serve(Second, MetadataDocuments.Public(Second).ToJsonString());
+            rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
+            rig.Rows.Add(First, authorized: false);
+            rig.Rows.Add(Second, authorized: false);
+            rig.Rows.Add(MetadataDocuments.ClientId);
+            Assert.NotNull(await rig.Resolver.ResolveAsync(new Uri(First), TestContext.Current.CancellationToken));
+            Assert.NotNull(await rig.Resolver.ResolveAsync(new Uri(Second), TestContext.Current.CancellationToken));
+            Assert.NotNull(await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken));
+
+            // Every copy expires, and the attacker's host now answers just under the timeout.
+            rig.Time.Advance(TimeSpan.FromSeconds(11));
+            TaskCompletionSource firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Block(rig, First, firstStarted, release);
+            Block(rig, Second, secondStarted, release);
+            Task<ClientMetadataDocument?> first = rig.Resolver.ResolveAsync(new Uri(First), TestContext.Current.CancellationToken);
+            Task<ClientMetadataDocument?> second = rig.Resolver.ResolveAsync(new Uri(Second), TestContext.Current.CancellationToken);
+            await firstStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+            await secondStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // The authorized client's refresh has slots the fetched-only ids cannot reach. Had
+            // they taken its slots it would wait for one, so the wait is bounded in real time.
+            ClientMetadataDocument? refreshed = await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.NotNull(refreshed);
+
+            release.SetResult();
+            Assert.NotNull(await first);
+            Assert.NotNull(await second);
+        }
+
+        [Fact]
+        public async Task One_slow_host_holds_at_most_its_share_of_the_slots()
+        {
+            const string Third = "https://slow.example.com/3.json";
+            using ResolverRig rig = new();
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            List<Task<ClientMetadataDocument?>> held = [];
+            for (int i = 0; i < ClientMetadataRateLimiter.MaxInFlightPerHost; i++)
+            {
+                string url = $"https://slow.example.com/{i}.json";
+                TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Block(rig, url, started, release);
+                held.Add(rig.Resolver.ResolveAsync(new Uri(url), TestContext.Current.CancellationToken));
+                await started.Task.WaitAsync(TestContext.Current.CancellationToken);
+            }
+
+            rig.Server.Serve(Third, MetadataDocuments.Public(Third).ToJsonString());
+            rig.Server.Serve("https://other.example.com/c.json", MetadataDocuments.Public("https://other.example.com/c.json").ToJsonString());
+
+            // The slow host's share is taken, so its next id is refused without a request; the
+            // shared slots are far from spent, and another host still resolves.
+            await AssertRefusedAsync(rig, new Uri(Third), ClientMetadataRejectionReasons.RateLimited);
+            Assert.DoesNotContain(rig.Server.Requests, static url => url.AbsoluteUri == Third);
+            Assert.NotNull(await rig.Resolver.ResolveAsync(new Uri("https://other.example.com/c.json"), TestContext.Current.CancellationToken));
+
+            release.SetResult();
+            foreach (Task<ClientMetadataDocument?> task in held)
+            {
+                Assert.NotNull(await task);
+            }
+        }
+
+        [Fact]
+        public async Task An_authorized_client_evicted_twice_in_a_window_refreshes_on_its_own_budget_both_times()
+        {
+            using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 2);
+            rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
+            rig.Rows.Add(MetadataDocuments.ClientId);
+
+            // The host's probes are spent by unknown ids.
+            await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-1"), ClientMetadataRejectionReasons.Status);
+            await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-2"), ClientMetadataRejectionReasons.Status);
+            await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-3"), ClientMetadataRejectionReasons.RateLimited);
+
+            // A refresh that succeeded gives its claim back, so the second, after another
+            // eviction, is a refresh again rather than a refused probe.
+            Assert.NotNull(await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken));
+            rig.Cache.Remove(MetadataDocuments.ClientId);
+            Assert.NotNull(await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken));
+            Assert.Equal(2, rig.Server.Requests.Count(static url => url == ClientId));
+        }
+
+        [Fact]
+        public async Task An_authorized_client_the_cache_has_forgotten_refreshes_on_its_own_budget()
         {
             using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 1);
             rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
             rig.Rows.Add(MetadataDocuments.ClientId);
 
-            // After a restart the cache is empty; the row is what marks the client as known.
+            // After a restart the cache is empty; the row's authorization marks the client.
             await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-1"), ClientMetadataRejectionReasons.Status);
             await AssertRefusedAsync(rig, new Uri("https://agent.example.com/x-2"), ClientMetadataRejectionReasons.RateLimited);
 
@@ -57,7 +176,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         }
 
         [Fact]
-        public async Task A_row_holding_another_spelling_of_the_id_does_not_make_it_known()
+        public async Task A_row_holding_another_spelling_of_the_id_does_not_make_it_authorized()
         {
             using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 1);
             rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
@@ -80,6 +199,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             });
             rig.Server.Serve(MetadataDocuments.ClientId, MetadataDocuments.Public().ToJsonString());
             await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken);
+            rig.Rows.Add(MetadataDocuments.ClientId);
             rig.Time.Advance(TimeSpan.FromSeconds(11));
 
             // Anyone can ask for an early re-fetch by naming a redirect URI the document does not
@@ -93,7 +213,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         }
 
         [Fact]
-        public async Task A_known_id_whose_document_keeps_failing_draws_on_the_refresh_budget_once_per_window()
+        public async Task An_authorized_id_whose_document_keeps_failing_draws_on_the_refresh_budget_once_per_window()
         {
             const string Failing = "https://agent.example.com/oauth/gone.json";
             using ResolverRig rig = new(static options => options.FetchesPerHostPerMinute = 2);
@@ -101,7 +221,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             rig.Rows.Add(Failing);
             rig.Rows.Add(MetadataDocuments.ClientId);
 
-            // A stored client whose document is gone fails on every request. Its first fetch is a
+            // An authorized client whose document is gone fails on every request. Its first fetch is a
             // refresh, its repeats are probes, so naming it over and over spends only the probes.
             await AssertRefusedAsync(rig, new Uri(Failing), ClientMetadataRejectionReasons.Status);
             await AssertRefusedAsync(rig, new Uri(Failing), ClientMetadataRejectionReasons.Status);
@@ -130,7 +250,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
             await AssertRefusedAsync(rig, new Uri("https://other.example.com/c.json"), ClientMetadataRejectionReasons.RateLimited);
             Assert.DoesNotContain(rig.Server.Requests, static url => url.Host == "other.example.com");
 
-            // ...while a known client's refresh has slots of its own.
+            // ...while an authorized client's refresh has slots of its own.
             Assert.NotNull(await rig.Resolver.ResolveAsync(ClientId, TestContext.Current.CancellationToken));
 
             release.SetResult();

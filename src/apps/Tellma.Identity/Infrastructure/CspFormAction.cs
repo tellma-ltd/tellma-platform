@@ -95,7 +95,8 @@ namespace Tellma.Identity.Infrastructure
 
         /// <summary>
         ///     Converts a registered URI to a CSP source expression, or null when it cannot safely
-        ///     become one.
+        ///     become one: a value that could rewrite the policy, or one whose host is an IPv6
+        ///     literal, which a source expression cannot name and a browser ignores.
         /// </summary>
         /// <param name="uri">The registered URI.</param>
         /// <param name="anyLoopbackPort">Whether a port-less loopback URI matches any port.</param>
@@ -106,10 +107,15 @@ namespace Tellma.Identity.Infrastructure
             // (a source path that does not end in '/' must match exactly). Any other scheme — a
             // native app's private scheme, which hands off to the operating system rather than to
             // a page — becomes a bare scheme source, because CSP's host-source grammar cannot
-            // describe an opaque URI.
+            // describe an opaque URI. An IPv6 literal host is dropped: the host-source grammar
+            // has no bracketed form (host characters are letters, digits and '-'), and Chromium
+            // ignores such a source with a console warning, so emitting it would only add noise.
+            // A native client must therefore use 127.0.0.1 or localhost to be redirected from a
+            // page rendered here; ::1 registrations are still accepted and still match.
             return string.IsNullOrWhiteSpace(uri)
                 || uri.AsSpan().ContainsAny(Unsafe)
                 || !Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed)
+                || parsed.HostNameType == UriHostNameType.IPv6
                 ? null
                 : parsed.Scheme is "http" or "https" ? ToHostSource(uri, parsed, anyLoopbackPort) : parsed.Scheme + ":";
         }

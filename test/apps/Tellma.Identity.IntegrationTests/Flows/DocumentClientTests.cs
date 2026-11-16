@@ -261,7 +261,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         [Fact]
-        public async Task The_sweep_removes_an_unconsented_row_and_keeps_a_consented_one()
+        public async Task Only_a_consented_row_counts_as_authorized_and_survives_the_sweep()
         {
             const string ConsentedId = "https://agent.example.com/oauth/consented.json";
             const string IdleId = "https://agent.example.com/oauth/idle.json";
@@ -281,6 +281,16 @@ namespace Tellma.Identity.IntegrationTests.Flows
             }
 
             await PushAsync(flow, IdleId, PortedRedirect);
+
+            // The same authorization is what lets a client refresh on the protected fetch budget,
+            // matched on the exact spelling of its id.
+            using (IServiceScope scope = factory.Services.CreateScope())
+            {
+                IDocumentClientStore store = scope.ServiceProvider.GetRequiredService<IDocumentClientStore>();
+                Assert.True(await store.IsAuthorizedAsync(ConsentedId, TestContext.Current.CancellationToken));
+                Assert.False(await store.IsAuthorizedAsync(IdleId, TestContext.Current.CancellationToken));
+                Assert.False(await store.IsAuthorizedAsync(ConsentedId.ToUpperInvariant(), TestContext.Current.CancellationToken));
+            }
 
             // Swept as if a day had passed: both rows are old enough and the pushed request the
             // idle client left behind has lapsed, so only consent decides which row survives.

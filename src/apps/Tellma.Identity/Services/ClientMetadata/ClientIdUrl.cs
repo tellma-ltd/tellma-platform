@@ -60,8 +60,9 @@ namespace Tellma.Identity.Services.ClientMetadata
         ///     Why a recognized client id may not be fetched, or null when it may. The id must be
         ///     short enough to be stored, plain ASCII, already in the canonical form a URL parser
         ///     writes it in (so two spellings of one address can never be two clients), free of
-        ///     user information and dot segments, and named by host: an IP literal is never
-        ///     fetched.
+        ///     user information, dot segments, a trailing dot on the host and percent-encoded
+        ///     characters that need no encoding (each a second spelling the parser keeps), and
+        ///     named by host: an IP literal is never fetched.
         /// </summary>
         /// <param name="url">A recognized client id.</param>
         /// <returns>The <see cref="ClientMetadataRejectionReasons" /> value, or null.</returns>
@@ -88,6 +89,8 @@ namespace Tellma.Identity.Services.ClientMetadata
                 || !string.Equals(clientId, url.AbsoluteUri, StringComparison.Ordinal)
                 || !string.IsNullOrEmpty(url.UserInfo)
                 || HasDotSegment(url.AbsolutePath)
+                || url.IdnHost.EndsWith('.')
+                || HasEncodedUnreserved(clientId)
                     ? ClientMetadataRejectionReasons.ClientId
                     : null;
         }
@@ -114,6 +117,24 @@ namespace Tellma.Identity.Services.ClientMetadata
             {
                 string decoded = Uri.UnescapeDataString(segment);
                 if (decoded is "." or "..")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        ///     Whether a URL percent-encodes a character that never needs it (a letter, a digit, or
+        ///     one of <c>-._~</c>): <c>%63</c> and <c>c</c> name the same resource.
+        /// </summary>
+        private static bool HasEncodedUnreserved(string url)
+        {
+            for (int i = url.IndexOf('%', StringComparison.Ordinal); i >= 0 && i + 2 < url.Length; i = url.IndexOf('%', i + 1))
+            {
+                if (byte.TryParse(url.AsSpan(i + 1, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out byte value)
+                    && (char.IsAsciiLetterOrDigit((char)value) || value is (byte)'-' or (byte)'.' or (byte)'_' or (byte)'~'))
                 {
                     return true;
                 }

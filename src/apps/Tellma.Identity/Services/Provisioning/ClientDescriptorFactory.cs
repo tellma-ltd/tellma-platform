@@ -184,8 +184,25 @@ namespace Tellma.Identity.Services.Provisioning
         /// </summary>
         /// <param name="document">The validated document.</param>
         /// <param name="createdUtc">When the row was first created, kept across updates.</param>
-        /// <returns>The descriptor.</returns>
+        /// <returns>The descriptor, stamped with the document's fetch time.</returns>
         public static OpenIddictApplicationDescriptor DocumentClient(ClientMetadataDocument document, DateTimeOffset createdUtc)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            return DocumentClient(document, createdUtc, document.FetchedAt);
+        }
+
+        /// <summary>
+        ///     A document client, as <see cref="DocumentClient(ClientMetadataDocument, DateTimeOffset)" />,
+        ///     stamped with a given fetch time rather than the document's own: the stamp a stored
+        ///     row already carries, when deciding whether a copy fetched earlier differs from it.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="createdUtc">When the row was first created, kept across updates.</param>
+        /// <param name="fetchedUtc">The fetch time the descriptor is stamped with.</param>
+        /// <returns>The descriptor.</returns>
+        public static OpenIddictApplicationDescriptor DocumentClient(
+            ClientMetadataDocument document, DateTimeOffset createdUtc, DateTimeOffset fetchedUtc)
         {
             ArgumentNullException.ThrowIfNull(document);
 
@@ -234,6 +251,7 @@ namespace Tellma.Identity.Services.Provisioning
 
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.DocumentClient, "true");
             TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.CreatedUtc, createdUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FetchedUtc, fetchedUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
 
             return descriptor;
         }

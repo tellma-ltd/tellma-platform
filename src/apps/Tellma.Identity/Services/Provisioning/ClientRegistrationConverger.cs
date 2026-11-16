@@ -417,6 +417,7 @@ namespace Tellma.Identity.Services.Provisioning
         {
             string clientId = document.ClientId.OriginalString;
             DateTimeOffset createdUtc = now;
+            DateTimeOffset? rowFetchedUtc = null;
             object? existing = await applicationManager.FindByClientIdAsync(clientId, cancellationToken);
             if (existing is null)
             {
@@ -455,6 +456,29 @@ namespace Tellma.Identity.Services.Provisioning
                 {
                     createdUtc = created;
                 }
+
+                if (DateTimeOffset.TryParse(
+                    TellmaClientProperties.Get(properties, TellmaClientProperties.FetchedUtc),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out DateTimeOffset fetched))
+                {
+                    rowFetchedUtc = fetched;
+                }
+            }
+
+            // A row written from a copy fetched later than this one is never overwritten by it:
+            // each instance converges on its own cached copy, and two instances holding different
+            // copies would otherwise rewrite the row in turn on every request. The older copy
+            // still matches when only the stamp differs, which is the common case of two
+            // instances that fetched the same document at different times.
+            if (existing is not null && rowFetchedUtc > document.FetchedAt)
+            {
+                OpenIddictApplicationDescriptor current = new();
+                await applicationManager.PopulateAsync(current, existing, cancellationToken);
+                return HaveSameRegistration(current, ClientDescriptorFactory.DocumentClient(document, createdUtc, rowFetchedUtc.Value))
+                    ? DocumentClientConvergence.Unchanged
+                    : DocumentClientConvergence.Stale;
             }
 
             ClientConvergence outcome = await ConvergeApplicationAsync(

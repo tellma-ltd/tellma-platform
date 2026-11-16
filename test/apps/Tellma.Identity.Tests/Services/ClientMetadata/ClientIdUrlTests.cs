@@ -64,6 +64,10 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         [InlineData("https://10.0.0.5/client.json")]
         [InlineData("https://[::1]/client.json")]
         [InlineData("https://[2001:4860::8888]/client.json")]
+        [InlineData("https://2130706433/client.json")]
+        [InlineData("https://0x7f.1/client.json")]
+        [InlineData("https://017700000001/client.json")]
+        [InlineData("https://127.1/client.json")]
         public void An_ip_literal_host_is_refused_by_the_address_guard(string clientId)
         {
             Assert.True(ClientIdUrl.TryRecognize(clientId, out Uri? url));
@@ -80,6 +84,9 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         [InlineData("https://agent.example.com/./client.json")]
         [InlineData("https://user@agent.example.com/client.json")]
         [InlineData("https://bücher.example/client.json")]
+        [InlineData("https://agent.example.com./client.json")]
+        [InlineData("https://agent.example.com/%63lient.json")]
+        [InlineData("https://agent.example.com/client.json?%61=1")]
         public void A_client_id_in_a_non_canonical_spelling_is_refused(string clientId)
         {
             // Two spellings of one URL would name one document, and under the store's

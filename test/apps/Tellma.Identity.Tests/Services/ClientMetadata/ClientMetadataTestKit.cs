@@ -207,11 +207,11 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
 
     /// <summary>
     ///     A document-client store holding only client ids, compared as the database compares
-    ///     them, ignoring case.
+    ///     them, ignoring case, each with whether its row holds an authorization.
     /// </summary>
     public sealed class StoredRows : IDocumentClientStore
     {
-        /// <summary>The stored client ids.</summary>
+        /// <summary>The stored client ids, each with whether its row holds an authorization.</summary>
         private readonly ConcurrentDictionary<string, bool> _ids = new(StringComparer.Ordinal);
 
         /// <summary>How many lookups were made.</summary>
@@ -219,9 +219,10 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
 
         /// <summary>Stores a row for a client id.</summary>
         /// <param name="clientId">The client id.</param>
-        public void Add(string clientId)
+        /// <param name="authorized">Whether the row holds an authorization.</param>
+        public void Add(string clientId, bool authorized = true)
         {
-            _ids[clientId] = true;
+            _ids[clientId] = authorized;
         }
 
         /// <inheritdoc />
@@ -235,6 +236,13 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         {
             Lookups++;
             return Task.FromResult(_ids.Keys.FirstOrDefault(stored => string.Equals(stored, clientId, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <inheritdoc />
+        public Task<bool> IsAuthorizedAsync(string clientId, CancellationToken cancellationToken)
+        {
+            Lookups++;
+            return Task.FromResult(_ids.TryGetValue(clientId, out bool authorized) && authorized);
         }
 
         /// <inheritdoc />

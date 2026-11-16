@@ -287,19 +287,44 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         }
 
         [Fact]
-        public void The_cache_evicts_the_entry_nearest_expiry_when_full()
+        public void The_cache_evicts_the_entry_used_least_recently_when_full()
         {
+            // Recency decides, not nearness to expiry: a publisher chooses its documents'
+            // lifetimes, so a long one must not outlast a copy in use.
             using ResolverRig rig = new(static options => options.MaxClients = 2);
             DateTimeOffset now = rig.Time.GetUtcNow();
 
-            rig.Cache.Set(Document("https://a.example.com/c", now, TimeSpan.FromMinutes(30)), now);
-            rig.Cache.Set(Document("https://b.example.com/c", now, TimeSpan.FromMinutes(5)), now);
+            rig.Cache.Set(Document("https://a.example.com/c", now, TimeSpan.FromMinutes(5)), now);
+            rig.Cache.Set(Document("https://b.example.com/c", now, TimeSpan.FromDays(1)), now);
+            Assert.True(rig.Cache.TryGet("https://a.example.com/c", out _));
             rig.Cache.Set(Document("https://c.example.com/c", now, TimeSpan.FromMinutes(20)), now);
 
             Assert.Equal(2, rig.Cache.Count);
             Assert.True(rig.Cache.TryGet("https://a.example.com/c", out _));
             Assert.False(rig.Cache.TryGet("https://b.example.com/c", out _));
             Assert.True(rig.Cache.TryGet("https://c.example.com/c", out _));
+        }
+
+        [Fact]
+        public void A_cache_full_of_long_lived_unauthorized_entries_never_evicts_an_authorized_one()
+        {
+            using ResolverRig rig = new(static options => options.MaxClients = 3);
+            DateTimeOffset now = rig.Time.GetUtcNow();
+            rig.Cache.Set(Document("https://real.example.com/c", now, TimeSpan.FromMinutes(5)), now, authorized: true);
+
+            // Documents anyone can publish, with day-long lifetimes, inserted and used after the
+            // authorized client's copy.
+            for (int i = 0; i < 10; i++)
+            {
+                string url = $"https://a{i}.attacker.example/c";
+                rig.Cache.Set(Document(url, now, TimeSpan.FromDays(1)), now);
+                Assert.True(rig.Cache.TryGet(url, out _));
+            }
+
+            Assert.Equal(3, rig.Cache.Count);
+            Assert.True(rig.Cache.TryGet("https://real.example.com/c", out _));
+            Assert.True(rig.Cache.IsAuthorized("https://real.example.com/c"));
+            Assert.True(rig.Cache.TryGet("https://a9.attacker.example/c", out _));
         }
 
         [Fact]

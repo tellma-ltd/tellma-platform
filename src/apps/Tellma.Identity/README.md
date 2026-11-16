@@ -233,7 +233,8 @@ authentication pipeline at the authorization, pushed authorization, token and re
 before the client id and any client assertion are checked. For a client id that is an `https` URL
 with a path (`ClientIdUrl`), it resolves the document (`IClientMetadataDocumentResolver`) and
 converges an ordinary application row from it (`ClientRegistrationConverger.ConvergeDocumentClientAsync`,
-marker `tellma:document_client`, creation time `tellma:created_utc`), so OpenIddict's own checks
+marker `tellma:document_client`, creation time `tellma:created_utc`, and `tellma:fetched_utc`, when
+the document it was written from was fetched), so OpenIddict's own checks
 then read that row. A client that names itself only in its `client_assertion` is found by the
 assertion's unvalidated issuer. Any refusal is `invalid_client`, with one generic description.
 
@@ -244,28 +245,44 @@ assertion's unvalidated issuer. Any refusal is `invalid_client`, with one generi
   their IPv4-mapped forms), then connects to the address it checked, so a rebinding resolver cannot
   swap it. A response must be `200`, `application/json` (a key set may also be
   `application/jwk-set+json`), at most `MaxBytes`, and arrive within `Timeout`.
-- **Limits** (`ClientMetadataRateLimiter`, per instance). Anyone can name a client id, so the
-  fetches anyone can cause are kept apart from the ones known clients need. Each host has two
-  budgets of `FetchesPerHostPerMinute` fetches a minute: the *refresh* budget re-fetches the
-  document of a client the engine holds (a cached copy, or a row holding exactly that id) whose
-  copy is missing or expired, at most once per client id a minute; the *probe* budget takes every
-  other fetch — a first-time id, an early re-fetch for an unlisted redirect URI, a repeated
-  refresh. Each budget also has `MaxConcurrentFetches` resolution slots across all hosts: a probe
-  with no free slot is refused at once, a refresh waits up to `Timeout`. The tables are bounded
-  and forget the least recently used host, so a flood of hosts never refuses a new one.
+- **Limits** (`ClientMetadataRateLimiter`, per instance). Anyone can name a client id or publish
+  documents, so the fetches anyone can cause are kept apart from the ones authorized clients
+  need. Each host has two budgets of `FetchesPerHostPerMinute` fetches a minute: the *refresh*
+  budget re-fetches the document of an *authorized* client (a row holding exactly that id and at
+  least one authorization, which only a signed-in user's consent leaves) whose copy is missing or
+  expired; a failed refresh claims the id's refresh for a minute, a successful one gives the claim
+  back. The *probe* budget takes every other fetch — a first-time id, an id that was only ever
+  fetched, an early re-fetch for an unlisted redirect URI, a repeated failing refresh. Each budget
+  has `MaxConcurrentFetches` resolution slots across all hosts, of which one host holds at most
+  two (`MaxInFlightPerHost`): a probe with no free slot is refused at once, a refresh waits up to
+  `Timeout`. A local refusal (no slot, or a spent budget) is a fetch failure like any other: an
+  unexpired copy is still served, an expired one is not. The tables are bounded and forget the
+  least recently used host, so a flood of hosts never refuses a new one.
 - **Caching.** The response's `Cache-Control`/`Expires` lifetime is clamped to
   `[MinCache, MaxCache]`, and a key set's lifetime shortens the document's. One fetch per client
   id is in flight at a time. A redirect URI the cached document does not list fetches it again
   before the request is refused; if that early fetch fails or is rate-limited, the unexpired copy
   is still used. An expired document that cannot be fetched refuses the client, whatever its row
-  holds.
-- **Validation** (`ClientMetadataDocumentParser`). `client_id` must equal the URL; `redirect_uris`
-  must be absolute, without fragment or userinfo, `https` or loopback `http`; the
+  holds. The cache holds at most `MaxClients` documents; when it is full and nothing has expired,
+  the copy used least recently among unauthorized clients is evicted first, so documents anyone
+  can publish never push out an authorized client's copy. A copy the row cannot take (`cap`,
+  `registered`, `client_id_collision`, or one the store refuses, audited as `document`) is
+  dropped. A row is never rewritten from a copy fetched earlier than the one it was written from,
+  so instances holding different copies cannot flip it; the older copy is dropped and the request
+  proceeds on the row.
+- **Validation** (`ClientMetadataDocumentParser`). `client_id` must equal the URL, in its
+  canonical spelling (no trailing dot on the host, no percent-encoding of a character that needs
+  none); `redirect_uris` must be absolute ASCII, without fragment, userinfo or an `iss` query
+  parameter (pairs split on `&` and `;`), `https` or loopback `http`; the
   `token_endpoint_auth_method` is `none` or `private_key_jwt`, the latter with a same-origin
   `jwks_uri` whose keys are public RSA (2048 bits or more) or EC (P-256/384/521) signing keys; a
   secret, inline `jwks`, duplicate members or a `grant_types` beyond `authorization_code` and
   `refresh_token` are refused. A port-less loopback redirect matches any port, as for native
-  clients.
+  clients. The consent and sign-in pages name a native client's port-less loopback callback in
+  their `form-action` policy with every port (`http://127.0.0.1:*/callback`), but cannot name an
+  IPv6 one: CSP's host-source grammar has no bracketed literal and browsers ignore such a source,
+  so a native client that completes consent in the browser must register `127.0.0.1` or
+  `localhost`, not `[::1]`.
 - **The row.** PKCE is required; the scopes are `openid`, `profile`, `email`, `offline_access` and
   `tellma_api`; consent is always explicit, and the consent page shows the document's
   `client_name` beside the host of its client id. At most `MaxClients` document-client rows exist:

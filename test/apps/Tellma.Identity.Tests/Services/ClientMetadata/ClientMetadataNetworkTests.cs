@@ -49,6 +49,13 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         [InlineData("2002:0a00:0001::1")]
         [InlineData("2001:db8::1")]
         [InlineData("2001::1")]
+        [InlineData("::127.0.0.1")]
+        [InlineData("::8.8.8.8")]
+        [InlineData("64:ff9b:1::1")]
+        [InlineData("fec0::1")]
+        [InlineData("3fff::1")]
+        [InlineData("192.88.99.1")]
+        [InlineData("240.0.0.1")]
         public void A_non_public_address_is_refused(string address)
         {
             Assert.False(ClientMetadataAddressPolicy.IsAllowed(IPAddress.Parse(address)));
@@ -61,6 +68,7 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         [InlineData("2606:4700::1111")]
         [InlineData("::ffff:8.8.8.8")]
         [InlineData("64:ff9b::808:808")]
+        [InlineData("2002:0808:0808::1")]
         public void A_public_address_is_allowed(string address)
         {
             Assert.True(ClientMetadataAddressPolicy.IsAllowed(IPAddress.Parse(address)));

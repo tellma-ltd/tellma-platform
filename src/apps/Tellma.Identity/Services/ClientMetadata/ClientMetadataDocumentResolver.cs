@@ -21,10 +21,11 @@ namespace Tellma.Identity.Services.ClientMetadata
     ///     request's, and records its own audit row and counter outcome.
     ///     <para>
     ///         Each shared fetch draws on one of a host's two budgets (<see cref="ClientMetadataFetchBudget" />):
-    ///         the refresh of a client the engine already holds, a cached copy or a stored row,
-    ///         draws on the refresh budget, once per client id per window; anything else, which
-    ///         any caller can cause by naming a client id, draws on the probe budget. Spending the
-    ///         probe budget therefore never stops a known client from refreshing.
+    ///         the refresh of a client a signed-in user has authorized draws on the refresh budget,
+    ///         and keeps doing so while its refreshes succeed; anything else, which any caller can
+    ///         cause by naming a client id or publishing documents, draws on the probe budget.
+    ///         Spending the probe budget therefore never stops an authorized client from
+    ///         refreshing, and its cached copy is the last to be evicted.
     ///     </para>
     /// </summary>
     /// <param name="fetcher">The guarded fetch.</param>
@@ -35,7 +36,7 @@ namespace Tellma.Identity.Services.ClientMetadata
     /// <param name="options">The engine options.</param>
     /// <param name="timeProvider">The clock expiry is judged on.</param>
     /// <param name="httpContextAccessor">The current request, whose address the audit rows carry.</param>
-    /// <param name="scopeFactory">Creates the scope a stored row is looked up in.</param>
+    /// <param name="scopeFactory">Creates the scope a client's authorization is looked up in.</param>
     public sealed class ClientMetadataDocumentResolver(
         ClientMetadataFetcher fetcher,
         ClientMetadataRateLimiter rateLimiter,
@@ -134,9 +135,18 @@ namespace Tellma.Identity.Services.ClientMetadata
             string key = url.OriginalString;
             try
             {
-                ClientMetadataFetchBudget budget = await ChooseBudgetAsync(key, revalidate);
+                (ClientMetadataFetchBudget budget, bool authorized) = await ChooseBudgetAsync(key, revalidate);
                 ClientMetadataDocument document = await FetchInSlotAsync(url, budget);
-                cache.Set(document, timeProvider.GetUtcNow());
+
+                // A refresh that succeeded gives its claim back: the claim only stops a refresh
+                // that keeps failing, and an authorized client evicted again within the window
+                // must still refresh on its own budget.
+                if (budget is ClientMetadataFetchBudget.Refresh)
+                {
+                    rateLimiter.ReleaseRefresh(key);
+                }
+
+                cache.Set(document, timeProvider.GetUtcNow(), authorized);
                 metrics.ClientMetadataFetch(ClientMetadataFetchOutcomes.Fetched);
                 await auditor.FetchedAsync(key, url.IdnHost, ipAddress);
                 return document;
@@ -166,44 +176,41 @@ namespace Tellma.Identity.Services.ClientMetadata
         }
 
         /// <summary>
-        ///     The budget a shared fetch draws on: the refresh budget for a client the engine
-        ///     already holds, when the client id has not drawn on it inside the window; otherwise
-        ///     the probe budget. An early re-fetch is always a probe, since any caller can ask for
-        ///     one by naming an unlisted redirect URI.
+        ///     The budget a shared fetch draws on, and whether the client is authorized: the
+        ///     refresh budget for an authorized client whose claim for the window is free;
+        ///     otherwise the probe budget. An early re-fetch is always a probe, since any caller
+        ///     can ask for one by naming an unlisted redirect URI.
         /// </summary>
-        private async Task<ClientMetadataFetchBudget> ChooseBudgetAsync(string clientId, bool revalidate)
+        private async Task<(ClientMetadataFetchBudget Budget, bool Authorized)> ChooseBudgetAsync(string clientId, bool revalidate)
         {
-            if (revalidate)
-            {
-                return ClientMetadataFetchBudget.Probe;
-            }
-
-            // Only a fetch that succeeded leaves a cached copy or a row, so a client id holding
-            // either was published by its host; the row is looked up only when the cache has
-            // forgotten the client, as after a restart. The row must hold the id exactly: under
-            // the store's case-insensitive comparison, another spelling is a different client id.
-            bool known = cache.TryGet(clientId, out _) || await IsStoredAsync(clientId);
-            return known && rateLimiter.TryClaimRefresh(clientId)
+            // An authorization, not a cached copy or a row, decides: anyone can make the engine
+            // fetch and store a valid document by publishing one, but only a signed-in user's
+            // consent leaves an authorization. A cached copy marked authorized saves the lookup,
+            // and an early re-fetch, which is a probe whatever the answer, never makes one.
+            bool authorized = cache.IsAuthorized(clientId) || (!revalidate && await IsAuthorizedAsync(clientId));
+            ClientMetadataFetchBudget budget = !revalidate && authorized && rateLimiter.TryClaimRefresh(clientId)
                 ? ClientMetadataFetchBudget.Refresh
                 : ClientMetadataFetchBudget.Probe;
+            return (budget, authorized);
         }
 
-        /// <summary>Whether a row holds exactly this client id.</summary>
-        private async Task<bool> IsStoredAsync(string clientId)
+        /// <summary>Whether a row holds exactly this client id and an authorization.</summary>
+        private async Task<bool> IsAuthorizedAsync(string clientId)
         {
             await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-            string? stored = await scope.ServiceProvider.GetRequiredService<IDocumentClientStore>()
-                .FindClientIdAsync(clientId, CancellationToken.None);
-            return string.Equals(stored, clientId, StringComparison.Ordinal);
+            return await scope.ServiceProvider.GetRequiredService<IDocumentClientStore>()
+                .IsAuthorizedAsync(clientId, CancellationToken.None);
         }
 
         /// <summary>
         ///     Fetches and validates the document and its key set inside one of the budget's
-        ///     resolution slots, which bounds how many resolutions run at once.
+        ///     resolution slots, which bounds how many resolutions run at once, for the host and
+        ///     in all.
         /// </summary>
         private async Task<ClientMetadataDocument> FetchInSlotAsync(Uri url, ClientMetadataFetchBudget budget)
         {
-            if (!await rateLimiter.TryEnterAsync(budget))
+            string host = url.IdnHost;
+            if (!await rateLimiter.TryEnterAsync(budget, host))
             {
                 throw new ClientMetadataException(
                     ClientMetadataRejectionReasons.RateLimited,
@@ -240,7 +247,7 @@ namespace Tellma.Identity.Services.ClientMetadata
             }
             finally
             {
-                rateLimiter.Exit(budget);
+                rateLimiter.Exit(budget, host);
             }
         }
     }

@@ -85,16 +85,70 @@ namespace Tellma.Identity.Tests.Services.ClientMetadata
         }
 
         [Fact]
+        public void A_refresh_that_succeeded_gives_its_claim_back()
+        {
+            using ResolverRig rig = new();
+
+            Assert.True(rig.RateLimiter.TryClaimRefresh(MetadataDocuments.ClientId));
+            rig.RateLimiter.ReleaseRefresh(MetadataDocuments.ClientId);
+
+            Assert.True(rig.RateLimiter.TryClaimRefresh(MetadataDocuments.ClientId));
+        }
+
+        [Fact]
         public async Task Each_budget_has_its_own_slots_and_a_probe_never_waits_for_one()
         {
             using ResolverRig rig = new(static options => options.MaxConcurrentFetches = 1);
 
-            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe));
-            Assert.False(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe));
-            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Refresh));
+            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, "a.example.com"));
+            Assert.False(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, "b.example.com"));
+            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Refresh, "b.example.com"));
 
-            rig.RateLimiter.Exit(ClientMetadataFetchBudget.Probe);
-            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe));
+            rig.RateLimiter.Exit(ClientMetadataFetchBudget.Probe, "a.example.com");
+            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, "b.example.com"));
+        }
+
+        [Fact]
+        public async Task One_host_holds_at_most_its_share_of_a_budgets_slots()
+        {
+            using ResolverRig rig = new();
+            const string slow = "slow.example.com";
+
+            for (int i = 0; i < ClientMetadataRateLimiter.MaxInFlightPerHost; i++)
+            {
+                Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, slow));
+            }
+
+            // The host's share is taken; other hosts are not held back by it, in either case
+            // spelling of the host.
+            Assert.False(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, slow));
+            Assert.False(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, "SLOW.example.com"));
+            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, "other.example.com"));
+
+            rig.RateLimiter.Exit(ClientMetadataFetchBudget.Probe, slow);
+            Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Probe, slow));
+        }
+
+        [Fact]
+        public async Task A_refresh_waits_for_its_hosts_share_up_to_the_fetch_timeout()
+        {
+            using ResolverRig rig = new();
+            const string host = "agent.example.com";
+            for (int i = 0; i < ClientMetadataRateLimiter.MaxInFlightPerHost; i++)
+            {
+                Assert.True(await rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Refresh, host));
+            }
+
+            // A slot the host gives back is taken by the waiting refresh.
+            Task<bool> waiting = rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Refresh, host);
+            Assert.False(waiting.IsCompleted);
+            rig.RateLimiter.Exit(ClientMetadataFetchBudget.Refresh, host);
+            Assert.True(await waiting);
+
+            // With none given back, the wait ends at the fetch timeout.
+            Task<bool> timedOut = rig.RateLimiter.TryEnterAsync(ClientMetadataFetchBudget.Refresh, host);
+            rig.Time.Advance(rig.Options.ClientMetadata.Timeout);
+            Assert.False(await timedOut);
         }
     }
 }

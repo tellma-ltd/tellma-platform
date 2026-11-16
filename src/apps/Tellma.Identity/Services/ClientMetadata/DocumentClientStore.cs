@@ -31,6 +31,16 @@ namespace Tellma.Identity.Services.ClientMetadata
         Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken);
 
         /// <summary>
+        ///     Whether a row holds exactly this client id (compared ordinally, not under the
+        ///     store's case-insensitive comparison) and at least one authorization: a signed-in
+        ///     user has authorized the client, which an anonymous caller cannot bring about.
+        /// </summary>
+        /// <param name="clientId">The client id.</param>
+        /// <param name="cancellationToken">Aborts the query.</param>
+        /// <returns>True when the client is stored and authorized.</returns>
+        Task<bool> IsAuthorizedAsync(string clientId, CancellationToken cancellationToken);
+
+        /// <summary>
         ///     Deletes the document-client rows that hold no authorization and no unexpired token
         ///     and were created before <paramref name="createdBefore" />, together with the expired
         ///     tokens such a row still holds.
@@ -80,6 +90,21 @@ namespace Tellma.Identity.Services.ClientMetadata
                 .Where(application => application.ClientId == clientId)
                 .Select(static application => application.ClientId)
                 .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task<bool> IsAuthorizedAsync(string clientId, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(clientId);
+
+            // The database matches under its case-insensitive collation; the exact spelling is
+            // then checked here, since another spelling is another client id.
+            string? stored = await context.Set<OpenIddictEntityFrameworkCoreApplication>()
+                .AsNoTracking()
+                .Where(application => application.ClientId == clientId && application.Authorizations.Any())
+                .Select(static application => application.ClientId)
+                .FirstOrDefaultAsync(cancellationToken);
+            return string.Equals(stored, clientId, StringComparison.Ordinal);
         }
 
         /// <inheritdoc />

@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
+using OpenIddict.Abstractions;
 using OpenIddict.Server;
 using Tellma.Identity.Options;
 using Tellma.Identity.Services;
@@ -22,14 +23,23 @@ namespace Tellma.Identity.Handlers
     ///     the row is what the built-in checks — client type, redirect URI, permissions, PKCE,
     ///     client assertion keys — read. A document that cannot be resolved refuses the request
     ///     with <c>invalid_client</c>, whatever the row holds.
+    ///     <para>
+    ///         A document the row cannot take — the cap is reached, the id is another client's, or
+    ///         the store refuses the registration — also refuses the request, and its cached copy
+    ///         is dropped so it holds no cache room. A copy older than the one the row was written
+    ///         from is dropped too, so the next request fetches the newer document; this request
+    ///         proceeds on the row as it stands.
+    ///     </para>
     /// </summary>
     /// <param name="resolver">Resolves the document.</param>
     /// <param name="converger">Converges the row.</param>
+    /// <param name="cache">The document cache a copy the row cannot take is dropped from.</param>
     /// <param name="auditor">Records a refusal the converger decides.</param>
     /// <param name="timeProvider">The clock a new row's creation time is read from.</param>
     public sealed class DocumentClientHandler(
         IClientMetadataDocumentResolver resolver,
         ClientRegistrationConverger converger,
+        ClientMetadataCache cache,
         ClientMetadataAuditor auditor,
         TimeProvider timeProvider) : IOpenIddictServerHandler<ProcessAuthenticationContext>
     {
@@ -106,18 +116,39 @@ namespace Tellma.Identity.Handlers
                 return;
             }
 
-            DocumentClientConvergence outcome = await converger.ConvergeDocumentClientAsync(
-                document, timeProvider.GetUtcNow(), context.CancellationToken);
-            string? reason = outcome switch
+            // Convergence: a registration the store's own validation refuses (a redirect URI the
+            // protocol engine will not hold, say) is the document's fault, refused like any
+            // other unusable document rather than surfacing as a server error.
+            string? reason;
+            try
             {
-                DocumentClientConvergence.Cap => ClientMetadataRejectionReasons.Cap,
-                DocumentClientConvergence.Registered => ClientMetadataRejectionReasons.Registered,
-                DocumentClientConvergence.Collision => ClientMetadataRejectionReasons.ClientIdCollision,
-                DocumentClientConvergence.Created or DocumentClientConvergence.Updated or DocumentClientConvergence.Unchanged => null,
-                _ => throw new InvalidOperationException($"Unknown document-client convergence outcome {outcome}."),
-            };
+                DocumentClientConvergence outcome = await converger.ConvergeDocumentClientAsync(
+                    document, timeProvider.GetUtcNow(), context.CancellationToken);
+                reason = outcome switch
+                {
+                    DocumentClientConvergence.Cap => ClientMetadataRejectionReasons.Cap,
+                    DocumentClientConvergence.Registered => ClientMetadataRejectionReasons.Registered,
+                    DocumentClientConvergence.Collision => ClientMetadataRejectionReasons.ClientIdCollision,
+                    DocumentClientConvergence.Created or DocumentClientConvergence.Updated or DocumentClientConvergence.Unchanged => null,
+                    DocumentClientConvergence.Stale => null,
+                    _ => throw new InvalidOperationException($"Unknown document-client convergence outcome {outcome}."),
+                };
+
+                // The row was written from a newer copy than this instance holds: drop the older
+                // one so the next request fetches again, and let this one proceed on the row.
+                if (outcome is DocumentClientConvergence.Stale)
+                {
+                    cache.Remove(url.OriginalString);
+                }
+            }
+            catch (OpenIddictExceptions.ValidationException)
+            {
+                reason = ClientMetadataRejectionReasons.Document;
+            }
+
             if (reason is not null)
             {
+                cache.Remove(url.OriginalString);
                 await auditor.RejectedAsync(clientId, reason, url.IdnHost, AuditContext.ClientIpAddress(context.Transaction));
                 Refuse(context);
             }

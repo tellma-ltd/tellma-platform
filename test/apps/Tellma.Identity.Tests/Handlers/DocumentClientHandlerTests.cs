@@ -41,9 +41,13 @@ namespace Tellma.Identity.Tests.Handlers
         /// <summary>The documents the fake resolver answers with, and the ids it was asked for.</summary>
         private readonly FakeResolver _resolver = new();
 
+        /// <summary>The document cache the handler drops a copy the row cannot take from.</summary>
+        private readonly ClientMetadataCache _cache;
+
         /// <summary>Builds the services over in-memory stores.</summary>
         public DocumentClientHandlerTests()
         {
+            _cache = new ClientMetadataCache(Microsoft.Extensions.Options.Options.Create(_options));
             ServiceCollection services = new();
             services.AddInMemoryOpenIddict();
             services.AddSingleton<AuditRecorder>();
@@ -160,6 +164,7 @@ namespace Tellma.Identity.Tests.Handlers
         {
             _options.ClientMetadata.MaxClients = 0;
             _resolver.Document = Document();
+            _cache.Set(_resolver.Document, DateTimeOffset.UtcNow);
             ProcessAuthenticationContext context = Context(OpenIddictServerEndpointType.Token, new OpenIddictRequest { ClientId = MetadataDocuments.ClientId });
 
             await HandleAsync(context);
@@ -170,6 +175,67 @@ namespace Tellma.Identity.Tests.Handlers
             Assert.Equal(AuditActions.ClientMetadataRejected, entry.Action);
             Assert.Equal("cap", JsonDocument.Parse(entry.DetailsJson!).RootElement.GetProperty("reason").GetString());
             Assert.Null(_services.GetRequiredService<InMemoryApplicationStore>().Find(MetadataDocuments.ClientId));
+
+            // A copy no row can take holds no cache room.
+            Assert.False(_cache.TryGet(MetadataDocuments.ClientId, out _));
+        }
+
+        [Fact]
+        public async Task A_document_the_store_refuses_is_invalid_client_with_the_document_reason()
+        {
+            // The protocol engine splits a query on ';' as well as '&', so it refuses this
+            // redirect for carrying its own 'iss' parameter. The refusal is the document's fault,
+            // not a server error.
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            _resolver.Document = new ClientMetadataDocument(
+                new Uri(MetadataDocuments.ClientId),
+                "Example Agent",
+                [new Uri("https://agent.example.com/cb?a=1;iss=x")],
+                ClientMetadataDocumentParser.AuthMethodNone,
+                null,
+                null,
+                now,
+                now.AddMinutes(10));
+            _cache.Set(_resolver.Document, now);
+            ProcessAuthenticationContext context = Context(OpenIddictServerEndpointType.Token, new OpenIddictRequest { ClientId = MetadataDocuments.ClientId });
+
+            await HandleAsync(context);
+
+            Assert.True(context.IsRejected);
+            Assert.Equal(Errors.InvalidClient, context.Error);
+            AuditEventEntry entry = Assert.Single(_services.GetRequiredService<AuditRecorder>().Entries);
+            Assert.Equal("document", JsonDocument.Parse(entry.DetailsJson!).RootElement.GetProperty("reason").GetString());
+            Assert.Null(_services.GetRequiredService<InMemoryApplicationStore>().Find(MetadataDocuments.ClientId));
+            Assert.False(_cache.TryGet(MetadataDocuments.ClientId, out _));
+        }
+
+        [Fact]
+        public async Task A_copy_older_than_the_rows_proceeds_on_the_row_and_is_dropped()
+        {
+            // Another instance wrote the row from a newer copy, which added a redirect URI. This
+            // instance's older copy must neither rewrite the row nor refuse the request.
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            ClientMetadataDocument newer = new(
+                new Uri(MetadataDocuments.ClientId),
+                "Example Agent",
+                [new Uri(MetadataDocuments.LoopbackRedirect), new Uri("https://agent.example.com/new-callback")],
+                ClientMetadataDocumentParser.AuthMethodNone,
+                null,
+                null,
+                now,
+                now.AddMinutes(10));
+            _resolver.Document = newer;
+            await HandleAsync(Context(OpenIddictServerEndpointType.Token, new OpenIddictRequest { ClientId = MetadataDocuments.ClientId }));
+
+            _resolver.Document = Document() with { FetchedAt = now.AddMinutes(-5) };
+            _cache.Set(_resolver.Document, now);
+            ProcessAuthenticationContext context = Context(OpenIddictServerEndpointType.Token, new OpenIddictRequest { ClientId = MetadataDocuments.ClientId });
+
+            await HandleAsync(context);
+
+            Assert.False(context.IsRejected);
+            Assert.Equal(2, _services.GetRequiredService<InMemoryApplicationStore>().Find(MetadataDocuments.ClientId)!.RedirectUris.Length);
+            Assert.False(_cache.TryGet(MetadataDocuments.ClientId, out _));
         }
 
         [Theory]
@@ -241,6 +307,7 @@ namespace Tellma.Identity.Tests.Handlers
             DocumentClientHandler handler = new(
                 _resolver,
                 scope.ServiceProvider.GetRequiredService<ClientRegistrationConverger>(),
+                _cache,
                 new ClientMetadataAuditor(_services.GetRequiredService<IServiceScopeFactory>()),
                 TimeProvider.System);
             await handler.HandleAsync(context);
@@ -289,6 +356,12 @@ namespace Tellma.Identity.Tests.Handlers
             public Task<string?> FindClientIdAsync(string clientId, CancellationToken cancellationToken)
             {
                 return Task.FromResult<string?>(null);
+            }
+
+            /// <inheritdoc />
+            public Task<bool> IsAuthorizedAsync(string clientId, CancellationToken cancellationToken)
+            {
+                return Task.FromResult(false);
             }
 
             /// <inheritdoc />
