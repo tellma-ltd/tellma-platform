@@ -290,7 +290,12 @@ test.describe('lazy loading (§13.3)', () => {
     await releaseResponses(page, 'loader'); // b's load settles while a is bound
 
     // b kept its children: binding it needs no load (the gate still holds).
+    // Wait for the switch to render before scrolling: a still shows 63
+    // rows too, so the row count alone cannot tell the switch has landed,
+    // and the switch's restore of b's remembered scroll (the top) would
+    // undo a scroll made ahead of it.
     await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('switch-content')).toHaveText('Content: b');
     await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
     await setScrollTop(page, 5000);
     await expectCellText(page, 55, 0, 'Lazy child one');
