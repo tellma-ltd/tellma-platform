@@ -51,7 +51,8 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
  * select-all works on the current page only. Rows of inactive records render
  * muted, an optional totals row is emphasized, and the list carries no row
  * numbers (toggles under the grid add them and remove the checkbox column,
- * so either chrome column, or neither, starts the row). Header actions open
+ * so either chrome column, or neither, starts the row), and a third button
+ * flashes the active row in place, as `scrollToRow` does. Header actions open
  * filter popovers — Region is sortable and filterable, Manager filter-only —
  * and the row-end header holds the column editor; a filter matching nothing
  * shows the empty template under the headers that undo it. The toolbar
@@ -276,6 +277,12 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
       <button type="button" data-testid="toggle-checkboxes" (click)="checkboxes.set(!checkboxes())">
         {{ checkboxes() ? 'Hide checkboxes' : 'Show checkboxes' }}
       </button>
+      <!-- scrollToRow's flash on the active row, in place: the active cell
+           and the range stay, so the flash can land on a row whose cells
+           mix the checked tint, the range fill and plain cells. -->
+      <button type="button" data-testid="flash-active" (click)="flashActive(grid)">
+        Flash the active row
+      </button>
     </div>
   `,
   styles: `
@@ -499,6 +506,14 @@ export class GridSearchPageStory {
     const row = this.pageRows()[40];
     if (row !== undefined) {
       this.activeRowId.set(row.id);
+    }
+  }
+
+  /** Flashes the active row without moving the active cell or the range. */
+  flashActive(grid: TmGrid<DemoRow>): void {
+    const id = this.activeRowId();
+    if (id !== null) {
+      grid.scrollToRow(id, { flash: true, activate: false });
     }
   }
 

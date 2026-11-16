@@ -668,11 +668,15 @@
     background: Field;
   }
 
+  /* The box's border takes the overlay ink, so the box keeps its edge on a
+     checked checkbox cell (SelectedItem) or in the range fill (Highlight),
+     where a Highlight box would merge with the cell wherever the two are
+     one colour. */
   .tm-grid-bool--on,
   .tm-grid__check--on,
   .tm-grid__check--mixed {
     background: Highlight;
-    border-color: Highlight;
+    border-color: var(--tm-grid-overlay-ink, Highlight);
   }
 
   /* The masked check/dash glyph fills via background-color — a contrasting

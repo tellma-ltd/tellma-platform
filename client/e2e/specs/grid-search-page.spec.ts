@@ -40,7 +40,8 @@ import { appStable } from '../support/settle';
  * ("<key> <asc|desc>" or "none"), `selected-count` ("N selected") and
  * `link-clicked`. Toggles under the grid (`toggle-row-numbers`,
  * `toggle-checkboxes`) switch the two chrome columns, and with them the
- * row's first painted cell.
+ * row's first painted cell; `flash-active` flashes the active row in place
+ * (`scrollToRow` with `activate: false`).
  */
 
 /** The story's search field (the `tmGridDriver` input). */
@@ -742,5 +743,226 @@ test.describe('the active row under forced colors', () => {
     paint = await actionPaint(manager);
     expect(paint.ink).toBe(selectedItemText);
     expect(paint.border).not.toBe(selectedItemText);
+  });
+});
+
+/** The flash ring as the screen shows it over one cell of a row. */
+interface RingSample {
+  /** The cell's chrome kind: its `data-tm-*` marker, or its tag. */
+  readonly kind: string;
+  /** The cell's computed background. */
+  readonly background: string;
+  /** Whether the cell runs an animation (the flash's tint). */
+  readonly animated: boolean;
+  /** The screen pixels at the middle of the ring's outer and inner bands, on the top edge. */
+  readonly top: readonly [string, string];
+  /** The same on the bottom edge. */
+  readonly bottom: readonly [string, string];
+}
+
+/** The flash ring read off the screen: over every cell of a row, and at the row's two ends. */
+interface RingPaint {
+  /** One sample per cell of the row, in DOM order. */
+  readonly cells: readonly RingSample[];
+  /** The outer and inner bands at mid-height on the row's inline-start edge. */
+  readonly start: readonly [string, string];
+  /** The same on the row's inline-end edge. */
+  readonly end: readonly [string, string];
+}
+
+/**
+ * Screenshots the page and reads the flash ring's two bands back from the
+ * pixels, so the assertion covers what the screen shows (a ring the cells
+ * paint over fails it), not only what the styles say. Each band is sampled
+ * at its middle, clear of the snapping of either edge.
+ */
+async function ringPaint(page: Page, viewIndex: number): Promise<RingPaint> {
+  await appStable(page);
+  const png = (await page.screenshot()).toString('base64');
+  return row(page, viewIndex).evaluate(async (rowElement, data): Promise<RingPaint> => {
+    // Decode the screenshot into a canvas to read its pixels.
+    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true })!;
+    context.drawImage(bitmap, 0, 0);
+    const scale = bitmap.width / window.innerWidth;
+    const pixel = (x: number, y: number): string => {
+      const [r, g, b] = context.getImageData(
+        Math.floor(x * scale),
+        Math.floor(y * scale),
+        1,
+        1,
+      ).data;
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+
+    // Each band is a focus ring wide, read from the token rather than from
+    // the ring, so a missing ring is sampled where it should be; the ring
+    // insets nothing from the row box.
+    const band = Number.parseFloat(
+      getComputedStyle(rowElement).getPropertyValue('--focus-ring-width'),
+    );
+    if (!(band > 0)) {
+      throw new Error('--focus-ring-width did not resolve to a width');
+    }
+    const box = rowElement.getBoundingClientRect();
+    const middle = box.top + box.height / 2;
+    const cells = [...rowElement.children].map((child): RingSample => {
+      const rect = child.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const markers = (child as HTMLElement).dataset;
+      return {
+        kind:
+          'tmRowhdr' in markers
+            ? 'rowhdr'
+            : 'tmCheckcell' in markers
+              ? 'checkcell'
+              : 'tmCell' in markers
+                ? 'cell'
+                : child.localName,
+        background: getComputedStyle(child).backgroundColor,
+        animated: child.getAnimations().length > 0,
+        top: [pixel(x, box.top + band / 2), pixel(x, box.top + band * 1.5)],
+        bottom: [pixel(x, box.bottom - band / 2), pixel(x, box.bottom - band * 1.5)],
+      };
+    });
+    // The inline edges in screen terms: the row's left and right.
+    return {
+      cells,
+      start: [pixel(box.left + band / 2, middle), pixel(box.left + band * 1.5, middle)],
+      end: [pixel(box.right - band / 2, middle), pixel(box.right - band * 1.5, middle)],
+    };
+  }, png);
+}
+
+// Forced colors: scrollToRow's flash rings the row instead of tinting it, and
+// a row mixes Canvas, SelectedItem (checked row, hit row header) and
+// Highlight (range fill) cells, so no one colour shows on all of them. The
+// ring is a Highlight band with a HighlightText band inside: the two pin a
+// pair that contrasts with every one of those surfaces, even where
+// SelectedItem and Highlight are one colour (Windows).
+test.describe('the row flash and the row checkbox under forced colors', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await gotoGrid(page, 'grid-search-page');
+    // A long flash, so the ring is still on screen when the test reads it.
+    await page
+      .locator('tm-grid')
+      .evaluate((grid: HTMLElement) => grid.style.setProperty('--grid-flash-duration', '60s'));
+  });
+
+  test('the flash rings a mixed row above every cell and keeps the cells painted', async ({
+    page,
+  }) => {
+    const highlight = await systemColor(page, 'Highlight');
+    const highlightText = await systemColor(page, 'HighlightText');
+    const selectedItem = await systemColor(page, 'SelectedItem');
+    const ringed = [highlight, highlightText];
+
+    // Row numbers, the checkbox column and row 2 checked; a 2×3 range from
+    // (2,0): row 2 then mixes the hit row header, the checked cells and the
+    // range fill.
+    await page.getByTestId('toggle-row-numbers').click();
+    await rowCheckbox(page, 2).click();
+    await expect(row(page, 2)).toHaveAttribute('aria-selected', 'true');
+    await cell(page, 2, 0).click();
+    await cell(page, 3, 2).click({ modifiers: ['Shift'] });
+    await expect(selectedCells(page)).toHaveCount(6);
+    await expect(row(page, 2)).toHaveClass(/tm-grid__row--active/);
+
+    await page.getByTestId('flash-active').click();
+    await expect(row(page, 2)).toHaveClass(/tm-grid__row--flash/);
+    // In place: the range survives the flash.
+    await expect(selectedCells(page)).toHaveCount(6);
+    let paint = await ringPaint(page, 2);
+    expect(paint.cells.map((sample) => sample.kind)).toEqual([
+      'rowhdr',
+      'checkcell',
+      'cell',
+      'cell',
+      'cell',
+      'cell',
+      'cell',
+      'tm-grid-end-cell',
+    ]);
+    // No tint runs, so every cell keeps its own surface while it flashes.
+    expect(paint.cells.map((sample) => sample.background)).toEqual([
+      selectedItem,
+      selectedItem,
+      highlight,
+      highlight,
+      highlight,
+      selectedItem,
+      selectedItem,
+      selectedItem,
+    ]);
+    expect(paint.cells.some((sample) => sample.animated)).toBe(false);
+    for (const sample of paint.cells) {
+      expect(sample.top).toEqual(ringed);
+      expect(sample.bottom).toEqual(ringed);
+    }
+    expect(paint.start).toEqual(ringed);
+    expect(paint.end).toEqual(ringed);
+
+    // An unchecked row: plain cells beside the fill and the hit row header.
+    await cell(page, 4, 3).click();
+    await cell(page, 4, 4).click({ modifiers: ['Shift'] });
+    await expect(selectedCells(page)).toHaveCount(2);
+    await page.getByTestId('flash-active').click();
+    await expect(row(page, 4)).toHaveClass(/tm-grid__row--flash/);
+    await expect(row(page, 2)).not.toHaveClass(/tm-grid__row--flash/);
+    paint = await ringPaint(page, 4);
+    const backgrounds = paint.cells.map((sample) => sample.background);
+    expect(backgrounds[0]).toBe(selectedItem); // the hit row header
+    expect(backgrounds.slice(5, 7)).toEqual([highlight, highlight]);
+    expect(backgrounds[2]).not.toBe(highlight);
+    expect(backgrounds[2]).not.toBe(selectedItem);
+    for (const sample of paint.cells) {
+      expect(sample.top).toEqual(ringed);
+      expect(sample.bottom).toEqual(ringed);
+    }
+    expect(paint.start).toEqual(ringed);
+    expect(paint.end).toEqual(ringed);
+  });
+
+  test("a checked row's checkbox keeps its edge over the checked cell", async ({ page }) => {
+    const highlight = await systemColor(page, 'Highlight');
+    const selectedItem = await systemColor(page, 'SelectedItem');
+    const selectedItemText = await systemColor(page, 'SelectedItemText');
+    // The box's and its cell's computed paint.
+    const boxPaint = async (
+      viewIndex: number,
+    ): Promise<{ cell: string; box: string; edge: string; glyph: string }> => {
+      await appStable(page);
+      return rowCheckbox(page, viewIndex).evaluate((box) => ({
+        cell: getComputedStyle(box.parentElement!).backgroundColor,
+        box: getComputedStyle(box).backgroundColor,
+        edge: getComputedStyle(box).borderTopColor,
+        glyph: getComputedStyle(box, '::after').backgroundColor,
+      }));
+    };
+
+    await rowCheckbox(page, 2).click();
+    await expect(row(page, 2)).toHaveAttribute('aria-selected', 'true');
+    // The box is Highlight on a SelectedItem cell, which some platforms
+    // make one colour: its edge takes the cell's paired ink, so the box
+    // keeps its outline there too, beside the HighlightText glyph.
+    const checked = await boxPaint(2);
+    expect(checked.cell).toBe(selectedItem);
+    expect(checked.box).toBe(highlight);
+    expect(checked.edge).toBe(selectedItemText);
+    expect(checked.glyph).toBe(await systemColor(page, 'HighlightText'));
+
+    // The mixed select-all box sits on the plain header: a Highlight edge.
+    await expect(checkAllBox(page)).toHaveClass(/tm-grid__check--mixed/);
+    const all = await checkAllBox(page).evaluate((box) => ({
+      cell: getComputedStyle(box.parentElement!).backgroundColor,
+      edge: getComputedStyle(box).borderTopColor,
+    }));
+    expect(all.edge).toBe(highlight);
+    expect(all.cell).not.toBe(highlight);
   });
 });
