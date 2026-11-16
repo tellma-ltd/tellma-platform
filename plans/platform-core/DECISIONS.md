@@ -359,6 +359,20 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-099 (orchestrator, 2026-11-15): PC-217 holds with three spec 0010 §A.3 gaps for Ahmad
+
+PC-217 (client ID metadata documents) holds at a94fb9e4 after two reviews. Spec 0010 §A.3 should be brought in line with the code in three places (docs/ is not edited in the run):
+- (a) The option list lacks MaxConcurrentFetches (default 16, with separate slots for the refresh and probe budgets) and MaxInFlightPerHost (2 per host within each budget). Both exist so that published documents cannot starve real clients.
+- (b) The per-host limit is split into a refresh budget and a probe budget, so one instance can fetch up to twice the spec's per-host rate. The refresh budget is only for clients whose row holds an authorization; otherwise an attacker's own ids would buy protected slots after one probe.
+- (c) §A.3 allows http://[::1] loopback redirects for native clients, but Chromium ignores an IPv6 literal in CSP form-action, so the consent and resumed sign-in pages cannot let such a redirect through. The code emits no source for an IPv6-literal host (pinned by an E2E test). Native clients must use 127.0.0.1 or localhost for browser consent.
+Other choices, recorded in the review file: rows carry a fetched-at stamp and an older copy never overwrites a newer row; the metadata cache is LRU and evicts unauthorized entries first; an expired copy is not served on a purely local refusal.
+
+### D-098 (orchestrator, 2026-11-15): entry points register their own UI strings; no "." raise for strings only a lazy entry point reads
+
+- Situation: PC-193 (tm-pivot) raised "." from 9.14 to 9.33 KB (measured 9.23) to hold English strings that only the lazily loaded ./pivot reads. It would be the seventh raise on ".", past D-031's limit of three before a re-split. The cause is structural: English comes from the single TM_UI_STRINGS_EN table in ".", and an entry point has no way to register its own strings. ./pivot has about 1.1 KB of room under its spec ceiling.
+- Ruling: PC-193 adds a small string-registration seam to "." so an entry point can contribute its own default strings, typed and overridable through the same localisation path as the core table. The pivot strings move into ./pivot. "." may rise only by the seam's own bytes, under D-031's conditions (budgetNotes entry, reviewer checks the measurement). The 9.33 raise is withdrawn. Later entry points with strings that only they read follow the same seam. This is the re-split D-031 asks for, applied to strings, which are what has driven the "." raises.
+- Revisit if: "." rises again for anything other than strings every entry point reads.
+
 ### D-097 (2026-11-15): PC-064 is released over the cap, alongside PC-066's integration
 
 Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy agents. He also widened the allowlist for `git push -q origin HEAD:platform-core`. That breaks two rules for this one item: the cap, and one release at a time. Both releases merge and gate independently, and whichever pushes second gets a non-fast-forward rejection. That item fetches, merges again, re-runs the gates the new merge touched (the full gate if any C# project or the client changed), and pushes again. Nothing is forced. The CI watch, ledger snapshot and next release follow each landed push as usual.

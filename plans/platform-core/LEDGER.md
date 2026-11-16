@@ -102,16 +102,17 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-F26 | — (pushed) | pc/PC-F26 | held 1c382e55; PC-F44 done 46705997 (./grid ceiling 40.73), so back in the release queue (after PC-141) | fix (Opus, high, launched 2026-11-14) | R1 done (Opus, high) | 2026-11-14 |
-| PC-066 | — (pushed) | pc/PC-066 | integrated b9725f38 (clean merge of 91f8bbe8; full gate green, no reruns); CI pending | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
-| PC-064 | pc-2 | pc/PC-064 | release (Ahmad approved 2026-11-15, over the heavy-agent cap, in parallel with PC-066's integration; allowlist widened for the platform-core push): re-merge, full gate, push; on non-fast-forward re-merge and re-gate (D-097) | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
-| PC-F37 | — (pushed) | pc/PC-F37 | held 15f8918e (R1 0/0/1 fixed; merge-tree clean) | fix (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
+| PC-064 | — (pushed) | pc/PC-064 | integrated 6ecb2d83 (first push non-fast-forward after PC-066, re-merged; merge fixes PC-066's ContextLoaderTests RowPage CountCap; full gate green, no flakes); CI pending | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
+| PC-F37 | pc-3 | pc/PC-F37 | released → integrating (held 15f8918e) | fix (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F43 | — (pushed) | pc/PC-F43 | held 6649571f (R1 0/0/3 fixed; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F47 | — (pushed) | pc/PC-F47 | held abd089d6 (R1 0/1/3 fixed; rewrite ~15%, no R2; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F45 | — (pushed) | pc/PC-F45 | held dcb30c43 (R1 0/0/1 fixed; merge-tree clean) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-141 | — (pushed) | pc/PC-141 | held 15d1369d (R1 0/2/1 fixed; conditional skips; rewrite ~3% + additions, no R2; merge-tree clean; D-096) | impl (Opus, high, launched 2026-11-15) | R1 done | 2026-11-15 |
 | PC-F48 | — (pushed) | pc/PC-F48 | held 49772346 (merge-tree clean vs platform-core 91f8bbe8; vs pc/PC-F47 conflicts only in test/shared/Tellma.Testing.Support/README.md Sql/ row: whichever of F47/F48 integrates second keeps both rows' text); release queue after PC-F47 | impl (Opus, high, launched 2026-11-15) | R2 done (inherit, xhigh) | 2026-11-15 |
-| PC-217 | pc-3 | pc/PC-217 | fix2 (R2 0/2/4: refresh slots buyable by attacker-known ids, cache eviction of stored clients, row ping-pong, ;/non-ASCII redirect 500s, [::1]:* CSP source, guard vectors) | impl (Opus, high, launched 2026-11-15) | R2 done (Fable) | 2026-11-15 |
-| PC-193 | pc-f | pc/PC-193 | R1 (commit 1 0e2ea828; 12 deviations; '.' budget 9.14→9.33 to judge vs D-057/D-067; ./pivot 13.80/13.9) | impl (Opus, high, launched 2026-11-15) | R1 (Opus, high, launched 2026-11-15) | 2026-11-15 |
+| PC-050 | pc-4 | pc/PC-050 | impl (security-bound: two reviews) | impl (Opus, high, launched 2026-11-15) | — | 2026-11-15 |
+| PC-094 | pc-1 | pc/PC-094 | impl | impl (Opus, high, launched 2026-11-15) | — | 2026-11-15 |
+| PC-217 | — (pushed) | pc/PC-217 | held a94fb9e4 (merge-tree clean vs platform-core); release queue after PC-F48; spec gaps D-099; blocks=2 notified | impl (Opus, high, launched 2026-11-15) | R2 done (Fable) | 2026-11-15 |
+| PC-193 | pc-f | pc/PC-193 | fix1 (R1 0/3/7: copy fallback clobbers user selection, hidden-first-render fit, '.' raise → string seam per D-098) → hold (no R2: not on the two-review list, 3 majors) | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
 | PC-F46 | pc-f2 | pc/PC-F46 | impl | impl (Opus, high, launched 2026-11-15) | — | 2026-11-15 |
 
 ## Fix items
@@ -317,7 +318,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
-| PC-050 | 0014-d | 1 | todo | | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
+| PC-050 | 0014-d | 1 | impl (pc-4) | | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
@@ -331,9 +332,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-061 | 0023-g | 1 | done 5db7d9ef (CI 43762775068 green; §12 perf → PC-F46) | a62dd92, 98bec3b (pc/PC-061), 5db7d9e (pc) | | |
 | PC-062 | 0015-a | 1 | done (integrated f861d40, CI 43614912992 green) | e97c3f3, 924fcd3, 2a34bc69, f861d40 (pc) |  | carry from PC-040 r1: whichever of PC-040/PC-062 integrates second deletes the analyzer suite's and the probe's pipeline stub files, adds the pipeline rows to NamePinTests and re-runs the probe |
 | PC-063 | 0015-b | 1 | done (CI 43678582671) | 9bbe22e, 73a4274e, 18d39ca6, 6959d3bf, c6740d23 (pc/PC-063) | | carry from PC-062: a StackLimits refusal must be a startup problem naming the stack, not a bare ArgumentOutOfRangeException |
-| PC-064 | 0016-b | 1 | release (re-merge; D-097) | 229df60, 0e33eaa (pc/PC-064) | | |
+| PC-064 | 0016-b | 1 | integrated 6ecb2d83 (CI pending) | 229df60, 0e33eaa, 6ecb2d8 (merge) | | |
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
-| PC-066 | 0015-c | 1 | integrated b9725f38 (CI pending) | 56de9db, a1abbef, b9725f3 (merge) | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
+| PC-066 | 0015-c | 1 | done (b9725f38; CI 43791517653 green) | 56de9db, a1abbef, b9725f3 (merge) | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | todo | | | |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
@@ -361,7 +362,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-091 | 0018-e | 1 | todo | | | |
 | PC-092 | 0018-g | 1 | todo | | | |
 | PC-093 | 0018-h | 1 | todo | | | |
-| PC-094 | 0024-f | 1 | todo | | | |
+| PC-094 | 0024-f | 1 | impl (pc-1) | | | |
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
@@ -460,7 +461,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-190 | 0016-h | 3 | todo | | | |
 | PC-191 | 0033-h | 3 | todo | | | |
 | PC-192 | 0033-i | 3 | todo | | | |
-| PC-193 | 0034-a | 3 | R1 (pc-f) | 0e2ea82 (pc/PC-193) | | |
+| PC-193 | 0034-a | 3 | fix1 (pc-f) | 0e2ea82 (pc/PC-193) | | |
 | PC-194 | 0034-b | 3 | todo | | | |
 | PC-195 | 0034-c | 3 | todo | | | |
 | PC-196 | 0034-d | 3 | todo | | | |
@@ -484,4 +485,4 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-214 | 0022-c | 3 | todo | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
 | PC-216 | 0025-f | 3 | todo | | | |
-| PC-217 | 0010-a4 | 3 | fix2 (pc-3) | 59bbd79, cf57d4b (pc/PC-217) | | |
+| PC-217 | 0010-a4 | 3 | held a94fb9e4 | 59bbd79, cf57d4b, a94fb9e (pc/PC-217) | | |
