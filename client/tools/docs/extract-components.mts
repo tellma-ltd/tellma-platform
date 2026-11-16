@@ -4,11 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 // components.json extractor (spec 0002 §11): derives every field from typed
-// source — signal input()/model()/output() call-sites, public members,
-// JSDoc (incl. the @tmGroup, @tmA11yNotes, @tmHarness and @tmStatus tags),
-// inline-template ng-content scan, CSS var(--…) scan, the co-located
-// *.examples.ts and the TSDoc's fenced code — so docs cannot drift from
-// code. Nothing is hand-authored.
+// source — signal input()/model()/output()/outputFromObservable()
+// call-sites, public members, JSDoc (incl. the @tmGroup, @tmA11yNotes,
+// @tmHarness, @tmStatus and @tmWiring tags), inline-template ng-content
+// scan, CSS var(--…) scan, the co-located *.examples.ts and the TSDoc's
+// fenced code — so docs cannot drift from code. Nothing is hand-authored.
 //
 // Components and directives are documented by their decorator. A service
 // (an exported `@Injectable`) is documented when its TSDoc carries a
@@ -210,10 +210,15 @@ function extractMembers(cls: ClassDeclaration): ComponentDoc['members'] {
         .map((symbol) => symbol.getName()),
     ),
   );
-  /** Whether a member is public API that this class itself adds. */
+  /**
+   * Whether a member is public API that this class itself adds. A member
+   * tagged `@tmWiring` is public only so that the library's own classes can
+   * reach it (an option's derived text, a generated id), so it stays out.
+   */
   const documented = (
     member: MethodDeclaration | GetAccessorDeclaration | PropertyDeclaration,
-  ): boolean => isPublicMember(member) && !contract.has(member.getName());
+  ): boolean =>
+    isPublicMember(member) && !contract.has(member.getName()) && !hasJsDocTag(member, 'tmWiring');
   for (const prop of cls.getProperties()) {
     const init = prop.getInitializer();
     const callee = init && Node.isCallExpression(init) ? init.getExpression().getText() : undefined;
@@ -221,7 +226,7 @@ function extractMembers(cls: ClassDeclaration): ComponentDoc['members'] {
     // signal queries and injected dependencies are wiring, not API.
     if (
       callee !== undefined &&
-      /^(input|model|output|contentChild|contentChildren|viewChild|viewChildren|inject)(\.required)?$/.test(
+      /^(input|model|output|outputFromObservable|contentChild|contentChildren|viewChild|viewChildren|inject)(\.required)?$/.test(
         callee,
       )
     ) {
@@ -359,10 +364,13 @@ function extractProps(cls: ClassDeclaration) {
       if (name === 'checked') {
         formControl = 'FormCheckboxControl';
       }
-    } else if (callee === 'output') {
+    } else if (callee === 'output' || callee === 'outputFromObservable') {
+      // An output bridged from an observable declares its type as
+      // `OutputRef<T>`; its emitted type is that T.
+      const bridged = /^OutputRef<(.+)>$/.exec(prop.getTypeNode()?.getText() ?? '')?.[1];
       outputs.push({
         name,
-        type: typeArg ?? 'void',
+        type: typeArg ?? bridged ?? 'void',
         required: false,
         description,
         signal: 'output',

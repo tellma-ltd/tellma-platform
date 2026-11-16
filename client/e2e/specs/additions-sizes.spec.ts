@@ -40,6 +40,7 @@ const OPTION_ROW = { lg: 34, sm: 26 } as const;
 /** Chip heights at the same two sizes. */
 const CHIP = { lg: 28, sm: 20 } as const;
 
+/** Every additions control whose size follows the viewport when it is left unsized. */
 const CONTROLS: readonly SizedControl[] = [
   {
     name: 'a segmented control',
@@ -103,6 +104,23 @@ const CONTROLS: readonly SizedControl[] = [
     host: (page) => page.getByTestId('dt-beirut'),
     reports: { classPrefix: 'tm-date-time-field' },
     box: (host) => host.locator('.tm-form-field__box').first(),
+    heights: FIELD,
+  },
+  {
+    name: 'a search field',
+    story: 'search-field',
+    host: (page) => page.getByTestId('search-main').locator('tm-form-field').first(),
+    reports: { classPrefix: 'tm-form-field' },
+    box: (host) => host.locator('.tm-form-field__box'),
+    heights: FIELD,
+  },
+  {
+    name: 'a copy button',
+    story: 'copy',
+    // The labelled button: an icon-only one is square at the same height.
+    host: (page) => page.getByTestId('copy-label').getByRole('button'),
+    reports: { classPrefix: 'tm-button' },
+    box: (host) => host,
     heights: FIELD,
   },
 ];

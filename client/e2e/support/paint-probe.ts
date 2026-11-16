@@ -26,6 +26,10 @@ import { expect, type Page } from '@playwright/test';
  * Most controls act on `keydown`. A native control activated by Space (a
  * checkbox, a button) acts on `keyup`; its probe checks the first frame
  * after the keyup.
+ *
+ * A chord's modifiers are not its key: Playwright presses Alt, then
+ * ArrowDown, as separate events, and a frame may fall between them. The
+ * probe skips the modifiers' own events and starts at the key itself.
  */
 
 /**
@@ -49,7 +53,7 @@ export interface PaintedFeedback {
 
 /** What the page records for one probe, as `performance.now()` times. */
 export interface PaintProbeResult {
-  /** When the key went down. */
+  /** When the key went down (the key itself, not a modifier held with it). */
   readonly keydownAt: number;
   /** When the key event the control acts on was dispatched. */
   readonly triggerAt: number;
@@ -138,7 +142,13 @@ export async function armPaintProbe(
       }).observe(sentinel);
 
       // The capture phase on window runs before any handler of the page.
+      // A modifier's own events are skipped: the frame after Alt goes down
+      // can come before the ArrowDown it is held for.
+      const modifiers = new Set(['Alt', 'AltGraph', 'Control', 'Meta', 'Shift']);
       const stamp = (event: KeyboardEvent): void => {
+        if (modifiers.has(event.key)) {
+          return;
+        }
         if (event.type === 'keydown' && probe.keydownAt === null) {
           probe.keydownAt = performance.now();
         }

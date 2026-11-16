@@ -16,11 +16,20 @@ import { storyUrl } from '../support/story-map';
  * checks the order of events inside that frame, which no runner's speed can
  * change: the feedback is in the DOM when the frame's layout is done.
  * The performance tier adds the clock: the frame is laid out within 50 ms
- * of the key.
+ * of the key event the control acts on, times a CI multiplier.
  */
 
 /** The longest a key may take to reach its painted frame, on a quiet machine. */
-const KEYDOWN_TO_PAINT_MS = 50;
+const KEY_TO_PAINT_MS = 50;
+
+/**
+ * The timing budget's multiplier: `TM_PERF_MULTIPLIER` when set, else 2 on
+ * CI, whose shared runners are slower and noisier than a quiet machine.
+ */
+const PERF_MULTIPLIER = Number(process.env['TM_PERF_MULTIPLIER'] ?? (process.env['CI'] ? 2 : 1));
+
+/** The budget the performance tier enforces. */
+const KEY_TO_PAINT_BUDGET_MS = KEY_TO_PAINT_MS * PERF_MULTIPLIER;
 
 /** Loads a story, focuses the probe's control and presses its key under the probe. */
 async function probeKey(
@@ -42,29 +51,36 @@ async function probeKey(
 
 test('every story either has a key to probe or says why it has none', () => {
   for (const story of ADDITIONS_STORIES) {
-    if ('none' in story.probe) {
-      expect(story.probe.none, story.id).not.toBe('');
+    if ('none' in story.probes) {
+      expect(story.probes.none, story.id).not.toBe('');
+    } else {
+      expect(story.probes.length, story.id).toBeGreaterThan(0);
     }
   }
 });
 
 for (const story of ADDITIONS_STORIES) {
-  const probe = story.probe;
-  if ('none' in probe) {
+  const probes = story.probes;
+  if ('none' in probes) {
     continue;
   }
   test.describe(story.id, () => {
-    test(`${probe.name}: the feedback is in the first frame after the key`, async ({ page }) => {
-      const result = await probeKey(page, story.id, probe);
-      expect(result.shownInFrame, 'the feedback was in the first frame after the key').toBe(true);
-    });
+    for (const probe of probes) {
+      test(`${probe.name}: the feedback is in the first frame after the key`, async ({ page }) => {
+        const result = await probeKey(page, story.id, probe);
+        expect(result.shownInFrame, 'the feedback was in the first frame after the key').toBe(true);
+      });
 
-    test(`${probe.name}: the first frame is laid out within ${KEYDOWN_TO_PAINT_MS} ms @perf`, async ({
-      page,
-    }) => {
-      const result = await probeKey(page, story.id, probe);
-      expect(result.shownInFrame).toBe(true);
-      expect(result.prePaintAt - result.keydownAt).toBeLessThanOrEqual(KEYDOWN_TO_PAINT_MS);
-    });
+      test(`${probe.name}: the first frame is laid out soon after the key @perf`, async ({
+        page,
+      }) => {
+        const result = await probeKey(page, story.id, probe);
+        expect(result.shownInFrame).toBe(true);
+        // From the event the control acts on: for a keyup trigger, the time
+        // between Playwright's keydown and keyup is the driver's, not the
+        // component's.
+        expect(result.prePaintAt - result.triggerAt).toBeLessThanOrEqual(KEY_TO_PAINT_BUDGET_MS);
+      });
+    }
   });
 }

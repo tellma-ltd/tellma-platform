@@ -8,14 +8,18 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+/** The client folder, two levels above this spec. */
 const clientDir = resolve(import.meta.dirname, '..', '..');
+/** The UI library's source, one folder per entry point. */
 const coreUiDir = join(clientDir, 'projects', 'core', 'tellma-core-ui');
+/** Where the docs build writes components.json and llms.txt. */
 const generatedDir = join(clientDir, 'projects', 'core', 'tellma-core-ui-mcp', 'generated');
+/** The testing library's source, where the harnesses live. */
 const testingDir = join(clientDir, 'projects', 'core', 'tellma-core-ui-testing');
 
 /** The fields of a components.json entry this spec reads. */
 interface DocEntry {
-  /** The class name. */
+  /** The selector of a component or directive; the class name of a service. */
   readonly name: string;
   /** The selector, or `null` for a service. */
   readonly selector: string | null;
@@ -25,6 +29,10 @@ interface DocEntry {
   readonly harness: string | null;
   /** The examples, by title. */
   readonly examples: readonly { readonly title: string; readonly language: string }[];
+  /** The outputs, by name. */
+  readonly outputs: readonly { readonly name: string; readonly type: string }[];
+  /** The public members beyond inputs and outputs, by name. */
+  readonly members?: readonly { readonly name: string }[];
 }
 
 /**
@@ -65,14 +73,26 @@ const ADDITIONS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * The additions harnesses that drive no documented entry of their own, each
+ * with the harness that reaches them: a tile is markup the tiles component
+ * renders from its template, not a component.
+ */
+const REACHED_THROUGH: Readonly<Record<string, string>> = {
+  TmTileHarness: 'TmTilesHarness',
+};
+
+/**
  * The generated library docs, checked from the consumer's side: every entry
  * point of the additions is in components.json and llms.txt, names its
  * harnesses, and has a showcase story; and no examples file anywhere in the
  * library is left out of the docs.
  */
 describe('the library docs', () => {
+  /** The components.json entries. */
   let entries: readonly DocEntry[];
+  /** The llms.txt text. */
   let llms: string;
+  /** Every class the testing library's harness files export. */
   let harnessExports: Set<string>;
 
   beforeAll(() => {
@@ -122,11 +142,13 @@ describe('the library docs', () => {
         expect(harnessExports.has(harness), `@tellma/core-ui-testing exports ${harness}`).toBe(
           true,
         );
-        // A harness named after a documented class is that class's harness.
-        const driven = documented.find((entry) => `${entry.name}Harness` === harness);
-        if (driven !== undefined) {
-          expect(driven.harness, `${driven.name}'s harness`).toBe(harness);
-        }
+        // The harness is named on the entry it drives, or reached through
+        // a harness that is.
+        const named = REACHED_THROUGH[harness] ?? harness;
+        expect(
+          documented.some((entry) => entry.harness === named),
+          `an entry of ${id} names ${named}`,
+        ).toBe(true);
       }
       // And no entry names a harness the testing library does not ship.
       for (const entry of documented) {
@@ -145,6 +167,27 @@ describe('the library docs', () => {
     for (const id of Object.keys(ADDITIONS)) {
       expect(stories, `the showcase has the ${id} story`).toContain(`id: '${id}'`);
     }
+  });
+
+  it('files an output bridged from an observable as an output, not a member', () => {
+    const chip = entries.find((entry) => entry.name === 'tm-chip');
+    expect(chip?.outputs.map((output) => output.name)).toContain('activate');
+    expect(chip?.members?.map((member) => member.name) ?? []).not.toContain('activate');
+    // No output keeps the bridge's type in place of what it emits.
+    const bridged = entries.flatMap((entry) =>
+      entry.outputs.filter((output) => output.type.startsWith('OutputRef<')),
+    );
+    expect(bridged).toEqual([]);
+  });
+
+  it('leaves the members tagged as internal wiring out of the docs', () => {
+    const members = (selector: string): readonly string[] =>
+      entries.find((entry) => entry.name === selector)?.members?.map((member) => member.name) ?? [];
+    expect(members('tm-option')).not.toContain('derivedText');
+    expect(members('tm-option')).not.toContain('effectiveLabel');
+    expect(members('tm-option-group')).not.toContain('headingId');
+    expect(members('tm-grid-column')).not.toContain('generatedId');
+    expect(members('button[tmFilePicker]')).not.toContain('awaitingDialog');
   });
 
   it('carries every exported example of every examples file into the docs', () => {

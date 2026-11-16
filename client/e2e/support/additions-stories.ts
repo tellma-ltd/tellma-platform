@@ -78,8 +78,8 @@ export interface AdditionsStory {
   readonly ready: (page: Page) => Promise<void>;
   /** The states the accessibility battery scans beyond the loaded one. */
   readonly states: readonly AdditionsState[];
-  /** The keydown-to-paint probe, or why the story has no key to probe. */
-  readonly probe: AdditionsProbe | { readonly none: string };
+  /** The keydown-to-paint probes, or why the story has no key to probe. */
+  readonly probes: readonly AdditionsProbe[] | { readonly none: string };
 }
 
 /**
@@ -181,24 +181,28 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
     entryPoints: ['icon'],
     ready: (page) => expect(page.getByTestId('gallery')).toBeVisible(),
     states: [],
-    probe: {
-      name: 'Enter on a button inserts rows that each carry a glyph',
-      focus: (page) => page.getByTestId('insert-icons').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="inserted"] tm-icon svg' },
-    },
+    probes: [
+      {
+        name: 'Enter on a button inserts rows that each carry a glyph',
+        focus: (page) => page.getByTestId('insert-icons').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="inserted"] tm-icon svg' },
+      },
+    ],
   },
   {
     id: 'kbd',
     entryPoints: ['kbd'],
     ready: (page) => expect(page.getByTestId('bindings')).toBeVisible(),
     states: [],
-    probe: {
-      name: 'a shortcut typed into the tester is matched',
-      focus: (page) => page.getByTestId('key-tester').focus(),
-      key: 'ControlOrMeta+KeyK',
-      painted: { selector: '[data-testid="matched"]', text: 'Mod+K' },
-    },
+    probes: [
+      {
+        name: 'a shortcut typed into the tester is matched',
+        focus: (page) => page.getByTestId('key-tester').focus(),
+        key: 'ControlOrMeta+KeyK',
+        painted: { selector: '[data-testid="matched"]', text: 'Mod+K' },
+      },
+    ],
   },
   {
     id: 'copy',
@@ -221,15 +225,17 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      // The clipboard is stubbed to answer at once: the probe then pins the
-      // component's own path from the key to the "Copied" label.
-      name: 'Enter copies and the label reads "Copied"',
-      before: stubClipboard,
-      focus: (page) => page.getByTestId('copy-label').getByRole('button').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="copy-label"]', className: 'tm-copy-button--copied' },
-    },
+    probes: [
+      {
+        // The clipboard is stubbed to answer at once: the probe then pins the
+        // component's own path from the key to the "Copied" label.
+        name: 'Enter copies and the label reads "Copied"',
+        before: stubClipboard,
+        focus: (page) => page.getByTestId('copy-label').getByRole('button').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="copy-label"]', className: 'tm-copy-button--copied' },
+      },
+    ],
   },
   {
     id: 'badge',
@@ -244,19 +250,21 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on "Add one" steps the inline counter from 9 to 10',
-      focus: (page) => page.getByTestId('increment').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="counter-inline"]', text: '10' },
-    },
+    probes: [
+      {
+        name: 'Enter on "Add one" steps the inline counter from 9 to 10',
+        focus: (page) => page.getByTestId('increment').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="counter-inline"]', text: '10' },
+      },
+    ],
   },
   {
     id: 'avatar',
     entryPoints: ['avatar'],
     ready: (page) => expect(page.getByTestId('tone-8')).toBeVisible(),
     states: [],
-    probe: { none: 'Avatars are images: the story has no control to press a key on.' },
+    probes: { none: 'Avatars are images: the story has no control to press a key on.' },
   },
   {
     id: 'progress',
@@ -271,26 +279,28 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on Start runs the held bar',
-      focus: (page) => page.getByTestId('toggle-active').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="toggle-active"]', text: 'Finish' },
-    },
+    probes: [
+      {
+        name: 'Enter on Start runs the held bar',
+        focus: (page) => page.getByTestId('toggle-active').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="toggle-active"]', text: 'Finish' },
+      },
+    ],
   },
   {
     id: 'skeleton',
     entryPoints: ['skeleton'],
     ready: (page) => expect(page.getByTestId('table')).toBeVisible(),
     states: [],
-    probe: { none: 'Skeletons are static placeholders: the story has no control.' },
+    probes: { none: 'Skeletons are static placeholders: the story has no control.' },
   },
   {
     id: 'relative-time',
     entryPoints: ['relative-time'],
     ready: (page) => expect(page.getByTestId('long')).toBeVisible(),
     states: [],
-    probe: { none: 'Relative times change on a timer, never on a key: the story has no control.' },
+    probes: { none: 'Relative times change on a timer, never on a key: the story has no control.' },
   },
   {
     id: 'empty-state',
@@ -305,12 +315,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter swaps the rows for the no-matches state',
-      focus: (page) => page.getByTestId('toggle-search').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="no-matches"]' },
-    },
+    probes: [
+      {
+        name: 'Enter swaps the rows for the no-matches state',
+        focus: (page) => page.getByTestId('toggle-search').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="no-matches"]' },
+      },
+    ],
   },
   {
     id: 'chip',
@@ -329,12 +341,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Delete removes the focused chip',
-      focus: (page) => page.getByTestId('set-wrap').locator('tm-chip button').first().focus(),
-      key: 'Delete',
-      painted: { selector: '[data-testid="set-wrap"] tm-chip', count: 5 },
-    },
+    probes: [
+      {
+        name: 'Delete removes the focused chip',
+        focus: (page) => page.getByTestId('set-wrap').locator('tm-chip button').first().focus(),
+        key: 'Delete',
+        painted: { selector: '[data-testid="set-wrap"] tm-chip', count: 5 },
+      },
+    ],
   },
   {
     id: 'toast',
@@ -365,12 +379,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on a show button shows the toast',
-      focus: (page) => page.getByTestId('show-neutral').focus(),
-      key: 'Enter',
-      painted: { selector: '.tm-toast-host .tm-toast', count: 1 },
-    },
+    probes: [
+      {
+        name: 'Enter on a show button shows the toast',
+        focus: (page) => page.getByTestId('show-neutral').focus(),
+        key: 'Enter',
+        painted: { selector: '.tm-toast-host .tm-toast', count: 1 },
+      },
+    ],
   },
   {
     id: 'banner',
@@ -386,16 +402,18 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on Next shows the next message',
-      focus: (page) =>
-        page.getByTestId('banner-paged').getByRole('button', { name: 'Next message' }).focus(),
-      key: 'Enter',
-      painted: {
-        selector: '[data-testid="banner-paged"] .tm-banner-bar__position',
-        text: '2 of 3',
+    probes: [
+      {
+        name: 'Enter on Next shows the next message',
+        focus: (page) =>
+          page.getByTestId('banner-paged').getByRole('button', { name: 'Next message' }).focus(),
+        key: 'Enter',
+        painted: {
+          selector: '[data-testid="banner-paged"] .tm-banner-bar__position',
+          text: '2 of 3',
+        },
       },
-    },
+    ],
   },
   {
     id: 'busy-overlay',
@@ -412,12 +430,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on Save blocks the page in the key’s frame',
-      focus: (page) => page.getByTestId('save').focus(),
-      key: 'Enter',
-      painted: { selector: '.tm-busy-overlay', className: 'tm-busy-overlay--active' },
-    },
+    probes: [
+      {
+        name: 'Enter on Save blocks the page in the key’s frame',
+        focus: (page) => page.getByTestId('save').focus(),
+        key: 'Enter',
+        painted: { selector: '.tm-busy-overlay', className: 'tm-busy-overlay--active' },
+      },
+    ],
   },
   {
     id: 'confirm',
@@ -439,12 +459,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter opens the question',
-      focus: (page) => page.getByTestId('open-delete').focus(),
-      key: 'Enter',
-      painted: { selector: '[role="alertdialog"]' },
-    },
+    probes: [
+      {
+        name: 'Enter opens the question',
+        focus: (page) => page.getByTestId('open-delete').focus(),
+        key: 'Enter',
+        painted: { selector: '[role="alertdialog"]' },
+      },
+    ],
   },
   {
     id: 'error-dialog',
@@ -459,12 +481,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter opens the error dialog',
-      focus: (page) => page.getByTestId('open-server').focus(),
-      key: 'Enter',
-      painted: { selector: '[role="alertdialog"]' },
-    },
+    probes: [
+      {
+        name: 'Enter opens the error dialog',
+        focus: (page) => page.getByTestId('open-server').focus(),
+        key: 'Enter',
+        painted: { selector: '[role="alertdialog"]' },
+      },
+    ],
   },
   {
     id: 'card',
@@ -484,15 +508,17 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on a disclosure collapses its card',
-      focus: (page) => page.getByRole('button', { name: 'Notes' }).focus(),
-      key: 'Enter',
-      painted: {
-        selector: '[data-testid="card-collapsible"] button[aria-expanded="false"]',
-        count: 1,
+    probes: [
+      {
+        name: 'Enter on a disclosure collapses its card',
+        focus: (page) => page.getByRole('button', { name: 'Notes' }).focus(),
+        key: 'Enter',
+        painted: {
+          selector: '[data-testid="card-collapsible"] button[aria-expanded="false"]',
+          count: 1,
+        },
       },
-    },
+    ],
   },
   {
     id: 'page-header',
@@ -507,31 +533,35 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter hides the end slot’s first item',
-      focus: (page) => page.getByTestId('toggle-share').focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="end-share"]', count: 0 },
-    },
+    probes: [
+      {
+        name: 'Enter hides the end slot’s first item',
+        focus: (page) => page.getByTestId('toggle-share').focus(),
+        key: 'Enter',
+        painted: { selector: '[data-testid="end-share"]', count: 0 },
+      },
+    ],
   },
   {
     id: 'description-list',
     entryPoints: ['description-list'],
     ready: (page) => expect(page.getByTestId('dl-one')).toBeVisible(),
     states: [],
-    probe: { none: 'A description list is static markup: the story has no control.' },
+    probes: { none: 'A description list is static markup: the story has no control.' },
   },
   {
     id: 'splitter',
     entryPoints: ['splitter'],
     ready: (page) => expect(page.getByTestId('splitter-horizontal')).toBeVisible(),
     states: [],
-    probe: {
-      name: 'ArrowRight moves the bar',
-      focus: (page) => page.getByTestId('splitter-horizontal').getByRole('separator').focus(),
-      key: 'ArrowRight',
-      painted: { selector: '[data-testid="list-size"]', text: 'List: 436' },
-    },
+    probes: [
+      {
+        name: 'ArrowRight moves the bar',
+        focus: (page) => page.getByTestId('splitter-horizontal').getByRole('separator').focus(),
+        key: 'ArrowRight',
+        painted: { selector: '[data-testid="list-size"]', text: 'List: 436' },
+      },
+    ],
   },
   {
     id: 'pager',
@@ -549,13 +579,18 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Enter on Next page moves to page 2',
-      focus: (page) =>
-        page.getByTestId('pager-range').getByRole('button', { name: 'Next page' }).focus(),
-      key: 'Enter',
-      painted: { selector: '[data-testid="pager-range"] .tm-pager__fraction', text: '21–40 / 120' },
-    },
+    probes: [
+      {
+        name: 'Enter on Next page moves to page 2',
+        focus: (page) =>
+          page.getByTestId('pager-range').getByRole('button', { name: 'Next page' }).focus(),
+        key: 'Enter',
+        painted: {
+          selector: '[data-testid="pager-range"] .tm-pager__fraction',
+          text: '21–40 / 120',
+        },
+      },
+    ],
   },
   {
     id: 'tree',
@@ -597,12 +632,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'ArrowRight expands the active branch',
-      focus: (page) => treeNode(page, 'Agent').focus(),
-      key: 'ArrowRight',
-      painted: { selector: '[data-testid="tree-expanded"]', text: 'Expanded: Agent' },
-    },
+    probes: [
+      {
+        name: 'ArrowRight expands the active branch',
+        focus: (page) => treeNode(page, 'Agent').focus(),
+        key: 'ArrowRight',
+        painted: { selector: '[data-testid="tree-expanded"]', text: 'Expanded: Agent' },
+      },
+    ],
   },
   {
     id: 'reorder-list',
@@ -625,15 +662,17 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'Space on a handle picks the item up',
-      focus: (page) => reorderHandle(page, 'Code').focus(),
-      key: 'Space',
-      painted: {
-        selector: '[data-testid="reorder-columns"] .tm-reorder-list__row--grabbed',
-        count: 1,
+    probes: [
+      {
+        name: 'Space on a handle picks the item up',
+        focus: (page) => reorderHandle(page, 'Code').focus(),
+        key: 'Space',
+        painted: {
+          selector: '[data-testid="reorder-columns"] .tm-reorder-list__row--grabbed',
+          count: 1,
+        },
       },
-    },
+    ],
   },
   {
     id: 'tiles',
@@ -659,27 +698,31 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'ArrowRight moves to the next tile',
-      focus: (page) => tile(page, 1).focus(),
-      key: 'ArrowRight',
-      painted: {
-        selector: '[data-testid="tiles"] .tm-tiles__item[data-index="1"]:focus',
-        count: 1,
+    probes: [
+      {
+        name: 'ArrowRight moves to the next tile',
+        focus: (page) => tile(page, 1).focus(),
+        key: 'ArrowRight',
+        painted: {
+          selector: '[data-testid="tiles"] .tm-tiles__item[data-index="1"]:focus',
+          count: 1,
+        },
       },
-    },
+    ],
   },
   {
     id: 'tiles-tree',
     entryPoints: ['tiles'],
     ready: (page) => expect(account(page, 'Equity')).toBeVisible(),
     states: [],
-    probe: {
-      name: 'ArrowRight expands the active row',
-      focus: (page) => account(page, 'Equity').focus(),
-      key: 'ArrowRight',
-      painted: { selector: '[data-testid="tiles-tree"] [role="treegrid"]', contains: 'Capital' },
-    },
+    probes: [
+      {
+        name: 'ArrowRight expands the active row',
+        focus: (page) => account(page, 'Equity').focus(),
+        key: 'ArrowRight',
+        painted: { selector: '[data-testid="tiles-tree"] [role="treegrid"]', contains: 'Capital' },
+      },
+    ],
   },
   {
     id: 'tiles-large',
@@ -693,15 +736,17 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         enter: () => Promise.resolve(),
       },
     ],
-    probe: {
-      name: 'ArrowDown moves down a line',
-      focus: (page) => tile(page, 1, 'tiles-large').focus(),
-      key: 'ArrowDown',
-      painted: {
-        selector: '[data-testid="tiles-large"] .tm-tiles__item:focus:not([data-index="0"])',
-        count: 1,
+    probes: [
+      {
+        name: 'ArrowDown moves down a line',
+        focus: (page) => tile(page, 1, 'tiles-large').focus(),
+        key: 'ArrowDown',
+        painted: {
+          selector: '[data-testid="tiles-large"] .tm-tiles__item:focus:not([data-index="0"])',
+          count: 1,
+        },
       },
-    },
+    ],
   },
   {
     id: 'drag-drop',
@@ -726,13 +771,15 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      // Dragging itself is pointer-only; its keyboard path is the tree's.
-      name: 'ArrowDown moves the source tree to the next field',
-      focus: (page) => treeNode(page, 'Amount', 'drag-tree').focus(),
-      key: 'ArrowDown',
-      painted: { selector: '[data-testid="drag-tree"] [data-key="Code"]:focus', count: 1 },
-    },
+    probes: [
+      {
+        // Dragging itself is pointer-only; its keyboard path is the tree's.
+        name: 'ArrowDown moves the source tree to the next field',
+        focus: (page) => treeNode(page, 'Amount', 'drag-tree').focus(),
+        key: 'ArrowDown',
+        painted: { selector: '[data-testid="drag-tree"] [data-key="Code"]:focus', count: 1 },
+      },
+    ],
   },
   {
     id: 'radio',
@@ -742,16 +789,18 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         'Choose how the order is delivered',
       ),
     states: [],
-    probe: {
-      name: 'ArrowDown checks the next enabled radio',
-      focus: (page) =>
-        page.getByTestId('radio-terms').getByRole('radio', { name: 'Net 30' }).focus(),
-      key: 'ArrowDown',
-      painted: {
-        selector: '[data-testid="radio-terms"] .tm-radio-group__row:has(input:checked)',
-        contains: 'Card',
+    probes: [
+      {
+        name: 'ArrowDown checks the next enabled radio',
+        focus: (page) =>
+          page.getByTestId('radio-terms').getByRole('radio', { name: 'Net 30' }).focus(),
+        key: 'ArrowDown',
+        painted: {
+          selector: '[data-testid="radio-terms"] .tm-radio-group__row:has(input:checked)',
+          contains: 'Card',
+        },
       },
-    },
+    ],
   },
   {
     id: 'segmented',
@@ -767,15 +816,17 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'ArrowRight checks the next segment',
-      focus: (page) => page.getByTestId('seg-view').getByRole('radio', { name: 'Grid' }).focus(),
-      key: 'ArrowRight',
-      painted: {
-        selector: '[data-testid="seg-view"] .tm-segmented__segment--checked',
-        contains: 'Tiles',
+    probes: [
+      {
+        name: 'ArrowRight checks the next segment',
+        focus: (page) => page.getByTestId('seg-view').getByRole('radio', { name: 'Grid' }).focus(),
+        key: 'ArrowRight',
+        painted: {
+          selector: '[data-testid="seg-view"] .tm-segmented__segment--checked',
+          contains: 'Tiles',
+        },
       },
-    },
+    ],
   },
   {
     id: 'switch',
@@ -785,14 +836,19 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         'Turn this on to continue',
       ),
     states: [],
-    probe: {
-      name: 'Space turns the switch on',
-      focus: (page) => page.getByRole('switch', { name: 'Notify me by email' }).focus(),
-      key: 'Space',
-      // A native checkbox toggles when Space comes back up.
-      trigger: 'keyup',
-      painted: { selector: '[data-testid="switch-notify"] input:checked', count: 1 },
-    },
+    probes: [
+      {
+        name: 'Space turns the switch on',
+        focus: (page) => page.getByRole('switch', { name: 'Notify me by email' }).focus(),
+        key: 'Space',
+        // A native checkbox toggles when Space comes back up.
+        trigger: 'keyup',
+        // The host class from the switch's model paints the track and knob;
+        // the native input's own checked state would flip without the
+        // component.
+        painted: { selector: '[data-testid="switch-notify"]', className: 'tm-switch--checked' },
+      },
+    ],
   },
   {
     id: 'search-field',
@@ -809,12 +865,14 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'the first keystroke emits at once',
-      focus: (page) => page.getByTestId('search-main').getByRole('searchbox').focus(),
-      key: 'j',
-      painted: { selector: '[data-testid="search-emitted"]', text: '["j"]' },
-    },
+    probes: [
+      {
+        name: 'the first keystroke emits at once',
+        focus: (page) => page.getByTestId('search-main').getByRole('searchbox').focus(),
+        key: 'j',
+        painted: { selector: '[data-testid="search-emitted"]', text: '["j"]' },
+      },
+    ],
   },
   {
     id: 'date-range',
@@ -844,20 +902,24 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
           ),
       },
     ],
-    probe: {
-      // The popup opens in the key's frame. Its calendar renders a frame or
-      // more later: the date picker defers the calendar to its own chunk
-      // (spec 0010's popup), which this probe exempts; the axe state above
-      // checks the calendar once it shows.
-      name: 'Alt+ArrowDown opens the calendar popup',
-      focus: (page) =>
-        page.getByTestId('range-period').getByRole('combobox', { name: 'From' }).focus(),
-      key: 'Alt+ArrowDown',
-      painted: {
-        selector: '[data-testid="range-period"] [role="combobox"][aria-expanded="true"]',
-        count: 1,
+    probes: [
+      {
+        // Tracked exemption, for every host of the date picker's popup (the
+        // date range here, the date-time field below): the popup opens in
+        // the key's frame, and that is what the probe pins. Its calendar
+        // renders a frame or more later, because the date picker defers the
+        // popup's views until first open (spec 0005 §16); the "calendar
+        // open" axe states check the calendar once it shows.
+        name: 'Alt+ArrowDown opens the calendar popup',
+        focus: (page) =>
+          page.getByTestId('range-period').getByRole('combobox', { name: 'From' }).focus(),
+        key: 'Alt+ArrowDown',
+        painted: {
+          selector: '[data-testid="range-period"] [role="combobox"][aria-expanded="true"]',
+          count: 1,
+        },
       },
-    },
+    ],
   },
   {
     id: 'date-time',
@@ -885,17 +947,31 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
         },
       },
     ],
-    probe: {
-      name: 'ArrowUp steps the time across midnight',
-      focus: async (page) => {
-        // From a known time, so the stepped one is known too.
-        const time = page.getByTestId('time-closes').getByRole('textbox');
-        await time.fill('11:45 pm');
-        await time.press('Enter');
-        await expect(time).toHaveValue('11:45 PM');
+    probes: [
+      {
+        name: 'ArrowUp steps the time across midnight',
+        focus: async (page) => {
+          // From a known time, so the stepped one is known too.
+          const time = page.getByTestId('time-closes').getByRole('textbox');
+          await time.fill('11:45 pm');
+          await time.press('Enter');
+          await expect(time).toHaveValue('11:45 PM');
+        },
+        key: 'ArrowUp',
+        painted: { selector: '[data-testid="time-closes"] input', value: '12:15 AM' },
       },
-      key: 'ArrowUp',
-      painted: { selector: '[data-testid="time-closes"] input', value: '12:15 AM' },
-    },
+      {
+        // The same tracked exemption as the date range's: the popup's open
+        // state is pinned, its deferred calendar is not (spec 0005 §16).
+        name: 'Alt+ArrowDown opens the calendar popup',
+        focus: (page) =>
+          page.getByTestId('dt-beirut').getByRole('combobox', { name: 'Date' }).focus(),
+        key: 'Alt+ArrowDown',
+        painted: {
+          selector: '[data-testid="dt-beirut"] [role="combobox"][aria-expanded="true"]',
+          count: 1,
+        },
+      },
+    ],
   },
 ];

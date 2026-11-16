@@ -24,7 +24,7 @@ import { storyUrl } from '../support/story-map';
 /** A motion preference as Playwright emulates it. */
 type Preference = 'no-preference' | 'reduce';
 
-/** Puts a story through its states and its probe key, each from a fresh load, and returns what moved. */
+/** Puts a story through its states and its probe keys, each from a fresh load, and returns what moved. */
 async function exercise(
   page: Page,
   story: AdditionsStory,
@@ -46,13 +46,14 @@ async function exercise(
     await state.before?.(page);
     await run(state.enter);
   }
-  const probe = story.probe;
-  if (!('none' in probe)) {
-    await probe.before?.(page);
-    await run(async () => {
-      await probe.focus(page);
-      await page.keyboard.press(probe.key);
-    });
+  if (!('none' in story.probes)) {
+    for (const probe of story.probes) {
+      await probe.before?.(page);
+      await run(async () => {
+        await probe.focus(page);
+        await page.keyboard.press(probe.key);
+      });
+    }
   }
   return moved;
 }
@@ -75,10 +76,15 @@ for (const story of ADDITIONS_STORIES) {
 
 // Section: each allowed motion runs without the preference and stops under
 // reduce. The record names the motion; the step triggers it.
+/** The allowed motions, each with the story and step that start it. */
 const ALLOWED_PINS: readonly {
+  /** The motion, in words, as the test names it. */
   readonly motion: string;
+  /** The story that shows the motion. */
   readonly story: string;
+  /** Starts the motion once the story is ready. */
   readonly trigger: (page: Page) => Promise<void>;
+  /** Whether a recorded animation or transition is this motion. */
   readonly matches: (record: MotionRecord) => boolean;
 }[] = [
   {

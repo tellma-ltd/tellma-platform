@@ -51,10 +51,18 @@ export class TmOption<T> {
   /** The projected display content, stamped into the panel by tm-select. */
   readonly contentTemplate = viewChild.required<TemplateRef<unknown>>('content');
 
-  /** Written by tm-select after the row renders (textContent fallback). */
+  /**
+   * Written by tm-select after the row renders (textContent fallback).
+   *
+   * @tmWiring
+   */
   readonly derivedText = signal('');
 
-  /** The label in effect for typeahead and trigger resolution: `label`, else the derived text. */
+  /**
+   * The label in effect for typeahead and trigger resolution: `label`, else the derived text.
+   *
+   * @tmWiring
+   */
   readonly effectiveLabel = computed(() => this.label() ?? this.derivedText());
 
   /** The group this option is declared in, or `null` for an ungrouped option. */
