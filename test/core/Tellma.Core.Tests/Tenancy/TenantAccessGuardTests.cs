@@ -141,7 +141,7 @@ namespace Tellma.Core.Tests.Tenancy
         }
 
         [Fact]
-        public async Task A_composition_without_initializers_lets_nobody_through()
+        public async Task A_composition_without_a_user_connection_lets_nobody_through()
         {
             await using TenantContextHarness harness = await TenantContextHarness.CreateAsync();
             await using AsyncServiceScope scope = harness.BindRequest(TenantContextHarness.Tenant());

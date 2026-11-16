@@ -120,6 +120,7 @@ public static class ValidationCodes
     public const string FkInUse = "Fk.InUse"
     public const string FkNotFound = "Fk.NotFound"
     public const string ImportLanguageNotConfigured = "Import.LanguageNotConfigured"
+    public const string Invalid = "Validation.Invalid"
     public const string MaxLength = "MaxLength"
     public const string Precision = "Precision"
     public const string QueryArithmeticFailed = "Query.ArithmeticFailed"

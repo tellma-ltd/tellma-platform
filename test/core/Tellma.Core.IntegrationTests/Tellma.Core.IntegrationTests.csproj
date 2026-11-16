@@ -19,6 +19,9 @@
     <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />
     <!-- The SQL Server every integration suite shares: a container, or the server TELLMA_TEST_SQL names. -->
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The fixed tenant settings the catalog hosts' tenant scopes are completed with, since their
+         tenant databases are created empty. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <!-- In-memory configuration for the compositions the suite builds over its catalogs. -->
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <!-- FakeLogger and MetricCollector, for the best-effort membership writes. -->

@@ -43,8 +43,9 @@ namespace Tellma.Core.Tests.Data
 
             Assert.Equal(
                 [
-                    "core.Blobs", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.Permissions",
-                    "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.UserPreferences", "core.UserStamps", "core.Users", "core.VersionTags",
+                    "core.Blobs", "core.CalendarMonths", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.Permissions",
+                    "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.SettingEntries", "core.Settings",
+                    "core.UserPreferences", "core.UserStamps", "core.Users", "core.VersionTags",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",
                     "fixture.Configured", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras",
                     "fixture.WidgetPartNotes", "fixture.WidgetParts", "fixture.Widgets",

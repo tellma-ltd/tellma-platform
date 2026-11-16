@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Diagnostics.CodeAnalysis;
 using Tellma.Core.Queryex.Time;
 
 namespace Tellma.Core.Queryex
@@ -43,5 +44,22 @@ namespace Tellma.Core.Queryex
         ///     resolving to its current id's zone, but a list of choices never shows one.
         /// </remarks>
         public static IReadOnlyDictionary<string, string> Aliases { get; } = CldrTimeZones.Aliases;
+
+        /// <summary>
+        ///     The Windows zone name an id maps to in the engine's own pinned table: the name SQL
+        ///     Server's <c>AT TIME ZONE</c> takes, and the one <c>local</c> lowers the id to.
+        /// </summary>
+        /// <remarks>
+        ///     The table is pinned with the ids, so the answer never depends on the host's ICU data:
+        ///     a host whose ICU predates a zone still maps it, and maps it as every other host does.
+        /// </remarks>
+        /// <param name="id">One of <see cref="Ids" />, or a key of <see cref="Aliases" />. Matched without regard to case.</param>
+        /// <param name="windowsName">The Windows zone name when the method returns true; otherwise null.</param>
+        /// <returns>True when the id is current or an alias.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="id" /> is null.</exception>
+        public static bool TryGetWindowsName(string id, [MaybeNullWhen(false)] out string windowsName)
+        {
+            return CldrTimeZones.TryResolve(id, out windowsName);
+        }
     }
 }

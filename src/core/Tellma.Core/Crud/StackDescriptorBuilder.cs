@@ -580,7 +580,7 @@ namespace Tellma.Core.Crud
         /// </summary>
         /// <param name="metadata">The entity metadata.</param>
         /// <returns>The projection's columns, in order.</returns>
-        private static OrderedNameSet RelatedSelect(EntityMetadata metadata)
+        internal static OrderedNameSet RelatedSelect(EntityMetadata metadata)
         {
             if (EntityShapes.GetAttribute<RelatedSelectAttribute>(metadata.ClrType) is RelatedSelectAttribute declared)
             {

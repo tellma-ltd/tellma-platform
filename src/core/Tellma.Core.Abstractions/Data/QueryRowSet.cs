@@ -6,6 +6,8 @@
 using System.Collections.ObjectModel;
 using System.Data.Common;
 using System.Globalization;
+using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Internal;
 using Tellma.Core.Queryex;
 
@@ -21,8 +23,10 @@ namespace Tellma.Core.Abstractions.Data
     ///     for a numeric column (a <c>real</c> widens to <c>double</c>), <c>bool[]</c>, <c>string?[]</c>
     ///     (also for a hierarchy path), <c>Guid[]</c>, <c>DateOnly[]</c>, <c>DateTime[]</c> or
     ///     <c>DateTimeOffset[]</c>. A buffer holds exactly <see cref="RowCount" /> values; a null cell holds
-    ///     the type's default and is reported by <see cref="IsNull" />.
+    ///     the type's default and is reported by <see cref="IsNull" />. On the wire a row set is its
+    ///     columns and its rows as arrays, each cell encoded by its buffer's element type.
     /// </remarks>
+    [JsonConverter(typeof(QueryRowSetJsonConverter))]
     public sealed class QueryRowSet
     {
         private readonly Array[] _buffers;

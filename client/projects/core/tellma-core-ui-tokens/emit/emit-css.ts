@@ -30,7 +30,8 @@ const KEBAB = (s: string) =>
  * Maps a token Ref path to its emitted variable name. Primitive paths map
  * mechanically ('teal.500' → '--teal-500'); semantic paths go through the
  * brand's canonical names ('action.primary' → '--color-primary',
- * 'status.error.fg' → '--error', 'font.size.sm' → '--text-sm',
+ * 'status.error.fg' → '--error', 'border.divider' → '--divider',
+ * 'font.size.sm' → '--text-sm',
  * 'categorical.3.onTint' → '--categorical-3-on-tint',
  * 'sequential.4' → '--sequential-4').
  */
@@ -65,6 +66,10 @@ export function tmRefToVarName(path: string): string {
       return `--${KEBAB(parts[1])}`;
     }
     case 'border':
+      // The divider keeps the brand sheet's bare name.
+      if (parts[1] === 'divider') {
+        return '--divider';
+      }
       return parts[1] === 'width' ? '--border-width' : `--border-${KEBAB(parts[1])}`;
     case 'text':
       return `--text-${KEBAB(parts[1])}`;
@@ -120,7 +125,7 @@ function schemeVars(scheme: TmSchemeColors): VarMap {
     set(tmRefToVarName(`surface.${key}`), value);
   }
   for (const [key, value] of Object.entries(scheme.border)) {
-    set(key === 'divider' ? '--divider' : tmRefToVarName(`border.${key}`), value);
+    set(tmRefToVarName(`border.${key}`), value);
   }
   for (const [key, value] of Object.entries(scheme.selection)) {
     set(tmRefToVarName(`selection.${key}`), value);
