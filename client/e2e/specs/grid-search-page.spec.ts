@@ -748,8 +748,16 @@ test.describe('the active row under forced colors', () => {
 
 /** One of the flash ring's bands read off the screen at one point. */
 interface BandSample {
+  /** The cell or row side the band was read over: `cell 3`, `left`, `right`. */
+  readonly over: string;
   /** Where the band was read: the cell or row side, the edge and the band. */
   readonly at: string;
+  /**
+   * How far the ring moves this pixel: the largest channel difference
+   * between the expected pixel and the pixel before the flash. Near zero,
+   * the read cannot tell a ring from no ring.
+   */
+  readonly change: number;
   /** The screen pixel with the ring on. */
   readonly actual: string;
   /**
@@ -834,7 +842,7 @@ async function ringPaint(page: Page, viewIndex: number, before: Buffer): Promise
     // One band read: the ring-on pixel against the band's colour composited
     // (source-over) on the ring-off pixel, within a step of rounding.
     const bands: BandSample[] = [];
-    const read = (at: string, colour: number[], x: number, y: number): void => {
+    const read = (over: string, at: string, colour: number[], x: number, y: number): void => {
       const base = pixel(ringOff, x, y);
       const actual = pixel(ringOn, x, y);
       const alpha = colour[3];
@@ -842,7 +850,9 @@ async function ringPaint(page: Page, viewIndex: number, before: Buffer): Promise
         Math.round(colour[i] * alpha + channel * (1 - alpha)),
       );
       bands.push({
-        at,
+        over,
+        at: `${over} ${at}`,
+        change: Math.max(...expected.map((channel, i) => Math.abs(channel - base[i]))),
         actual: rgb(actual),
         expected: rgb(expected),
         close: actual.every((channel, i) => Math.abs(channel - expected[i]) <= 2),
@@ -863,10 +873,10 @@ async function ringPaint(page: Page, viewIndex: number, before: Buffer): Promise
     const cells = [...rowElement.children].map((child, index): RingCell => {
       const rect = child.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
-      read(`cell ${index} top outer`, outer, x, box.top + band / 2);
-      read(`cell ${index} top inner`, inner, x, box.top + band * 1.5);
-      read(`cell ${index} bottom outer`, outer, x, box.bottom - band / 2);
-      read(`cell ${index} bottom inner`, inner, x, box.bottom - band * 1.5);
+      read(`cell ${index}`, 'top outer', outer, x, box.top + band / 2);
+      read(`cell ${index}`, 'top inner', inner, x, box.top + band * 1.5);
+      read(`cell ${index}`, 'bottom outer', outer, x, box.bottom - band / 2);
+      read(`cell ${index}`, 'bottom inner', inner, x, box.bottom - band * 1.5);
       const markers = (child as HTMLElement).dataset;
       return {
         kind:
@@ -882,23 +892,33 @@ async function ringPaint(page: Page, viewIndex: number, before: Buffer): Promise
       };
     });
     // The inline ends in screen terms: the row's left and right.
-    read('left outer', outer, box.left + band / 2, middle);
-    read('left inner', inner, box.left + band * 1.5, middle);
-    read('right outer', outer, box.right - band / 2, middle);
-    read('right inner', inner, box.right - band * 1.5, middle);
+    read('left', 'outer', outer, box.left + band / 2, middle);
+    read('left', 'inner', inner, box.left + band * 1.5, middle);
+    read('right', 'outer', outer, box.right - band / 2, middle);
+    read('right', 'inner', inner, box.right - band * 1.5, middle);
     return { cells, bands };
   }, shots);
 }
 
 /**
  * Asserts that every band read shows its system colour over what lay
- * beneath it. A missing ring cannot pass both bands at one point: that
- * needs the pixel beneath to look like Highlight and like HighlightText at
- * once, and the two are a contrasting pair.
+ * beneath it, and that each cell and each row side has a read the ring
+ * visibly changes. A read whose expected pixel equals its pixel before the
+ * flash (Highlight already there, say) passes with no ring at all; with at
+ * least one changing read per cell and side, a missing ring fails at every
+ * one of them, whatever the palette.
  */
 function expectRinged(paint: RingPaint): void {
   for (const band of paint.bands) {
     expect(band.close, `${band.at}: ${band.actual}, expected ${band.expected}`).toBe(true);
+  }
+  // Well over the compositing tolerance, so a change is a ring's, not noise.
+  const groups = new Set(paint.bands.map((band) => band.over));
+  for (const over of groups) {
+    const change = Math.max(
+      ...paint.bands.filter((band) => band.over === over).map((band) => band.change),
+    );
+    expect(change, `${over}: no read the ring would visibly change`).toBeGreaterThan(8);
   }
 }
 
