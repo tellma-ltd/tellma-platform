@@ -397,7 +397,7 @@ describe('tm-image', () => {
     expect(zoomed.fit.rect.x + zoomed.fit.rect.width).toBeLessThanOrEqual(1);
 
     // Done → the picked image displays cropped per the committed fit.
-    (query<HTMLButtonElement>(fixture, '.tm-image__edit-bar button')!).click();
+    query<HTMLButtonElement>(fixture, '.tm-image__edit-bar button')!.click();
     await until(fixture, () => query(fixture, '.tm-image__crop-view') !== null);
     expect(query(fixture, '.tm-image__crop-view img')?.getAttribute('alt')).toBe('Agent avatar');
   });
@@ -411,7 +411,7 @@ describe('tm-image', () => {
     await fixture.whenStable();
     await until(fixture, () => query(fixture, '[data-tm-image-action="adjust"]') !== null);
 
-    (query<HTMLButtonElement>(fixture, '[data-tm-image-action="adjust"]')!).click();
+    query<HTMLButtonElement>(fixture, '[data-tm-image-action="adjust"]')!.click();
     await until(fixture, () => query(fixture, '.tm-image__crop') !== null);
     expect(control.urls).toContain('/img/agent-7/original'); // no size param
 
@@ -575,6 +575,37 @@ describe('tm-image', () => {
     fixture.componentInstance.showSecond.set(false);
     await fixture.whenStable();
     expect(held[0].signal.aborted).toBe(true);
+  });
+
+  it('two boxes showing one blob share one object URL, revoked with the last of them', async () => {
+    const held = setupPendingFetcher();
+    const create = vi.spyOn(URL, 'createObjectURL');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    try {
+      const fixture = TestBed.createComponent(TwinHost);
+      await until(fixture, () => held.length === 1);
+      await held[0].resolve();
+      const images = (): HTMLImageElement[] => [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLImageElement>(
+          'img.tm-image__img',
+        ),
+      ];
+      await until(fixture, () => images().length === 2);
+      const [first, second] = images().map((image) => image.getAttribute('src'));
+      expect(first).toBe(second);
+      expect(create).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.showFirst.set(false);
+      await fixture.whenStable();
+      expect(revoke).not.toHaveBeenCalledWith(first);
+
+      fixture.componentInstance.showSecond.set(false);
+      await fixture.whenStable();
+      expect(revoke).toHaveBeenCalledWith(first);
+    } finally {
+      create.mockRestore();
+      revoke.mockRestore();
+    }
   });
 
   it('a deferred box that leaves the viewport before its bytes arrive aborts, and reloads on return', async () => {

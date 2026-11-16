@@ -71,6 +71,26 @@ interface Revalidation extends Shared {
 }
 
 /**
+ * A blob on screen for the sized URL it was served for: one object URL and
+ * one decode, shared by every instance showing it.
+ * @internal
+ */
+export interface ɵTmShownBlob {
+  /** The sized URL the blob was served for. */
+  readonly src: string;
+  /** The bytes. */
+  readonly blob: Blob;
+  /** The record stamp it was loaded under (`null` or empty: unknown). */
+  readonly version: string | null;
+  /** The object URL. */
+  readonly url: string;
+  /** Settles once the bytes are decoded; rejects when they do not decode. */
+  readonly decoded: Promise<void>;
+  /** The instances showing the blob. */
+  holds: number;
+}
+
+/**
  * Holds `entry` for one caller until `signal` aborts (a caller without a
  * signal holds it for good). On abort `leave` runs, and the last holder out
  * drops the entry from `map` (so a later caller starts afresh) and aborts it.
@@ -131,6 +151,13 @@ function withoutSizeParam(url: string): string {
  * - stamp unknown (`null`) → serve immediately, revalidate in the
  *   background with `If-None-Match` (304 keeps, 200 replaces + reports).
  *
+ * Blobs on screen are shared: every instance showing one blob shares its
+ * object URL and its decode (`show` and `hide`, reference-counted; the last
+ * to let go revokes the URL), and so does every instance loading that URL
+ * under the same stamp. While a URL's latest blob is on screen, and storage
+ * has taken no other bytes for the URL since, it stands in for the stored
+ * body under an unknown stamp, which still revalidates.
+ *
  * Concurrent fetches of one URL coalesce into one request, and concurrent
  * revalidations into one conditional request; both are reference-counted.
  * The shared request is aborted only when every waiter has aborted, and a
@@ -155,6 +182,46 @@ export class ɵTmImageBlobCache {
   private readonly revalidating = new Map<string, Revalidation>();
   /** Set on a failed put: the pipeline continues uncached from then on. */
   private cacheBroken = false;
+  /** The blob each sized URL shows, by URL: the latest one put on screen. */
+  private readonly onScreen = new Map<string, ɵTmShownBlob>();
+
+  /**
+   * Puts a blob on screen for the sized URL it was served for, loaded under
+   * the record stamp `version`: the first instance creates its object URL
+   * and decodes it, and every other one showing the same blob, or the same
+   * URL under the same known stamp, shares both. While it is shown, it
+   * stands in for the stored bytes under an unknown stamp. Pair each call
+   * with one {@link hide}.
+   */
+  show(src: string, blob: Blob, version: string | null): ɵTmShownBlob {
+    let shown = this.onScreen.get(src);
+    // One stamp is one set of bytes, whichever read of them this is.
+    if (shown?.blob !== blob && (!version || shown?.version !== version)) {
+      const url = URL.createObjectURL(blob);
+      // Decoded off-DOM, once for every instance.
+      const probe = new Image();
+      probe.src = url;
+      shown = { src, blob, version, url, decoded: probe.decode(), holds: 0 };
+      // A decode failure reaches every instance through its own await.
+      shown.decoded.catch(() => undefined);
+      this.onScreen.set(src, shown);
+    }
+    shown.holds += 1;
+    return shown;
+  }
+
+  /**
+   * Takes a shown blob off screen for one instance; the last one revokes
+   * its object URL, and its URL stops answering with it.
+   */
+  hide(shown: ɵTmShownBlob): void {
+    if (--shown.holds === 0) {
+      URL.revokeObjectURL(shown.url);
+      if (this.onScreen.get(shown.src) === shown) {
+        this.onScreen.delete(shown.src);
+      }
+    }
+  }
 
   /**
    * Resolves the blob for a sized URL under the record stamp `version`.
@@ -190,7 +257,9 @@ export class ɵTmImageBlobCache {
         return match.blob();
       }
       if (version === null) {
-        const blob = await match.blob();
+        // The bytes on screen for the URL now stand in for the stored body,
+        // so their object URL is shared.
+        const blob = this.onScreen.get(url)?.blob ?? (await match.blob());
         // An instance that left meanwhile never joins the revalidation.
         signal?.throwIfAborted();
         this.revalidate(cache, url, match.headers.get(ETAG_HEADER), options);
@@ -281,6 +350,9 @@ export class ɵTmImageBlobCache {
     version: string | null,
     etag: string | null,
   ): Promise<void> {
+    // Storage takes other bytes for the URL: the blob on screen stops
+    // standing in for them (its instances keep it until they let go).
+    this.onScreen.delete(url);
     const headers = new Headers({ 'content-type': blob.type || 'application/octet-stream' });
     if (version !== null && version !== '') {
       // An absent header means "stamp unknown" — never store '' where a

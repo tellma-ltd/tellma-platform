@@ -68,6 +68,67 @@ export function ɵtmTilesRenderedLines(
   return lines;
 }
 
+/** Lattice lines rendered beyond the visible ones on each side. */
+export const ɵTM_TILES_OVERSCAN = 3;
+
+/** The rendered lines: a range of lattice lines, `[start, end)`. */
+export interface ɵTmTilesSpan {
+  /** The first line (inclusive). */
+  readonly start: number;
+  /** One past the last line (exclusive). */
+  readonly end: number;
+}
+
+/**
+ * The lines to render at a scroll offset, for lines `pitch` px apart (> 0),
+ * `count` of them, under a viewport `viewport` px high: as many as it can show,
+ * one more for the part-lines at its edges, and {@link ɵTM_TILES_OVERSCAN}
+ * on each side, clipped to the lattice. With `from`, the offset the scroll
+ * started at, the span rendered there instead moves only as far as the
+ * visible lines need, so the scroll's own frame shows the viewport from the
+ * lines it already has and the overscan follows.
+ */
+export function ɵtmTilesSpan(
+  offset: number,
+  from: number | null,
+  pitch: number,
+  count: number,
+  viewport: number,
+): ɵTmTilesSpan {
+  const size = Math.ceil(viewport / pitch) + 1 + 2 * ɵTM_TILES_OVERSCAN;
+  const first = Math.floor(offset / pitch);
+  // The span starts the overscan above the first line visible at `from`
+  // (at the offset itself without one), moved only as far as it must to
+  // hold every line visible now: anywhere in [first - 2 × overscan, first].
+  const start = clamp(
+    Math.floor((from ?? offset) / pitch) - ɵTM_TILES_OVERSCAN,
+    first - 2 * ɵTM_TILES_OVERSCAN,
+    first,
+  );
+  // The span is never shorter than twice the overscan plus one, so it ends
+  // past line 0 even at the lowest start.
+  const end = Math.min(count, start + size);
+  return { start: clamp(start, 0, end), end };
+}
+
+/**
+ * Gives each rendered line the slot that tracks its element. A line keeps
+ * its slot while it stays rendered, and a line that enters takes the slot of
+ * one that left, the last of them first: the lines that enter at one end
+ * take the elements of those that left the other end in mirror order, which
+ * lets a list reconcile a scroll either way by moving only the elements it
+ * re-binds. A line with no slot left to take gets a new one.
+ */
+export function ɵtmTilesAssignSlots(
+  lines: readonly number[],
+  previous: ReadonlyMap<number, number>,
+): Map<number, number> {
+  // The slots of the lines that left, in the order they were rendered.
+  const free = [...previous].flatMap(([line, slot]) => (lines.includes(line) ? [] : [slot]));
+  let next = Math.max(-1, ...previous.values()) + 1;
+  return new Map(lines.map((line) => [line, previous.get(line) ?? free.pop() ?? next++]));
+}
+
 /** A keyboard or driver move over the lattice. */
 export type ɵTmTilesMove =
   /** Next or previous tile in reading order (the arrows across a line). */

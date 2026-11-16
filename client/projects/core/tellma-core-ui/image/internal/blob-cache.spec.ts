@@ -90,8 +90,16 @@ function makeBlob(text: string): Blob {
 /** A scriptable fetcher recording every call. */
 function makeFetcher(): {
   calls: FetchCall[];
-  respond: (url: string, options?: TmBlobFetchOptions) => Promise<{ status: number; blob: Blob | null; etag: string | null }>;
-  script: (fn: (url: string, options?: TmBlobFetchOptions) => Promise<{ status: number; blob: Blob | null; etag: string | null }>) => void;
+  respond: (
+    url: string,
+    options?: TmBlobFetchOptions,
+  ) => Promise<{ status: number; blob: Blob | null; etag: string | null }>;
+  script: (
+    fn: (
+      url: string,
+      options?: TmBlobFetchOptions,
+    ) => Promise<{ status: number; blob: Blob | null; etag: string | null }>,
+  ) => void;
 } {
   const calls: FetchCall[] = [];
   let impl: (
@@ -537,5 +545,96 @@ describe('ɵTmImageBlobCache', () => {
     expect(swaps).toEqual(['staying']);
     const stored = await storage.caches.get('tm-images-v1')!.match('/img/1?size=128');
     expect(await stored!.text()).toBe('fresh:/img/1?size=128');
+  });
+
+  describe('blobs on screen', () => {
+    const url = '/img/1?size=128';
+
+    it('share one object URL per blob, revoked when the last instance lets go', async () => {
+      const { cache } = setup(new FakeCacheStorage());
+      const create = vi.spyOn(URL, 'createObjectURL');
+      const revoke = vi.spyOn(URL, 'revokeObjectURL');
+      try {
+        const blob = await cache.getImage(url, 'v1');
+        const first = cache.show(url, blob, null);
+        const second = cache.show(url, blob, null);
+        expect(second).toBe(first);
+        expect(create).toHaveBeenCalledTimes(1);
+        cache.hide(first);
+        expect(revoke).not.toHaveBeenCalled();
+        cache.hide(second);
+        expect(revoke).toHaveBeenCalledExactlyOnceWith(first.url);
+        // Off screen, the URL is answered from storage again, as new bytes.
+        expect(await cache.getImage(url, 'v1')).not.toBe(blob);
+      } finally {
+        create.mockRestore();
+        revoke.mockRestore();
+      }
+    });
+
+    it('share their object URL with every read of the same URL under the same stamp', async () => {
+      const { cache } = setup(new FakeCacheStorage());
+      const shown = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      const again = await cache.getImage(url, 'v1');
+      expect(again).not.toBe(shown.blob);
+      expect(cache.show(url, again, 'v1')).toBe(shown);
+      // Another stamp, or an unknown one, is other bytes until they are the same blob.
+      expect(cache.show(url, await cache.getImage(url, 'v2'), 'v2')).not.toBe(shown);
+      const unknown = cache.show(url, makeBlob('other'), null);
+      expect(unknown.url).not.toBe(shown.url);
+      expect(cache.show(url, makeBlob('other'), '')).not.toBe(unknown);
+    });
+
+    it('stand in for the stored body under an unknown stamp, which still revalidates', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const blob = await cache.getImage(url, 'v1');
+      cache.show(url, blob, 'v1');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      expect(await cache.getImage(url, null)).toBe(blob);
+      await flush();
+      expect(fetcher.calls).toHaveLength(2);
+      expect(fetcher.calls[1].options?.ifNoneMatch).toBe('W/"http-etag"');
+    });
+
+    it('stop standing in once storage takes other bytes for their URL', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      // A load under a newer stamp stores new bytes that never reach the screen.
+      fetcher.script(async () => ({ status: 200, blob: makeBlob('v2 bytes'), etag: 'W/"e2"' }));
+      await cache.getImage(url, 'v2');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(old.blob);
+      expect(await text(served)).toBe('v2 bytes');
+      cache.hide(old);
+    });
+
+    it('hand their URL to the refreshed blob, the old one staying until its instances let go', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const revoke = vi.spyOn(URL, 'revokeObjectURL');
+      try {
+        const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+        fetcher.script(async (src) => ({
+          status: 200,
+          blob: makeBlob(`new:${src}`),
+          etag: 'W/"e2"',
+        }));
+        const refreshed: Blob[] = [];
+        expect(await cache.getImage(url, null, { onRefresh: (blob) => refreshed.push(blob) })).toBe(
+          old.blob,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(refreshed).toHaveLength(1);
+        const fresh = cache.show(url, refreshed[0], null);
+        expect(fresh.url).not.toBe(old.url);
+        fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+        expect(await cache.getImage(url, null)).toBe(refreshed[0]);
+        cache.hide(old);
+        expect(revoke).toHaveBeenCalledExactlyOnceWith(old.url);
+        expect(await cache.getImage(url, null)).toBe(refreshed[0]);
+      } finally {
+        revoke.mockRestore();
+      }
+    });
   });
 });

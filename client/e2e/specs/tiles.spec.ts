@@ -18,7 +18,8 @@ import { storyUrl } from '../support/story-map';
  * scroll; skeleton tiles that hold the data's geometry; the narrow list;
  * tree mode in RTL with lazy loads, a failure and its announcement; the
  * selected tile under forced colors; and the 10,000-row virtualization,
- * with its long-task probe in the nightly tier.
+ * with its reused tiles kept true to their rows under focus and selection,
+ * and its long-task probe in the nightly tier.
  */
 
 /** The main story's tiles. */
@@ -310,8 +311,61 @@ test.describe('10,000 rows', () => {
     expect(await cells.count()).toBeLessThan(20 * perLine);
   });
 
+  // Scrolling re-binds the elements of the lines that leave to the lines
+  // that enter: a focused tile must keep its row and focus, and every tile
+  // must show its own row's title, code and selection after each step.
+  test('wheel scrolling keeps focus on its row and every tile true to its own row', async ({
+    page,
+  }) => {
+    await page.goto(storyUrl('tiles-large'));
+    const grid = tiles(page, 'tiles-large').locator('[role="grid"]');
+    await expect(grid.locator('[role="gridcell"]').first()).toBeVisible();
+
+    // Section: select two customers and focus a third, near the top.
+    await tile(page, 2, 'tiles-large').locator('[role="checkbox"]').click();
+    await tile(page, 7, 'tiles-large').locator('[role="checkbox"]').click();
+    await tile(page, 3, 'tiles-large').focus();
+    await appStable(page);
+
+    // Section: wheel away and back a screen at a time, checking every rendered tile.
+    const box = (await grid.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (const direction of [1, -1]) {
+      for (let step = 0; step < 12; step++) {
+        await page.mouse.wheel(0, direction * box.height);
+        await appStable(page);
+        const report = await grid.evaluate((element) => {
+          const wrong: string[] = [];
+          for (const cell of element.querySelectorAll<HTMLElement>('[role="gridcell"]')) {
+            const id = Number(cell.dataset['index']) + 1;
+            const title = cell.querySelector('.tm-tiles__title')!.textContent!.trim();
+            const code = cell.querySelector('.tm-tiles__corner--bottom-start')!.textContent!.trim();
+            const selected = cell.getAttribute('aria-selected') === 'true';
+            if (
+              title !== `Customer ${id}` ||
+              code !== `C${String(id).padStart(5, '0')}` ||
+              selected !== (id === 2 || id === 7)
+            ) {
+              wrong.push(`${id}: ${title}, ${code}, selected ${selected}`);
+            }
+          }
+          const focused = document.activeElement as HTMLElement | null;
+          return {
+            wrong,
+            focused: focused?.querySelector('.tm-tiles__title')?.textContent?.trim() ?? null,
+          };
+        });
+        expect(report).toEqual({ wrong: [], focused: 'Customer 3' });
+      }
+    }
+    await expect(tile(page, 3, 'tiles-large')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(tile(page, 4, 'tiles-large')).toBeFocused();
+  });
+
   // Spec 0023 §12's bar, in the nightly tier: each screen-sized wheel step
-  // replaces most rendered tiles, and no step may cost a task over 50 ms.
+  // re-binds most rendered tiles to new rows, and no step may cost a task
+  // over 50 ms.
   test('@perf scrolling 10,000 tiles produces no long task over 50 ms', async ({
     page,
     browserName,
