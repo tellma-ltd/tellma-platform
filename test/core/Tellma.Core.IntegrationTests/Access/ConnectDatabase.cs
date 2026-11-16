@@ -11,6 +11,8 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
+using Tellma.Core.Caching;
 using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
@@ -41,6 +43,9 @@ namespace Tellma.Core.IntegrationTests.Access
 
         /// <summary>The composition over both databases.</summary>
         public IServiceProvider Services => _provider ?? throw new InvalidOperationException("The databases are not created yet.");
+
+        /// <summary>The composition's test-only contributor that evicts cache entries while a batch executes.</summary>
+        internal CacheEvictor Evictor => Services.GetRequiredService<CacheEvictor>();
 
         /// <summary>A tenant's descriptor, in a state.</summary>
         /// <param name="tenantId">The tenant.</param>
@@ -150,6 +155,23 @@ namespace Tellma.Core.IntegrationTests.Access
             return (userId, subject);
         }
 
+        /// <summary>
+        ///     Makes a tenant database read-only, as a frozen tenant's is, or writable again. The
+        ///     database's pooled connections are dropped, since the change rolls back their sessions.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="readOnly">Whether the database becomes read-only.</param>
+        /// <returns>A task that completes when the database changed.</returns>
+        public async Task SetReadOnlyAsync(int tenantId, bool readOnly)
+        {
+            string database = (_tenants ?? throw new InvalidOperationException("The databases are not created yet."))[tenantId].Location.Database;
+            await SqlServerFixture.ExecuteAsync(
+                sql.MasterConnectionString,
+                $"ALTER DATABASE [{database}] SET {(readOnly ? "READ_ONLY" : "READ_WRITE")} WITH ROLLBACK IMMEDIATE;");
+            using SqlConnection pooled = new(ConnectionString(tenantId));
+            SqlConnection.ClearPool(pooled);
+        }
+
         /// <summary>A tenant database's connection string.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <returns>The connection string.</returns>
@@ -226,7 +248,65 @@ namespace Tellma.Core.IntegrationTests.Access
             _ = FixtureComposition.Compose(services);
             _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new Factory(tenants)));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(provider => new Provider(tenants, provider.GetRequiredService<IRequestContextAccessor>())));
+            _ = services.AddSingleton<CacheEvictor>();
+            _ = services.AddSingleton<IDataBatchContributor>(static provider => provider.GetRequiredService<CacheEvictor>());
             return services.BuildServiceProvider(validateScopes: true);
+        }
+
+        /// <summary>
+        ///     A test-only batch contributor: while armed, every batch that executes drops a user's
+        ///     cached permission set or profile in its epilogue stage, which runs after a connector
+        ///     built its premises from the caches and before it applies what the prologue read.
+        /// </summary>
+        /// <param name="permissions">The permission sets.</param>
+        /// <param name="profiles">The profiles.</param>
+        internal sealed class CacheEvictor(PermissionsCache permissions, ProfileCache profiles) : IDataBatchContributor
+        {
+            /// <summary>The entry to drop; none while disarmed.</summary>
+            private TenantUserCacheKey? _key;
+
+            /// <summary>Whether the profile is dropped rather than the permission set.</summary>
+            private bool _profile;
+
+            /// <inheritdoc />
+            public int Order => 1000;
+
+            /// <summary>The entries dropped since the last arming.</summary>
+            public int Evictions { get; private set; }
+
+            /// <summary>Arms the contributor for one user's entry.</summary>
+            /// <param name="key">The user's key.</param>
+            /// <param name="profile">Whether the profile is dropped rather than the permission set.</param>
+            public void Arm(TenantUserCacheKey key, bool profile)
+            {
+                (_key, _profile, Evictions) = (key, profile, 0);
+            }
+
+            /// <summary>Disarms the contributor.</summary>
+            public void Disarm()
+            {
+                _key = null;
+            }
+
+            /// <inheritdoc />
+            public void Contribute(IDataBatch batch, DataBatchStage stage)
+            {
+                if (stage != DataBatchStage.Epilogue || _key is not TenantUserCacheKey key)
+                {
+                    return;
+                }
+
+                if (_profile)
+                {
+                    profiles.Remove(key);
+                }
+                else
+                {
+                    permissions.Remove(key);
+                }
+
+                Evictions++;
+            }
         }
 
         /// <summary>The connection factory over both databases.</summary>

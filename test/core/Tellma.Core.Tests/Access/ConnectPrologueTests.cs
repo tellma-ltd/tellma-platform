@@ -4,11 +4,15 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using System.Data;
 using System.Data.Common;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Data.Batches;
@@ -382,6 +386,7 @@ namespace Tellma.Core.Tests.Access
             // --- Cold: the rows and the profile come back, and the set is cached under the tags read ---
             ConnectedUser cold = await ApplyAsync(
                 scope,
+                connector,
                 new ConnectPremises.ForUser(7, new ConnectExpectations(null, null, null, SettingsTag.Value), false),
                 [ConnectRow(7, "Individual", true, "Joined", true, true, false, true), Tags(), PermissionRows(), Profile()]);
 
@@ -389,12 +394,49 @@ namespace Tellma.Core.Tests.Access
             // before the tag set, a later statement, read it ---
             ConnectedUser warm = await ApplyAsync(
                 scope,
+                connector,
                 connector.PremisesFor(cold),
                 [ConnectRow(7, "Individual", true, "Joined", false, false, false, true), Tags(permissionsTag: Guid.NewGuid())]);
 
             Assert.Same(cold.Access, warm.Access);
             Assert.Same(cold.Profile, warm.Profile);
             Assert.Same(warm, connector.Current);
+        }
+
+        [Fact]
+        public async Task A_prologue_that_read_the_sets_own_tags_validates_it_and_one_that_found_it_stale_does_not()
+        {
+            using IServiceScope scope = ConnectorScope();
+
+            // The connector's clock runs ahead of the builder's, so a validation is told from the build.
+            FakeTimeProvider clock = new(DateTimeOffset.UtcNow.AddMinutes(1));
+            UserConnector connector = new(
+                scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>(),
+                scope.ServiceProvider.GetRequiredService<ITenantDatabase>(),
+                scope.ServiceProvider.GetRequiredService<ConnectorServices>() with { Time = clock },
+                scope.ServiceProvider.GetRequiredService<ITenantSettingsCache>(),
+                scope.ServiceProvider.GetServices<IDataBatchContributor>(),
+                scope.ServiceProvider.GetRequiredService<IOptions<AccessOptions>>(),
+                scope.ServiceProvider.GetRequiredService<ILoggerFactory>());
+
+            // --- Cold: the rows came because the set was stale, so the set built from them is not validated by the read ---
+            ConnectedUser cold = await ApplyAsync(
+                scope,
+                connector,
+                new ConnectPremises.ForUser(7, new ConnectExpectations(null, null, null, SettingsTag.Value), false),
+                [ConnectRow(7, "Individual", true, "Joined", true, true, false, true), Tags(), PermissionRows(), Profile()]);
+            Assert.Equal(cold.Access.ComputedAt, cold.Access.ValidatedAt);
+
+            // --- Warm: the prologue read the set's own tags ---
+            clock.Advance(TimeSpan.FromMinutes(1));
+            ConnectedUser warm = await ApplyAsync(
+                scope,
+                connector,
+                connector.PremisesFor(cold),
+                [ConnectRow(7, "Individual", true, "Joined", false, false, false, true), Tags()]);
+
+            Assert.Same(cold.Access, warm.Access);
+            Assert.Equal(clock.GetUtcNow(), warm.Access.ValidatedAt);
         }
 
         // --- Helpers ---
@@ -611,14 +653,14 @@ namespace Tellma.Core.Tests.Access
             return scope;
         }
 
-        /// <summary>Composes the scope connector's prologue for the premises, reads the scripted sets, and applies the result.</summary>
-        /// <param name="scope">The scope whose connector composes and applies.</param>
+        /// <summary>Composes a connector's prologue for the premises, reads the scripted sets, and applies the result.</summary>
+        /// <param name="scope">The scope whose settings cold load the batch holds.</param>
+        /// <param name="connector">The connector, of the scope.</param>
         /// <param name="premises">The premises.</param>
         /// <param name="sets">The scripted sets.</param>
         /// <returns>The connected user the connector applied.</returns>
-        private async Task<ConnectedUser> ApplyAsync(IServiceScope scope, ConnectPremises premises, List<DataTable> sets)
+        private async Task<ConnectedUser> ApplyAsync(IServiceScope scope, UserConnector connector, ConnectPremises premises, List<DataTable> sets)
         {
-            UserConnector connector = scope.ServiceProvider.GetRequiredService<UserConnector>();
             DataBatch batch = _harness.Batch(BatchPurpose.Read, scope.ServiceProvider.GetServices<IDataBatchContributor>().OfType<SettingsColdLoadContributor>().Single());
             BatchResult<ConnectResult> handle = connector.Contribute(batch, premises);
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);

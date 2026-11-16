@@ -24,7 +24,10 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="cancellationToken">Cancels the connection.</param>
         /// <returns>The connected user.</returns>
         /// <exception cref="TenantNotFoundException">No active user of the tenant has the subject.</exception>
-        /// <exception cref="InvalidOperationException">The scope is not a user's or a service account's.</exception>
+        /// <exception cref="InvalidOperationException">
+        ///     The scope is not a user's or a service account's, or it is already connected by its
+        ///     user's id: the first connection fixes how a scope connects.
+        /// </exception>
         Task<ConnectedUser> ConnectAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -32,7 +35,8 @@ namespace Tellma.Core.Abstractions.Access
         ///     activity and never records a first request. The scope is connected as the user only
         ///     when its context is bound to that user, as a background scope that runs as them is;
         ///     for any other user (another user's permissions loaded to explain or evaluate them) the
-        ///     user is returned and cached, and the scope's own connected user is left as it was.
+        ///     user is returned and cached, and the scope's own connected user is left as it was. A
+        ///     scope already connected by subject stays connected by subject.
         /// </summary>
         /// <param name="userId">The user's id.</param>
         /// <param name="cancellationToken">Cancels the connection.</param>
@@ -58,7 +62,11 @@ namespace Tellma.Core.Abstractions.Access
         /// <param name="batch">The batch, before its first statement; a batch of the scope's tenant database.</param>
         /// <param name="premises">What the prologue assumes.</param>
         /// <returns>What the prologue read, complete once the batch executed.</returns>
-        /// <exception cref="ArgumentException">The batch is not one of the platform's tenant batches.</exception>
+        /// <exception cref="ArgumentException">
+        ///     The batch is not one of the platform's tenant batches of the scope's tenant, or the
+        ///     premises name a subject other than the scope's caller's or one the subject column
+        ///     cannot hold.
+        /// </exception>
         /// <exception cref="InvalidOperationException">
         ///     The batch already has statements, or is a maintenance batch; or the premises are the
         ///     system's and the scope is not the platform's own.

@@ -47,6 +47,9 @@ namespace Tellma.Core.Access
         /// <summary>Where each result this connector's prologues read came from.</summary>
         private readonly ConditionalWeakTable<ConnectResult, Origin> _origins = [];
 
+        /// <summary>The result each prologue read, by the handle its batch hands out, whether or not the handle completed.</summary>
+        private readonly ConditionalWeakTable<BatchResult<ConnectResult>, ConnectResult> _reads = [];
+
         /// <summary>The access logger.</summary>
         private readonly ILogger _logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(AccessEvents.Category);
 
@@ -89,6 +92,13 @@ namespace Tellma.Core.Access
             EnsureCaller(context);
             TenantDescriptor tenant = context.RequireTenant();
             string subject = context.Subject ?? throw new InvalidOperationException("The scope's caller has no subject to connect by.");
+
+            // The first connection fixes how the scope connects: a job scope runs by id, never stamps
+            // and never flips, so it never switches to the subject variant.
+            if (_mode == ConnectionMode.User)
+            {
+                throw new InvalidOperationException("The scope is connected by its user's id; it never connects by a subject.");
+            }
 
             // --- A subject the column could never hold matches no user; it is refused without a round trip ---
             if (!IsBindable(subject))
@@ -145,8 +155,9 @@ namespace Tellma.Core.Access
             ConnectedUser user = await RoundTripAsync(new ConnectPremises.ForUser(userId, expected, access is not null && IsAged(access)), cancellationToken).ConfigureAwait(false);
 
             // Only the user the scope is bound to becomes its connected user; another user's load
-            // (evaluating or explaining their permissions) leaves the scope's caller in place.
-            if (context.UserId == userId)
+            // (evaluating or explaining their permissions) leaves the scope's caller in place, and a
+            // scope connected by subject keeps resolving its subject.
+            if (context.UserId == userId && _mode is ConnectionMode.None or ConnectionMode.User)
             {
                 Connected(ConnectionMode.User, user);
             }
@@ -191,6 +202,14 @@ namespace Tellma.Core.Access
                 throw new InvalidOperationException("Only the platform's own work composes a batch under the system's premises; the scope runs for another principal.");
             }
 
+            // A subject is the scope's caller's, and one the column can hold byte for byte: a longer one
+            // would be truncated and a non-ASCII one converted, either of which could match another row.
+            if (premises is ConnectPremises.ForSubject forSubject
+                && (!IsBindable(forSubject.Subject) || !string.Equals(forSubject.Subject, context.Subject, StringComparison.Ordinal)))
+            {
+                throw new ArgumentException("The premises name a subject other than the scope's caller's, or one the subject column cannot hold.", nameof(premises));
+            }
+
             int tenantId = context.RequireTenant().Id;
             if (data.Connection.TenantId != tenantId)
             {
@@ -200,12 +219,23 @@ namespace Tellma.Core.Access
             // --- The caller's own tags go into the batch's outcome; another user's (a load of their permissions) never do ---
             bool reportUserTags = premises is ConnectPremises.ForSubject
                 || (premises is ConnectPremises.ForUser forUser && context.UserId == forUser.UserId);
+            // The read is recorded against the handle too: a round trip refused after the prologue was
+            // read (a moved re-run input) never completes the handle, yet its result is still applied.
+            BatchResult<ConnectResult>? handle = null;
             ConnectReading reading = new(
                 services.Time,
                 reportUserTags,
                 duration => services.Metrics.RecordPrologue(premises.Variant, duration),
-                result => _origins.AddOrUpdate(result, new Origin(tenantId, premises)));
-            return ConnectPrologue.Append(data, premises, ColdLoad, reading);
+                result =>
+                {
+                    _origins.AddOrUpdate(result, new Origin(tenantId, premises));
+                    if (handle is not null)
+                    {
+                        _reads.AddOrUpdate(handle, result);
+                    }
+                });
+            handle = ConnectPrologue.Append(data, premises, ColdLoad, reading);
+            return handle;
         }
 
         /// <inheritdoc />
@@ -218,6 +248,13 @@ namespace Tellma.Core.Access
         ConnectedUser IScopeConnection.Apply(ConnectResult result, ConnectedUser basis)
         {
             return Apply(result, basis, missingIsNull: false)!;
+        }
+
+        /// <inheritdoc />
+        public ConnectResult? ReadOf(BatchResult<ConnectResult> prologue)
+        {
+            ArgumentNullException.ThrowIfNull(prologue);
+            return prologue.IsCompleted ? prologue.Value : _reads.TryGetValue(prologue, out ConnectResult? read) ? read : null;
         }
 
         /// <inheritdoc />
@@ -532,7 +569,7 @@ namespace Tellma.Core.Access
                     ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
                 if (confirmed is null)
                 {
-                    return missingIsNull ? null : throw new InvalidOperationException("The connect prologue confirmed a permission set this instance no longer holds.");
+                    return Missing(origin.Premises, result, missingIsNull, "The connect prologue confirmed a permission set this instance no longer holds.");
                 }
 
                 access = confirmed;
@@ -560,7 +597,7 @@ namespace Tellma.Core.Access
                     ?? services.Profiles.Peek(key, new VersionTag(preferencesTag));
                 if (confirmed is null)
                 {
-                    return missingIsNull ? null : throw new InvalidOperationException("The connect prologue confirmed a profile this instance no longer holds.");
+                    return Missing(origin.Premises, result, missingIsNull, "The connect prologue confirmed a profile this instance no longer holds.");
                 }
 
                 profile = confirmed;
@@ -580,9 +617,12 @@ namespace Tellma.Core.Access
                     throw Refused(tenantId, bound, AccessTelemetryNames.ResultUnknownSubject);
                 }
 
-                Connected(ConnectionMode.Subject, user);
+                if (_mode is ConnectionMode.None or ConnectionMode.Subject)
+                {
+                    Connected(ConnectionMode.Subject, user);
+                }
             }
-            else if (context.UserId == userId)
+            else if (context.UserId == userId && _mode is ConnectionMode.None or ConnectionMode.User)
             {
                 Connected(ConnectionMode.User, user);
             }
@@ -605,6 +645,27 @@ namespace Tellma.Core.Access
                 ? bound
                 : settings.Peek() ?? context.TenantSettings
                     ?? throw new InvalidOperationException("No tenant settings are cached to build the permission set's query schema under.");
+        }
+
+        /// <summary>
+        ///     A confirmed entry this instance no longer holds: the round trip is counted and null
+        ///     returned, for the caller to re-connect cold; or, when the caller cannot, a defect.
+        /// </summary>
+        /// <param name="premises">The premises the prologue ran under.</param>
+        /// <param name="result">The prologue's result.</param>
+        /// <param name="missingIsNull">Whether the caller re-connects cold.</param>
+        /// <param name="message">The defect's message.</param>
+        /// <returns>Null.</returns>
+        /// <exception cref="InvalidOperationException"><paramref name="missingIsNull" /> is false.</exception>
+        private ConnectedUser? Missing(ConnectPremises premises, ConnectResult result, bool missingIsNull, string message)
+        {
+            if (!missingIsNull)
+            {
+                throw new InvalidOperationException(message);
+            }
+
+            CountResult(premises, result);
+            return null;
         }
 
         /// <summary>Counts a connect result by its most consequential part.</summary>

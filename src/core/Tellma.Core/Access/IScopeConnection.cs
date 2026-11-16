@@ -36,6 +36,14 @@ namespace Tellma.Core.Access
         /// <returns>What the prologue read, complete once the batch executed.</returns>
         BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises);
 
+        /// <summary>
+        ///     What a batch's prologue read: the completed handle's value, or the result read by a
+        ///     round trip that failed afterwards and so never completed the handle.
+        /// </summary>
+        /// <param name="prologue">The handle <see cref="Contribute" /> returned.</param>
+        /// <returns>The result; null when the round trip failed before the prologue was read.</returns>
+        ConnectResult? ReadOf(BatchResult<ConnectResult> prologue);
+
         /// <summary>Applies what a prologue read, over the connected user the batch was composed for; see <see cref="IUserConnector.Apply" />.</summary>
         /// <param name="result">The prologue's result.</param>
         /// <param name="basis">The connected user the batch was composed for.</param>

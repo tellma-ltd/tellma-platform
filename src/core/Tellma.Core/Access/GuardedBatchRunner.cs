@@ -80,6 +80,13 @@ namespace Tellma.Core.Access
                 }
                 catch (BatchAssertionFailedException stale) when (stale.Number == TellmaSqlErrors.StaleVersionTag)
                 {
+                    // The guard passed before the re-check refused the persist: what the prologue read is
+                    // applied and counted like any other round trip's.
+                    if (connection.ReadOf(prologue) is ConnectResult readBefore)
+                    {
+                        user = connection.Apply(readBefore, user);
+                    }
+
                     if (recomposed)
                     {
                         throw Thrash(user, purpose, new StaleContextException([]));
@@ -89,12 +96,19 @@ namespace Tellma.Core.Access
                     recomposed = true;
                     user = await connection.ReconnectColdAsync(cancellationToken).ConfigureAwait(false);
                     await RefreshAsync(user, cancellationToken).ConfigureAwait(false);
+                    holder.Current.ApplyCultures();
                     continue;
                 }
                 catch (StaleContextException stale)
                 {
-                    // A read or validation whose cached input moved: the executor refreshed nothing
-                    // the prologue read, and the recomposed batch reads the inputs afresh.
+                    // A read or validation whose cached input moved: the guard passed and the body ran,
+                    // so what the prologue read (the validated set, fresh rows or profile, the tags the
+                    // executor's snapshot now holds) is applied before the batch is recomposed.
+                    if (connection.ReadOf(prologue) is ConnectResult readBefore)
+                    {
+                        user = connection.Apply(readBefore, user);
+                    }
+
                     if (recomposed)
                     {
                         throw Thrash(user, purpose, stale);
@@ -120,6 +134,11 @@ namespace Tellma.Core.Access
 
                 recomposed = true;
                 await RefreshAsync(user, cancellationToken).ConfigureAwait(false);
+
+                // The thread cultures follow the refreshed context for the rest of this call: the
+                // recomposed batch and the read render in it. A culture set inside the refresh would
+                // not flow back here, so it is applied in this method.
+                holder.Current.ApplyCultures();
             }
         }
 

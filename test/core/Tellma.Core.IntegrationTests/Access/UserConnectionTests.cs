@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.Caching;
 using Tellma.Core.Settings;
 
 namespace Tellma.Core.IntegrationTests.Access
@@ -166,6 +167,7 @@ namespace Tellma.Core.IntegrationTests.Access
             AccessOptions options = fixture.Services.GetRequiredService<IOptions<AccessOptions>>().Value;
             TimeSpan maxAge = options.PermissionsMaxAge;
             options.PermissionsMaxAge = TimeSpan.FromTicks(1);
+            using MetricCollector<long> evictions = new(fixture.Services.GetRequiredService<IMeterFactory>(), CacheTelemetryNames.MeterName, CacheTelemetryNames.Evictions);
             try
             {
                 (ConnectedUser after, int roundTrips) = await ReadAsync(scope, static (user, outcome) => (user, outcome.RoundTrips));
@@ -175,6 +177,12 @@ namespace Tellma.Core.IntegrationTests.Access
                 Assert.True(after.Access.ComputedAt >= before.Access.ComputedAt);
                 Assert.Equal(before.Access.Tag, after.Access.Tag);
                 Assert.Equal(AccessTelemetryNames.ResultWarm, Results()[^1]);
+
+                // The replaced set leaves the cache for its age, not as replaced by a newer one; the
+                // cache meters an eviction once the runtime's callback ran.
+                await evictions.WaitForMeasurementsAsync(1, TimeSpan.FromSeconds(30));
+                CollectedMeasurement<long> evicted = Assert.Single(evictions.GetMeasurementSnapshot(), static measurement => (string?)measurement.Tags[CacheTelemetryNames.KindTag] == CacheKinds.Permissions);
+                Assert.Equal("age", evicted.Tags[CacheTelemetryNames.ReasonTag]);
             }
             finally
             {
@@ -265,6 +273,63 @@ namespace Tellma.Core.IntegrationTests.Access
             await using AsyncServiceScope next = await ScopeAsync(subject);
             ConnectedUser user = await ReadAsync(next, static (user, _) => user);
             Assert.Equal((secondId, "Rae"), (user.UserId, user.Profile.Name));
+        }
+
+        [Fact]
+        public async Task Loading_the_callers_own_set_by_id_leaves_a_request_scope_connected_by_its_subject()
+        {
+            (int userId, string subject) = await SeedAsync("Sid");
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+
+            ConnectedUser own = await scope.ServiceProvider.GetRequiredService<IUserConnector>().ConnectAsUserAsync(userId, Token);
+
+            Assert.IsType<ConnectPremises.ForSubject>(scope.ServiceProvider.GetRequiredService<IScopeConnection>().PremisesFor(own));
+        }
+
+        [Fact]
+        public async Task A_job_scope_connected_by_id_never_connects_by_subject_so_it_never_stamps_or_flips()
+        {
+            (int userId, string subject) = await SeedAsync("Tom", joined: false);
+            await using AsyncServiceScope job = await ScopeAsync(subject, userId: userId);
+
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => job.ServiceProvider.GetRequiredService<IUserConnector>().ConnectAsync(Token));
+
+            Assert.Equal(UserState.Invited, (await CurrentAsync(job)).State);
+            Assert.Null(await StampAsync(userId));
+        }
+
+        // --- A confirmed entry evicted in the middle of a round trip ---
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_cached_set_or_profile_evicted_after_the_premises_were_built_is_reloaded_by_one_cold_round_trip(bool profile)
+        {
+            (int userId, _) = await SeedAsync("Una");
+            await using (AsyncServiceScope warm = await ScopeAsync(subject: null, userId: userId))
+            {
+                _ = await CurrentAsync(warm);
+            }
+
+            // --- Every batch drops the entry while armed: the warm round trip's and the cold one's ---
+            int before = Variants().Count;
+            fixture.Evictor.Arm(new TenantUserCacheKey(ConnectDatabase.TenantA, userId), profile);
+            try
+            {
+                await using AsyncServiceScope job = await ScopeAsync(subject: null, userId: userId);
+                ConnectedUser user = await CurrentAsync(job);
+
+                Assert.Equal((userId, "Una"), (user.UserId, user.Profile.Name));
+                Assert.Equal(2, fixture.Evictor.Evictions);
+            }
+            finally
+            {
+                fixture.Evictor.Disarm();
+            }
+
+            // The warm round trip confirmed the entry, the cold one that followed returned it fresh.
+            Assert.Equal([AccessTelemetryNames.VariantUser, AccessTelemetryNames.VariantUser], Variants().Skip(before));
+            Assert.Equal([AccessTelemetryNames.ResultWarm, AccessTelemetryNames.ResultCold], Results().Skip(Results().Count - 2));
         }
 
         // --- The other variants ---

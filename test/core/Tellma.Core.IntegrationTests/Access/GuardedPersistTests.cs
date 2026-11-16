@@ -23,7 +23,7 @@ namespace Tellma.Core.IntegrationTests.Access
     ///     The guarded runner's persists and re-runs against real tenant databases, through the real
     ///     connect prologue of each variant: the re-checks inside the transaction, a move committed
     ///     between the guard and the re-checks played by a transaction-head statement that the
-    ///     rollback undoes, the re-run policies of cached inputs, and the round trips a save costs.
+    ///     rollback undoes, the re-run policies of a real cached list, and the round trips a save costs.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -69,10 +69,11 @@ namespace Tellma.Core.IntegrationTests.Access
 
             int attempts = await PersistAsync(scope, userId, static attempt => attempt == 0 ? MovePermissions : null);
 
-            // The failed attempt, the cold re-connect and the recomposed persist; only the last commits.
+            // The failed attempt, the cold re-connect and the recomposed persist, each counted; only the last commits.
             Assert.Equal(2, attempts);
             Assert.Equal(3, Variants().Count - before);
-            Assert.Equal([AccessTelemetryNames.ResultCold, AccessTelemetryNames.ResultWarm], Results().Skip(1));
+            Assert.Equal([AccessTelemetryNames.ResultWarm, AccessTelemetryNames.ResultCold, AccessTelemetryNames.ResultWarm], Results().Skip(1));
+            Assert.Equal(Variants().Count, Results().Count);
             Assert.Equal(1, await JobsAsync(userId));
         }
 
@@ -132,19 +133,42 @@ namespace Tellma.Core.IntegrationTests.Access
 
         // --- The re-run policies of a cached input ---
 
-        [Theory]
-        [InlineData(VersionTagMismatchPolicy.Rerun, 2)]
-        [InlineData(VersionTagMismatchPolicy.Refresh, 1)]
-        public async Task A_cached_list_whose_tag_moved_reruns_the_read_once_under_rerun_and_is_served_under_refresh(VersionTagMismatchPolicy policy, int expected)
+        [Fact]
+        public async Task A_validation_composed_from_a_cached_list_whose_tag_moved_reruns_once_and_reads_the_reloaded_list()
         {
             (_, string subject) = await fixture.SeedCallerAsync("Cal");
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            _ = await InsertLookupAsync(moveTag: false);
+            _ = await ListAsync(scope, BatchPurpose.Read);
+
+            // --- A save of the list commits after the cache was warmed: a new row, and the list's tag moved ---
+            string saved = await InsertLookupAsync(moveTag: true);
+            (int prologues, int results) = (Variants().Count, Results().Count);
+
+            (List<string> codes, int attempts) = await ListAsync(scope, BatchPurpose.Validate);
+
+            // The cached list was refused once; the recomposed batch reloaded it, and both round trips counted.
+            Assert.Equal(2, attempts);
+            Assert.Contains(saved, codes);
+            Assert.Equal(2, Variants().Count - prologues);
+            Assert.Equal(2, Results().Count - results);
+        }
+
+        [Fact]
+        public async Task A_read_composed_from_a_cached_list_whose_tag_moved_is_served_in_one_round_trip()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync("Cam");
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            _ = await InsertLookupAsync(moveTag: false);
+            _ = await ListAsync(scope, BatchPurpose.Read);
+            string saved = await InsertLookupAsync(moveTag: true);
             int before = Variants().Count;
 
-            int attempts = await ReadAsync(scope, policy, static attempt => attempt == 0);
+            (List<string> codes, int attempts) = await ListAsync(scope, BatchPurpose.Read);
 
-            Assert.Equal(expected, attempts);
-            Assert.Equal(expected, Variants().Count - before);
+            Assert.Equal(1, attempts);
+            Assert.DoesNotContain(saved, codes);
+            Assert.Equal(1, Variants().Count - before);
         }
 
         [Fact]
@@ -290,6 +314,27 @@ namespace Tellma.Core.IntegrationTests.Access
             return attempts;
         }
 
+        /// <summary>Runs a guarded batch that reads the cached lookup list.</summary>
+        /// <param name="scope">The scope.</param>
+        /// <param name="purpose">The batch's purpose: a read is served a moved list, a validation re-runs.</param>
+        /// <returns>The codes of the list read, and the attempts composed.</returns>
+        private static async Task<(List<string> Codes, int Attempts)> ListAsync(AsyncServiceScope scope, BatchPurpose purpose)
+        {
+            int attempts = 0;
+            BatchResult<CacheResult<CachedEntitySet<Lookup>>>? list = null;
+            List<string> codes = await scope.ServiceProvider.GetRequiredService<IGuardedBatchRunner>().RunAsync<List<string>>(
+                purpose,
+                (user, batch) =>
+                {
+                    attempts++;
+                    list = batch.FromCache<Lookup>();
+                    return ValueTask.CompletedTask;
+                },
+                (_, _) => [.. list!.Value.Value!.Items.Select(static lookup => lookup.Code)],
+                Token);
+            return (codes, attempts);
+        }
+
         /// <summary>Runs a guarded read that depends on the cached lookup list, under a policy.</summary>
         /// <param name="scope">The scope.</param>
         /// <param name="policy">What a moved tag does.</param>
@@ -321,6 +366,19 @@ namespace Tellma.Core.IntegrationTests.Access
         private Task<AsyncServiceScope> ScopeAsync(int userId, string subject, bool background)
         {
             return background ? fixture.ScopeAsync(subject: null, userId: userId) : fixture.ScopeAsync(subject);
+        }
+
+        /// <summary>Inserts a lookup under a fresh id, moving the list's tag as a save of the list does, or not.</summary>
+        /// <param name="moveTag">Whether the list's tag moves.</param>
+        /// <returns>The lookup's code.</returns>
+        private async Task<string> InsertLookupAsync(bool moveTag)
+        {
+            int id = fixture.NextUserId();
+            string move = moveTag ? $"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{VersionTagNames.ForEntity("fixture.Lookup")}';" : string.Empty;
+            await fixture.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                Sql($"INSERT INTO [fixture].[Lookups] ([Id], [Code], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({id}, 'L{id}', N'Lookup {id}', 1, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1); {move}"));
+            return string.Create(CultureInfo.InvariantCulture, $"L{id}");
         }
 
         /// <summary>The jobs of an id that committed.</summary>

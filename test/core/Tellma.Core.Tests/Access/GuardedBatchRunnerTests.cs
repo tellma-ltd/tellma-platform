@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
@@ -30,8 +31,9 @@ namespace Tellma.Core.Tests.Access
 {
     /// <summary>
     ///     The guarded runner over a fake connection and scripted batches: one round trip when the
-    ///     guard passes, one recompose from the fresh state after any one failure, and a second
-    ///     failure in the same call refused as stale, counted, metered and logged.
+    ///     guard passes, one recompose from the fresh state after any one failure (what a failed
+    ///     round trip's prologue read applied first, the refreshed context's cultures applied after),
+    ///     and a second failure in the same call refused as stale, counted, metered and logged.
     /// </summary>
     public sealed class GuardedBatchRunnerTests : IAsyncDisposable
     {
@@ -209,6 +211,29 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
+        public async Task Fresh_settings_apply_the_refreshed_contexts_cultures_to_the_recomposed_batch_and_the_read()
+        {
+            _locale.Transform = static context => context with { Culture = "ar", CultureInfo = CultureInfo.GetCultureInfo("ar") };
+            Fail(settingsStale: true, settingsTag: SettingsB);
+            Pass(settingsTag: SettingsB);
+            List<string> composedIn = [];
+
+            string readIn = await Runner().RunAsync(
+                BatchPurpose.Validate,
+                (_, _) =>
+                {
+                    composedIn.Add(CultureInfo.CurrentUICulture.Name);
+                    return ValueTask.CompletedTask;
+                },
+                static (_, _) => CultureInfo.CurrentCulture.Name,
+                TestContext.Current.CancellationToken);
+
+            Assert.NotEqual("ar", composedIn[0]);
+            Assert.Equal("ar", composedIn[1]);
+            Assert.Equal("ar", readIn);
+        }
+
+        [Fact]
         public async Task A_failed_guard_that_brought_the_settings_the_context_carries_re_runs_no_initializer()
         {
             Fail(permissionsStale: true);
@@ -233,6 +258,25 @@ namespace Tellma.Core.Tests.Access
             Assert.Same(_connection.Reconnected, _connection.Premised[1]);
             Assert.Same(_connection.Applied.Single().User, user);
             Assert.Equal(2, _script.RoundTrips);
+        }
+
+        [Fact]
+        public async Task A_tag_that_moved_after_the_prologue_was_read_applies_what_it_read_before_reconnecting()
+        {
+            ConnectResult read = Result(guard: true, permissionsStale: false, settingsStale: false, SettingsA);
+            _steps.Enqueue(_ =>
+            {
+                _connection.ReadWithoutCompleting = read;
+                throw new BatchAssertionFailedException(TellmaSqlErrors.StaleVersionTag, "Stale", statementOrdinal: null);
+            });
+            Pass();
+
+            _ = await RunAsync(BatchPurpose.Persist);
+
+            Assert.Equal(2, _connection.Applied.Count);
+            Assert.Same(read, _connection.Applied[0].Result);
+            Assert.Equal(1, _connection.Reconnects);
+            Assert.Same(_connection.Reconnected, _connection.Premised[1]);
         }
 
         [Fact]
@@ -285,6 +329,24 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal(2, _script.RoundTrips);
             Assert.Equal(0, _connection.Reconnects);
             Assert.Equal(2, _connection.Premised.Count);
+        }
+
+        [Fact]
+        public async Task A_moved_re_run_input_applies_what_its_round_trip_read_and_recomposes_for_the_applied_user()
+        {
+            ConnectResult read = Result(guard: true, permissionsStale: false, settingsStale: false, SettingsA);
+            _steps.Enqueue(_ =>
+            {
+                _connection.ReadWithoutCompleting = read;
+                throw new StaleContextException([new VersionTagDependency("entity:core.Unit", VersionTag.New(), VersionTagMismatchPolicy.Rerun)]);
+            });
+            Pass();
+
+            _ = await RunAsync(BatchPurpose.Read);
+
+            Assert.Equal(2, _connection.Applied.Count);
+            Assert.Same(read, _connection.Applied[0].Result);
+            Assert.Same(_connection.Applied[0].User, _connection.Premised[1]);
         }
 
         [Fact]
@@ -355,11 +417,22 @@ namespace Tellma.Core.Tests.Access
         {
             _steps.Enqueue(_ =>
             {
-                _connection.Pending!.Complete(new ConnectResult(
-                    7, UserKind.Individual, true, UserState.Joined, Guid.NewGuid(), Guid.NewGuid(), Tags(settingsTag),
-                    permissionsStale, false, settingsStale, guard, null, null));
+                _connection.Pending!.Complete(Result(guard, permissionsStale, settingsStale, settingsTag));
                 return Task.CompletedTask;
             });
+        }
+
+        /// <summary>A prologue result.</summary>
+        /// <param name="guard">Whether the guard passed.</param>
+        /// <param name="permissionsStale">Whether the permissions read as stale.</param>
+        /// <param name="settingsStale">Whether the settings read as stale.</param>
+        /// <param name="settingsTag">The settings tag it reads.</param>
+        /// <returns>The result.</returns>
+        private static ConnectResult Result(bool guard, bool permissionsStale, bool settingsStale, Guid settingsTag)
+        {
+            return new ConnectResult(
+                7, UserKind.Individual, true, UserState.Joined, Guid.NewGuid(), Guid.NewGuid(), Tags(settingsTag),
+                permissionsStale, false, settingsStale, guard, null, null);
         }
 
         /// <summary>Runs a call that composes nothing of its own and reads the connected user.</summary>
@@ -408,6 +481,9 @@ namespace Tellma.Core.Tests.Access
             /// <summary>The latest prologue result handed out.</summary>
             public BatchResult<ConnectResult>? Pending { get; private set; }
 
+            /// <summary>A result the latest round trip read before it failed, leaving its handle incomplete.</summary>
+            public ConnectResult? ReadWithoutCompleting { get; set; }
+
             /// <summary>Every result applied, with the user it returned.</summary>
             public List<(ConnectResult Result, ConnectedUser User)> Applied { get; } = [];
 
@@ -445,7 +521,14 @@ namespace Tellma.Core.Tests.Access
             public BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises)
             {
                 Pending = new BatchResult<ConnectResult>();
+                ReadWithoutCompleting = null;
                 return Pending;
+            }
+
+            /// <inheritdoc />
+            public ConnectResult? ReadOf(BatchResult<ConnectResult> prologue)
+            {
+                return prologue.IsCompleted ? prologue.Value : ReadWithoutCompleting;
             }
 
             /// <inheritdoc />
@@ -507,6 +590,9 @@ namespace Tellma.Core.Tests.Access
             /// <inheritdoc />
             public int Order => order;
 
+            /// <summary>What a run makes of the context; unchanged by default.</summary>
+            public Func<RequestContext, RequestContext> Transform { get; set; } = static context => context;
+
             /// <summary>Its runs.</summary>
             public int Runs { get; private set; }
 
@@ -518,7 +604,7 @@ namespace Tellma.Core.Tests.Access
             {
                 Runs++;
                 Inputs = inputs;
-                return Task.FromResult(context);
+                return Task.FromResult(Transform(context));
             }
         }
 
