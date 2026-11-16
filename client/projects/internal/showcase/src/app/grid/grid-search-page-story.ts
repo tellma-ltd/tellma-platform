@@ -509,11 +509,14 @@ export class GridSearchPageStory {
     }
   }
 
-  /** Flashes the active row without moving the active cell or the range. */
+  /**
+   * Flashes the active row without moving the active cell, the range or,
+   * when the row is in view, the scroll position.
+   */
   flashActive(grid: TmGrid<DemoRow>): void {
     const id = this.activeRowId();
     if (id !== null) {
-      grid.scrollToRow(id, { flash: true, activate: false });
+      grid.scrollToRow(id, { flash: true, activate: false, align: 'nearest' });
     }
   }
 

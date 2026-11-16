@@ -746,57 +746,117 @@ test.describe('the active row under forced colors', () => {
   });
 });
 
-/** The flash ring as the screen shows it over one cell of a row. */
-interface RingSample {
+/** One of the flash ring's bands read off the screen at one point. */
+interface BandSample {
+  /** The cell or row side the band was read over: `cell 3`, `left`, `right`. */
+  readonly over: string;
+  /** Where the band was read: the cell or row side, the edge and the band. */
+  readonly at: string;
+  /**
+   * How far the ring moves this pixel: the largest channel difference
+   * between the expected pixel and the pixel before the flash. Near zero,
+   * the read cannot tell a ring from no ring.
+   */
+  readonly change: number;
+  /** The screen pixel with the ring on. */
+  readonly actual: string;
+  /**
+   * The band's system colour composited over the same pixel before the
+   * flash, as the screen paints it: a translucent system colour (some
+   * platforms' Highlight) blends with the cell beneath, an opaque one
+   * replaces it.
+   */
+  readonly expected: string;
+  /** Whether the two agree within compositing rounding. */
+  readonly close: boolean;
+}
+
+/** One cell of a flashing row: its surface, read from its styles. */
+interface RingCell {
   /** The cell's chrome kind: its `data-tm-*` marker, or its tag. */
   readonly kind: string;
   /** The cell's computed background. */
   readonly background: string;
   /** Whether the cell runs an animation (the flash's tint). */
   readonly animated: boolean;
-  /** The screen pixels at the middle of the ring's outer and inner bands, on the top edge. */
-  readonly top: readonly [string, string];
-  /** The same on the bottom edge. */
-  readonly bottom: readonly [string, string];
 }
 
 /** The flash ring read off the screen: over every cell of a row, and at the row's two ends. */
 interface RingPaint {
-  /** One sample per cell of the row, in DOM order. */
-  readonly cells: readonly RingSample[];
-  /** The outer and inner bands at mid-height on the row's inline-start edge. */
-  readonly start: readonly [string, string];
-  /** The same on the row's inline-end edge. */
-  readonly end: readonly [string, string];
+  /** One entry per cell of the row, in DOM order. */
+  readonly cells: readonly RingCell[];
+  /**
+   * The outer (Highlight) and inner (HighlightText) bands on the top and
+   * bottom edges over every cell, and at mid-height on the row's two sides.
+   */
+  readonly bands: readonly BandSample[];
 }
 
 /**
- * Screenshots the page and reads the flash ring's two bands back from the
- * pixels, so the assertion covers what the screen shows (a ring the cells
- * paint over fails it), not only what the styles say. Each band is sampled
- * at its middle, clear of the snapping of either edge.
+ * Reads the flash ring's two bands back from the screen: the pixels in the
+ * middle of each band with the ring on, against the same pixels in `before`
+ * (a screenshot taken before the flash, nothing else changed) with the
+ * band's system colour composited over them. A ring the cells paint over
+ * leaves the pixels as they were and fails, so the check covers what the
+ * screen shows, not only what the styles say. Each band is sampled at its
+ * middle, clear of the snapping of either edge.
  */
-async function ringPaint(page: Page, viewIndex: number): Promise<RingPaint> {
+async function ringPaint(page: Page, viewIndex: number, before: Buffer): Promise<RingPaint> {
   await appStable(page);
-  const png = (await page.screenshot()).toString('base64');
+  const after = await page.screenshot();
+  const shots = { before: before.toString('base64'), after: after.toString('base64') };
   return row(page, viewIndex).evaluate(async (rowElement, data): Promise<RingPaint> => {
-    // Decode the screenshot into a canvas to read its pixels.
-    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true })!;
-    context.drawImage(bitmap, 0, 0);
-    const scale = bitmap.width / window.innerWidth;
-    const pixel = (x: number, y: number): string => {
-      const [r, g, b] = context.getImageData(
-        Math.floor(x * scale),
-        Math.floor(y * scale),
-        1,
-        1,
-      ).data;
-      return `rgb(${r}, ${g}, ${b})`;
+    // Decodes a screenshot into a canvas to read its pixels.
+    const decode = async (png: string): Promise<CanvasRenderingContext2D> => {
+      const bytes = Uint8Array.from(atob(png), (char) => char.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext('2d', { willReadFrequently: true })!;
+      context.drawImage(bitmap, 0, 0);
+      return context;
+    };
+    const [ringOff, ringOn] = await Promise.all([decode(data.before), decode(data.after)]);
+    const scale = ringOn.canvas.width / window.innerWidth;
+    const pixel = (context: CanvasRenderingContext2D, x: number, y: number): number[] => [
+      ...context.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data.slice(0, 3),
+    ];
+
+    // The bands' system colours with their alpha, as the page resolves
+    // them; kept as authored, so the probe reads the keyword's own value.
+    const channels = (name: string): number[] => {
+      const probe = document.createElement('div');
+      probe.style.forcedColorAdjust = 'none';
+      probe.style.backgroundColor = name;
+      document.body.append(probe);
+      const resolved = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const [r, g, b, a = 1] = (resolved.match(/[0-9.]+/g) ?? []).map(Number);
+      return [r, g, b, a];
+    };
+    const outer = channels('Highlight');
+    const inner = channels('HighlightText');
+    const rgb = ([r, g, b]: number[]): string => `rgb(${r}, ${g}, ${b})`;
+
+    // One band read: the ring-on pixel against the band's colour composited
+    // (source-over) on the ring-off pixel, within a step of rounding.
+    const bands: BandSample[] = [];
+    const read = (over: string, at: string, colour: number[], x: number, y: number): void => {
+      const base = pixel(ringOff, x, y);
+      const actual = pixel(ringOn, x, y);
+      const alpha = colour[3];
+      const expected = base.map((channel, i) =>
+        Math.round(colour[i] * alpha + channel * (1 - alpha)),
+      );
+      bands.push({
+        over,
+        at: `${over} ${at}`,
+        change: Math.max(...expected.map((channel, i) => Math.abs(channel - base[i]))),
+        actual: rgb(actual),
+        expected: rgb(expected),
+        close: actual.every((channel, i) => Math.abs(channel - expected[i]) <= 2),
+      });
     };
 
     // Each band is a focus ring wide, read from the token rather than from
@@ -810,9 +870,13 @@ async function ringPaint(page: Page, viewIndex: number): Promise<RingPaint> {
     }
     const box = rowElement.getBoundingClientRect();
     const middle = box.top + box.height / 2;
-    const cells = [...rowElement.children].map((child): RingSample => {
+    const cells = [...rowElement.children].map((child, index): RingCell => {
       const rect = child.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
+      read(`cell ${index}`, 'top outer', outer, x, box.top + band / 2);
+      read(`cell ${index}`, 'top inner', inner, x, box.top + band * 1.5);
+      read(`cell ${index}`, 'bottom outer', outer, x, box.bottom - band / 2);
+      read(`cell ${index}`, 'bottom inner', inner, x, box.bottom - band * 1.5);
       const markers = (child as HTMLElement).dataset;
       return {
         kind:
@@ -825,17 +889,50 @@ async function ringPaint(page: Page, viewIndex: number): Promise<RingPaint> {
                 : child.localName,
         background: getComputedStyle(child).backgroundColor,
         animated: child.getAnimations().length > 0,
-        top: [pixel(x, box.top + band / 2), pixel(x, box.top + band * 1.5)],
-        bottom: [pixel(x, box.bottom - band / 2), pixel(x, box.bottom - band * 1.5)],
       };
     });
-    // The inline edges in screen terms: the row's left and right.
-    return {
-      cells,
-      start: [pixel(box.left + band / 2, middle), pixel(box.left + band * 1.5, middle)],
-      end: [pixel(box.right - band / 2, middle), pixel(box.right - band * 1.5, middle)],
-    };
-  }, png);
+    // The inline ends in screen terms: the row's left and right.
+    read('left', 'outer', outer, box.left + band / 2, middle);
+    read('left', 'inner', inner, box.left + band * 1.5, middle);
+    read('right', 'outer', outer, box.right - band / 2, middle);
+    read('right', 'inner', inner, box.right - band * 1.5, middle);
+    return { cells, bands };
+  }, shots);
+}
+
+/**
+ * Asserts that every band read shows its system colour over what lay
+ * beneath it, and that each cell and each row side has a read the ring
+ * visibly changes. A read whose expected pixel equals its pixel before the
+ * flash (Highlight already there, say) passes with no ring at all; with at
+ * least one changing read per cell and side, a missing ring fails at every
+ * one of them, whatever the palette.
+ */
+function expectRinged(paint: RingPaint): void {
+  for (const band of paint.bands) {
+    expect(band.close, `${band.at}: ${band.actual}, expected ${band.expected}`).toBe(true);
+  }
+  // Well over the compositing tolerance, so a change is a ring's, not noise.
+  const groups = new Set(paint.bands.map((band) => band.over));
+  for (const over of groups) {
+    const change = Math.max(
+      ...paint.bands.filter((band) => band.over === over).map((band) => band.change),
+    );
+    expect(change, `${over}: no read the ring would visibly change`).toBeGreaterThan(8);
+  }
+}
+
+/**
+ * Takes the screenshot a ring is read against, with the pointer on the
+ * flash button and the focus in it, as they will be once the button is
+ * clicked, so nothing but the flash differs between the two.
+ */
+async function beforeFlash(page: Page): Promise<Buffer> {
+  const button = page.getByTestId('flash-active');
+  await button.hover();
+  await button.focus();
+  await appStable(page);
+  return page.screenshot();
 }
 
 // Forced colors: scrollToRow's flash rings the row instead of tinting it, and
@@ -858,9 +955,7 @@ test.describe('the row flash and the row checkbox under forced colors', () => {
     page,
   }) => {
     const highlight = await systemColor(page, 'Highlight');
-    const highlightText = await systemColor(page, 'HighlightText');
     const selectedItem = await systemColor(page, 'SelectedItem');
-    const ringed = [highlight, highlightText];
 
     // Row numbers, the checkbox column and row 2 checked; a 2×3 range from
     // (2,0): row 2 then mixes the hit row header, the checked cells and the
@@ -873,11 +968,15 @@ test.describe('the row flash and the row checkbox under forced colors', () => {
     await expect(selectedCells(page)).toHaveCount(6);
     await expect(row(page, 2)).toHaveClass(/tm-grid__row--active/);
 
+    let before = await beforeFlash(page);
+    let box = await row(page, 2).boundingBox();
     await page.getByTestId('flash-active').click();
     await expect(row(page, 2)).toHaveClass(/tm-grid__row--flash/);
-    // In place: the range survives the flash.
+    // In place: the range and the scroll position survive the flash, so the
+    // screenshot before it shows what lies under the ring.
     await expect(selectedCells(page)).toHaveCount(6);
-    let paint = await ringPaint(page, 2);
+    expect(await row(page, 2).boundingBox()).toEqual(box);
+    let paint = await ringPaint(page, 2, before);
     expect(paint.cells.map((sample) => sample.kind)).toEqual([
       'rowhdr',
       'checkcell',
@@ -900,32 +999,25 @@ test.describe('the row flash and the row checkbox under forced colors', () => {
       selectedItem,
     ]);
     expect(paint.cells.some((sample) => sample.animated)).toBe(false);
-    for (const sample of paint.cells) {
-      expect(sample.top).toEqual(ringed);
-      expect(sample.bottom).toEqual(ringed);
-    }
-    expect(paint.start).toEqual(ringed);
-    expect(paint.end).toEqual(ringed);
+    expectRinged(paint);
 
     // An unchecked row: plain cells beside the fill and the hit row header.
     await cell(page, 4, 3).click();
     await cell(page, 4, 4).click({ modifiers: ['Shift'] });
     await expect(selectedCells(page)).toHaveCount(2);
+    before = await beforeFlash(page);
+    box = await row(page, 4).boundingBox();
     await page.getByTestId('flash-active').click();
     await expect(row(page, 4)).toHaveClass(/tm-grid__row--flash/);
     await expect(row(page, 2)).not.toHaveClass(/tm-grid__row--flash/);
-    paint = await ringPaint(page, 4);
+    expect(await row(page, 4).boundingBox()).toEqual(box);
+    paint = await ringPaint(page, 4, before);
     const backgrounds = paint.cells.map((sample) => sample.background);
     expect(backgrounds[0]).toBe(selectedItem); // the hit row header
     expect(backgrounds.slice(5, 7)).toEqual([highlight, highlight]);
     expect(backgrounds[2]).not.toBe(highlight);
     expect(backgrounds[2]).not.toBe(selectedItem);
-    for (const sample of paint.cells) {
-      expect(sample.top).toEqual(ringed);
-      expect(sample.bottom).toEqual(ringed);
-    }
-    expect(paint.start).toEqual(ringed);
-    expect(paint.end).toEqual(ringed);
+    expectRinged(paint);
   });
 
   test("a checked row's checkbox keeps its edge over the checked cell", async ({ page }) => {
