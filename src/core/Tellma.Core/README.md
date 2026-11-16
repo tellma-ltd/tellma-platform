@@ -1085,6 +1085,52 @@ feature.
 | `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
 | `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
 
+### The validation stage
+
+The parts a write's validation stage is assembled from, internal to the assembly until the write
+pipeline drives them:
+
+- **Context loader.** `ContextLoader` is `IContextLoader` with DataLoader semantics: a request is
+  deduplicated by its structural key and handed back as a `ContextRef` that fills when its round
+  runs. Keyed requests (`ByIds`, `ByKey` over a property unique across the table, `ByParentIds`)
+  union their keys into one table-valued key set and their selects into one select per entity and
+  key, and answer every key, a missing key as an explicit absence (every parent answers, with an
+  empty list when it has no children); string keys compare as the platform collation does
+  (ignoring case, width, kana type and trailing spaces, minding accents, `ß` meeting `ss`). A key
+  already read, or primed from a row the operation holds (`Prime`, which wins over a read), is served from the cache
+  unless the request selects more, which reads it again under the union. `Query`, `Rows`, `Count`,
+  `Exists` (which shares the cap-0 count) and `Sql` merge identical requests; `Visible` conjoins the
+  entity's read decision, reading nothing when it is denied; `Ancestors` reads a tree's ancestor
+  ids. `Sql` is read-only: a statement declaring a write is refused when it is requested. A round
+  (`BeginRound`, `DispatchAsync`) appends every pending request to one batch and completes the refs
+  once it executes; a round with nothing pending sends nothing.
+- **Scheduler.** `ValidationScheduler` runs the validators as tasks and dispatches one round each
+  time every task is parked on `LoadAsync` or finished; a task registered during a round joins the
+  next. A task that faults or a round that fails tears down the parked tasks; cancellation stops
+  them. The ceiling counts dispatched rounds: one more is refused with an error naming the tasks
+  still parked. `tellma.crud.validation.rounds` records the rounds per operation, `crud.outcome`
+  `ok` or `exceeded`.
+- **Confirmations.** `Confirmations` (scoped, `IConfirmations`) is seeded once per scope with the
+  keys the caller confirmed; a key no feature declared is an authoring error. Under a system
+  principal every declared key counts as confirmed. `Frame(resource, operation)` opens one
+  write's frame, which collects its warnings until it is disposed: a `Require` on the frame, or on
+  the scope while the frame is the innermost open one (so an enlisted group is raised with its
+  host), records a confirmed key's consent in the log and turns an unconfirmed one into a
+  `ConfirmationRequest`; `tellma.crud.confirmations` counts both by `crud.key`. Outside every
+  frame, `Require` keeps the warning in `Unframed`, which no outcome raises: code outside
+  validation tests `IsConfirmed` and throws itself.
+  `ValidationOutcome.Raise` throws a stale stamp first, then the errors, then every unconfirmed
+  warning at once in key order.
+- **Attribute walker.** `AttributeWalker` judges a saved row against its metadata facets first (a
+  string's maximum length, a decimal's precision and scale, never rounding) and then the data
+  annotations on its client-owned properties, the class's own attributes included, at each
+  property's path, recursing into children with their parent key left alone; `IValidatableObject`
+  is not called. A request body is walked through its public properties, a cycle visited once. A
+  failed attribute maps to its validation code (`Required`, `Range`, `MaxLength` and the rest),
+  else to `Validation.Invalid` naming the property and the attribute.
+- **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
+  and rows ceilings, and reports every repeat of a positive id at its path.
+
 ## The route model
 
 `IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from
@@ -1318,6 +1364,7 @@ same in a `Persist` batch of its own.
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
+| `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |

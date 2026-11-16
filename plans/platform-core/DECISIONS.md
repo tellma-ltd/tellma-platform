@@ -359,6 +359,10 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-097 (2026-11-15): PC-064 is released over the cap, alongside PC-066's integration
+
+Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy agents. He also widened the allowlist for `git push -q origin HEAD:platform-core`. That breaks two rules for this one item: the cap, and one release at a time. Both releases merge and gate independently, and whichever pushes second gets a non-fast-forward rejection. That item fetches, merges again, re-runs the gates the new merge touched (the full gate if any C# project or the client changed), and pushes again. Nothing is forced. The CI watch, ledger snapshot and next release follow each landed push as usual.
+
 ### D-096 (2026-11-15): spec 0017 §6.4 BlobContainerStep goes to PC-089; PC-141's skipped rows carry to their seam checkpoints
 
 - Ruling: spec 0017 §6.4 (the `core.blob-container` provisioning step, BlobContainerStep) is in no checkpoint's Sections: PC-017 covers §6.1-§6.2 and PC-089 §6.3. PC-089 takes it, since it builds the per-tenant containers and EnsureTenant the step drives. The carry is on PC-089's status row.
