@@ -21,7 +21,7 @@ mkdirSync(outDir, { recursive: true });
 const css = tmEmitCss(tmTokensDefault);
 // Write only on a real change: an identical rewrite still moves the file's
 // mtime, and this stylesheet is a build input whose mtime decides whether the
-// static e2e server may reuse an existing bundle (scripts/serve.mjs).
+// e2e run may reuse an existing production bundle (scripts/prod-build.mjs).
 if (!existsSync(outFile) || readFileSync(outFile, 'utf8') !== css) {
   writeFileSync(outFile, css);
 }

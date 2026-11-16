@@ -5,13 +5,15 @@
 
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 
 namespace Tellma.Core.Abstractions.Api
 {
     /// <summary>
     ///     The source-generated serialization metadata of the platform's wire records: the request
-    ///     and result records, the records a problem body's details carry, and the scalar types.
+    ///     and result records, the rows envelopes, the records a problem body's details carry, and
+    ///     the scalar types.
     ///     <see cref="TellmaJson" /> puts it first in its resolver chain, ahead of reflection, which
     ///     resolves entity, child and operation body types.
     /// </summary>
@@ -44,6 +46,11 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
     [JsonSerializable(typeof(AccessGrant))]
+
+    // --- The rows envelopes: each written by its own converter, which the generated metadata carries ---
+    [JsonSerializable(typeof(RowPage))]
+    [JsonSerializable(typeof(QueryRowSet))]
+    [JsonSerializable(typeof(RelatedEntities))]
 
     // --- The records a problem body's details carry ---
     [JsonSerializable(typeof(ConcurrencyConflict))]

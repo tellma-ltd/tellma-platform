@@ -359,7 +359,7 @@ namespace Tellma.Core.Tests.Crud.Validation
         public async Task Rows_queries_merge_and_are_cached()
         {
             QueryRowSet rows = ValidationRig.IntRows(["Id"], [1], [2]);
-            BatchScript script = new BatchScript().OnRows(_ => new RowPage(rows, null, null));
+            BatchScript script = new BatchScript().OnRows(_ => new RowPage(rows, Count: null, Ancestors: null, CountCap: null));
             (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
             QuerySpec Spec()
             {
@@ -388,7 +388,8 @@ namespace Tellma.Core.Tests.Crud.Validation
             BatchScript script = new BatchScript().OnRows(static _ => new RowPage(
                 ValidationRig.IntRows(["Id", "ParentId"], [3, 2]),
                 null,
-                ValidationRig.IntRows(["Id", "ParentId"], [2, 1], [1, null])));
+                ValidationRig.IntRows(["Id", "ParentId"], [2, 1], [1, null]),
+                CountCap: null));
             (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
             ContextRef<IReadOnlyDictionary<int, IReadOnlyList<int>>>? chains = null;
 

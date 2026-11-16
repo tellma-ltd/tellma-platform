@@ -87,6 +87,37 @@ namespace Tellma.Identity.Services.Provisioning
         Updated = 2,
     }
 
+    /// <summary>What converging a document client's row did, or why it was refused.</summary>
+    public enum DocumentClientConvergence
+    {
+        /// <summary>The row already matched the document; nothing was written.</summary>
+        Unchanged = 0,
+
+        /// <summary>No row existed, and one was created.</summary>
+        Created = 1,
+
+        /// <summary>The row was rewritten to match a changed document.</summary>
+        Updated = 2,
+
+        /// <summary>No row existed, and the document-client cap is reached; nothing was written.</summary>
+        Cap = 3,
+
+        /// <summary>A row with this client id exists and is not a document client's; nothing was written.</summary>
+        Registered = 4,
+
+        /// <summary>
+        ///     A row holds this client id in another letter case, which the store's unique index
+        ///     treats as the same id; nothing was written.
+        /// </summary>
+        Collision = 5,
+
+        /// <summary>
+        ///     The row differs from the document but was written from a copy fetched later than
+        ///     this one, so this older copy did not overwrite it; nothing was written.
+        /// </summary>
+        Stale = 6,
+    }
+
     /// <summary>What converging a distribution's registrations did to the store.</summary>
     /// <param name="Client">The BFF client's outcome.</param>
     /// <param name="ServiceClient">The backend machine client's outcome.</param>

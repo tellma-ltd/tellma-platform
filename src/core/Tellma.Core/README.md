@@ -455,7 +455,7 @@ connection string and no secret: a tenant row names a server, a database and a c
 | Piece | What it does |
 |---|---|
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
-| `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. |
+| `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. A host that loads no snapshot at startup (the migrator) refreshes only after its own first load, so it never reads a catalog it has yet to create. |
 | The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development (a login the server cuts off before saying why is settled by asking `master` whether the database exists); an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
 | `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
 | `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
@@ -1131,6 +1131,30 @@ pipeline drives them:
 - **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
   and rows ceilings, and reports every repeat of a positive id at its path.
 
+## The route model
+
+`IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from
+the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
+projects its standard operations as its operations and capabilities imply them (`query`, and
+`get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
+`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+built-in ones and its companions' included; each child query surface projects `query`, then its
+actions; each routed service its actions. A route's template is
+`POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
+securable (null for a member-only action), and the facts consumers read: the reads are idempotent
+and not mutations, the writes mutations and not idempotent, an action's facts are its descriptor's.
+
+The fingerprint is the first 12 characters of the base64url SHA-256 of a canonical description
+(`ContractDescriber`): the request's and response's JSON contracts under `TellmaJson.Options`
+(each member's JSON name, kind and nullability and each enum's values, sorted, transitively; an
+entities result with its ids in the key type and the related projection of every entity its
+stack's details expansion reaches), with the stack's, child surface's and action's
+`ContractRevision`. The description holds no assembly versions, so it is the same in every process
+and on every operating system; the suite pins the fingerprints as goldens.
+
+`ContractsClientAssetContributor` writes the client metadata's Contracts chunk from the same
+routes: `fingerprints` (template to fingerprint), `long` and `idempotent`.
+
 ## Securables
 
 A securable is the `(Resource, Action)` pair a permission targets, with the query entity a grant's
@@ -1339,6 +1363,7 @@ same in a `Persist` batch of its own.
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
+| `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |

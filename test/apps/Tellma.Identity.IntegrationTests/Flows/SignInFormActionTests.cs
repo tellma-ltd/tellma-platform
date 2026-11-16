@@ -30,6 +30,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <summary>The callback the seeded client is registered with.</summary>
         private const string CallbackUri = "http://127.0.0.1/callback";
 
+        /// <summary>
+        ///     The callback's form-action source: a port-less loopback registration matches any
+        ///     port, so its source names every port.
+        /// </summary>
+        private const string CallbackSource = "http://127.0.0.1:*/callback";
+
         /// <summary>The seeded client's id.</summary>
         private const string ClientId = "browser-app";
 
@@ -62,7 +68,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             string policy = await PolicyOfAsync(factory, page + Separator(page) + "returnUrl=" + Uri.EscapeDataString(AuthorizeUrl(ClientId)));
 
-            Assert.Contains("form-action 'self' " + CallbackUri + ";", policy, StringComparison.Ordinal);
+            Assert.Contains("form-action 'self' " + CallbackSource + ";", policy, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -126,7 +132,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 factory, "/Identity/Account/Login?returnUrl=" + Uri.EscapeDataString(AuthorizeUrl(ClientId)));
 
             Assert.Contains("https://accounts.google.com", policy, StringComparison.Ordinal);
-            Assert.Contains(CallbackUri, policy, StringComparison.Ordinal);
+            Assert.Contains(CallbackSource, policy, StringComparison.Ordinal);
         }
 
         /// <summary>Fetches a page and returns the policy it was served with.</summary>

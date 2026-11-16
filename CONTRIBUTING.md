@@ -160,6 +160,11 @@ relative path arguments resolve against `client/`.
 node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
 ```
 
+With the `CI` environment variable set, as CI sets it, the suite runs against the production
+build of the showcase rather than the dev server. The script builds that bundle before Playwright
+starts, unless the bundle is already newer than every source file (as it is right after
+`pnpm run build:showcase`), so the web server only has to serve it.
+
 The reference distribution's client app builds end to end through MSBuild, on Linux and Windows:
 publishing the web project builds the Migrator, runs `tellma-client build` through the Client esproj
 (any build problem fails it) and copies the app into `wwwroot`. Then its lint and unit tests, which
