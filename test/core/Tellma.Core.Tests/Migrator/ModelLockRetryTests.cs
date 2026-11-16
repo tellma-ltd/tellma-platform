@@ -20,10 +20,10 @@ namespace Tellma.Core.Tests.Migrator
     ///     the server may still finish, into a second creation; one that never stopped would hold a
     ///     tenant's lock and parallel slot for good. Each test here would fail on either.
     /// </remarks>
-    public sealed class CreateDatabaseRetryTests
+    public sealed class ModelLockRetryTests
     {
         /// <summary>A policy of four attempts over 100 ms waits doubling to 400 ms.</summary>
-        private static readonly CreateDatabaseRetry Policy = new(4, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(400));
+        private static readonly ModelLockRetry Policy = new(4, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(400));
 
         /// <summary>Only the model lock, alone or with the creation failure that follows it, is transient.</summary>
         /// <param name="numbers">The error numbers one failed statement reported.</param>
@@ -46,15 +46,15 @@ namespace Tellma.Core.Tests.Migrator
         [InlineData(new int[0], false)]
         public void Only_the_model_lock_is_transient(int[] numbers, bool expected)
         {
-            Assert.Equal(expected, CreateDatabaseRetry.IsTransient(numbers));
+            Assert.Equal(expected, ModelLockRetry.IsTransient(numbers));
         }
 
         /// <summary>An exception that is not SQL Server's is never transient, whatever its message says.</summary>
         [Fact]
         public void An_exception_that_is_not_sql_servers_is_not_transient()
         {
-            Assert.False(CreateDatabaseRetry.IsTransient(new InvalidOperationException("Could not obtain exclusive lock on database 'model'.")));
-            Assert.False(CreateDatabaseRetry.IsTransient(new TimeoutException()));
+            Assert.False(ModelLockRetry.IsTransient(new InvalidOperationException("Could not obtain exclusive lock on database 'model'.")));
+            Assert.False(ModelLockRetry.IsTransient(new TimeoutException()));
         }
 
         /// <summary>The waits double from the base, stop at the ceiling, and vary by a quarter either way.</summary>
@@ -78,7 +78,7 @@ namespace Tellma.Core.Tests.Migrator
         [Fact]
         public void The_default_policy_makes_five_attempts_about_two_four_eight_and_fifteen_seconds_apart()
         {
-            CreateDatabaseRetry policy = new(CreateDatabaseRetry.DefaultMaxAttempts);
+            ModelLockRetry policy = new(ModelLockRetry.DefaultMaxAttempts);
 
             Assert.Equal(5, policy.MaxAttempts);
             Assert.Equal(
@@ -90,9 +90,9 @@ namespace Tellma.Core.Tests.Migrator
         [Fact]
         public void Bounds_and_arguments_outside_their_domains_are_refused()
         {
-            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new CreateDatabaseRetry(0));
-            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new CreateDatabaseRetry(1, TimeSpan.Zero, TimeSpan.FromSeconds(1)));
-            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new CreateDatabaseRetry(1, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1)));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new ModelLockRetry(0));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new ModelLockRetry(1, TimeSpan.Zero, TimeSpan.FromSeconds(1)));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new ModelLockRetry(1, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1)));
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => Policy.Delay(0, 0.5));
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => Policy.Delay(1, 1));
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => Policy.Delay(1, -0.1));
@@ -162,7 +162,7 @@ namespace Tellma.Core.Tests.Migrator
         [Fact]
         public async Task A_policy_of_one_attempt_surfaces_the_first_transient_failure()
         {
-            Harness harness = new(failures: int.MaxValue, new TransientFailure(), policy: new CreateDatabaseRetry(1));
+            Harness harness = new(failures: int.MaxValue, new TransientFailure(), policy: new ModelLockRetry(1));
 
             _ = await Assert.ThrowsAsync<TransientFailure>(() => harness.RunAsync(CancellationToken.None));
 
@@ -227,7 +227,7 @@ namespace Tellma.Core.Tests.Migrator
         public async Task The_real_wait_is_cut_short_by_a_cancellation()
         {
             // A wait far longer than the test's own budget; the cancellation must end it.
-            CreateDatabaseRetry patient = new(2, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+            ModelLockRetry patient = new(2, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
             using CancellationTokenSource cancellation = new();
             int runs = 0;
 
@@ -269,7 +269,7 @@ namespace Tellma.Core.Tests.Migrator
         /// <param name="onRun">Called at the start of each attempt.</param>
         /// <param name="onWait">Called at the start of each wait.</param>
         /// <param name="policy">The policy; <see cref="Policy" /> when null.</param>
-        private sealed class Harness(int failures, Exception failure, Action? onRun = null, Action? onWait = null, CreateDatabaseRetry? policy = null)
+        private sealed class Harness(int failures, Exception failure, Action? onRun = null, Action? onWait = null, ModelLockRetry? policy = null)
         {
             /// <summary>How many attempts started.</summary>
             public int Runs { get; private set; }

@@ -30,7 +30,7 @@ namespace Tellma.Core.Migrator.Sql
     ///         creation's command bound is long enough instead, and the next migrator run converges.
     ///     </para>
     /// </remarks>
-    internal sealed class CreateDatabaseRetry
+    internal sealed class ModelLockRetry
     {
         /// <summary>The error SQL Server raises when <c>CREATE DATABASE</c> could not lock <c>model</c>.</summary>
         public const int ModelLockedErrorNumber = 1807;
@@ -50,7 +50,7 @@ namespace Tellma.Core.Migrator.Sql
         /// <summary>Creates a policy with the default waits.</summary>
         /// <param name="maxAttempts">How many times the creation runs at most, the first run included; at least 1.</param>
         /// <exception cref="ArgumentOutOfRangeException">The bound is below 1.</exception>
-        public CreateDatabaseRetry(int maxAttempts)
+        public ModelLockRetry(int maxAttempts)
             : this(maxAttempts, DefaultBaseDelay, DefaultMaxDelay)
         {
         }
@@ -60,7 +60,7 @@ namespace Tellma.Core.Migrator.Sql
         /// <param name="baseDelay">The wait before the first retry, before jitter; positive.</param>
         /// <param name="maxDelay">The ceiling the doubling waits stop at, before jitter; at least <paramref name="baseDelay" />.</param>
         /// <exception cref="ArgumentOutOfRangeException">A bound is outside its domain.</exception>
-        public CreateDatabaseRetry(int maxAttempts, TimeSpan baseDelay, TimeSpan maxDelay)
+        public ModelLockRetry(int maxAttempts, TimeSpan baseDelay, TimeSpan maxDelay)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(baseDelay, TimeSpan.Zero);

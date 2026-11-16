@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Migrator;
@@ -41,6 +42,26 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(
                 acme.CatalogConnectionString,
                 $"SELECT COUNT(*) FROM [dbo].[__EFMigrationsHistory] WHERE [MigrationId] = N'{TellmaIdentityConstants.LatestMigration}';"));
+        }
+
+        /// <summary>
+        ///     The identity store creates its own commands, so the migration bound reaches them in the
+        ///     catalog connection string it is handed: every one of its statements gets the configured
+        ///     bound instead of SqlClient's 30-second default.
+        /// </summary>
+        /// <returns>A task that completes when the test has run.</returns>
+        [Fact]
+        public async Task The_identity_store_migrates_under_the_configured_migration_bound()
+        {
+            AcmeMigrator acme = new(sql, "acme_identity_bound");
+            acme.Values["Tellma:Migrator:MigrationCommandTimeout"] = "01:30:00";
+
+            MigratorResult result = await acme.RunAsync("migrate", "--catalog-only");
+
+            Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
+            SqlConnectionStringBuilder handed = new(Assert.Single(acme.IdentityStoreConnectionStrings));
+            Assert.Equal(5400, handed.CommandTimeout);
+            Assert.Equal(acme.CatalogName, handed.InitialCatalog);
         }
 
         [Fact]

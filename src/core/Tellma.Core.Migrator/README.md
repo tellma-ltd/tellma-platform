@@ -125,7 +125,7 @@ migration grants it `EXECUTE`.
 | `CommandLine/` | The command line's parser and its usage errors. |
 | `Emit/` | The client metadata and string-pack files: canonical JSON, the content hash in each file name, the loaders module with its `strings` map. |
 | `MigratorOptions` | The `Tellma:Migrator` bounds: each statement class's command timeout, the creation's attempts and the version-tag move's bound. |
-| `Sql/` | The database statements: creation (with the model-lock retry, `CreateDatabaseRetry`) and collation checks, the migration locks, the grants, the schema fingerprint rows. |
+| `Sql/` | The database statements: creation (with the model-lock retry, `ModelLockRetry`) and collation checks, the migration locks, the grants, the schema fingerprint rows. |
 | `TenantMigration` | One tenant's provisioning and migration, each a converging run under the tenant lock. |
 | `TellmaDesignTimeDbContextFactory<TContext>` | The base of a distribution's tenant design-time factory: `dotnet ef` builds the tenant context from the distribution's composition. |
 | `Migrations/` and the snapshot under `Tellma/Core/Migrator/Migrations/` | The catalog chain for `CatalogDbContext` (`Tellma.Core.Tenancy`): schema `catalog` with `Tenants`, `CatalogState` (one row, seeded), `TenantMemberships` and `Sessions`, the tenant id sequence `sq_Tenants` (from 1000) and the membership table type `TenantMembershipList`. History: `catalog.__EFMigrationsHistory`. |

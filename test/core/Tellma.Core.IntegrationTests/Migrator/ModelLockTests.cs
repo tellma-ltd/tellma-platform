@@ -163,7 +163,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             MigratorOptions bounds = new();
 
             // Short waits: both creations are back on the lock within a second of its release.
-            CreateDatabaseRetry retry = new(10, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
+            ModelLockRetry retry = new(10, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(1));
             EventRecorder firstLog = new(Retrying);
             EventRecorder secondLog = new(Retrying);
 

@@ -59,7 +59,7 @@ namespace Tellma.Core.Migrator.Sql
         /// <returns>True when this call created the database.</returns>
         /// <exception cref="MigratorFailureException">The database is missing and may not be created.</exception>
         public async Task<bool> EnsureExistsAsync(
-            bool create, string? createDatabaseOptions, CreateDatabaseRetry retry, ILogger logger, CancellationToken cancellationToken)
+            bool create, string? createDatabaseOptions, ModelLockRetry retry, ILogger logger, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(retry);
             ArgumentNullException.ThrowIfNull(logger);

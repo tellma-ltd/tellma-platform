@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Globalization;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
@@ -92,6 +93,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>A further composition every run adds to Acme's.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>The connection string each run handed the identity store's migration, in order.</summary>
+        public ConcurrentQueue<string> IdentityStoreConnectionStrings { get; } = new();
+
         /// <summary>A tenant database's default name.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <returns>The name.</returns>
@@ -126,7 +130,12 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     AcmeComposition.Compose(builder);
                     extra?.Invoke(builder);
                 },
-                TellmaIdentityStore.MigrateAsync,
+                // Acme's own identity store, recording the connection string it is handed.
+                connectionString =>
+                {
+                    IdentityStoreConnectionStrings.Enqueue(connectionString);
+                    return TellmaIdentityStore.MigrateAsync(connectionString);
+                },
                 new MigratorRunSettings
                 {
                     MigrationsAssembly = typeof(AcmeDesignTimeFactory).Assembly,

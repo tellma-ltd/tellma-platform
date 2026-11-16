@@ -208,3 +208,110 @@ Suggested fix: either skip the class unless the fixture owns its container (or a
 ### Open risks added in review 1
 
 - Two migrator runs creating one catalog at the same moment can still end each other's sessions through the fresh-database RCSI `ALTER … WITH ROLLBACK IMMEDIATE`. This predates this item. One run fails and a rerun converges.
+
+## Review 2
+
+Reviewed commits 77de323d and 59c9672f together (`git diff 77de323d^ 59c9672f`). What I ran in this worktree:
+
+- `dotnet build test/core/Tellma.Core.Tests` and `dotnet build test/core/Tellma.Core.IntegrationTests`: Build succeeded, 0 warnings, 0 errors.
+- Tellma.Core.Tests, `FullyQualifiedName~Tellma.Core.Tests.Migrator|FullyQualifiedName~Tellma.Core.Tests.Tenancy`: 490 of 490 passed.
+- `ModelLockTests` alone, on Testcontainers: 3 of 3 passed (45 s, 1 m 3 s, 2 s).
+- Tellma.Core.IntegrationTests run together: `MigratorTests.A_statement_held_up_by_a_lock_fails_its_tenant_at_the_configured_bound`, `VersionTagSeedTests` and `Tenancy.TenantScopeTests`. 12 of 12 passed.
+- `Catalog.RegistryCatalogTests` alone, which drives the changed refresh loop in web hosts that load at startup: 4 of 4 passed.
+- `git merge-tree --write-tree 59c9672f abd089d6` (this item against PC-F47's tip, no worktree change): see R2-1.
+
+Checks that came back clean:
+
+- **The R1-1 fix in shared core.** Only one host sets `LoadOnStart = false`: `TellmaMigrator.RunAsync` (`TellmaMigrator.cs:160-164`), which every distribution migrator, `MigratorHarness`, `AcmeMigrator`, `CompositionTests` and `MigratorHttpLoggingTests` go through. No web host, test factory or `CatalogHost` turns it off (`CatalogHost.cs:116` only shortens the first-load bound). So no host that serves requests can sit with an idle loop. The readiness check (`Surfaces/HealthChecks.cs:38`) and `MembershipReconcileService` exist only in AspNetCore hosts, which keep `LoadOnStart = true` and refresh on every tick as before, a failed first load included (pinned by the new unit test). In the migrator host:
+  - `migrate` forces the first load once the catalog is migrated (`MigrateCommand.cs:197`), and `provision` forces one before the tenant's scopes read the snapshot (`ProvisionCommand.cs:79`). `SnapshotLoadedAt` never goes back to null, so after either load the loop probes on every tick and staleness and the refresh-failure events behave exactly as before.
+  - `set-state` loads through `TenantCatalog.RefreshAfterWriteAsync` after its write. `status` never loads, but it reads nothing through the snapshot: `ITenantCatalog.ListAsync` composes strings itself (`TenantCatalog.cs:298-330`).
+  - A command whose forced load fails has already failed. Skipped ticks therefore hide nothing, and before the first load there is no snapshot for staleness to describe. No hosted service, startup check or validator in the migrator host opens the catalog. The lock's connection is unpooled, so it cannot poison the pool.
+- **The PoolBlockingPeriod pushback holds.** With the premature read gone, nothing in one migrator process opens a database before the same process created it. The tenant path never did. The pool is keyed by connection string, so the migrator's pool for a database is separate from every other process's. `Auto` is `NeverBlock` only for endpoints SqlClient recognises as Azure (`*.database.windows.net` and its sovereign-cloud and private-link spellings), so a catalog reached through a custom DNS alias would still block, but nothing triggers that now. Rewriting every catalog string in the host would be a wide change for no remaining cause.
+- **The pushback on a whole-run two-`migrate` test holds.** `A_creation_that_finds_its_database_created_by_another_while_it_waited_counts_it_as_existing` reaches the 1801 branch only after at least one logged retry, since both recorders are awaited before `model` is released. The `DB_ID` check runs once, before the retry loop, so the adopter's success can only come from the 1801 catch. Everything a whole run adds (collation check, `IsFresh`, the RCSI guard, the lock) is the existing-database path that `MigratorTests` covers. Two concurrent whole runs could also end each other's sessions, and the test would fail for that rather than for the 1801 path.
+- **The RCSI race recorded as an open risk is real, predates this item, and is not widened by it.** The `IF NOT EXISTS (… is_read_committed_snapshot_on = 1)` guard means the second run skips the `ALTER` once the first run's `ALTER` has finished. The first run takes its catalog lock only after its `ALTER`, so the second run's `ALTER` can never end the first run's lock session. The only collision left is two `ALTER`s in flight at once, or the second run opening the catalog during the first run's `ALTER`. Before this item, a creation queued on `model` reached 1801 the moment the first creation released it, right as that run began its `ALTER`. A retried one now waits 1.5–2.5 s first, so the window is if anything narrower. A failed run leaves a catalog that the next run prepares idempotently.
+- **The bounded lock never leaves the lock held or released wrongly.**
+  - A timed-out `EnsureHeldAsync` throws `Lost`, which is conservative: the work stops.
+  - A timed-out or failed release is swallowed, and the unpooled connection's dispose ends the session, which frees the session lock.
+  - The take keeps its own 660 s bound.
+- **Retry classification and loop.**
+  - `IsTransient` requires 1807 and nothing but 1807/1802. Should SqlClient ever fold an informational message into `Errors`, the result is no retry, which is the safe side.
+  - The 1801 catch sits outside the retry (`TargetDatabase.cs:108`), and `SqlException.Number` is the first error's number, so a final 1807 surfaces unchanged.
+  - Cancellation surfaces at once, both during an attempt and during a wait.
+  - Each tenant builds its own policy, and `Random.Shared` is thread-safe.
+- **A timed-out creation that completes server-side, and a half-prepared catalog.**
+  - The next run finds the database through `DB_ID`, or through 1801 if it races. It checks the collation and treats the database as fresh because the history table is absent.
+  - RCSI, the query store, the principal and the role are all idempotent. The principal is created before the migrations write any history, so a half-prepared catalog never skips it.
+- **Security.**
+  - `MigrationConnectionString` only sets `Command Timeout` through `SqlConnectionStringBuilder`, so the identity store receives the same credentials it received before.
+  - The two new events log the database name and `DataSource` only. No exception text or log line carries a connection string.
+- **Deviations.** The new `Tellma:Migrator` keys are additive, which §8 permits ("keys are additive-only within a family major"). The startup-gate validation follows §8's "ValidateDataAnnotations and ValidateOnStart" convention through `HostOptionsBinding`. No appsettings, infrastructure template or decision sets an invalid `Tellma:Migrator` value, so the stricter `VersionTagBumpTimeout` breaks no shipped configuration. The refresh loop's idle-until-first-load is a §3.4/§6.1 behaviour change, recorded in commit 2's Deviations and in ARCHITECTURE.md.
+- **AGENTS.md / PLAN §7.1 item 5.** No spec, §, PC, `docs/`, finding or decision references were added in any doc comment, message, log or test name. Every new member has XML docs and section comments. The READMEs are updated.
+
+### Findings
+
+**R2-1 (minor): after PC-F47 lands, `ModelLockTests` no longer compiles, and the Tellma.Testing.Support README conflicts. The R1-4 response says the two "merge cleanly".**
+
+Where:
+- `test/core/Tellma.Core.IntegrationTests/Migrator/ModelLockTests.cs:13` imports `Tellma.Core.Migrator.Sql`, and `:166` names `CreateDatabaseRetry`.
+- `test/core/Tellma.Core.IntegrationTests/Tellma.Core.IntegrationTests.csproj:4` has the global `<Using Include="Tellma.Testing.Support.Sql" />`.
+- PC-F47's tip (abd089d6) adds a public `Tellma.Testing.Support.Sql.CreateDatabaseRetry` (`test/shared/Tellma.Testing.Support/Sql/CreateDatabaseRetry.cs:32`). It has the same three-argument constructor and a different default policy.
+- `test/shared/Tellma.Testing.Support/README.md`: both items rewrite the `Sql/` row.
+
+Failure scenario:
+- Whichever of PC-F48 and PC-F47 merges into `platform-core` second leaves `CreateDatabaseRetry` in `ModelLockTests.cs:166` naming two accessible types imported at compilation-unit level. That is CS0104, a build break under warnings-as-errors, in a file the second item does not own.
+- `git merge-tree --write-tree 59c9672f abd089d6` also stops with `CONFLICT (content): Merge conflict in test/shared/Tellma.Testing.Support/README.md`.
+- `SqlServerFixture.cs` and `MigratorTests.cs` auto-merge.
+
+Suggested fix:
+- In `ModelLockTests.cs`, alias the type: `using MigratorCreateDatabaseRetry = Tellma.Core.Migrator.Sql.CreateDatabaseRetry;`. Alternatively, qualify the two uses, or rename one of the two types (for example the test-support one to `TestDatabaseCreationRetry`).
+- Tell the orchestrator that the `Sql/` row of the Tellma.Testing.Support README needs a hand merge, keeping both the `OwnsContainer` sentence and PC-F47's `SqlDatabaseCreation`/`CreateDatabaseRetry` text.
+
+**R2-2 (minor): commit 2's test list falls short of PLAN §7.1 item 4 for what commit 2 touched.**
+
+Where:
+- Commit 59c9672f changes `test/shared/Tellma.Testing.Support/Sql/SqlServerFixture.cs` and `src/core/Tellma.Core/Tenancy/TenantRegistryRefreshService.cs`.
+- Its message lists the unit tier as "Tellma.Core.Tests migrator and tenancy filters". For integration it lists `ModelLockTests`, `MigratorTests`, `VersionTagSeedTests` and Tellma.Distro.Acme.IntegrationTests.
+
+Failure scenario:
+- §7.1 item 4 says a change to `test/shared/*` makes every integration suite touched. These went unrun after commit 2:
+  - the rest of Tellma.Core.IntegrationTests, including `Catalog/*` and `Tenancy/TenantScopeTests`, whose `CatalogHost` runs the changed refresh loop with `LoadOnStart` on;
+  - Tellma.Core.EntityFrameworkCore.IntegrationTests;
+  - Tellma.Core.Queryex.IntegrationTests;
+  - Tellma.Identity.IntegrationTests.
+- The Tellma.Core change also puts every project that references Tellma.Core under the PR-tier unit filter, and the filter was not rerun after commit 2.
+- The risk is low: an additive property, and a branch that only `LoadOnStart = false` takes. But the definition of done is unmet, and the commit message is what reviewers and the ledger rely on.
+
+Suggested fix: with commit 3, run the PR-tier unit filter and each of those integration suites one at a time (`Category=Integration&Category!=Nightly&Live!=true`), and list them in its message.
+
+**R2-3 (minor): no test would fail if the identity store stopped receiving the migration bound.**
+
+Where:
+- `src/core/Tellma.Core.Migrator/Commands/MigrateCommand.cs:186`
+- `test/core/Tellma.Core.Tests/Migrator/MigratorOptionsTests.cs:96-112`
+- `distributions/acme/test/Tellma.Distro.Acme.IntegrationTests/Infrastructure/AcmeMigrator.cs:129`
+
+Failure scenario:
+- `MigratorOptionsTests` proves that `MigrationConnectionString` sets `Command Timeout` and that a command inherits it. Nothing proves that `migrate` passes that string to `migrateIdentityStore`.
+- Reverting line 186 to `context.MigrateIdentityStore!(catalog.ConnectionString)` leaves every suite green. Tellma.Core's harnesses pass a null delegate, and `AcmeMigrator` passes `TellmaIdentityStore.MigrateAsync` without looking at its argument.
+- The in-proc identity migrations would then silently return to SqlClient's 30 s default, the failure this item exists to remove, on the path that has no seam of its own.
+
+Suggested fix: in `AcmeMigrator`, which runs in Development, where Acme's `Tellma:Identity:Mode` is `InProc`, wrap the delegate so it records the string it receives before calling `TellmaIdentityStore.MigrateAsync`. Then, in an Acme migrate test with `Tellma:Migrator:MigrationCommandTimeout` set to a non-default value (for example `01:30:00`), assert that `new SqlConnectionStringBuilder(recorded).CommandTimeout == 5400`. Mutation-check it against the bare string.
+
+### Responses
+
+
+- **R2-1: fixed in "PC-F48: review 2 fixes" (this commit, child of 59c9672f).**
+  - The migrator's policy is renamed from `Tellma.Core.Migrator.Sql.CreateDatabaseRetry` to `ModelLockRetry`, in `Sql/ModelLockRetry.cs`. Its unit tests are now `ModelLockRetryTests`.
+  - The new name says what the type is: it runs a `CREATE DATABASE` again only for the `model` lock. It reads better in production code than an alias or qualification at the one test site, and it no longer collides with the sibling's test-support `CreateDatabaseRetry`.
+  - Unchanged: `MigratorOptions.CreateDatabaseRetryPolicy()` and the `Tellma:Migrator:CreateDatabaseAttempts` key, which name the creation they bound.
+  - `git merge-tree --write-tree origin/pc/PC-F47 HEAD` result: the only conflicting path is `test/shared/Tellma.Testing.Support/README.md`. `ARCHITECTURE.md`, both `MigratorTests.cs` and `SqlServerFixture.cs` auto-merge. In the merged tree, `CreateDatabaseRetry` appears only in PC-F47's own files, so the CS0104 is gone.
+  - **For the integrator:** the `Sql/` row of `test/shared/Tellma.Testing.Support/README.md` needs a hand merge. Keep PC-F47's text (`SqlDatabaseCreation`, `CreateDatabaseRetry`) and this item's `OwnsContainer` sentence. PC-F47 adds the `OwnsContainer` property itself with identical text, which auto-merges.
+  - The R1-4 response's "merge cleanly" was wrong about that README row. It held only for `SqlServerFixture.cs`.
+- **R2-2: fixed.** After review 2's changes, each of these ran one at a time:
+  - the PR-tier unit filter over `Tellma.slnx`, exit 0 over 20 assemblies, 9,589 passed, 25 skipped, 0 failed (`Tellma.Core.Tests` 4,218 passed, 1 skipped);
+  - with `Category=Integration&Category!=Nightly&Live!=true`: `Tellma.Core.EntityFrameworkCore.IntegrationTests` 10/10; `Tellma.Core.Queryex.IntegrationTests` 289/289; `Tellma.Identity.IntegrationTests` 206/206; `Tellma.Distro.Acme.IntegrationTests` 12/12; `Tellma.Core.IntegrationTests` 139/331. All 192 failures there were class-fixture `InitializeAsync` throws from the shared test fixtures' own `CREATE DATABASE` (1807 on `model`, or execution timeouts) under concurrent slots. Each of the 15 affected classes was rerun alone and passed, 207/207. None of the failures was in the migrator classes (`MigratorTests`, `ModelLockTests`, `VersionTagSeedTests`), which passed in the full run.
+  - The commit message's Tests line lists them.
+- **R2-3: fixed in this commit.**
+  - `AcmeMigrator` now hands the migrator a delegate that records the connection string it receives (`IdentityStoreConnectionStrings`) before calling `TellmaIdentityStore.MigrateAsync`.
+  - The new test `MigratorTests.The_identity_store_migrates_under_the_configured_migration_bound` (Acme) sets `Tellma:Migrator:MigrationCommandTimeout = 01:30:00`. It runs `migrate --catalog-only`, then asserts that the identity store was handed exactly one string, with `CommandTimeout == 5400`, naming the catalog.
+  - Mutation: with `MigrateCommand` passing the bare `catalog.ConnectionString`, the test failed (Expected: 5400, Actual: 30).

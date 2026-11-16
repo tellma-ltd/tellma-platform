@@ -80,7 +80,7 @@ namespace Tellma.Core.Migrator
         ///     was locked is run, the first run included: from 1, which never runs it again, to
         ///     <see cref="MaxCreateDatabaseAttempts" />. Five by default.
         /// </summary>
-        public int CreateDatabaseAttempts { get; set; } = CreateDatabaseRetry.DefaultMaxAttempts;
+        public int CreateDatabaseAttempts { get; set; } = ModelLockRetry.DefaultMaxAttempts;
 
         /// <summary>
         ///     How long the version-tag move on the way out of a failed tenant run may take; the move is
@@ -95,9 +95,9 @@ namespace Tellma.Core.Migrator
         /// </remarks>
         /// <returns>The policy.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><see cref="CreateDatabaseAttempts" /> is below 1.</exception>
-        public CreateDatabaseRetry CreateDatabaseRetryPolicy()
+        public ModelLockRetry CreateDatabaseRetryPolicy()
         {
-            return new CreateDatabaseRetry(CreateDatabaseAttempts);
+            return new ModelLockRetry(CreateDatabaseAttempts);
         }
 
         /// <summary>A bound in SQL Server's command timeout unit, whole seconds, rounded up so a bound never shrinks.</summary>
