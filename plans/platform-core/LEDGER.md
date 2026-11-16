@@ -102,10 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-173 | — (pushed) | pc/PC-173 | held 437a88f2 (R1 0/3/6 fixed except R1-8 carried to PC-175/PC-191; merge-tree clean vs platform-core; Linux 0600 file-mode test not yet run, CI ubuntu covers it); release queue T3 after PC-193 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
-| PC-050 | pc-4 | pc/PC-050 | re-released → integrating (gated 1bd726cb before the stop; fresh merge and gate) | impl (Opus, high, launched 2026-11-15) | R2 done (Fable) | 2026-11-15 |
+| PC-050 | — (pushed) | pc/PC-050 | integrated a11022e4 (merge of 14fac3c6 clean; full gate green, no flakes; Acme 6 skips remain: core.bootstrap-administrator step unregistered); CI pending | impl (Opus, high, launched 2026-11-15) | R2 done (Fable) | 2026-11-15 |
 | PC-151 | — (pushed) | pc/PC-151 | held c678bc77 (R1 0/3/5 fixed, each gate shown red; chord-modifier probe bug fixed; two-way registry; @perf CI multiplier; @tmWiring docs tag); merge-tree clean; release queue (T2, after the T1 holds) | impl (Opus, high, launched 2026-11-15) | R1 done; no R2 | 2026-11-15 |
 | PC-193 | — (pushed) | pc/PC-193 | held 5a16ff3e (D-098 seam: '.' 9.14→9.17, ./pivot 13.9→14.1); merge-tree vs a4b2012b: 8 content conflicts from PC-F44/PC-061 (locale-ar api.md and strings-ar.ts, core-ui-testing README/public-api, tokens.spec, core-ui README, docs-examples.spec, core-ui package.json budgets: '.' on platform-core is 9.18 per D-072, so the seam's +0.03 stacks on it); release queue after T1 items | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
-| PC-F50 | — (pushed) | pc/PC-F50 | held 9aa0ecc8 (R1 0/0/2 fixed: tree tokens back via the docs globalStyles mapping + extractor test; tiles.loadFailed carry in Open risks; merge-tree clean vs 9a62b6b7); D-102; release queue after PC-050 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
+| PC-F50 | pc-f2 | pc/PC-F50 | released → integrating (held 9aa0ecc8); D-102 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
 
 ## Fix items
 
@@ -319,7 +319,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-047 | 0011-f | 1 | done (integrated e4d093c, CI 43396977726 green); its TimerTests reconciliation test later went flaky at 5c3674f and 9f9adb7 (PC-F28) | 90931cd, 5b1ef79, 48d00f6, d732283, e4d093c (pc) |  |  |
 | PC-048 | 0010-c3 | 1 | done (CI 43210943912 green at a77ee57 after PC-F22; integrated 9007c81) | eb03017, f6d0487, 9007c81 (pc) | 15.74M (impl+fix1+int 13.43, r1 2.31) | R1 0/0/8: 6 fixed, R1-5/R1-6 pushed back to Ahmad (D-057); ./grid 42.00/42 KB, '.' 8.61 (ceiling 8.71); e2e 779/779 |
 | PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
-| PC-050 | 0014-d | 1 | held b12dedfc | 1788470, 2ea33c0, b12dedf (pc/PC-050) | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
+| PC-050 | 0014-d | 1 | integrated a11022e4 (CI pending) | 1788470, 2ea33c0, b12dedf, a11022e (pc/PC-050) | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
 | PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
