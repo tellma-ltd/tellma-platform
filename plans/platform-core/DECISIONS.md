@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-101 (orchestrator, 2026-11-16): PC-094 and PC-151 spec misalignments for Ahmad
+
+- Spec 0011 §2.2 says the deployment version comes from the entry assembly. PC-094's DeploymentVersionsReader reads the composition method's assembly first, because under test hosts and tools the entry assembly is not the distribution. Spec 0024 §3.1 and 0011 §2.2 should agree on that order.
+- Spec 0011 §1.2 has the SPA proxy port resolved at runtime. PC-094 computes it in MSBuild from .dev-ports.local, because the SPA proxy reads it before the host runs.
+- PC-094's interim client stand-ins (main.ts with bootstrapApplication, local tmEnglish/tmArabic, the angular.json style list, the minimal server AcmeFeature) carry to PC-103, PC-104 and PC-092 (LEDGER Status notes).
+- PC-151 exempts the date-range picker from spec 0023 §12's keydown-to-paint gate: only aria-expanded flips in the key's frame, because spec 0010 loads the calendar through @defer (on immediate). Painting in the key's frame would need the popup chunk un-deferred, which changes spec 0010 and its budget. The exemption is tracked; Ahmad rules if he wants the paint.
+
 ### D-100 (orchestrator, 2026-11-15): PC-F46 goes to review with the nightly tiles probe unproven on a loaded host
 
 - Situation: PC-F46 cut the 10,000-tile scroll cost from 35-67 to 1-7 tasks over 50 ms per 80 wheel steps, interleaved on the same host (median task 26-31 ms, was 32-56). The nightly @perf probe, which asserts zero, still sees 2-26 long tasks on this host. The host is loaded by five concurrent slots, so the number is noise-bound. The implementer reported status=blocked for that reason. Every PR-tier gate passes.
