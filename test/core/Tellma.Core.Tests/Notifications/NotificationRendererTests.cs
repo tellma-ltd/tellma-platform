@@ -60,7 +60,7 @@ namespace Tellma.Core.Tests.Notifications
         }
 
         /// <summary>A British English reader three hours ahead of UTC.</summary>
-        private static LocalizationContext English { get; } = new(NegotiatedCultures.Get("en", "GB"), Gregorian, PlusThree, 1, []);
+        private static LocalizationContext English { get; } = new(NegotiatedCultures.Get("en", "GB"), Gregorian, PlusThree, 1, [], "en", "en-GB");
 
         /// <inheritdoc />
         public void Dispose()
@@ -94,7 +94,7 @@ namespace Tellma.Core.Tests.Notifications
         {
             UmAlQuraCalendarSystem calendar = new();
             CultureInfo arabic = NegotiatedCultures.Get("ar", "SA");
-            LocalizationContext reader = new(arabic, calendar, PlusThree, 1, []);
+            LocalizationContext reader = new(arabic, calendar, PlusThree, 1, [], "ar", "ar-SA");
 
             string text = _renderer.Render(
                 Shipped,

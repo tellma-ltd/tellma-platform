@@ -25,15 +25,17 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
         public static async Task<string> CreateEmptyCatalogAsync(this SqlServerFixture sql, string prefix, bool createRole = true)
         {
             string name = sql.NewDatabaseName(prefix);
-            await SqlServerFixture.ExecuteAsync(
+            // The creation and its preparation run under the shared helper's long bound; only the creation is retried.
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, name, cancellationToken: TestContext.Current.CancellationToken);
+            await SqlDatabaseCreation.PrepareAsync(
                 sql.MasterConnectionString,
-                $"CREATE DATABASE [{name}] COLLATE {DatabaseCollations.Platform};",
+                TestContext.Current.CancellationToken,
                 $"ALTER DATABASE [{name}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;");
 
             string connectionString = sql.ConnectionString(name);
             if (createRole)
             {
-                await SqlServerFixture.ExecuteAsync(connectionString, $"CREATE ROLE [{DatabaseRoles.Application}];");
+                await SqlDatabaseCreation.PrepareAsync(connectionString, TestContext.Current.CancellationToken, $"CREATE ROLE [{DatabaseRoles.Application}];");
             }
 
             return connectionString;

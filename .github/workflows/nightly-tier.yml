@@ -113,8 +113,8 @@ jobs:
         run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- pnpm exec playwright
       # The tokens CSS is generated, not committed, and the showcase build needs it.
       - run: pnpm run tokens:build-css
-      # Built up front, as in the PR tier, so the e2e web server reuses the bundle instead of
-      # folding a cold production build into its startup timeout.
+      # Built in a step of its own, as in the PR tier, so a build failure shows as a failed build
+      # step; the e2e script then finds the bundle current and serves it without rebuilding.
       - run: pnpm run build:showcase
       # No --project: on CI the script runs all four projects in one invocation. Without
       # --pass-with-no-tests Playwright fails a run that selects nothing.

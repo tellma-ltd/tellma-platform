@@ -84,7 +84,7 @@ namespace Tellma.Core.Data.Batches
             }
 
             BatchResult<RowPage> result = new();
-            plan.Append(cursor => cursor.Complete(result, new RowPage(state.Rows!, state.Count, state.Ancestors)));
+            plan.Append(cursor => cursor.Complete(result, new RowPage(state.Rows!, state.Count, state.Ancestors, options.CountCap)));
 
             _sharedQueries[key] = result;
             if (keys is SqlIdentifier remembered)

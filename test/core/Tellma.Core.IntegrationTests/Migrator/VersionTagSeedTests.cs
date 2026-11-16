@@ -9,6 +9,7 @@ using System.Diagnostics;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Caching;
+using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
 using Tellma.Core.Provisioning;
 
@@ -92,7 +93,14 @@ namespace Tellma.Core.IntegrationTests.Migrator
         {
             MigratorHarness migrator = new(sql, "vt_applied");
             RecordingSeeder seeder = new(migrator.TenantConnectionString(1));
-            migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
+            migrator.Services = services =>
+            {
+                _ = services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
+
+                // Without the platform's own provisioning steps, so the migration alone moves the tags.
+                TellmaCompositionRecord record = services.Select(static descriptor => descriptor.ImplementationInstance).OfType<TellmaCompositionRecord>().Single();
+                _ = record.ProvisioningSteps.RemoveAll(static step => step.Owner.Name == CoreFeature.FeatureName);
+            };
             migrator.Seed(1);
 
             // --- The first run applies the initial migration and runs no step: seeded, then every tag moved ---
@@ -137,7 +145,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             MigratorHarness migrator = new(sql, "vt_bounded");
             RecordingSeeder seeder = new(migrator.TenantConnectionString(1)) { FailSeed = true, HangBump = true };
             migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
-            migrator.Values[MigratorContext.VersionTagBumpTimeoutKey] = "00:00:01";
+            migrator.Values[$"{MigratorOptions.SectionPath}:{nameof(MigratorOptions.VersionTagBumpTimeout)}"] = "00:00:01";
             migrator.Seed(1);
 
             // A move that never finishes on its own, as one blocked by a live transaction would be.
@@ -148,7 +156,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // The move waited for the configured bound, not the default: timing the move alone keeps
             // the assertion apart from how long the run's migrations take on a busy server.
-            Assert.True(seeder.BumpWaited < MigratorContext.DefaultVersionTagBumpTimeout, seeder.BumpWaited.ToString());
+            Assert.True(seeder.BumpWaited < MigratorOptions.DefaultVersionTagBumpTimeout, seeder.BumpWaited.ToString());
         }
 
         /// <summary>Reads a tenant database's version tags.</summary>

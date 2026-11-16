@@ -40,6 +40,13 @@ namespace Tellma.Core.Abstractions.Validation
         /// <summary>A value lies outside its declared value set. Arguments: <c>set</c>, <c>value</c>.</summary>
         public const string ValueNotInSet = "Validation.ValueNotInSet";
 
+        /// <summary>
+        ///     A value fails a validation attribute that no other code describes, such as
+        ///     <c>[EmailAddress]</c>. Arguments: <c>property</c> (absent for an attribute on the class
+        ///     itself), <c>attribute</c> (the attribute's name without its <c>Attribute</c> suffix).
+        /// </summary>
+        public const string Invalid = "Validation.Invalid";
+
         /// <summary>A row the operation names does not exist or is not visible to the caller.</summary>
         public const string EntityNotFound = "Entity.NotFound";
 

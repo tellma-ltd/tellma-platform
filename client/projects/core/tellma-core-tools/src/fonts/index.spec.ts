@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,5 +53,20 @@ describe('font preloads', () => {
       '<html><head><title>A</title><link rel="preload" href="media/noto-sans-latin-wght-normal-AAAAAAAA.woff2" as="font" type="font/woff2" crossorigin></head><body></body></html>',
     );
     expect(() => tmInjectFontPreloads(dir!, ['ethiopic'])).toThrow(/references a font for: ethiopic/);
+  });
+
+  it('leave index.html untouched, its modification time included, when every preload is already there', () => {
+    dir = mkdtempSync(join(tmpdir(), 'tm-fonts-'));
+    writeFileSync(join(dir, 'styles-A.css'), '@font-face{src:url(media/noto-sans-latin-wght-normal-AAAAAAAA.woff2)}');
+    writeFileSync(join(dir, 'index.html'), '<html><head></head><body></body></html>');
+    tmInjectFontPreloads(dir, ['latin']);
+    const indexPath = join(dir, 'index.html');
+    // A whole second an hour ago, so the time round-trips through every file system exactly.
+    const before = new Date(Math.floor(Date.now() / 1000) * 1000 - 60 * 60 * 1000);
+    utimesSync(indexPath, before, before);
+
+    tmInjectFontPreloads(dir, ['latin']);
+
+    expect(statSync(indexPath).mtimeMs).toBe(before.getTime());
   });
 });

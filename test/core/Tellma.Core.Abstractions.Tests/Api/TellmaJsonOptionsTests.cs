@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 
 namespace Tellma.Core.Abstractions.Tests.Api
@@ -84,6 +85,9 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(JobAccepted))]
         [InlineData(typeof(SecurableSummary))]
         [InlineData(typeof(QueryDiagnostic))]
+        [InlineData(typeof(RowPage))]
+        [InlineData(typeof(QueryRowSet))]
+        [InlineData(typeof(RelatedEntities))]
         [InlineData(typeof(ConcurrencyConflict))]
         [InlineData(typeof(ConfirmationRequest))]
         [InlineData(typeof(long))]

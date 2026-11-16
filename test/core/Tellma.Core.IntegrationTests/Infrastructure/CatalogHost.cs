@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Testing;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Settings;
 
 namespace Tellma.Core.IntegrationTests.Infrastructure
 {
@@ -110,6 +111,10 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
             ServiceCollection services = new();
             _ = services.AddFakeLogging();
             _ = services.AddTellma("acme", configuration, new SuiteEnvironment(environmentName), static _ => { });
+
+            // The tenant databases the tests register are created empty: their scopes' locale
+            // negotiation reads fixed settings instead of a settings table they do not have.
+            _ = services.UseFixedTenantSettings();
 
             // The first-load bound is pinned by the unit suite on a fake clock; here a server busy
             // with the suite's parallel CREATE DATABASEs must not turn a verdict into a timeout.

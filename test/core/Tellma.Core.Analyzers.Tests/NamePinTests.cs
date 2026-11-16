@@ -10,6 +10,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Analyzers.Sql;
 using Tellma.Core.Data;
 
@@ -25,6 +26,7 @@ namespace Tellma.Core.Analyzers.Tests
         public static TheoryData<string, string, Type> MatchedTypes => new()
         {
             { KnownNames.DataNamespace, KnownNames.DataBatch, typeof(IDataBatch) },
+            { KnownNames.ValidationNamespace, KnownNames.ContextLoader, typeof(IContextLoader) },
             { KnownNames.DataNamespace, KnownNames.SqlIdentifier, typeof(SqlIdentifier) },
             { KnownNames.DataNamespace, KnownNames.SqlOptions, typeof(SqlOptions) },
             { KnownNames.DataNamespace, KnownNames.TableName, typeof(TableName) },

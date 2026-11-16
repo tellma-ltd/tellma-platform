@@ -18,10 +18,14 @@
          DesignTimeServicesReference into this assembly, as the package's build targets do for a
          package consumer. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.EntityFrameworkCore.Design\Tellma.Core.EntityFrameworkCore.Design.csproj" />
+    <!-- The shared database creation every fixture goes through: its long bound and its retry of
+         the model lock parallel creations queue on. It brings xunit's extensibility core along, for
+         writing each retry to the running test's output. -->
+    <ProjectReference Include="..\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- No test-framework reference of any kind: these are fixtures, not assertions. Omitting
+    <!-- No test-framework reference of its own: these are fixtures, not assertions. Omitting
          Microsoft.NET.Test.Sdk keeps IsTestProject false, so `dotnet test Tellma.slnx` never tries
          to run this project. -->
     <!-- dotnet-ef's design-time services, for scaffolding the fixture migrations from this project. -->

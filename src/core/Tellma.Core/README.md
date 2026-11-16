@@ -97,7 +97,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
 | `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
-| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host's time-zone data cannot resolve, the sign of an image with stale tzdata | yes |
+| `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
 | `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
@@ -455,7 +455,7 @@ connection string and no secret: a tenant row names a server, a database and a c
 | Piece | What it does |
 |---|---|
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
-| `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. |
+| `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. A host that loads no snapshot at startup (the migrator) refreshes only after its own first load, so it never reads a catalog it has yet to create. |
 | The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development (a login the server cuts off before saying why is settled by asking `master` whether the database exists); an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
 | `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
 | `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
@@ -909,6 +909,63 @@ child collection, resolves to a row limit outside 1 to `EntityMaxRowsCeiling`, o
 securable with a filter root. It also creates the store, so a store that cannot be created (another
 live `entities` cache on the host's meter) fails the host at startup rather than at its first read.
 
+## Tenant settings
+
+Each tenant database holds its settings in two temporal tables, both bumping the `settings` tag:
+`core.Settings`, one typed row (`CK_Settings_SingleRow`: `Id = 1`) with the tenant's id, its names
+in up to three content languages, the languages (`CK_Settings_Languages`: a tertiary needs a
+secondary, none repeats), one or two calendars (`CK_Settings_Calendars`), the IANA zone, and the
+optional region and digits; and `core.SettingEntries`, one JSON value per declared key. The
+migrations seed the row as a placeholder for tenant `0` (English, Gregorian, UTC); the
+`core.settings` provisioning step (order 15) completes it with the tenant's id and name and the
+distribution's first language, or the languages and calendars a seeded tenant lists, validated as
+the settings editor validates them. A row the step already completed is left alone.
+
+- **Keys.** A feature declares its keys as `public static readonly SettingKey<T>` fields of a holder
+  type and contributes it with `contribution.SettingKeys(typeof(Holder))`. `ISettingKeyRegistry`
+  lists them in contribution and declaration order, the tabs (`general` first, then each category
+  as its first key appears), and the descriptors the client renders. `core.setting-keys` reports a
+  field holding no key, a name that is not dotted camelCase of two segments or more (at most 128
+  characters), an undefined visibility, a type admitted only with a serialization contract of its
+  own, a default that contradicts the type's nullability, a secret with a default or a reference, a
+  category or group outside the grammar, a reference that is not an int id of an int-keyed stack, a
+  name declared twice, and a category spelled two ways.
+- **The store.** `TenantSettingsStore` (the `settings` kind) keeps one `TenantSettings` per tenant,
+  with its client view serialized once. A miss loads through one read batch whose contributor
+  (`SettingsColdLoadContributor`, after the prelude) appends the row and the entries, stamped with
+  the prelude's tag. `ITenantSettingsCache` is the scoped façade (`GetAsync`, `GetForClientAsync`,
+  `Peek`).
+- **The routing guard.** A row whose tenant id is not the routed tenant's fails closed
+  (`TenantDatabaseMismatchException`, logged `Critical`). The placeholder is served only to the
+  platform's own work and never cached, so a provisioned database is read again at once.
+- **Resolution.** A stored value the composition cannot resolve falls back, logged `Critical`
+  (`SettingsValueUnresolvable`): the primary language to English (else the first offered), a
+  secondary or tertiary one ends the list, the primary calendar to Gregorian, a secondary one is
+  dropped, a zone the host's time-zone data does not have (or the query engine's pinned table,
+  `QueryexTimeZones.TryGetWindowsName`, does not map to the Windows name SQL Server's conversions
+  take; never the host ICU's mapping) to UTC, digits not named by `DigitStyle` to none. The
+  placeholder reads as the platform's defaults directly, with no event. An entry no feature declares is dropped;
+  one that does not read as its key, or fails its check, is dropped, logged and counted
+  (`tellma.settings.entries.invalid`).
+- **Secrets.** A secret is stored as the JSON string of its value's JSON, protected by the purpose
+  `Tellma.Core.Settings.Secret` and the tenant id, kept protected in memory, and unprotected on its
+  first `Get<T>`. One that does not unprotect reads as its default, logged `Critical`. A secret is
+  never in the client view, and its default is never in the client metadata.
+- **Negotiation.** `LocaleNegotiationInitializer` (order 200, after the user connection) ensures the
+  scope's settings and negotiates the locale from the request's inputs, the connected user's stored
+  preferences (`IUserLocalePreferences`, when the composition registers one) and the settings; it
+  completes the context's language, culture, calendar, display and tenant zones, today in the
+  tenant's zone, content-language position and settings, and sets no ambient culture. The language
+  and culture are the negotiated ones (`LocalizationContext.Language`, `CultureTag`), never read back
+  from the culture's name, and today is the date of the context's `Now` in the tenant's zone, so it
+  never disagrees with `Now`.
+- **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
+  default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+
+`core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
+by calendar, year and month, with the month's first Gregorian day and the day after its last; the
+query language seeks it by calendar and first day. Only the migrations write it.
+
 ## Notifications and client events
 
 The catalogue is composed per distribution, never per tenant. A feature registers each notification
@@ -1027,6 +1084,76 @@ feature.
 | `core.entity-pipeline` | `IEntityPipelineFactory` or an `IEntityPipeline<,>` is registered with a type, an instance or a factory that is not the platform's pipeline | no |
 | `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
 | `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
+
+### The validation stage
+
+The parts a write's validation stage is assembled from, internal to the assembly until the write
+pipeline drives them:
+
+- **Context loader.** `ContextLoader` is `IContextLoader` with DataLoader semantics: a request is
+  deduplicated by its structural key and handed back as a `ContextRef` that fills when its round
+  runs. Keyed requests (`ByIds`, `ByKey` over a property unique across the table, `ByParentIds`)
+  union their keys into one table-valued key set and their selects into one select per entity and
+  key, and answer every key, a missing key as an explicit absence (every parent answers, with an
+  empty list when it has no children); string keys compare as the platform collation does
+  (ignoring case, width, kana type and trailing spaces, minding accents, `ß` meeting `ss`). A key
+  already read, or primed from a row the operation holds (`Prime`, which wins over a read), is served from the cache
+  unless the request selects more, which reads it again under the union. `Query`, `Rows`, `Count`,
+  `Exists` (which shares the cap-0 count) and `Sql` merge identical requests; `Visible` conjoins the
+  entity's read decision, reading nothing when it is denied; `Ancestors` reads a tree's ancestor
+  ids. `Sql` is read-only: a statement declaring a write is refused when it is requested. A round
+  (`BeginRound`, `DispatchAsync`) appends every pending request to one batch and completes the refs
+  once it executes; a round with nothing pending sends nothing.
+- **Scheduler.** `ValidationScheduler` runs the validators as tasks and dispatches one round each
+  time every task is parked on `LoadAsync` or finished; a task registered during a round joins the
+  next. A task that faults or a round that fails tears down the parked tasks; cancellation stops
+  them. The ceiling counts dispatched rounds: one more is refused with an error naming the tasks
+  still parked. `tellma.crud.validation.rounds` records the rounds per operation, `crud.outcome`
+  `ok` or `exceeded`.
+- **Confirmations.** `Confirmations` (scoped, `IConfirmations`) is seeded once per scope with the
+  keys the caller confirmed; a key no feature declared is an authoring error. Under a system
+  principal every declared key counts as confirmed. `Frame(resource, operation)` opens one
+  write's frame, which collects its warnings until it is disposed: a `Require` on the frame, or on
+  the scope while the frame is the innermost open one (so an enlisted group is raised with its
+  host), records a confirmed key's consent in the log and turns an unconfirmed one into a
+  `ConfirmationRequest`; `tellma.crud.confirmations` counts both by `crud.key`. Outside every
+  frame, `Require` keeps the warning in `Unframed`, which no outcome raises: code outside
+  validation tests `IsConfirmed` and throws itself.
+  `ValidationOutcome.Raise` throws a stale stamp first, then the errors, then every unconfirmed
+  warning at once in key order.
+- **Attribute walker.** `AttributeWalker` judges a saved row against its metadata facets first (a
+  string's maximum length, a decimal's precision and scale, never rounding) and then the data
+  annotations on its client-owned properties, the class's own attributes included, at each
+  property's path, recursing into children with their parent key left alone; `IValidatableObject`
+  is not called. A request body is walked through its public properties, a cycle visited once. A
+  failed attribute maps to its validation code (`Required`, `Range`, `MaxLength` and the rest),
+  else to `Validation.Invalid` naming the property and the attribute.
+- **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
+  and rows ceilings, and reports every repeat of a positive id at its path.
+
+## The route model
+
+`IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from
+the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
+projects its standard operations as its operations and capabilities imply them (`query`, and
+`get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
+`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+built-in ones and its companions' included; each child query surface projects `query`, then its
+actions; each routed service its actions. A route's template is
+`POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
+securable (null for a member-only action), and the facts consumers read: the reads are idempotent
+and not mutations, the writes mutations and not idempotent, an action's facts are its descriptor's.
+
+The fingerprint is the first 12 characters of the base64url SHA-256 of a canonical description
+(`ContractDescriber`): the request's and response's JSON contracts under `TellmaJson.Options`
+(each member's JSON name, kind and nullability and each enum's values, sorted, transitively; an
+entities result with its ids in the key type and the related projection of every entity its
+stack's details expansion reaches), with the stack's, child surface's and action's
+`ContractRevision`. The description holds no assembly versions, so it is the same in every process
+and on every operating system; the suite pins the fingerprints as goldens.
+
+`ContractsClientAssetContributor` writes the client metadata's Contracts chunk from the same
+routes: `fingerprints` (template to fingerprint), `long` and `idempotent`.
 
 ## Securables
 
@@ -1236,6 +1363,8 @@ same in a `Persist` batch of its own.
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
+| `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
+| `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |
