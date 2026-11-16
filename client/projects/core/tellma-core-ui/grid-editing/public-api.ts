@@ -1,7 +1,8 @@
 /**
  * Public API Surface of @tellma/core-ui/grid-editing — the editable grid's
  * on-demand code: the editing controller (opening, mounting, committing and
- * cancelling cell editors), the built-in cell editors and the status bar.
+ * cancelling cell editors, and the keys inside a popup editor's pane), the
+ * built-in cell editors and the status bar.
  * `tm-grid` and `tm-tree-grid` load it themselves, with a dynamic import,
  * once a grid becomes editable, so a readonly grid never downloads it. Every
  * export is ɵ-prefixed: private-by-convention wiring with no compatibility
@@ -22,6 +23,7 @@ export {
   type ɵTmGridDraftHandoff,
   type ɵTmGridEditingHost,
   type ɵTmGridEditorOpenOptions,
+  type ɵTmGridPopupMoveTarget,
 } from './editing';
 export type {
   ɵTmGridEditorPopupVm,

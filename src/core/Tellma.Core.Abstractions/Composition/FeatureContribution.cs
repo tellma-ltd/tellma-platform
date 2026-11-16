@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Abstractions.Composition
@@ -132,6 +133,21 @@ namespace Tellma.Core.Abstractions.Composition
         {
             ArgumentNullException.ThrowIfNull(descriptor);
             return Add(new ValueSetContributionItem(descriptor));
+        }
+
+        /// <summary>
+        ///     Contributes the setting keys a type declares: every public static field of type
+        ///     <see cref="SettingKey{T}" />, in declaration order, joins the setting-key registry after
+        ///     the keys of the types contributed before it. The startup gate judges each key against
+        ///     the declaration rules and every other key of the composition.
+        /// </summary>
+        /// <param name="declaringType">The type that declares the fields, usually a static class of the feature.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="declaringType" /> is null.</exception>
+        public FeatureContribution SettingKeys(Type declaringType)
+        {
+            ArgumentNullException.ThrowIfNull(declaringType);
+            return Add(new SettingKeysContributionItem(declaringType));
         }
 
         /// <summary>

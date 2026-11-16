@@ -117,6 +117,12 @@ namespace Tellma.Core.Abstractions.Settings
         public abstract bool TryReadValue(JsonElement json, out object? value, out string? validationCode);
 
         /// <summary>
+        ///     Whether the key carries a serialization contract of its own (a <c>JsonTypeInfo</c>), for
+        ///     code that holds keys without their type.
+        /// </summary>
+        internal abstract bool HasOwnContract { get; }
+
+        /// <summary>
         ///     The group a key's name derives: the segments between the first and the last, less a
         ///     leading segment equal to the category. <c>gl.posting.autoNumberOnPost</c> derives
         ///     <c>posting</c>; <c>acme.invoicing.prefix</c> in category <c>invoicing</c> derives none,

@@ -14,7 +14,6 @@ import {
   inject,
   Injector,
   input,
-  isDevMode,
   model,
   output,
   signal,
@@ -46,6 +45,14 @@ import {
 } from './tm-grid-templates';
 import { TmGridStateStore } from './tm-grid-state-store';
 import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the checks it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /**
  * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
@@ -285,7 +292,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     this.activeDescendantId = this.core.activeDescendantId;
     this.pageStep = this.core.pageSize;
 
-    if (isDevMode()) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
       // Exactly one of data/field must be bound — a configuration error,
       // surfaced loudly in dev mode.
       effect(() => {

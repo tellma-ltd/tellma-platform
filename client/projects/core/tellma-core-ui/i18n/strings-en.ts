@@ -364,4 +364,15 @@ export const TM_UI_STRINGS_EN = {
     moveToTop: 'Move to top',
     moveToBottom: 'Move to bottom',
   },
+  tiles: {
+    // The empty list's text when no empty template is given.
+    empty: 'No items to display',
+    // A tile checkbox's accessible name, with the tile's title.
+    select: 'Select {label}',
+    // Announced after every selection change, over the loaded tiles.
+    selected: '{count, number} of {total, number} selected',
+    // Announced when a batch of tree rows fails to load its children; the
+    // rows collapse. The label lists the rows' titles.
+    loadFailed: "Couldn't load {label}",
+  },
 } as const;

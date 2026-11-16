@@ -27,6 +27,9 @@ namespace Tellma.Core.Analyzers
         /// <summary>The namespace of the service-pipeline contract.</summary>
         public const string CrudNamespace = "Tellma.Core.Abstractions.Crud";
 
+        /// <summary>The namespace of the validation contract.</summary>
+        public const string ValidationNamespace = "Tellma.Core.Abstractions.Validation";
+
         /// <summary>The namespace of the tenant data model.</summary>
         public const string RuntimeDataNamespace = "Tellma.Core.Data";
 
@@ -47,6 +50,9 @@ namespace Tellma.Core.Analyzers
 
         /// <summary>The batch interface.</summary>
         public const string DataBatch = "IDataBatch";
+
+        /// <summary>The loader a validator reads its context through.</summary>
+        public const string ContextLoader = "IContextLoader";
 
         /// <summary>The identifier a raw statement's hole emits as text.</summary>
         public const string SqlIdentifier = "SqlIdentifier";

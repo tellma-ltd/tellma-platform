@@ -46,6 +46,7 @@
     <!-- The framework's resource lookup (ResourceManagerStringLocalizerFactory), which the ICU
          localizer factory decorates, and AddLocalization's IStringLocalizer<T>. -->
     <PackageReference Include="Microsoft.Extensions.Localization" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
     <!-- ICU MessageFormat: plural, select and selectordinal in every resource string. -->
     <PackageReference Include="MessageFormat" />
     <!-- The scheduler's cron dialect: five-field Unix cron, CronFormat.Standard. -->

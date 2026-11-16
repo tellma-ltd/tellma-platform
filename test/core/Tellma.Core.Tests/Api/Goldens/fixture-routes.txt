@@ -1,0 +1,80 @@
+POST /{tenantId}/api/web/users/query | query | core.User | - | QueryRequest | RowPage | core.User:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/users/get | get | core.User | - | GetRequest | EntitiesResult<User> | core.User:Read | idempotent | qdmEUL6HUjw8
+POST /{tenantId}/api/web/users/get-by-ids | get-by-ids | core.User | - | GetByIdsRequest | EntitiesResult<User> | core.User:Read | idempotent | 016CNBOTi-m_
+POST /{tenantId}/api/web/users/save | save | core.User | - | SaveRequest<User> | EntitiesResult<User> | core.User:Save | mutation | U_dw-KdBaB56
+POST /{tenantId}/api/web/users/delete | delete | core.User | - | IdsRequest | AffectedResult | core.User:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/users/delete-by-query | delete-by-query | core.User | - | DeleteByQueryRequest | AffectedResult | core.User:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/users/activate | activate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
+POST /{tenantId}/api/web/users/deactivate | deactivate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
+POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
+POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
+POST /{tenantId}/api/web/roles/save | save | core.Role | - | SaveRequest<Role> | EntitiesResult<Role> | core.Role:Save | mutation | KsDT7P_A94QM
+POST /{tenantId}/api/web/roles/delete | delete | core.Role | - | IdsRequest | AffectedResult | core.Role:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/roles/delete-by-query | delete-by-query | core.Role | - | DeleteByQueryRequest | AffectedResult | core.Role:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/roles/activate | activate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
+POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
+POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
+POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
+POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
+POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
+POST /{tenantId}/api/web/schedules/query | query | core.Schedule | - | QueryRequest | RowPage | core.Schedule:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/schedules/get | get | core.Schedule | - | GetRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | KfYa4FX3b7MQ
+POST /{tenantId}/api/web/schedules/get-by-ids | get-by-ids | core.Schedule | - | GetByIdsRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | C4X4fvQar2bZ
+POST /{tenantId}/api/web/schedules/save | save | core.Schedule | - | SaveRequest<Schedule> | EntitiesResult<Schedule> | core.Schedule:Save | mutation | aDlEWVFMLFUU
+POST /{tenantId}/api/web/schedules/delete | delete | core.Schedule | - | IdsRequest | AffectedResult | core.Schedule:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/schedules/delete-by-query | delete-by-query | core.Schedule | - | DeleteByQueryRequest | AffectedResult | core.Schedule:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/schedules/activate | activate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
+POST /{tenantId}/api/web/schedules/deactivate | deactivate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
+POST /{tenantId}/api/web/widgets/query | query | fixture.Widget | - | QueryRequest | RowPage | fixture.Widget:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/widgets/get | get | fixture.Widget | - | GetRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | 3dOZYmvbGZ23
+POST /{tenantId}/api/web/widgets/get-by-ids | get-by-ids | fixture.Widget | - | GetByIdsRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | UlcZ--uZYDvm
+POST /{tenantId}/api/web/widgets/save | save | fixture.Widget | - | SaveRequest<Widget> | EntitiesResult<Widget> | fixture.Widget:Save | mutation | hE3YtFpqZpNi
+POST /{tenantId}/api/web/widgets/delete | delete | fixture.Widget | - | IdsRequest | AffectedResult | fixture.Widget:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/widgets/delete-by-query | delete-by-query | fixture.Widget | - | DeleteByQueryRequest | AffectedResult | fixture.Widget:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/widgets/activate | activate | fixture.Widget | entity | EntityActionRequest | EntitiesResult<Widget> | fixture.Widget:Activate | mutation, idempotent | XiiWwv7VjKs2
+POST /{tenantId}/api/web/widgets/deactivate | deactivate | fixture.Widget | entity | EntityActionRequest | EntitiesResult<Widget> | fixture.Widget:Activate | mutation, idempotent | XiiWwv7VjKs2
+POST /{tenantId}/api/web/widget-extras/query | query | fixture.WidgetExtra | - | QueryRequest | RowPage | fixture.WidgetExtra:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/widget-extras/get | get | fixture.WidgetExtra | - | GetRequest | EntitiesResult<WidgetExtra> | fixture.WidgetExtra:Read | idempotent | X7TjD4TW34N1
+POST /{tenantId}/api/web/widget-extras/get-by-ids | get-by-ids | fixture.WidgetExtra | - | GetByIdsRequest | EntitiesResult<WidgetExtra> | fixture.WidgetExtra:Read | idempotent | ZoO6E9We6a6X
+POST /{tenantId}/api/web/widget-extras/save | save | fixture.WidgetExtra | - | SaveRequest<WidgetExtra> | EntitiesResult<WidgetExtra> | fixture.WidgetExtra:Save | mutation | qZ0yhXZfzk3S
+POST /{tenantId}/api/web/widget-extras/delete | delete | fixture.WidgetExtra | - | IdsRequest | AffectedResult | fixture.WidgetExtra:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/widget-extras/delete-by-query | delete-by-query | fixture.WidgetExtra | - | DeleteByQueryRequest | AffectedResult | fixture.WidgetExtra:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/nodes/query | query | fixture.Node | - | QueryRequest | RowPage | fixture.Node:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/nodes/get-by-parent-ids | get-by-parent-ids | fixture.Node | - | ParentIdsRequest | RowPage | fixture.Node:Read | idempotent | cl9JkVt-Dxju
+POST /{tenantId}/api/web/nodes/get | get | fixture.Node | - | GetRequest | EntitiesResult<Node> | fixture.Node:Read | idempotent | ag77MLyKoLfi
+POST /{tenantId}/api/web/nodes/get-by-ids | get-by-ids | fixture.Node | - | GetByIdsRequest | EntitiesResult<Node> | fixture.Node:Read | idempotent | k-oNxIG7DMz3
+POST /{tenantId}/api/web/nodes/save | save | fixture.Node | - | SaveRequest<Node> | EntitiesResult<Node> | fixture.Node:Save | mutation | sckeF-UhPsuK
+POST /{tenantId}/api/web/nodes/delete | delete | fixture.Node | - | IdsRequest | AffectedResult | fixture.Node:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/nodes/delete-by-query | delete-by-query | fixture.Node | - | DeleteByQueryRequest | AffectedResult | fixture.Node:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/nodes/delete-with-descendants | delete-with-descendants | fixture.Node | - | IdsRequest | AffectedResult | fixture.Node:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/nodes/activate | activate | fixture.Node | entity | EntityActionRequest | EntitiesResult<Node> | fixture.Node:Activate | mutation, idempotent | peswFRNzbNaM
+POST /{tenantId}/api/web/nodes/deactivate | deactivate | fixture.Node | entity | EntityActionRequest | EntitiesResult<Node> | fixture.Node:Activate | mutation, idempotent | peswFRNzbNaM
+POST /{tenantId}/api/web/shipments/query | query | fixture.Shipment | - | QueryRequest | RowPage | fixture.Shipment:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/shipments/get | get | fixture.Shipment | - | GetRequest | EntitiesResult<Shipment> | fixture.Shipment:Read | idempotent | pOttzqWOqBFp
+POST /{tenantId}/api/web/shipments/get-by-ids | get-by-ids | fixture.Shipment | - | GetByIdsRequest | EntitiesResult<Shipment> | fixture.Shipment:Read | idempotent | f6AA3xXYNZiz
+POST /{tenantId}/api/web/shipments/save | save | fixture.Shipment | - | SaveRequest<Shipment> | EntitiesResult<Shipment> | fixture.Shipment:Save | mutation | kO11U5UJ7s-a
+POST /{tenantId}/api/web/shipments/delete | delete | fixture.Shipment | - | IdsRequest | AffectedResult | fixture.Shipment:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/shipments/delete-by-query | delete-by-query | fixture.Shipment | - | DeleteByQueryRequest | AffectedResult | fixture.Shipment:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/exports/query | query | fixture.Export | - | QueryRequest | RowPage | fixture.Export:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/exports/get | get | fixture.Export | - | GetRequest | EntitiesResult<Export> | fixture.Export:Read | idempotent | XBiQ0UF1W6EJ
+POST /{tenantId}/api/web/exports/get-by-ids | get-by-ids | fixture.Export | - | GetByIdsRequest | EntitiesResult<Export> | fixture.Export:Read | idempotent | YVTPy0EP4DJe
+POST /{tenantId}/api/web/exports/save | save | fixture.Export | - | SaveRequest<Export> | EntitiesResult<Export> | fixture.Export:Save | mutation | yFQinpu9m9Dq
+POST /{tenantId}/api/web/exports/delete | delete | fixture.Export | - | IdsRequest | AffectedResult | fixture.Export:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/exports/delete-by-query | delete-by-query | fixture.Export | - | DeleteByQueryRequest | AffectedResult | fixture.Export:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/lookups/query | query | fixture.Lookup | - | QueryRequest | RowPage | fixture.Lookup:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/lookups/get | get | fixture.Lookup | - | GetRequest | EntitiesResult<Lookup> | fixture.Lookup:Read | idempotent | Y_eWXBH3S9wn
+POST /{tenantId}/api/web/lookups/get-by-ids | get-by-ids | fixture.Lookup | - | GetByIdsRequest | EntitiesResult<Lookup> | fixture.Lookup:Read | idempotent | ja9_NFJs7XaB
+POST /{tenantId}/api/web/lookups/all | all | fixture.Lookup | - | AllRequest | EntitiesResult<Lookup> | fixture.Lookup:Read | idempotent | bacuvtak1ha7
+POST /{tenantId}/api/web/lookups/save | save | fixture.Lookup | - | SaveRequest<Lookup> | EntitiesResult<Lookup> | fixture.Lookup:Save | mutation | i8kcOjOcx6nX
+POST /{tenantId}/api/web/lookups/delete | delete | fixture.Lookup | - | IdsRequest | AffectedResult | fixture.Lookup:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/lookups/delete-by-query | delete-by-query | fixture.Lookup | - | DeleteByQueryRequest | AffectedResult | fixture.Lookup:Delete | mutation | qslFj3HofcDO
+POST /{tenantId}/api/web/lookups/activate | activate | fixture.Lookup | entity | EntityActionRequest | EntitiesResult<Lookup> | fixture.Lookup:Activate | mutation, idempotent | lMelvPCW1qZy
+POST /{tenantId}/api/web/lookups/deactivate | deactivate | fixture.Lookup | entity | EntityActionRequest | EntitiesResult<Lookup> | fixture.Lookup:Activate | mutation, idempotent | lMelvPCW1qZy
+POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/widget-parts/query | query | fixture.WidgetPart | - | QueryRequest | RowPage | fixture.WidgetPart:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/widget-part-notes/query | query | fixture.WidgetPartNote | - | QueryRequest | RowPage | fixture.WidgetPartNote:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/links/query | query | fixture.Link | - | QueryRequest | RowPage | fixture.Link:Read | idempotent | PqV1-faRenCx
