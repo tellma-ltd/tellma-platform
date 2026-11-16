@@ -24,6 +24,7 @@ namespace Tellma.Core.Abstractions.Tests.Validation
                     [nameof(ValidationCodes.WriteOnce)] = "WriteOnce",
                     [nameof(ValidationCodes.Precision)] = "Precision",
                     [nameof(ValidationCodes.ValueNotInSet)] = "Validation.ValueNotInSet",
+                    [nameof(ValidationCodes.Invalid)] = "Validation.Invalid",
                     [nameof(ValidationCodes.EntityNotFound)] = "Entity.NotFound",
                     [nameof(ValidationCodes.EntityDuplicateId)] = "Entity.DuplicateId",
                     [nameof(ValidationCodes.FkNotFound)] = "Fk.NotFound",

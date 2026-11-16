@@ -190,6 +190,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.string-pack"] = false,
                 ["core.calendars"] = false,
                 ["core.value-sets"] = false,
+                ["core.setting-keys"] = false,
                 ["core.notification-types"] = false,
                 ["core.notification-channels"] = false,
                 ["core.client-events"] = false,

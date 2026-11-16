@@ -359,6 +359,43 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-100 (orchestrator, 2026-11-15): PC-F46 goes to review with the nightly tiles probe unproven on a loaded host
+
+- Situation: PC-F46 cut the 10,000-tile scroll cost from 35-67 to 1-7 tasks over 50 ms per 80 wheel steps, interleaved on the same host (median task 26-31 ms, was 32-56). The nightly @perf probe, which asserts zero, still sees 2-26 long tasks on this host. The host is loaded by five concurrent slots, so the number is noise-bound. The implementer reported status=blocked for that reason. Every PR-tier gate passes.
+- Ruling: the item goes to Review 1 as usual. The probe is nightly-tier (PLAN.md §6), so it does not gate a PR-tier checkpoint. Its first verdict on a quiet host is the platform-core nightly after integration, recorded under Flaky as a watch. If it fails there, a follow-up item chooses between a spec 0023 §12 bound Ahmad would rule on (a count or percentile) and re-binding tm-image in place (a tiles budget raise under D-031). The ARCHITECTURE.md tiles sentence and the spec 0005 §7.2/§7.4 deviations (shared object URLs; the on-screen blob stands in under an unknown stamp) are reviewed with the item.
+
+### D-099 (orchestrator, 2026-11-15): PC-217 holds with three spec 0010 §A.3 gaps for Ahmad
+
+PC-217 (client ID metadata documents) holds at a94fb9e4 after two reviews. Spec 0010 §A.3 should be brought in line with the code in three places (docs/ is not edited in the run):
+- (a) The option list lacks MaxConcurrentFetches (default 16, with separate slots for the refresh and probe budgets) and MaxInFlightPerHost (2 per host within each budget). Both exist so that published documents cannot starve real clients.
+- (b) The per-host limit is split into a refresh budget and a probe budget, so one instance can fetch up to twice the spec's per-host rate. The refresh budget is only for clients whose row holds an authorization; otherwise an attacker's own ids would buy protected slots after one probe.
+- (c) §A.3 allows http://[::1] loopback redirects for native clients, but Chromium ignores an IPv6 literal in CSP form-action, so the consent and resumed sign-in pages cannot let such a redirect through. The code emits no source for an IPv6-literal host (pinned by an E2E test). Native clients must use 127.0.0.1 or localhost for browser consent.
+Other choices, recorded in the review file: rows carry a fetched-at stamp and an older copy never overwrites a newer row; the metadata cache is LRU and evicts unauthorized entries first; an expired copy is not served on a purely local refusal.
+
+### D-098 (orchestrator, 2026-11-15): entry points register their own UI strings; no "." raise for strings only a lazy entry point reads
+
+- Situation: PC-193 (tm-pivot) raised "." from 9.14 to 9.33 KB (measured 9.23) to hold English strings that only the lazily loaded ./pivot reads. It would be the seventh raise on ".", past D-031's limit of three before a re-split. The cause is structural: English comes from the single TM_UI_STRINGS_EN table in ".", and an entry point has no way to register its own strings. ./pivot has about 1.1 KB of room under its spec ceiling.
+- Ruling: PC-193 adds a small string-registration seam to "." so an entry point can contribute its own default strings, typed and overridable through the same localisation path as the core table. The pivot strings move into ./pivot. "." may rise only by the seam's own bytes, under D-031's conditions (budgetNotes entry, reviewer checks the measurement). The 9.33 raise is withdrawn. Later entry points with strings that only they read follow the same seam. This is the re-split D-031 asks for, applied to strings, which are what has driven the "." raises.
+- Revisit if: "." rises again for anything other than strings every entry point reads.
+
+### D-097 (2026-11-15): PC-064 is released over the cap, alongside PC-066's integration
+
+Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy agents. He also widened the allowlist for `git push -q origin HEAD:platform-core`. That breaks two rules for this one item: the cap, and one release at a time. Both releases merge and gate independently, and whichever pushes second gets a non-fast-forward rejection. That item fetches, merges again, re-runs the gates the new merge touched (the full gate if any C# project or the client changed), and pushes again. Nothing is forced. The CI watch, ledger snapshot and next release follow each landed push as usual.
+
+### D-096 (2026-11-15): spec 0017 §6.4 BlobContainerStep goes to PC-089; PC-141's skipped rows carry to their seam checkpoints
+
+- Ruling: spec 0017 §6.4 (the `core.blob-container` provisioning step, BlobContainerStep) is in no checkpoint's Sections: PC-017 covers §6.1-§6.2 and PC-089 §6.3. PC-089 takes it, since it builds the per-tenant containers and EnsureTenant the step drives. The carry is on PC-089's status row.
+- Carries: PC-141 left six Acme §10 rows on conditional skips (PlatformSeams, keyed on each seam's presence), so each runs once its seam lands. The checkpoint that lands each seam must see it run green: PC-078 (first request binds UserId, Frozen read, ReadOnly read stamps activity), PC-090 (AllowWhenReadOnly action), PC-100 (RunsWhenReadOnly job), and PC-089 for the provisioning-record row (it needs core.bootstrap-administrator from PC-078, core.settings from PC-049 and core.blob-container from PC-089, and PC-089 lands last of the three).
+- Why: a skipped row with no owner never runs. The conditional skip makes the row run by itself; the carry makes its owner responsible for seeing it pass.
+
+### D-095 (2026-11-15): PC-066 holds with two spec gaps for Ahmad; re-homing moves to PC-077
+
+- Ruling: PC-066 (0015-c) is not on the two-review list. Review 1 found 0/1/7, all fixed, and fix 1 rewrote under a tenth of commit 1 (about 450 of 5,900 lines), so no Review 2. It holds at a1abbefc; merge-tree is clean.
+- Scope: the §7.3 error re-homing view is deferred to PC-077, whose deliverables list an "error re-homing view" (PC-066 deviation 15). The carry is on PC-077's status row.
+- For Ahmad (1): spec 0015 §6.6 step 5 says to use ByKey on a child, scoped to the parent key in C#. ByKey's `IReadOnlyDictionary<TK,T>` holds one row per value, so it refuses a property that is unique only within its parent, and step 5 fails for every child `[Unique]`. PC-066 deviation 6 leaves a Later seam for the write pipeline: an internal `ByValues<T,TK>(property, values)` returning `IReadOnlyDictionary<TK, IReadOnlyList<T>>` through the same key-set restriction and comparer, scoped by parent in C#. Step 5's signature needs amending.
+- For Ahmad (2): spec 0015 §7.5 names no log event for a consent given outside every write frame. PC-066 logs it as `ConfirmationAcceptedOutsideFrame`, because the log generator refuses two methods with one event name (SYSLIB1025).
+- Why: both are spec contradictions with a working code answer, so nothing waits. The write pipeline needs the ByValues seam before it validates child uniqueness.
+
 ### D-094 (2026-11-15): ./grid is at its cap; PC-F26 fits by savings, and a re-split is queued
 
 - Ruling: PC-F26's forced-colors rules put ./grid at 42.05 KB against its 42.03 ceiling once merged over PC-F24 (platform-core alone measures 42.02). No raise: D-057(2) and D-067 allow none without real savings or a re-split. PC-F26 gives the overlay ink a forced-colors default on the scroller and drops the per-rule Highlight fallbacks, keeping every review-1 fix; if that does not fit it stops unpushed. Fix item PC-F44 then re-splits ./grid (or takes measured savings) to restore real headroom, and PC-F42 (more grid forced-colors CSS) waits for it.
@@ -376,7 +413,8 @@ Format, one entry per ruling:
 
 - Ruling: the `./tiles` entry point's ceiling is 10.14 KB (measure 10.04 KB) with a budgetNotes entry, not spec 0023 §1's 7 KB. Review 1 measured it feature by feature: with tree mode, skeleton and flash all removed it is still 8.89 KB, so 7 KB cannot be reached without dropping spec'd behaviour. The "." ceiling follows D-072 (9.18 KB). The §12 "10,000 tiles, no long task over 50 ms" probe measured 48 long tasks in 80 wheel steps (median 71 ms, max 164 ms): a real defect, not a flake, so it is fixed in fix 1 and never quarantined. If fix 1 cannot reach 50 ms, the probe stays @perf (nightly) and failing, and a fix item is opened.
 - Why: a quarantine tag is for flaky tests (LEDGER "Flaky"); hiding a deterministic miss of a spec requirement would let it ship. The size cap is a spec estimate the implemented behaviour cannot meet.
-- For Ahmad: spec 0023 §1's 7 KB cap for ./tiles should be about 10 KB, unless tree mode moves behind a lazy seam (which changes the spec'd `parentId` input and is needed by 0030-g anyway).
+- Outcome (fix 1, 98bec3b0): steps 1-4 brought over-50 ms tasks from 54-75 to 6-28 per 80 steps on a quiet host, but the target is not met; the probe is un-quarantined, @perf (nightly) and asserts 50 ms. Fix item PC-F46 takes the rest and may recycle tile views if focus, selection and a11y semantics hold. The perf fixes cost 0.18 KB, so ./tiles is 10.22 KB against a 10.32 KB ceiling.
+- For Ahmad: spec 0023 §1's 7 KB cap for ./tiles should be about 10.3 KB, unless tree mode moves behind a lazy seam (which changes the spec'd `parentId` input and is needed by 0030-g anyway).
 
 ### D-091 (2026-11-15): row-set routes fingerprint only their envelope (PC-064)
 

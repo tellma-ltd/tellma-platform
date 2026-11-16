@@ -9,12 +9,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Localization;
+using Tellma.Core.Settings;
 
 namespace Tellma.Core.Composition.Checks
 {
     /// <summary>
     ///     <c>core.time-zones</c>: warns, once per zone, about each value of the time-zone set that
-    ///     this host's time-zone data cannot resolve. It never fails startup.
+    ///     this host cannot resolve as a tenant's zone. It never fails startup.
     /// </summary>
     /// <remarks>
     ///     An unresolvable zone is the sign of a container image with stale time-zone data: the set
@@ -31,12 +32,15 @@ namespace Tellma.Core.Composition.Checks
         /// <inheritdoc />
         public bool RequiresInfrastructure => true;
 
-        /// <summary>Whether this host's time-zone data resolves a zone id.</summary>
+        /// <summary>
+        ///     Whether this host resolves a zone id exactly as a tenant's settings require: its
+        ///     time-zone data has the zone and the pinned table maps it to a Windows name.
+        /// </summary>
         /// <param name="id">The zone id.</param>
         /// <returns>True when it does.</returns>
         public static bool HostResolves(string id)
         {
-            return TimeZoneInfo.TryFindSystemTimeZoneById(id, out _);
+            return TenantSettingsStore.TryResolveZone(id, out _, out _);
         }
 
         /// <inheritdoc />

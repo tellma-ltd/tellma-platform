@@ -22,6 +22,7 @@ import {
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
 import type { TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
+import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { TmModalRef } from '@tellma/core-ui/modal';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
@@ -54,6 +55,7 @@ function makeLines(): Line[] {
       [rowId]="rowId"
       [newRow]="makeRow"
       [readonly]="readonly()"
+      [searchable]="searchable()"
       style="block-size: 300px"
     >
       <tm-grid-column key="name" header="Name" [width]="140" />
@@ -82,6 +84,7 @@ class EditHost {
     });
   });
   readonly readonly = signal(false);
+  readonly searchable = signal(false);
   /** Display cap on qty's fraction digits (undefined ⇒ unbounded default). */
   readonly qtyMaxDecimals = signal<number | undefined>(undefined);
   readonly units = ['kg', 'pcs', 'ltr'];
@@ -259,6 +262,24 @@ describe('tm-grid (editing)', () => {
     expect(editorInput(scroller)).toBeNull();
     // Selection moved to (0,1); no editor opened on the target.
     expect(document.activeElement).toBe(cellAt(scroller, 0, 1));
+  });
+
+  it('Mod+F in an open editor commits it and opens the grid find, not the browser find', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.searchable.set(true);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+
+    keydown(scroller, 'F');
+    const input = editorInput(scroller) as HTMLInputElement;
+    typeInto(input, 'Found');
+    const mod: KeyboardEventInit = tmIsApplePlatform() ? { metaKey: true } : { ctrlKey: true };
+    expect(keydown(input, 'f', mod).defaultPrevented).toBe(true);
+    await stable(fixture);
+    expect(host.model()[0].name).toBe('Found');
+    expect(editorInput(scroller)).toBeNull();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-tm-find-input]')).not.toBeNull();
   });
 
   it('Esc cancels the edit and never writes the model', async () => {

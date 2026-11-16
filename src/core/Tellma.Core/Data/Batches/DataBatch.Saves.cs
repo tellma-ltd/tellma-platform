@@ -13,7 +13,8 @@ using Tellma.Core.Data.Saves;
 
 namespace Tellma.Core.Data.Batches
 {
-    // The save statement of spec 0012 §8: one statement per save, its text cached per root entity.
+    // The save statement of spec 0012 §8: one statement per save, its text cached per root entity;
+    // a tree root's statement carries the tree statements of §10.2.
     /// <content>The save statement: a payload of roots and their supplied children, synchronised in one statement.</content>
     internal sealed partial class DataBatch
     {
@@ -46,6 +47,10 @@ namespace Tellma.Core.Data.Batches
             BatchResult<SaveReceipt> receipt = new();
             BatchResult<HashSet<long>> stamped = new();
             StatementDraft draft = Begin();
+
+            // A tree's cycle fence and depth limit name the entity they refuse.
+            bool tree = plan.Root.Entity.Tree is not null;
+            draft.EntityType = tree ? plan.Root.Entity.ClrType : null;
             string saved;
             string created;
             string touched;
@@ -142,6 +147,10 @@ namespace Tellma.Core.Data.Batches
                     Stamp(plan, payload, receipt.Value, stamped.Value, userId);
                     _executor.Allocator.Committed(payload.NewRows);
                     _executor.Metrics.RecordRowsSaved(plan.Root.Entity.Name, receipt.Value.Inserted + receipt.Value.Updated);
+                    if (tree)
+                    {
+                        _executor.Metrics.RecordTreeRecompute(plan.Root.Entity.Name);
+                    }
                 }
 
                 return Task.CompletedTask;
