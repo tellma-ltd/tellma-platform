@@ -553,6 +553,7 @@ namespace Tellma.Core.Composition
                 new StringPackCheck(),
                 new CalendarsCheck(),
                 new ValueSetsCheck(_record),
+                new SettingKeysCheck(_record),
                 new NotificationTypesCheck(_record),
                 new NotificationChannelsCheck(_record),
                 new ClientEventsCheck(_record),

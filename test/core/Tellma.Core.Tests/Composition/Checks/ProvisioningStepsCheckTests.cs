@@ -27,9 +27,9 @@ namespace Tellma.Core.Tests.Composition.Checks
                 .ProvisioningStep<SampleStep>()
                 .ProvisioningStep<OtherStep>())));
 
-            // --- Each class scoped by itself, and recorded once with its owner, in contribution order ---
-            Assert.Equal([typeof(SampleStep), typeof(OtherStep)], Record(services).ProvisioningSteps.Select(static step => step.StepType));
-            Assert.All(Record(services).ProvisioningSteps, static step => Assert.Equal("acme", step.Owner.Name));
+            // --- Each class scoped by itself, and recorded once with its owner, in contribution order (after the core's own) ---
+            List<ProvisioningStepRegistration> steps = [.. Record(services).ProvisioningSteps.Where(static step => step.Owner.Name != CoreFeature.FeatureName)];
+            Assert.Equal([typeof(SampleStep), typeof(OtherStep)], steps.Select(static step => step.StepType));
             foreach (Type stepType in new[] { typeof(SampleStep), typeof(OtherStep) })
             {
                 ServiceDescriptor descriptor = Assert.Single(services, descriptor => descriptor.ServiceType == stepType);
@@ -48,14 +48,15 @@ namespace Tellma.Core.Tests.Composition.Checks
                 .AddFeature(new TestFeature<Tag.A>("acme", contribute: static c => c.ProvisioningStep<EntityStep<SampleEntity>>()))
                 .UseEntity<SampleEntity, TrackedLeaf>());
 
-            Assert.Equal(typeof(EntityStep<TrackedLeaf>), Assert.Single(Record(services).ProvisioningSteps).StepType);
+            ProvisioningStepRegistration step = Assert.Single(Record(services).ProvisioningSteps, static step => step.Owner.Name != CoreFeature.FeatureName);
+            Assert.Equal(typeof(EntityStep<TrackedLeaf>), step.StepType);
             Assert.Contains(services, static descriptor => descriptor.ServiceType == typeof(EntityStep<TrackedLeaf>) && descriptor.Lifetime == ServiceLifetime.Scoped);
             Assert.DoesNotContain(services, static descriptor => descriptor.ServiceType == typeof(EntityStep<SampleEntity>));
 
             // The runner and the gate create the step their registration names, over the leaf.
             await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
             await using AsyncServiceScope scope = provider.CreateAsyncScope();
-            Assert.IsType<EntityStep<TrackedLeaf>>(Record(services).ProvisioningSteps[0].Create(scope.ServiceProvider));
+            Assert.IsType<EntityStep<TrackedLeaf>>(step.Create(scope.ServiceProvider));
         }
 
         [Fact]

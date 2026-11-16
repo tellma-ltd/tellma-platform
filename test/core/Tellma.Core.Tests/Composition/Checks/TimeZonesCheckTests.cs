@@ -92,10 +92,13 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
-        public void The_real_probe_asks_the_hosts_time_zone_data()
+        public void The_real_probe_asks_what_a_tenants_zone_requires()
         {
             Assert.True(TimeZonesCheck.HostResolves("UTC"));
             Assert.False(TimeZonesCheck.HostResolves("Mars/Olympus_Mons"));
+
+            // The host's data alone is not enough: the pinned table must map the zone too.
+            Assert.False(TimeZonesCheck.HostResolves("Etc/GMT+3"));
         }
 
         [Fact]

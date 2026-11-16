@@ -12,7 +12,6 @@
 
 import {
   Injector,
-  isDevMode,
   type ComponentRef,
   type EmbeddedViewRef,
   type OutputRefSubscription,
@@ -357,7 +356,7 @@ export class ɵTmGridEditorSession {
     }
     if (registered === null) {
       this.destroy();
-      if (isDevMode()) {
+      if (typeof ngDevMode !== 'undefined' && ngDevMode) {
         throw new Error(
           'tm-grid: the cell editor mounted nothing that implements TmCellEditor — ' +
             'a *tmGridEditor template must host a control that injects ' +

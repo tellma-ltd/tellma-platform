@@ -49,6 +49,9 @@
     <!-- The shipped test package's job probe plays the worker's part for a handler's own unit
          tests: it seeds checkpoints, sets cancellation reasons and reads the marks back. -->
     <InternalsVisibleTo Include="Tellma.Core.Testing" />
+    <!-- The Crud unit tests' scripted batch plays the executor's part: it hands out batch results
+         and completes them when the test's script answers, so the pipeline runs with no database. -->
+    <InternalsVisibleTo Include="Tellma.Core.Tests" />
   </ItemGroup>
 
 </Project>

@@ -74,9 +74,10 @@ namespace Tellma.Core.Data.Saves
                 plan.Cache(recompile, template);
             }
 
+            // The marker sits in every statement-local name and in a tree walk's name alike.
             return template.Replace(
-                SaveText.Placeholder,
-                string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.StatementPrefix}{ordinal}_"),
+                SaveText.Marker,
+                string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.StatementPrefix[1..]}{ordinal}_"),
                 StringComparison.Ordinal);
         }
 

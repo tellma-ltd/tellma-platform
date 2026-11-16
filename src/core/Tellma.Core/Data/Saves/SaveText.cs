@@ -7,13 +7,14 @@ using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Data.Trees;
 
 namespace Tellma.Core.Data.Saves
 {
     // The text follows spec 0012 §8.1–§8.5: the guard, the root inserts, each collection's
     // synchronise (nested collections under their parent's, with the descendants of removed rows
-    // deleted deepest first), the root updates and the receipt; the capture rule and the blob
-    // captures on every write.
+    // deleted deepest first), the root updates, a tree's statements (§10.2) and the receipt; the
+    // capture rule and the blob captures on every write.
     /// <summary>
     ///     Writes a save's text for a plan, its statement-local names under a placeholder ordinal
     ///     (<see cref="Placeholder" />) that the emitter replaces with the statement's own.
@@ -22,6 +23,12 @@ namespace Tellma.Core.Data.Saves
     {
         /// <summary>The statement-local prefix the text is written with, before the ordinal is known.</summary>
         public const string Placeholder = ReservedSqlNames.StatementPrefix + "#_";
+
+        /// <summary>
+        ///     The placeholder without its <c>@</c>: every statement-local name holds it, a tree walk's
+        ///     name (<c>tb#_walk</c>) included, so the emitter replaces it with the ordinal's.
+        /// </summary>
+        public const string Marker = "tb#_";
 
         /// <summary>The marker of a row whose stamp did not match.</summary>
         public const string ConflictReason = "C";
@@ -41,6 +48,9 @@ namespace Tellma.Core.Data.Saves
         /// <summary>The hint every data-modifying statement ends with; empty when not recompiling.</summary>
         private readonly string _option;
 
+        /// <summary>Whether every data-modifying statement carries <c>OPTION (RECOMPILE)</c>.</summary>
+        private readonly bool _recompile;
+
         /// <summary>The most ids of each list the conflict message names.</summary>
         private readonly int _conflictCap;
 
@@ -58,6 +68,7 @@ namespace Tellma.Core.Data.Saves
         {
             _plan = plan;
             _option = recompile ? "\nOPTION (RECOMPILE)" : string.Empty;
+            _recompile = recompile;
             _conflictCap = conflictCap;
         }
 
@@ -160,6 +171,12 @@ namespace Tellma.Core.Data.Saves
             }
 
             WriteRootUpdate(root);
+
+            // --- A tree's statements: the re-path of the saved rows and their descendants, and the recount ---
+            if (root.Entity.Tree is not null)
+            {
+                new TreeText(_text, TreeShape.Of(root.Entity), Placeholder, _recompile).AfterSave(Tvp(root.NewTable), Tvp(root.ExistingTable));
+            }
 
             // --- The receipt ---
             string touched = Local(ReservedSqlNames.StatementNames.Touched);
