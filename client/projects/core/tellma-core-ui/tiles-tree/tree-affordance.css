@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* A tree tile's chrome: the twisty and the reserved spinner slot. The host
+   takes no box, so both lie in the tile's own flex row, after its padding
+   (which carries the indent) and before the checkbox. */
+
+:host {
+  display: contents;
+}
+
+/* A 24px target around a 13px chevron; on a leaf the slot stays, empty, so
+   titles align across levels. */
+.tm-tiles__twisty {
+  --icon-size: var(--tiles-twisty-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-twisty-target);
+  block-size: var(--tiles-twisty-target);
+  color: var(--tiles-twisty);
+}
+
+/* Reserved whenever children load lazily, so a spinner that comes and goes
+   moves nothing. */
+.tm-tiles__spinner-slot {
+  --spinner-size: var(--tiles-spinner-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--tiles-spinner-slot);
+}

@@ -8,6 +8,7 @@ import { Component, computed, signal } from '@angular/core';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridRowActivation } from '@tellma/core-ui/grid';
 import { TmTiles, type TmTileLayout } from '@tellma/core-ui/tiles';
+import { TmTilesTree } from '@tellma/core-ui/tiles-tree';
 
 import { HeldResponses, HeldResponsesControls } from '../held-responses';
 
@@ -46,12 +47,12 @@ function childrenOf(parent: StoryAccount): readonly StoryAccount[] {
 }
 
 /**
- * tm-tiles in tree mode: a single-column treegrid over flat rows whose
+ * tm-tiles in tree mode (TmTilesTree): a single-column treegrid over flat rows whose
  * lazy branches load in batches through a held data source, one branch
  * that fails, and an already loaded branch.
  */
 @Component({
-  imports: [HeldResponsesControls, TmTiles],
+  imports: [HeldResponsesControls, TmTiles, TmTilesTree],
   template: `
     <h2>Tiles (tree)</h2>
     <p class="toolbar"><app-held-responses [gate]="gate" name="children" /></p>
