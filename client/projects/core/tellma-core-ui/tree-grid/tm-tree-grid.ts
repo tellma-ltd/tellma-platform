@@ -3,12 +3,48 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, input, model } from '@angular/core';
+import { Component, input, model, untracked, viewChild, type TemplateRef } from '@angular/core';
+import { ChevronDown, ChevronRight } from 'lucide';
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
-import { TmGridBase, ɵTmGridView, type ɵTmGridTreeConfig } from '@tellma/core-ui/grid';
+import {
+  TmGridBase,
+  ɵTmGridView,
+  type ɵTmGridTreeAffordanceContext,
+  type ɵTmGridTreeConfig,
+} from '@tellma/core-ui/grid';
+import type { TmGridTreeOptions } from '@tellma/core-ui/grid-engine';
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
+import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import { ɵTmTreeGridExpansion } from './internal/tree-expansion';
+
+// The expander's two glyphs. Expanded points down; collapsed points along
+// the reading direction, so it mirrors in right-to-left text (the down
+// chevron is symmetric and never needs to).
+const EXPANDED_GLYPH: TmIconSource = ChevronDown;
+const COLLAPSED_GLYPH: TmIconSource = { node: ChevronRight, mirrorInRtl: true };
+
+/**
+ * The engine's tree options over a tree grid's inputs. `parentId` and
+ * `hasChildren` read the current input inside the engine's derivations, so
+ * a rebind recomputes the structure; the scalar members are getters read
+ * per use, untracked (event pipelines and seeding consume them, never
+ * reactively). Built while the base class constructs, so it only closes
+ * over the grid: the inputs are read once they exist.
+ */
+function treeOptions<T>(grid: TmTreeGrid<T>): TmGridTreeOptions<T> {
+  return {
+    parentId: (row: T) => grid.parentId()(row),
+    hasChildren: (row: T) => grid.hasChildren()?.(row) ?? false,
+    get parentIdKey(): string | undefined {
+      return untracked(grid.parentIdKey);
+    },
+    get defaultExpandedDepth(): number | undefined {
+      return untracked(grid.defaultExpandedDepth);
+    },
+  };
+}
 
 /**
  * Hierarchical data grid over a **flat** rows array (an adjacency list —
@@ -53,8 +89,36 @@ import { ɵTmTreeGridExpansion } from './internal/tree-expansion';
  */
 @Component({
   selector: 'tm-tree-grid',
-  imports: [ɵTmGridView],
-  template: `<tm-grid-view [core]="core" />`,
+  imports: [TmIcon, TmSpinner, ɵTmGridView],
+  template: `
+    <tm-grid-view [core]="core" />
+    <!-- The tree affordance every hierarchy cell starts with, which the
+         grid's view renders there: the level indent, the pointer-only
+         expander and a RESERVED lazy-loading spinner slot, so the spinner
+         appearing shifts nothing. Declared here, its nodes take this
+         component's styles, and a flat grid carries none of it. -->
+    <ng-template #affordance let-cell>
+      <span class="tm-grid__indent" aria-hidden="true" [style.--grid-level]="cell.level"></span>
+      <span class="tm-grid__twisty" aria-hidden="true">
+        @if (cell.expander !== null) {
+          <!-- Two glyphs, swapped: expanded points down, and collapsed
+               points along the reading direction, mirrored under the live
+               computed direction. -->
+          <button type="button" class="tm-grid__expander" data-tm-expander tabindex="-1">
+            <tm-icon
+              class="tm-grid__expander-glyph"
+              [svg]="cell.expander === 'expanded' ? expandedGlyph : collapsedGlyph"
+            />
+          </button>
+        }
+      </span>
+      <span class="tm-grid__childspin" aria-hidden="true">
+        @if (cell.loadingChildren) {
+          <tm-spinner class="tm-grid__childspin-spinner" data-tm-childspin />
+        }
+      </span>
+    </ng-template>
+  `,
   styleUrl: './tm-tree-grid.css',
   host: {
     class: 'tm-grid tm-grid--tree',
@@ -124,6 +188,14 @@ export class TmTreeGrid<T> extends TmGridBase<T> {
    */
   readonly expandedIds = model<ReadonlySet<TmRowId>>(new Set());
 
+  /** The expander's glyph on an expanded row: a chevron pointing down. */
+  protected readonly expandedGlyph = EXPANDED_GLYPH;
+  /** The expander's glyph on a collapsed row, mirrored in right-to-left text. */
+  protected readonly collapsedGlyph = COLLAPSED_GLYPH;
+  /** The hierarchy cells' tree affordance, which the grid's view renders. */
+  private readonly affordance =
+    viewChild.required<TemplateRef<ɵTmGridTreeAffordanceContext>>('affordance');
+
   /**
    * Hands the composition root this component's tree bindings. Deferred
    * closures by contract: this runs during the base constructor, before
@@ -131,10 +203,8 @@ export class TmTreeGrid<T> extends TmGridBase<T> {
    */
   protected override treeConfig(): ɵTmGridTreeConfig<T> {
     return {
-      parentId: () => this.parentId(),
-      parentIdKey: () => this.parentIdKey(),
-      hasChildren: () => this.hasChildren(),
-      defaultExpandedDepth: () => this.defaultExpandedDepth(),
+      options: treeOptions(this),
+      affordance: () => this.affordance(),
       // The expansion and lazy loading live here, not in the grid core, so
       // a flat grid carries none of them. The controller reads this
       // component's inputs lazily, once they exist.

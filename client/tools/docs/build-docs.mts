@@ -10,7 +10,7 @@
  * one fetch; the MCP server is the interactive path. Both derive from the
  * same components.json, so they never diverge.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -49,8 +49,20 @@ if (leaking.length > 0 || SPEC_REF.test(JSON.stringify(doc))) {
   process.exit(1);
 }
 
-writeFileSync(join(outDir, 'components.json'), JSON.stringify(doc, null, 2) + '\n');
-writeFileSync(
+/**
+ * Writes a generated file only on a real change: an identical rewrite still
+ * moves the file's mtime, and everything under projects/ is a build input
+ * whose mtime decides whether the e2e run may reuse an existing production
+ * bundle (scripts/prod-build.mjs).
+ */
+function writeIfChanged(path: string, text: string): void {
+  if (!existsSync(path) || readFileSync(path, 'utf8') !== text) {
+    writeFileSync(path, text);
+  }
+}
+
+writeIfChanged(join(outDir, 'components.json'), JSON.stringify(doc, null, 2) + '\n');
+writeIfChanged(
   join(outDir, 'components.schema.json'),
   JSON.stringify(z.toJSONSchema(componentsJson, { target: 'draft-7' }), null, 2) + '\n',
 );
@@ -118,7 +130,7 @@ const llms = [
   ...doc.components.map(llmsSection),
 ].join('\n');
 
-writeFileSync(join(outDir, 'llms.txt'), llms);
+writeIfChanged(join(outDir, 'llms.txt'), llms);
 
 console.log(`docs:build OK — ${doc.components.length} components ->`);
 for (const file of ['components.json', 'components.schema.json', 'llms.txt']) {

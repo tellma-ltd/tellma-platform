@@ -258,7 +258,7 @@ namespace Tellma.Core.Tests.Localization
             ICalendarSystem calendar = Calendar(code);
             CultureInfo culture = NegotiatedCultures.Get(language, region);
             DateOnly date = new(2026, 3, 2);
-            using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(culture, calendar, PlusThree, 1, []));
+            using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(culture, calendar, PlusThree, 1, [], language, language + "-" + region));
 
             Assert.Equal(calendar.Format(date, culture, DateStyle.Short), _messages["Date_short", new { d = date }].Value);
             Assert.Equal(calendar.Format(date, culture, DateStyle.Medium), _messages["Date_medium", new { d = date }].Value);
@@ -290,7 +290,7 @@ namespace Tellma.Core.Tests.Localization
         public void An_instant_renders_as_its_date_in_the_scopes_zone_and_a_wall_clock_date_never_shifts()
         {
             CultureInfo culture = NegotiatedCultures.Get("en", "GB");
-            using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(culture, Gregorian, PlusThree, 1, []));
+            using IDisposable scope = LocalizationScope.Enter(new LocalizationContext(culture, Gregorian, PlusThree, 1, [], "en", "en-GB"));
 
             // 22:30 UTC is already the next day three hours ahead.
             Assert.Equal("3 Mar 2026", _messages["Date", new { d = new DateTimeOffset(2026, 3, 2, 22, 30, 0, TimeSpan.Zero) }].Value);
@@ -340,7 +340,7 @@ namespace Tellma.Core.Tests.Localization
                 Assert.Equal("2 Mar 2026", _messages["Date", new { d = instant }].Value);
 
                 // The request's calendar and zone, in the thread's culture.
-                _ = LocalizationScope.ApplyRequest(new LocalizationContext(NegotiatedCultures.Get("ar", "SA"), Calendar("uq"), PlusThree, 1, []));
+                _ = LocalizationScope.ApplyRequest(new LocalizationContext(NegotiatedCultures.Get("ar", "SA"), Calendar("uq"), PlusThree, 1, [], "ar", "ar-SA"));
                 Assert.Equal(Calendar("uq").Format(date.AddDays(1), culture, DateStyle.Medium), _messages["Date", new { d = instant }].Value);
                 Assert.Equal("1 item", _messages["Items", new { count = 1 }].Value);
 
@@ -545,7 +545,7 @@ namespace Tellma.Core.Tests.Localization
         /// <returns>The scope.</returns>
         private static IDisposable Scope(string language, string region, ICalendarSystem? calendar = null, TimeZoneInfo? zone = null)
         {
-            return LocalizationScope.Enter(new LocalizationContext(NegotiatedCultures.Get(language, region), calendar ?? Gregorian, zone ?? TimeZoneInfo.Utc, 1, []));
+            return LocalizationScope.Enter(new LocalizationContext(NegotiatedCultures.Get(language, region), calendar ?? Gregorian, zone ?? TimeZoneInfo.Utc, 1, [], language, language + "-" + region));
         }
 
         /// <summary>One of the platform's three calendar systems.</summary>

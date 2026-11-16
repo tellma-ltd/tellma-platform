@@ -36,7 +36,7 @@ stale schema; composition is expressed through `FilterTree` instead.
 | `KeySetRestriction` | Restricts a query's root rows to keys a host holds in a table of its own. |
 | `ParameterBindingOptions`, `MeasureRows` | Arguments printed into a text as literals (`QueryexEngine.BindParameters`), and the rows a measure aggregates as one predicate (`QueryexEngine.MeasureCondition`). |
 | `FilterConjunct`, `FilterConjunctOperator` | A filter's top-level restrictions as discovery reads them, when `QueryDiscoverySpec.Conjuncts` asks. |
-| `QueryexTimeZones` | The time-zone ids `local` compiles, and the older ids browsers report for them, for a host's list of zones. |
+| `QueryexTimeZones` | The time-zone ids `local` compiles, and the older ids browsers report for them, for a host's list of zones; `TryGetWindowsName` gives an id's Windows name from the same pinned table, for a host that converts in SQL Server. |
 | `QueryexDiagnostic` | A machine-readable compilation problem. Hosts localize; the engine composes no prose. |
 
 ## Rules this project lives by

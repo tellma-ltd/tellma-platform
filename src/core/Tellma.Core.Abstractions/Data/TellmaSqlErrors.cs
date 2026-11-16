@@ -70,6 +70,18 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The message of <see cref="StaleVersionTag" />.</summary>
         public const string StaleVersionTagCode = "StaleVersionTag";
 
+        /// <summary>The <see cref="LimitExceeded" /> code of an update by query that selects more rows than its cap.</summary>
+        public const string UpdateCapExceededCode = "Update.CapExceeded";
+
+        /// <summary>The <see cref="CountMismatch" /> code of an update by query that selects other than the count expected.</summary>
+        public const string UpdateCountMismatchCode = "Update.CountMismatch";
+
+        /// <summary>The <see cref="LimitExceeded" /> code of a delete by query that selects more rows than its cap.</summary>
+        public const string DeleteCapExceededCode = "Delete.CapExceeded";
+
+        /// <summary>The <see cref="CountMismatch" /> code of a delete by query that selects other than the count expected.</summary>
+        public const string DeleteCountMismatchCode = "Delete.CountMismatch";
+
         /// <summary>The <see cref="Invariant" /> code of a tree whose parent chain loops.</summary>
         public const string TreeCycleCode = "Tree.Cycle";
 
