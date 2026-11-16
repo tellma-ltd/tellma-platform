@@ -42,14 +42,11 @@
   inset-inline: 0;
   display: grid;
   grid-template-columns: repeat(var(--tm-tiles-columns, 1), minmax(0, 1fr));
+  /* Only the lattice has more than one column, so the stacked list and tree
+     need no gap reset. */
   column-gap: var(--tiles-gap);
   block-size: var(--tiles-height);
   contain: layout style;
-}
-
-:host([data-layout='list']) .tm-tiles__line,
-:host([data-layout='tree']) .tm-tiles__line {
-  column-gap: 0;
 }
 
 /* ---- The tile ---- */
@@ -237,19 +234,21 @@
   text-overflow: ellipsis;
 }
 
+/* The title is its own link: with an href it underlines on hover, and
+   without one it is plain text. It is only as wide as its text, so the
+   link takes no presses (and no tap the browser snaps to the nearest
+   link) from the empty space beside it. */
 .tm-tiles__title {
   grid-area: 1 / 1;
+  justify-self: start;
+  max-inline-size: 100%;
   color: var(--tiles-title-text);
   font-size: var(--tiles-title-font-size);
   font-weight: var(--tiles-title-font-weight);
-}
-
-.tm-tiles__link {
-  color: inherit;
   text-decoration: none;
 }
 
-.tm-tiles__link:hover {
+.tm-tiles__title[href]:hover {
   text-decoration: underline;
 }
 

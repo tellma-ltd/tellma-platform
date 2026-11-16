@@ -78,7 +78,7 @@ export class TmTiles<T> implements TmGridDriverTarget {
     protected onAuxClick(event: MouseEvent): void;
     protected onClick(event: MouseEvent): void;
     protected onFocusIn(event: FocusEvent): void;
-    protected onFocusOut(event: FocusEvent): void;
+    protected onFocusOut(): void;
     protected onKeydown(event: KeyboardEvent): void;
     protected onPointerCancel(): void;
     protected onPointerDown(event: PointerEvent): void;

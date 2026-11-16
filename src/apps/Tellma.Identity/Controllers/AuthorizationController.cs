@@ -18,6 +18,7 @@ using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.AuthenticationPolicy;
+using Tellma.Identity.Services.Provisioning;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.Controllers
@@ -232,12 +233,27 @@ namespace Tellma.Identity.Controllers
                     // redirect is discarded and the user sits on the consent page watching
                     // "Allow" do nothing, while the server records a perfectly good grant. Name
                     // the client's own registered callbacks — never anything off the request —
-                    // so the policy widens only by where this grant could always have landed.
-                    CspFormAction.Allow(HttpContext, await applicationManager.GetRedirectUrisAsync(application));
+                    // so the policy widens only by where this grant could always have landed. A
+                    // native client's port-less loopback callback lands on any port, so only its
+                    // source names every port.
+                    CspFormAction.Allow(
+                        HttpContext,
+                        await applicationManager.GetRedirectUrisAsync(application),
+                        await applicationManager.HasApplicationTypeAsync(application, ApplicationTypes.Native));
+
+                    // A document client names itself; the host its document is published on is
+                    // what a person can check that name against, so the page shows both.
+                    string? clientHost = Services.ClientMetadata.ClientIdUrl.TryRecognize(
+                        await applicationManager.GetClientIdAsync(application), out Uri? clientIdUrl)
+                        && TellmaClientProperties.IsSet(
+                            await applicationManager.GetPropertiesAsync(application), TellmaClientProperties.DocumentClient)
+                        ? Services.ClientMetadata.ClientIdUrl.DisplayHost(clientIdUrl)
+                        : null;
 
                     return View("Consent", new ConsentViewModel
                     {
                         ApplicationName = await applicationManager.GetLocalizedDisplayNameAsync(application),
+                        ClientHost = clientHost,
                         Scope = request.Scope ?? string.Empty,
                         Targets = ConsentTargetCatalog.Describe(request.GetResources()),
                     });

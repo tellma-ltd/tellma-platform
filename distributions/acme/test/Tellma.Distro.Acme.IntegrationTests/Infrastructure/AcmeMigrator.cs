@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
@@ -43,7 +44,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
     internal sealed class AcmeMigrator
     {
         /// <summary>The public origin every host of the deployment serves.</summary>
-        public const string PublicOrigin = "https://localhost:7052";
+        public const string PublicOrigin = "https://localhost:4200";
 
         /// <summary>The tenant ids whose databases the fixture drops at the end: the two seeds and the sequence's first.</summary>
         private static readonly int[] TrackedTenants = [1, 2, 1000, 1001];
@@ -93,6 +94,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>A further composition every run adds to Acme's.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>The connection string each run handed the identity store's migration, in order.</summary>
+        public ConcurrentQueue<string> IdentityStoreConnectionStrings { get; } = new();
+
         /// <summary>A tenant database's default name.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <returns>The name.</returns>
@@ -127,7 +131,12 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     AcmeComposition.Compose(builder);
                     extra?.Invoke(builder);
                 },
-                TellmaIdentityStore.MigrateAsync,
+                // Acme's own identity store, recording the connection string it is handed.
+                connectionString =>
+                {
+                    IdentityStoreConnectionStrings.Enqueue(connectionString);
+                    return TellmaIdentityStore.MigrateAsync(connectionString);
+                },
                 new MigratorRunSettings
                 {
                     MigrationsAssembly = typeof(AcmeDesignTimeFactory).Assembly,

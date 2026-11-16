@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 
@@ -62,6 +63,7 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
         public async Task Every_answer_names_its_trace_and_build_early_refusals_included()
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync();
+            string build = host.Services.GetRequiredService<DeploymentVersions>().DistributionVersion;
 
             // An authentication refusal, a CSRF refusal and a not-found, none of which reaches a handler.
             using HttpRequestMessage unauthenticated = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", cookie: null);
@@ -81,7 +83,7 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
                 Assert.Equal(status, response.StatusCode);
                 string traceId = Assert.Single(response.Headers.GetValues(TellmaHeaders.TraceId));
                 Assert.Matches("^[0-9a-f]{32}$", traceId);
-                Assert.False(string.IsNullOrEmpty(Assert.Single(response.Headers.GetValues(TellmaHeaders.Build))));
+                Assert.Equal(build, Assert.Single(response.Headers.GetValues(TellmaHeaders.Build)));
 
                 // The problem's instance is the same trace the header names.
                 Assert.Equal(traceId, (await Problem.ReadAsync(response)).Instance);

@@ -26,6 +26,11 @@ namespace Tellma.Core.Migrator.Sql
     ///         <see cref="EnsureHeldAsync" /> before each write that another run must not interleave
     ///         with, and stops when the lock is gone.
     ///     </para>
+    ///     <para>
+    ///         The take waits up to <see cref="TimeoutMilliseconds" /> for another run, under a command
+    ///         bound just past that wait. The check and the release wait for nothing, and run under the
+    ///         statement bound the lock was taken with.
+    ///     </para>
     /// </remarks>
     internal sealed class MigrationLock : IAsyncDisposable
     {
@@ -47,13 +52,18 @@ namespace Tellma.Core.Migrator.Sql
 
         private readonly SqlConnection _connection;
 
+        /// <summary>The bound of the check and the release, in SQL Server's whole seconds.</summary>
+        private readonly int _statementTimeoutSeconds;
+
         /// <summary>Creates the handle of a held lock.</summary>
         /// <param name="connection">The connection that holds it.</param>
         /// <param name="resource">The resource.</param>
-        private MigrationLock(SqlConnection connection, string resource)
+        /// <param name="statementTimeoutSeconds">The bound of the check and the release, in whole seconds.</param>
+        private MigrationLock(SqlConnection connection, string resource, int statementTimeoutSeconds)
         {
             _connection = connection;
             Resource = resource;
+            _statementTimeoutSeconds = statementTimeoutSeconds;
         }
 
         /// <summary>The locked resource.</summary>
@@ -70,13 +80,19 @@ namespace Tellma.Core.Migrator.Sql
         /// <summary>Takes a lock, waiting up to <see cref="TimeoutMilliseconds" /> for another run to release it.</summary>
         /// <param name="catalogConnectionString">The catalog's connection string.</param>
         /// <param name="resource">The resource.</param>
+        /// <param name="statementTimeout">
+        ///     The bound of <see cref="EnsureHeldAsync" /> and of the release: statements that wait for
+        ///     nothing, such as <see cref="MigratorOptions.CommandTimeout" />.
+        /// </param>
         /// <param name="cancellationToken">Cancels the wait.</param>
         /// <returns>The held lock; disposing it releases it.</returns>
         /// <exception cref="MigratorFailureException">The lock was not granted in time.</exception>
-        public static async Task<MigrationLock> AcquireAsync(string catalogConnectionString, string resource, CancellationToken cancellationToken)
+        /// <exception cref="ArgumentOutOfRangeException">The statement bound is outside the range <see cref="MigratorOptions.Seconds" /> accepts.</exception>
+        public static async Task<MigrationLock> AcquireAsync(string catalogConnectionString, string resource, TimeSpan statementTimeout, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(catalogConnectionString);
             ArgumentException.ThrowIfNullOrWhiteSpace(resource);
+            int statementTimeoutSeconds = MigratorOptions.Seconds(statementTimeout);
 
             // --- A session of its own, outside the pool ---
             SqlConnectionStringBuilder builder = new(catalogConnectionString) { Pooling = false };
@@ -95,7 +111,7 @@ namespace Tellma.Core.Migrator.Sql
                 // --- 0 granted at once, 1 granted after a wait; anything negative is a refusal ---
                 int result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
                 return result >= 0
-                    ? new MigrationLock(connection, resource)
+                    ? new MigrationLock(connection, resource, statementTimeoutSeconds)
                     : throw new MigratorFailureException(
                         $"The migration lock '{resource}' was not granted (sp_getapplock returned {result}): another migrator run holds it.");
             }
@@ -117,6 +133,7 @@ namespace Tellma.Core.Migrator.Sql
             {
                 await using SqlCommand command = _connection.CreateCommand();
                 command.CommandText = ModeStatement;
+                command.CommandTimeout = _statementTimeoutSeconds;
                 _ = command.Parameters.Add(new SqlParameter("@resource", SqlDbType.NVarChar, 255) { Value = Resource });
                 mode = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
             }
@@ -143,6 +160,7 @@ namespace Tellma.Core.Migrator.Sql
                 {
                     await using SqlCommand command = _connection.CreateCommand();
                     command.CommandText = ReleaseStatement;
+                    command.CommandTimeout = _statementTimeoutSeconds;
                     _ = command.Parameters.Add(new SqlParameter("@resource", SqlDbType.NVarChar, 255) { Value = Resource });
                     _ = await command.ExecuteNonQueryAsync().ConfigureAwait(false);
                 }
