@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
@@ -62,9 +63,12 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.NotSame(one.ServiceProvider.GetRequiredService<ITenantAccessGuard>(), other.ServiceProvider.GetRequiredService<ITenantAccessGuard>());
             Assert.NotSame(one.ServiceProvider.GetRequiredService<ITenantConnectionProvider>(), other.ServiceProvider.GetRequiredService<ITenantConnectionProvider>());
 
-            // --- The platform's one initializer is the locale negotiation; no session listener is its own yet ---
-            IRequestContextInitializer initializer = Assert.Single(one.ServiceProvider.GetServices<IRequestContextInitializer>());
-            Assert.Equal(200, Assert.IsType<LocaleNegotiationInitializer>(initializer).Order);
+            // --- The platform's initializers are the connection, then the locale negotiation; no session listener is its own yet ---
+            IRequestContextInitializer[] initializers = [.. one.ServiceProvider.GetServices<IRequestContextInitializer>().OrderBy(static initializer => initializer.Order)];
+            Assert.Collection(
+                initializers,
+                static connect => Assert.Equal(100, Assert.IsType<ConnectInitializer>(connect).Order),
+                static locale => Assert.Equal(200, Assert.IsType<LocaleNegotiationInitializer>(locale).Order));
             Assert.Empty(provider.GetServices<ISessionTerminationListener>());
         }
 

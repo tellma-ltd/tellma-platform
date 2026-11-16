@@ -198,7 +198,7 @@ namespace Tellma.Core.Data.Batches
             bool bodyRan = done.BodyRan;
             if (batch.Audit is IDataBatchAudit after)
             {
-                await after.AfterAsync(auditState, batch.WrittenTables, afterSend).ConfigureAwait(false);
+                await after.AfterAsync(auditState, batch.AuditedWrites, afterSend).ConfigureAwait(false);
             }
 
             // --- The outcome: the snapshots the prologue read, with the batch's own bumps, replace the process's ---
@@ -678,6 +678,7 @@ namespace Tellma.Core.Data.Batches
                 .SetTag(DataTelemetryNames.TenantIdAttribute, run.TenantId);
 
             long started = _time.GetTimestamp();
+            batch.MarkAttemptStarted(started);
             AttemptPhase phase = AttemptPhase.Unsent;
             SqlConnection? connection = null;
             SqlTransaction? transaction = null;
