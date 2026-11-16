@@ -366,6 +366,18 @@ jobs:
           done
           ls "$root" | grep -Eq '^main-[A-Z0-9]{8}\.js$' || { echo "wwwroot has no hashed main bundle"; ls "$root"; exit 1; }
           ls "$root/tm-metadata" | grep -Eq '^core-[0-9A-HJKMNP-TV-Z]{12}\.json$' || { echo "wwwroot has no hashed Core chunk"; exit 1; }
+      # The client app's build references the Migrator; nothing of it may ship with the web host:
+      # no Migrator file, and no identity migrations or design-time package in the host's manifest.
+      - name: The published web host carries nothing of the Migrator
+        shell: bash
+        run: |
+          publish="${{ runner.temp }}/acme-web"
+          if ls "$publish" | grep -E '^Tellma\.Distro\.Acme\.Migrator\.'; then
+            echo "The web host's publish output holds Migrator files"; exit 1
+          fi
+          if grep -Eo '"(Tellma\.Identity\.Migrations|[A-Za-z0-9.]+\.Design)/' "$publish/Tellma.Distro.Acme.Web.deps.json"; then
+            echo "The web host's dependency manifest lists a migrations or design-time package"; exit 1
+          fi
       # The build above wrote generated/, which the app's configuration imports.
       - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
 

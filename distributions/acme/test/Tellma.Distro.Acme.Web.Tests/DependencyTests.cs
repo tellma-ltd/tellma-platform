@@ -77,6 +77,25 @@ namespace Tellma.Distro.Acme.Web.Tests
             Assert.DoesNotContain(libraries, IsForbidden);
         }
 
+        [Fact]
+        public void The_web_host_s_build_output_holds_no_file_of_the_migrator()
+        {
+            // The web project's own output folder, in the configuration and framework this suite was
+            // built in (the suite's folder ends in bin/<configuration>/<framework>/). The suite's
+            // own folder cannot tell: it references the Migrator itself.
+            DirectoryInfo suite = new(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string output = Path.Combine(AcmePaths.Web, "bin", suite.Parent!.Name, suite.Name);
+            Assert.True(File.Exists(Path.Combine(output, "Tellma.Distro.Acme.Web.dll")), $"The web host's build output is not where the suite expects it: {output}");
+
+            // The client app's build references the Migrator; none of its files (the launcher, its
+            // manifests) may follow that reference into the web host, which would ship them.
+            string[] migrator = [.. Directory.EnumerateFiles(output)
+                .Select(static file => Path.GetFileName(file))
+                .Where(static name => name.StartsWith("Tellma.Distro.Acme.Migrator.", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.Ordinal)];
+            Assert.Empty(migrator);
+        }
+
         /// <summary>Whether a project or package is one the web host must never reach.</summary>
         /// <param name="name">The project or package name.</param>
         /// <returns>True when it is.</returns>

@@ -23,10 +23,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The emit runs the Migrator, so MSBuild builds it first; no assembly flows into the app. The
-         JavaScript SDK declares an older target framework than the Migrator's, which only matters
-         to an assembly reference, so the framework check is skipped. -->
-    <ProjectReference Include="..\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <!-- The emit runs the Migrator, so MSBuild builds it first; nothing of it flows into the app.
+         ReferenceOutputAssembly="false" keeps its assembly out, and Private="false" keeps out the
+         launcher files (apphost, deps.json, runtimeconfig.json) the SDK otherwise hands up every
+         project reference's copy-to-output chain, into the web host's build and publish output.
+         The JavaScript SDK declares an older target framework than the Migrator's, which only
+         matters to an assembly reference, so the framework check is skipped. -->
+    <ProjectReference Include="..\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 
 </Project>

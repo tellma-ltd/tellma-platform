@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -35,7 +36,10 @@ namespace Tellma.Distro.Acme.Web.Tests
         public async Task Two_emits_write_the_same_names_and_bytes()
         {
             using AcmeEmit first = await AcmeEmit.RunAsync(TestContext.Current.CancellationToken);
-            using AcmeEmit second = await AcmeEmit.RunAsync(TestContext.Current.CancellationToken);
+
+            // The second emit runs under a culture whose separators and calendar differ, as a build
+            // machine in another locale would: the output must not depend on it.
+            using AcmeEmit second = await EmitUnderAsync(CultureInfo.GetCultureInfo("ar-SA"));
 
             SortedDictionary<string, byte[]> written = first.Files();
             SortedDictionary<string, byte[]> again = second.Files();
@@ -100,6 +104,26 @@ namespace Tellma.Distro.Acme.Web.Tests
                         Assert.True(section.GetArrayLength() == 0, $"The {chunk} chunk's '{name}', which nothing contributes, is not empty.");
                     }
                 }
+            }
+        }
+
+        /// <summary>Runs an emit under a culture, restoring the caller's cultures after it.</summary>
+        /// <param name="culture">The culture, both for formatting and for resources.</param>
+        /// <returns>The emit.</returns>
+        private static async Task<AcmeEmit> EmitUnderAsync(CultureInfo culture)
+        {
+            CultureInfo current = CultureInfo.CurrentCulture;
+            CultureInfo currentUi = CultureInfo.CurrentUICulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+                return await AcmeEmit.RunAsync(TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = current;
+                CultureInfo.CurrentUICulture = currentUi;
             }
         }
 
