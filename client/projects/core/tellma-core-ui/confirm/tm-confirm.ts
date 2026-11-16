@@ -84,6 +84,12 @@ let nextMessageId = 0;
  * }); // 'discard', 'stay' or null
  * const ok = await confirm.confirm({ title: 'Delete this center?', message, confirmLabel: 'Delete', destructive: true });
  * ```
+ *
+ * @tmGroup overlay
+ * @tmA11yNotes An alert dialog named by its title and described by its
+ *   message. Focus is trapped and starts on the primary answer (on Cancel
+ *   when destructive); Tab cycles the answers and Escape dismisses,
+ *   answering `null`.
  */
 @Injectable({ providedIn: 'root' })
 export class TmConfirm {

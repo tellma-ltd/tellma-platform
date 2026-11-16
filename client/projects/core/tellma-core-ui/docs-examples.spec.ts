@@ -138,7 +138,7 @@ import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as splitterExamples from './splitter/tm-splitter.examples';
 import * as switchExamples from './switch/tm-switch.examples';
-import * as tabsExamples from './tabs/tm-tabs.examples';
+import * as tabsExamples from './tabs/tm-tab-group.examples';
 import * as tilesExamples from './tiles/tm-tiles.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeExamples from './tree/tm-tree.examples';
@@ -968,7 +968,7 @@ const SUITES = [
   { source: 'empty-state/tm-empty-state.examples.ts', examples: emptyStateExamples },
   { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
   { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },
-  { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
+  { source: 'tabs/tm-tab-group.examples.ts', examples: tabsExamples },
   { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
   { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
   { source: 'tooltip/tm-tooltip.examples.ts', examples: tooltipExamples },

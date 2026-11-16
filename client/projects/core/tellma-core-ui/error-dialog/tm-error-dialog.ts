@@ -99,6 +99,12 @@ let nextMessageId = 0;
  *   details: [{ label: 'Status', value: '500' }],
  * }); // 'primary', 'close' or 'replaced'
  * ```
+ *
+ * @tmGroup overlay
+ * @tmA11yNotes An alert dialog named by its title and described by its
+ *   message. Focus is trapped and starts on the primary button; Tab cycles
+ *   and Escape dismisses. A replaced failure is announced assertively,
+ *   because focus does not move.
  */
 @Injectable({ providedIn: 'root' })
 export class TmErrorDialog {
