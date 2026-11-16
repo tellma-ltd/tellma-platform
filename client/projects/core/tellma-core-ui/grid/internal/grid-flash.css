@@ -52,6 +52,15 @@
     animation: none;
   }
 
+  /* The ring spans the row's tracks, not just the view: without a row-end
+     column a row is only as wide as the view, its tracks overflowing it, so
+     on a sideways scroll a view-wide ring would scroll off with the first
+     columns. Tracks that overflow sit at their minimums already, and a row
+     that fits keeps the view's width, so no cell moves. */
+  .tm-grid__row--flash {
+    min-inline-size: min-content;
+  }
+
   /* The ring's containing block. The outlier row is positioned already. */
   .tm-grid__row--flash:not(.tm-grid__row--outlier) {
     position: relative;

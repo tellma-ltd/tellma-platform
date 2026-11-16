@@ -401,33 +401,45 @@ describe('tm-tree', () => {
   });
 
   it('warns when an expansion opens more than 500 nodes, after the rows render', async () => {
+    // The page is shared between files, and spying on a method another file
+    // left spied returns that spy with its calls: start from no calls, and
+    // restore even when an assertion fails.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const children: Field[] = Array.from({ length: 501 }, (_, index) => ({
-      key: `Agent.F${index}`,
-      label: `Field ${index}`,
-    }));
-    const { fixture, tree } = await setup((h) =>
-      h.nodes.set([{ key: 'Agent', label: 'Agent', children }]),
-    );
-    expect(warn).not.toHaveBeenCalled();
-    await (await tree.getNode({ key: 'Agent' })).toggle();
-    await fixture.whenStable();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain('502 nodes are open');
-    warn.mockRestore();
+    warn.mockClear();
+    try {
+      const children: Field[] = Array.from({ length: 501 }, (_, index) => ({
+        key: `Agent.F${index}`,
+        label: `Field ${index}`,
+      }));
+      const { fixture, tree } = await setup((h) =>
+        h.nodes.set([{ key: 'Agent', label: 'Agent', children }]),
+      );
+      expect(warn).not.toHaveBeenCalled();
+      await (await tree.getNode({ key: 'Agent' })).toggle();
+      await fixture.whenStable();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('502 nodes are open');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('warns once in a dev build when more than 500 nodes are open', async () => {
+    // As above: start from no calls, restore even on a failure.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const many: Field[] = Array.from({ length: 501 }, (_, index) => ({
-      key: `F${index}`,
-      label: `Field ${index}`,
-    }));
-    const { fixture, host } = await setup((h) => h.nodes.set(many));
-    host.nodes.set([...many]);
-    await fixture.whenStable();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain('501 nodes are open');
-    warn.mockRestore();
+    warn.mockClear();
+    try {
+      const many: Field[] = Array.from({ length: 501 }, (_, index) => ({
+        key: `F${index}`,
+        label: `Field ${index}`,
+      }));
+      const { fixture, host } = await setup((h) => h.nodes.set(many));
+      host.nodes.set([...many]);
+      await fixture.whenStable();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('501 nodes are open');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

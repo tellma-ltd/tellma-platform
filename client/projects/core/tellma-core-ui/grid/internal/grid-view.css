@@ -452,9 +452,12 @@
 
 /* A readonly boolean is display-only, not a clickable checkbox: no box — a
    bare check when true (text color), an empty cell when false. Declared after
-   --on, so it also strips the checked box's fill/border. */
-.tm-grid-bool--readonly {
-  border-color: transparent;
+   --on, so it also strips the checked box's fill/border; two classes, so it
+   outranks the forced-colors box rules too. No border rather than a
+   transparent one, which forced colors would paint; the box keeps its size
+   (border-box) and the glyph its centre. */
+.tm-grid-bool.tm-grid-bool--readonly {
+  border: 0;
   background: transparent;
   cursor: default;
 }
@@ -685,6 +688,12 @@
   .tm-grid__check--on::after,
   .tm-grid__check--mixed::after {
     background-color: HighlightText;
+  }
+
+  /* A readonly boolean stays boxless (its rule outranks the box rules
+     above); its bare check takes the cell's ink, as the text beside it. */
+  .tm-grid-bool--readonly.tm-grid-bool--on::after {
+    background-color: var(--tm-grid-overlay-ink, CanvasText);
   }
 }
 

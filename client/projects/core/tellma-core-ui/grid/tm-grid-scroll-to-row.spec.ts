@@ -99,12 +99,21 @@ class DeepLinkHost {
 
 /**
  * Twenty 150px columns in a 400px-wide grid, in either direction, with
- * the row-header track's token, which a unit test's page does not load.
+ * the tokens a unit test's page does not load: the row-header track, the
+ * ring width, and a long flash, so the ring is still on when a test reads it.
  */
 @Component({
   imports: [Dir, TmGrid, TmGridColumn],
   template: `
-    <div [dir]="dir()" style="inline-size: 400px; --grid-row-header-width: 40px">
+    <div
+      [dir]="dir()"
+      style="
+        inline-size: 400px;
+        --grid-row-header-width: 40px;
+        --grid-flash-duration: 60s;
+        --focus-ring-width: 2px
+      "
+    >
       <tm-grid
         gridId="spec-grid-scroll-wide"
         [data]="rows"
@@ -248,12 +257,18 @@ describe('tm-grid scrollToRow', () => {
     await stable(fixture);
     expect(await harness.getActiveCell()).toEqual({ row: 10, col: 1 });
 
+    // The page is shared between files, so the spy is restored even when an
+    // assertion fails: a live spy would carry its calls into the next file.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    grid.scrollToRow(12, { column: 'nope' });
-    await stable(fixture);
-    expect(await harness.getActiveCell()).toEqual({ row: 12, col: 1 });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toContain("'nope'");
+    try {
+      grid.scrollToRow(12, { column: 'nope' });
+      await stable(fixture);
+      expect(await harness.getActiveCell()).toEqual({ row: 12, col: 1 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("'nope'");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('activate false scrolls without moving the active cell', async () => {
@@ -443,6 +458,46 @@ describe('tm-grid scrollToRow', () => {
       expect(cell).not.toBeNull();
       expect(Math.abs(scroller.scrollLeft)).toBeGreaterThan(0);
       expect(insideScroller(scroller, cell!)).toBe(true);
+    });
+
+    it(`rings every column of a flashing row in a wide grid under forced colors (${dir})`, async () => {
+      TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+      const fixture = TestBed.createComponent(WideHost);
+      fixture.componentInstance.dir.set(dir);
+      await stable(fixture);
+      const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tm-grid__scroller',
+      ) as HTMLElement;
+
+      await cdp().send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'forced-colors', value: 'active' }],
+      });
+      try {
+        // Flashed into its last column, the row sits scrolled sideways.
+        expect(
+          fixture.componentInstance.grid().scrollToRow(180, { column: 'c19', flash: true }),
+        ).toBe(true);
+        await stable(fixture);
+        expect(Math.abs(scroller.scrollLeft)).toBeGreaterThan(0);
+        const row = scroller.querySelector<HTMLElement>('[role="row"][aria-rowindex="182"]')!;
+        expect(row.classList).toContain('tm-grid__row--flash');
+        expect(getComputedStyle(row, '::after').content).toBe('""');
+
+        // The ring fills the row's box, so the box must span every track:
+        // a view-wide row would leave the scrolled-to columns unringed.
+        const box = row.getBoundingClientRect();
+        const cells = [...row.querySelectorAll('[data-tm-cell]')];
+        expect(cells.at(-1)!.getAttribute('aria-colindex')).toBe('21');
+        for (const element of cells) {
+          const cell = element.getBoundingClientRect();
+          expect(cell.left).toBeGreaterThanOrEqual(box.left - 1);
+          expect(cell.right).toBeLessThanOrEqual(box.right + 1);
+        }
+        expect(box.width).toBeGreaterThan(scroller.clientWidth);
+      } finally {
+        // The page is shared with the other suites of the run.
+        await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+      }
     });
   }
 });
