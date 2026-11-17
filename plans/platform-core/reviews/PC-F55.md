@@ -86,12 +86,12 @@ Suggested fix: list the gates and e2e invocations that were run in the fix commi
 
 ### Responses
 
-- R1-1: fixed in SHA_F55.
+- R1-1: fixed in 0818687f.
   - The story now waits with `.catch(() => document.fonts.ready)`, so its canvases draw once every
     face that is loading has settled. That means they always draw in the self-hosted Noto faces.
   - Both comments are corrected: the load comment, and the template comment, which now reads
     "with every face it needs settled".
-- R1-2: fixed in SHA_F55.
+- R1-2: fixed in 0818687f.
   - chart-engine.ts waits the same way: `document.fonts.load(font, sample).catch(() => document.fonts.ready).then(done, done)`.
     A comment explains why.
   - The unit test is rewritten as "waits, after a font load fails, for the faces still loading
@@ -100,7 +100,7 @@ Suggested fix: list the gates and e2e invocations that were run in the fix commi
   - Mutant: I put back `.then(done, done)` without the `ready` wait, and the test fails.
   - Size: the engine chunk goes from 200.11 to 200.13 KB (+0.02), within its 200.15 ceiling.
     `./chart` is unchanged at 6.83. No budget change.
-- R1-3: fixed in SHA_F55.
+- R1-3: fixed in 0818687f.
   - In chart-bidi.spec.ts, `withMissingFallbackFaces(page)` adds an init script before both
     `open()` and the facade test. It registers `local('Tellma No Such Font')` faces for
     'Noto Sans Fallback' (U+0000-00FF) and 'Noto Sans Arabic Fallback' (U+0600-06FF), so the
@@ -108,4 +108,4 @@ Suggested fix: list the gates and e2e invocations that were run in the fix commi
   - Mutant: without the story's `.catch`, both canvas-battery tests fail on Windows with the Linux
     CI error (`bidi-drawn` stays "drawing").
   - The unit test's title and comment no longer suggest it covers the story.
-- R1-4: fixed in SHA_F55. The commit message lists the gates and the e2e invocation it ran.
+- R1-4: fixed in 0818687f. The commit message lists the gates and the e2e invocation it ran.
