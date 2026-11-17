@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Excel;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tests.Infrastructure;
 using Tellma.Core.Tests.Localization;
 using Tellma.Testing.Entities;
 using static Tellma.Core.Tests.Excel.ExcelTestKit;
@@ -21,9 +22,11 @@ namespace Tellma.Core.Tests.Excel
     ///     The entity export writer: a workbook that passes the Office schema, with the parent and
     ///     child sheets in plan order, the bold frozen filterable header, the editable shape's
     ///     validation lists, the hidden protected manifest, the 1900 date system, the row caps, and
-    ///     memory that stays flat however many rows stream through.
+    ///     memory that stays flat however many rows stream through. The suite runs alone, since its
+    ///     memory test reads the process's heap.
     /// </summary>
     /// <param name="composition">The fixture model, composed once for the class.</param>
+    [Collection(SerialSuites.Name)]
     public sealed class WorkbookWriterTests(FixtureLabelsComposition composition) : IClassFixture<FixtureLabelsComposition>, IDisposable
     {
         /// <summary>The manifest columns a date column's row is read at: sheet, letter, header, type, role, date encoding and pattern.</summary>
