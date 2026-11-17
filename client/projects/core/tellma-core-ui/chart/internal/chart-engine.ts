@@ -21,6 +21,8 @@ import type {
   ɵTmChartPlot,
   ɵTmChartRenderRequest,
 } from './chart-plot';
+import { tmFormatNumber } from '@tellma/core-ui/l10n';
+
 import { ɵtmBuildChartOption } from './chart-option';
 import { ɵtmReadChartTheme } from './chart-theme';
 
@@ -96,14 +98,27 @@ function emptyThroughDom(element: HTMLElement): () => void {
   };
 }
 
-/** The text of a spec's labels, which the fonts must cover before anything is measured. */
+/**
+ * The text a spec's chart draws, as far as it is known before drawing, which
+ * the fonts must cover before anything is measured: the labels; the locale's
+ * digits, signs and separators in a value, a share and compact ticks (whose
+ * suffixes are words in some locales); and the translated templates' words.
+ */
 function sampleText(request: ɵTmChartRenderRequest): string {
-  const { spec } = request;
-  const labels = spec.dimensions.flatMap((dimension) => [
-    dimension.label,
-    ...dimension.members.map((member) => member.label),
-  ]);
-  return `${spec.measure.label}${labels.join('')}0123456789`;
+  const { spec, locale, templates } = request;
+  const compact = new Intl.NumberFormat(locale, { notation: 'compact' });
+  return [
+    spec.measure.label,
+    ...spec.dimensions.flatMap((dimension) => [
+      dimension.label,
+      ...dimension.members.map((member) => member.label),
+    ]),
+    tmFormatNumber(-1234567890.12, locale, { maxDecimals: 2 }),
+    tmFormatNumber(-0.125, locale, { percent: true, maxDecimals: 1 }),
+    ...[1e3, 1e6, 1e9, 1e12].map((value) => compact.format(-value)),
+    templates.share,
+    templates.point,
+  ].join('');
 }
 
 /**
@@ -163,7 +178,12 @@ export const ɵtmCreateChartEngine: ɵTmChartEngineFactory = (
     const zrEvent = params.event;
     const native = zrEvent?.event as MouseEvent | undefined;
     const dataIndex = typeof params.dataIndex === 'number' ? params.dataIndex : undefined;
-    const members = membersOf(params.seriesIndex, dataIndex, zrEvent?.offsetX ?? 0, zrEvent?.offsetY ?? 0);
+    const members = membersOf(
+      params.seriesIndex,
+      dataIndex,
+      zrEvent?.offsetX ?? 0,
+      zrEvent?.offsetY ?? 0,
+    );
     if (members !== null) {
       activate(members, {
         ctrlKey: native?.ctrlKey === true,

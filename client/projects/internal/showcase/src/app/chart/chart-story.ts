@@ -10,7 +10,9 @@ import { TmButton } from '@tellma/core-ui/button';
 import { TmChart, type TmChartPointActivation, type TmChartSpec } from '@tellma/core-ui/chart';
 
 /** Months of the second half of 2026. */
-const MONTHS = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ label: `${label} 2026` }));
+const MONTHS = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({
+  label: `${label} 2026`,
+}));
 
 /** Customer types. */
 const TYPES = [{ label: 'Corporate' }, { label: 'Retail' }, { label: 'Government' }];
@@ -52,9 +54,9 @@ const BAR: TmChartSpec = {
     {
       label: 'Account',
       members: [
-        { label: '1100 Cash', parts: ['1100', ' ', 'Cash'] },
-        { label: '1200 Receivables', parts: ['1200', ' ', 'Receivables'] },
-        { label: '2100 Payables', parts: ['2100', ' ', 'Payables'] },
+        { label: '1100 - Cash', parts: ['1100', 'Cash'] },
+        { label: '1200 - Receivables', parts: ['1200', 'Receivables'] },
+        { label: '2100 - Payables', parts: ['2100', 'Payables'] },
       ],
     },
   ],
@@ -133,7 +135,7 @@ const ARABIC: TmChartSpec = {
     { label: 'الشهر', members: [{ label: 'يوليو' }, { label: 'أغسطس' }, { label: 'سبتمبر' }] },
     {
       label: 'نوع العميل',
-      members: [{ label: 'شركات' }, { label: 'B2C أفراد', parts: ['B2C', ' ', 'أفراد'] }],
+      members: [{ label: 'شركات' }, { label: 'B2C - أفراد', parts: ['B2C', 'أفراد'] }],
     },
   ],
   measure: { label: 'المبيعات', format: { maxDecimals: 0 } },
@@ -155,7 +157,12 @@ const ARABIC: TmChartSpec = {
   providers: [{ provide: TM_ACTIVE_LOCALE, useValue: signal('ar-EG') }],
   template: `
     <tm-chart class="demo-chart" data-testid="chart-arabic" [spec]="spec" [(asTable)]="asTable" />
-    <button tmButton variant="secondary" data-testid="chart-arabic-table" (click)="asTable.set(!asTable())">
+    <button
+      tmButton
+      variant="secondary"
+      data-testid="chart-arabic-table"
+      (click)="asTable.set(!asTable())"
+    >
       {{ asTable() ? 'عرض كمخطط' : 'عرض كجدول' }}
     </button>
   `,
@@ -184,7 +191,12 @@ class ArabicCharts {
 
     <!-- The table toggle for the first chart. -->
     <div class="demo-actions">
-      <button tmButton variant="secondary" data-testid="chart-toggle-table" (click)="asTable.set(!asTable())">
+      <button
+        tmButton
+        variant="secondary"
+        data-testid="chart-toggle-table"
+        (click)="asTable.set(!asTable())"
+      >
         {{ asTable() ? 'Show as chart' : 'Show as table' }}
       </button>
     </div>
@@ -199,10 +211,30 @@ class ArabicCharts {
         [(asTable)]="asTable"
         (pointActivate)="last.set($event)"
       />
-      <tm-chart class="demo-chart" data-testid="chart-bar" [spec]="bar" (pointActivate)="last.set($event)" />
-      <tm-chart class="demo-chart" data-testid="chart-line" [spec]="line" (pointActivate)="last.set($event)" />
-      <tm-chart class="demo-chart" data-testid="chart-area" [spec]="area" (pointActivate)="last.set($event)" />
-      <tm-chart class="demo-chart" data-testid="chart-pie" [spec]="pie" (pointActivate)="last.set($event)" />
+      <tm-chart
+        class="demo-chart"
+        data-testid="chart-bar"
+        [spec]="bar"
+        (pointActivate)="last.set($event)"
+      />
+      <tm-chart
+        class="demo-chart"
+        data-testid="chart-line"
+        [spec]="line"
+        (pointActivate)="last.set($event)"
+      />
+      <tm-chart
+        class="demo-chart"
+        data-testid="chart-area"
+        [spec]="area"
+        (pointActivate)="last.set($event)"
+      />
+      <tm-chart
+        class="demo-chart"
+        data-testid="chart-pie"
+        [spec]="pie"
+        (pointActivate)="last.set($event)"
+      />
       <tm-chart
         class="demo-chart"
         data-testid="chart-doughnut"

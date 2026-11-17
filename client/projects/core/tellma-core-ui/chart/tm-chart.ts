@@ -19,6 +19,7 @@ import {
   model,
   output,
   signal,
+  type Signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -65,7 +66,14 @@ interface TableRow {
 }
 
 /** The types the engine draws. */
-const PLOT_TYPES: ReadonlySet<string> = new Set(['column', 'bar', 'line', 'area', 'pie', 'doughnut']);
+const PLOT_TYPES: ReadonlySet<string> = new Set([
+  'column',
+  'bar',
+  'line',
+  'area',
+  'pie',
+  'doughnut',
+]);
 
 /** The badge tone of each threshold tone. */
 const BADGE_TONES: Readonly<Record<TmChartThresholdTone, TmBadgeTone>> = {
@@ -254,6 +262,20 @@ export class TmChart {
   /** Emits when the user opens a point, the card or a table row. */
   readonly pointActivate = output<TmChartPointActivation>();
 
+  /**
+   * Whether the chart cannot draw its data and shows it as a table instead:
+   * its type has no plot, no point has members to place it at (or, in a
+   * pie, a positive value), or the engine failed to load or to draw. A host
+   * disables its "Show as chart" control while this is set. `asTable` alone
+   * never sets it, nor does a card or a chart without data.
+   */
+  readonly fallback: Signal<boolean> = computed(
+    () =>
+      this.points().length > 0 &&
+      this.spec().type !== 'card' &&
+      (this.loadFailed() || this.renderFailed() || !this.drawable()),
+  );
+
   // ---- services and state ----
 
   /** The library's strings in the active language. */
@@ -265,20 +287,28 @@ export class TmChart {
   /** The plot element, while the plot is in the DOM. */
   private readonly plot = viewChild<ElementRef<HTMLElement>>('plot');
   /** The plot element's size, which a redraw follows. */
-  private readonly size = signal({ width: 0, height: 0 }, {
-    equal: (a, b) => a.width === b.width && a.height === b.height,
-  });
+  private readonly size = signal(
+    { width: 0, height: 0 },
+    {
+      equal: (a, b) => a.width === b.width && a.height === b.height,
+    },
+  );
   /** Loads the engine chunk. */
   private readonly loadEngine = inject(ɵTM_CHART_ENGINE_LOADER);
-  /** Set when the engine chunk failed to load: every spec shows as a table from then on. */
-  private readonly loadFailed = signal(false);
+  /**
+   * Set when the engine chunk failed to load: the spec shows as a table. A
+   * new spec clears it, and the chunk is asked for again, so a moment
+   * offline does not hold the chart in the table.
+   */
+  private readonly loadFailed = linkedSignal({ source: this.spec, computation: () => false });
   /**
    * Set when the engine failed to draw the spec: it shows as a table. A new
    * spec clears it, so one bad spec does not hold the chart in the table.
    */
   private readonly renderFailed = linkedSignal({ source: this.spec, computation: () => false });
   /** The engine instance, once loaded, and the element it draws in. */
-  private engine: { readonly instance: ɵTmChartEngine; readonly element: HTMLElement } | null = null;
+  private engine: { readonly instance: ɵTmChartEngine; readonly element: HTMLElement } | null =
+    null;
   /** The pending engine load, if any. */
   private loading: Promise<ɵTmChartEngine | null> | null = null;
   /** Set once the chart is destroyed, so a late engine load is released at once. */
@@ -334,13 +364,15 @@ export class TmChart {
     if (this.spec().type === 'card' && !this.asTable()) {
       return 'card';
     }
-    return this.asTable() || this.loadFailed() || this.renderFailed() || !this.drawable() ? 'table' : 'plot';
+    return this.asTable() || this.fallback() ? 'table' : 'plot';
   });
 
   /** The plot's accessible name: "{title}, {type} chart". */
   protected readonly name = computed(() => {
     const spec = this.spec();
-    return PLOT_TYPES.has(spec.type) ? this.translate(`chart.name.${spec.type}`, { title: spec.title })() : spec.title;
+    return PLOT_TYPES.has(spec.type)
+      ? this.translate(`chart.name.${spec.type}`, { title: spec.title })()
+      : spec.title;
   });
 
   /** The plot's accessible description: the point count and the value range. */
@@ -398,38 +430,48 @@ export class TmChart {
 
   /** The first dimension's member parts for a table row. */
   protected readonly firstParts = (_: unknown, row: TableRow): readonly string[] | null =>
-    partsOf(row.members[0] === null ? undefined : this.spec().dimensions[0]?.members[row.members[0]]);
+    partsOf(
+      row.members[0] === null ? undefined : this.spec().dimensions[0]?.members[row.members[0]],
+    );
 
   /** The second dimension's member parts for a table row. */
   protected readonly secondParts = (_: unknown, row: TableRow): readonly string[] | null =>
-    partsOf(row.members[1] === null ? undefined : this.spec().dimensions[1]?.members[row.members[1]]);
+    partsOf(
+      row.members[1] === null ? undefined : this.spec().dimensions[1]?.members[row.members[1]],
+    );
 
-  /** A value as the measure formats it. */
+  /**
+   * A value as the measure formats it. Its reads are tracked, so the grid's
+   * cells follow a live change of the locale.
+   */
   protected readonly formatValue = (value: unknown): string =>
-    tmFormatNumber(value, untracked(this.locale), untracked(this.spec).measure.format);
+    tmFormatNumber(value, this.locale(), this.spec().measure.format);
 
   /** What the engine draws: the spec, and every page setting it depends on. */
-  private readonly request = computed<ɵTmChartRenderRequest>(() => {
-    // The theme only says when to re-read the tokens.
-    this.environment.theme();
-    return {
-      spec: this.spec(),
-      locale: this.locale(),
-      direction: this.direction() === 'rtl' ? 'rtl' : 'ltr',
-      forceDecals: this.environment.forceDecals(),
-      activatable: this.activatable(),
-      templates: {
-        share: this.translate('chart.share', {
-          share: ɵTM_CHART_SHARE_SLOT,
-          value: ɵTM_CHART_VALUE_SLOT,
-        })(),
-        point: this.translate('chart.point', {
-          label: ɵTM_CHART_LABEL_SLOT,
-          value: ɵTM_CHART_VALUE_SLOT,
-        })(),
-      },
-    };
-  }, { equal: () => false });
+  private readonly request = computed<ɵTmChartRenderRequest>(
+    () => {
+      // The theme only says when to re-read the tokens.
+      this.environment.theme();
+      return {
+        spec: this.spec(),
+        locale: this.locale(),
+        direction: this.direction() === 'rtl' ? 'rtl' : 'ltr',
+        forceDecals: this.environment.forceDecals(),
+        activatable: this.activatable(),
+        templates: {
+          share: this.translate('chart.share', {
+            share: ɵTM_CHART_SHARE_SLOT,
+            value: ɵTM_CHART_VALUE_SLOT,
+          })(),
+          point: this.translate('chart.point', {
+            label: ɵTM_CHART_LABEL_SLOT,
+            value: ɵTM_CHART_VALUE_SLOT,
+          })(),
+        },
+      };
+    },
+    { equal: () => false },
+  );
 
   /** Wires the strings, the size observer, the drawing and the teardown. */
   constructor() {
@@ -474,7 +516,12 @@ export class TmChart {
       const element = this.plot()?.nativeElement;
       const request = this.request();
       const size = this.size();
-      if (element === undefined || this.view() !== 'plot' || size.width === 0 || size.height === 0) {
+      if (
+        element === undefined ||
+        this.view() !== 'plot' ||
+        size.width === 0 ||
+        size.height === 0
+      ) {
         return;
       }
       this.engineFor(element)

@@ -154,6 +154,25 @@ test.describe('drawing', () => {
     });
   }
 
+  test('draws its text and lines in the system colours under forced colours, live', async ({ page }) => {
+    // Forced colours force the page's ground but not the canvas' pixels: a
+    // light app under a dark high-contrast theme would keep its dark inks
+    // on a black ground. The inks follow the system colours instead.
+    await page.goto(storyUrl('chart-lazy', { theme: 'light' }));
+    await page.getByTestId('chart-lazy-add').click();
+    const canvas = await canvasOf(page, 'lazy-column');
+    await expect(canvas).toBeVisible();
+    await appStable(page);
+    const axis = await resolvedColour(page, 'var(--chart-axis)');
+    expect(columnsOf(await pixelsOf(page, canvas), axis, 12).length).toBeGreaterThan(20);
+    await page.emulateMedia({ forcedColors: 'active', colorScheme: 'dark' });
+    const text = await resolvedColour(page, 'CanvasText');
+    await expect
+      .poll(async () => columnsOf(await pixelsOf(page, canvas), text, 12).length)
+      .toBeGreaterThan(20);
+    expect(columnsOf(await pixelsOf(page, canvas), axis, 12).length).toBe(0);
+  });
+
   test('does not mirror the plot in right-to-left', async ({ page }) => {
     // The first month's columns stay at the left: the categories run left
     // to right in both directions. Only the rows above the bottom quarter

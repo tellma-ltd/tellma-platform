@@ -289,7 +289,10 @@ describe('ɵtmBuildChartOption', () => {
       expect(build(oneSeries('pie', [1, 2]))['series'][0].data[0].itemStyle.decal).toBeTypeOf(
         'object',
       );
-      expect(build(twoSeries('area'))['series'][0].areaStyle.decal).toBeTypeOf('object');
+      // An area's decal rides on its item style, which ECharts' decal visual reads.
+      expect(build(twoSeries('area'))['series'][0].itemStyle.decal).toBeTypeOf('object');
+      expect(build(twoSeries('area'))['series'][0].areaStyle).not.toHaveProperty('decal');
+      expect(build(twoSeries('line'))['series'][0].itemStyle).not.toHaveProperty('decal');
       expect(build(twoSeries('line'))['aria'].decal.show).toBe(false);
     });
 
@@ -397,15 +400,47 @@ describe('ɵtmBuildChartOption', () => {
         dimensions: [
           {
             label: 'Account',
-            members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Cash' }],
+            members: [{ label: '1100 - النقدية', parts: ['1100', 'النقدية'] }, { label: 'Cash' }],
           },
           { label: 'Type', members: [{ label: 'A' }, { label: 'B' }] },
         ],
       };
       const option = build(spec, { direction: 'rtl' });
-      expect(option['xAxis'].axisLabel.formatter('c0')).toBe(`${RLM}${LRM}1100${LRM}${RLM}النقدية`);
+      expect(option['xAxis'].axisLabel.formatter('c0')).toBe(
+        `${RLM}${LRM}1100${LRM}${RLM} - النقدية`,
+      );
       expect(option['xAxis'].axisLabel.formatter('c1')).toBe(`${RLM}${LRM}Cash${LRM}${RLM}`);
       expect(option['legend'][0].formatter('s0')).toBe(`${RLM}${LRM}A${LRM}${RLM}`);
+    });
+
+    it('marks every value it draws in a right-to-left page: data labels, shares, thresholds, ticks, slices and tooltips', () => {
+      // A number is a run against a right-to-left base: base mark, run mark,
+      // the number, run mark, base mark.
+      const run = (text: string): string => `${RLM}${LRM}${text}${LRM}${RLM}`;
+      const spec: TmChartSpec = {
+        ...twoSeries('column', { labels: true, thresholds: [{ value: -250, tone: 'negative' }] }),
+        rows: [
+          [0, 0, -300],
+          [0, 1, 100],
+          [1, 0, 100],
+          [1, 1, 300],
+        ],
+      };
+      const option = build(spec, { direction: 'rtl' });
+      expect(option['series'][0].label.formatter({ dataIndex: 0 })).toBe(run('-300'));
+      expect(option['series'][0].markLine.data[0].label.formatter()).toBe(run('-250'));
+      expect(option['yAxis'].axisLabel.formatter(-200)).toBe(run('-200'));
+      expect(option['tooltip'].formatter([{ seriesIndex: 0, dataIndex: 0 }])).toBe(
+        `${run('Sep')}\n${run('Corporate')}: ${run('-300')}`,
+      );
+      const shares = build(twoSeries('column', { labels: true, stack: 'normalized' }), {
+        direction: 'rtl',
+      });
+      expect(shares['series'][0].label.formatter({ dataIndex: 0 })).toBe(run('75%'));
+      const pie = build(oneSeries('pie', [1, 3], { labels: true }), { direction: 'rtl' });
+      expect(pie['series'][0].label.formatter({ dataIndex: 0 })).toBe(
+        `${run('R0')}: ${run('25%')}`,
+      );
     });
 
     it('lays a right-to-left legend out from the right, its start side at the right', () => {
@@ -466,8 +501,10 @@ describe('ɵtmBuildChartOption', () => {
       expect(rtl.data.map((item: Loose) => item['name'])).toEqual(
         members.map((_, index) => `s${index}`).reverse(),
       );
-      // The first item sits last, at the right; the pager opens on its page.
-      expect(rtl.scrollDataIndex).toBe(members.length - 1);
+      // The first item sits last, at the right; the pager opens on its page,
+      // filled from the left: 584 px less the pager's 95 hold the first two
+      // items (159 px each with their swatches, and a gap), not a third.
+      expect(rtl.scrollDataIndex).toBe(members.length - 2);
     });
 
     it('shows no legend for one series, unless asked', () => {

@@ -182,7 +182,7 @@
           "items": {
             "type": "string"
           },
-          "description": "A display name’s parts; joined, they equal the label."
+          "description": "A display name’s parts; joined with \" - \", they equal the label."
         }
       }
     },

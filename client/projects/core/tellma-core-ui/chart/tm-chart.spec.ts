@@ -7,6 +7,7 @@ import type { ModifierKeys } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Component, signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 
 import { provideTellmaUi, TM_ACTIVE_LOCALE } from '@tellma/core-ui';
 import { TmGridStateStore } from '@tellma/core-ui/grid';
@@ -17,6 +18,7 @@ import { getInstanceByDom } from 'echarts/core';
 
 import { ɵTM_CHART_ENGINE_LOADER } from './internal/chart-loader';
 import type { ɵTmChartEngine, ɵTmChartEngineFactory, ɵTmChartFail } from './internal/chart-plot';
+import { ɵtmResolveChartColor } from './internal/chart-theme';
 import { TmChart } from './tm-chart';
 import type { TmChartPointActivation, TmChartSpec } from './tm-chart-types';
 
@@ -216,6 +218,11 @@ function fakeEngine(render: () => void = () => undefined): ɵTmChartEngine {
   return { render: vi.fn(render), dispose: vi.fn() };
 }
 
+/** The chart component in a fixture. */
+function chartOf(fixture: ComponentFixture<unknown>): TmChart {
+  return fixture.debugElement.query(By.directive(TmChart)).componentInstance as TmChart;
+}
+
 /** Spies on console errors for a test's length, quietly. */
 function quietErrors() {
   return vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -371,6 +378,61 @@ describe('TmChart', () => {
       }
     });
 
+    it('patterns an area in the decal colour, through the engine’s decal visual', async () => {
+      const { fixture, chart, element } = await setup((h) =>
+        h.spec.set({ ...COLUMN, type: 'area' }),
+      );
+      await settleUntil(fixture, () => chart.hasCanvas());
+      const plot = element.querySelector<HTMLElement>('.tm-chart__plot')!;
+      const engine = getInstanceByDom(plot) as unknown as {
+        getModel(): {
+          getSeriesByIndex(index: number): { getData(): { getVisual(key: string): unknown } };
+        };
+      };
+      const decal = engine.getModel().getSeriesByIndex(0).getData().getVisual('decal') as
+        { readonly color?: string } | undefined;
+      const token = getComputedStyle(plot).getPropertyValue('--chart-decal').trim();
+      expect(decal?.color).toBe(ɵtmResolveChartColor(token));
+    });
+
+    it('opens a paged right-to-left legend on a full page holding its first item, at the right', async () => {
+      const members = Array.from({ length: 30 }, (_, index) => ({ label: `Member ${index + 1}` }));
+      const spec: TmChartSpec = {
+        ...COLUMN,
+        dimensions: [COLUMN.dimensions[0]!, { label: 'Member', members }],
+        rows: members.map((_, index) => [0, index, index + 1] as const),
+      };
+      document.documentElement.dir = 'rtl';
+      try {
+        const { fixture, chart, element } = await setup((h) => h.spec.set(spec));
+        await settleUntil(fixture, () => chart.hasCanvas());
+        const width = element.querySelector('canvas')!.clientWidth;
+        // The items inside the canvas: the window's; the others lie past its edges.
+        const shown = drawnTexts(element).filter(
+          (text) => /^Member \d+$/.test(text.text) && text.x >= 0 && text.x <= width,
+        );
+        expect(shown.length).toBeGreaterThan(2);
+        const rightmost = shown.reduce((a, b) => (b.x > a.x ? b : a));
+        expect(rightmost.text).toBe('Member 1');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('waits for the fonts of the locale’s digits, compact words and templates before measuring', async () => {
+      const check = vi.spyOn(document.fonts, 'check');
+      try {
+        const { fixture, chart } = await setup(undefined, 'ar-EG');
+        await settleUntil(fixture, () => chart.hasCanvas());
+        const sample = check.mock.calls.map(([, text]) => text ?? '').join('');
+        expect(sample).toMatch(/[٠-٩]/);
+        expect(sample).toContain('ألف');
+        expect(sample).toContain('Customer type');
+      } finally {
+        check.mockRestore();
+      }
+    });
+
     it('names each type', async () => {
       const { fixture, host, chart } = await setup();
       for (const [type, name] of [
@@ -460,6 +522,37 @@ describe('TmChart', () => {
       expect(await grid.getCellText(2, 2)).toBe('1,200');
     });
 
+    it('isolates each part of a member’s display name in its cell', async () => {
+      const spec: TmChartSpec = {
+        ...COLUMN,
+        dimensions: [
+          {
+            label: 'Account',
+            members: [{ label: '1100 - النقدية', parts: ['1100', 'النقدية'] }, { label: 'Oct' }],
+          },
+          COLUMN.dimensions[1]!,
+        ],
+      };
+      const { fixture, element } = await setup((h) => {
+        h.spec.set(spec);
+        h.asTable.set(true);
+      });
+      await settle(fixture);
+      const runs = [...element.querySelectorAll('bdi')].map((run) => run.textContent?.trim());
+      expect(runs).toContain('1100');
+      expect(runs).toContain('النقدية');
+    });
+
+    it('formats its values in the new locale', async () => {
+      const { fixture, chart } = await setup((h) => h.asTable.set(true));
+      await settle(fixture);
+      const grid = (await chart.getTable())!;
+      expect(await grid.getCellText(2, 2)).toBe('1,200');
+      (TestBed.inject(TM_ACTIVE_LOCALE) as WritableSignal<string>).set('ar-EG');
+      await settle(fixture);
+      expect(await grid.getCellText(2, 2)).toMatch(/^[٠-٩٬]+$/);
+    });
+
     it('drills from a row to its point’s members', async () => {
       const { fixture, host, chart } = await setup((h) => h.asTable.set(true));
       await settle(fixture);
@@ -500,9 +593,17 @@ describe('TmChart', () => {
       const errors = quietErrors();
       try {
         const { fixture, host, chart } = await setup();
+        await settleUntil(fixture, () => chart.hasCanvas());
+        expect(chartOf(fixture).fallback()).toBe(false);
+        // The table the host asks for is no fallback.
+        host.asTable.set(true);
+        await settle(fixture);
+        expect(chartOf(fixture).fallback()).toBe(false);
+        host.asTable.set(false);
         host.spec.set({ ...COLUMN, type: 'radar' as TmChartSpec['type'] });
         await settle(fixture);
         expect(await chart.getView()).toBe('table');
+        expect(chartOf(fixture).fallback()).toBe(true);
         // Development builds name the problems.
         expect(errors).toHaveBeenCalledWith('tm-chart: the spec is not valid.', expect.anything());
         host.spec.set({
@@ -528,16 +629,31 @@ describe('TmChart', () => {
   });
 
   describe('engine failures', () => {
-    it('shows the table when the engine chunk fails to load', async () => {
+    it('falls back to the table when the engine chunk fails to load, and asks again for the next spec', async () => {
       const errors = quietErrors();
       try {
-        const loader = (): Promise<ɵTmChartEngineFactory> => Promise.reject(new Error('offline'));
-        const { fixture, chart } = await setup(undefined, 'en', [
+        const render = vi.fn();
+        let loads = 0;
+        const loader = vi.fn((): Promise<ɵTmChartEngineFactory> =>
+          ++loads === 1
+            ? Promise.reject(new Error('offline'))
+            : Promise.resolve(() => ({ render, dispose: vi.fn() })),
+        );
+        const { fixture, host, chart } = await setup(undefined, 'en', [
           { provide: ɵTM_CHART_ENGINE_LOADER, useValue: loader },
         ]);
         await settleUntil(fixture, async () => (await chart.getView()) === 'table');
         expect(await chart.getView()).toBe('table');
+        expect(chartOf(fixture).fallback()).toBe(true);
         expect(errors).toHaveBeenCalled();
+        // Back online: the next spec loads the chunk again and draws.
+        host.spec.set({ ...COLUMN, title: 'Sales again' });
+        await settleUntil(fixture, async () => (await chart.getView()) === 'plot');
+        await settleUntil(fixture, async () => render.mock.calls.length > 0);
+        expect(loader).toHaveBeenCalledTimes(2);
+        expect(await chart.getView()).toBe('plot');
+        expect(chartOf(fixture).fallback()).toBe(false);
+        expect(render).toHaveBeenCalled();
       } finally {
         errors.mockRestore();
       }
@@ -625,7 +741,7 @@ describe('TmChart', () => {
         dimensions: [
           {
             label: 'الشهر',
-            members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Oct' }],
+            members: [{ label: '1100 - النقدية', parts: ['1100', 'النقدية'] }, { label: 'Oct' }],
           },
           COLUMN.dimensions[1]!,
         ],

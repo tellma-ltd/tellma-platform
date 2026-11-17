@@ -104,6 +104,10 @@ test('@cross-engine the marks are what keep the runs apart', async ({ page }) =>
 interface ProbedLabel {
   /** The label without its marks. */
   readonly text: string;
+  /** How many runs the story expected the label to draw; 0 for a label it does not know. */
+  readonly runs: number;
+  /** How many bidi marks the engine's string carries. */
+  readonly marks: number;
   /** Pixels that differ between the engine's drawing and the runs drawn apart. */
   readonly differing: number;
   /** Pixels the label itself paints. */
@@ -118,8 +122,10 @@ for (const dir of ['ltr', 'rtl'] as const) {
   }) => {
     // Through the facade: the engine lays each marked label out, cuts it into
     // spans and paints it where its component puts it. The probe repaints the
-    // scene without each label, draws its runs apart where the engine
-    // anchored it, and compares the canvas pixel for pixel.
+    // scene without each label, draws the runs the story expects of it (from
+    // the charts' data, not the drawn string) apart where the engine
+    // anchored it, and compares the canvas pixel for pixel: a label that
+    // lost its marks draws its runs in another order and differs.
     await page.goto(storyUrl('chart-bidi', { dir }));
     for (const id of [
       'facade-column-ar',
@@ -139,28 +145,35 @@ for (const dir of ['ltr', 'rtl'] as const) {
       const texts = labels.map((label) => label.text);
       // The mixed labels are among those compared.
       if (chart.startsWith('facade-column')) {
-        expect(texts, `${chart} category by parts`).toContain('1100 النقدية');
-        expect(texts, `${chart} category, a name then a code`).toContain('Cash 1100');
-        expect(texts, `${chart} legend entry`).toContain('B2C أفراد');
+        expect(texts, `${chart} category by parts`).toContain('1100 - النقدية');
+        expect(texts, `${chart} category, a name then a code`).toContain('Cash - 1100');
+        expect(texts, `${chart} legend entry`).toContain('B2C - أفراد');
         const negative = chart.endsWith('-ar-eg') ? /^-[٠-٩٬]+$/ : /^-[0-9,]+$/;
-        expect(
-          texts.filter((text) => negative.test(text)).length,
-          `${chart} negative data labels`,
-        ).toBe(2);
+        const negatives = labels.filter((label) => negative.test(label.text));
+        expect(negatives.length, `${chart} negative data labels`).toBe(2);
+        // In a right-to-left page a number is a run against the base, so
+        // its string carries marks.
+        if (dir === 'rtl') {
+          for (const label of negatives) {
+            expect(label.marks, `${chart} "${label.text}" marks`).toBeGreaterThan(0);
+          }
+        }
       } else {
         expect(
-          texts.some((text) => text.startsWith('B2C أفراد')),
+          texts.some((text) => text.startsWith('B2C - أفراد')),
           `${chart} slice label`,
         ).toBe(true);
       }
-      // Every span compares equal; one the engine laid out past the canvas'
-      // edge paints nothing in either drawing. The mixed labels do paint.
+      // Every span is one the story expects, and compares equal; one the
+      // engine laid out past the canvas' edge paints nothing in either
+      // drawing. The mixed labels do paint.
       for (const label of labels) {
+        expect(label.runs, `${chart} "${label.text}" expected`).toBeGreaterThan(0);
         expect(label.differing, `${chart} "${label.text}"`).toBe(0);
       }
       const painted = labels.filter((label) => label.painted > 0);
       expect(painted.length, `${chart} painted labels`).toBeGreaterThan(labels.length / 2);
-      for (const text of ['1100 النقدية', 'Cash 1100', 'B2C أفراد']) {
+      for (const text of ['1100 - النقدية', 'Cash - 1100', 'B2C - أفراد']) {
         for (const label of labels.filter((candidate) => candidate.text === text)) {
           expect(label.painted, `${chart} "${text}" paints`).toBeGreaterThan(0);
         }

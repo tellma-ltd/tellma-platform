@@ -13,7 +13,7 @@ import { DestroyRef, DOCUMENT, Injectable, inject, signal, type Signal } from '@
 /** The page settings the charts redraw on. */
 @Injectable({ providedIn: 'root' })
 export class ɵTmChartEnvironment {
-  /** Changes whenever the page's theme may have re-pointed the tokens. */
+  /** Changes whenever the page's theme, or forced colours, may have re-pointed the tokens. */
   readonly theme: Signal<number>;
 
   /** Whether decals apply to every chart: forced colours, or more contrast asked for. */
@@ -46,12 +46,15 @@ export class ɵTmChartEnvironment {
     const forceDecals = signal(read());
     const onContrast = (): void => forceDecals.set(read());
     forced?.addEventListener('change', onContrast);
+    // Forced colours also re-point the plot's inks to the system colours.
+    forced?.addEventListener('change', bump);
     contrast?.addEventListener('change', onContrast);
 
     inject(DestroyRef).onDestroy(() => {
       observer?.disconnect();
       scheme?.removeEventListener('change', bump);
       forced?.removeEventListener('change', onContrast);
+      forced?.removeEventListener('change', bump);
       contrast?.removeEventListener('change', onContrast);
     });
     this.theme = theme.asReadonly();

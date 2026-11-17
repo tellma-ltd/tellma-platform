@@ -4,14 +4,32 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Directionality } from '@angular/cdk/bidi';
-import { afterNextRender, Component, ElementRef, inject, signal, viewChildren } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  ElementRef,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 
 import { TM_ACTIVE_LOCALE } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
-import { TmChart, ɵtmCanvasText, type TmChartSpec, type ɵTmCanvasPiece } from '@tellma/core-ui/chart';
+import {
+  TmChart,
+  ɵtmCanvasText,
+  type TmChartMember,
+  type TmChartSpec,
+  type ɵTmCanvasPiece,
+} from '@tellma/core-ui/chart';
 import { tmFormatNumber } from '@tellma/core-ui/l10n';
 
-import { probeChartLabels, type ProbedLabel } from './chart-bidi-probe';
+import {
+  probeChartLabels,
+  type ProbedLabel,
+  type ProbeExpectation,
+  type ProbeRun,
+} from './chart-bidi-probe';
 
 /** A text direction. */
 type Direction = 'ltr' | 'rtl';
@@ -40,7 +58,11 @@ const CASES: readonly BidiCase[] = [
   { id: 'code-name', title: 'A code and a Latin name', pieces: ['1100', ' - ', 'Cash'] },
   { id: 'name-code', title: 'A Latin name and a code', pieces: ['Cash', ' ', '1100'] },
   { id: 'code-arabic', title: 'A code and an Arabic name', pieces: ['1100', ' ', 'النقدية'] },
-  { id: 'arabic-latin', title: 'An Arabic and a Latin part', pieces: ['النقدية', ' ', 'Cash (USD)'] },
+  {
+    id: 'arabic-latin',
+    title: 'An Arabic and a Latin part',
+    pieces: ['النقدية', ' ', 'Cash (USD)'],
+  },
   {
     id: 'negative-arabic',
     title: 'A negative value in Arabic-Indic digits',
@@ -71,12 +93,15 @@ const COLUMN: TmChartSpec = {
     {
       label: 'الحساب',
       members: [
-        { label: '1100 النقدية', parts: ['1100', ' ', 'النقدية'] },
+        { label: '1100 - النقدية', parts: ['1100', 'النقدية'] },
         { label: 'Cash (USD)' },
-        { label: 'Cash 1100', parts: ['Cash', ' ', '1100'] },
+        { label: 'Cash - 1100', parts: ['Cash', '1100'] },
       ],
     },
-    { label: 'نوع العميل', members: [{ label: 'شركات' }, { label: 'B2C أفراد', parts: ['B2C', ' ', 'أفراد'] }] },
+    {
+      label: 'نوع العميل',
+      members: [{ label: 'شركات' }, { label: 'B2C - أفراد', parts: ['B2C', 'أفراد'] }],
+    },
   ],
   measure: { label: 'المبيعات', format: { maxDecimals: 0 } },
   rows: [
@@ -99,7 +124,7 @@ const PIE: TmChartSpec = {
       label: 'نوع العميل',
       members: [
         { label: 'شركات' },
-        { label: 'B2C أفراد', parts: ['B2C', ' ', 'أفراد'] },
+        { label: 'B2C - أفراد', parts: ['B2C', 'أفراد'] },
         { label: 'Cash (USD)' },
       ],
     },
@@ -172,7 +197,64 @@ class FacadeArEg {
 /** A run's direction, as the canvas text reads it: its first letter's, else left to right. */
 function runDirection(text: string): Direction {
   const letter = /\p{L}/u.exec(text)?.[0];
-  return letter !== undefined && /[\p{Script=Arabic}\p{Script=Hebrew}]/u.test(letter) ? 'rtl' : 'ltr';
+  return letter !== undefined && /[\p{Script=Arabic}\p{Script=Hebrew}]/u.test(letter)
+    ? 'rtl'
+    : 'ltr';
+}
+
+/** A number as the chart formats one: a sign, digits and their separators, perhaps a percent. */
+const NUMBER = /^[-+]?[0-9\u0660-\u0669][0-9\u0660-\u0669,.\u066B\u066C]*[%\u066A]?$/;
+/** A compact number: a number, then a word, such as a thousand in Arabic. */
+const COMPACT = /^[-+]?[0-9\u0660-\u0669][0-9\u0660-\u0669,.\u066B\u066C]*\s\p{L}+$/u;
+/** A label's text before a number: the template's words after a member's label. */
+const WORDS_THEN_NUMBER = /^(.*?)([-+]?[0-9\u0660-\u0669].*)$/;
+
+/** A member's pieces: its parts as runs, joined by the display-name separator, or its label as one run. */
+function memberPieces(member: TmChartMember): ɵTmCanvasPiece[] {
+  return member.parts === undefined
+    ? [member.label]
+    : member.parts.flatMap((part, index): ɵTmCanvasPiece[] =>
+        index === 0 ? [part] : [{ base: ' - ' }, part],
+      );
+}
+
+/**
+ * The runs the story expects each label of its charts to draw, from the
+ * charts' data and the kinds of label a chart draws, never from the drawn
+ * string or its marks: a member's parts (or its label) as runs; a number,
+ * alone or compact with a word, as one run; and a member's label, a
+ * template's words and a number (a slice's label) as those pieces. A run
+ * reads in its first letter's direction, a number left to right; words
+ * between runs read in the base direction.
+ */
+function expectation(base: Direction): ProbeExpectation {
+  const members = [COLUMN, PIE].flatMap((spec) =>
+    spec.dimensions.flatMap((dimension) => dimension.members),
+  );
+  const runs = (pieces: readonly ɵTmCanvasPiece[]): ProbeRun[] =>
+    pieces.map((piece) =>
+      typeof piece === 'string'
+        ? { text: piece, direction: runDirection(piece) }
+        : { text: piece.base, direction: base },
+    );
+  return (text) => {
+    if (NUMBER.test(text) || COMPACT.test(text)) {
+      return runs([text]);
+    }
+    for (const member of members) {
+      if (text === member.label) {
+        return runs(memberPieces(member));
+      }
+      // A slice's label: the member, the template's words, its share.
+      const rest = text.startsWith(member.label)
+        ? WORDS_THEN_NUMBER.exec(text.slice(member.label.length))
+        : null;
+      if (rest !== null && NUMBER.test(rest[2]!)) {
+        return runs([...memberPieces(member), { base: rest[1]! }, rest[2]!]);
+      }
+    }
+    return null;
+  };
 }
 
 /**
@@ -187,8 +269,9 @@ function runDirection(text: string): Direction {
  * Then the same through the chart: charts in Arabic and in Egyptian Arabic,
  * drawn by the engine in the page's direction. "Probe" compares every label
  * the engine painted (categories, legend entries, data labels, the
- * threshold's label, ticks, slice labels) with its runs drawn apart where
- * the engine placed it, and lists the result.
+ * threshold's label, ticks, slice labels) with the runs the story expects
+ * of it, from the charts' data, drawn apart where the engine placed it, and
+ * lists the result.
  */
 @Component({
   imports: [FacadeAr, FacadeArEg, TmButton],
@@ -285,9 +368,12 @@ export class ChartBidiStory {
   async probe(): Promise<void> {
     const base: Direction = this.direction.value === 'rtl' ? 'rtl' : 'ltr';
     const results: Record<string, ProbedLabel[]> = {};
-    for (const chart of this.host.nativeElement.querySelectorAll<HTMLElement>('[data-testid^="facade-"]')) {
+    for (const chart of this.host.nativeElement.querySelectorAll<HTMLElement>(
+      '[data-testid^="facade-"]',
+    )) {
       const plot = chart.querySelector<HTMLElement>('.tm-chart__plot');
-      results[chart.dataset['testid']!] = plot === null ? [] : await probeChartLabels(plot, base);
+      results[chart.dataset['testid']!] =
+        plot === null ? [] : await probeChartLabels(plot, base, expectation(base));
     }
     this.probed.set(JSON.stringify(results));
   }
@@ -308,7 +394,10 @@ export class ChartBidiStory {
     const y = HEIGHT / 2;
     // Section: whole strings take the canvas' direction from CSS, as the engine's do.
     if (canvas.dataset['mode'] !== 'apart') {
-      const text = canvas.dataset['mode'] === 'together' ? ɵtmCanvasText(item.pieces, base) : this.plain(item.pieces);
+      const text =
+        canvas.dataset['mode'] === 'together'
+          ? ɵtmCanvasText(item.pieces, base)
+          : this.plain(item.pieces);
       context.textAlign = base === 'rtl' ? 'right' : 'left';
       context.fillText(text, base === 'rtl' ? WIDTH - INSET : INSET, y);
       return;

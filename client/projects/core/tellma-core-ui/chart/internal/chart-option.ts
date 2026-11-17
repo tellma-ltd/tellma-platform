@@ -69,6 +69,12 @@ const ICON_HEIGHT = 10;
 const ICON_GAP = 5;
 /** The gap between legend items, px. */
 const ITEM_GAP = 16;
+/**
+ * A paged legend's pager beside its items, px, less its page text: two
+ * page icons and the gaps around the text (ECharts' defaults, 15 and 5),
+ * the gap before the items, and a little room for the text's own measure.
+ */
+const PAGER = 2 * 15 + 2 * 5 + ITEM_GAP + 4;
 /** The pie's outer radius as a share of the half of its box's shorter side. */
 const PIE_RADIUS = 0.8;
 /** The pie's outer radius when its labels sit outside, leaving them room. */
@@ -170,12 +176,20 @@ interface Series {
   readonly width: number;
 }
 
-/** A member's runs: its parts, each in its own direction, or else its label. */
+/**
+ * A member's runs: its parts, each in its own direction, joined by the
+ * display-name separator in the base direction, or else its label.
+ */
 function memberRuns(member: TmChartMember | undefined): readonly ɵTmCanvasPiece[] {
   if (member === undefined) {
     return [''];
   }
-  return member.parts !== undefined && member.parts.length > 0 ? member.parts : [member.label];
+  if (member.parts === undefined || member.parts.length === 0) {
+    return [member.label];
+  }
+  return member.parts.flatMap((part, index): ɵTmCanvasPiece[] =>
+    index === 0 ? [part] : [{ base: ' - ' }, part],
+  );
 }
 
 /**
@@ -353,7 +367,9 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
     }
     return theme.series[slot % theme.series.length]!;
   };
-  // Lines differ by marker shape instead; an area's fill takes the decal.
+  // Lines differ by marker shape instead. An area's fill takes the decal
+  // from the series' item style, which feeds ECharts' decal visual; its
+  // area style has no decal of its own.
   const decals = type !== 'line' && (input.forceDecals || pie || entries.length >= 2);
   // A line's markers show wherever colour alone would tell its series
   // apart, or its points apart under the diverging palette: two or more
@@ -424,8 +440,21 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
     if (rows.length > maxRows) {
       // Too many lines for the box: one paged line instead. Its items read
       // from the start side: reversed for a right-to-left page, which opens
-      // on the page holding the first item.
+      // on the page holding the first item. The engine starts its window at
+      // the item it is given and never fills the window back, so that page
+      // is found here: the items that fit the window, walking back from the
+      // last.
       const paged = entries.map((entry, index) => ({ name: entry.id, icon: legendIcon(index) }));
+      let start = 0;
+      if (direction === 'rtl') {
+        let room = available - PAGER - input.measureText(`${paged.length}/${paged.length}`);
+        start = entries.length - 1;
+        room -= itemWidth(entries[0]!);
+        while (start > 0 && room >= ITEM_GAP + itemWidth(entries[entries.length - start]!)) {
+          room -= ITEM_GAP + itemWidth(entries[entries.length - start]!);
+          start--;
+        }
+      }
       legends.push({
         ...legendBase,
         type: 'scroll',
@@ -436,7 +465,7 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
         pageIconInactiveColor: theme.grid,
         pageTextStyle: { color: theme.label },
         data: direction === 'rtl' ? paged.reverse() : paged,
-        scrollDataIndex: direction === 'rtl' ? paged.length - 1 : 0,
+        scrollDataIndex: start,
       });
       legendBlock = lineHeight;
     } else {
@@ -725,16 +754,10 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
         // category under the pointer, so a point drills without its marker.
         triggerEvent: true,
         sampling: large ? 'lttb' : undefined,
-        itemStyle: { color },
+        itemStyle: { color, ...decalFor(s, theme.decal, decals) },
         lineStyle: { color, width: 2, type: LINE_TYPES[cycle % LINE_TYPES.length] },
         ...(type === 'area'
-          ? {
-              areaStyle: {
-                color,
-                opacity: stackName !== undefined ? 0.85 : 0.3,
-                ...decalFor(s, theme.decal, decals),
-              },
-            }
+          ? { areaStyle: { color, opacity: stackName !== undefined ? 0.85 : 0.3 } }
           : {}),
       } as LineSeriesOption;
     }

@@ -42,9 +42,21 @@ describe('TM_CHART_SPEC_SCHEMA', () => {
 describe('tmValidateChartSpec', () => {
   it('accepts a valid spec of every type', () => {
     expect(tmValidateChartSpec(COLUMN)).toEqual([]);
-    const pie = withChanges({ type: 'pie', dimensions: [COLUMN.dimensions[0]], rows: [[0, null, 1], [1, null, 2]] });
+    const pie = withChanges({
+      type: 'pie',
+      dimensions: [COLUMN.dimensions[0]],
+      rows: [
+        [0, null, 1],
+        [1, null, 2],
+      ],
+    });
     expect(tmValidateChartSpec(pie)).toEqual([]);
-    const card = withChanges({ type: 'card', dimensions: [], rows: [[null, null, 42]], options: undefined });
+    const card = withChanges({
+      type: 'card',
+      dimensions: [],
+      rows: [[null, null, 42]],
+      options: undefined,
+    });
     expect(tmValidateChartSpec(JSON.parse(JSON.stringify(card)))).toEqual([]);
     const empty = withChanges({ rows: [] });
     expect(tmValidateChartSpec(empty)).toEqual([]);
@@ -55,19 +67,33 @@ describe('tmValidateChartSpec', () => {
     const untitled: Record<string, unknown> = { ...COLUMN };
     delete untitled['title'];
     expect(tmValidateChartSpec(untitled)).toEqual([{ pointer: '/title', code: 'required' }]);
-    expect(tmValidateChartSpec(withChanges({ colour: 'red' }))).toEqual([{ pointer: '/colour', code: 'unknown-property' }]);
-    expect(tmValidateChartSpec(withChanges({ type: 'radar' }))).toEqual([{ pointer: '/type', code: 'enum' }]);
-    expect(tmValidateChartSpec(withChanges({ rows: [[0, 0]] }))).toEqual([{ pointer: '/rows/0', code: 'too-few-items' }]);
+    expect(tmValidateChartSpec(withChanges({ colour: 'red' }))).toEqual([
+      { pointer: '/colour', code: 'unknown-property' },
+    ]);
+    expect(tmValidateChartSpec(withChanges({ type: 'radar' }))).toEqual([
+      { pointer: '/type', code: 'enum' },
+    ]);
+    expect(tmValidateChartSpec(withChanges({ rows: [[0, 0]] }))).toEqual([
+      { pointer: '/rows/0', code: 'too-few-items' },
+    ]);
     expect(tmValidateChartSpec(withChanges({ rows: [[0, 0, 1, 2]] }))).toEqual([
       { pointer: '/rows/0/3', code: 'too-many-items' },
     ]);
-    expect(tmValidateChartSpec(withChanges({ rows: [[-1, 0, 1]] }))).toEqual([{ pointer: '/rows/0/0', code: 'minimum' }]);
-    expect(tmValidateChartSpec(withChanges({ rows: [[0.5, 0, 1]] }))).toEqual([{ pointer: '/rows/0/0', code: 'type' }]);
+    expect(tmValidateChartSpec(withChanges({ rows: [[-1, 0, 1]] }))).toEqual([
+      { pointer: '/rows/0/0', code: 'minimum' },
+    ]);
+    expect(tmValidateChartSpec(withChanges({ rows: [[0.5, 0, 1]] }))).toEqual([
+      { pointer: '/rows/0/0', code: 'type' },
+    ]);
     expect(
-      tmValidateChartSpec(withChanges({ measure: { label: 'Sales', format: { maxDecimals: 21 } } })),
+      tmValidateChartSpec(
+        withChanges({ measure: { label: 'Sales', format: { maxDecimals: 21 } } }),
+      ),
     ).toEqual([{ pointer: '/measure/format/maxDecimals', code: 'maximum' }]);
     expect(
-      tmValidateChartSpec(withChanges({ dimensions: [...COLUMN.dimensions, COLUMN.dimensions[0]] })),
+      tmValidateChartSpec(
+        withChanges({ dimensions: [...COLUMN.dimensions, COLUMN.dimensions[0]] }),
+      ),
     ).toEqual([{ pointer: '/dimensions', code: 'too-many-items' }]);
     expect(tmValidateChartSpec(withChanges({ rows: [[0, 0, Number.NaN]] }))).toEqual([
       { pointer: '/rows/0/2', code: 'type' },
@@ -75,7 +101,9 @@ describe('tmValidateChartSpec', () => {
   });
 
   it('checks the dimension count of each type', () => {
-    expect(tmValidateChartSpec(withChanges({ type: 'pie' }))).toEqual([{ pointer: '/dimensions', code: 'dimension-count' }]);
+    expect(tmValidateChartSpec(withChanges({ type: 'pie' }))).toEqual([
+      { pointer: '/dimensions', code: 'dimension-count' },
+    ]);
     expect(tmValidateChartSpec(withChanges({ type: 'card', rows: [] }))).toEqual([
       { pointer: '/dimensions', code: 'dimension-count' },
     ]);
@@ -85,16 +113,32 @@ describe('tmValidateChartSpec', () => {
   });
 
   it('checks the rows against the member lists', () => {
-    expect(tmValidateChartSpec(withChanges({ rows: [[2, 0, 1]] }))).toEqual([{ pointer: '/rows/0/0', code: 'member-index' }]);
+    expect(tmValidateChartSpec(withChanges({ rows: [[2, 0, 1]] }))).toEqual([
+      { pointer: '/rows/0/0', code: 'member-index' },
+    ]);
     expect(tmValidateChartSpec(withChanges({ rows: [[0, null, 1]] }))).toEqual([
       { pointer: '/rows/0/1', code: 'member-index' },
     ]);
     const single = withChanges({ dimensions: [COLUMN.dimensions[0]], rows: [[0, 1, 1]] });
     expect(tmValidateChartSpec(single)).toEqual([{ pointer: '/rows/0/1', code: 'member-index' }]);
-    expect(tmValidateChartSpec(withChanges({ rows: [[0, 0, 1], [0, 0, 2]] }))).toEqual([
-      { pointer: '/rows/1', code: 'duplicate-point' },
-    ]);
-    const card = withChanges({ type: 'card', dimensions: [], rows: [[null, null, 1], [null, null, 2]] });
+    expect(
+      tmValidateChartSpec(
+        withChanges({
+          rows: [
+            [0, 0, 1],
+            [0, 0, 2],
+          ],
+        }),
+      ),
+    ).toEqual([{ pointer: '/rows/1', code: 'duplicate-point' }]);
+    const card = withChanges({
+      type: 'card',
+      dimensions: [],
+      rows: [
+        [null, null, 1],
+        [null, null, 2],
+      ],
+    });
     expect(tmValidateChartSpec(card)).toEqual([
       { pointer: '/rows', code: 'row-count' },
       { pointer: '/rows/1', code: 'duplicate-point' },
@@ -104,11 +148,27 @@ describe('tmValidateChartSpec', () => {
   it('checks that parts join to their label, and the axis range', () => {
     const parts = withChanges({
       dimensions: [
-        { label: 'Account', members: [{ label: '1100 Cash', parts: ['1100', 'Cash'] }, { label: 'B' }] },
+        {
+          label: 'Account',
+          members: [{ label: '1100 Cash', parts: ['1100', 'Cash'] }, { label: 'B' }],
+        },
         COLUMN.dimensions[1],
       ],
     });
-    expect(tmValidateChartSpec(parts)).toEqual([{ pointer: '/dimensions/0/members/0/parts', code: 'parts-mismatch' }]);
+    expect(tmValidateChartSpec(parts)).toEqual([
+      { pointer: '/dimensions/0/members/0/parts', code: 'parts-mismatch' },
+    ]);
+    // A display name's parts join with the platform's separator.
+    const joined = withChanges({
+      dimensions: [
+        {
+          label: 'Account',
+          members: [{ label: '1100 - Cash', parts: ['1100', 'Cash'] }, { label: 'B' }],
+        },
+        COLUMN.dimensions[1],
+      ],
+    });
+    expect(tmValidateChartSpec(joined)).toEqual([]);
     expect(tmValidateChartSpec(withChanges({ options: { min: 10, max: 10 } }))).toEqual([
       { pointer: '/options/max', code: 'min-max' },
     ]);
@@ -118,12 +178,17 @@ describe('tmValidateChartSpec', () => {
     const marked = withChanges({
       title: 'Sales\u200F',
       dimensions: [
-        { label: 'Month', members: [{ label: '\u2067Sep\u2069' }, { label: 'Oct', parts: ['O', '\u202Ect'] }] },
+        {
+          label: 'Month',
+          members: [{ label: '\u2067Sep\u2069' }, { label: 'Oct', parts: ['O', '\u202Ect'] }],
+        },
         COLUMN.dimensions[1],
       ],
       measure: { label: 'Sales\u061C' },
     });
-    const problems = tmValidateChartSpec(marked).filter((problem) => problem.code === 'bidi-control');
+    const problems = tmValidateChartSpec(marked).filter(
+      (problem) => problem.code === 'bidi-control',
+    );
     expect(problems.map((problem) => problem.pointer)).toEqual([
       '/title',
       '/dimensions/0/members/0/label',
@@ -133,6 +198,8 @@ describe('tmValidateChartSpec', () => {
   });
 
   it('escapes a JSON pointer’s tokens', () => {
-    expect(tmValidateChartSpec(withChanges({ 'a/b~c': 1 }))).toEqual([{ pointer: '/a~1b~0c', code: 'unknown-property' }]);
+    expect(tmValidateChartSpec(withChanges({ 'a/b~c': 1 }))).toEqual([
+      { pointer: '/a~1b~0c', code: 'unknown-property' },
+    ]);
   });
 });

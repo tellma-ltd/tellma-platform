@@ -15,9 +15,10 @@ export interface TmChartMember {
   /** The member's text. */
   readonly label: string;
   /**
-   * A display name's parts, such as a code and a name, which joined equal
-   * {@link TmChartMember.label}. Each part takes its own direction when the
-   * chart draws it.
+   * A display name's parts, such as a code and a name, which joined with
+   * `' - '` equal {@link TmChartMember.label}, as a display name's prefix and
+   * name do. Each part takes its own direction when the chart draws it, in
+   * the plot and in the table alike.
    */
   readonly parts?: readonly string[];
 }

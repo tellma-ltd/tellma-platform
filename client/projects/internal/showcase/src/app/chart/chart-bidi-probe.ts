@@ -6,15 +6,32 @@
 /** A text direction. */
 type Direction = 'ltr' | 'rtl';
 
-/** LEFT-TO-RIGHT MARK. */
-const LRM = '\u200E';
-/** RIGHT-TO-LEFT MARK. */
-const RLM = '\u200F';
+/** The bidi marks the chart writes into canvas strings. */
+const MARKS = /[\u200E\u200F]/g;
 
-/** One label the engine drew, compared with its runs drawn apart. */
+/** One run a label is expected to draw: its text, and the direction it reads in. */
+export interface ProbeRun {
+  /** The run's text. */
+  readonly text: string;
+  /** The direction the run reads in; the base direction for text between runs. */
+  readonly direction: Direction;
+}
+
+/**
+ * The runs a label is expected to draw, in logical order, from a source
+ * that does not read the drawn string's marks; `null` for a label it does
+ * not know.
+ */
+export type ProbeExpectation = (text: string) => readonly ProbeRun[] | null;
+
+/** One label the engine drew, compared with its expected runs drawn apart. */
 export interface ProbedLabel {
   /** The label without its marks. */
   readonly text: string;
+  /** How many runs the label was expected to draw apart; 0 when the expectation does not know it. */
+  readonly runs: number;
+  /** How many bidi marks the engine's string carries. */
+  readonly marks: number;
   /** How many canvas pixels differ between the engine's drawing and the runs drawn apart. */
   readonly differing: number;
   /** How many canvas pixels the label itself paints. */
@@ -76,44 +93,24 @@ interface Engine {
   getDevicePixelRatio(): number;
 }
 
-/** One segment of a marked string: a run in its own direction, or base text. */
-interface Segment {
-  /** The segment's text, without marks. */
-  readonly text: string;
-  /** The direction the segment reads in alone. */
-  readonly direction: Direction;
-}
-
 /**
- * Splits a canvas string, as the chart marks it, into what reads apart: a
- * run wrapped as base mark, run mark, text, run mark, base mark reads in
- * the run's direction; the text between wrapped runs reads in the base
- * direction. Marks inside a run (beside a number's signs) are dropped.
+ * The segments expected runs draw apart in: text in the base direction next
+ * to more of it reads as one, as one string's text between runs does.
  */
-function segmentsOf(marked: string, base: Direction): Segment[] {
-  const outer = base === 'rtl' ? RLM : LRM;
-  const inner = base === 'rtl' ? LRM : RLM;
-  const other: Direction = base === 'rtl' ? 'ltr' : 'rtl';
-  const plain = (text: string): string => text.replace(/[\u200E\u200F]/g, '');
-  const segments: Segment[] = [];
-  let rest = marked;
-  while (rest !== '') {
-    const open = rest.indexOf(outer + inner);
-    if (open < 0) {
-      segments.push({ text: plain(rest), direction: base });
-      break;
+function segmentsOf(runs: readonly ProbeRun[], base: Direction): ProbeRun[] {
+  const segments: ProbeRun[] = [];
+  for (const run of runs) {
+    const last = segments[segments.length - 1];
+    if (run.text === '') {
+      continue;
     }
-    if (open > 0) {
-      segments.push({ text: plain(rest.slice(0, open)), direction: base });
+    if (last !== undefined && last.direction === base && run.direction === base) {
+      segments[segments.length - 1] = { text: last.text + run.text, direction: base };
+    } else {
+      segments.push(run);
     }
-    const bodyStart = open + 2;
-    const close = rest.indexOf(inner + outer, bodyStart);
-    // An unclosed run (a cut string) reads in its direction to the end.
-    const bodyEnd = close < 0 ? rest.length : close;
-    segments.push({ text: plain(rest.slice(bodyStart, bodyEnd)), direction: other });
-    rest = close < 0 ? '' : rest.slice(close + 2);
   }
-  return segments.filter((segment) => segment.text !== '');
+  return segments;
 }
 
 /**
@@ -155,8 +152,8 @@ function differing(a: Uint8ClampedArray, b: Uint8ClampedArray, skip?: Uint8Array
 }
 
 /**
- * Draws a span's segments apart, each in its own direction, placed in the
- * base direction's order from where the whole string's alignment puts its
+ * Draws a label's expected segments apart, each in its own direction, placed
+ * in the base direction's order from where the span's alignment puts its
  * edge, with the paint the renderer gives the span. Every segment's first
  * pass (stroke or fill, in the span's order) comes before any second pass,
  * as one string's would.
@@ -164,6 +161,7 @@ function differing(a: Uint8ClampedArray, b: Uint8ClampedArray, skip?: Uint8Array
 function drawApart(
   context: CanvasRenderingContext2D,
   span: Span,
+  segments: readonly ProbeRun[],
   base: Direction,
   dpr: number,
 ): void {
@@ -186,16 +184,17 @@ function drawApart(
   context.lineJoin = style.lineJoin ?? 'miter';
   context.lineCap = 'butt';
   context.miterLimit = 10;
-  const segments = segmentsOf(style.text ?? '', base);
   // Section: each segment's advance, and the string's left edge.
   const widths = segments.map((segment) => {
     context.direction = segment.direction;
     return context.measureText(segment.text).width;
   });
   const total = widths.reduce((sum, width) => sum + width, 0);
-  // The whole string's edge is found as the canvas aligns it: from the
-  // whole string's own advance, which its marks do not change, so the
-  // runs start where the engine's string did to the canvas' precision.
+  // The string's edge is found as the canvas aligns it: from the drawn
+  // string's own advance, which its marks do not change (they are of zero
+  // width), so the runs start where the engine's string did to the canvas'
+  // precision. Only the width is read from the drawn string, never its
+  // runs or their order.
   context.direction = base;
   const whole = context.measureText(style.text ?? '').width;
   const x = style.x ?? 0;
@@ -238,11 +237,13 @@ function drawApart(
 }
 
 /**
- * Compares every label a chart's engine drew with its runs drawn apart. For
- * each text span the renderer paints (an axis label hidden for overlapping
- * another is not), the scene is repainted without it, its segments are
- * drawn apart over that, and the result is compared with the engine's own
- * drawing pixel for pixel, except where elements painted after the span
+ * Compares every label a chart's engine drew with its expected runs drawn
+ * apart. The runs come from `expected`, which knows the chart's data, not
+ * from the drawn string: a label that lost its marks draws its runs in
+ * another order and compares unequal. For each text span the renderer
+ * paints (an axis label hidden for overlapping another is not), the scene
+ * is repainted without it, its runs are drawn apart over that, and the
+ * result is compared with the engine's own drawing pixel for pixel, except where elements painted after the span
  * cover it. A span drawn through a clipping path is skipped: the
  * comparison would have to clip alike.
  *
@@ -254,9 +255,14 @@ function drawApart(
  *
  * @param plot - The chart's plot element, which the engine draws in.
  * @param base - The page's direction, which the chart drew from.
+ * @param expected - The runs each label is expected to draw.
  * @returns Each compared label.
  */
-export async function probeChartLabels(plot: HTMLElement, base: Direction): Promise<ProbedLabel[]> {
+export async function probeChartLabels(
+  plot: HTMLElement,
+  base: Direction,
+  expected: ProbeExpectation,
+): Promise<ProbedLabel[]> {
   const { getInstanceByDom } = await import('echarts/core');
   const engine = getInstanceByDom(plot) as unknown as Engine | undefined;
   const canvas = plot.querySelector('canvas');
@@ -284,7 +290,7 @@ export async function probeChartLabels(plot: HTMLElement, base: Direction): Prom
   }
   try {
     zr.refreshImmediately();
-    return compare(zr, canvas, scene, spans, base, dpr);
+    return compare(zr, canvas, scene, spans, base, dpr, expected);
   } finally {
     // Section: the text borders go back, and the chart repaints as it was.
     spans.forEach((span, index) => {
@@ -306,6 +312,7 @@ function compare(
   spans: readonly Span[],
   base: Direction,
   dpr: number,
+  expected: ProbeExpectation,
 ): ProbedLabel[] {
   const drawn = pixelsOf(copyOf(canvas));
   // Repaints the scene with some elements hidden by their own opacity (a
@@ -331,8 +338,12 @@ function compare(
     // Section: the scene without the span, then the span's runs drawn apart over it.
     const bare = without([span]);
     const ground = pixelsOf(bare);
+    // A label the expectation does not know is drawn as one base run, and
+    // reported with no runs.
+    const text = (span.style.text ?? '').replace(MARKS, '');
+    const runs = expected(text);
     const apart = copyOf(bare.canvas);
-    drawApart(apart, span, base, dpr);
+    drawApart(apart, span, segmentsOf(runs ?? [{ text, direction: base }], base), base, dpr);
     const reference = pixelsOf(apart);
     // Section: what the elements painted after the span cover. The runs are
     // drawn over the finished scene, the engine drew the span beneath them,
@@ -350,7 +361,9 @@ function compare(
       }
     }
     results.push({
-      text: (span.style.text ?? '').replace(/[\u200E\u200F]/g, ''),
+      text,
+      runs: runs?.length ?? 0,
+      marks: (span.style.text ?? '').match(MARKS)?.length ?? 0,
       differing: differing(drawn, reference, covered),
       painted: differing(drawn, ground, covered),
       covered: coveredCount,

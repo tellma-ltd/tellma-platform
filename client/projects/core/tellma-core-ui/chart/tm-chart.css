@@ -19,6 +19,21 @@
   color: var(--chart-label);
 }
 
+/* Forced colours force the page's ground and text but not the canvas'
+   pixels: the plot's ground is transparent, so its text, lines, data-label
+   borders and tooltip take the system colours, which the canvas resolves
+   to the forced palette, and read on the forced ground. */
+@media (forced-colors: active) {
+  :host {
+    --chart-label: CanvasText;
+    --chart-axis: CanvasText;
+    --chart-grid: GrayText;
+    --chart-surface: Canvas;
+    --chart-tooltip-bg: Canvas;
+    --chart-tooltip-border: CanvasText;
+  }
+}
+
 /* A card takes its content's height. */
 :host(.tm-chart--card) {
   block-size: auto;

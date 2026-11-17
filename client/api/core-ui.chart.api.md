@@ -6,6 +6,7 @@
 
 import * as _angular_cdk_bidi from '@angular/cdk/bidi';
 import * as _angular_core from '@angular/core';
+import { Signal } from '@angular/core';
 
 // @public
 export const TM_CHART_SPEC_SCHEMA: TmChartJsonSchema;
@@ -30,19 +31,20 @@ export class TmChart {
     constructor();
     readonly activatable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly asTable: _angular_core.ModelSignal<boolean>;
-    protected readonly cardThreshold: _angular_core.Signal<{
+    protected readonly cardThreshold: Signal<{
         tone: TmBadgeTone;
         text: string;
     } | null>;
-    protected readonly cardValue: _angular_core.Signal<string>;
-    protected readonly description: _angular_core.Signal<string>;
+    protected readonly cardValue: Signal<string>;
+    protected readonly description: Signal<string>;
     protected readonly descriptionId: string;
     protected readonly direction: _angular_core.WritableSignal<_angular_cdk_bidi.Direction>;
-    protected readonly drawable: _angular_core.Signal<boolean>;
+    protected readonly drawable: Signal<boolean>;
+    readonly fallback: Signal<boolean>;
     protected readonly firstParts: (_: unknown, row: TableRow) => readonly string[] | null;
     protected readonly formatValue: (value: unknown) => string;
     readonly gridId: _angular_core.InputSignal<string | undefined>;
-    protected readonly name: _angular_core.Signal<string>;
+    protected readonly name: Signal<string>;
     protected onCardAuxClick(event: MouseEvent): void;
     protected onCardClick(event: MouseEvent): void;
     protected onRowActivate(activation: TmGridRowActivation<TableRow>): void;
@@ -50,9 +52,9 @@ export class TmChart {
     protected readonly rowId: (row: TableRow) => number;
     protected readonly secondParts: (_: unknown, row: TableRow) => readonly string[] | null;
     readonly spec: _angular_core.InputSignal<TmChartSpec>;
-    protected readonly tableGridId: _angular_core.Signal<string>;
-    protected readonly tableRows: _angular_core.Signal<readonly TableRow[]>;
-    protected readonly view: _angular_core.Signal<ChartView>;
+    protected readonly tableGridId: Signal<string>;
+    protected readonly tableRows: Signal<readonly TableRow[]>;
+    protected readonly view: Signal<ChartView>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmChart, "tm-chart", never, { "spec": { "alias": "spec"; "required": true; "isSignal": true; }; "asTable": { "alias": "asTable"; "required": false; "isSignal": true; }; "gridId": { "alias": "gridId"; "required": false; "isSignal": true; }; "activatable": { "alias": "activatable"; "required": false; "isSignal": true; }; }, { "asTable": "asTableChange"; "pointActivate": "pointActivate"; }, never, ["*"], true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmChart, never>;
 }

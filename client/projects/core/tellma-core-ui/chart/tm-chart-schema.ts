@@ -104,7 +104,7 @@ export const TM_CHART_SPEC_SCHEMA: TmChartJsonSchema = {
         parts: {
           type: 'array',
           items: { type: 'string' },
-          description: 'A display name’s parts; joined, they equal the label.',
+          description: 'A display name’s parts; joined with " - ", they equal the label.',
         },
       },
     },
@@ -153,7 +153,7 @@ type Node = { readonly [key: string]: unknown };
  * `member-index` (a row's index is missing, out of its member list, or
  * given for a dimension the chart lacks), `duplicate-point` (two rows at
  * the same members), `row-count` (a card holds more than one row),
- * `parts-mismatch` (a member's parts do not join to its label),
+ * `parts-mismatch` (a member's parts joined with `' - '` are not its label),
  * `min-max` (the axis minimum is not below its maximum) and `bidi-control`.
  *
  * @example
@@ -216,7 +216,12 @@ function resolve(node: Node): Node {
  * Evaluates a value against a schema node, recording a problem per failed
  * keyword. A value of the wrong type is not looked into further.
  */
-function evaluate(raw: Node, value: unknown, pointer: string, problems: TmChartSpecProblem[]): void {
+function evaluate(
+  raw: Node,
+  value: unknown,
+  pointer: string,
+  problems: TmChartSpecProblem[],
+): void {
   const node = resolve(raw);
   // Section: type and enum.
   const type = node['type'];
@@ -289,7 +294,9 @@ interface ValidSpec {
   /** The chart type. */
   readonly type: string;
   /** The dimensions, each with its members' labels and parts. */
-  readonly dimensions: readonly { readonly members: readonly { readonly label: string; readonly parts?: readonly string[] }[] }[];
+  readonly dimensions: readonly {
+    readonly members: readonly { readonly label: string; readonly parts?: readonly string[] }[];
+  }[];
   /** The points: member indexes and a value. */
   readonly rows: readonly (readonly [number | null, number | null, number | null])[];
   /** The options the rules read: the value axis' fixed ends. */
@@ -305,10 +312,11 @@ function checkRules(spec: ValidSpec, problems: TmChartSpecProblem[]): void {
     problems.push({ pointer: '/dimensions', code: 'dimension-count' });
     return;
   }
-  // Section: each member's parts join to its label.
+  // Section: each member's parts join to its label with the platform's
+  // display-name separator, as the grid's display parts do.
   spec.dimensions.forEach((dimension, d) =>
     dimension.members.forEach((member, m) => {
-      if (member.parts !== undefined && member.parts.join('') !== member.label) {
+      if (member.parts !== undefined && member.parts.join(' - ') !== member.label) {
         problems.push({ pointer: `/dimensions/${d}/members/${m}/parts`, code: 'parts-mismatch' });
       }
     }),
@@ -323,7 +331,10 @@ function checkRules(spec: ValidSpec, problems: TmChartSpecProblem[]): void {
     for (const d of [0, 1] as const) {
       const index = row[d];
       const dimension = spec.dimensions[d];
-      const fits = dimension === undefined ? index === null : index !== null && index < dimension.members.length;
+      const fits =
+        dimension === undefined
+          ? index === null
+          : index !== null && index < dimension.members.length;
       if (!fits) {
         problems.push({ pointer: `/rows/${r}/${d}`, code: 'member-index' });
         valid = false;
