@@ -35,7 +35,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
@@ -66,14 +66,19 @@ const UNLINKED = /ngDeclare/;
  * workspace, and Babel and the Angular linker through @angular/compiler-cli,
  * which depends on Babel for the same linking an app build performs.
  *
+ * With `external`, the listed modules (absolute paths of sibling files in
+ * the package, such as a lazy chunk an entry point loads with import()) stay
+ * out of the bundle, so a chunk with its own ceiling is measured on its own.
+ *
  * @param {string} clientDir absolute path of the client workspace
- * @returns {Promise<(fesm: string) => Promise<number>>} gzipped bytes of one
- *   FESM, given its absolute path; rejects when the bundle still holds an
- *   unlinked declaration
+ * @returns {Promise<(fesm: string, external?: readonly string[]) => Promise<number>>}
+ *   gzipped bytes of one FESM or chunk, given its absolute path; rejects
+ *   when the bundle still holds an unlinked declaration
  */
 export async function createBundleMeasurer(clientDir) {
   const bundle = await createProductionBundler(clientDir);
-  return async (fesm) => gzipSync((await bundle(fesm)).contents).length;
+  return async (fesm, external) =>
+    gzipSync((await bundle(fesm, undefined, external)).contents).length;
 }
 
 /**
@@ -94,8 +99,11 @@ export async function createBundleMeasurer(clientDir) {
  * gives a `sideEffects: false` library; an upgrade that moves them fails
  * the check loudly instead of letting it pass on a weaker pipeline.
  *
+ * With `external`, the listed modules (absolute paths) are left out of the
+ * bundle as the imports they are.
+ *
  * @param {string} clientDir absolute path of the client workspace
- * @returns {Promise<(fesm: string, imports?: readonly string[]) =>
+ * @returns {Promise<(fesm: string, imports?: readonly string[], external?: readonly string[]) =>
  *   Promise<{ text: string; contents: Uint8Array }>>} the minified bundle
  */
 export async function createProductionBundler(clientDir) {
@@ -164,7 +172,20 @@ export async function createProductionBundler(clientDir) {
     },
   });
 
-  return async (fesm, imports) => {
+  // Keeps the listed files out of the bundle: a relative import resolving
+  // to one of them stays the import it is.
+  const keepOut = (external) => ({
+    name: 'tellma-keep-out',
+    setup(build) {
+      build.onResolve({ filter: /^\./ }, (args) =>
+        external.has(resolve(args.resolveDir, args.path))
+          ? { path: args.path, external: true }
+          : undefined,
+      );
+    },
+  });
+
+  return async (fesm, imports, external) => {
     // The entry: the FESM itself, or an app module that imports only the
     // given names from it and keeps them alive.
     const entry =
@@ -192,7 +213,12 @@ export async function createProductionBundler(clientDir) {
       pure: ['forwardRef'],
       define: PRODUCTION_DEFINES,
       external: BUNDLE_EXTERNALS,
-      plugins: [link(imports !== undefined)],
+      plugins: [
+        ...(external !== undefined && external.length > 0
+          ? [keepOut(new Set(external.map((path) => resolve(path))))]
+          : []),
+        link(imports !== undefined),
+      ],
     });
     const output = result.outputFiles[0];
     // Fail loudly rather than count a metadata copy the linker never saw.

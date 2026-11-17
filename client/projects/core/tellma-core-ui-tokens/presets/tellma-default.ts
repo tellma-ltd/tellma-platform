@@ -812,6 +812,55 @@ export const tmTokensDefault: TmTokens = {
       linkText: '{action.primary}',
       ring: '{action.accent}',
     },
+    // tm-chart: spec 0034 §7.7. The series read the eight categorical marks
+    // and the ramp the seven sequential steps, so both switch with the
+    // scheme and keep their order; lines and text read the divider and text
+    // roles, and the status tones mark thresholds only. The chart reads
+    // these through getComputedStyle, so a distribution re-brands them in
+    // its theme layer like any other token.
+    chart: {
+      series1: '{categorical.1.mark}',
+      series2: '{categorical.2.mark}',
+      series3: '{categorical.3.mark}',
+      series4: '{categorical.4.mark}',
+      series5: '{categorical.5.mark}',
+      series6: '{categorical.6.mark}',
+      series7: '{categorical.7.mark}',
+      series8: '{categorical.8.mark}',
+      sequential1: '{sequential.1}',
+      sequential2: '{sequential.2}',
+      sequential3: '{sequential.3}',
+      sequential4: '{sequential.4}',
+      sequential5: '{sequential.5}',
+      sequential6: '{sequential.6}',
+      sequential7: '{sequential.7}',
+      divergingNegative: '{chart.series2}',
+      divergingPositive: '{chart.series1}',
+      grid: '{border.divider}',
+      axis: '{text.secondary}',
+      label: '{text.body}',
+      // Threshold lines, one per tone.
+      positive: '{status.success.fg}',
+      warning: '{status.warning.fg}',
+      negative: '{status.error.fg}',
+      // The plot's ground: the gaps between pie slices and the halo behind
+      // data labels drawn over marks.
+      surface: '{surface.card}',
+      tooltipBg: '{surface.card}',
+      tooltipBorder: '{border.default}',
+      // The decals' pattern: the ground showing through each fill, so the
+      // pattern reads on every series colour in both schemes.
+      decal: 'color-mix(in srgb, var(--surface-card) 60%, transparent)',
+      fontSize: '12px',
+      // The plot's block size where its host sets none.
+      height: '280px',
+      // The card type: the value over the measure's label.
+      cardValueSize: '28px',
+      cardValueWeight: '{font.weight.semibold}',
+      cardLabelSize: '12px',
+      cardPadding: '12px',
+      cardGap: '4px',
+    },
     // tm-dropzone: drop-region geometry; colors ride the field/surface
     // semantics in the component CSS.
     files: {

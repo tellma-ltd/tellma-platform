@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TmChartSpec",
+  "description": "A chart as JSON: rows index the dimensions’ member lists, and every label is text, never markup.",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "dimensions",
+    "measure",
+    "rows"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "enum": [
+        "column",
+        "bar",
+        "line",
+        "area",
+        "pie",
+        "doughnut",
+        "card"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "The accessible name; hosts draw visible titles."
+    },
+    "dimensions": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/dimension"
+      },
+      "description": "In display order: the categories, then the series."
+    },
+    "measure": {
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/format"
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "description": "One per point: the member index in each dimension, then the value.",
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "prefixItems": [
+          {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        ],
+        "items": false
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stack": {
+          "enum": [
+            "none",
+            "stacked",
+            "normalized"
+          ]
+        },
+        "legend": {
+          "enum": [
+            "auto",
+            "none",
+            "top",
+            "bottom",
+            "start",
+            "end"
+          ]
+        },
+        "markers": {
+          "type": "boolean"
+        },
+        "labels": {
+          "type": "boolean"
+        },
+        "palette": {
+          "enum": [
+            "categorical",
+            "sequential",
+            "diverging"
+          ]
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "thresholds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "tone"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "tone": {
+                "enum": [
+                  "positive",
+                  "warning",
+                  "negative"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "required": [
+        "label",
+        "members"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/member"
+          }
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "A display name’s parts; joined, they equal the label."
+        }
+      }
+    },
+    "format": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minDecimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "maxDecimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "grouping": {
+          "type": "boolean"
+        },
+        "percent": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

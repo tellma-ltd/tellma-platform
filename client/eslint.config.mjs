@@ -375,6 +375,60 @@ export default defineConfig(
     },
   },
 
+  // Chart engine boundary (spec 0034 §7.3): one internal adapter imports
+  // ECharts, and the chart reaches it, with the option builder and the
+  // theme bridge it uses, only through import(), so a card, a table view
+  // and every page without a plot never download the engine.
+  // The size gate measures the engine's chunk on its own and the entry point
+  // without it; these rules name the mistake where it is made.
+  {
+    files: ['projects/core/tellma-core-ui/chart/**/*.ts'],
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.examples.ts',
+      'projects/core/tellma-core-ui/chart/internal/chart-engine.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['echarts', 'echarts/*', 'zrender', 'zrender/*'],
+              allowTypeImports: true,
+              message: 'Only the chart engine adapter imports ECharts; import its types only.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core-ui/chart/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['echarts', 'echarts/*', 'zrender', 'zrender/*'],
+              allowTypeImports: true,
+              message: 'Only the chart engine adapter imports ECharts; import its types only.',
+            },
+            {
+              group: ['./internal/chart-engine', './internal/chart-option', './internal/chart-theme'],
+              allowTypeImports: true,
+              message:
+                "The engine's modules load on the first plot: reach them through " +
+                "import('./internal/chart-engine').",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Grid-engine entry-point boundary (spec 0004 §1, DoD 14): pure TypeScript
   // plus @angular/core SIGNALS only — no DOM, no dependency injection, no
   // components, no other @tellma packages except the contracts types. The

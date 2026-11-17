@@ -274,6 +274,33 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the chart’s series, ramp, lines, text, tones and card geometry', () => {
+    // The names tm-chart reads: the series and the ramp over the semantic
+    // colour groups in their fixed order, the diverging pair over the first
+    // two series, lines and text over the divider and text roles, and the
+    // threshold tones over the status roles.
+    for (const declaration of [
+      '--chart-series-1: var(--categorical-1-mark);',
+      '--chart-series-8: var(--categorical-8-mark);',
+      '--chart-sequential-1: var(--sequential-1);',
+      '--chart-sequential-7: var(--sequential-7);',
+      '--chart-diverging-negative: var(--chart-series-2);',
+      '--chart-diverging-positive: var(--chart-series-1);',
+      '--chart-grid: var(--divider);',
+      '--chart-axis: var(--text-secondary);',
+      '--chart-label: var(--text-body);',
+      '--chart-positive: var(--success);',
+      '--chart-warning: var(--warning);',
+      '--chart-negative: var(--error);',
+      '--chart-surface: var(--surface-card);',
+      '--chart-font-size: 12px;',
+      '--chart-card-value-size: 28px;',
+      '--chart-card-value-weight: var(--weight-semibold);',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('emits the tiles geometry: 60px tiles with a 40px image on a 70px lattice pitch', () => {
     // The pitch is the tile plus the gap; tm-tiles reads the height, the
     // gap and the minimum width to lay the lattice out.
@@ -568,4 +595,103 @@ describe('the categorical and sequential colour groups', () => {
       issues.some((i) => i.message.includes('--sequential-4') && i.message.includes('--teal-450')),
     ).toBe(true);
   });
+});
+
+// ---- the chart palette ----
+
+/** sRGB channels (0-255) to linear light (0-1). */
+function linear(rgb: readonly number[]): number[] {
+  return rgb.map((c) => {
+    const channel = c / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+}
+
+/** OKLab of linear sRGB, scaled by 100 so a ΔE reads in the validator's units. */
+function oklab([r, g, b]: readonly number[]): [number, number, number] {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    100 * (0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s),
+    100 * (1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s),
+    100 * (0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s),
+  ];
+}
+
+/** Euclidean distance in scaled OKLab. */
+function deltaE(a: readonly number[], b: readonly number[]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/** Machado, Oliveira and Fernandes (2009) severity-1.0 simulation matrices, in linear sRGB. */
+const CVD: Readonly<Record<'protan' | 'deutan', readonly (readonly number[])[]>> = {
+  protan: [
+    [0.152286, 1.052583, -0.204868],
+    [0.114503, 0.786281, 0.099216],
+    [-0.003882, -0.048116, 1.051998],
+  ],
+  deutan: [
+    [0.367322, 0.860646, -0.227968],
+    [0.280085, 0.672501, 0.047413],
+    [-0.01182, 0.04294, 0.968881],
+  ],
+};
+
+/** A linear colour as a colour-blind reader sees it. */
+function simulate(rgb: readonly number[], matrix: readonly (readonly number[])[]): number[] {
+  return matrix.map((row) => Math.min(1, Math.max(0, row[0] * rgb[0] + row[1] * rgb[1] + row[2] * rgb[2])));
+}
+
+/** The presets every distribution ships; each must pass the chart palette's checks. */
+const PRESETS: ReadonlyArray<readonly [string, TmTokens]> = [['tellma-default', tmTokensDefault]];
+
+describe('the chart palette', () => {
+  const SERIES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+
+  for (const [name, preset] of PRESETS) {
+    for (const scheme of ['light', 'dark'] as const) {
+      describe(`${name}, ${scheme}`, () => {
+        const vars = tmEmittedSchemeVars(preset, scheme);
+        const surface = tmResolveVar(vars, '--surface-card')!;
+        const series = SERIES.map((slot) => tmResolveVar(vars, `--chart-series-${slot}`)!);
+
+        it('resolves every series to an opaque colour', () => {
+          for (const color of series) {
+            expect(color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+          }
+          expect(surface).toMatch(/^#[0-9A-Fa-f]{6}$/);
+        });
+
+        it('gives every series a chroma of 0.1 or more', () => {
+          series.forEach((color, index) => {
+            const [, a, b] = oklab(linear(channels(color)));
+            expect(Math.hypot(a, b) / 100, `series ${index + 1}`).toBeGreaterThanOrEqual(0.1);
+          });
+        });
+
+        it('separates adjacent series by ΔE 15 or more for normal vision and 8 or more for colour-blind readers', () => {
+          for (let index = 0; index + 1 < series.length; index++) {
+            const [a, b] = [series[index]!, series[index + 1]!].map((color) => linear(channels(color)));
+            const pair = `series ${index + 1} and ${index + 2}`;
+            expect(deltaE(oklab(a!), oklab(b!)), pair).toBeGreaterThanOrEqual(15);
+            for (const [kind, matrix] of Object.entries(CVD)) {
+              const seen = deltaE(oklab(simulate(a!, matrix)), oklab(simulate(b!, matrix)));
+              expect(seen, `${pair}, ${kind}`).toBeGreaterThanOrEqual(8);
+            }
+          }
+        });
+
+        it('draws every series and threshold tone at 3:1 or more against the card surface', () => {
+          series.forEach((color, index) => {
+            expect(contrast(color, surface), `series ${index + 1}`).toBeGreaterThanOrEqual(3);
+          });
+          for (const tone of ['positive', 'warning', 'negative']) {
+            const color = tmResolveVar(vars, `--chart-${tone}`)!;
+            expect(contrast(color, surface), tone).toBeGreaterThanOrEqual(3);
+          }
+        });
+      });
+    }
+  }
 });

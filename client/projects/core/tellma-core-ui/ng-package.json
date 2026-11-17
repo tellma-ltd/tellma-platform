@@ -6,6 +6,7 @@
   },
   "allowedNonPeerDependencies": [
     "@internationalized/date",
+    "echarts",
     "lucide"
   ],
   "assets": [

@@ -41,6 +41,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
 | `@tellma/core-ui/pivot` | `tm-pivot` — an Excel-style pivot grid in compact form over two member trees: subtotals on parent rows and after a column's children, the totals last, five looks, text formatted lazily for the rendered cells only, widths fitted to each measure's widest value, sticky headers and leading columns, and a treegrid keyboard |
+| `@tellma/core-ui/chart` | `tm-chart` — a chart from a JSON spec: column, bar, line, area, pie and doughnut plots drawn on canvas in the chart tokens' colours, a headline card, and a table view a toggle or a failed engine shows. The plot is named and described for assistive technology, never mirrors in right-to-left, and drills through `pointActivate`; its engine (Apache ECharts) loads with `import()` on the page's first plot, so a card or a table never downloads it. `TM_CHART_SPEC_SCHEMA` and `tmValidateChartSpec` check a spec |
 | `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session, the popup pane's keys and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
@@ -127,7 +128,8 @@ the components ship no hardcoded sizes or colors.
 - **Strings.** `provideTellmaUi({ translations })` registers the app's
   loader; loaded tables merge with the built-in English and installed locale
   packs. An entry point whose strings only it reads ships them itself (the
-  pivot's `TM_PIVOT_STRINGS_EN`, the tiles tree's `TM_TILES_TREE_STRINGS_EN`)
+  pivot's `TM_PIVOT_STRINGS_EN`, the tiles tree's `TM_TILES_TREE_STRINGS_EN`,
+  the chart's `TM_CHART_STRINGS_EN`)
   and registers them beside the core table, so they translate and fall
   back exactly as the core's do. ICU
   MessageFormat is interpreted, never compiled to code, so it runs under

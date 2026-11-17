@@ -41,6 +41,7 @@ catalog:
   '@vitest/browser-playwright': 4.1.9
   angular-eslint: 22.0.0
   axe-core: 4.12.1
+  echarts: 6.1.0
   esbuild: 0.28.1
   eslint: 10.6.0
   jsdom: 29.1.1

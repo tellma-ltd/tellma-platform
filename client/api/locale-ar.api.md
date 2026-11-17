@@ -342,6 +342,19 @@ export const TM_LOCALE_AR_STRINGS: {
     readonly tilesTree: {
         readonly loadFailed: "تعذر تحميل {label}";
     };
+    readonly chart: {
+        readonly name: {
+            readonly column: "{title}، مخطط أعمدة";
+            readonly bar: "{title}، مخطط أشرطة";
+            readonly line: "{title}، مخطط خطي";
+            readonly area: "{title}، مخطط مساحي";
+            readonly pie: "{title}، مخطط دائري";
+            readonly doughnut: "{title}، مخطط حلقي";
+        };
+        readonly description: string;
+        readonly share: "{share} ({value})";
+        readonly point: "{label}: {value}";
+    };
 };
 
 ```

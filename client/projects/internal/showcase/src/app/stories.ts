@@ -61,6 +61,9 @@ import { TooltipStory } from './tooltip/tooltip-story';
 import { SelectStory } from './select/select-story';
 import { SkeletonStory } from './skeleton/skeleton-story';
 import { PagerStory } from './pager/pager-story';
+import { ChartBidiStory } from './chart/chart-bidi-story';
+import { ChartLazyStory } from './chart/chart-lazy-story';
+import { ChartStory } from './chart/chart-story';
 import { PivotLargeStory } from './pivot/pivot-large-story';
 import { PivotStory } from './pivot/pivot-story';
 import { ReorderListStory } from './reorder-list/reorder-list-story';
@@ -239,5 +242,8 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   },
   { id: 'pivot', title: 'Pivot (tm-pivot)', component: PivotStory, wide: true },
   { id: 'pivot-large', title: 'Pivot (500,000 cells)', component: PivotLargeStory, wide: true },
+  { id: 'chart', title: 'Chart (tm-chart)', component: ChartStory, wide: true },
+  { id: 'chart-bidi', title: 'Chart (canvas text)', component: ChartBidiStory },
+  { id: 'chart-lazy', title: 'Chart (lazy engine)', component: ChartLazyStory },
   { id: 'i18n', title: 'i18n / locale packs', component: I18nStory },
 ];
