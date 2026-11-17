@@ -102,9 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B02 | pc-1 | pc/PC-B02 | batch: fixer (Opus, high) → hold; finders done, 5 findings (0/3/2) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
-| PC-B03 | pc-2 | pc/PC-B03 | batch: fixer (Opus, high) → hold; finders done, 6 findings (0/3/3) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
-| PC-072 | pc-3 | pc/PC-072 | R1 (impl commit 1 1dfae484; 17 deviations) | impl (Opus, xhigh, launched 2026-11-17) | R1 (Opus inherit, high) | 2026-11-17 |
+| PC-B02 | pc-1 | pc/PC-B02 | integrate (fixes c771eead: 5 fixed, 1 sub-point pushed back; merge-tree clean) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | held (fixes 3adc83da, verdicts ae8edf62: 6 fixed; merge-tree clean; queued behind PC-B02) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | fix1 (R1 0/1/4; R1-3 ruled D-111) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
 
 ## Fix items
 
