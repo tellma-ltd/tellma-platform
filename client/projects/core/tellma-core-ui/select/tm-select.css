@@ -276,4 +276,16 @@
     background: Highlight;
     color: HighlightText;
   }
+
+  /* A selected row's parts (the option's content, the check, the
+     multi-select box) opt out of forced colours. Kept, Chromium paints a
+     Canvas backplate behind each part's text, and HighlightText is Canvas
+     in the common palettes: the label would vanish into its plate. Each
+     takes the row's system ink, not its own colour (the check's brand
+     colour, forced to CanvasText, would barely show on the fill). The row
+     keeps forced colours, which strip its accent and ring shadows. */
+  .tm-option__row[aria-selected='true'] > * {
+    forced-color-adjust: none;
+    color: HighlightText;
+  }
 }

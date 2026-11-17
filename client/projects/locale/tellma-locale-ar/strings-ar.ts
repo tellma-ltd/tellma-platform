@@ -34,8 +34,10 @@ const rowsCounted =
 
 /**
  * The Arabic translations of the library's built-in strings — same shape as
- * `TM_UI_STRINGS_EN`; registered under the tmUi namespace of the 'ar'
- * language resources by `provideTellmaLocaleAr()`.
+ * `TM_UI_STRINGS_EN` with the entry points' own tables beside it (the
+ * pivot's `TM_PIVOT_STRINGS_EN` under `pivot`, the tiles tree's
+ * `TM_TILES_TREE_STRINGS_EN` under `tilesTree`); registered under the tmUi
+ * namespace of the 'ar' language resources by `provideTellmaLocaleAr()`.
  */
 export const TM_LOCALE_AR_STRINGS = {
   errors: {
@@ -378,6 +380,17 @@ export const TM_LOCALE_AR_STRINGS = {
     empty: 'لا توجد عناصر للعرض',
     select: 'تحديد {label}',
     selected: 'تم تحديد {count, number} من {total, number}',
+  },
+  pivot: {
+    subtotal: 'إجمالي {label}',
+    direct: '(مباشر)',
+    notActivatable: 'في هذا التقرير، تفتح الخلايا الأكثر تفصيلا فقط صفوفها.',
+    rowExpanded: `تم توسيع {label}، ${rowsCounted}`,
+    columnExpanded:
+      'تم توسيع {label}، {count, plural, zero {# عمود} one {عمود واحد} two {عمودين} few {# أعمدة} many {# عمودا} other {# عمود}}',
+    collapsed: 'تم طي {label}',
+  },
+  tilesTree: {
     loadFailed: 'تعذر تحميل {label}',
   },
 } as const;

@@ -224,6 +224,9 @@
      real border (backgrounds are forced to ButtonFace). */
   .tm-button {
     border-color: ButtonText;
+    /* A button on a highlighted grid cell paints its own ButtonFace: its
+       glyphs take its ink, not the cell's overlay ink (tm-icon). */
+    --tm-grid-overlay-ink: initial;
   }
 
   /* The flat disabled plate is forced away with every other background, so

@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 
 namespace Tellma.Core.Abstractions.Api
 {
@@ -39,6 +40,11 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(DeleteByQueryRequest))]
     [JsonSerializable(typeof(AccessHoldersRequest))]
     [JsonSerializable(typeof(AccessCheckRequest))]
+    [JsonSerializable(typeof(ExportRequest))]
+    [JsonSerializable(typeof(ExportForImportRequest))]
+    [JsonSerializable(typeof(InspectImportRequest))]
+    [JsonSerializable(typeof(ImportRequest))]
+    [JsonSerializable(typeof(StartImportRequest))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
@@ -46,6 +52,8 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
     [JsonSerializable(typeof(AccessGrant))]
+    [JsonSerializable(typeof(ImportPlan))]
+    [JsonSerializable(typeof(ImportOutcome))]
 
     // --- The rows envelopes: each written by its own converter, which the generated metadata carries ---
     [JsonSerializable(typeof(RowPage))]
@@ -55,6 +63,8 @@ namespace Tellma.Core.Abstractions.Api
     // --- The records a problem body's details carry ---
     [JsonSerializable(typeof(ConcurrencyConflict))]
     [JsonSerializable(typeof(ConfirmationRequest))]
+    [JsonSerializable(typeof(ImportError))]
+    [JsonSerializable(typeof(RowRange))]
 
     // --- The scalar types ---
     [JsonSerializable(typeof(bool))]

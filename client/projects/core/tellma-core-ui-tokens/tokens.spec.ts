@@ -245,6 +245,35 @@ describe('tmEmitCss', () => {
     }
   });
 
+  it('emits the pivot’s ladder, geometry and five looks', () => {
+    // The names tm-pivot reads: the grid's 30px default row, a 16px indent
+    // per depth under a 13px twisty, the 2px grand-total rule, and each
+    // look's fill, ink and weight over the semantic roles.
+    for (const declaration of [
+      '--pivot-row-height: 34px;',
+      '--pivot-row-height-sm: 30px;',
+      '--pivot-row-height-lg: 38px;',
+      '--pivot-indent: 16px;',
+      '--pivot-twisty-size: 13px;',
+      '--pivot-cell-padding-x: 8px;',
+      '--pivot-total-rule-width: 2px;',
+      '--pivot-total-bg: var(--surface-sunken);',
+      '--pivot-total-rule: var(--border-strong);',
+      '--pivot-total-font-weight: var(--weight-semibold);',
+      '--pivot-subtotal-1-bg: var(--surface-sunken);',
+      '--pivot-subtotal-1-text: var(--text-strong);',
+      '--pivot-subtotal-2-bg: var(--surface-card);',
+      '--pivot-subtotal-2-font-weight: var(--weight-semibold);',
+      '--pivot-leaf-text: var(--text-body);',
+      '--pivot-leaf-font-weight: var(--weight-regular);',
+      '--pivot-phantom-text: var(--text-secondary);',
+      '--pivot-link-text: var(--color-primary);',
+      '--pivot-ring: var(--accent);',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
   it('emits the tiles geometry: 60px tiles with a 40px image on a 70px lattice pitch', () => {
     // The pitch is the tile plus the gap; tm-tiles reads the height, the
     // gap and the minimum width to lay the lattice out.

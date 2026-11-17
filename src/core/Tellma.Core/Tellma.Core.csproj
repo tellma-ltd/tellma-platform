@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Resources/Strings.resx is English, so an English lookup never probes for a satellite. -->
     <NeutralLanguage>en</NeutralLanguage>
-    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; the tenant data model (TellmaDbContext, its conventions and the table-type binder); the tenancy runtime (the catalog model, the tenant registry, connection resolution, the catalog write side and the membership hints); the calendar systems; localization (the language catalogue, negotiation, the value sets and the ICU string localizer over Core's shared resources); and the file-system blob store. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
+    <Description>Tellma's runtime: the host-agnostic composition root (AddTellma, the feature graph, realisation of contribution items) and the two composition gates, with the platform's built-in startup checks; the tenant data model (TellmaDbContext, its conventions and the table-type binder); the tenancy runtime (the catalog model, the tenant registry, connection resolution, the catalog write side and the membership hints); the calendar systems; localization (the language catalogue, negotiation, the value sets and the ICU string localizer over Core's shared resources); the file-system blob store; and the Excel cell codec, number formats and streaming workbook writer. Takes no ASP.NET Core dependency, so the migrator and worker hosts compose it without the web stack.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -51,6 +51,9 @@
     <PackageReference Include="MessageFormat" />
     <!-- The scheduler's cron dialect: five-field Unix cron, CronFormat.Standard. -->
     <PackageReference Include="Cronos" />
+    <!-- The Excel codec's workbook elements and its forward-only writer and reader. The package is
+         zipped by the codec itself, so a workbook streams with flat memory. -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
 
   <ItemGroup>

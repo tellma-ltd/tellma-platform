@@ -34,6 +34,10 @@
     <!-- axe-core bound for .NET and Playwright: the static accessibility floor for the
          identity UI, on the same 4.12 line as the client suite's axe-core. -->
     <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.12.0" />
+    <!-- The Open XML SDK (MIT, Microsoft): the Excel codec's element model, its forward-only
+         OpenXmlWriter and OpenXmlReader, and the validator the codec's suite checks every written
+         workbook with. Referenced by Tellma.Core alone; no module and no distribution names it. -->
+    <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageVersion Include="MailKit" Version="4.17.0" />
     <!-- The ASP.NET Core packages, EF Core and the Microsoft.Extensions.* runtime packages move
          together on one 10.0.x servicing line, so no two of them disagree on a shared

@@ -579,9 +579,11 @@
      match (--find-active, below) keeps its solid outline. */
   .tm-grid__cell.tm-grid__cell--find {
     background: Canvas;
-    /* The cell's ink, so the dots contrast with whatever background a row
-       state or the range fill paints under them. */
-    outline: var(--border-width) dotted currentColor;
+    /* The overlay ink (CanvasText on a plain cell), so the dots contrast
+       with whatever background a row state or the range fill paints under
+       them. Not the cell's ink: that is CanvasText on every fill, for the
+       backplate behind the text (below). */
+    outline: var(--border-width) dotted var(--tm-grid-overlay-ink, CanvasText);
     outline-offset: calc(-2 * var(--border-width));
   }
 
@@ -590,7 +592,7 @@
   .tm-grid__cell.tm-grid__cell--error {
     background: Canvas;
     box-shadow: none;
-    outline: var(--border-width) dashed currentColor; /* the ink, as on finds */
+    outline: var(--border-width) dashed var(--tm-grid-overlay-ink, CanvasText); /* as on finds */
     outline-offset: calc(-2 * var(--border-width));
   }
 
@@ -616,10 +618,20 @@
     border-color: CanvasText;
   }
 
+  /* Text on a system fill (a hit header here, a checked row and the range
+     fill below) is drawn in CanvasText, not the fill's paired ink. The
+     cells keep forced colours, so Chromium paints a Canvas backplate behind
+     their text, and the paired ink (SelectedItemText, HighlightText) is
+     Canvas in the common palettes: the text would vanish into its plate.
+     CanvasText always shows on it. Opting the cells out of forced colours
+     instead would also take them from everything a cell holds: a
+     consumer's links and templates and the open editor, which these scoped
+     styles cannot reach. The rings and glyphs, painted without a plate,
+     keep the paired ink (--tm-grid-overlay-ink). */
   .tm-grid__colhdr--hit,
   .tm-grid__rowhdr--hit {
     background: SelectedItem;
-    color: SelectedItemText;
+    color: CanvasText;
     --tm-grid-overlay-ink: SelectedItemText;
   }
 
@@ -632,7 +644,7 @@
   .tm-grid__row--checked > .tm-grid__cell,
   .tm-grid__row--checked > .tm-grid__checkcell {
     background: SelectedItem;
-    color: SelectedItemText;
+    color: CanvasText;
     --tm-grid-overlay-ink: SelectedItemText;
   }
 
@@ -653,16 +665,17 @@
      stripe. */
   .tm-grid__scroller .tm-grid__row > .tm-grid__cell--selected {
     background: Highlight;
-    color: HighlightText;
+    color: CanvasText;
     --tm-grid-overlay-ink: HighlightText;
   }
 
-  /* The open editor is a field, not part of the range fill: without its
-     own ink the input would inherit the fill's HighlightText over the
-     forced Canvas editor background. */
+  /* The open editor is a field, not part of the range fill: it takes the
+     field's own ink over the forced Canvas editor background, for its
+     glyphs too (tm-icon reads the overlay ink). */
   .tm-grid__editor {
     background: Field;
     color: FieldText;
+    --tm-grid-overlay-ink: initial;
   }
 
   .tm-grid-bool,

@@ -270,7 +270,7 @@ switches with `cd {slot} && git switch -q -C pc/{PC} origin/pc/{PC}`):
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
 HEAD, run `cd {slot} && git merge origin/platform-core -m "{PC}: merge platform-core"`, resolving
 conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations rather
-than hand-merging them, and re-run PLAN.md §7.1 items 2-4. Then push with
+than hand-merging them, and run the integration gate (§11, D-105) for the item's scope. Then push with
 `cd {slot} && git push origin HEAD:platform-core` and `cd {slot} && git push origin pc/{PC}`. If the
 platform-core push is rejected, repeat from the fetch. Return the §4.7 summary with the sha you
 pushed to platform-core.
@@ -617,6 +617,34 @@ goes to LEDGER.md and DECISIONS.md.
   (the CONTRIBUTING.md PR-tier command; `@cross-engine` tests run on Chromium in the PR tier and
   on Firefox/WebKit only nightly). Once 0024-a moves the pnpm workspace to the repo root, run them
   there.
+- **Integration gate (D-105).** The gate run at integration (§4.3). Implementation and fix rounds
+  still run PLAN.md §7.1 items 2-4 in full; CI still runs the whole PR tier on every integration
+  push, and a red CI still stops the line (§8.3).
+  - **Scope** is the item's own change set, without what the merge brings in (that already passed
+    CI): `git diff --name-only $(git merge-base origin/platform-core origin/pc/{PC}) origin/pc/{PC}`
+    taken before the merge, plus every file the merge's conflict resolution touched. Files under
+    `plans/` and `docs/` do not count.
+  - **Client scope** (files under `client/`): lint, typecheck, lint:test, tokens:check, build,
+    test, api:check, docs:build and size:check. The e2e runs only the spec files the scope changed
+    and the specs that cover a touched component or entry point:
+    `cd <slot>/client && node scripts/e2e.mjs --project=chromium --project=touch --grep-invert "@nightly|@perf|@quarantine" <spec files>`.
+    The `=` form matters: `--project chromium` with a space swallows the spec paths that follow.
+    No .NET step.
+  - **Server scope** (any other file): `dotnet build` (0 warnings), `dotnet format`, the unit
+    filter, and only the integration suites whose ProjectReference closure includes a changed
+    project. No client step.
+  - **Shared triggers** widen the gate on their own side:
+    - .NET-wide files run every .NET integration suite: `Directory.*`, `Tellma.slnx`,
+      `global.json`, `Tellma.Core.Abstractions` and `test/shared/*`.
+    - Client-wide files run the client gates above: `package.json`, `pnpm-lock.yaml` and the
+      workspace config.
+    - `.github/` runs both.
+    - The e2e stays targeted.
+  - A scope with both kinds of file runs both halves.
+  - The §4.7 note states the scope, and the suites and spec files run.
+  - If the platform-core push is rejected and the commits that landed in between touch only
+    `plans/` (`git diff --name-only HEAD...origin/platform-core`), re-merge and push without
+    re-running the gate. Otherwise re-run the gate for the scope.
 - Write files as UTF-8 without BOM; `dotnet format` fails on BOMs and charset. Write scripts with
   the Write tool: Bash heredocs can halve backslashes (use `chr(92)` in Python).
 - The first full Debug build in a slot takes about 6 minutes, a no-op rebuild 68 s. Build the

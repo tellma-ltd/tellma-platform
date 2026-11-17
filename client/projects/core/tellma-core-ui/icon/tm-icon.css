@@ -55,3 +55,17 @@
 .tm-icon--mirror:dir(rtl) > .tm-icon__svg {
   transform: scale(-1, 1);
 }
+
+@media (forced-colors: active) {
+  /* A glyph has no readability backplate, so on a system fill it must draw
+     in that fill's paired ink. A grid cell or header the range, a checked
+     row or a hit header paints sets that ink as --tm-grid-overlay-ink,
+     while its text keeps CanvasText for the plate behind it; elsewhere the
+     glyph keeps its host's colour. Set on the glyph, not the host, so a
+     host's own colour (forced to CanvasText anyway) cannot undo it. A
+     surface with a fill of its own inside such a cell (a button, a chip, a
+     badge, the open editor) resets the ink. */
+  .tm-icon > .tm-icon__svg {
+    color: var(--tm-grid-overlay-ink, currentColor);
+  }
+}

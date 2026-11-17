@@ -109,16 +109,18 @@
   /* The active ring draws in the ink paired with the cell's background
      (Highlight on a plain cell), as on a data cell: a Highlight ring on the
      checked row's SelectedItem or on the range fill would vanish wherever
-     the two are one colour. */
+     the two are one colour. Its text is CanvasText, as on a data cell: the
+     cell keeps forced colours, so its text sits on a Canvas backplate,
+     where the paired ink would vanish. */
   :host-context(.tm-grid__row--checked) {
     background: SelectedItem;
-    color: SelectedItemText;
+    color: CanvasText;
     --tm-grid-overlay-ink: SelectedItemText;
   }
 
   :host(.tm-grid__endcell--selected) {
     background: Highlight;
-    color: HighlightText;
+    color: CanvasText;
     --tm-grid-overlay-ink: HighlightText;
   }
 

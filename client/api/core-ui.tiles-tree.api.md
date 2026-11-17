@@ -9,6 +9,11 @@ import { Signal } from '@angular/core';
 import { Type } from '@angular/core';
 
 // @public
+export const TM_TILES_TREE_STRINGS_EN: {
+    readonly loadFailed: "Couldn't load {label}";
+};
+
+// @public
 export class TmTilesTree<T> implements ɵTmTilesTree<T> {
     constructor();
     // @internal

@@ -44,3 +44,12 @@ svg {
     animation: none;
   }
 }
+
+@media (forced-colors: active) {
+  /* The brand colour is forced to CanvasText. On a highlighted grid cell
+     (a loading row inside the range, say) the arc takes the fill's paired
+     ink instead, as tm-icon's glyphs do. */
+  :host {
+    color: var(--tm-grid-overlay-ink, CanvasText);
+  }
+}
