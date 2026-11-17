@@ -101,8 +101,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-052 | — (pushed) | pc/PC-052 | integrated cdaef87a (CI pending); D-105 server scope + all .NET suites; D-106 | impl (Opus, xhigh, launched 2026-11-16) | R2 done (Fable) | 2026-11-16 |
-| PC-194 | pc-2 | pc/PC-194 | r1 (commit 1 7f81317c; 19 deviations; engine chunk 199.74 KB gz vs spec 0024 §12's 170 → proposes 200; zrender innerHTML → replaceChildren for Trusted Types; ./chart 6.56/6.6) | impl (Opus, high, launched 2026-11-16) | R1 (Opus, high) | 2026-11-16 |
+| PC-194 | pc-2 | pc/PC-194 | fix1 (R1 0/4/6: line series colour-only; sequential palette first step 1.3:1; bidi battery bypasses zrender; no live-redraw tests) → ESCALATED to R2 (inherit, xhigh, ≥4 majors); D-107 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
+| PC-068 | pc-1 | pc/PC-068 | impl | impl (Opus, xhigh, launched 2026-11-17) | — | 2026-11-17 |
 
 ## Fix items
 
@@ -326,7 +326,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
 | PC-050 | 0014-d | 1 | done (a11022e4; CI 43972112319 integration-windows flake → PC-F52; green 43972186530 on 1ab06bf1) | 1788470, 2ea33c0, b12dedf, a11022e (pc/PC-050) | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
-| PC-052 | 0014-e | 1 | integrated cdaef87a (CI pending) | b353f3d, 59ca98e, a2b2ee1, a070d70, 99668d6, cdaef87 (pc/PC-052) |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
+| PC-052 | 0014-e | 1 | done (cdaef87a; CI 44052965552 green) | b353f3d, 59ca98e, a2b2ee1, a070d70, 99668d6, cdaef87 (pc/PC-052) |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
 | PC-055 | 0018-a | 1 | done (CI 43625011160) | 9dce959, 166c532, 10bbca4, abd9413, c4acf1f (pc/PC-055) | | |
@@ -342,7 +342,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | done (b9725f38; CI 43791517653 green) | 56de9db, a1abbef, b9725f3 (merge) | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
-| PC-068 | 0015-d | 1 | todo | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
+| PC-068 | 0015-d | 1 | impl | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | todo | | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
@@ -468,7 +468,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |
 | PC-193 | 0034-a | 3 | done (94ac0b22; CI 44024306068 green) | 0e2ea82, 5a16ff3, 141953f, 94ac0b2 (pc/PC-193) | | carry (D-102): if PC-F50 integrated first, move tiles.loadFailed into ./tiles-tree's own string registration via the new seam, with its Arabic string and the parity test |
-| PC-194 | 0034-b | 3 | r1 | 7f81317 (pc/PC-194) | | |
+| PC-194 | 0034-b | 3 | fix1 (escalated R2) | 7f81317 (pc/PC-194) | | |
 | PC-195 | 0034-c | 3 | todo | | | |
 | PC-196 | 0034-d | 3 | todo | | | |
 | PC-197 | 0034-e | 3 | todo | | | |
