@@ -429,21 +429,33 @@ describe('TmChart', () => {
       }
     });
 
-    it('draws once a font load fails, as when a fallback face’s local font is missing', async () => {
-      // A metric fallback face whose local() font the system lacks fails,
-      // and fails the whole load with it: the chart draws with the faces it has.
+    it('waits, after a font load fails, for the faces still loading before it measures', async () => {
+      // A face that fails (a metric fallback whose local() font the system
+      // lacks) rejects the load at once, while the other faces may still be
+      // loading. The renderer caches text widths per font, so the engine
+      // draws only once every face loading has settled.
+      let settleFaces: () => void = () => undefined;
+      const facesSettled = new Promise<FontFaceSet>((resolve) => {
+        settleFaces = () => resolve(document.fonts);
+      });
       const check = vi.spyOn(document.fonts, 'check').mockReturnValue(false);
       const load = vi
         .spyOn(document.fonts, 'load')
         .mockRejectedValue(new DOMException('A font face failed to load.', 'NetworkError'));
+      const ready = vi.spyOn(document.fonts, 'ready', 'get').mockReturnValue(facesSettled);
       try {
         const { fixture, chart } = await setup(undefined, 'fr');
-        await settleUntil(fixture, () => chart.hasCanvas());
+        await settleUntil(fixture, async () => ready.mock.calls.length > 0);
         expect(load).toHaveBeenCalled();
+        await settle(fixture);
+        expect(await chart.hasCanvas()).toBe(false);
+        settleFaces();
+        await settleUntil(fixture, () => chart.hasCanvas());
         expect(await chart.hasCanvas()).toBe(true);
       } finally {
         check.mockRestore();
         load.mockRestore();
+        ready.mockRestore();
       }
     });
 

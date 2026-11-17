@@ -243,7 +243,10 @@ export const ɵtmCreateChartEngine: ɵTmChartEngineFactory = (
 ${sample}`;
     if (!settled.has(fonts) && !document.fonts.check(font, sample)) {
       // The renderer caches text widths per font, so nothing is measured
-      // until the faces this text needs have loaded, or failed to.
+      // until the faces this text needs have loaded, or failed to. A face
+      // that fails (a metric fallback whose local() font the system lacks)
+      // rejects the load at once, while the other faces may still be
+      // loading: the wait then goes on until every face loading settles.
       if (waiting !== fonts) {
         waiting = fonts;
         const done = (): void => {
@@ -257,7 +260,10 @@ ${sample}`;
             fail(error);
           }
         };
-        document.fonts.load(font, sample).then(done, done);
+        document.fonts
+          .load(font, sample)
+          .catch(() => document.fonts.ready)
+          .then(done, done);
       }
       return;
     }

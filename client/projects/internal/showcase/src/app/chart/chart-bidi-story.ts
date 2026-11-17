@@ -297,7 +297,7 @@ function expectation(base: Direction): ProbeExpectation {
       }
     }
 
-    <!-- Set once every canvas has drawn with the fonts loaded. -->
+    <!-- Set once every canvas has drawn, with every face it needs settled. -->
     <output data-testid="bidi-drawn">{{ drawn() ? 'drawn' : 'drawing' }}</output>
 
     <!-- The same through the chart's engine, in both locales. -->
@@ -355,13 +355,14 @@ export class ChartBidiStory {
       void document.fonts.ready.then(async () => {
         const family = getComputedStyle(this.canvases()[0]!.nativeElement).fontFamily;
         const font = `${FONT_SIZE}px ${family}`;
-        // A face that cannot load rejects the whole load: a metric fallback
-        // whose local() font the system lacks (Arial or Tahoma on Linux)
-        // does. The canvas then draws with the faces that did load, as CSS
-        // does, so the drawing goes on; both drawings compared share them.
+        // A face that cannot load rejects the whole load at once: a metric
+        // fallback whose local() font the system lacks (Arial or Tahoma on
+        // Linux) does, while the self-hosted faces may still be loading.
+        // The drawing then waits until every face loading has settled, so
+        // the canvases always draw in the self-hosted faces.
         await document.fonts
           .load(font, CASES.map((item) => this.plain(item.pieces)).join(''))
-          .catch(() => []);
+          .catch(() => document.fonts.ready);
         for (const canvas of this.canvases()) {
           this.draw(canvas.nativeElement, font);
         }

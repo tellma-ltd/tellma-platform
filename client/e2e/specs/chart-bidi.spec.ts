@@ -68,8 +68,27 @@ async function compare(
   );
 }
 
-/** Opens the story and waits until every canvas has drawn. */
+/**
+ * Makes the page's metric fallback faces fail to load, as they do on a
+ * system without the local fonts they name (Arial and Tahoma, on Linux): a
+ * face of the same family whose local font no system has is added before
+ * the page loads. A font load that needs it then rejects at once, while the
+ * self-hosted faces may still be loading, in every environment.
+ */
+async function withMissingFallbackFaces(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    for (const [family, unicodeRange] of [
+      ['Noto Sans Fallback', 'U+0000-00FF'],
+      ['Noto Sans Arabic Fallback', 'U+0600-06FF'],
+    ] as const) {
+      document.fonts.add(new FontFace(family, "local('Tellma No Such Font')", { unicodeRange }));
+    }
+  });
+}
+
+/** Opens the story, its fallback faces failing, and waits until every canvas has drawn. */
 async function open(page: Page): Promise<void> {
+  await withMissingFallbackFaces(page);
   await page.goto(storyUrl('chart-bidi'));
   await expect(page.getByTestId('bidi-drawn')).toHaveText('drawn');
 }
@@ -126,6 +145,7 @@ for (const dir of ['ltr', 'rtl'] as const) {
     // the charts' data, not the drawn string) apart where the engine
     // anchored it, and compares the canvas pixel for pixel: a label that
     // lost its marks draws its runs in another order and differs.
+    await withMissingFallbackFaces(page);
     await page.goto(storyUrl('chart-bidi', { dir }));
     for (const id of [
       'facade-column-ar',
