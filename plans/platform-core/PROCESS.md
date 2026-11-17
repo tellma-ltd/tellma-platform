@@ -627,7 +627,8 @@ goes to LEDGER.md and DECISIONS.md.
   - **Client scope** (files under `client/`): lint, typecheck, lint:test, tokens:check, build,
     test, api:check, docs:build and size:check. The e2e runs only the spec files the scope changed
     and the specs that cover a touched component or entry point:
-    `cd <slot>/client && node scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine" <spec files>`.
+    `cd <slot>/client && node scripts/e2e.mjs --project=chromium --project=touch --grep-invert "@nightly|@perf|@quarantine" <spec files>`.
+    The `=` form matters: `--project chromium` with a space swallows the spec paths that follow.
     No .NET step.
   - **Server scope** (any other file): `dotnet build` (0 warnings), `dotnet format`, the unit
     filter, and only the integration suites whose ProjectReference closure includes a changed
@@ -637,6 +638,9 @@ goes to LEDGER.md and DECISIONS.md.
     `.github/`), `Tellma.Core.Abstractions`, and `test/shared/*`. The e2e stays targeted.
   - A scope with both kinds of file runs both halves.
   - The §4.7 note states the scope, and the suites and spec files run.
+  - If the platform-core push is rejected and the commits that landed in between touch only
+    `plans/` (`git diff --name-only HEAD...origin/platform-core`), re-merge and push without
+    re-running the gate. Otherwise re-run the gate for the scope.
 - Write files as UTF-8 without BOM; `dotnet format` fails on BOMs and charset. Write scripts with
   the Write tool: Bash heredocs can halve backslashes (use `chr(92)` in Python).
 - The first full Debug build in a slot takes about 6 minutes, a no-op rebuild 68 s. Build the
