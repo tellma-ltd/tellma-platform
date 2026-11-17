@@ -9,6 +9,7 @@ using System.Data.Common;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Crud;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Queryex;

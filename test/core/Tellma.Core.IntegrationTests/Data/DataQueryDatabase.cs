@@ -156,7 +156,7 @@ namespace Tellma.Core.IntegrationTests.Data
         /// <param name="columns">The columns beyond the stamps.</param>
         /// <param name="rows">Each row's values beyond the stamps, parenthesized.</param>
         /// <returns>The statement.</returns>
-        private static string Stamped(string table, string columns, params string[] rows)
+        internal static string Stamped(string table, string columns, params string[] rows)
         {
             string stamp = string.Create(CultureInfo.InvariantCulture, $", SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId})");
             IEnumerable<string> stamped = rows.Select(row => row[..^1] + stamp);

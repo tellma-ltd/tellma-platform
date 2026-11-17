@@ -1085,6 +1085,61 @@ feature.
 | `core.enlistments` | a writer's `IEnlists<TTarget>` names an entity no stack serves, or a stack whose operations lack `Enlist`; the declared enlistments between stacks form a cycle (a writer enlisting its own stack does not count) | no |
 | `core.stack-securables` | a securable a stack, an action, a routed service or a child surface requires is not registered: a stack's standard operations are read from the segments it projects, apart from the stacks' securable contributor, so a gap in either fails (judged only when the securable registry builds) | no |
 
+### The entity pipeline and the query path
+
+`EntityPipelineFactory` (scoped `IEntityPipelineFactory`) creates the sealed
+`EntityPipeline<TEntity, TKey>` behind each `EntityService`, over the stack whose leaf is the
+entity. Each operation runs in the frame of `CrudOperations`: the scope's first operation names its
+`DataAccessScope.Operation` `<Resource>:<operation>`, and every operation is counted
+(`tellma.crud.operations`) and timed (`tellma.crud.operation.duration`, with its `crud.lane`) under
+the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
+`crud.source`. The query is the one operation built so far: an operation the stack does not serve is
+an authoring bug (`InvalidOperationException`), and the others are `NotSupportedException`.
+
+`QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
+(the child's own `Read` securable, the convention's search, no named filters):
+
+1. **The type-level check**, `Read` on the surface's resource, before any batch.
+2. **The admission** (`QueryShape`, no I/O): `Take` 50 by default, up to the stack's `MaxTake`; the
+   skip window; the search's length once its bidi controls are stripped (ZWJ and ZWNJ kept); the
+   clauses the caller sent; the named filters resolved in request order, each unknown name one
+   `Query.UnknownNamedFilter` at `namedFilters[i]`; the ancestors kept for a page of a tree only.
+3. **One guarded read** whose composition decides the root under the connected user's set and
+   plans the query (`QueryPlanner`). The filter conjoins the caller's filters, the named filters,
+   `IsActive = true` for an activatable root unless `IncludeInactive`, the search and the access
+   filter, an empty conjunct dropped. The select defaults to the surface's (the multilingual twins
+   the tenant's languages leave out dropped); the ordering to `DefaultOrderBy`, else `Id desc`, and
+   an aggregate's to its select. The query compiles under `QueryexProfiles.PipelineLimits` (the
+   batch is held to the same), and any diagnostic refuses it as `InvalidQueryException` located in
+   the caller's clauses: `filters[i]` and `namedFilters[i]` by the request's indexes, `Select`,
+   `OrderBy`; a ceiling the whole query crossed at the clause it composed, at no span. Then the
+   traversal rule (`ForbiddenException` with `RestrictedPath`, the entity and the dotted path), the
+   select-type rule (a geography column, `Query.GeographyNotSelectable` at `Select[i]`), and the one
+   row read with its count capped at `CountCap` and its ancestors under the access filter alone.
+4. **The arithmetic mapping**: a division by zero or an overflow in the caller's expressions is a
+   `ValidationException` with `Query.ArithmeticFailed` at the root, naming the reason.
+
+On warm caches the page, its count and its ancestors are one round trip. The arguments are bound
+from what the caller's own clauses declare (`QueryDiscoveries`, cached per tenant schema and clause
+texts and timed by `tellma.crud.query.discover.duration`): each JSON value converted to its
+parameter's inferred type by the wire's exact grammars (`QueryArgumentValues`), a JSON null or a
+missing value bound to null, a value no clause mentions ignored, and any other form a
+`BadRequestException` naming the parameter; while a search applies, the caller may not use the
+search's own parameter names.
+
+The search (`QuerySearch`) is one disjunction over declared parameters, so its filter takes a few
+constant shapes per root: each searchable column by its kind (`contains` or `startsWith`), or the
+service's `SearchFilter` branch in their place; the id, from an integer or `#` and an integer the key
+can hold; the display name's source over every slot the tenant's languages admit, an integer source
+matched by equality in Latin and Arabic-Indic digits; its prefix; and the `prefix - source` split at
+the first separator. A search no branch applies to matches no row.
+
+`QueryTraversalRule` (public as `IQueryTraversalRule`) checks the paths of the caller's own clauses,
+never the trusted trees beside them: a path into an entity other than the root reads all of it only
+under an unrestricted `Read` decision (its resource or the wildcard), and otherwise only its related
+projection. From a child surface's root without a grant of its own, the owner reached through the
+owner navigation counts as the root.
+
 ### The validation stage
 
 The parts a write's validation stage is assembled from, internal to the assembly until the write
@@ -1503,7 +1558,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes and the action-method reader. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
+| `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations, the traversal rule, the query operation and the child query service. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |

@@ -9,6 +9,7 @@ using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Tests.Crud.Scripted;
 

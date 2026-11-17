@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Calendars;
+using Tellma.Core.Crud;
 using Tellma.Core.Crud.Validation;
 
 namespace Tellma.Core.Tests.Crud.Validation

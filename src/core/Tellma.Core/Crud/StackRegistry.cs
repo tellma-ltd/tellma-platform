@@ -71,6 +71,15 @@ namespace Tellma.Core.Crud
             return _contents.Value.ByResource.GetValueOrDefault(resource);
         }
 
+        /// <summary>The stack whose leaf is an entity type: the stack a service of that entity runs.</summary>
+        /// <param name="leaf">The leaf entity type.</param>
+        /// <returns>The stack; null when no stack has the leaf.</returns>
+        public StackDescriptor? FindByLeaf(Type leaf)
+        {
+            ArgumentNullException.ThrowIfNull(leaf);
+            return _contents.Value.ByLeaf.GetValueOrDefault(leaf);
+        }
+
         /// <inheritdoc />
         public ChildQueryDescriptor? FindChildQuery(string resource)
         {
@@ -178,6 +187,7 @@ namespace Tellma.Core.Crud
                 byResource,
                 childByResource,
                 byTable,
+                byLeaf,
                 builder.Methods,
                 [.. stacks.Select(static stack => new StackRoute(stack.ResourceSegment, stack.Operations))]);
         }
@@ -546,6 +556,7 @@ namespace Tellma.Core.Crud
         /// <param name="ByResource">The stacks by resource.</param>
         /// <param name="ChildByResource">The child query surfaces by resource.</param>
         /// <param name="ByTable">The owning stack of every root and child table.</param>
+        /// <param name="ByLeaf">The stacks by leaf entity type.</param>
         /// <param name="Methods">The method behind each declared action, by descriptor instance.</param>
         /// <param name="Routes">Every stack's route.</param>
         private sealed record Contents(
@@ -558,6 +569,7 @@ namespace Tellma.Core.Crud
             Dictionary<string, StackDescriptor> ByResource,
             Dictionary<string, ChildQueryDescriptor> ChildByResource,
             Dictionary<(string Schema, string Name), StackDescriptor> ByTable,
+            Dictionary<Type, StackDescriptor> ByLeaf,
             Dictionary<ActionDescriptor, ActionMethod> Methods,
             IReadOnlyCollection<StackRoute> Routes)
         {
@@ -566,7 +578,7 @@ namespace Tellma.Core.Crud
             /// <returns>The contents.</returns>
             public static Contents Empty(List<CompositionProblem> problems)
             {
-                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), new(ReferenceEqualityComparer.Instance), []);
+                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), [], new(ReferenceEqualityComparer.Instance), []);
             }
         }
     }

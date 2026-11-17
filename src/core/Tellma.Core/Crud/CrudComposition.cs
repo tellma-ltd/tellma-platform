@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud.Checks;
+using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Metadata;
 
@@ -19,7 +20,8 @@ namespace Tellma.Core.Crud
     /// <summary>
     ///     Registers the stacks of a realised composition: each stack's service, companions and
     ///     components closed over its leaf, the routed services, the stack registry, its securables,
-    ///     the validation stage's services, and the startup checks that judge them.
+    ///     the validation stage's services, the pipeline and its query path, and the startup checks
+    ///     that judge them.
     /// </summary>
     internal static class CrudComposition
     {
@@ -76,6 +78,18 @@ namespace Tellma.Core.Crud
             services.AddSingleton(new DeclaredConfirmations(record.Confirmations.Select(static confirmation => confirmation.Key)));
             services.TryAddScoped<Confirmations>();
             services.TryAddScoped<IConfirmations>(static provider => provider.GetRequiredService<Confirmations>());
+
+            // --- The pipeline: its factory, the operation scope, and the query path's planner, rules and
+            // child surfaces; the singletons hold no caller state ---
+            services.TryAddScoped<IEntityPipelineFactory, EntityPipelineFactory>();
+            services.TryAddScoped<CrudOperations>();
+            services.TryAddSingleton<QuerySurfaces>();
+            services.TryAddSingleton<QueryDiscoveries>();
+            services.TryAddSingleton<QueryPlanner>();
+            services.TryAddScoped<QueryTraversalRule>();
+            services.TryAddScoped<IQueryTraversalRule>(static provider => provider.GetRequiredService<QueryTraversalRule>());
+            services.TryAddScoped<QueryOperation>();
+            services.TryAddScoped<IChildQueryService, ChildQueryService>();
 
             // --- The checks, in the order they report, after the built-in checks of the record ---
             IStartupCheck[] checks =
