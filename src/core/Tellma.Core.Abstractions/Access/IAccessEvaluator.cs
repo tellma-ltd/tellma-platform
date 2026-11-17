@@ -74,12 +74,16 @@ namespace Tellma.Core.Abstractions.Access
         ///     permissions are loaded once per scope, by one prologue-only round trip that touches
         ///     neither the caller's set, the process's caches nor the response's version tags, and
         ///     every later call of the scope for that user shares the load. The caller's own id
-        ///     answers from the caller's set. Nothing is recorded as evaluated and nothing is counted.
+        ///     answers from the caller's set, and a scope that names no caller is denied with no load.
+        ///     Nothing is recorded as evaluated and nothing is counted.
         /// </summary>
         /// <param name="userId">The user's id.</param>
         /// <param name="resource">The securable's resource, or a former name of it.</param>
         /// <param name="action">The securable's action.</param>
-        /// <param name="cancellationToken">Cancels the load.</param>
+        /// <param name="cancellationToken">
+        ///     Stops this call's wait for the load; the load itself, shared by the scope's calls, runs
+        ///     until it completes or the scope ends.
+        /// </param>
         /// <returns>The decision; a denial of everything for an unknown, deactivated or system user.</returns>
         /// <exception cref="TenantNotFoundException">The caller is not, or no longer, an active user of the tenant.</exception>
         Task<AccessDecision> EvaluateForAsync(int userId, string resource, string action, CancellationToken cancellationToken = default);

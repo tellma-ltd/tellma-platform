@@ -23,7 +23,9 @@ namespace Tellma.Core.Access
     ///     A scope that names no caller is denied everything before any decision is composed, since a
     ///     bespoke criterion would otherwise grant on its own. The deny re-check runs at most once per
     ///     scope, and another user's load at most once per scope and user, however many calls
-    ///     race for either.
+    ///     race for either. A load runs for the scope, not for the call that started it: each call
+    ///     waits on it under its own cancellation, and disposing the evaluator, as the scope's end
+    ///     does, cancels it.
     /// </remarks>
     /// <param name="accessor">The scope's request context.</param>
     /// <param name="connection">The scope's connection, which connects the caller, re-checks a denial and loads another user.</param>
@@ -45,7 +47,7 @@ namespace Tellma.Core.Access
         StepUpBar stepUp,
         AccessMetrics metrics,
         IOptions<AccessOptions> options,
-        TimeProvider time) : IAccessEvaluator
+        TimeProvider time) : IAccessEvaluator, IDisposable
     {
         /// <summary>The problem code of a refusal at every platform raise site.</summary>
         private const string ForbiddenCode = "forbidden";
@@ -63,8 +65,14 @@ namespace Tellma.Core.Access
         /// <summary>The scope's load of each other user's permissions; a null set for an unknown, inactive or system user.</summary>
         private readonly Dictionary<int, Lazy<Task<UserAccess?>>> _targets = [];
 
+        /// <summary>Cancels the scope's loads of other users when the evaluator is disposed.</summary>
+        private readonly CancellationTokenSource _lifetime = new();
+
         /// <summary>1 once the scope's deny re-check ran.</summary>
         private int _rechecked;
+
+        /// <summary>1 once the evaluator is disposed.</summary>
+        private int _disposed;
 
         /// <inheritdoc />
         public async Task<AccessDecision> EvaluateAsync(string resource, string action, CancellationToken cancellationToken = default)
@@ -130,10 +138,16 @@ namespace Tellma.Core.Access
                 return Unknown(resource, action);
             }
 
-            // --- The caller's own id answers from the caller's set, with no re-check ---
             RequestContext context = accessor.Current;
-            if (!context.IsSystem && HasCaller(context))
+            if (!context.IsSystem)
             {
+                // --- A scope that names no caller learns nothing of another user: no load, no grant ---
+                if (!HasCaller(context))
+                {
+                    return AccessDecision.Deny(securable.Resource, securable.Action);
+                }
+
+                // --- The caller's own id answers from the caller's set, with no re-check ---
                 int callerId = context.UserId ?? (await connection.CurrentAsync(cancellationToken).ConfigureAwait(false)).UserId;
                 if (callerId == userId)
                 {
@@ -182,6 +196,17 @@ namespace Tellma.Core.Access
                 {
                     _ = _targets.Remove(userId);
                 }
+            }
+        }
+
+        /// <summary>Cancels the scope's loads of other users that are still running. Idempotent.</summary>
+        public void Dispose()
+        {
+            // The container may hold the evaluator under two registrations, and disposes it once per each.
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _lifetime.Cancel();
+                _lifetime.Dispose();
             }
         }
 
@@ -367,12 +392,19 @@ namespace Tellma.Core.Access
             return (user.Access, user);
         }
 
-        /// <summary>The scope's load of another user's permissions: the first call starts it, every later one shares it.</summary>
+        /// <summary>
+        ///     The scope's load of another user's permissions: the first call starts it, every later
+        ///     one shares it. The load runs under the scope's lifetime, so no one call's cancellation
+        ///     ends it for the others.
+        /// </summary>
         /// <param name="userId">The user.</param>
-        /// <param name="cancellationToken">Cancels the load the first call starts.</param>
+        /// <param name="cancellationToken">Stops this call's wait; the load goes on for the other calls.</param>
         /// <returns>The set; null for an unknown, inactive or system user.</returns>
+        /// <exception cref="ObjectDisposedException">The evaluator is disposed: its scope has ended.</exception>
         private Task<UserAccess?> TargetAsync(int userId, CancellationToken cancellationToken)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            CancellationToken lifetime = _lifetime.Token;
             Lazy<Task<UserAccess?>> load;
             lock (_gate)
             {
@@ -384,13 +416,13 @@ namespace Tellma.Core.Access
                 }
                 else
                 {
-                    load = new Lazy<Task<UserAccess?>>(() => connection.LoadDetachedAsync(userId, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication);
+                    load = new Lazy<Task<UserAccess?>>(() => connection.LoadDetachedAsync(userId, lifetime), LazyThreadSafetyMode.ExecutionAndPublication);
                     _targets[userId] = load;
                 }
             }
 
-            // Started outside the lock, once, by whichever call reaches it first.
-            return load.Value;
+            // Started outside the lock, once, by whichever call reaches it first; each call waits on its own token.
+            return load.Value.WaitAsync(cancellationToken);
         }
     }
 }

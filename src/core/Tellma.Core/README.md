@@ -1302,8 +1302,10 @@ pair `EvaluateAsync` or `RequireAsync` decides is recorded in the scope's `Acces
 (`tellma.access.decisions`, by `outcome`), once per pair however many re-checks it took.
 `EvaluateForAsync` decides for another user from that user's set, loaded once per scope and user
 (`LoadDetachedAsync`: by id, expecting nothing cached, never cached itself and never reporting the
-user's tags to the response); the caller's own id answers from the caller's set, and an unknown,
-inactive or system user, or a scope outside a tenant, is denied everything. `EvaluateAllAsync`
+user's tags to the response). The load runs for the scope: each call waits on it under its own
+cancellation, and the scope's end, which disposes the evaluator, cancels it. The caller's own id
+answers from the caller's set; a scope that names no caller, a scope outside a tenant, and an
+unknown, inactive or system user are denied everything, the first two with no load. `EvaluateAllAsync`
 decides every registered securable from the set as it is, for the caller's summary, whose own
 prologue has just validated it; neither it nor `EvaluateForAsync` re-checks, records or counts.
 `Invalidate` drops a user's cached set and the scope's load of them.

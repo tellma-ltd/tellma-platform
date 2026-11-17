@@ -92,6 +92,9 @@ namespace Tellma.Core.Tests.Access
         /// <summary>The fake connection, connected as the caller with an empty set.</summary>
         private readonly FakeConnection _connection;
 
+        /// <summary>The evaluators the test created, disposed with the fixture as their scopes would be.</summary>
+        private readonly List<AccessEvaluator> _evaluators = [];
+
         /// <summary>Creates the fixture.</summary>
         public AccessEvaluatorTests()
         {
@@ -105,6 +108,11 @@ namespace Tellma.Core.Tests.Access
         /// <inheritdoc />
         public void Dispose()
         {
+            foreach (AccessEvaluator evaluator in _evaluators)
+            {
+                evaluator.Dispose();
+            }
+
             _cache.Dispose();
             _services.Dispose();
         }
@@ -619,6 +627,26 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
+        public async Task A_scope_without_a_caller_is_denied_another_users_decision_with_no_load()
+        {
+            _connection.Others[Other] = Set(Other, Row(1, "*", "*"));
+
+            // An anonymous principal of the tenant, and a user principal named by neither subject nor id.
+            _holder.Current = _holder.Current with { Kind = PrincipalKind.Anonymous, Subject = null, UserId = null };
+            AccessDecision anonymous = await NewEvaluator().EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken);
+            _holder.Current = _holder.Current with { Kind = PrincipalKind.User, Subject = null, UserId = null };
+            AccessDecision unnamed = await NewEvaluator().EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken);
+
+            Assert.All([anonymous, unnamed], static decision =>
+            {
+                Assert.Equal((Doc, "Read", AccessOutcome.Denied), (decision.Resource, decision.Action, decision.Outcome));
+                Assert.Empty(decision.Grants);
+            });
+            Assert.Empty(_connection.Loads);
+            Assert.Equal(0, _connection.Currents);
+        }
+
+        [Fact]
         public async Task The_platforms_own_work_decides_another_user_from_their_own_set()
         {
             _holder.Current = _holder.Current with { Kind = PrincipalKind.System, Subject = "system", UserId = WellKnownIds.SystemUserId };
@@ -644,6 +672,42 @@ namespace Tellma.Core.Tests.Access
 
             Assert.Equal(AccessOutcome.Unrestricted, decision.Outcome);
             Assert.Equal([Other, Other], _connection.Loads);
+        }
+
+        [Fact]
+        public async Task A_call_that_stops_waiting_leaves_the_shared_load_to_the_other_calls()
+        {
+            _connection.Others[Other] = Set(Other, Row(1, Doc, "Read"));
+            _connection.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            AccessEvaluator evaluator = NewEvaluator();
+            using CancellationTokenSource impatient = new();
+
+            // The first call starts the load under its own token, the second shares it under another.
+            Task<AccessDecision> first = evaluator.EvaluateForAsync(Other, Doc, "Read", impatient.Token);
+            Task<AccessDecision> second = evaluator.EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken);
+            await impatient.CancelAsync();
+
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+            Assert.False(second.IsCompleted);
+            _connection.Hold.SetResult();
+            Assert.Equal(AccessOutcome.Unrestricted, (await second).Outcome);
+            Assert.Equal([Other], _connection.Loads);
+        }
+
+        [Fact]
+        public async Task Disposing_the_evaluator_cancels_the_loads_its_scope_started()
+        {
+            _connection.Others[Other] = Set(Other, Row(1, Doc, "Read"));
+            _connection.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            AccessEvaluator evaluator = NewEvaluator();
+            Task<AccessDecision> waiting = evaluator.EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken);
+
+            evaluator.Dispose();
+            evaluator.Dispose();
+
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+            _ = await Assert.ThrowsAsync<ObjectDisposedException>(() => evaluator.EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken));
+            Assert.Equal([Other], _connection.Loads);
         }
 
         // --- Invalidate and GetAccessAsync ---
@@ -765,7 +829,7 @@ namespace Tellma.Core.Tests.Access
         /// <returns>The evaluator.</returns>
         private AccessEvaluator NewEvaluator(StepUpBar? stepUp = null, AccessWitness? witness = null)
         {
-            return new AccessEvaluator(
+            AccessEvaluator evaluator = new(
                 _holder,
                 _connection,
                 Registry,
@@ -776,6 +840,8 @@ namespace Tellma.Core.Tests.Access
                 _metrics,
                 Options.Create(_options),
                 _time);
+            _evaluators.Add(evaluator);
+            return evaluator;
         }
 
         /// <summary>A criteria provider of one resource whose criteria may change between evaluations.</summary>
