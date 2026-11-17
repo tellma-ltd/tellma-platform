@@ -317,11 +317,17 @@ export default defineConfig(
 
   // Tiles boundary (spec 0023 §1, §8.5): tm-tiles mirrors the data grid's
   // members and implements its driver interface, but carries no grid code,
-  // so it reaches the grid and the tree grid as types alone. The size gate's
-  // static-graph check (staticGraphExcludes) catches a value import through
-  // any path; this rule names the mistake where it is made.
+  // so it and its tree mode reach the grid and the tree grid as types alone.
+  // Tree mode is the tiles-tree entry point's, which plugs into tm-tiles, so
+  // tm-tiles never imports it, not even as a type: a flat list carries none
+  // of the tree's code. The size gate's static-graph check
+  // (staticGraphExcludes) catches a value import through any path; these
+  // rules name the mistake where it is made.
   {
-    files: ['projects/core/tellma-core-ui/tiles/**/*.ts'],
+    files: [
+      'projects/core/tellma-core-ui/tiles/**/*.ts',
+      'projects/core/tellma-core-ui/tiles-tree/**/*.ts',
+    ],
     ignores: ['**/*.spec.ts', '**/*.examples.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
@@ -336,6 +342,34 @@ export default defineConfig(
             allowTypeImports: true,
             message: 'The tiles carry no grid code: import the grid as a type only.',
           })),
+        },
+      ],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core-ui/tiles/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid',
+            '@tellma/core-ui/tree-grid',
+            '@tellma/core-ui/grid-editing',
+          ]
+            .map((name) => ({
+              name,
+              allowTypeImports: true,
+              message: 'The tiles carry no grid code: import the grid as a type only.',
+            }))
+            .concat({
+              name: '@tellma/core-ui/tiles-tree',
+              allowTypeImports: false,
+              message:
+                'Tree mode plugs into the tiles, not the other way round: a flat list must ' +
+                'not carry the tree, so the tiles reach it only through their own seam.',
+            }),
         },
       ],
     },

@@ -359,6 +359,25 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-102 (orchestrator, 2026-11-16): ./tiles re-split under D-031 lands at 9.24 KB, with a tiles-tree entry point; the 7 KB cap goes to Ahmad
+
+- Ruling: PC-F50 moves the tree inputs (parentId, hasChildren, expandedIds, loadChildren) off TmTiles onto a TmTilesTree directive (selector `tm-tiles[parentId]`) in a new `@tellma/core-ui/tiles-tree` entry point. ./tiles drops from 10,576 B to 9,359 B (ceiling 10.35 → 9.24 KB); ./tiles-tree is 2,323 B (ceiling 2.37 KB). A static-graph exclude and an eslint ban keep the tree, grid-engine and spinner out of ./tiles. The run proceeds on 9.24 KB.
+- Why not 7 KB: the class core, template, about 1.3 KB of styles, the skeleton and the synchronous pointer path are needed at first paint. Everything lazy-able totals 877 B before loader cost, and a lazy-keyboard prototype netted 81 B (22 B with idle preload). R1 confirmed the numbers and found no further honest split; D-092's independent measurement (8.89 KB with tree, skeleton and flash removed) agrees.
+- Carries: PC-131 and PC-132 (spec 0030 tiles views) import TmTilesTree only where trees of tiles are shown, behind `@defer` or a tree-only component, or a tree page pays 11,682 B and the saving is lost. `tiles.loadFailed` is now read only by ./tiles-tree; whichever of PC-193 (the `ɵtmRegisterUiStrings` seam, D-098) and PC-F50 integrates second moves it into ./tiles-tree's own registration with its Arabic string and the parity test.
+- For Ahmad: (1) spec 0023 §1 still says 7 KB for ./tiles; rule the cap (proposed 9.24 KB). (2) Spec 0023 §1 needs a tiles-tree row (2.37 KB), and the tiles row drops spinner and grid-engine; §8.5's four tree inputs now live on TmTilesTree.
+
+### D-101 (orchestrator, 2026-11-16): PC-094 and PC-151 spec misalignments for Ahmad
+
+- Spec 0011 §2.2 says the deployment version comes from the entry assembly. PC-094's DeploymentVersionsReader reads the composition method's assembly first, because under test hosts and tools the entry assembly is not the distribution. Spec 0024 §3.1 and 0011 §2.2 should agree on that order.
+- Spec 0011 §1.2 has the SPA proxy port resolved at runtime. PC-094 computes it in MSBuild from .dev-ports.local, because the SPA proxy reads it before the host runs.
+- PC-094's interim client stand-ins (main.ts with bootstrapApplication, local tmEnglish/tmArabic, the angular.json style list, the minimal server AcmeFeature) carry to PC-103, PC-104 and PC-092 (LEDGER Status notes).
+- PC-151 exempts the date-range and date-time pickers (Alt+ArrowDown) from spec 0023 §12's keydown-to-paint gate: only aria-expanded flips in the key's frame, because spec 0005 §16 loads the calendar popup through @defer (on immediate). Painting in the key's frame would need the popup chunk un-deferred, which changes spec 0005's performance rule and the date pickers' budget. The exemption is tracked; Ahmad rules if he wants the paint. (Corrected 2026-11-16 after PC-151 R1-4: the @defer is from spec 0005 §16, not spec 0010, and date-time is affected too.)
+
+### D-100 (orchestrator, 2026-11-15): PC-F46 goes to review with the nightly tiles probe unproven on a loaded host
+
+- Situation: PC-F46 cut the 10,000-tile scroll cost from 35-67 to 1-7 tasks over 50 ms per 80 wheel steps, interleaved on the same host (median task 26-31 ms, was 32-56). The nightly @perf probe, which asserts zero, still sees 2-26 long tasks on this host. The host is loaded by five concurrent slots, so the number is noise-bound. The implementer reported status=blocked for that reason. Every PR-tier gate passes.
+- Ruling: the item goes to Review 1 as usual. The probe is nightly-tier (PLAN.md §6), so it does not gate a PR-tier checkpoint. Its first verdict on a quiet host is the platform-core nightly after integration, recorded under Flaky as a watch. If it fails there, a follow-up item chooses between a spec 0023 §12 bound Ahmad would rule on (a count or percentile) and re-binding tm-image in place (a tiles budget raise under D-031). The ARCHITECTURE.md tiles sentence and the spec 0005 §7.2/§7.4 deviations (shared object URLs; the on-screen blob stands in under an unknown stamp) are reviewed with the item.
+
 ### D-099 (orchestrator, 2026-11-15): PC-217 holds with three spec 0010 §A.3 gaps for Ahmad
 
 PC-217 (client ID metadata documents) holds at a94fb9e4 after two reviews. Spec 0010 §A.3 should be brought in line with the code in three places (docs/ is not edited in the run):

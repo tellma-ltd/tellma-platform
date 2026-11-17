@@ -70,6 +70,7 @@ const ADDITIONS: Readonly<Record<string, readonly string[]>> = {
   'drag-drop': [],
   'reorder-list': ['TmReorderListHarness'],
   tiles: ['TmTilesHarness', 'TmTileHarness'],
+  'tiles-tree': [],
 };
 
 /**

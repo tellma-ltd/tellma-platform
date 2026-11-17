@@ -145,7 +145,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             MigratorHarness migrator = new(sql, "vt_bounded");
             RecordingSeeder seeder = new(migrator.TenantConnectionString(1)) { FailSeed = true, HangBump = true };
             migrator.Services = services => services.AddSingleton<ITenantVersionTagSeeder>(provider => seeder.Over(provider));
-            migrator.Values[MigratorContext.VersionTagBumpTimeoutKey] = "00:00:01";
+            migrator.Values[$"{MigratorOptions.SectionPath}:{nameof(MigratorOptions.VersionTagBumpTimeout)}"] = "00:00:01";
             migrator.Seed(1);
 
             // A move that never finishes on its own, as one blocked by a live transaction would be.
@@ -156,7 +156,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // The move waited for the configured bound, not the default: timing the move alone keeps
             // the assertion apart from how long the run's migrations take on a busy server.
-            Assert.True(seeder.BumpWaited < MigratorContext.DefaultVersionTagBumpTimeout, seeder.BumpWaited.ToString());
+            Assert.True(seeder.BumpWaited < MigratorOptions.DefaultVersionTagBumpTimeout, seeder.BumpWaited.ToString());
         }
 
         /// <summary>Reads a tenant database's version tags.</summary>

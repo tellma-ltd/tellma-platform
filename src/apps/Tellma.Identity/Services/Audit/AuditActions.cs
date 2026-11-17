@@ -170,6 +170,19 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>The break-glass administrator was seeded.</summary>
         public const string BootstrapAdminSeeded = "BootstrapAdminSeeded";
 
+        /// <summary>
+        ///     A document client's metadata document (and, for <c>private_key_jwt</c>, its key set)
+        ///     was fetched and passed validation. Details name the host.
+        /// </summary>
+        public const string ClientMetadataFetched = "ClientMetadataFetched";
+
+        /// <summary>
+        ///     A document client was refused: its client id, a fetch guard, the fetch itself, the
+        ///     document's validation or the row cap. Details carry the reason, one of the closed
+        ///     set the engine defines, and the host.
+        /// </summary>
+        public const string ClientMetadataRejected = "ClientMetadataRejected";
+
         /// <summary>The one-time setup token was used to bootstrap the break-glass administrator.</summary>
         public const string SetupTokenUsed = "SetupTokenUsed";
 

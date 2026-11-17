@@ -95,6 +95,12 @@ namespace Tellma.Identity.Options
         /// <summary>External login providers (Google, Microsoft).</summary>
         public TellmaIdentityExternalProviderOptions ExternalProviders { get; } = new TellmaIdentityExternalProviderOptions();
 
+        /// <summary>
+        ///     Client ID metadata documents: clients identified by the <c>https</c> URL of their own
+        ///     metadata document, fetched under guards and kept as application rows.
+        /// </summary>
+        public TellmaIdentityClientMetadataOptions ClientMetadata { get; } = new TellmaIdentityClientMetadataOptions();
+
         /// <summary>Startup seeding: migrations, platform clients, and bootstrap identities.</summary>
         public TellmaIdentitySeedOptions Seed { get; } = new TellmaIdentitySeedOptions();
 

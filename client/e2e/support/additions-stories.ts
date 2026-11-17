@@ -10,7 +10,8 @@ import { type PaintedFeedback } from './paint-probe';
 import { appStable } from './settle';
 
 // The shared batteries of the component library additions (spec 0023): one
-// entry per showcase story of its thirty entry points (§1), with the states
+// entry per showcase story of its entry points (§1's thirty, and tiles-tree,
+// split out of tiles to keep tree mode off a flat list), with the states
 // §12's axe battery opens and the key §13's keydown-to-paint probe presses.
 //
 // Where spec 0023 §13's definition of done is pinned:
@@ -83,8 +84,9 @@ export interface AdditionsStory {
 }
 
 /**
- * The thirty entry points the additions bring, by id (`@tellma/core-ui/<id>`),
- * each with its showcase story of the same id.
+ * The entry points the additions bring, by id (`@tellma/core-ui/<id>`), each
+ * with its showcase story of the same id. The tiles' tree mode has its own
+ * entry point, so a flat list of tiles never loads it.
  */
 export const ADDITIONS_ENTRY_POINTS: readonly string[] = [
   'icon',
@@ -117,6 +119,7 @@ export const ADDITIONS_ENTRY_POINTS: readonly string[] = [
   'drag-drop',
   'reorder-list',
   'tiles',
+  'tiles-tree',
 ];
 
 /** The library's polite and assertive announcements. */
@@ -712,7 +715,7 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
   },
   {
     id: 'tiles-tree',
-    entryPoints: ['tiles'],
+    entryPoints: ['tiles', 'tiles-tree'],
     ready: (page) => expect(account(page, 'Equity')).toBeVisible(),
     states: [],
     probes: [

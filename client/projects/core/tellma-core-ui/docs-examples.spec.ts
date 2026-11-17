@@ -85,6 +85,7 @@ import {
   TmTilesLoading,
   type TmTileLayout,
 } from '@tellma/core-ui/tiles';
+import { TmTilesTree } from '@tellma/core-ui/tiles-tree';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTree, TmTreeNode } from '@tellma/core-ui/tree';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
@@ -140,6 +141,7 @@ import * as splitterExamples from './splitter/tm-splitter.examples';
 import * as switchExamples from './switch/tm-switch.examples';
 import * as tabsExamples from './tabs/tm-tab-group.examples';
 import * as tilesExamples from './tiles/tm-tiles.examples';
+import * as tilesTreeExamples from './tiles-tree/tm-tiles-tree.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeExamples from './tree/tm-tree.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -283,6 +285,7 @@ class ExamplePage {}
     TmTiles,
     TmTilesEmpty,
     TmTilesLoading,
+    TmTilesTree,
     TmTimeField,
     TmTooltip,
     TmTree,
@@ -416,6 +419,12 @@ class ExamplePage {}
       <span *tmTilesEmpty>placeholder</span>
       <span *tmTilesLoading>placeholder</span>
     </tm-tiles>
+    <tm-tiles
+      [rowId]="treeRowId"
+      [layout]="treeTile"
+      [parentId]="treeParentId"
+      ariaLabel="placeholder-tree"
+    />
   `,
 })
 class ExampleHost {
@@ -958,6 +967,7 @@ const SUITES = [
   { source: 'drag-drop/tm-drag-drop.examples.ts', examples: dragDropExamples },
   { source: 'reorder-list/tm-reorder-list.examples.ts', examples: reorderListExamples },
   { source: 'tiles/tm-tiles.examples.ts', examples: tilesExamples },
+  { source: 'tiles-tree/tm-tiles-tree.examples.ts', examples: tilesTreeExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
   { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },

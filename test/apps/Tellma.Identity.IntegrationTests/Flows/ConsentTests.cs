@@ -27,6 +27,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <summary>The redirect URI the consent-requiring client is seeded with.</summary>
         private const string CallbackUri = "http://127.0.0.1/callback";
 
+        /// <summary>
+        ///     The callback's form-action source: a port-less loopback registration matches any
+        ///     port, so its source names every port.
+        /// </summary>
+        private const string CallbackSource = "http://127.0.0.1:*/callback";
+
         /// <summary>The distribution onboarded by the sign-in, whose origin every native client is granted.</summary>
         private const string Origin = "https://acme.app.tellma.com";
 
@@ -92,7 +98,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // grant succeeds on the server and the page simply never moves.
             using HttpResponseMessage consentPage = await RequestConsentAsync(flow);
             string consentPolicy = Assert.Single(consentPage.Headers.GetValues("Content-Security-Policy"));
-            Assert.Contains("form-action 'self' " + CallbackUri + ";", consentPolicy, StringComparison.Ordinal);
+            Assert.Contains("form-action 'self' " + CallbackSource + ";", consentPolicy, StringComparison.Ordinal);
 
             // Only the page that needs it is widened; everything else keeps the bare directive.
             using HttpResponseMessage loginPage = await flow.Browser.GetAsync(
@@ -339,7 +345,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Establishes an SSO session through the first-party client, which stays implicit.</summary>
-        private static async Task SignInAsync(StandaloneFactory factory, OidcFlowClient flow, string email)
+        internal static async Task SignInAsync(StandaloneFactory factory, OidcFlowClient flow, string email)
         {
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, email);
@@ -396,7 +402,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Submits a consent page's Accept button the way the browser does.</summary>
-        private static async Task<HttpResponseMessage> AcceptAsync(OidcFlowClient flow, HttpResponseMessage consentPage)
+        internal static async Task<HttpResponseMessage> AcceptAsync(OidcFlowClient flow, HttpResponseMessage consentPage)
         {
             (string action, Dictionary<string, string> fields) = await OidcFlowClient.ParseFormAsync(consentPage);
             fields["submit.Accept"] = "yes";

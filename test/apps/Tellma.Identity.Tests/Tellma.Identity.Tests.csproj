@@ -8,6 +8,8 @@
     <!-- The pins themselves, shared with every suite that owns a migrations assembly. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- A clock the metadata fetch's timeout, rate limit and cache expiry can be driven by. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />

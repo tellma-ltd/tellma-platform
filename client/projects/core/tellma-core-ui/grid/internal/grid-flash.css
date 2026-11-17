@@ -43,10 +43,45 @@
   }
 }
 
-/* Forced colors replace the tint: an outline marks the row instead. */
+/* ---- forced colors: a ring replaces the tint (spec 0010 §C.8) ---- */
+
 @media (forced-colors: active) {
+  /* No tint: forced colors would paint the animated tint as Canvas, wiping
+     a checked row, a hit header and the range fill for the flash's run. */
+  .tm-grid__row--flash > * {
+    animation: none;
+  }
+
+  /* The ring spans the row's tracks, not just the view: without a row-end
+     column a row is only as wide as the view, its tracks overflowing it, so
+     on a sideways scroll a view-wide ring would scroll off with the first
+     columns. Tracks that overflow sit at their minimums already, and a row
+     that fits keeps the view's width, so no cell moves. */
   .tm-grid__row--flash {
-    outline: var(--focus-ring-width) solid Highlight;
-    outline-offset: calc(-1 * var(--focus-ring-width));
+    min-inline-size: min-content;
+  }
+
+  /* The ring's containing block. The outlier row is positioned already. */
+  .tm-grid__row--flash:not(.tm-grid__row--outlier) {
+    position: relative;
+  }
+
+  /* A pseudo-element above the cells, not the row's own outline, which the
+     positioned cells paint over; above the sticky row-end cell too (same
+     z-index, later in the tree). No single colour fits every cell a row can
+     mix (Canvas; SelectedItem on a checked row or hit row header; Highlight
+     in the range fill), so the ring is two bands of a guaranteed-contrast
+     pair: Highlight outside shows on Canvas, HighlightText inside it shows
+     on Highlight and, where the two are one colour (Windows), on
+     SelectedItem. */
+  .tm-grid__row--flash::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border: var(--focus-ring-width) solid Highlight;
+    outline: var(--focus-ring-width) solid HighlightText;
+    outline-offset: calc(-2 * var(--focus-ring-width));
   }
 }

@@ -7,8 +7,9 @@ always built, run and tested in the shape a real distribution repository has. It
 ```
 distributions/acme/
 ├── src/
-│   ├── Tellma.Distro.Acme/            # AcmeComposition: the slug and the composition both hosts run
-│   ├── Tellma.Distro.Acme.Web/        # the web host: three platform calls, configuration, launch profile
+│   ├── Tellma.Distro.Acme/            # AcmeComposition and AcmeFeature: the slug and the composition both hosts run
+│   ├── Tellma.Distro.Acme.Web/        # the web host: three platform calls, configuration, launch profile, SPA proxy
+│   ├── Tellma.Distro.Acme.Client/     # the Angular app (an esproj): feature, languages, manifest, icons, theme
 │   └── Tellma.Distro.Acme.Migrator/   # the migrator: one call, the design-time factory, tenant migrations
 └── test/
     ├── Tellma.Distro.Acme.Web.Tests/          # unit: composition, audit, dependencies, configuration
@@ -17,15 +18,17 @@ distributions/acme/
 ```
 
 The slug is `acme`: the OIDC client is `acme` (its service client `acme-svc`), the Data Protection
-application name is `tellma-acme`, and development databases are `Tellma.dev.acme.*`. The Angular
-client project (`Tellma.Distro.Acme.Client`) joins with the client workspace.
+application name is `tellma-acme`, and development databases are `Tellma.dev.acme.*`. Every Acme
+project takes its version from `Directory.Build.props` here: the composition library's is the
+distribution version the client metadata carries and the web host reports in `Tellma-Build`.
 
 ## Running it locally
 
 From a fresh clone, on Windows with LocalDB (or with the catalog connection string pointed at
-another SQL Server through `Tellma__Catalog__ConnectionString`):
+another SQL Server through `Tellma__Catalog__ConnectionString`), with Node and pnpm:
 
 ```bash
+pnpm install
 dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate
 dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web
 ```
@@ -34,28 +37,35 @@ dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web
    registers and provisions the seed tenants of `Tellma:Seed:Tenants`: tenant 1, "Acme", and its
    sandbox, tenant 2, "Acme Sandbox", with `admin@localhost` as their administrator.
 2. The web host serves `/api/distribution-info`, `/health/live`, `/health/ready` and the BFF
-   (`/bff/login`, `/bff/user`, `/bff/logout`), with the identity engine in process under `/id`.
-3. Open `https://localhost:7052/bff/login` and sign in as `admin@localhost` with the code the web
-   host's console prints; `https://localhost:7052/bff/user` then answers the signed-in user. There
-   is no client app yet, so the BFF's routes are the whole user interface.
+   (`/bff/login`, `/bff/user`, `/bff/logout`), with the identity engine in process under `/id`. Its
+   launch profile turns on the SPA proxy, which starts the client's dev server (`pnpm start` in
+   `Tellma.Distro.Acme.Client`, `tellma-client serve`) and sends the browser to it.
+3. The browser opens `https://localhost:4200/`, the dev server, which forwards the server's own
+   paths to the web host. Sign in through `https://localhost:4200/bff/login` as `admin@localhost`
+   with the code the web host's console prints.
+
+`dotnet run --no-launch-profile` runs the web host without the proxy; start the dev server yourself
+with `pnpm start` in the client project.
 
 A web host started before `migrate` prints that command instead of a stack trace.
 
 ### Ports
 
-The web host listens on `https://localhost:7052`, which is also its public origin: the in-proc
-identity engine's issuer and every sign-in redirect live under it. When the client app and its dev
-server join, the public origin moves to the dev server's. A worktree that runs beside others sets its
-own port in the gitignored `.dev-ports.local` at the repository root:
+The web host listens on `https://localhost:7052` and the client's dev server on
+`https://localhost:4200`, which is the public origin: the browser only ever sees the dev server, so
+the in-proc identity engine's issuer and every sign-in redirect live under it. A worktree that runs
+beside others sets its own ports in the gitignored `.dev-ports.local` at the repository root:
 
 ```
 ACME_WEB=7120
+ACME_CLIENT=4220
 ```
 
-In Development the web host reads that file at startup and derives both its listening address and
-its public origin from `ACME_WEB`; other lines, such as `ACME_CLIENT`, are not read yet. Environment
-variables and the command line still win: `Tellma__PublicOrigin` and `--urls` override what the file
-derives.
+Every reader takes its port from that file: in Development the web host listens on `ACME_WEB` and
+takes `https://localhost:<ACME_CLIENT>` as its public origin; the dev server listens on
+`ACME_CLIENT` and forwards to `ACME_WEB`; and the web project's build points the SPA proxy at
+`ACME_CLIENT` (rebuild after changing it). Environment variables and the command line still win over
+the web host's derived values: `Tellma__PublicOrigin` and `--urls` override what the file derives.
 
 ### Provisioning another tenant
 
@@ -73,8 +83,14 @@ secret, and the web suite fails if one does.
 
 ## Publishing
 
-The web host publishes framework-dependent, never single-file or self-contained: the PDF thumbnail
-worker runs through `dotnet exec` on the host's runtime configuration.
+```bash
+dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release
+```
+
+Publishing builds the client app through its esproj (`tellma-client build`, which needs Node and the
+repository's `pnpm install`) and copies its output into the web host's `wwwroot`. The web host
+publishes framework-dependent, never single-file or self-contained: the PDF thumbnail worker runs
+through `dotnet exec` on the host's runtime configuration.
 
 ## Regenerating the tenant migrations
 

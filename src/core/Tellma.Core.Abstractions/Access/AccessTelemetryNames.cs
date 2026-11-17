@@ -89,5 +89,38 @@ namespace Tellma.Core.Abstractions.Access
 
         /// <summary>The problem value of <see cref="AccessProblemCode.WildcardResourceOnPublicRole" />.</summary>
         public const string ProblemWildcardResourceOnPublicRole = "wildcard_resource_on_public_role";
+
+        /// <summary>The result value of a connection whose prologue confirmed every cached part.</summary>
+        public const string ResultWarm = "warm";
+
+        /// <summary>The result value of a connection with nothing cached for the caller.</summary>
+        public const string ResultCold = "cold";
+
+        /// <summary>The result value of a prologue that found the cached permission set stale.</summary>
+        public const string ResultStalePermissions = "stale_permissions";
+
+        /// <summary>The result value of a prologue that found the settings the batch composed under stale.</summary>
+        public const string ResultStaleSettings = "stale_settings";
+
+        /// <summary>The result value of a prologue that found the cached profile stale.</summary>
+        public const string ResultStaleProfile = "stale_profile";
+
+        /// <summary>The result value of a prologue that found no user for the caller.</summary>
+        public const string ResultUnknownSubject = "unknown_subject";
+
+        /// <summary>The result value of a prologue that found the caller's user deactivated.</summary>
+        public const string ResultDeactivated = "deactivated";
+
+        /// <summary>The result value of a call whose guard failed again after the batch was recomposed once.</summary>
+        public const string ResultGuardThrash = "guard_thrash";
+
+        /// <summary>The variant value of a prologue that resolves the caller by subject.</summary>
+        public const string VariantSubject = "subject";
+
+        /// <summary>The variant value of a prologue that resolves a user by id.</summary>
+        public const string VariantUser = "user";
+
+        /// <summary>The variant value of the platform's own prologue, which looks no user up.</summary>
+        public const string VariantSystem = "system";
     }
 }

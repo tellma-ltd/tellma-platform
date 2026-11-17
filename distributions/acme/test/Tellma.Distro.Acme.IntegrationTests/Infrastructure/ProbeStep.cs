@@ -13,7 +13,8 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 {
     /// <summary>
     ///     A provisioning step composed beside Acme's, whose version the configuration sets and whose
-    ///     runs are counted per run key, so a test can bump it between runs and see when it ran.
+    ///     runs are counted per run key, so a test can bump it between runs and see when, and on a
+    ///     tenant in which state, it ran.
     /// </summary>
     /// <param name="configuration">The migrator host's configuration.</param>
     internal sealed class ProbeStep(IConfiguration configuration) : ITenantProvisioningStep
@@ -29,6 +30,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>The runs so far: each run key's tenants and versions, in the order they ran.</summary>
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<(int TenantId, int Version)>> Runs = new(StringComparer.Ordinal);
+
+        /// <summary>The runs so far: each run key's tenants and the state each was in when the step ran.</summary>
+        private static readonly ConcurrentDictionary<string, ConcurrentQueue<(int TenantId, TenantState State)>> States = new(StringComparer.Ordinal);
 
         /// <inheritdoc />
         public string Name => StepName;
@@ -47,12 +51,21 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             return Runs.TryGetValue(runKey, out ConcurrentQueue<(int, int)>? runs) ? [.. runs] : [];
         }
 
+        /// <summary>The states the step saw for a run key: each run's tenant and its state at the time.</summary>
+        /// <param name="runKey">The run key.</param>
+        /// <returns>Each run's tenant and state.</returns>
+        public static IReadOnlyList<(int TenantId, TenantState State)> StatesOf(string runKey)
+        {
+            return States.TryGetValue(runKey, out ConcurrentQueue<(int, TenantState)>? states) ? [.. states] : [];
+        }
+
         /// <inheritdoc />
         public Task RunAsync(TenantProvisioningContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
             string key = configuration[RunKeyKey] ?? throw new InvalidOperationException($"{RunKeyKey} is not set.");
             Runs.GetOrAdd(key, static _ => new()).Enqueue((context.Tenant.Id, Version));
+            States.GetOrAdd(key, static _ => new()).Enqueue((context.Tenant.Id, context.Tenant.State));
             return Task.CompletedTask;
         }
     }

@@ -34,6 +34,36 @@ namespace Tellma.Core.Migrator
             Message = "Database {Database} was created on server {Server}.")]
         public static partial void DatabaseCreated(ILogger logger, string database, string server);
 
+        /// <summary>
+        ///     A database's creation failed only because SQL Server could not lock the <c>model</c>
+        ///     database, and runs again after a wait.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="database">The database.</param>
+        /// <param name="server">The server.</param>
+        /// <param name="attempt">The attempt that failed, from 1.</param>
+        /// <param name="maxAttempts">How many attempts the creation has.</param>
+        /// <param name="retryDelay">The wait before the next attempt.</param>
+        [LoggerMessage(
+            EventName = "MigratorDatabaseCreationRetrying",
+            Level = LogLevel.Warning,
+            Message = "Database {Database} could not be created on server {Server} because the model database was locked (attempt {Attempt} of {MaxAttempts}); retrying in {RetryDelay}.")]
+        public static partial void DatabaseCreationRetrying(ILogger logger, string database, string server, int attempt, int maxAttempts, TimeSpan retryDelay);
+
+        /// <summary>
+        ///     A database's creation found the <c>model</c> database locked on its last attempt; the
+        ///     creation's failure follows as its database's failure.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="database">The database.</param>
+        /// <param name="server">The server.</param>
+        /// <param name="attempts">How many attempts were made.</param>
+        [LoggerMessage(
+            EventName = "MigratorDatabaseCreationGaveUp",
+            Level = LogLevel.Warning,
+            Message = "Database {Database} could not be created on server {Server} in {Attempts} attempt(s) because the model database stayed locked; a session left open in model, or other database creations on the server, hold it. Run the migrator again once it is free.")]
+        public static partial void DatabaseCreationGaveUp(ILogger logger, string database, string server, int attempts);
+
         /// <summary>A tenant database is ahead of this migrator: it got no fingerprint row and nothing ran after the migration.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="tenantId">The tenant.</param>

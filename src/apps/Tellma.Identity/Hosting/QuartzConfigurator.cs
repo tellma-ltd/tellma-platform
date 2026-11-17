@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Quartz;
+using Tellma.Identity.Services.ClientMetadata;
 using Tellma.Identity.Services.Invitations;
 using Tellma.Identity.Services.Sessions;
 
@@ -12,8 +13,8 @@ namespace Tellma.Identity.Hosting
 {
     /// <summary>
     ///     Registers the Quartz scheduler and the engine's recurring jobs: OpenIddict's
-    ///     token/authorization prune, registered by OpenIddict itself, plus the session prune and
-    ///     the invitation recovery sweep, registered here.
+    ///     token/authorization prune, registered by OpenIddict itself, plus the session prune, the
+    ///     document-client prune and the invitation recovery sweep, registered here.
     /// </summary>
     internal static class QuartzConfigurator
     {
@@ -52,6 +53,19 @@ namespace Tellma.Identity.Hosting
                 quartz.AddTrigger(trigger => trigger
                     .ForJob(prune)
                     .WithIdentity(SessionPruneJob.Name + ".Trigger")
+                    .StartAt(DateBuilder.FutureDate((int)SessionPruneStartDelay.TotalMinutes, IntervalUnit.Minute))
+                    .WithSimpleSchedule(schedule => schedule
+                        .WithInterval(SessionPruneInterval)
+                        .RepeatForever()));
+
+                // The document-client prune, on the session prune's schedule: the rows it removes
+                // were fetched and never used, and an hour's delay costs only their place under
+                // the cap for that long.
+                JobKey documentClients = new(DocumentClientPruneJob.Name);
+                quartz.AddJob<DocumentClientPruneJob>(job => job.WithIdentity(documentClients));
+                quartz.AddTrigger(trigger => trigger
+                    .ForJob(documentClients)
+                    .WithIdentity(DocumentClientPruneJob.Name + ".Trigger")
                     .StartAt(DateBuilder.FutureDate((int)SessionPruneStartDelay.TotalMinutes, IntervalUnit.Minute))
                     .WithSimpleSchedule(schedule => schedule
                         .WithInterval(SessionPruneInterval)

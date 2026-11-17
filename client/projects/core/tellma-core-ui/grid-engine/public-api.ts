@@ -27,7 +27,8 @@ export * from './tm-grid-paste-source';
 export * from './tm-grid-clipboard';
 export * from './tm-grid-engine';
 // The tree resolution, for list components outside the grid that show the
-// same flat adjacency-list rows as a tree (tm-tiles); not public API.
+// same flat adjacency-list rows as a tree (the tiles' tree mode,
+// TmTilesTree); not public API.
 export {
   tmFlattenVisible as ɵtmFlattenVisible,
   tmResolveTree as ɵtmResolveTree,

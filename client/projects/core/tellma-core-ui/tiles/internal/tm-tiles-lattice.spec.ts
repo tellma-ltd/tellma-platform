@@ -3,13 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { tmComputeAxisWindow } from '@tellma/core-ui/grid-engine';
-
 import {
+  ɵtmTilesAssignSlots,
   ɵtmTilesColumns,
   ɵtmTilesLineCount,
   ɵtmTilesMove,
   ɵtmTilesRenderedLines,
+  ɵtmTilesSpan,
   type ɵTmTilesColumnOptions,
   type ɵTmTilesShape,
 } from './tm-tiles-lattice';
@@ -68,16 +68,125 @@ describe('ɵtmTilesRenderedLines', () => {
 
   it('windows lines at a 70px pitch with three lines of overscan', () => {
     // 10,000 tiles in 4 columns are 2,500 lines; a 700px viewport scrolled
-    // to line 100 shows lines 100–109 and renders three more on each side.
-    const window = tmComputeAxisWindow({
-      scrollOffset: 100 * 70,
-      viewportSize: 700,
-      itemSize: 70,
-      itemCount: ɵtmTilesLineCount({ columns: 4, count: 10_000 }),
-      overscan: 3,
-    });
-    expect(window).toEqual({ start: 97, end: 113, leadOffset: 97 * 70, totalSize: 2500 * 70 });
-    expect(ɵtmTilesRenderedLines(window.start, window.end, 0)).toHaveLength(17);
+    // to line 100 shows lines 100–109 (110 in part) and renders three more
+    // on each side.
+    const count = ɵtmTilesLineCount({ columns: 4, count: 10_000 });
+    const span = ɵtmTilesSpan(100 * 70, null, 70, count, 700);
+    expect(span).toEqual({ start: 97, end: 114 });
+    expect(ɵtmTilesRenderedLines(span.start, span.end, 0)).toHaveLength(18);
+  });
+});
+
+describe('ɵtmTilesSpan', () => {
+  /** 2,500 lines at a 70px pitch under a 420px viewport. */
+  const SHAPE = { pitch: 70, count: 2500, viewport: 420 };
+
+  /** The span at `offset` (from `from`) over a shape. */
+  function spanAt(
+    offset: number,
+    from: number | null,
+    { pitch, count, viewport }: typeof SHAPE = SHAPE,
+  ): ReturnType<typeof ɵtmTilesSpan> {
+    return ɵtmTilesSpan(offset, from, pitch, count, viewport);
+  }
+
+  /** The span `[start, end)`. */
+  function span(start: number, end: number) {
+    return { start, end };
+  }
+
+  /** How many lines a span holds. */
+  function size({ start, end }: { readonly start: number; readonly end: number }): number {
+    return end - start;
+  }
+
+  it('holds the lines the viewport can show, one more for its edges, and the overscan', () => {
+    // 420px at a 70px pitch shows six lines, seven when part-lines show at
+    // both edges; three more on each side.
+    expect(size(spanAt(100 * 70, null))).toBe(13);
+    expect(size(spanAt(100 * 70, null, { ...SHAPE, viewport: 400 }))).toBe(13);
+    expect(size(spanAt(100 * 70, null, { ...SHAPE, viewport: 0 }))).toBe(7);
+  });
+
+  it('renders three lines above the first visible one and thirteen from there', () => {
+    expect(spanAt(100 * 70, null)).toEqual(span(97, 110));
+    expect(spanAt(100 * 70 + 69, null)).toEqual(span(97, 110));
+  });
+
+  it('clips the span to the lattice at either end', () => {
+    expect(spanAt(0, null)).toEqual(span(0, 10));
+    expect(spanAt(2494 * 70, null)).toEqual(span(2491, 2500));
+    expect(spanAt(0, null, { ...SHAPE, count: 3 })).toEqual(span(0, 3));
+    expect(spanAt(0, null, { ...SHAPE, count: 0 })).toEqual(span(0, 0));
+  });
+
+  it("moves a scroll's own span from where it started only as far as the visible lines need", () => {
+    // From line 50 the span was 47–59. Down to line 60 it moves to 54–66,
+    // so lines 60–66 show with the overscan below still to come.
+    expect(spanAt(60 * 70, 50 * 70)).toEqual(span(54, 67));
+    // Up to line 40 it moves to 40–52, the overscan above still to come.
+    expect(spanAt(40 * 70, 50 * 70)).toEqual(span(40, 53));
+    // A short scroll that the span already covers moves nothing.
+    expect(spanAt(51 * 70, 50 * 70)).toEqual(span(47, 60));
+    expect(spanAt(50 * 70, 50 * 70)).toEqual(spanAt(50 * 70, null));
+  });
+});
+
+describe('ɵtmTilesAssignSlots', () => {
+  /** Lines `[start, end)`, ascending. */
+  function lines(start: number, end: number): number[] {
+    return Array.from({ length: end - start }, (_, i) => start + i);
+  }
+
+  it('numbers the first lines from zero, in order', () => {
+    expect([...ɵtmTilesAssignSlots(lines(97, 101), new Map())]).toEqual([
+      [97, 0],
+      [98, 1],
+      [99, 2],
+      [100, 3],
+    ]);
+  });
+
+  it('keeps the slot of every line that stays', () => {
+    const first = ɵtmTilesAssignSlots(lines(0, 8), new Map());
+    const next = ɵtmTilesAssignSlots(lines(3, 11), first);
+    for (const line of lines(3, 8)) {
+      expect(next.get(line)).toBe(first.get(line));
+    }
+  });
+
+  it('gives the lines that enter the slots of those that left, the last to leave first', () => {
+    const first = ɵtmTilesAssignSlots(lines(0, 8), new Map());
+    // Down three: lines 8, 9 and 10 take the slots of 2, 1 and 0.
+    const down = ɵtmTilesAssignSlots(lines(3, 11), first);
+    expect([8, 9, 10].map((line) => down.get(line))).toEqual([2, 1, 0]);
+    // Back up three: lines 0, 1 and 2 take the slots of 10, 9 and 8.
+    const up = ɵtmTilesAssignSlots(lines(0, 8), down);
+    expect([0, 1, 2].map((line) => up.get(line))).toEqual([0, 1, 2]);
+    expect(new Set(up.values()).size).toBe(8);
+  });
+
+  it('gives new slots past every slot in use when the lines outnumber the free ones', () => {
+    // Lines 0–3 hold 0–3; 1–2 stay with 1–2, so 0 and 3 are free.
+    const shrunk = ɵtmTilesAssignSlots([1, 2], ɵtmTilesAssignSlots(lines(0, 4), new Map()));
+    expect([...shrunk]).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+    // Six lines: 1–2 stay, 3–6 take new slots past the highest in use.
+    const grown = ɵtmTilesAssignSlots(lines(1, 7), shrunk);
+    expect(new Set(grown.values()).size).toBe(6);
+    expect([1, 2].map((line) => grown.get(line))).toEqual([1, 2]);
+  });
+
+  it('keeps the active line on its slot while the window moves far away', () => {
+    const first = ɵtmTilesAssignSlots(lines(0, 6), new Map());
+    const far = ɵtmTilesAssignSlots([1, ...lines(900, 905)], first);
+    expect(far.get(1)).toBe(1);
+    expect(new Set(far.values()).size).toBe(6);
+    const back = ɵtmTilesAssignSlots(lines(0, 6), far);
+    expect(back.get(1)).toBe(1);
+    expect(new Set(back.values()).size).toBe(6);
   });
 });
 

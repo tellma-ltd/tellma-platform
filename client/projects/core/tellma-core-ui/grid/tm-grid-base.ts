@@ -403,7 +403,9 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * (`'center'`, the default) or just inside its nearest edge
    * (`'nearest'`). `flash` pulses the row's cells once with
    * `--grid-flash-bg` for `--grid-flash-duration`: a still tint for the same
-   * time under reduced motion, an outline under forced colors.
+   * time under reduced motion; under forced colors no tint, but a ring
+   * around the row in two system colours that contrast with each other, so
+   * it shows over every cell, whatever system colour the cell paints.
    */
   scrollToRow(
     rowId: TmRowId,

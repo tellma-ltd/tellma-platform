@@ -8,14 +8,16 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Sessions;
 
 namespace Tellma.Core.AspNetCore.Tenancy
 {
-    /// <summary>What a request asks of its context: its locale preferences and the client that sent it.</summary>
+    /// <summary>What a request asks of its context: its locale preferences, the client that sent it, and whether it is the user at work.</summary>
     internal static class RequestInputs
     {
         /// <summary>The client name of every MCP request.</summary>
@@ -28,13 +30,19 @@ namespace Tellma.Core.AspNetCore.Tenancy
         {
             ArgumentNullException.ThrowIfNull(context);
             IHeaderDictionary headers = context.Request.Headers;
+            Endpoint? endpoint = context.GetEndpoint();
+
+            // A polling endpoint, or a background call (the hub, the telemetry relay, a read that says
+            // so), is not the user at work: the connect prologue leaves the activity stamp alone.
+            bool background = endpoint?.Metadata.GetMetadata<NoActivityStampMetadata>() is not null || BackgroundRequests.IsBackground(context);
             return new RequestContextInputs(
                 Single(headers[HeaderNames.AcceptLanguage]),
                 Single(headers[TellmaHeaders.Calendar]),
                 Single(headers[TellmaHeaders.TimeZone]),
-                ClientOf(context, context.GetEndpoint()?.Metadata.GetMetadata<TenantEndpointMetadata>()?.Surface),
+                ClientOf(context, endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.Surface),
                 MessageLanguage: null,
-                MessageCalendar: null);
+                MessageCalendar: null,
+                SuppressActivityStamp: background);
         }
 
         /// <summary>

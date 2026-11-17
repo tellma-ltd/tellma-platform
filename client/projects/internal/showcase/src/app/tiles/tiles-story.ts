@@ -43,9 +43,14 @@ export function storyCustomers(count: number): readonly StoryCustomer[] {
 /** The balance format, built once: `toLocaleString` would build a formatter per call. */
 const BALANCE = new Intl.NumberFormat('en-US');
 
-/** The story's tile layout: a photo or its placeholder, a linked name, the balance and the status. */
+/**
+ * The story's tile layout: a photo or its placeholder, a linked name, the
+ * balance and the status. Each photo has its own URL, as each record's
+ * image would (the static server ignores the query), so scrolling loads
+ * and decodes one image per row, not one shared picture.
+ */
 export const CUSTOMER_TILE: TmTileLayout<StoryCustomer> = {
-  image: (c) => ({ src: c.photo ? '/test-image.png' : null, alt: c.name }),
+  image: (c) => ({ src: c.photo ? `/test-image.png?row=${c.id}` : null, alt: c.name }),
   title: (c) => c.name,
   href: (c) => `#customer-${c.id}`,
   topEnd: (c) => ({ text: BALANCE.format(c.balance), numeric: true }),

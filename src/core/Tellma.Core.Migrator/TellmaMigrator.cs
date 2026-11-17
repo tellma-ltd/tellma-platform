@@ -34,6 +34,9 @@ namespace Tellma.Core.Migrator
         /// <summary>The assembly the in-proc identity store's migrations ship in.</summary>
         public const string IdentityMigrationsAssembly = "Tellma.Identity.Migrations";
 
+        /// <summary>What binds the migrator's own options, as the startup gate's options check names it.</summary>
+        internal const string OptionsOwner = "migrator";
+
         /// <summary>Runs one migrator command.</summary>
         /// <param name="args">The command line: a command, then its operands and options.</param>
         /// <param name="slug">The distribution slug.</param>
@@ -148,6 +151,10 @@ namespace Tellma.Core.Migrator
                 await error.WriteLineAsync(ComposeFailed(exception)).ConfigureAwait(false);
                 return MigratorExitCodes.CompositionProblems;
             }
+
+            // The migrator's own bounds, validated by the startup gate like every bound option, so a
+            // malformed or out-of-range value stops the run before any database is touched.
+            _ = HostOptionsBinding.Bind<MigratorOptions>(builder.Services, MigratorOptions.SectionPath, OptionsOwner);
 
             // The catalog may not exist yet: migrate creates it, so the first load waits for the commands.
             _ = builder.Services.Configure<TenantRegistryStartupOptions>(static startup =>

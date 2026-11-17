@@ -163,6 +163,32 @@ namespace Tellma.Identity.Hosting
             services.AddSingleton<ManagementApiCallRecorder>();
             ManagementApiAuthorizationResultHandler.Decorate(services);
 
+            // Document clients (client ID metadata documents). The cache, the per-host rate limit
+            // and the in-flight fetches are per instance and shared by every request, so they and
+            // the resolver that owns them are singletons; the row queries and the prune are scoped
+            // to the store. The connector's resolver and socket step are replaceable seams.
+            services.TryAddSingleton<Services.ClientMetadata.IClientMetadataHostResolver, Services.ClientMetadata.DnsClientMetadataHostResolver>();
+            services.TryAddSingleton<Services.ClientMetadata.IClientMetadataSocketConnector, Services.ClientMetadata.TcpClientMetadataSocketConnector>();
+            services.AddSingleton<Services.ClientMetadata.ClientMetadataConnector>();
+            services.AddSingleton<Services.ClientMetadata.ClientMetadataRateLimiter>();
+            services.AddSingleton<Services.ClientMetadata.ClientMetadataCache>();
+            services.AddSingleton<Services.ClientMetadata.ClientMetadataAuditor>();
+            services.AddSingleton<Services.ClientMetadata.ClientMetadataFetcher>();
+            services.AddSingleton<Services.IClientMetadataDocumentResolver, Services.ClientMetadata.ClientMetadataDocumentResolver>();
+            services.AddScoped<Services.ClientMetadata.IDocumentClientStore, Services.ClientMetadata.DocumentClientStore>();
+            services.AddScoped<Services.ClientMetadata.DocumentClientPruneJob>();
+
+            // The metadata fetch: its primary handler connects only to addresses its own
+            // resolution checked, with no proxy, no redirect and no cookie. No resilience
+            // handler: a retry would be a second fetch past the per-host limit, and the fetch's
+            // own timeout bounds it, so the client's is turned off.
+            services.AddHttpClient(
+                    Services.ClientMetadata.ClientMetadataHttp.ClientName,
+                    static client => client.Timeout = Timeout.InfiniteTimeSpan)
+                .ConfigurePrimaryHttpMessageHandler(static provider => Services.ClientMetadata.ClientMetadataHttp.CreatePrimaryHandler(
+                    provider.GetRequiredService<Services.ClientMetadata.ClientMetadataConnector>(),
+                    provider.GetRequiredService<IOptions<TellmaIdentityOptions>>().Value.ClientMetadata.Timeout));
+
             // Best-effort logout-token delivery: bounded timeout plus the standard retry pipeline.
             services.AddHttpClient(
                     Services.BackchannelLogout.BackchannelLogoutService.HttpClientName,

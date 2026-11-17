@@ -92,6 +92,12 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The ordinals of the connect prologue's own statements, whose writes are bookkeeping that bumps nothing.</summary>
         private readonly HashSet<int> _connectStatements = [];
 
+        /// <summary>
+        ///     The tables the connect prologue's own statements write (the activity stamp, the join
+        ///     flip): autocommit bookkeeping ahead of the body, never among <see cref="WrittenTables" />.
+        /// </summary>
+        private readonly HashSet<TableName> _connectWrites = [];
+
         /// <summary>Where the batch is in its life.</summary>
         private Stage _stage;
 
@@ -246,6 +252,18 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>The users whose user-level tags the bump epilogue moved, as its reader read them; null when it moved none.</summary>
         internal IReadOnlyList<AffectedUser>? AffectedUsers { get; private set; }
+
+        /// <summary>
+        ///     Every table a statement of the batch may write: <see cref="WrittenTables" /> and the
+        ///     connect prologue's own bookkeeping, which a write audit sees change.
+        /// </summary>
+        internal IReadOnlySet<TableName> AuditedWrites => _connectWrites.Count == 0 ? _written : [.. _written, .. _connectWrites];
+
+        /// <summary>
+        ///     When the executor started the current attempt, on its clock's timestamp scale; null before
+        ///     the first. A reader of the attempt's first sets measures the round trip so far from it.
+        /// </summary>
+        internal long? AttemptStarted { get; private set; }
 
         /// <summary>The table-type binder, through which platform statements bind their table-valued parameters.</summary>
         internal TableTypeBinder Binder => _executor.Binder;
@@ -463,6 +481,15 @@ namespace Tellma.Core.Data.Batches
             _executor.Allocator.AppendRefills(this);
             VersionTagBumpPlan plan = ResolveBumps();
 
+            // An explicit transaction spans the whole text, the connect prologue's activity stamp
+            // included: the caller's stamp row would be locked from before the tag guard, the inverse of
+            // the order every guard takes, and a tenant-level bumper writing that stamp would deadlock.
+            if (TransactionMode == TransactionMode.Explicit && _connectWrites.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"The batch runs in {nameof(TransactionMode.Explicit)} mode, but its connect prologue may write the caller's activity stamp, which must stay outside every transaction. Run the batch in {nameof(TransactionMode.Auto)} mode.");
+            }
+
             // An autocommit batch commits each write on its own, so a failure after one would leave it
             // committed with no tag moved: a write that bumps a tag needs a transaction.
             if (TransactionMode == TransactionMode.None && !plan.IsEmpty)
@@ -601,7 +628,10 @@ namespace Tellma.Core.Data.Batches
             }
 
             _statements.Add(new BatchStatement(draft.Ordinal, draft.Section, text, [.. draft.Parameters], written, idempotent, reader, draft.EntityType));
-            _written.UnionWith(written);
+
+            // The connect prologue's own writes are autocommit bookkeeping ahead of the body: they open
+            // no transaction, re-run safely and bump nothing, so they never count among the batch's writes.
+            (_connectStatements.Contains(draft.Ordinal) ? _connectWrites : _written).UnionWith(written);
             _parameterNames.UnionWith(draft.Parameters.Select(static parameter => parameter.Name));
             _declared.UnionWith(draft.Declared);
             _open = null;
@@ -740,6 +770,13 @@ namespace Tellma.Core.Data.Batches
             {
                 Probe = CommitProbe.ForIds(table, ids, _executor.Binder);
             }
+        }
+
+        /// <summary>Records when the executor started an attempt, for the readers of its sets.</summary>
+        /// <param name="timestamp">The start, on the executor's clock's timestamp scale.</param>
+        internal void MarkAttemptStarted(long timestamp)
+        {
+            AttemptStarted = timestamp;
         }
 
         /// <summary>Reports the guard's verdict, from the connect prologue's reader.</summary>

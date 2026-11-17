@@ -16,7 +16,8 @@ namespace Tellma.Core.Abstractions.Tenancy
     ///     message members: <paramref name="MessageLanguage" />, when the deployment offers it, is the
     ///     message language and formatting culture, and <paramref name="MessageCalendar" /> is the
     ///     formatting calendar even when the tenant does not use it. A background scope passes
-    ///     <see cref="Empty" />.
+    ///     <see cref="Empty" />. A surface sets <paramref name="SuppressActivityStamp" /> for a call
+    ///     that is not the user at work, such as a client polling on a timer.
     /// </remarks>
     /// <param name="AcceptLanguage">The languages the caller accepts, in the <c>Accept-Language</c> grammar.</param>
     /// <param name="RequestedCalendar">The calendar code the caller asked for.</param>
@@ -24,13 +25,15 @@ namespace Tellma.Core.Abstractions.Tenancy
     /// <param name="Client">The client the caller says it is.</param>
     /// <param name="MessageLanguage">The language the surface writes its messages in, overriding the negotiation.</param>
     /// <param name="MessageCalendar">The calendar the surface formats its messages in, overriding the negotiation.</param>
+    /// <param name="SuppressActivityStamp">Whether the call leaves the user's last-active stamp as it is: a background call, or an endpoint that says so.</param>
     public sealed record RequestContextInputs(
         string? AcceptLanguage,
         string? RequestedCalendar,
         string? RequestedTimeZone,
         string? Client,
         string? MessageLanguage,
-        string? MessageCalendar)
+        string? MessageCalendar,
+        bool SuppressActivityStamp = false)
     {
         /// <summary>The inputs of work no request asked for: every member null.</summary>
         public static RequestContextInputs Empty { get; } = new(null, null, null, null, null, null);
