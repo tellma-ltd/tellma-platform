@@ -13,3 +13,4 @@
 // LICENSE file in the root directory of this source tree.
 
 export { TmTilesTree } from './tm-tiles-tree';
+export { TM_TILES_TREE_STRINGS_EN } from './tiles-tree-strings';

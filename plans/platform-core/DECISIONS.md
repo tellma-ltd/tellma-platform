@@ -359,6 +359,33 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-106 (orchestrator, 2026-11-16): user-run job scopes have no assurance, so sensitive pairs refuse them; for Ahmad with the jobs work
+
+- Situation: in PC-052, RequireAsync refuses a sensitive pair with StepUpRequired when the scope's Assurance is below spec 0011's bar. A job scope run for a user carries no Assurance, so every sensitive pair is refused in jobs. Spec 0014 §4.3/§5.1 say this applies to every caller, request or not, and spec 0015 §9.1 names "a job" explicitly, so the code follows the spec.
+- For Ahmad: should such a job run as the system, carry the requester's assurance captured when it was enqueued, or stay refused? This carries to the job-runner checkpoints of spec 0020.
+- Also from PC-052 (accepted as deviation 14, consistent with D-073): AccessHolders.Grants lists the all-roles decision's grants, not every matching row as spec 0014 §5.1's sketch says. A filtered wildcard-action row on an action with no filter root grants nothing there and is omitted. Spec 0014 §5.1 should be aligned.
+
+### D-105 (Ahmad, 2026-11-16): the integration gate runs on the item's scope; slow suites are left to CI unless touched
+
+- Situation: integrations run one at a time and took 60-95 min each (PC-151 65, PC-F50 92, PC-193 96) on a host loaded by 4-6 slots, against 17 min for CI. The release briefs asked for every suite, beyond PLAN.md §7.1 item 4's touched-only rule. PC-193 (client only) spent about an hour on .NET suites. The last three red CIs (PC-F42 via PC-F51, the VersionTag flake, PC-F53) were Linux-only, and each had passed the full local gate on Windows.
+- Ruling (Ahmad picked recommendations 1 and 2): integration runs the PROCESS.md §11 integration gate. Its scope is the item's own change set plus the files its merge resolution touched.
+  - Client scope runs the client gates and only the e2e specs that cover the touched code.
+  - Server scope runs build, format, the unit filter and the touched integration suites.
+  - Shared triggers run every integration suite.
+  - CI still runs the whole PR tier on every push, and a red CI still stops the line. The implementation and fix rounds are unchanged.
+- Not adopted: moving integration-windows and docs:build to nightly, profiling slow .NET tests, pipelined or batched integrations, and CI on pc/** branches. These stay open for Ahmad.
+
+### D-104 (orchestrator, 2026-11-16): PC-193's merge with PC-F50 and PC-151, accepted as gated
+
+- Budget: the core-ui '.' ceiling goes from 9.18 to 9.21 KB. It measured 9.17 before the merge with platform-core and 9.20 after, so the only growth is the D-098 seam's own +0.03 KB on top of what platform-core already carried. ./pivot stays at 14.1 (it measures 14.00), and ./tiles-tree measures 2.34 against its unchanged 2.37.
+- The D-102 carry renames tiles.loadFailed to tilesTree.loadFailed. A registered string table cannot shadow a core top-level key, and 'tiles' stays in the core table. The string now lives in TM_TILES_TREE_STRINGS_EN, which ./tiles-tree exports and TmTilesTree registers. The Arabic string moved with it and is covered by the EN-AR parity test.
+- Under PC-151's folder gate, pivot is classified with the older folders, not the additions, because its own pivot.spec.ts runs the axe scans. Ahmad may rule that it joins the additions battery instead.
+
+### D-103 (orchestrator, 2026-11-16): PC-F53 takes the segmented-label CSS fix; the forced-colors HighlightText sweep is PC-F54
+
+- Situation: PC-F53 R1-1 found the checked segment's label invisible under forced colors. The segment keeps forced-color-adjust auto, so Chromium paints a Canvas backplate behind the label, and HighlightText equals Canvas. The test that claimed the label is legible passed anyway.
+- Ruling: the CSS fix and a stronger label check go into PC-F53, because the defect is in the code PC-F53's test covers and the fix is small. The reviewer saw the same pattern (color: HighlightText without forced-color-adjust none) in the checkbox, date-popup, entity-picker, select/multi-select and tree stylesheets. That sweep is a separate fix item, PC-F54 (pc-f). It does not gate the line, and it touches none of PC-F53's files.
+
 ### D-102 (orchestrator, 2026-11-16): ./tiles re-split under D-031 lands at 9.24 KB, with a tiles-tree entry point; the 7 KB cap goes to Ahmad
 
 - Ruling: PC-F50 moves the tree inputs (parentId, hasChildren, expandedIds, loadChildren) off TmTiles onto a TmTilesTree directive (selector `tm-tiles[parentId]`) in a new `@tellma/core-ui/tiles-tree` entry point. ./tiles drops from 10,576 B to 9,359 B (ceiling 10.35 → 9.24 KB); ./tiles-tree is 2,323 B (ceiling 2.37 KB). A static-graph exclude and an eslint ban keep the tree, grid-engine and spinner out of ./tiles. The run proceeds on 9.24 KB.

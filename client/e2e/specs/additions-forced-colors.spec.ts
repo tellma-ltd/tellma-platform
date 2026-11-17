@@ -5,7 +5,16 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { near, paintedColour, pixelsOf, type Rgb, type TmPixels } from '../support/pixels';
+import {
+  near,
+  paintedColour,
+  pixelsOf,
+  resolvedColour,
+  type Rgb,
+  type Rgba,
+  type TmPaintedCount,
+  type TmPixels,
+} from '../support/pixels';
 import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
@@ -16,34 +25,22 @@ import { storyUrl } from '../support/story-map';
  * the pixels the browser painted, not from computed styles: the selected
  * tile, the checked segment, the switch turned on, the counter tones, the
  * drop target under a drag and the tinted avatar.
+ *
+ * A system colour is not always opaque: Linux Chromium's Highlight is
+ * translucent, so a highlight fill blends with whatever it covers. Each
+ * highlight is therefore read against a reference shot of the same box
+ * without it (the box hidden, or the state off), as that colour composited
+ * over each reference pixel, never as one fixed colour.
  */
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
 });
 
-/** How many pixels of `pixels` are within the default tolerance of `colour`. */
-function pixelsNear(pixels: TmPixels, colour: Rgb): number {
-  return pixels.width * pixels.height - pixels.pixelsUnlike(colour);
-}
-
-/** How many pixels of the outer `depth`-pixel ring of the image are near `colour`, and how many the ring has. */
-function ringNear(pixels: TmPixels, colour: Rgb, depth = 2): { near: number; total: number } {
-  let count = 0;
-  let total = 0;
-  for (let y = 0; y < pixels.height; y += 1) {
-    for (let x = 0; x < pixels.width; x += 1) {
-      const inRing =
-        x < depth || y < depth || x >= pixels.width - depth || y >= pixels.height - depth;
-      if (inRing) {
-        total += 1;
-        if (near(pixels.at(x, y), colour)) {
-          count += 1;
-        }
-      }
-    }
-  }
-  return { near: count, total };
+/** Whether (`x`, `y`) lies in the outer `depth`-pixel ring of `pixels`. */
+function inRing(pixels: TmPixels, depth = 2): (x: number, y: number) => boolean {
+  return (x, y) =>
+    x < depth || y < depth || x >= pixels.width - depth || y >= pixels.height - depth;
 }
 
 /**
@@ -64,13 +61,45 @@ function edgesShow(pixels: TmPixels, canvas: Rgb, reach = 3): boolean {
   );
 }
 
-/** The forced palette's Canvas and Highlight colours, as this page paints them. */
-async function palette(page: Page): Promise<{ canvas: Rgb; highlight: Rgb; highlightText: Rgb }> {
+/** The forced palette's colours, as this page resolves them (alpha included where it is not opaque). */
+async function palette(page: Page): Promise<{ canvas: Rgb; highlight: Rgba; highlightText: Rgba }> {
   return {
     canvas: await paintedColour(page, 'Canvas'),
-    highlight: await paintedColour(page, 'Highlight'),
-    highlightText: await paintedColour(page, 'HighlightText'),
+    highlight: await resolvedColour(page, 'Highlight'),
+    highlightText: await resolvedColour(page, 'HighlightText'),
   };
+}
+
+/**
+ * A shot of what lies beneath an element: its box, screenshotted with the
+ * element (and so its children) hidden and its layout kept.
+ */
+async function backdropOf(page: Page, locator: Locator): Promise<TmPixels> {
+  await locator.evaluate((element) => {
+    (element as HTMLElement).style.visibility = 'hidden';
+  });
+  const backdrop = await pixelsOf(page, locator);
+  await locator.evaluate((element) => {
+    (element as HTMLElement).style.visibility = '';
+  });
+  return backdrop;
+}
+
+/** A fill covers more than a third of its box; its label, border and corners take the rest. */
+function filled(count: TmPaintedCount): boolean {
+  return count.painted > count.total / 3;
+}
+
+/**
+ * Whether what lies beneath still shows through a text box: more than 40%
+ * of its pixels match `backdrop`, the same box with the text hidden. Text
+ * keeps to its strokes and their anti-aliasing (a short label covers about
+ * half its box), so a box that changes almost everywhere has something
+ * painted behind the text as well.
+ */
+function showsThrough(pixels: TmPixels, backdrop: TmPixels): boolean {
+  const total = pixels.width * pixels.height;
+  return total - pixels.differingPixels(backdrop) > total * 0.4;
 }
 
 test('a selected tile draws a highlight outline, an unselected one none', async ({ page }) => {
@@ -80,18 +109,21 @@ test('a selected tile draws a highlight outline, an unselected one none', async 
   await expect(tile(2)).toBeVisible();
   const { highlight } = await palette(page);
   await appStable(page);
-  const before = ringNear(await pixelsOf(page, tile(2)), highlight);
-  expect(before.near).toBe(0);
+  const backdrop = await backdropOf(page, tile(2));
+  const before = await pixelsOf(page, tile(2));
+  expect(before.paintedOver(backdrop, [highlight], { where: inRing(before) }).painted).toBe(0);
 
   // Section: select the tile, then move the active tile away, so only the
-  // selection marks it.
+  // selection marks it. The ring is read over the unselected tile, whose
+  // border and surface it covers.
   await tile(2).locator('[role="checkbox"]').click();
   await tile(3).focus();
   await expect(tile(2)).toHaveAttribute('aria-selected', 'true');
   await expect(tile(3)).toBeFocused();
   await appStable(page);
-  const after = ringNear(await pixelsOf(page, tile(2)), highlight);
-  expect(after.near).toBeGreaterThan(after.total / 2);
+  const after = await pixelsOf(page, tile(2));
+  const ring = after.paintedOver(before, [highlight], { where: inRing(after) });
+  expect(ring.painted).toBeGreaterThan(ring.total / 2);
 });
 
 test('the checked segment is filled with the highlight, its label legible on it', async ({
@@ -103,11 +135,25 @@ test('the checked segment is filled with the highlight, its label legible on it'
   const { highlight, highlightText } = await palette(page);
   await appStable(page);
   const checked = await pixelsOf(page, segments.nth(1));
+  const checkedBackdrop = await backdropOf(page, segments.nth(1));
   const unchecked = await pixelsOf(page, segments.nth(0));
-  // The label and the segment's rounded corners take the rest.
-  expect(pixelsNear(checked, highlight)).toBeGreaterThan((checked.width * checked.height) / 3);
-  expect(pixelsNear(checked, highlightText)).toBeGreaterThan(0);
-  expect(pixelsNear(unchecked, highlight)).toBe(0);
+  const uncheckedBackdrop = await backdropOf(page, segments.nth(0));
+  expect(filled(checked.paintedOver(checkedBackdrop, [highlight]))).toBe(true);
+  expect(unchecked.paintedOver(uncheckedBackdrop, [highlight]).painted).toBe(0);
+
+  // Section: the label, read in its own box against the same box with the
+  // label hidden, which shows the fill. Its strokes are in the highlight's
+  // text colour, and between them the fill shows through: a backplate the
+  // browser paints behind adjusted text would hide it, and with it a label
+  // whose colour matches the backplate.
+  const label = segments.nth(1).locator('.tm-segmented__label');
+  const ink = await pixelsOf(page, label);
+  const inkBackdrop = await backdropOf(page, label);
+  // Anti-aliased strokes come near the text colour but rarely reach it.
+  expect(ink.paintedOver(inkBackdrop, [highlightText], { tolerance: 24 }).painted).toBeGreaterThan(
+    0,
+  );
+  expect(showsThrough(ink, inkBackdrop)).toBe(true);
 });
 
 test('a switch turned on fills its track with the highlight, one turned off does not', async ({
@@ -119,11 +165,19 @@ test('a switch turned on fills its track with the highlight, one turned off does
   const { highlight, highlightText } = await palette(page);
   await appStable(page);
   const on = await pixelsOf(page, track('switch-on'));
+  const onBackdrop = await backdropOf(page, track('switch-on'));
   const off = await pixelsOf(page, track('switch-notify'));
-  expect(pixelsNear(on, highlight)).toBeGreaterThan((on.width * on.height) / 3);
-  // The knob stands out on the fill.
-  expect(pixelsNear(on, highlightText)).toBeGreaterThan(0);
-  expect(pixelsNear(off, highlight)).toBe(0);
+  const offBackdrop = await backdropOf(page, track('switch-notify'));
+  expect(filled(on.paintedOver(onBackdrop, [highlight]))).toBe(true);
+  expect(off.paintedOver(offBackdrop, [highlight]).painted).toBe(0);
+
+  // Section: the knob, read in its own box against the same box with the
+  // knob hidden, which shows the track's fill: the highlight's text colour
+  // fills it.
+  const knob = page.getByTestId('switch-on').locator('.tm-switch__knob');
+  const knobPixels = await pixelsOf(page, knob);
+  const knobBackdrop = await backdropOf(page, knob);
+  expect(filled(knobPixels.paintedOver(knobBackdrop, [highlightText]))).toBe(true);
 });
 
 test('every counter tone keeps a visible edge, and the attention tone alone a highlight fill', async ({
@@ -134,13 +188,15 @@ test('every counter tone keeps a visible edge, and the attention tone alone a hi
   const { canvas, highlight } = await palette(page);
   await appStable(page);
   for (const id of ['counter-capped', 'counter-accent', 'counter-attention']) {
-    const pixels = await pixelsOf(page, page.getByTestId(id));
+    const counter = page.getByTestId(id);
+    const pixels = await pixelsOf(page, counter);
+    const backdrop = await backdropOf(page, counter);
     expect(edgesShow(pixels, canvas), `${id} shows its edge`).toBe(true);
-    const filled = pixelsNear(pixels, highlight);
+    const fill = pixels.paintedOver(backdrop, [highlight]);
     if (id === 'counter-attention') {
-      expect(filled, `${id} is filled`).toBeGreaterThan((pixels.width * pixels.height) / 3);
+      expect(filled(fill), `${id} is filled`).toBe(true);
     } else {
-      expect(filled, `${id} has no highlight fill`).toBe(0);
+      expect(fill.painted, `${id} has no highlight fill`).toBe(0);
     }
   }
 });
@@ -151,7 +207,9 @@ test('a drop target under an accepted drag draws a highlight outline', async ({ 
   await expect(well).toBeVisible();
   const { highlight } = await palette(page);
   await appStable(page);
-  expect(ringNear(await pixelsOf(page, well), highlight).near).toBe(0);
+  const backdrop = await backdropOf(page, well);
+  const before = await pixelsOf(page, well);
+  expect(before.paintedOver(backdrop, [highlight], { where: inRing(before) }).painted).toBe(0);
   // A synthetic drag holds the hover state still, which a real one cannot.
   await page.evaluate(() => {
     const row = document.querySelector('[data-key="Amount"] > .tm-tree__row')!;
@@ -164,9 +222,11 @@ test('a drop target under an accepted drag draws a highlight outline', async ({ 
   });
   await expect(well).toHaveClass(/tm-drop-target--over/);
   await appStable(page);
-  // A dashed outline: its dashes cover about half the ring.
-  const over = ringNear(await pixelsOf(page, well), highlight);
-  expect(over.near).toBeGreaterThan(over.total / 5);
+  // A dashed outline, read over the well without it: its dashes cover
+  // about half the ring.
+  const over = await pixelsOf(page, well);
+  const ring = over.paintedOver(before, [highlight], { where: inRing(over) });
+  expect(ring.painted).toBeGreaterThan(ring.total / 5);
 });
 
 test('a tinted avatar keeps its circle in every tone when the tint is forced away', async ({

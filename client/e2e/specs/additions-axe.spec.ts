@@ -41,9 +41,10 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
  * The library's folders that are not additions: the entry points that came
- * before them and the shared folders with no entry point of their own. A new
- * folder must join this list or the additions, so that none is skipped
- * unclassified.
+ * before them or stand outside them (the pivot, whose own suite,
+ * pivot.spec.ts, runs its axe scans), and the shared folders with no entry
+ * point of their own. A new folder must join this list or the additions, so
+ * that none is skipped unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
   'alert',
@@ -73,6 +74,7 @@ const OLDER_FOLDERS: readonly string[] = [
   'modal',
   'number',
   'overlay',
+  'pivot',
   'popover',
   'private',
   'providers',

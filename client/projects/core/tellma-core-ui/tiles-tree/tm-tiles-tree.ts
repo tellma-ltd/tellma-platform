@@ -17,7 +17,7 @@ import {
   untracked,
 } from '@angular/core';
 
-import { TM_ACTIVE_LOCALE, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TM_ACTIVE_LOCALE, TM_UI_TRANSLATE, ɵtmRegisterUiStrings } from '@tellma/core-ui';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import {
   ɵtmFlattenVisible,
@@ -31,6 +31,7 @@ import {
   type ɵTmTilesTreePlace,
 } from '@tellma/core-ui/tiles';
 
+import { TM_TILES_TREE_STRINGS_EN } from './tiles-tree-strings';
 import { ɵTmTilesTreeAffordance } from './tree-affordance';
 
 /** The tree over the bound rows: their structure and each row's place among its siblings. */
@@ -211,6 +212,9 @@ export class TmTilesTree<T> implements ɵTmTilesTree<T> {
   });
 
   constructor() {
+    // The tree's strings ship with it, beside the core table.
+    ɵtmRegisterUiStrings('tilesTree', TM_TILES_TREE_STRINGS_EN);
+
     // The tiles render, window and navigate this tree's rows from here on.
     untracked(() => this.tiles.ɵtree.set(this));
 
@@ -397,7 +401,7 @@ export class TmTilesTree<T> implements ɵTmTilesTree<T> {
       this.expandedIds.set(expanded);
       const titles = batch.map((node) => this.tiles.layout().title(node.row));
       const label = new Intl.ListFormat(this.locale(), { type: 'conjunction' }).format(titles);
-      void this.announcer.announce(this.translate('tiles.loadFailed', { label })(), 'polite');
+      void this.announcer.announce(this.translate('tilesTree.loadFailed', { label })(), 'polite');
     };
     // A loader that throws synchronously rejects the batch like one that rejects.
     Promise.resolve()

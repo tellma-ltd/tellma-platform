@@ -40,6 +40,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/grid` | `tm-grid` — the editable data grid |
 | `@tellma/core-ui/tree-grid` | `tm-tree-grid` — the hierarchical grid |
 | `@tellma/core-ui/grid-engine` | The framework-free grid engine behind `tm-grid` |
+| `@tellma/core-ui/pivot` | `tm-pivot` — an Excel-style pivot grid in compact form over two member trees: subtotals on parent rows and after a column's children, the totals last, five looks, text formatted lazily for the rendered cells only, widths fitted to each measure's widest value, sticky headers and leading columns, and a treegrid keyboard |
 | `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session, the popup pane's keys and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
@@ -125,11 +126,15 @@ the components ship no hardcoded sizes or colors.
   `provideTellmaUi({ theme: { initial } })`; the app persists the choice.
 - **Strings.** `provideTellmaUi({ translations })` registers the app's
   loader; loaded tables merge with the built-in English and installed locale
-  packs. ICU MessageFormat is interpreted, never compiled to code, so it
-  runs under a Content Security Policy without `'unsafe-eval'`. Typed
-  arguments (`number`, `date`, `time`) format through
-  `TM_UI_ARGUMENT_FORMATTER`: numbers with `Intl`, dates and times as ISO
-  8601 by default, which an app replaces with its calendar-aware formatting.
+  packs. An entry point whose strings only it reads ships them itself (the
+  pivot's `TM_PIVOT_STRINGS_EN`, the tiles tree's `TM_TILES_TREE_STRINGS_EN`)
+  and registers them beside the core table, so they translate and fall
+  back exactly as the core's do. ICU
+  MessageFormat is interpreted, never compiled to code, so it runs under
+  a Content Security Policy without `'unsafe-eval'`. Typed arguments
+  (`number`, `date`, `time`) format through `TM_UI_ARGUMENT_FORMATTER`:
+  numbers with `Intl`, dates and times as ISO 8601 by default, which an app
+  replaces with its calendar-aware formatting.
 - **Direction.** Flip `document.documentElement.dir` (and `lang`): the root
   `Directionality` follows live, so open modals mirror in place and every
   overlay opened afterwards takes the new direction.

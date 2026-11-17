@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 
 namespace Tellma.Core.Abstractions.Tests.Api
 {
@@ -90,6 +91,15 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(RelatedEntities))]
         [InlineData(typeof(ConcurrencyConflict))]
         [InlineData(typeof(ConfirmationRequest))]
+        [InlineData(typeof(ExportRequest))]
+        [InlineData(typeof(ExportForImportRequest))]
+        [InlineData(typeof(InspectImportRequest))]
+        [InlineData(typeof(ImportRequest))]
+        [InlineData(typeof(StartImportRequest))]
+        [InlineData(typeof(ImportPlan))]
+        [InlineData(typeof(ImportOutcome))]
+        [InlineData(typeof(ImportError))]
+        [InlineData(typeof(RowRange))]
         [InlineData(typeof(long))]
         [InlineData(typeof(decimal))]
         [InlineData(typeof(DateTimeOffset))]

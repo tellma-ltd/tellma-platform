@@ -65,6 +65,7 @@ import { TmModalFooter } from '@tellma/core-ui/modal';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPager } from '@tellma/core-ui/pager';
+import { TmPivot, type TmPivotModel, type TmPivotWidths } from '@tellma/core-ui/pivot';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
@@ -124,6 +125,7 @@ import * as modalFooterExamples from './modal/tm-modal-footer.examples';
 import * as numberExamples from './number/tm-number.examples';
 import * as pageHeaderExamples from './page-header/tm-page-header.examples';
 import * as pagerExamples from './pager/tm-pager.examples';
+import * as pivotExamples from './pivot/tm-pivot.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
 import * as progressRingExamples from './progress/tm-progress-ring.examples';
@@ -255,6 +257,7 @@ class ExamplePage {}
     TmOptionGroup,
     TmPageHeader,
     TmPager,
+    TmPivot,
     TmPopover,
     TmPopoverContent,
     TmPopoverTrigger,
@@ -414,6 +417,7 @@ class ExamplePage {}
     >
       <tm-grid-column key="name" header="placeholder" />
     </tm-tree-grid>
+    <tm-pivot [model]="pivotModel" ariaLabel="placeholder" style="block-size: 120px" />
     <tm-tiles [rowId]="rowId" [layout]="rowTile" ariaLabel="placeholder">
       <ng-template tmTileContent>placeholder</ng-template>
       <span *tmTilesEmpty>placeholder</span>
@@ -457,6 +461,30 @@ class ExampleHost {
     topEnd: (row) => ({ text: String(row.qty), numeric: true }),
   };
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
+  // The pivot examples' model: two regions under the total by two quarters,
+  // one measure; the two-way expansion sets and widths; the drill handler.
+  protected readonly pivotModel: TmPivotModel = {
+    rows: [
+      { id: 0, parent: null, kind: 'total', label: 'Total' },
+      { id: 1, parent: 0, kind: 'member', label: 'Riyadh' },
+      { id: 2, parent: 0, kind: 'member', label: 'Jeddah' },
+    ],
+    columns: [
+      { id: 0, parent: null, kind: 'total', label: 'Total' },
+      { id: 1, parent: 0, kind: 'member', label: 'Q1' },
+      { id: 2, parent: 0, kind: 'member', label: 'Q2' },
+    ],
+    measures: ['Amount'],
+    rowLabel: 'Center',
+    columnLevelLabels: ['Quarter'],
+    attributeLabels: [],
+    text: (row, column) => String(row * 10 + column),
+    widest: () => '30',
+  };
+  protected readonly expandedRows = signal<ReadonlySet<number>>(new Set());
+  protected readonly expandedColumns = signal<ReadonlySet<number>>(new Set());
+  protected readonly pivotWidths = signal<TmPivotWidths>({});
+  protected readonly onCell = (cell: unknown): void => void cell;
   protected readonly onImageChange = (): void => undefined;
   // The icon examples' direct-data binding: library code passes Lucide data.
   protected readonly checkIcon = Check;
@@ -963,6 +991,7 @@ const SUITES = [
   },
   { source: 'splitter/tm-splitter.examples.ts', examples: splitterExamples },
   { source: 'pager/tm-pager.examples.ts', examples: pagerExamples },
+  { source: 'pivot/tm-pivot.examples.ts', examples: pivotExamples },
   { source: 'tree/tm-tree.examples.ts', examples: treeExamples },
   { source: 'drag-drop/tm-drag-drop.examples.ts', examples: dragDropExamples },
   { source: 'reorder-list/tm-reorder-list.examples.ts', examples: reorderListExamples },

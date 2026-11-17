@@ -147,6 +147,19 @@ namespace Tellma.Core.IntegrationTests.Data
                 cancellationToken: TestContext.Current.CancellationToken);
         }
 
+        /// <summary>
+        ///     The server session of the connection a scope of the host opened last for its batches, so
+        ///     a test can watch that batch's own requests; null before the scope opened one.
+        /// </summary>
+        /// <param name="scope">A scope of the host.</param>
+        /// <returns>The session id.</returns>
+        public static int? LastSessionOf(AsyncServiceScope scope)
+        {
+            return scope.ServiceProvider.GetRequiredService<ITenantConnectionProvider>() is CountingConnections connections
+                ? connections.LastSession
+                : throw new InvalidOperationException("The scope is not a scope of a batch fixture's host.");
+        }
+
         /// <summary>Forgets the server round trips counted so far.</summary>
         public void ResetRoundTrips()
         {
@@ -366,18 +379,28 @@ namespace Tellma.Core.IntegrationTests.Data
             }
         }
 
-        /// <summary>The fixture's connections, each adding its server round trips to the database's total when it closes.</summary>
+        /// <summary>
+        ///     The fixture's connections, each adding its server round trips to the database's total when
+        ///     it closes, and the session of the one opened last.
+        /// </summary>
         /// <param name="inner">The fixture's provider.</param>
         /// <param name="database">The database whose total grows.</param>
         private sealed class CountingConnections(ITenantConnectionProvider inner, DataBatchDatabase database) : ITenantConnectionProvider
         {
+            /// <summary>The session of the connection opened last; zero before the first.</summary>
+            private int _lastSession;
+
             /// <inheritdoc />
             public TenantInfo Tenant => inner.Tenant;
+
+            /// <summary>The server session of the connection opened last; null before the first.</summary>
+            public int? LastSession => Volatile.Read(ref _lastSession) is int session and > 0 ? session : null;
 
             /// <inheritdoc />
             public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
             {
                 SqlConnection connection = await inner.OpenAsync(cancellationToken).ConfigureAwait(false);
+                Volatile.Write(ref _lastSession, connection.ServerProcessId);
                 connection.StatisticsEnabled = true;
                 connection.StateChange += (_, change) =>
                 {

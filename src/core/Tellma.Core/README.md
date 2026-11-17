@@ -10,9 +10,9 @@ the table-type binder and the entity metadata), the tenancy runtime (the catalog
 resolution, the catalog's write side and the membership hints), the first piece of blob storage (the
 file-system store), the three calendar systems and the core of localization (the language
 catalogue, the value sets, the negotiation of a request's language, region, calendar and time
-zone, and the ICU string localizer with Core's shared resources). The rest of data access, the CRUD
-pipeline, access control, settings, caching, the rest of localization and of blobs, Excel, jobs and
-notifications join it as namespaces.
+zone, and the ICU string localizer with Core's shared resources), and the Excel cell codec and
+workbook writer. The rest of data access, the CRUD pipeline, access control, settings, caching, the
+rest of localization, of blobs and of Excel, jobs and notifications join it as namespaces.
 
 ## The composition root
 
@@ -1386,6 +1386,51 @@ commits, the in-memory rows take their job ids and this host's pollers for the t
 (`TenantPollerWake`); a batch that fails stores nothing and wakes nothing. `EnqueueAsync` does the
 same in a `Persist` batch of its own.
 
+## Excel
+
+`Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
+are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-only:
+
+- **The contracts.** `ExcelContext` (the request's tenant, deployment, instant, languages, culture,
+  calendar, display zone, labels and catalogue), `ExcelColumnSpec` (a column's header, Queryex type,
+  scale and path, with the property, role, language, referenced entity and key kind an entity export
+  adds), `ExcelSheetPlan` and `ExcelWorkbookPlan` (an entity export: its sheets in order, the parent
+  first and only first, and the manifest's header block), `ExcelTableSpec` and `ExcelTableRow` (a
+  report's one-sheet table, its header rows, frozen columns and each row's style and indent),
+  `IExcelExporter`, and `ImportCheckpointState`, the progress a background import resumes from.
+- **The cell codec.** Values encode by their column's type, never by value: numbers and dates as
+  number cells, text as inline strings (never shared strings, so memory holds no string table), an
+  editable export's `long` and its decimals beyond 15 significant digits as text, a date before
+  1 March 1900 as ISO 8601 text (the 1900 date system's phantom 29 February makes every earlier serial
+  a day off), an editable `DateTimeOffset` as ISO 8601 text with its offset, and characters XML cannot
+  hold as `_xHHHH_` escapes. Decoding goes by the mapped property's type: a serial in either date
+  system (serial 60 and below refused), ISO 8601 text, the manifest calendar's and the request
+  calendar's text, the invariant and localized boolean words, choices by stored value or label.
+- **Number formats.** `#,##0` and `#,##0.00…` in the display shape, `0` and `0.00…` in the editable
+  one; dates as the culture's short date pattern, cleaned as the calendar systems clean it, behind the
+  locale tag `[$-CCLLLL]` (the Windows calendar id, none for Gregorian and `17` for Umm al-Qura; the
+  culture's LCID, `0000` for a culture without one). A calendar without a Windows calendar id, such as
+  the Ethiopian, writes its dates as text in the calendar's short rendering, and the manifest records
+  the pattern the importer reads them back with. Each distinct format is one `numFmt` entry from id
+  164, and each distinct style one `cellXfs` entry.
+- **The writer.** `WorkbookWriter` streams an entity export: the parent sheet into the package as the
+  row source's pages arrive, each child sheet through a scratch file of its own copied in afterwards,
+  then the hidden, protected `_tellma` manifest, the styles and the workbook. A scratch file is
+  unshared and deleted by the system on close on Windows; elsewhere it is owner-only (`0600`) and
+  unlinked as soon as it is open, so a killed process leaves nothing. A failed or cancelled write lets
+  go of every part and spool, and the failure that stopped it is the one thrown. Each data sheet has a
+  bold header frozen below it, an auto filter named as Excel names it, the editable shape's
+  validation lists and length checks, a hidden stamp column, and right-to-left views for a
+  right-to-left culture. A by-query export's capped count is checked on the first page, before the
+  destination is opened (the writer takes a factory for it) or any scratch file made, and the row
+  past a sheet's cap is refused. A sheet or table wider than 16,384 columns is refused by its record.
+  Sheet names are scrubbed of what Excel refuses and of what XML cannot carry, kept within 31
+  characters, never `History`, and made unique ignoring case. `WriteTableAsync` writes a report's
+  table: several bold header rows, the pane frozen below them and after the frozen columns, each row
+  style's font, fill and border, and no manifest. File names are the stem's ASCII form and the
+  request's local time (`Widgets 2026-11-16 0930.xlsx`), `report` when the stem keeps nothing, the
+  stem cut so the name fits 255 characters.
+
 ## Layout
 
 | Folder | Contents |
@@ -1408,6 +1453,7 @@ same in a `Persist` batch of its own.
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
+| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
@@ -1423,6 +1469,8 @@ same in a `Persist` batch of its own.
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
 holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
+`test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
+Office 2019 schema validator.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
 (`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
 convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,
