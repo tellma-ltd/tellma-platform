@@ -168,6 +168,15 @@
     color: HighlightText;
   }
 
+  /* The browser paints a Canvas backplate behind adjusted text, and
+     HighlightText can equal Canvas, so the label opts out of the adjustment
+     and keeps its colour on the fill. A disabled segment keeps the
+     adjustment: its GrayText reads on the backplate. */
+  .tm-segmented__segment--checked:not(.tm-segmented__segment--disabled) .tm-segmented__label {
+    forced-color-adjust: none;
+    color: HighlightText;
+  }
+
   .tm-segmented__segment--disabled {
     color: GrayText;
   }

@@ -24,6 +24,36 @@ export interface Rgb {
   readonly b: number;
 }
 
+/** A colour with its opacity, as a page resolves it: RGB channels 0–255, alpha 0–1. */
+export interface Rgba extends Rgb {
+  /** The opacity, from 0 (transparent) to 1 (opaque). */
+  readonly a: number;
+}
+
+/**
+ * What `layers` paint over `below`, the first layer lowest: each is
+ * composited source-over on what is under it, as the screen blends a
+ * translucent colour. An opaque layer replaces what is under it.
+ */
+export function paintOver(below: Rgb, layers: readonly Rgba[]): Rgb {
+  return layers.reduce<Rgb>(
+    (under, layer) => ({
+      r: Math.round(layer.r * layer.a + under.r * (1 - layer.a)),
+      g: Math.round(layer.g * layer.a + under.g * (1 - layer.a)),
+      b: Math.round(layer.b * layer.a + under.b * (1 - layer.a)),
+    }),
+    below,
+  );
+}
+
+/** How many pixels of an image {@link TmPixels.paintedOver} found painted, out of how many it read. */
+export interface TmPaintedCount {
+  /** The pixels that show the layers painted over the reference pixel. */
+  readonly painted: number;
+  /** The pixels read. */
+  readonly total: number;
+}
+
 /** A decoded screenshot: its size and its RGBA bytes, row by row. */
 export class TmPixels {
   /**
@@ -66,6 +96,60 @@ export class TmPixels {
       }
     }
     return count;
+  }
+
+  /**
+   * How many pixels show `layers` painted over the same pixel of `before`, a
+   * shot of the same box without them: this image's pixel is within
+   * `tolerance` of the layers composited on `before`'s. Reading against the
+   * pixel beneath, not a fixed colour, holds on a platform whose system
+   * colour is translucent and blends with what it covers. `where` limits
+   * the read to some pixels, such as a ring at the edge. The images must be
+   * the same size.
+   *
+   * Every layer is assumed painted at every pixel read, and only the top
+   * one is tested: a pixel counts when the top layer moves some channel by
+   * more than `minChange` from the lower layers composited on `before`'s
+   * pixel, so a pixel where the lower layers are not painted counts
+   * whenever it happens to show the top layer's colour. Pass more than one
+   * layer only for pixels where the lower ones are known to be painted;
+   * to read a mark drawn on a fill, shoot the mark's own box against the
+   * same box with the mark hidden, and pass the mark's colour alone.
+   */
+  paintedOver(
+    before: TmPixels,
+    layers: readonly Rgba[],
+    options: {
+      readonly tolerance?: number;
+      readonly minChange?: number;
+      readonly where?: (x: number, y: number) => boolean;
+    } = {},
+  ): TmPaintedCount {
+    if (before.width !== this.width || before.height !== this.height) {
+      throw new Error(
+        `Cannot compare a ${this.width}x${this.height} image with a ${before.width}x${before.height} one.`,
+      );
+    }
+    const { tolerance = 3, minChange = 24, where = () => true } = options;
+    let painted = 0;
+    let total = 0;
+    for (let y = 0; y < this.height; y += 1) {
+      for (let x = 0; x < this.width; x += 1) {
+        if (!where(x, y)) {
+          continue;
+        }
+        total += 1;
+        const under = before.at(x, y);
+        const expected = paintOver(under, layers);
+        // What the top layer covers: the reference pixel under the others.
+        const covered = paintOver(under, layers.slice(0, -1));
+        const changes = !near(expected, covered, minChange);
+        if (changes && near(this.at(x, y), expected, tolerance)) {
+          painted += 1;
+        }
+      }
+    }
+    return { painted, total };
   }
 
   /** How many pixels of the image differ from `colour` by more than `tolerance`. */
@@ -137,8 +221,31 @@ export async function pixelsOf(page: Page, locator: Locator, margin = 0): Promis
 }
 
 /**
+ * A CSS colour value as this page resolves it, alpha included, such as a
+ * system colour under forced colors. Some platforms' forced palettes are
+ * translucent (Linux Chromium's Highlight), so what such a colour paints
+ * depends on what lies beneath: read it with {@link TmPixels.paintedOver}.
+ */
+export async function resolvedColour(page: Page, cssColour: string): Promise<Rgba> {
+  return page.evaluate((value) => {
+    const probe = document.createElement('div');
+    // Opting out of forced colours keeps the value as given; a system
+    // colour still resolves to the forced palette's.
+    probe.style.cssText = `forced-color-adjust:none;background-color:${value};`;
+    document.body.append(probe);
+    const [r, g, b, a = 1] = (getComputedStyle(probe).backgroundColor.match(/[0-9.]+/g) ?? []).map(
+      Number,
+    );
+    probe.remove();
+    return { r, g, b, a };
+  }, cssColour);
+}
+
+/**
  * The colour a CSS colour value paints as on this page, such as a system
- * colour (`Canvas`, `CanvasText`, `Highlight`) under forced colors.
+ * colour (`Canvas`, `CanvasText`, `Highlight`) under forced colors. Its
+ * alpha is dropped, so it is what an opaque colour paints; for one that
+ * may be translucent, use {@link resolvedColour}.
  */
 export async function paintedColour(page: Page, cssColour: string): Promise<Rgb> {
   return page.evaluate((value) => {
