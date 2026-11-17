@@ -6,6 +6,7 @@
 using System.Numerics;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
 
 namespace Tellma.Core.Crud
@@ -18,7 +19,8 @@ namespace Tellma.Core.Crud
     /// <param name="registry">The stack registry.</param>
     /// <param name="surfaces">The query surfaces.</param>
     /// <param name="queries">The scope's query operation.</param>
-    internal sealed class EntityPipelineFactory(StackRegistry registry, QuerySurfaces surfaces, QueryOperation queries) : IEntityPipelineFactory
+    /// <param name="details">The scope's details reads.</param>
+    internal sealed class EntityPipelineFactory(StackRegistry registry, QuerySurfaces surfaces, QueryOperation queries, DetailsOperation details) : IEntityPipelineFactory
     {
         /// <inheritdoc />
         /// <exception cref="InvalidOperationException">No stack has the entity as its leaf.</exception>
@@ -32,7 +34,7 @@ namespace Tellma.Core.Crud
             StackDescriptor descriptor = registry.FindByLeaf(typeof(TEntity))
                 ?? throw new InvalidOperationException(
                     $"No stack has the entity {typeof(TEntity).FullName} as its leaf, so its service has no pipeline. Contribute the stack with its service.");
-            return new EntityPipeline<TEntity, TKey>(descriptor, behavior, surfaces, queries);
+            return new EntityPipeline<TEntity, TKey>(descriptor, behavior, surfaces, queries, details);
         }
     }
 }

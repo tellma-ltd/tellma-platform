@@ -319,13 +319,8 @@ namespace Tellma.Core.Data.Batches
             return keys;
         }
 
-        /// <summary>
-        ///     The key-capture table a rows or entity query statement filled, for later statements to
-        ///     restrict on; null when the statement captured none.
-        /// </summary>
-        /// <param name="handle">The handle <see cref="Rows" /> or <see cref="Query{TEntity}" /> returned.</param>
-        /// <returns>The table, or null.</returns>
-        internal SqlIdentifier? KeysOf(object handle)
+        /// <inheritdoc />
+        public SqlIdentifier? KeysOf(object handle)
         {
             ArgumentNullException.ThrowIfNull(handle);
             return _capturedKeys.GetValueOrDefault(handle);

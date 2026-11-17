@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
 
 namespace Tellma.Core.Crud
@@ -21,9 +22,9 @@ namespace Tellma.Core.Crud
     ///     outcome.
     /// </summary>
     /// <remarks>
-    ///     The query runs here. The details, the save, the deletes, the actions, the tree reads and
-    ///     the Excel row source refuse with <see cref="NotSupportedException" /> until their steps
-    ///     are built.
+    ///     The query, the details reads and the tree read run here. The save, the deletes, the
+    ///     actions and the Excel row source refuse with <see cref="NotSupportedException" /> until
+    ///     their steps are built.
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -31,7 +32,9 @@ namespace Tellma.Core.Crud
     /// <param name="behavior">The service's hooks.</param>
     /// <param name="surfaces">The query surfaces.</param>
     /// <param name="queries">The scope's query operation.</param>
-    internal sealed class EntityPipeline<TEntity, TKey>(StackDescriptor descriptor, IEntityBehavior<TEntity, TKey> behavior, QuerySurfaces surfaces, QueryOperation queries)
+    /// <param name="details">The scope's details reads.</param>
+    internal sealed class EntityPipeline<TEntity, TKey>(
+        StackDescriptor descriptor, IEntityBehavior<TEntity, TKey> behavior, QuerySurfaces surfaces, QueryOperation queries, DetailsOperation details)
         : IEntityPipeline<TEntity, TKey>
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
@@ -50,30 +53,32 @@ namespace Tellma.Core.Crud
         {
             ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Query, CrudOperationNames.Query);
-            QuerySurface surface = surfaces.Stack(Descriptor.Resource)
-                ?? throw new InvalidOperationException($"The stack {Descriptor.Resource} has no query surface.");
-            return queries.RunAsync(surface, request, behavior.SearchFilter, cancellationToken);
+            return queries.RunAsync(Surface(), request, behavior.SearchFilter, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<EntitiesResult<TEntity>> GetByIdAsync(TKey id, DetailsRequest request, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Details, CrudOperationNames.Get);
-            throw NotBuilt(CrudOperationNames.Get);
+            return details.GetByIdAsync(Descriptor, behavior, id, request, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<EntitiesResult<TEntity>> GetByIdsAsync(IReadOnlyList<TKey> ids, DetailsRequest request, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(ids);
+            ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Details, CrudOperationNames.GetByIds);
-            throw NotBuilt(CrudOperationNames.GetByIds);
+            return details.GetByIdsAsync(Descriptor, behavior, ids, request, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<EntitiesResult<TEntity>> GetAllCachedAsync(DetailsRequest request, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Details, CrudOperationNames.All, CacheableCapability);
-            throw NotBuilt(CrudOperationNames.All);
+            return details.GetAllCachedAsync(Descriptor, behavior, request, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -114,8 +119,9 @@ namespace Tellma.Core.Crud
         /// <inheritdoc />
         public Task<QueryRowSet> GetByParentIdsAsync(ParentIdsRequest request, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Query, CrudOperationNames.GetByParentIds, TreeCapability);
-            throw NotBuilt(CrudOperationNames.GetByParentIds);
+            return queries.RunParentIdsAsync<TKey>(Surface(), Descriptor.EntityType, request, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -130,6 +136,15 @@ namespace Tellma.Core.Crud
         {
             Require(StackOperations.Export, CrudOperationNames.ExcelRows);
             throw NotBuilt(CrudOperationNames.ExcelRows);
+        }
+
+        /// <summary>The stack's query surface.</summary>
+        /// <returns>The surface.</returns>
+        /// <exception cref="InvalidOperationException">The stack has none.</exception>
+        private QuerySurface Surface()
+        {
+            return surfaces.Stack(Descriptor.Resource)
+                ?? throw new InvalidOperationException($"The stack {Descriptor.Resource} has no query surface.");
         }
 
         /// <summary>Refuses an operation the stack omits: an authoring bug.</summary>

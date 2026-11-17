@@ -64,6 +64,13 @@ namespace Tellma.Core.Crud.Query
                 origins.Add(new Conjunct(ConjunctKind.NamedFilter, index));
             }
 
+            // The rows a tree read picks, such as its roots: the platform's, never located on the caller's text.
+            foreach (FilterTree tree in shape.PlatformFilters)
+            {
+                conjuncts.Add(tree);
+                origins.Add(new Conjunct(ConjunctKind.Platform, -1));
+            }
+
             if (surface.IsActivatable && !shape.IncludeInactive)
             {
                 conjuncts.Add(FilterTree.Leaf(ActiveOnly));
@@ -90,7 +97,7 @@ namespace Tellma.Core.Crud.Query
             string select = shape.Select ?? surface.DefaultSelectFor(schema, root);
             (string orderBy, OrderingSource ordering) = shape.OrderBy is string sent
                 ? (sent, OrderingSource.Sent)
-                : shape.Aggregate ? (select, OrderingSource.Select) : (surface.DefaultOrderBy, OrderingSource.Default);
+                : shape.Aggregate ? (select, OrderingSource.Select) : (shape.DefaultOrderBy ?? surface.DefaultOrderBy, OrderingSource.Default);
             QuerySpec spec = new()
             {
                 Root = root,

@@ -34,5 +34,16 @@ namespace Tellma.Core.Abstractions.Entities
         ///     on an existing row only addresses that row.
         /// </summary>
         public TKey Id { get; set; }
+
+        /// <summary>
+        ///     A shallow copy: a new instance of the same type with every field's value, reference-typed
+        ///     values shared. The platform hands one to each reader of a shared cached row, whose own
+        ///     columns are scalars and strings, so the copy is independent of the row.
+        /// </summary>
+        /// <returns>The copy.</returns>
+        internal Entity<TKey> ShallowCopy()
+        {
+            return (Entity<TKey>)MemberwiseClone();
+        }
     }
 }

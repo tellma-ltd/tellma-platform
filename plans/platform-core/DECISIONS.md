@@ -359,6 +359,14 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-110 (orchestrator, 2026-11-17): PC-B02 and PC-B03 overdue; launch at the 20:00 UTC reset
+- Phases 2 (PC-015…PC-031) and 3 (PC-032…PC-061) are both fully `done`, but neither batch review was started when its last member closed. This was an orchestrator miss: §5.2 says to start as soon as the phase is done. Ahmad's question surfaced it.
+- At 18:55 UTC, U = 91 (R = 9) and F ≈ 1 (the PC-070 integration), so the §6.3 batch gate (R − F − 8 ≥ 5) fails. The weekly window resets at 20:00 UTC.
+- Ahmad (18:58 UTC) overrode the gate: start both reviews now in parallel; fixing and integration may wait for the reset. The finders were launched at b346ad7c in one workflow (pc-1 for PC-B02, pc-2 for PC-B03), and their findings are written to each slot's reviews/PC-Bnn.md. Each fixer is spawned after the reset with the §13 fixer brief.
+- Ahmad then paused the workflow (TaskStop). It resumes from run wf_08f0b9d9-329 after the reset, and finders that already completed return from the cache.
+- Original ruling, superseded: launch PC-B02 and PC-B03 as soon as the reset is detected, each in its own free slot. Finders run on `fable` (Fable meter 5%). Until then, only the §13 preparation runs (slots and member commit lists) as filler.
+- From now on, check §5.2 phase completeness after every `done`, beside check_deps.
+
 ### D-109 (PC-070, 2026-11-17): D-062 child-target loading confirmed; cached shared instances to R1; Gadgets = Lookup
 - Spec: 0015 §5.3, §5.5; 0012 EntityQuery.
 - D-062's provisional ruling is final: children's and collections' related entities load through a captured FK set, one grouped Rows per expand level, inside the details round trip. Spec 0012 stays unchanged. Spec 0015 §5.3 should name this mechanism (for Ahmad).

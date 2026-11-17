@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tests.Crud;
 using Tellma.Core.Abstractions.Validation;
@@ -133,9 +134,53 @@ namespace Tellma.Core.Abstractions.Tests.Validation
 
             Assert.False(action.Persisted.IsCompleted);
 
-            action.PersistedSource.SetResult();
+            Assert.True(action.CompletePersisted());
 
             await action.Persisted;
+            Assert.False(action.CompletePersisted());
+        }
+
+        [Fact]
+        public async Task An_action_whose_writes_failed_sees_the_failure_when_it_awaits_them()
+        {
+            ActionContext<Widget, int> action = Action();
+            InvalidOperationException failure = new("The persist failed.");
+
+            Assert.True(action.FaultPersisted(failure));
+
+            Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => action.Persisted));
+            Assert.False(action.FaultPersisted(new InvalidOperationException("A second failure.")));
+        }
+
+        [Fact]
+        public void A_failure_no_method_awaited_raises_no_unobserved_task_exception()
+        {
+            InvalidOperationException failure = new("The persist failed, and the method never awaited it.");
+            bool surfaced = false;
+            void Observe(object? sender, UnobservedTaskExceptionEventArgs args)
+            {
+                if (args.Exception.InnerExceptions.Contains(failure))
+                {
+                    surfaced = true;
+                }
+            }
+
+            TaskScheduler.UnobservedTaskException += Observe;
+            try
+            {
+                Fault(failure);
+
+                // The faulted task is unreachable now; collecting it runs the finalizer that would report it.
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+            finally
+            {
+                TaskScheduler.UnobservedTaskException -= Observe;
+            }
+
+            Assert.False(surfaced);
         }
 
         [Fact]
@@ -160,6 +205,14 @@ namespace Tellma.Core.Abstractions.Tests.Validation
                 Errors = new ValidationErrors<Widget>(),
                 Host = CrudTestItems.ForeignHost(),
             };
+        }
+
+        /// <summary>Faults the writes of an action context that no one holds afterwards, so its task becomes collectable.</summary>
+        /// <param name="failure">The failure.</param>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void Fault(Exception failure)
+        {
+            _ = Action().FaultPersisted(failure);
         }
 
         /// <summary>An action context over one id, its rows not yet loaded.</summary>
