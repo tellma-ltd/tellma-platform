@@ -235,10 +235,10 @@
   /* A selected cell opts out of forced colours. Kept, Chromium paints a
      Canvas backplate behind the figure, and HighlightText is Canvas in the
      common palettes: the figure would vanish into its plate. Every colour
-     it paints is then a system colour set here: hovered or disabled too
-     (the hover rules weigh a pseudo-class more than a plain selected rule),
-     and focused it trades the token ring, no longer stripped, for the
-     outline the other cells are forced to. */
+     it paints is then a system colour set here: hovered too (the hover
+     rules weigh a pseudo-class more than a plain selected rule), and
+     focused it trades the token ring, no longer stripped, for the outline
+     the other cells are forced to. */
   .tm-date-popup__cell[aria-selected='true'],
   .tm-date-popup__cell[aria-selected='true']:hover {
     forced-color-adjust: none;
@@ -249,6 +249,16 @@
   .tm-date-popup__cell[aria-selected='true']:focus-visible {
     outline-color: CanvasText;
     box-shadow: none;
+  }
+
+  /* A disabled selected cell (a committed value outside the bounds) keeps
+     forced colours, so its figure reads GrayText on its backplate inside
+     the Highlight fill, the disabled cue the other cells give. GrayText on
+     the fill itself would be too faint. Later than the hover rule and as
+     heavy, so it wins there too. */
+  .tm-date-popup__cell[aria-selected='true']:disabled {
+    forced-color-adjust: auto;
+    color: GrayText;
   }
 
   /* Forced colors DROPS box-shadow entirely, so the today marker has to be

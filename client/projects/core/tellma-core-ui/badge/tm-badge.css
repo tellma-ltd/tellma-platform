@@ -100,7 +100,12 @@
 @media (forced-colors: active) {
   /* The tint is forced away; the pill keeps its border (painted in the
      system text colour) and the dot keeps a system fill, so neither
-     vanishes with the background. */
+     vanishes with the background. On a highlighted grid cell the pill's
+     glyph takes its own ink, not the cell's overlay ink (tm-icon). */
+  :host {
+    --tm-grid-overlay-ink: initial;
+  }
+
   .tm-badge__dot {
     forced-color-adjust: none;
     background: CanvasText;

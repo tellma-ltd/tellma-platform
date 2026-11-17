@@ -670,10 +670,12 @@
   }
 
   /* The open editor is a field, not part of the range fill: it takes the
-     field's own ink over the forced Canvas editor background. */
+     field's own ink over the forced Canvas editor background, for its
+     glyphs too (tm-icon reads the overlay ink). */
   .tm-grid__editor {
     background: Field;
     color: FieldText;
+    --tm-grid-overlay-ink: initial;
   }
 
   .tm-grid-bool,

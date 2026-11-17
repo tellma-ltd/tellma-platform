@@ -20,8 +20,16 @@ import { storyUrl } from '../support/story-map';
  * reads right. Each case is read from the pixels, in the light and the dark
  * forced palette. A picker's selected row draws its paired ink directly on
  * the fill; a grid cell keeps forced colours for what it holds, so its text
- * shows in CanvasText on its plate.
+ * shows in CanvasText on its plate, while its glyphs, which get no plate,
+ * draw in the paired ink on the fill.
  */
+
+/**
+ * The least ink a tick read at twice the pixel density must show. The
+ * smallest (the tree's and the tiles') carry nearly thirty pixels of ink
+ * there, and a tick drawn in the wrong ink none.
+ */
+const TICK_INK = 10;
 
 /** Settles the page and parks the pointer, so no hover state is in the shots. */
 async function settle(page: Page): Promise<void> {
@@ -71,6 +79,28 @@ for (const scheme of ['light', 'dark'] as const) {
       );
     });
 
+    test('a selected month outside the bounds shows its name in GrayText on its plate', async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('date-picker'));
+      const picker = page.getByTestId('picker-bounded');
+      // A committed value past the bounds: the month view selects its
+      // month and disables it.
+      await picker.locator('.tm-date-picker__input').fill('4/10/2026');
+      await picker.locator('.tm-date-picker__input').press('Tab');
+      await expect(page.getByTestId('model-json')).toContainText('"delivery":"2026-04-10"');
+      await picker.locator('.tm-date-picker__toggle').click();
+      const popup = page.locator('.tm-date-popup');
+      await popup.locator('.tm-date-popup__view-switch').click();
+      const month = popup.locator('.tm-date-popup__month[aria-selected="true"]');
+      await expect(month).toBeDisabled();
+      await settle(page);
+      await expectInkShows(page, month, 'the disabled selected month', {
+        inkColour: 'GrayText',
+        plateColour: 'Canvas',
+      });
+    });
+
     test('the committed entity row shows its label and check on the highlight', async ({
       page,
     }) => {
@@ -110,39 +140,45 @@ for (const scheme of ['light', 'dark'] as const) {
       await expectInkOnFill(page, row.locator('.tm-option__box'), 'the row tick');
     });
 
-    test('the ticks of a checked checkbox, tree row and tile show on the highlight', async ({
-      page,
-    }) => {
-      // Section: tm-checkbox.
-      await page.goto(storyUrl('checkbox'));
-      await page.getByTestId('cb-simple').getByRole('checkbox').check();
-      await settle(page);
-      await expectInkOnFill(
+    test.describe('read at twice the pixel density', () => {
+      // A tick's strokes are thinner than a pixel at 1x: a dozen
+      // anti-aliased pixels, whose summed ink a rasteriser's rounding can
+      // tip by one. At 2x the same tick spans four times the pixels.
+      test.use({ deviceScaleFactor: 2 });
+
+      test('the ticks of a checked checkbox, tree row and tile show on the highlight', async ({
         page,
-        page.getByTestId('cb-simple').locator('.tm-checkbox__box'),
-        'the checkbox tick',
-      );
+      }) => {
+        // Section: tm-checkbox.
+        await page.goto(storyUrl('checkbox'));
+        await page.getByTestId('cb-simple').getByRole('checkbox').check();
+        await settle(page);
+        const tick = { minInk: TICK_INK };
+        await expectInkOnFill(
+          page,
+          page.getByTestId('cb-simple').locator('.tm-checkbox__box'),
+          'the checkbox tick',
+          tick,
+        );
 
-      // Section: a selected row of a multiple-selection tree.
-      await page.goto(storyUrl('tree'));
-      const selected = page
-        .getByTestId('tree-multiple')
-        .locator('[role="treeitem"][aria-selected="true"] > .tm-tree__row .tm-tree__check')
-        .first();
-      await expect(selected).toBeVisible();
-      await settle(page);
-      // The tree's and the tiles' ticks are smaller than the checkbox's: a
-      // dozen anti-aliased pixels, about five pixels of ink in all.
-      const smallTick = { minInk: 4 };
-      await expectInkOnFill(page, selected, 'the tree row tick', smallTick);
+        // Section: a selected row of a multiple-selection tree.
+        await page.goto(storyUrl('tree'));
+        const selected = page
+          .getByTestId('tree-multiple')
+          .locator('[role="treeitem"][aria-selected="true"] > .tm-tree__row .tm-tree__check')
+          .first();
+        await expect(selected).toBeVisible();
+        await settle(page);
+        await expectInkOnFill(page, selected, 'the tree row tick', tick);
 
-      // Section: a selected tile.
-      await page.goto(storyUrl('tiles'));
-      const tile = page.getByTestId('tiles').locator('.tm-tiles__item[data-index="1"]');
-      await tile.locator('[role="checkbox"]').click();
-      await expect(tile).toHaveAttribute('aria-selected', 'true');
-      await settle(page);
-      await expectInkOnFill(page, tile.locator('.tm-tiles__box'), 'the tile tick', smallTick);
+        // Section: a selected tile.
+        await page.goto(storyUrl('tiles'));
+        const tile = page.getByTestId('tiles').locator('.tm-tiles__item[data-index="1"]');
+        await tile.locator('[role="checkbox"]').click();
+        await expect(tile).toHaveAttribute('aria-selected', 'true');
+        await settle(page);
+        await expectInkOnFill(page, tile.locator('.tm-tiles__box'), 'the tile tick', tick);
+      });
     });
 
     test('the range fill and its hit headers show their text on its plate', async ({ page }) => {
@@ -172,6 +208,38 @@ for (const scheme of ['light', 'dark'] as const) {
         inkColour: 'LinkText',
         plateColour: 'Canvas',
       });
+    });
+
+    test('a sort arrow on a hit column header shows on the highlight', async ({ page }) => {
+      await gotoGrid(page, 'grid-search-page');
+      await colHeader(page, 1).click();
+      await expect(page.getByTestId('order')).toHaveText('name asc');
+      // The active cell's column header is hit.
+      await cell(page, 2, 1).click();
+      await expect(colHeader(page, 1)).toHaveClass(/tm-grid__colhdr--hit/);
+      await settle(page);
+      await expectInkOnFill(
+        page,
+        colHeader(page, 1).locator('.tm-grid__sort-glyph').first(),
+        'the sort arrow',
+        { inkColour: 'SelectedItemText' },
+      );
+    });
+
+    test('the chevron of a tree row in the range fill shows on the highlight', async ({ page }) => {
+      await gotoGrid(page, 'tree-grid');
+      // Rows 0-1 x columns 0-1, the active cell at (1,1): the first row's
+      // hierarchy cell is in the fill without the active ring.
+      await cell(page, 1, 1).click();
+      await page.keyboard.press('Shift+ArrowUp');
+      await page.keyboard.press('Shift+ArrowLeft');
+      await expect(selectedCells(page)).toHaveCount(4);
+      await settle(page);
+      await expectInkOnFill(
+        page,
+        cell(page, 0, 0).locator('.tm-grid__expander-glyph'),
+        'the chevron',
+      );
     });
 
     test('a checked row shows its text on its plate', async ({ page }) => {

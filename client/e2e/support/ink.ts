@@ -40,6 +40,12 @@ export interface TmInkReading {
   readonly span: number;
   /** The pixels inside that bounding box that still show the fill unchanged. */
   readonly fillBetween: number;
+  /**
+   * The pixels inside that bounding box that show the plate colour as
+   * painted, when the read names one (0 otherwise): the backplate around
+   * the strokes, where ink drawn on the fill leaves none.
+   */
+  readonly plateBetween: number;
 }
 
 /** The attribute that marks the box whose ink {@link readInk} hides for its reference shot. */
@@ -155,18 +161,23 @@ export async function readInk(
     }
   }
 
-  // Section: how much of the fill still shows between the changed pixels.
+  // Section: how much of the fill, and of the plate, shows between the
+  // changed pixels.
   let span = 0;
   let fillBetween = 0;
+  let plateBetween = 0;
   for (let y = top; y <= bottom; y += 1) {
     for (let x = left; x <= right; x += 1) {
       span += 1;
       if (!differs(x, y)) {
         fillBetween += 1;
       }
+      if (plate !== null && near(shown.at(x, y), plate)) {
+        plateBetween += 1;
+      }
     }
   }
-  return { ink: Math.round(mass), changed, span, fillBetween };
+  return { ink: Math.round(mass), changed, span, fillBetween, plateBetween };
 }
 
 /** Options of {@link expectInkShows} and {@link expectInkOnFill}. */
@@ -177,9 +188,11 @@ export interface TmInkExpectation extends TmInkReadOptions {
 
 /**
  * Asserts that the ink of `target` shows in its colour, on the fill or on a
- * backplate as `options` says: an ink mass of at least `minInk`. `what`
- * names the box in the failure messages. Soft: a test reads every box and
- * reports each one that fails.
+ * backplate as `options` says: an ink mass of at least `minInk`, and, read
+ * against a plate colour, that plate showing through more than a quarter of
+ * the box the ink spans, so ink drawn straight on the fill does not pass for
+ * ink on its plate. `what` names the box in the failure messages. Soft: a
+ * test reads every box and reports each one that fails.
  */
 export async function expectInkShows(
   page: Page,
@@ -192,6 +205,11 @@ export async function expectInkShows(
   expect
     .soft(reading.ink, `${what} shows ${options.inkColour ?? 'HighlightText'} ink`)
     .toBeGreaterThanOrEqual(minInk);
+  if (options.plateColour !== undefined) {
+    expect
+      .soft(reading.plateBetween, `${what} shows its ${options.plateColour} plate around the ink`)
+      .toBeGreaterThan(reading.span / 4);
+  }
   return reading;
 }
 

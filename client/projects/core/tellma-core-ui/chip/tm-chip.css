@@ -199,3 +199,11 @@
   outline-offset: var(--focus-ring-offset);
   box-shadow: var(--focus-ring);
 }
+
+@media (forced-colors: active) {
+  /* The chip's fill is forced to Canvas: on a highlighted grid cell its
+     glyphs take its own ink, not the cell's overlay ink (tm-icon). */
+  :host {
+    --tm-grid-overlay-ink: initial;
+  }
+}
