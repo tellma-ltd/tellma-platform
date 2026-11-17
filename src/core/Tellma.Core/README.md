@@ -1163,8 +1163,9 @@ composes one guarded round trip:
 2. **The rows**: every mapped property, every child collection at any depth, and the related
    projection of each navigation the stack's details expansion follows from the root (up to
    `MaxExpandDepth` navigations), restricted to the captured ids. What a collection's rows point at
-   is read by one grouped read per collection level, keyed back to the visible ids, and merged into
-   the related entities, each entity once (`DetailsProjections`, cached per stack and schema).
+   is read by one grouped read per collection level and leading navigation, keyed back to the
+   visible ids, so each target is read once however many rows point at it, and merged into the
+   related entities, each entity once (`DetailsProjections`, cached per stack and schema).
 3. **The extras**: the service's `ContributeDetails` when it declares a requested extra, then each
    `IDetailsContributor<T>` given the requested extras it declares. An extra added that its class
    does not declare, that the request does not include, or twice, raw text that declares a write or
@@ -1180,9 +1181,11 @@ composes one guarded round trip:
 The steps after the round trip run in the cultures of the context the batch was composed under.
 Exhausted retries are `DependencyUnavailableException` as the query's are, while an arithmetic
 failure in a details read passes through as the fault it is: no caller's Queryex text is involved.
-`all` reads a cacheable stack's list from `ICacheableEntities` with no round trip when it is warm;
-requested extras ride one details round trip over the cached ids, and a table beyond the cache's
-row limit is read whole, in key order, on every call.
+`all` reads a cacheable stack's list from `ICacheableEntities` with no round trip when it is warm,
+each row a shallow copy of the cached one in a list of the call's own, so a caller's edits never
+reach the rows the tenant's other readers are served; requested extras ride one details round trip
+over the cached ids, and a table beyond the cache's row limit is read whole, in key order, on every
+call.
 
 The search (`QuerySearch`) is one disjunction over declared parameters, so its filter takes a few
 constant shapes per root: each searchable column by its kind (`contains` or `startsWith`), or the

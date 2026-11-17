@@ -12,13 +12,15 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Crud.Details
 {
     // The projection is spec 0015 §5.3 step 2 with spec 0016's related projection; what children
-    // point at is loaded through a grouped read per collection, keyed to the visible ids, because an
-    // entity query selects declared columns only below its root (spec 0012 §5.2).
+    // point at is loaded through a grouped read per collection and leading navigation, keyed to the
+    // visible ids, because an entity query selects declared columns only below its root (spec 0012
+    // §5.2); one read per navigation groups by that navigation's targets alone.
     /// <summary>
     ///     What a stack's details read selects under one tenant schema: every mapped property of the
     ///     root, every child collection at any depth, and the related projection of every navigation
-    ///     its details expansion follows, the root's on its own select and each collection's on a
-    ///     grouped read of its own. Built once per stack and schema. A singleton.
+    ///     its details expansion follows, the root's on its own select and each collection's on
+    ///     grouped reads of its own, one per leading navigation. Built once per stack and schema. A
+    ///     singleton.
     /// </summary>
     /// <param name="registry">The stack registry, which holds each entity's related projection.</param>
     /// <param name="metadata">The tenant model's entity metadata.</param>
@@ -63,20 +65,21 @@ namespace Tellma.Core.Crud.Details
                 Expand(path.Split('.', StringSplitOptions.TrimEntries), entity, root, stack.Limits.MaxExpandDepth, schema, rootSelect, levels);
             }
 
-            // --- Each level below the root: one grouped read of the distinct targets its rows point at ---
+            // --- Each level below the root: one grouped read per leading navigation, so each reads the
+            // distinct targets of that navigation alone, however many rows point at them ---
             List<DetailsTargets> targets = [];
             foreach ((string collection, Level level) in levels)
             {
-                if (level.Select.Count > 0)
+                foreach (SelectItems select in level.Navigations.Values.Where(static select => select.Count > 0))
                 {
-                    targets.Add(new DetailsTargets(collection, level.Child, level.Root, level.KeyPath, string.Join(", ", level.Select)));
+                    targets.Add(new DetailsTargets(collection, level.Child, level.Root, level.KeyPath, string.Join(", ", select)));
                 }
             }
 
             return new DetailsProjection(string.Join(", ", rootSelect), children, targets);
         }
 
-        /// <summary>Adds an expansion path's projection to the root's select or to its level's grouped read.</summary>
+        /// <summary>Adds an expansion path's projection to the root's select or to the grouped read of its level's leading navigation.</summary>
         /// <param name="segments">The path's segments.</param>
         /// <param name="entity">The stack's entity.</param>
         /// <param name="root">The stack's schema entity.</param>
@@ -120,7 +123,7 @@ namespace Tellma.Core.Crud.Details
                 return;
             }
 
-            // --- Where the select items go: the root's own select, or the level's grouped read ---
+            // --- Where the select items go: the root's own select, or the grouped read of the level's leading navigation ---
             SelectItems select;
             EntityDescriptor from;
             if (walked.Count == 0)
@@ -142,7 +145,7 @@ namespace Tellma.Core.Crud.Details
                     levels[key] = level = new Level(child, childRoot, keyPath);
                 }
 
-                select = level.Select;
+                select = level.For(navigations[0].Navigation);
                 from = level.Root;
             }
 
@@ -227,7 +230,7 @@ namespace Tellma.Core.Crud.Details
             }
         }
 
-        /// <summary>One level below the root: its rows' entity and what their navigations read.</summary>
+        /// <summary>One level below the root: its rows' entity and what each of their leading navigations reads.</summary>
         /// <param name="child">The level's entity.</param>
         /// <param name="root">Its schema entity.</param>
         /// <param name="keyPath">The path from its rows to the root's key.</param>
@@ -236,14 +239,27 @@ namespace Tellma.Core.Crud.Details
             /// <summary>The level's entity.</summary>
             public EntityMetadata Child { get; } = child;
 
-            /// <summary>Its schema entity, the grouped read's root.</summary>
+            /// <summary>Its schema entity, each grouped read's root.</summary>
             public EntityDescriptor Root { get; } = root;
 
             /// <summary>The path from its rows to the root's key.</summary>
             public string KeyPath { get; } = keyPath;
 
-            /// <summary>The grouped read's items: the related projections its navigations reach.</summary>
-            public SelectItems Select { get; } = new([]);
+            /// <summary>Each grouped read's items, by the leading navigation it reads through, in first-seen order.</summary>
+            public OrderedDictionary<string, SelectItems> Navigations { get; } = new(StringComparer.Ordinal);
+
+            /// <summary>The grouped read of a leading navigation, added on first use.</summary>
+            /// <param name="navigation">The navigation.</param>
+            /// <returns>Its items.</returns>
+            public SelectItems For(string navigation)
+            {
+                if (!Navigations.TryGetValue(navigation, out SelectItems? select))
+                {
+                    Navigations[navigation] = select = new SelectItems([]);
+                }
+
+                return select;
+            }
         }
 
         /// <summary>Select items in first-added order, a repeat ignored whatever its case.</summary>
@@ -295,14 +311,14 @@ namespace Tellma.Core.Crud.Details
     /// <summary>What a stack's details read selects under one tenant schema.</summary>
     /// <param name="RootSelect">The root's select: every declared property, then the related projection of each navigation the root's expansion follows.</param>
     /// <param name="Children">Every child collection at any depth, dotted, parents first.</param>
-    /// <param name="Targets">One grouped read per collection level whose rows point at related entities.</param>
+    /// <param name="Targets">One grouped read per collection level and leading navigation its rows point through.</param>
     internal sealed record DetailsProjection(string RootSelect, IReadOnlyList<string> Children, IReadOnlyList<DetailsTargets> Targets);
 
-    /// <summary>The grouped read of the distinct related entities one collection level points at.</summary>
+    /// <summary>The grouped read of the distinct related entities one collection level points at through one leading navigation.</summary>
     /// <param name="Collection">The collection's dotted path from the root.</param>
     /// <param name="Child">The level's entity.</param>
     /// <param name="Root">Its schema entity, the read's root.</param>
     /// <param name="KeyPath">The path from the level's rows to the root's key, which the visible ids restrict.</param>
-    /// <param name="Select">The read's items: the related projections the level's navigations reach, which group it.</param>
+    /// <param name="Select">The read's items: the related projections reached through the navigation, which group it.</param>
     internal sealed record DetailsTargets(string Collection, EntityMetadata Child, EntityDescriptor Root, string KeyPath, string Select);
 }

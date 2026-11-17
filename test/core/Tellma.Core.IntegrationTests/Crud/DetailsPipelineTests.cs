@@ -23,7 +23,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     filtered grant in one round trip once the caches are warm, a hidden row read as a missing
     ///     one, the related entities of the rows and of their collections, an arithmetic failure in
     ///     an extra passed through, a tree's roots and children in one round trip, a level beyond
-    ///     the ceiling refused, and a cacheable list served with no round trip until its tag moves.
+    ///     the ceiling refused, a cacheable list served with no round trip until its tag moves and its
+    ///     extras in one, and a list beyond its cache limit probed and read whole on every call.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -172,6 +173,12 @@ namespace Tellma.Core.IntegrationTests.Crud
                 (EntitiesResult<Lookup> all, int roundTrips) = await MeasureAsync(warm, () => LookupService(warm).GetAllCachedAsync(request, Token));
                 Assert.Equal(0, roundTrips);
                 Assert.Equal(["L1", "L2"], all.Entities.Select(static lookup => lookup.Code));
+
+                // The extras ride one details round trip over the cached rows.
+                (EntitiesResult<Lookup> permitted, int extraTrips) = await MeasureAsync(
+                    warm, () => LookupService(warm).GetAllCachedAsync(new DetailsRequest { Include = ["permissions"] }, Token));
+                Assert.Equal(1, extraTrips);
+                Assert.Equal([1L, 2L], permitted.Ids);
             }
 
             // --- A row written behind the cache with the tag moved, then any batch that reads the tags ---
@@ -184,6 +191,28 @@ namespace Tellma.Core.IntegrationTests.Crud
             EntitiesResult<Lookup> fresh = await LookupService(scope).GetAllCachedAsync(request, Token);
 
             Assert.Equal(["L1", "L2", "L3"], fresh.Entities.Select(static lookup => lookup.Code));
+        }
+
+        [Fact]
+        public async Task A_list_beyond_its_cache_limit_is_probed_and_read_whole_in_two_round_trips_on_every_call()
+        {
+            string subject = await fixture.SeedCallerAsync(ConnectDatabase.TenantB, (Lookups, AccessActions.Read, null));
+            DetailsRequest request = new();
+
+            // The first scope warms the caller's connection and set.
+            await using (AsyncServiceScope cold = await fixture.ScopeAsync(subject, ConnectDatabase.TenantB))
+            {
+                _ = await LookupService(cold).GetAllCachedAsync(request, Token);
+            }
+
+            // --- Each call: the capped probe finds the list oversized, then the whole read ---
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, ConnectDatabase.TenantB);
+            (EntitiesResult<Lookup> first, int firstTrips) = await MeasureAsync(scope, () => LookupService(scope).GetAllCachedAsync(request, Token));
+            (EntitiesResult<Lookup> second, int secondTrips) = await MeasureAsync(scope, () => LookupService(scope).GetAllCachedAsync(request, Token));
+
+            Assert.Equal((2, 2), (firstTrips, secondTrips));
+            Assert.Equal(Enumerable.Range(1, DetailsPipelineDatabase.OversizedLookups).Select(static id => (long)id), first.Ids);
+            Assert.Equal(first.Ids, second.Ids);
         }
 
         // --- Helpers ---

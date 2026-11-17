@@ -70,7 +70,7 @@ namespace Tellma.Core.Tests.Crud.Details
         public List<DmOrderLine>? Lines { get; set; }
     }
 
-    /// <summary>An order's line, pointing at the customer it ships to.</summary>
+    /// <summary>An order's line, pointing at the customers it ships to and bills.</summary>
     [Table("OrderLines", Schema = "dm")]
     [TableType]
     public class DmOrderLine : ChildEntity
@@ -82,6 +82,10 @@ namespace Tellma.Core.Tests.Crud.Details
         /// <summary>The customer the line ships to.</summary>
         [References(typeof(DmCustomer))]
         public int? ShipToId { get; set; }
+
+        /// <summary>The customer the line bills.</summary>
+        [References(typeof(DmCustomer))]
+        public int? BillToId { get; set; }
 
         /// <summary>The amount.</summary>
         [Column(TypeName = "decimal(19,4)")]

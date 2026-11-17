@@ -116,9 +116,9 @@ namespace Tellma.Core.Crud.Details
         }
 
         /// <summary>
-        ///     Reads every row of a cacheable stack from the cache, with no round trip on a warm one; a
-        ///     table beyond the cache's row limit is read whole, and requested extras ride one details
-        ///     round trip over the rows.
+        ///     Reads every row of a cacheable stack from the cache, with no round trip on a warm one and
+        ///     each row a copy of the cached one; a table beyond the cache's row limit is read whole,
+        ///     and requested extras ride one details round trip over the rows.
         /// </summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
         /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -212,10 +212,19 @@ namespace Tellma.Core.Crud.Details
             {
                 if (request.Include.Count == 0)
                 {
+                    // The cached rows are shared by every scope of the tenant: each call gets its own
+                    // copies in a list of its own, so a caller that edits a row, or the list, edits
+                    // neither the cache nor what the next reader is served.
+                    List<TEntity> copies = new(list.Items.Count);
+                    foreach (TEntity item in list.Items)
+                    {
+                        copies.Add((TEntity)item.ShallowCopy());
+                    }
+
                     return new EntitiesResult<TEntity>
                     {
-                        Ids = [.. list.Items.Select(static entity => long.CreateChecked(entity.Id))],
-                        Entities = list.Items,
+                        Ids = [.. copies.Select(static entity => long.CreateChecked(entity.Id))],
+                        Entities = copies,
                     };
                 }
 

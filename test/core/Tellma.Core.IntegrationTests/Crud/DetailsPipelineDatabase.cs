@@ -20,8 +20,9 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     The two tenant databases of <see cref="ConnectDatabase" />, served by an instance that adds
     ///     a details contributor to the widget, with the first tenant seeded once with the rows the
     ///     details reads cover: four widgets with parts, a small tree of nodes with links between
-    ///     them, a root with more children than a level may return, and two lookups. Each test seeds
-    ///     its own caller and roles.
+    ///     them, a root with more children than a level may return, and two lookups, and the second
+    ///     tenant with more lookups than the list's cache holds. Each test seeds its own caller and
+    ///     roles.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class DetailsPipelineDatabase(SqlServerFixture sql) : IAsyncLifetime
@@ -31,6 +32,9 @@ namespace Tellma.Core.IntegrationTests.Crud
 
         /// <summary>How many children the crowded root has: one beyond the default ceiling.</summary>
         public const int CrowdedChildren = 10_001;
+
+        /// <summary>How many lookups the second tenant holds: one beyond the list's cache limit of 50.</summary>
+        public const int OversizedLookups = 51;
 
         /// <summary>
         ///     The seed: widgets 1 to 4 (priced 10.5, none, 30 and 40), one or two parts each but the
@@ -73,6 +77,16 @@ namespace Tellma.Core.IntegrationTests.Crud
                 "(2, 'L2', N'Lookup 2', 1)"),
         ];
 
+        /// <summary>The second tenant's seed: lookups 1 to 51, one beyond the list's cache limit.</summary>
+        private static readonly string OversizedSeed = string.Create(
+            CultureInfo.InvariantCulture,
+            $"""
+            WITH [Numbers] AS (SELECT TOP ({OversizedLookups}) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [I] FROM sys.all_columns)
+            INSERT INTO [fixture].[Lookups] ([Id], [Code], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
+            SELECT [I], CONCAT('L', [I]), CONCAT(N'Lookup ', [I]), 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}
+            FROM [Numbers];
+            """);
+
         /// <summary>The instance that serves the tests; null until initialised.</summary>
         private ServiceProvider? _instance;
 
@@ -87,6 +101,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             await Connect.InitializeAsync();
             await Connect.ExecuteAsync(ConnectDatabase.TenantA, Seed);
+            await Connect.ExecuteAsync(ConnectDatabase.TenantB, OversizedSeed);
             _instance = Connect.CreateInstance(compose: static tellma => tellma.AddFeature(new WidgetDetailsFeature()));
         }
 
@@ -101,12 +116,13 @@ namespace Tellma.Core.IntegrationTests.Crud
             await Connect.DisposeAsync();
         }
 
-        /// <summary>A request scope of the first tenant on the instance, for a caller.</summary>
+        /// <summary>A request scope of a tenant on the instance, for a caller.</summary>
         /// <param name="subject">The caller's subject.</param>
+        /// <param name="tenantId">The tenant; the first when not given.</param>
         /// <returns>The scope.</returns>
-        public Task<AsyncServiceScope> ScopeAsync(string subject)
+        public Task<AsyncServiceScope> ScopeAsync(string subject, int tenantId = ConnectDatabase.TenantA)
         {
-            return Connect.ScopeAsync(subject, services: Instance);
+            return Connect.ScopeAsync(subject, tenantId: tenantId, services: Instance);
         }
 
         /// <summary>Seeds a caller of the first tenant who is a member of one role holding the permissions.</summary>
@@ -119,6 +135,20 @@ namespace Tellma.Core.IntegrationTests.Crud
             await Connect.SeedMembershipAsync(userId, roleId);
             await Connect.BumpPermissionsAsync(userId);
             return (userId, subject);
+        }
+
+        /// <summary>Seeds a caller of a tenant who is a member of one role holding the permissions.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="permissions">The role's permissions: a resource, an action and a filter, null for none.</param>
+        /// <returns>The caller's subject.</returns>
+        public async Task<string> SeedCallerAsync(int tenantId, params (string Resource, string Action, string? Filter)[] permissions)
+        {
+            int userId = Connect.NextUserId();
+            string subject = string.Create(CultureInfo.InvariantCulture, $"sub-{userId}");
+            await Connect.SeedUserAsync(tenantId, userId, subject, "Caller");
+            int roleId = await Connect.SeedRoleAsync(tenantId, permissions);
+            await Connect.SeedMembershipAsync(userId, roleId, tenantId: tenantId);
+            return subject;
         }
 
         /// <summary>The feature that attaches <see cref="WidgetDetails" /> to the fixture's widget.</summary>

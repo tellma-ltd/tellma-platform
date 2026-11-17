@@ -83,17 +83,37 @@ namespace Tellma.Core.Tests.Crud.Details
             Assert.Equal(("Id", captured), (Assert.Single(query.Restrictions).Path, query.Restrictions[0].TableSource));
             Assert.Contains("Customer.Id", query.Select, StringComparison.Ordinal);
 
-            QuerySpec targets = Assert.Single(batch.Of(ScriptedKind.Rows), static statement => statement.Spec.Aggregate).Spec;
-            Assert.Equal(DetailsModel.Orders + "Line", targets.Root.Name);
-            Assert.StartsWith("ShipTo.Id", targets.Select, StringComparison.Ordinal);
-            Assert.Equal(("OrderId", captured), (Assert.Single(targets.Restrictions).Path, targets.Restrictions[0].TableSource));
+            QuerySpec[] targets = [.. batch.Of(ScriptedKind.Rows).Where(static statement => statement.Spec.Aggregate).Select(static statement => statement.Spec)];
+            Assert.Equal(2, targets.Length);
+            Assert.All(targets, target => Assert.Equal(
+                (DetailsModel.Orders + "Line", "OrderId", captured),
+                (target.Root.Name, Assert.Single(target.Restrictions).Path, target.Restrictions[0].TableSource)));
 
             // --- The visible rows in request order, and the lines' customers each once ---
             Assert.Equal([3L, 1L], result.Ids);
             Assert.Equal([3, 1], result.Entities.Select(static order => order.Id));
             Assert.Null(result.Extras);
             RelatedEntitySet customers = Assert.Single(result.Related!.Sets.Values, static set => set.EntityType == typeof(DmCustomer));
-            Assert.Equal([7, 8], customers.Entities.Cast<DmCustomer>().Select(static customer => customer.Id).Order());
+            Assert.Equal([7, 8, 9], customers.Entities.Cast<DmCustomer>().Select(static customer => customer.Id).Order());
+        }
+
+        [Fact]
+        public async Task Each_navigation_of_a_level_is_its_own_grouped_read_so_a_target_is_read_once_however_many_lines_point_at_it()
+        {
+            _rig.Grant((DetailsModel.Orders, AccessActions.Read, null));
+            Script(main: [1], orders: [Order(1, "A")]);
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            _ = await Orders(scope).GetByIdAsync(1, new DetailsRequest(), Token);
+
+            // Grouped by one navigation's columns alone, a read's rows are that navigation's distinct
+            // targets: a customer every line ships to is one row, whatever the lines bill.
+            ScriptedBatch batch = Assert.Single(_rig.Script.Batches);
+            string[] selects = [.. batch.Of(ScriptedKind.Rows).Where(static statement => statement.Spec.Aggregate).Select(static statement => statement.Spec.Select)];
+            Assert.Equal(2, selects.Length);
+            Assert.Equal(["ShipTo.", "BillTo."], selects.Select(static select => select[..7]));
+            Assert.All(selects, select => Assert.All(select.Split(", "), item => Assert.StartsWith(select[..7], item, StringComparison.Ordinal)));
+            Assert.Equal(1, _rig.Script.RoundTrips);
         }
 
         [Fact]
@@ -264,6 +284,18 @@ namespace Tellma.Core.Tests.Crud.Details
         }
 
         [Fact]
+        public async Task A_level_of_exactly_the_ceiling_is_returned_whole()
+        {
+            _rig.Grant((DetailsModel.Nodes, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page(1, 2, 3, 4, 5));
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            QueryRowSet level = await Nodes(scope).GetByParentIdsAsync(new ParentIdsRequest([1], null, null, null), Token);
+
+            Assert.Equal([1, 2, 3, 4, 5], (int[])level.GetBuffer(0));
+        }
+
+        [Fact]
         public async Task A_level_beyond_the_ceiling_or_too_many_parents_is_refused()
         {
             _rig.Grant((DetailsModel.Nodes, AccessActions.Read, null));
@@ -298,13 +330,40 @@ namespace Tellma.Core.Tests.Crud.Details
             Assert.Empty(_rig.Script.Batches);
             EntitiesResult<DmCustomer> permitted = await customers.GetAllCachedAsync(new DetailsRequest { Include = ["permissions"] }, Token);
 
-            Assert.Same(items, plain.Entities);
+            Assert.Equal(["C1", "C2"], plain.Entities.Select(static customer => customer.Name));
             Assert.Equal([1L, 2L], plain.Ids);
             Assert.Equal(1, _rig.Script.RoundTrips);
             ScriptedStatement main = Assert.Single(_rig.Script.Batches[0].Of(ScriptedKind.Rows), static statement => statement.Options is RowQueryOptions);
             Assert.Equal([1, 2], main.KeySet<IdList>().Select(static row => row.Id));
             Assert.Equal([1L, 2L], permitted.Ids);
             Assert.Equal(/*lang=json,strict*/ """[{"id":1,"refused":{"save":"outside-filter"}},{"id":2,"refused":{}}]""", permitted.Extras!["permissions"].GetRawText());
+        }
+
+        [Fact]
+        public async Task A_warm_list_hands_each_call_copies_of_the_cached_rows_in_a_list_of_its_own()
+        {
+            _rig.Grant((DetailsModel.Customers, AccessActions.Read, null));
+            DmCustomer[] items = [Customer(1), Customer(2)];
+            _cache.Result = new CacheResult<CachedEntitySet<DmCustomer>>(
+                new CachedEntitySet<DmCustomer>(new VersionTag(Guid.Empty), QueryRig.Now, items, items.ToDictionary(static item => item.Id)),
+                new VersionTag(Guid.Empty),
+                CacheOutcome.Hit);
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            EntitiesResult<DmCustomer> first = await Customers(scope).GetAllCachedAsync(new DetailsRequest(), Token);
+
+            // --- Equal rows, never the cached instances; then a caller edits a row and the list ---
+            Assert.Equal(items.Select(static item => (item.Id, item.Name)), first.Entities.Select(static row => (row.Id, row.Name)));
+            Assert.All(first.Entities, row => Assert.DoesNotContain(items, item => ReferenceEquals(item, row)));
+            first.Entities[0].Name = "Edited";
+            IList<DmCustomer> list = Assert.IsAssignableFrom<IList<DmCustomer>>(first.Entities);
+            list.Clear();
+
+            // --- The cache, and the next warm read, are as they were ---
+            EntitiesResult<DmCustomer> next = await Customers(scope).GetAllCachedAsync(new DetailsRequest(), Token);
+            Assert.Equal(["C1", "C2"], items.Select(static item => item.Name));
+            Assert.Equal(["C1", "C2"], next.Entities.Select(static row => row.Name));
+            Assert.Empty(_rig.Script.Batches);
         }
 
         [Fact]
@@ -357,17 +416,27 @@ namespace Tellma.Core.Tests.Crud.Details
             }
         }
 
-        /// <summary>Answers the plan's reads: the main ids, the rows, and the lines' targets, customers 7 and 8 twice over.</summary>
+        /// <summary>Answers the plan's reads: the main ids, the rows, and the lines' targets: customers 7 and 8 shipped to (7 twice over, as two reads would), 9 billed.</summary>
         /// <param name="main">The visible ids the main read admits, in its order.</param>
         /// <param name="orders">The rows the entity query reads.</param>
         private void Script(int[] main, DmOrder[] orders)
         {
             _ = _rig.Script
                 .OnRows(statement => statement.Options is RowQueryOptions { CaptureKeys: true } ? QueryRig.Page(main)
-                    : statement.Spec.Aggregate ? new RowPage(PathRows(["ShipTo.Id"], [7], [8], [7]), null, null, null)
+                    : statement.Spec.Aggregate ? Targets(statement.Spec.Select)
                     : QueryRig.Render(statement.Spec.Filter).Contains(SaveFilter, StringComparison.Ordinal) ? QueryRig.Page(1)
                     : QueryRig.Page(main))
                 .OnQuery(_ => orders);
+        }
+
+        /// <summary>The distinct targets a level's grouped read returns, by the navigation its select reads through.</summary>
+        /// <param name="select">The read's select.</param>
+        /// <returns>The page.</returns>
+        private static RowPage Targets(string select)
+        {
+            return select.StartsWith("ShipTo.", StringComparison.Ordinal)
+                ? new RowPage(PathRows(["ShipTo.Id"], [7], [8], [7]), null, null, null)
+                : new RowPage(PathRows(["BillTo.Id"], [9]), null, null, null);
         }
 
         /// <summary>An order.</summary>
