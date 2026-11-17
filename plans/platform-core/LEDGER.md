@@ -96,14 +96,15 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-12 20:00 | 59 | 19 | 2026-11-17 20:00 | ΔU 11 since 11:50 (≈1.4/h, 5 heavy agents, Opus only). R 41: in flight PC-026/PC-033/PC-034 fix+int, PC-073/PC-036 impl; next ready PC-051, PC-057, PC-075 |
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
+| 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-070 | pc-3 | pc/PC-070 | integrated 906264cb (CI pending); gate: server, all integration suites green; D-109 | impl (Opus, high, launched 2026-11-17) | R1 done (Opus, high) | 2026-11-17 |
-| PC-B02 | pc-1 | pc/PC-B02 | batch: finders paused (Ahmad); resume wf_08f0b9d9-329 after the 20:00 UTC reset, then fixer | — | 3 finders (fable, xhigh) | 2026-11-17 |
-| PC-B03 | pc-2 | pc/PC-B03 | batch: finders paused (Ahmad); resume wf_08f0b9d9-329 after the 20:00 UTC reset, then fixer | — | 3 finders (fable, xhigh) | 2026-11-17 |
+| PC-B02 | pc-1 | pc/PC-B02 | batch: finders resumed after the reset (wf_08f0b9d9-329); fixer next | — | 3 finders (fable, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | batch: finders resumed after the reset (wf_08f0b9d9-329); fixer next | — | 3 finders (fable, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | impl | impl (Opus, xhigh, launched 2026-11-17) | — | 2026-11-17 |
 
 ## Fix items
 
@@ -171,8 +172,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
-| PC-B02 | 2 (PC-015…PC-031) | finders started at b346ad7c, paused by Ahmad; resume after the 20:00 UTC reset (D-110) | | |
-| PC-B03 | 3 (PC-032…PC-061) | finders started at b346ad7c, paused by Ahmad; resume after the 20:00 UTC reset (D-110) | | |
+| PC-B02 | 2 (PC-015…PC-031) | finders resumed 20:03 UTC after the reset (D-110) | | |
+| PC-B03 | 3 (PC-032…PC-061) | finders resumed 20:03 UTC after the reset (D-110) | | |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -353,9 +354,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | done (1e9332ad; CI 44110298098 integration-windows assembly-cleanup flake → PC-F56; green 44113932638 on 05467a2f) | 51ecfbf, 9c09560, adca5f3, 0184fa4, 43c2b4b, 8b799be, 1e9332a (pc/PC-068) | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
-| PC-070 | 0015-e | 1 | integrated (CI pending) | f77c6f9, 5b9c29b, c7589a3, 906264c (pc/PC-070) | | carry from PC-062: observe the faulted ActionContext.Persisted task |
+| PC-070 | 0015-e | 1 | done (906264cb; CI 44158133741 green) | f77c6f9, 5b9c29b, c7589a3, 906264c (pc/PC-070) | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
-| PC-072 | 0015-f | 1 | todo | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
+| PC-072 | 0015-f | 1 | impl | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
