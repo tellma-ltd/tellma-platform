@@ -124,12 +124,17 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   }
 }
 
-/** Settles until a condition holds: the engine chunk loads asynchronously. */
+/**
+ * Settles until a condition holds, for up to four seconds (inside a test's
+ * own time limit): the engine chunk and the fonts load asynchronously, and
+ * slower while other suites run.
+ */
 async function settleUntil(
   fixture: ComponentFixture<unknown>,
   condition: () => Promise<boolean>,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 50 && !(await condition()); attempt++) {
+  const deadline = performance.now() + 4_000;
+  while (!(await condition()) && performance.now() < deadline) {
     await settle(fixture);
   }
 }
@@ -229,6 +234,11 @@ function quietErrors() {
 }
 
 describe('TmChart', () => {
+  // The engine chunk's first import, cold, can take seconds while other
+  // suites share the browser; it is loaded once here, so each test's wait
+  // covers a draw, not the download.
+  beforeAll(() => import('./internal/chart-engine'), 60_000);
+
   describe('the plot', () => {
     it('is a figure holding a named, described image out of the tab order', async () => {
       const { chart, element } = await setup();
