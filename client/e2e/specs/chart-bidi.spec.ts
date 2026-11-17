@@ -5,6 +5,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -13,7 +14,9 @@ import { storyUrl } from '../support/story-map';
  * takes its direction from CSS exactly as its runs drawn apart do, each in
  * its own direction and placed in the base direction's order — in both
  * page directions, for display names by parts, for negative values and
- * shares in Arabic-Indic digits, and for a tooltip line. Canvas pixels are
+ * shares in Arabic-Indic digits, and for a tooltip line. Then the same
+ * through the chart's engine: every label charts in Arabic and in Egyptian
+ * Arabic paint, data labels of negative values included. Canvas pixels are
  * the only place the marks live, so they are compared as pixels.
  */
 
@@ -71,7 +74,9 @@ async function open(page: Page): Promise<void> {
   await expect(page.getByTestId('bidi-drawn')).toHaveText('drawn');
 }
 
-test('@cross-engine every canvas string draws as its runs drawn apart, in both directions', async ({ page }) => {
+test('@cross-engine every canvas string draws as its runs drawn apart, in both directions', async ({
+  page,
+}) => {
   await open(page);
   for (const id of CASES) {
     for (const direction of ['ltr', 'rtl'] as const) {
@@ -94,3 +99,72 @@ test('@cross-engine the marks are what keep the runs apart', async ({ page }) =>
     expect(differing, id).toBeGreaterThan(0);
   }
 });
+
+/** One label the chart's engine drew, as the story's probe compared it. */
+interface ProbedLabel {
+  /** The label without its marks. */
+  readonly text: string;
+  /** Pixels that differ between the engine's drawing and the runs drawn apart. */
+  readonly differing: number;
+  /** Pixels the label itself paints. */
+  readonly painted: number;
+  /** Pixels elements painted after the label cover, left out of both counts. */
+  readonly covered: number;
+}
+
+for (const dir of ['ltr', 'rtl'] as const) {
+  test(`@cross-engine every label the chart's engine draws equals its runs drawn apart (${dir})`, async ({
+    page,
+  }) => {
+    // Through the facade: the engine lays each marked label out, cuts it into
+    // spans and paints it where its component puts it. The probe repaints the
+    // scene without each label, draws its runs apart where the engine
+    // anchored it, and compares the canvas pixel for pixel.
+    await page.goto(storyUrl('chart-bidi', { dir }));
+    for (const id of [
+      'facade-column-ar',
+      'facade-pie-ar',
+      'facade-column-ar-eg',
+      'facade-pie-ar-eg',
+    ]) {
+      await expect(page.getByTestId(id).locator('canvas').first()).toBeVisible();
+    }
+    await appStable(page);
+    await page.getByTestId('bidi-probe').click();
+    await expect(page.getByTestId('bidi-facade')).not.toBeEmpty();
+    const results = JSON.parse(
+      (await page.getByTestId('bidi-facade').textContent()) ?? '{}',
+    ) as Record<string, ProbedLabel[]>;
+    for (const [chart, labels] of Object.entries(results)) {
+      const texts = labels.map((label) => label.text);
+      // The mixed labels are among those compared.
+      if (chart.startsWith('facade-column')) {
+        expect(texts, `${chart} category by parts`).toContain('1100 النقدية');
+        expect(texts, `${chart} category, a name then a code`).toContain('Cash 1100');
+        expect(texts, `${chart} legend entry`).toContain('B2C أفراد');
+        const negative = chart.endsWith('-ar-eg') ? /^-[٠-٩٬]+$/ : /^-[0-9,]+$/;
+        expect(
+          texts.filter((text) => negative.test(text)).length,
+          `${chart} negative data labels`,
+        ).toBe(2);
+      } else {
+        expect(
+          texts.some((text) => text.startsWith('B2C أفراد')),
+          `${chart} slice label`,
+        ).toBe(true);
+      }
+      // Every span compares equal; one the engine laid out past the canvas'
+      // edge paints nothing in either drawing. The mixed labels do paint.
+      for (const label of labels) {
+        expect(label.differing, `${chart} "${label.text}"`).toBe(0);
+      }
+      const painted = labels.filter((label) => label.painted > 0);
+      expect(painted.length, `${chart} painted labels`).toBeGreaterThan(labels.length / 2);
+      for (const text of ['1100 النقدية', 'Cash 1100', 'B2C أفراد']) {
+        for (const label of labels.filter((candidate) => candidate.text === text)) {
+          expect(label.painted, `${chart} "${text}" paints`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+}

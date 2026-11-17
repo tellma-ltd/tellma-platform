@@ -12,6 +12,41 @@ import type { ɵTmChartTheme } from './chart-plot';
 // each token's resolved value (a hex, an oklch(), a color-mix()) is painted
 // on a one-pixel canvas and read back as rgba().
 
+/** The least contrast a mark keeps against the plot's ground (WCAG 1.4.11). */
+const MARK_CONTRAST = 3;
+
+/**
+ * The relative luminance of a colour as the theme resolves it,
+ * `rgba(r, g, b, a)`; `NaN` for a value left unresolved (no canvas).
+ */
+function luminance(color: string): number {
+  const [r, g, b] = color
+    .slice(5)
+    .split(',', 3)
+    .map((channel) => {
+      const value = Number(channel) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+  return color.startsWith('rgba(') ? 0.2126 * r + 0.7152 * g + 0.0722 * b : NaN;
+}
+
+/**
+ * The ramp's steps a mark may take: those that meet 3:1 against the
+ * ground. A ramp starts at a step near the ground's own lightness, so its
+ * faintest steps would draw near-invisible marks. All of them when fewer
+ * than two pass (one step would give every series the same colour) or the
+ * colours cannot be read.
+ */
+function markSteps(ramp: readonly string[], ground: string): readonly string[] {
+  const back = luminance(ground);
+  const passing = ramp.filter((color) => {
+    const front = luminance(color);
+    // An unreadable colour (NaN) fails no comparison, so it is kept.
+    return !((Math.max(front, back) + 0.05) / (Math.min(front, back) + 0.05) < MARK_CONTRAST);
+  });
+  return passing.length > 1 ? passing : ramp;
+}
+
 /** The pixel a colour is painted on and read back from; one per page. */
 let pixel: CanvasRenderingContext2D | null | undefined;
 
@@ -47,7 +82,7 @@ export function ɵtmResolveChartColor(value: string): string {
 
 /**
  * Reads the chart tokens off an element: the series and the ramp in their
- * fixed order, the diverging pair, the line and text colours, the threshold
+ * fixed order (the ramp's steps that meet 3:1 against the plot's ground only), the diverging pair, the line and text colours, the threshold
  * tones, the plot's ground, the tooltip, the decal colour and the font.
  *
  * @param element - The chart's plot element; its computed style is read.
@@ -58,9 +93,13 @@ export function ɵtmReadChartTheme(element: Element): ɵTmChartTheme {
   const read = (name: string): string => style.getPropertyValue(name).trim();
   const color = (name: string): string => ɵtmResolveChartColor(read(name));
   const fontSize = Number.parseFloat(read('--chart-font-size'));
+  const surface = color('--chart-surface');
   return {
     series: Array.from({ length: 8 }, (_, index) => color(`--chart-series-${index + 1}`)),
-    sequential: Array.from({ length: 7 }, (_, index) => color(`--chart-sequential-${index + 1}`)),
+    sequential: markSteps(
+      Array.from({ length: 7 }, (_, index) => color(`--chart-sequential-${index + 1}`)),
+      surface,
+    ),
     divergingNegative: color('--chart-diverging-negative'),
     divergingPositive: color('--chart-diverging-positive'),
     grid: color('--chart-grid'),
@@ -71,7 +110,7 @@ export function ɵtmReadChartTheme(element: Element): ɵTmChartTheme {
       warning: color('--chart-warning'),
       negative: color('--chart-negative'),
     },
-    surface: color('--chart-surface'),
+    surface,
     tooltipBg: color('--chart-tooltip-bg'),
     tooltipBorder: color('--chart-tooltip-border'),
     decal: color('--chart-decal'),

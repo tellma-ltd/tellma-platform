@@ -15,6 +15,7 @@ import {
   type ElementRef,
   inject,
   input,
+  linkedSignal,
   model,
   output,
   signal,
@@ -27,6 +28,7 @@ import { TmGrid, TmGridColumn, type TmGridRowActivation } from '@tellma/core-ui/
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { tmFormatNumber } from '@tellma/core-ui/l10n';
 import { ɵTmChartEnvironment } from './internal/chart-environment';
+import { ɵTM_CHART_ENGINE_LOADER } from './internal/chart-loader';
 import {
   ɵTM_CHART_LABEL_SLOT,
   ɵTM_CHART_SHARE_SLOT,
@@ -35,6 +37,7 @@ import {
   type ɵTmChartPointerModifiers,
   type ɵTmChartRenderRequest,
 } from './internal/chart-plot';
+import { tmValidateChartSpec } from './tm-chart-schema';
 import { TM_CHART_STRINGS_EN } from './tm-chart-strings';
 import type {
   TmChartMember,
@@ -70,6 +73,9 @@ const BADGE_TONES: Readonly<Record<TmChartThresholdTone, TmBadgeTone>> = {
   warning: 'warning',
   negative: 'error',
 };
+
+/** Set by Angular's development builds; production builds remove what it guards. */
+declare const ngDevMode: unknown;
 
 /** Numbers the per-instance ids, so two charts never share a description or a grid's state. */
 let nextInstance = 0;
@@ -262,8 +268,15 @@ export class TmChart {
   private readonly size = signal({ width: 0, height: 0 }, {
     equal: (a, b) => a.width === b.width && a.height === b.height,
   });
-  /** Set when the engine failed to load: the chart falls back to the table view. */
-  private readonly engineFailed = signal(false);
+  /** Loads the engine chunk. */
+  private readonly loadEngine = inject(ɵTM_CHART_ENGINE_LOADER);
+  /** Set when the engine chunk failed to load: every spec shows as a table from then on. */
+  private readonly loadFailed = signal(false);
+  /**
+   * Set when the engine failed to draw the spec: it shows as a table. A new
+   * spec clears it, so one bad spec does not hold the chart in the table.
+   */
+  private readonly renderFailed = linkedSignal({ source: this.spec, computation: () => false });
   /** The engine instance, once loaded, and the element it draws in. */
   private engine: { readonly instance: ɵTmChartEngine; readonly element: HTMLElement } | null = null;
   /** The pending engine load, if any. */
@@ -290,15 +303,27 @@ export class TmChart {
     ),
   );
 
-  /** Whether the engine can draw the spec: a plot type with something to draw. */
+  /**
+   * Whether the engine can draw the spec: a plot type with a point it can
+   * place, one whose members exist (and, for a pie, whose value is
+   * positive). Anything else shows as a table rather than as empty axes.
+   */
   protected readonly drawable = computed(() => {
     const spec = this.spec();
     if (!PLOT_TYPES.has(spec.type)) {
       return false;
     }
-    // A pie draws only its positive slices.
     const pie = spec.type === 'pie' || spec.type === 'doughnut';
-    return this.points().some((row) => !pie || row[2] > 0);
+    const categories = spec.dimensions[0]?.members.length ?? 0;
+    const series = pie ? undefined : spec.dimensions[1]?.members.length;
+    return this.points().some(
+      ([category, member, value]) =>
+        category !== null &&
+        category >= 0 &&
+        category < categories &&
+        (series === undefined || ((member ?? 0) >= 0 && (member ?? 0) < series)) &&
+        (!pie || value > 0),
+    );
   });
 
   /** What the chart shows now. */
@@ -309,7 +334,7 @@ export class TmChart {
     if (this.spec().type === 'card' && !this.asTable()) {
       return 'card';
     }
-    return this.asTable() || this.engineFailed() || !this.drawable() ? 'table' : 'plot';
+    return this.asTable() || this.loadFailed() || this.renderFailed() || !this.drawable() ? 'table' : 'plot';
   });
 
   /** The plot's accessible name: "{title}, {type} chart". */
@@ -320,13 +345,21 @@ export class TmChart {
 
   /** The plot's accessible description: the point count and the value range. */
   protected readonly description = computed(() => {
-    const values = this.points().map((row) => row[2]);
+    const points = this.points();
+    // A loop, not Math.min(...values): engines cap a call's argument count,
+    // and a chart may hold more points than that.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const [, , value] of points) {
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
     const format = this.spec().measure.format;
     const locale = this.locale();
     return this.translate('chart.description', {
-      count: values.length,
-      min: tmFormatNumber(Math.min(...values), locale, format),
-      max: tmFormatNumber(Math.max(...values), locale, format),
+      count: points.length,
+      min: tmFormatNumber(min, locale, format),
+      max: tmFormatNumber(max, locale, format),
     })();
   });
 
@@ -403,6 +436,17 @@ export class TmChart {
     // The chart's strings ship with it, beside the core table.
     ɵtmRegisterUiStrings('chart', TM_CHART_STRINGS_EN);
 
+    // Section: development builds report a spec the schema or its rules
+    // reject, which would otherwise show as a table or draw partially.
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+      effect(() => {
+        const problems = tmValidateChartSpec(this.spec());
+        if (problems.length > 0) {
+          console.error('tm-chart: the spec is not valid.', problems);
+        }
+      });
+    }
+
     // Section: the size: one observer, on whichever plot element is in the DOM.
     const observer =
       typeof ResizeObserver === 'function'
@@ -435,11 +479,7 @@ export class TmChart {
       }
       this.engineFor(element)
         .then((engine) => engine?.render(request))
-        .catch((error: unknown) => {
-          // A plot that cannot draw leaves the data readable as a table.
-          this.engineFailed.set(true);
-          console.error(error);
-        });
+        .catch((error: unknown) => this.failRender(error));
     });
 
     inject(DestroyRef).onDestroy(() => {
@@ -457,27 +497,38 @@ export class TmChart {
       return Promise.resolve(this.engine.instance);
     }
     this.releaseEngine();
-    const loading = import('./internal/chart-engine').then(
-      ({ ɵtmCreateChartEngine }) => {
+    const loading = this.loadEngine().then(
+      (create) => {
         if (this.destroyed || this.loading !== loading || this.plot()?.nativeElement !== element) {
           return null;
         }
-        const instance = ɵtmCreateChartEngine(element, (members, modifiers) =>
-          this.activate(members, modifiers),
+        const instance = create(
+          element,
+          (members, modifiers) => this.activate(members, modifiers),
+          (error) => this.failRender(error),
         );
         this.engine = { instance, element };
         this.loading = null;
         return instance;
       },
-      () => {
+      (error: unknown) => {
         // A chunk that fails to load leaves the data readable as a table.
         this.loading = null;
-        this.engineFailed.set(true);
+        this.loadFailed.set(true);
+        console.error(error);
         return null;
       },
     );
     this.loading = loading;
     return loading;
+  }
+
+  /** A plot that cannot draw leaves the data readable as a table, and says why in the console. */
+  private failRender(error: unknown): void {
+    if (!this.destroyed) {
+      this.renderFailed.set(true);
+      console.error(error);
+    }
   }
 
   /** Disposes the engine instance, if any, and forgets a pending load. */

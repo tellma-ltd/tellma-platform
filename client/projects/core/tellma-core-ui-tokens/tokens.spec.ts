@@ -691,6 +691,19 @@ describe('the chart palette', () => {
             expect(contrast(color, surface), tone).toBeGreaterThanOrEqual(3);
           }
         });
+
+        it('leaves the sequential palette three or more ramp steps at 3:1, the strongest last, and both diverging poles', () => {
+          // The chart spreads the ramp over the steps that pass, so a ramp
+          // with fewer would draw neighbouring series in one colour.
+          const ramp = [1, 2, 3, 4, 5, 6, 7].map((step) => tmResolveVar(vars, `--chart-sequential-${step}`)!);
+          const passing = ramp.filter((color) => contrast(color, surface) >= 3);
+          expect(passing.length).toBeGreaterThanOrEqual(3);
+          expect(contrast(ramp[6]!, surface), 'sequential 7').toBeGreaterThanOrEqual(3);
+          for (const pole of ['negative', 'positive']) {
+            const color = tmResolveVar(vars, `--chart-diverging-${pole}`)!;
+            expect(contrast(color, surface), `diverging ${pole}`).toBeGreaterThanOrEqual(3);
+          }
+        });
       });
     }
   }

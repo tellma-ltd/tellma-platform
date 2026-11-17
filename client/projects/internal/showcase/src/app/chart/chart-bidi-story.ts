@@ -3,10 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { afterNextRender, Component, ElementRef, signal, viewChildren } from '@angular/core';
+import { Directionality } from '@angular/cdk/bidi';
+import { afterNextRender, Component, ElementRef, inject, signal, viewChildren } from '@angular/core';
 
-import { ɵtmCanvasText, type ɵTmCanvasPiece } from '@tellma/core-ui/chart';
+import { TM_ACTIVE_LOCALE } from '@tellma/core-ui';
+import { TmButton } from '@tellma/core-ui/button';
+import { TmChart, ɵtmCanvasText, type TmChartSpec, type ɵTmCanvasPiece } from '@tellma/core-ui/chart';
 import { tmFormatNumber } from '@tellma/core-ui/l10n';
+
+import { probeChartLabels, type ProbedLabel } from './chart-bidi-probe';
 
 /** A text direction. */
 type Direction = 'ltr' | 'rtl';
@@ -53,6 +58,117 @@ const CASES: readonly BidiCase[] = [
   },
 ];
 
+/**
+ * Mixed labels through the chart itself: categories by parts (a code and an
+ * Arabic name, a Latin name and a code), a Latin label with brackets, series
+ * in Arabic and in Latin with Arabic, a negative value labelled on its mark,
+ * and a threshold labelled with its value.
+ */
+const COLUMN: TmChartSpec = {
+  type: 'column',
+  title: 'المبيعات',
+  dimensions: [
+    {
+      label: 'الحساب',
+      members: [
+        { label: '1100 النقدية', parts: ['1100', ' ', 'النقدية'] },
+        { label: 'Cash (USD)' },
+        { label: 'Cash 1100', parts: ['Cash', ' ', '1100'] },
+      ],
+    },
+    { label: 'نوع العميل', members: [{ label: 'شركات' }, { label: 'B2C أفراد', parts: ['B2C', ' ', 'أفراد'] }] },
+  ],
+  measure: { label: 'المبيعات', format: { maxDecimals: 0 } },
+  rows: [
+    [0, 0, 42000],
+    [0, 1, -35000],
+    [1, 0, 18000],
+    [1, 1, 27000],
+    [2, 0, -12500],
+    [2, 1, 9000],
+  ],
+  options: { labels: true, legend: 'top', thresholds: [{ value: 30000, tone: 'positive' }] },
+};
+
+/** Mixed slice labels: each slice's member and share. */
+const PIE: TmChartSpec = {
+  type: 'pie',
+  title: 'الحصص',
+  dimensions: [
+    {
+      label: 'نوع العميل',
+      members: [
+        { label: 'شركات' },
+        { label: 'B2C أفراد', parts: ['B2C', ' ', 'أفراد'] },
+        { label: 'Cash (USD)' },
+      ],
+    },
+  ],
+  measure: { label: 'المبيعات', format: { maxDecimals: 0 } },
+  rows: [
+    [0, null, 42000],
+    [1, null, 27000],
+    [2, null, 18000],
+  ],
+  options: { labels: true, legend: 'none' },
+};
+
+/** The facade's charts in one locale: a labelled column chart and a labelled pie. */
+const FACADE_TEMPLATE = `
+  <div class="demo-facade">
+    <tm-chart class="demo-facade-chart" [attr.data-testid]="'facade-column-' + id" [spec]="column" />
+    <tm-chart class="demo-facade-chart" [attr.data-testid]="'facade-pie-' + id" [spec]="pie" />
+  </div>
+`;
+
+/** The facade's charts' layout. */
+const FACADE_STYLES = `
+  .demo-facade {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .demo-facade-chart {
+    inline-size: 420px;
+    block-size: 260px;
+  }
+`;
+
+/** The facade's charts in Arabic, whose digits Chromium writes in Latin. */
+@Component({
+  selector: 'app-demo-bidi-ar',
+  imports: [TmChart],
+  providers: [{ provide: TM_ACTIVE_LOCALE, useValue: signal('ar') }],
+  template: FACADE_TEMPLATE,
+  styles: FACADE_STYLES,
+})
+class FacadeAr {
+  /** The locale's id in the charts' test ids. */
+  readonly id = 'ar';
+  /** The column chart. */
+  readonly column = COLUMN;
+  /** The pie. */
+  readonly pie = PIE;
+}
+
+/** The facade's charts in Egyptian Arabic, whose digits are Arabic-Indic. */
+@Component({
+  selector: 'app-demo-bidi-ar-eg',
+  imports: [TmChart],
+  providers: [{ provide: TM_ACTIVE_LOCALE, useValue: signal('ar-EG') }],
+  template: FACADE_TEMPLATE,
+  styles: FACADE_STYLES,
+})
+class FacadeArEg {
+  /** The locale's id in the charts' test ids. */
+  readonly id = 'ar-eg';
+  /** The column chart. */
+  readonly column = COLUMN;
+  /** The pie. */
+  readonly pie = PIE;
+}
+
 /** A run's direction, as the canvas text reads it: its first letter's, else left to right. */
 function runDirection(text: string): Direction {
   const letter = /\p{L}/u.exec(text)?.[0];
@@ -60,15 +176,22 @@ function runDirection(text: string): Direction {
 }
 
 /**
- * The canvas-text battery's page: each string drawn three ways, from
+ * The canvas-text battery's page. First, each string drawn three ways, from
  * each base direction. "Together" is the string the chart hands the
  * engine, drawn whole on a canvas that takes its direction from CSS;
  * "apart" draws each run on its own, in its own direction, placed in the
  * base direction's order (the base pieces in the base direction); "plain"
  * draws the pieces joined without marks. Together must equal apart
  * pixel for pixel in every engine.
+ *
+ * Then the same through the chart: charts in Arabic and in Egyptian Arabic,
+ * drawn by the engine in the page's direction. "Probe" compares every label
+ * the engine painted (categories, legend entries, data labels, the
+ * threshold's label, ticks, slice labels) with its runs drawn apart where
+ * the engine placed it, and lists the result.
  */
 @Component({
+  imports: [FacadeAr, FacadeArEg, TmButton],
   template: `
     <h2>Chart canvas text</h2>
 
@@ -93,6 +216,16 @@ function runDirection(text: string): Direction {
 
     <!-- Set once every canvas has drawn with the fonts loaded. -->
     <output data-testid="bidi-drawn">{{ drawn() ? 'drawn' : 'drawing' }}</output>
+
+    <!-- The same through the chart's engine, in both locales. -->
+    <h3>Through the chart</h3>
+    <app-demo-bidi-ar />
+    <app-demo-bidi-ar-eg />
+    <div class="demo-row">
+      <button tmButton variant="secondary" data-testid="bidi-probe" (click)="probe()">Probe</button>
+    </div>
+    <!-- Each chart's labels, as JSON once probed. -->
+    <output data-testid="bidi-facade">{{ probed() }}</output>
   `,
   styles: `
     .demo-row {
@@ -123,8 +256,15 @@ export class ChartBidiStory {
   /** Whether every canvas has drawn. */
   readonly drawn = signal(false);
 
+  /** The facade charts' probe results, as JSON, once probed. */
+  readonly probed = signal('');
+
   /** The canvases. */
   private readonly canvases = viewChildren<ElementRef<HTMLCanvasElement>>('canvas');
+  /** The page's direction, which the charts draw from. */
+  private readonly direction = inject(Directionality);
+  /** This story's element. */
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** Draws every canvas once the page's fonts have loaded. */
   constructor() {
@@ -139,6 +279,17 @@ export class ChartBidiStory {
         this.drawn.set(true);
       });
     });
+  }
+
+  /** Compares every label each facade chart drew with its runs drawn apart, and lists the results. */
+  async probe(): Promise<void> {
+    const base: Direction = this.direction.value === 'rtl' ? 'rtl' : 'ltr';
+    const results: Record<string, ProbedLabel[]> = {};
+    for (const chart of this.host.nativeElement.querySelectorAll<HTMLElement>('[data-testid^="facade-"]')) {
+      const plot = chart.querySelector<HTMLElement>('.tm-chart__plot');
+      results[chart.dataset['testid']!] = plot === null ? [] : await probeChartLabels(plot, base);
+    }
+    this.probed.set(JSON.stringify(results));
   }
 
   /** The pieces joined, without marks. */

@@ -5,7 +5,7 @@
 
 import type { ModifierKeys } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { Component, signal } from '@angular/core';
+import { Component, signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 
 import { provideTellmaUi, TM_ACTIVE_LOCALE } from '@tellma/core-ui';
@@ -13,7 +13,10 @@ import { TmGridStateStore } from '@tellma/core-ui/grid';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 import { TmChartHarness } from '@tellma/core-ui-testing';
+import { getInstanceByDom } from 'echarts/core';
 
+import { ɵTM_CHART_ENGINE_LOADER } from './internal/chart-loader';
+import type { ɵTmChartEngine, ɵTmChartEngineFactory, ɵTmChartFail } from './internal/chart-plot';
 import { TmChart } from './tm-chart';
 import type { TmChartPointActivation, TmChartSpec } from './tm-chart-types';
 
@@ -120,16 +123,27 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 }
 
 /** Settles until a condition holds: the engine chunk loads asynchronously. */
-async function settleUntil(fixture: ComponentFixture<unknown>, condition: () => Promise<boolean>): Promise<void> {
+async function settleUntil(
+  fixture: ComponentFixture<unknown>,
+  condition: () => Promise<boolean>,
+): Promise<void> {
   for (let attempt = 0; attempt < 50 && !(await condition()); attempt++) {
     await settle(fixture);
   }
 }
 
-/** Renders the host in a locale, lets `configure` set it up, and settles. */
-async function setup(configure: (host: Host) => void = () => undefined, locale = 'en') {
+/** Renders the host in a locale, with any extra providers, lets `configure` set it up, and settles. */
+async function setup(
+  configure: (host: Host) => void = () => undefined,
+  locale = 'en',
+  providers: Provider[] = [],
+) {
   TestBed.configureTestingModule({
-    providers: [provideTellmaUi(), { provide: TM_ACTIVE_LOCALE, useValue: signal(locale) }],
+    providers: [
+      provideTellmaUi(),
+      { provide: TM_ACTIVE_LOCALE, useValue: signal(locale) },
+      ...providers,
+    ],
   });
   const fixture = TestBed.createComponent(Host);
   configure(fixture.componentInstance);
@@ -138,6 +152,73 @@ async function setup(configure: (host: Host) => void = () => undefined, locale =
   const chart = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmChartHarness);
   const element = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('tm-chart')!;
   return { fixture, host: fixture.componentInstance, chart, element };
+}
+
+/** One text the engine drew: its string without marks, and its anchor's x on the canvas. */
+interface DrawnText {
+  /** The string, its bidi marks removed. */
+  readonly text: string;
+  /** The anchor's x on the canvas, px. */
+  readonly x: number;
+}
+
+/** The renderer's view of a drawn text span, as far as these tests read it. */
+interface TextSpan {
+  /** The element's kind; text spans are `'tspan'`. */
+  readonly type: string;
+  /** The span's string and anchor. */
+  readonly style: { readonly text?: string; readonly x?: number };
+  /** The span's transform to the canvas, or `null` for none. */
+  getComputedTransform(): readonly number[] | null;
+}
+
+/** Every text the engine drew in a chart, read off its renderer's display list. */
+function drawnTexts(element: HTMLElement): DrawnText[] {
+  const plot = element.querySelector<HTMLElement>('.tm-chart__plot')!;
+  const spans = getInstanceByDom(plot)!.getZr().storage.getDisplayList() as unknown as TextSpan[];
+  return spans
+    .filter((span) => span.type === 'tspan')
+    .map((span) => ({
+      text: (span.style.text ?? '').replace(/[\u200E\u200F]/g, ''),
+      x: (span.getComputedTransform()?.[4] ?? 0) + (span.style.x ?? 0),
+    }));
+}
+
+/** The `rgb()` a CSS colour resolves to on this page. */
+function resolved(color: string): [number, number, number] {
+  const probe = document.createElement('span');
+  probe.style.color = color;
+  document.body.appendChild(probe);
+  const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g)!.map(Number);
+  probe.remove();
+  return [r!, g!, b!];
+}
+
+/** How many of a chart canvas' pixels are a colour, within 2 per channel. */
+function pixelsIn(element: HTMLElement, [r, g, b]: readonly [number, number, number]): number {
+  const canvas = element.querySelector('canvas')!;
+  const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+  let count = 0;
+  for (let offset = 0; offset < data.length; offset += 4) {
+    if (
+      Math.abs(data[offset]! - r) <= 2 &&
+      Math.abs(data[offset + 1]! - g) <= 2 &&
+      Math.abs(data[offset + 2]! - b) <= 2
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** A stand-in engine: each render runs `render`, which may throw. */
+function fakeEngine(render: () => void = () => undefined): ɵTmChartEngine {
+  return { render: vi.fn(render), dispose: vi.fn() };
+}
+
+/** Spies on console errors for a test's length, quietly. */
+function quietErrors() {
+  return vi.spyOn(console, 'error').mockImplementation(() => undefined);
 }
 
 describe('TmChart', () => {
@@ -195,21 +276,43 @@ describe('TmChart', () => {
           ],
         };
         const specs: readonly TmChartSpec[] = [
-          ...(['column', 'bar', 'line', 'area', 'pie', 'doughnut'] as const).flatMap((type) => [
+          // Axis types over one and two dimensions; pies take one.
+          ...(['column', 'bar', 'line', 'area'] as const).flatMap((type) => [
             { ...COLUMN, type },
             { ...single, type },
           ]),
+          { ...single, type: 'pie' },
+          { ...single, type: 'doughnut' },
           { ...single, type: 'bar', options: { palette: 'diverging', labels: true } },
-          { ...single, type: 'column', options: { palette: 'sequential', thresholds: [{ value: 500, tone: 'warning' }] } },
-          { ...COLUMN, type: 'area', options: { stack: 'normalized', legend: 'end', markers: true } },
-          { ...COLUMN, type: 'column', options: { stack: 'stacked', legend: 'start', min: -100, max: 2000 } },
-          { ...single, type: 'doughnut', options: { palette: 'sequential', legend: 'top', labels: true } },
+          {
+            ...single,
+            type: 'column',
+            options: { palette: 'sequential', thresholds: [{ value: 500, tone: 'warning' }] },
+          },
+          {
+            ...COLUMN,
+            type: 'area',
+            options: { stack: 'normalized', legend: 'end', markers: true },
+          },
+          {
+            ...COLUMN,
+            type: 'column',
+            options: { stack: 'stacked', legend: 'start', min: -100, max: 2000 },
+          },
+          {
+            ...single,
+            type: 'doughnut',
+            options: { palette: 'sequential', legend: 'top', labels: true },
+          },
         ];
         for (const spec of specs) {
           host.spec.set(spec);
           // One settle first, so the previous spec's canvas cannot pass for this one's.
           await settle(fixture);
-          await settleUntil(fixture, async () => (await chart.getView()) === 'plot' && chart.hasCanvas());
+          await settleUntil(
+            fixture,
+            async () => (await chart.getView()) === 'plot' && chart.hasCanvas(),
+          );
           const label = `${spec.type} ${JSON.stringify(spec.options ?? {})} over ${spec.dimensions.length} dimensions`;
           expect(await chart.getView(), label).toBe('plot');
           expect(await chart.hasCanvas(), label).toBe(true);
@@ -217,6 +320,54 @@ describe('TmChart', () => {
         expect(errors).not.toHaveBeenCalled();
       } finally {
         errors.mockRestore();
+      }
+    });
+
+    it('redraws in the page’s new direction: the legend reads from the right', async () => {
+      const { fixture, chart, element } = await setup();
+      await settleUntil(fixture, () => chart.hasCanvas());
+      const order = (): number => {
+        const texts = drawnTexts(element);
+        return Math.sign(
+          texts.find((t) => t.text === 'Retail')!.x - texts.find((t) => t.text === 'Corporate')!.x,
+        );
+      };
+      expect(order()).toBe(1);
+      document.documentElement.dir = 'rtl';
+      try {
+        await settle(fixture);
+        expect(order()).toBe(-1);
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+      await settle(fixture);
+      expect(order()).toBe(1);
+    });
+
+    it('redraws in the new locale: the ticks change their digits', async () => {
+      const { fixture, chart, element } = await setup();
+      await settleUntil(fixture, () => chart.hasCanvas());
+      const arabicIndic = (): boolean => drawnTexts(element).some((t) => /[٠-٩]/.test(t.text));
+      expect(arabicIndic()).toBe(false);
+      (TestBed.inject(TM_ACTIVE_LOCALE) as WritableSignal<string>).set('ar-EG');
+      await settle(fixture);
+      expect(arabicIndic()).toBe(true);
+    });
+
+    it('redraws in the new theme’s colours on the canvas', async () => {
+      const { fixture, chart, element } = await setup();
+      await settleUntil(fixture, () => chart.hasCanvas());
+      const light = resolved('var(--chart-series-1)');
+      expect(pixelsIn(element, light)).toBeGreaterThan(50);
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try {
+        const dark = resolved('var(--chart-series-1)');
+        expect(dark).not.toEqual(light);
+        await settle(fixture);
+        expect(pixelsIn(element, dark)).toBeGreaterThan(50);
+        expect(pixelsIn(element, light)).toBeLessThan(5);
+      } finally {
+        document.documentElement.removeAttribute('data-theme');
       }
     });
 
@@ -231,7 +382,15 @@ describe('TmChart', () => {
         await settle(fixture);
         expect(await chart.getName()).toBe(name);
       }
-      host.spec.set({ ...COLUMN, type: 'pie', dimensions: [COLUMN.dimensions[0]!], rows: [[0, null, 1], [1, null, 2]] });
+      host.spec.set({
+        ...COLUMN,
+        type: 'pie',
+        dimensions: [COLUMN.dimensions[0]!],
+        rows: [
+          [0, null, 1],
+          [1, null, 2],
+        ],
+      });
       await settle(fixture);
       expect(await chart.getName()).toBe('Sales, pie chart');
       host.spec.set({ ...host.spec(), type: 'doughnut' });
@@ -254,7 +413,11 @@ describe('TmChart', () => {
 
     it('reaches a negative threshold from below and shows no badge short of one', async () => {
       const { fixture, host, chart } = await setup((h) =>
-        h.spec.set({ ...CARD, rows: [[null, null, -60]], options: { thresholds: [{ value: -50, tone: 'negative' }] } }),
+        h.spec.set({
+          ...CARD,
+          rows: [[null, null, -60]],
+          options: { thresholds: [{ value: -50, tone: 'negative' }] },
+        }),
       );
       expect(await chart.getCardBadge()).toBe('-50');
       host.spec.set({ ...CARD, rows: [[null, null, 900]] });
@@ -333,20 +496,121 @@ describe('TmChart', () => {
       expect(new Set(ids).size).toBe(2);
     });
 
-    it('shows a spec the engine cannot draw as a table', async () => {
-      const { fixture, host, chart } = await setup();
-      host.spec.set({ ...COLUMN, type: 'radar' as TmChartSpec['type'] });
-      await settle(fixture);
-      expect(await chart.getView()).toBe('table');
-      host.spec.set({ ...COLUMN, type: 'pie', dimensions: [COLUMN.dimensions[0]!], rows: [[0, null, -1]] });
-      await settle(fixture);
-      expect(await chart.getView()).toBe('table');
+    it('shows a spec the engine cannot draw as a table, and reports an invalid one', async () => {
+      const errors = quietErrors();
+      try {
+        const { fixture, host, chart } = await setup();
+        host.spec.set({ ...COLUMN, type: 'radar' as TmChartSpec['type'] });
+        await settle(fixture);
+        expect(await chart.getView()).toBe('table');
+        // Development builds name the problems.
+        expect(errors).toHaveBeenCalledWith('tm-chart: the spec is not valid.', expect.anything());
+        host.spec.set({
+          ...COLUMN,
+          type: 'pie',
+          dimensions: [COLUMN.dimensions[0]!],
+          rows: [[0, null, -1]],
+        });
+        await settle(fixture);
+        expect(await chart.getView()).toBe('table');
+        // Rows whose members do not exist place no point: a table, not empty axes.
+        host.spec.set({ ...COLUMN, rows: [[5, 0, 10]] });
+        await settle(fixture);
+        expect(await chart.getView()).toBe('table');
+        // Nor do rows of a spec with no dimensions.
+        host.spec.set({ ...COLUMN, dimensions: [] });
+        await settle(fixture);
+        expect(await chart.getView()).toBe('table');
+      } finally {
+        errors.mockRestore();
+      }
+    });
+  });
+
+  describe('engine failures', () => {
+    it('shows the table when the engine chunk fails to load', async () => {
+      const errors = quietErrors();
+      try {
+        const loader = (): Promise<ɵTmChartEngineFactory> => Promise.reject(new Error('offline'));
+        const { fixture, chart } = await setup(undefined, 'en', [
+          { provide: ɵTM_CHART_ENGINE_LOADER, useValue: loader },
+        ]);
+        await settleUntil(fixture, async () => (await chart.getView()) === 'table');
+        expect(await chart.getView()).toBe('table');
+        expect(errors).toHaveBeenCalled();
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it('shows a spec the engine fails to draw as a table, and draws the next spec', async () => {
+      const errors = quietErrors();
+      try {
+        let renders = 0;
+        const factory: ɵTmChartEngineFactory = () =>
+          fakeEngine(() => {
+            if (++renders === 1) {
+              throw new Error('cannot draw');
+            }
+          });
+        const loader = (): Promise<ɵTmChartEngineFactory> => Promise.resolve(factory);
+        const { fixture, host, chart } = await setup(undefined, 'en', [
+          { provide: ɵTM_CHART_ENGINE_LOADER, useValue: loader },
+        ]);
+        await settleUntil(fixture, async () => (await chart.getView()) === 'table');
+        expect(await chart.getView()).toBe('table');
+        expect(errors).toHaveBeenCalledWith(new Error('cannot draw'));
+        host.spec.set({ ...COLUMN, title: 'Sales again' });
+        await settleUntil(fixture, async () => renders === 2);
+        expect(await chart.getView()).toBe('plot');
+        expect(renders).toBe(2);
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it('shows the table when a draw the engine makes later on its own fails', async () => {
+      const errors = quietErrors();
+      try {
+        let fail: ɵTmChartFail | undefined;
+        const factory: ɵTmChartEngineFactory = (_element, _activate, onFail) => {
+          fail = onFail;
+          return fakeEngine();
+        };
+        const loader = (): Promise<ɵTmChartEngineFactory> => Promise.resolve(factory);
+        const { fixture, chart } = await setup(undefined, 'en', [
+          { provide: ɵTM_CHART_ENGINE_LOADER, useValue: loader },
+        ]);
+        await settleUntil(fixture, async () => fail !== undefined);
+        expect(await chart.getView()).toBe('plot');
+        fail!(new Error('a draw after the fonts loaded'));
+        await settle(fixture);
+        expect(await chart.getView()).toBe('table');
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it('never creates an engine whose chunk arrives after the chart is destroyed', async () => {
+      let arrive: (factory: ɵTmChartEngineFactory) => void = () => undefined;
+      const chunk = new Promise<ɵTmChartEngineFactory>((resolve) => (arrive = resolve));
+      const factory = vi.fn<ɵTmChartEngineFactory>(() => fakeEngine());
+      const { fixture } = await setup(undefined, 'en', [
+        { provide: ɵTM_CHART_ENGINE_LOADER, useValue: () => chunk },
+      ]);
+      fixture.destroy();
+      arrive(factory);
+      await chunk;
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(factory).not.toHaveBeenCalled();
     });
   });
 
   describe('no data', () => {
     it('shows the host’s no-data state, never empty axes', async () => {
-      const { element, chart } = await setup((h) => h.spec.set({ ...COLUMN, rows: [[0, 0, null]] }));
+      const { element, chart } = await setup((h) =>
+        h.spec.set({ ...COLUMN, rows: [[0, 0, null]] }),
+      );
       expect(await chart.getView()).toBe('empty');
       expect(element.querySelector('.no-data')?.textContent).toBe('Nothing to show');
       expect(element.querySelector('figure')).toBeNull();
@@ -359,7 +623,10 @@ describe('TmChart', () => {
         ...COLUMN,
         title: 'المبيعات',
         dimensions: [
-          { label: 'الشهر', members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Oct' }] },
+          {
+            label: 'الشهر',
+            members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Oct' }],
+          },
           COLUMN.dimensions[1]!,
         ],
         rows: [

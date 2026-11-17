@@ -45,10 +45,15 @@ type ChartOption = ComposeOption<
 
 /** One ECharts decal pattern, all of its properties given so nothing merges in. */
 interface DecalPattern {
+  /** The shape the pattern repeats. */
   readonly symbol: string;
+  /** The shape's size, as a share of its cell. */
   readonly symbolSize: number;
+  /** The pattern's rotation, in radians. */
   readonly rotation: number;
+  /** The horizontal dash and gap lengths, or one list per row. */
   readonly dashArrayX: number | readonly (number | readonly number[])[];
+  /** The vertical dash and gap lengths. */
   readonly dashArrayY: number | readonly number[];
 }
 
@@ -80,11 +85,47 @@ const SIDE_SHARE = 0.3;
  */
 const DECALS: readonly DecalPattern[] = [
   { symbol: 'rect', symbolSize: 1, rotation: Math.PI / 6, dashArrayX: [1, 0], dashArrayY: [2, 5] },
-  { symbol: 'circle', symbolSize: 0.8, rotation: 0, dashArrayX: [[8, 8], [0, 8, 8, 0]], dashArrayY: [6, 0] },
+  {
+    symbol: 'circle',
+    symbolSize: 0.8,
+    rotation: 0,
+    dashArrayX: [
+      [8, 8],
+      [0, 8, 8, 0],
+    ],
+    dashArrayY: [6, 0],
+  },
   { symbol: 'rect', symbolSize: 1, rotation: -Math.PI / 4, dashArrayX: [1, 0], dashArrayY: [4, 3] },
-  { symbol: 'rect', symbolSize: 1, rotation: 0, dashArrayX: [[6, 6], [0, 6, 6, 0]], dashArrayY: [6, 0] },
-  { symbol: 'rect', symbolSize: 1, rotation: Math.PI / 4, dashArrayX: [[1, 0], [1, 6]], dashArrayY: [1, 0, 6, 0] },
-  { symbol: 'triangle', symbolSize: 0.75, rotation: 0, dashArrayX: [[9, 9], [0, 9, 9, 0]], dashArrayY: [7, 2] },
+  {
+    symbol: 'rect',
+    symbolSize: 1,
+    rotation: 0,
+    dashArrayX: [
+      [6, 6],
+      [0, 6, 6, 0],
+    ],
+    dashArrayY: [6, 0],
+  },
+  {
+    symbol: 'rect',
+    symbolSize: 1,
+    rotation: Math.PI / 4,
+    dashArrayX: [
+      [1, 0],
+      [1, 6],
+    ],
+    dashArrayY: [1, 0, 6, 0],
+  },
+  {
+    symbol: 'triangle',
+    symbolSize: 0.75,
+    rotation: 0,
+    dashArrayX: [
+      [9, 9],
+      [0, 9, 9, 0],
+    ],
+    dashArrayY: [7, 2],
+  },
   { symbol: 'rect', symbolSize: 1, rotation: Math.PI / 2, dashArrayX: [1, 0], dashArrayY: [2, 6] },
   { symbol: 'rect', symbolSize: 0.5, rotation: 0, dashArrayX: [[4, 6]], dashArrayY: [4, 6] },
 ];
@@ -109,7 +150,9 @@ const TONES = ['positive', 'warning', 'negative'] as const;
 
 /** A tooltip formatter's view of one point. */
 interface PointParams {
+  /** The point's series, absent for a pie's slice. */
   readonly seriesIndex?: number;
+  /** The point's index in its series' data. */
   readonly dataIndex: number;
 }
 
@@ -176,7 +219,11 @@ function indexOf(id: string | number): number {
  * visual marks the decal dirty by assigning a property to it, which throws
  * on a string.
  */
-function decalFor(slot: number, color: string, applies: boolean): { readonly decal?: DecalPattern } {
+function decalFor(
+  slot: number,
+  color: string,
+  applies: boolean,
+): { readonly decal?: DecalPattern } {
   if (!applies) {
     return {};
   }
@@ -260,7 +307,9 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
       }
     }
   }
-  const pieTotal = pie ? values[0]!.reduce<number>((sum, value) => sum + Math.max(0, value ?? 0), 0) : 0;
+  const pieTotal = pie
+    ? values[0]!.reduce<number>((sum, value) => sum + Math.max(0, value ?? 0), 0)
+    : 0;
 
   // Section: the series (axis types) or slices (pies), with their legend text.
   const measureRuns: readonly ɵTmCanvasPiece[] = [spec.measure.label];
@@ -272,10 +321,13 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
       ? slices.map((member) => ({ member, runs: memberRuns(categoryDimension?.members[member]) }))
       : values.map((_, s) => ({
           member: seriesDimension === undefined ? null : s,
-          runs: seriesDimension === undefined ? measureRuns : memberRuns(seriesDimension.members[s]),
+          runs:
+            seriesDimension === undefined ? measureRuns : memberRuns(seriesDimension.members[s]),
         }))
   ).map((entry, index) => {
-    const plain = entry.runs.map((piece) => (typeof piece === 'string' ? piece : piece.base)).join('');
+    const plain = entry.runs
+      .map((piece) => (typeof piece === 'string' ? piece : piece.base))
+      .join('');
     return {
       id: `s${index}`,
       member: entry.member,
@@ -290,17 +342,27 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
   // series' marks by sign. Decals apply where colour alone separates series.
   const palette = options.palette ?? 'categorical';
   const diverging = palette === 'diverging' && !pie && seriesCount === 1;
+  // The theme's ramp holds only the steps that meet 3:1 against the ground.
+  const ramp = theme.sequential;
   const slotColor = (slot: number): string => {
     if (palette === 'sequential' && !diverging) {
-      const steps = theme.sequential.length;
+      const steps = ramp.length;
       const count = entries.length;
       const step = count === 1 ? steps - 1 : Math.round((slot * (steps - 1)) / (count - 1));
-      return theme.sequential[Math.min(step, steps - 1)]!;
+      return ramp[Math.min(step, steps - 1)]!;
     }
     return theme.series[slot % theme.series.length]!;
   };
   // Lines differ by marker shape instead; an area's fill takes the decal.
   const decals = type !== 'line' && (input.forceDecals || pie || entries.length >= 2);
+  // A line's markers show wherever colour alone would tell its series
+  // apart, or its points apart under the diverging palette: two or more
+  // lines, forced colours or more contrast, or colour by sign. Otherwise
+  // the spec's `markers` decides.
+  const markers =
+    options.markers === true ||
+    (lines && diverging) ||
+    (type === 'line' && (entries.length >= 2 || input.forceDecals));
   const signColor = (value: number | null): string =>
     value !== null && value < 0 ? theme.divergingNegative : theme.divergingPositive;
 
@@ -360,7 +422,10 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
     }
     const maxRows = Math.max(1, Math.floor((input.height * SIDE_SHARE) / lineHeight));
     if (rows.length > maxRows) {
-      // Too many lines for the box: one paged line instead, in logical order.
+      // Too many lines for the box: one paged line instead. Its items read
+      // from the start side: reversed for a right-to-left page, which opens
+      // on the page holding the first item.
+      const paged = entries.map((entry, index) => ({ name: entry.id, icon: legendIcon(index) }));
       legends.push({
         ...legendBase,
         type: 'scroll',
@@ -370,7 +435,8 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
         pageIconColor: theme.axis,
         pageIconInactiveColor: theme.grid,
         pageTextStyle: { color: theme.label },
-        data: entries.map((entry, index) => ({ name: entry.id, icon: legendIcon(index) })),
+        data: direction === 'rtl' ? paged.reverse() : paged,
+        scrollDataIndex: direction === 'rtl' ? paged.length - 1 : 0,
       });
       legendBlock = lineHeight;
     } else {
@@ -379,9 +445,13 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
         legends.push({
           ...legendBase,
           type: 'plain',
-          [physicalSide]: PAD + (physicalSide === 'top' ? index : rows.length - 1 - index) * lineHeight,
+          [physicalSide]:
+            PAD + (physicalSide === 'top' ? index : rows.length - 1 - index) * lineHeight,
           left: 'center',
-          data: ordered.map((entry) => ({ name: entry.id, icon: legendIcon(entries.indexOf(entry)) })),
+          data: ordered.map((entry) => ({
+            name: entry.id,
+            icon: legendIcon(entries.indexOf(entry)),
+          })),
         });
       });
       legendBlock = rows.length * lineHeight;
@@ -425,7 +495,10 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
   const pointLine = (label: readonly ɵTmCanvasPiece[], value: readonly ɵTmCanvasPiece[]): string =>
     text(fill(point, { [ɵTM_CHART_LABEL_SLOT]: label, [ɵTM_CHART_VALUE_SLOT]: value }));
   const withShare = (share: number, value: number): ɵTmCanvasPiece[] =>
-    fill(shareTemplate, { [ɵTM_CHART_SHARE_SLOT]: [shareText(share)], [ɵTM_CHART_VALUE_SLOT]: [valueText(value)] });
+    fill(shareTemplate, {
+      [ɵTM_CHART_SHARE_SLOT]: [shareText(share)],
+      [ɵTM_CHART_VALUE_SLOT]: [valueText(value)],
+    });
   const tooltipFormatter = (raw: unknown): string => {
     const params = (Array.isArray(raw) ? raw : [raw]) as PointParams[];
     const first = params[0];
@@ -484,7 +557,11 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
 
   // Section: the base: no animation, no automatic dark mode, the tokens'
   // text style, and aria for decals only, its generated label off.
-  const aria: AriaComponentOption = { enabled: true, label: { enabled: false }, decal: { show: decals } };
+  const aria: AriaComponentOption = {
+    enabled: true,
+    label: { enabled: false },
+    decal: { show: decals },
+  };
   const base: ChartOption = {
     animation: false,
     darkMode: false,
@@ -501,7 +578,8 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
     const width = input.width - box.left - box.right;
     const height = input.height - box.top - box.bottom;
     const outer =
-      (Math.max(0, Math.min(width, height)) / 2) * (options.labels === true ? PIE_RADIUS_LABELLED : PIE_RADIUS);
+      (Math.max(0, Math.min(width, height)) / 2) *
+      (options.labels === true ? PIE_RADIUS_LABELLED : PIE_RADIUS);
     const series: PieSeriesOption = {
       type: 'pie',
       name: 'p',
@@ -557,7 +635,9 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
       color: theme.axis,
       hideOverlap: true,
       formatter: (value: string | number) => categoryTexts[indexOf(value)] ?? '',
-      ...(horizontal ? { width: Math.floor(input.width * SIDE_SHARE), overflow: 'truncate' as const } : {}),
+      ...(horizontal
+        ? { width: Math.floor(input.width * SIDE_SHARE), overflow: 'truncate' as const }
+        : {}),
     },
   };
   const valueAxis = {
@@ -579,7 +659,7 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
   const markLine: MarkLineComponentOption | undefined =
     thresholds.length === 0
       ? undefined
-      : {
+      : ({
           silent: true,
           symbol: 'none',
           animation: false,
@@ -597,7 +677,7 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
               formatter: () => text([valueText(threshold.value)]),
             },
           })),
-        } as MarkLineComponentOption;
+        } as MarkLineComponentOption);
 
   // Section: the series: one per member of the second dimension, or one for
   // the measure; values (or shares) by category, labels in text tokens.
@@ -639,7 +719,7 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
           : plotted,
         symbol: SYMBOLS[s % SYMBOLS.length],
         symbolSize: 8,
-        showSymbol: options.markers === true,
+        showSymbol: markers,
         connectNulls: false,
         // The line and the area report clicks too; the adapter finds the
         // category under the pointer, so a point drills without its marker.
@@ -648,7 +728,13 @@ export function ɵtmBuildChartOption(input: ɵTmChartPlotInput): ɵTmChartPlot {
         itemStyle: { color },
         lineStyle: { color, width: 2, type: LINE_TYPES[cycle % LINE_TYPES.length] },
         ...(type === 'area'
-          ? { areaStyle: { color, opacity: stackName !== undefined ? 0.85 : 0.3, ...decalFor(s, theme.decal, decals) } }
+          ? {
+              areaStyle: {
+                color,
+                opacity: stackName !== undefined ? 0.85 : 0.3,
+                ...decalFor(s, theme.decal, decals),
+              },
+            }
           : {}),
       } as LineSeriesOption;
     }

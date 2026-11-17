@@ -64,7 +64,11 @@ function twoSeries(type: TmChartType, options?: TmChartOptions): TmChartSpec {
 }
 
 /** Values over one dimension: one series, or a pie's slices. */
-function oneSeries(type: TmChartType, values: readonly (number | null)[], options?: TmChartOptions): TmChartSpec {
+function oneSeries(
+  type: TmChartType,
+  values: readonly (number | null)[],
+  options?: TmChartOptions,
+): TmChartSpec {
   return {
     type,
     title: 'Sales',
@@ -187,17 +191,30 @@ describe('ɵtmBuildChartOption', () => {
       expect(option['xAxis'].type).toBe('value');
     });
 
-    it('draws lines without markers unless asked, each series its own shape', () => {
+    it('tells two or more lines apart by their markers’ shapes, markers or not', () => {
       const plain = build(twoSeries('line'));
       expect(plain['series'].map((series: Loose) => series['type'])).toEqual(['line', 'line']);
-      expect(plain['series'][0].showSymbol).toBe(false);
+      expect(plain['series'].map((series: Loose) => series['showSymbol'])).toEqual([true, true]);
       expect(plain['series'][0].symbol).not.toBe(plain['series'][1].symbol);
+      expect(plain['series'][0].symbolSize).toBeGreaterThanOrEqual(8);
       expect(plain['series'][0].areaStyle).toBeUndefined();
       // The line reports clicks, so a point drills without its marker.
       expect(plain['series'][0].triggerEvent).toBe(true);
-      const marked = build(twoSeries('line', { markers: true }));
-      expect(marked['series'][0].showSymbol).toBe(true);
-      expect(marked['series'][0].symbolSize).toBeGreaterThanOrEqual(8);
+    });
+
+    it('draws one line without markers unless asked, under more contrast, or coloured by sign', () => {
+      expect(build(oneSeries('line', [1, 2]))['series'][0].showSymbol).toBe(false);
+      expect(build(oneSeries('line', [1, 2], { markers: true }))['series'][0].showSymbol).toBe(
+        true,
+      );
+      expect(build(oneSeries('line', [1, 2]), { forceDecals: true })['series'][0].showSymbol).toBe(
+        true,
+      );
+      const signed = build(oneSeries('line', [1, -2], { palette: 'diverging' }))['series'][0];
+      expect(signed.showSymbol).toBe(true);
+      expect(signed.data.map((item: Loose) => item['itemStyle'].color)).toEqual(['pos', 'neg']);
+      // An area's fill takes the patterns instead.
+      expect(build(twoSeries('area'))['series'][0].showSymbol).toBe(false);
     });
 
     it('fills areas, and stacks them when asked; lines never stack', () => {
@@ -253,7 +270,9 @@ describe('ɵtmBuildChartOption', () => {
       const option = build(spec);
       const colors = option['series'].map((series: Loose) => series['itemStyle'].color);
       expect(colors).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's1', 's2']);
-      const decals = option['series'].map((series: Loose) => JSON.stringify(series['itemStyle'].decal));
+      const decals = option['series'].map((series: Loose) =>
+        JSON.stringify(series['itemStyle'].decal),
+      );
       expect(new Set(decals.slice(0, 8)).size).toBe(8);
       // The ninth series shares the first's colour, never its pattern.
       expect(decals[8]).not.toBe(decals[0]);
@@ -267,7 +286,9 @@ describe('ɵtmBuildChartOption', () => {
       // No decal key at all: ECharts throws on a style's decal of 'none'.
       expect(build(oneSeries('column', [1, 2]))['series'][0].itemStyle).not.toHaveProperty('decal');
       expect(build(oneSeries('column', [1, 2]))['aria'].decal.show).toBe(false);
-      expect(build(oneSeries('pie', [1, 2]))['series'][0].data[0].itemStyle.decal).toBeTypeOf('object');
+      expect(build(oneSeries('pie', [1, 2]))['series'][0].data[0].itemStyle.decal).toBeTypeOf(
+        'object',
+      );
       expect(build(twoSeries('area'))['series'][0].areaStyle.decal).toBeTypeOf('object');
       expect(build(twoSeries('line'))['aria'].decal.show).toBe(false);
     });
@@ -280,7 +301,10 @@ describe('ɵtmBuildChartOption', () => {
 
     it('spreads the sequential ramp over the series', () => {
       const spec = twoSeries('column', { palette: 'sequential' });
-      expect(build(spec)['series'].map((series: Loose) => series['itemStyle'].color)).toEqual(['q1', 'q7']);
+      expect(build(spec)['series'].map((series: Loose) => series['itemStyle'].color)).toEqual([
+        'q1',
+        'q7',
+      ]);
       const single = oneSeries('column', [1], { palette: 'sequential' });
       expect(build(single)['series'][0].itemStyle.color).toBe('q7');
     });
@@ -307,7 +331,13 @@ describe('ɵtmBuildChartOption', () => {
     });
 
     it('takes shares over absolute values', () => {
-      const spec: TmChartSpec = { ...twoSeries('column', { stack: 'normalized' }), rows: [[0, 0, -1], [0, 1, 3]] };
+      const spec: TmChartSpec = {
+        ...twoSeries('column', { stack: 'normalized' }),
+        rows: [
+          [0, 0, -1],
+          [0, 1, 3],
+        ],
+      };
       expect(build(spec)['series'][0].data[0]).toBeCloseTo(-0.25, 10);
     });
 
@@ -323,7 +353,10 @@ describe('ɵtmBuildChartOption', () => {
       const markLine = option['series'][0].markLine;
       expect(option['series'][1].markLine).toBeUndefined();
       expect(markLine.data.map((line: Loose) => line['yAxis'])).toEqual([250, 500]);
-      expect(markLine.data.map((line: Loose) => line['lineStyle'].color)).toEqual(['tone-warning', 'tone-negative']);
+      expect(markLine.data.map((line: Loose) => line['lineStyle'].color)).toEqual([
+        'tone-warning',
+        'tone-negative',
+      ]);
       expect(markLine.data[0].lineStyle.type).toBe('dashed');
       expect(markLine.data[0].label.formatter()).toBe('250');
       expect(markLine.data[0].label.color).toBe('label');
@@ -352,7 +385,9 @@ describe('ɵtmBuildChartOption', () => {
       const tick = arabic['yAxis'].axisLabel.formatter(100000);
       expect(tick).toMatch(/[٠-٩]/);
       expect(tick.replace(/[\u200E\u200F]/g, '')).toBe(
-        new Intl.NumberFormat('ar-EG', { notation: 'compact' }).format(100000).replace(/[\u061C\u200E\u200F]/g, ''),
+        new Intl.NumberFormat('ar-EG', { notation: 'compact' })
+          .format(100000)
+          .replace(/[\u061C\u200E\u200F]/g, ''),
       );
     });
 
@@ -360,7 +395,10 @@ describe('ɵtmBuildChartOption', () => {
       const spec: TmChartSpec = {
         ...twoSeries('column'),
         dimensions: [
-          { label: 'Account', members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Cash' }] },
+          {
+            label: 'Account',
+            members: [{ label: '1100النقدية', parts: ['1100', 'النقدية'] }, { label: 'Cash' }],
+          },
           { label: 'Type', members: [{ label: 'A' }, { label: 'B' }] },
         ],
       };
@@ -384,7 +422,9 @@ describe('ɵtmBuildChartOption', () => {
     });
 
     it('wraps a long horizontal legend onto lines, one legend per line', () => {
-      const members = Array.from({ length: 6 }, (_, index) => ({ label: `A long member name ${index}` }));
+      const members = Array.from({ length: 6 }, (_, index) => ({
+        label: `A long member name ${index}`,
+      }));
       const spec: TmChartSpec = {
         type: 'column',
         title: 'Wide',
@@ -397,8 +437,37 @@ describe('ɵtmBuildChartOption', () => {
       };
       const option = build(spec);
       expect(option['legend'].length).toBeGreaterThan(1);
-      const names = option['legend'].flatMap((legend: Loose) => legend['data'].map((item: Loose) => item['name']));
+      const names = option['legend'].flatMap((legend: Loose) =>
+        legend['data'].map((item: Loose) => item['name']),
+      );
       expect(names).toEqual(['s0', 's1', 's2', 's3', 's4', 's5']);
+    });
+
+    it('pages a legend too long for its lines, from the start side in right-to-left', () => {
+      const members = Array.from({ length: 30 }, (_, index) => ({
+        label: `A long member name ${index}`,
+      }));
+      const spec: TmChartSpec = {
+        type: 'column',
+        title: 'Wide',
+        dimensions: [
+          { label: 'Month', members: [{ label: 'Sep' }] },
+          { label: 'Member', members },
+        ],
+        measure: { label: 'Sales' },
+        rows: members.map((_, index) => [0, index, index + 1] as const),
+      };
+      const ltr = build(spec);
+      expect(ltr['legend'].length).toBe(1);
+      expect(ltr['legend'][0].type).toBe('scroll');
+      expect(ltr['legend'][0].data[0].name).toBe('s0');
+      expect(ltr['legend'][0].scrollDataIndex).toBe(0);
+      const rtl = build(spec, { direction: 'rtl' })['legend'][0];
+      expect(rtl.data.map((item: Loose) => item['name'])).toEqual(
+        members.map((_, index) => `s${index}`).reverse(),
+      );
+      // The first item sits last, at the right; the pager opens on its page.
+      expect(rtl.scrollDataIndex).toBe(members.length - 1);
     });
 
     it('shows no legend for one series, unless asked', () => {

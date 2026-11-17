@@ -23,6 +23,9 @@ import { storyUrl } from '../support/story-map';
 /** The story's charts drawn by the engine. */
 const PLOTS = ['column', 'bar', 'line', 'area', 'pie', 'doughnut'] as const;
 
+/** A string only the engine's code holds: the attribute ECharts marks its root element with. */
+const ENGINE_MARK = '_echarts_instance_';
+
 /** Any bidi control character. */
 const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 
@@ -112,13 +115,44 @@ test.describe('drawing', () => {
     });
   }
 
-  test('switches the colours with the theme', async ({ page }) => {
+  test('redraws in the dark colours when the theme switches live', async ({ page }) => {
     await open(page, { theme: 'light' });
     const light = await resolvedColour(page, 'var(--chart-series-1)');
-    await open(page, { theme: 'dark' });
+    const before = await pixelsOf(page, await canvasOf(page, 'column'));
+    expect(columnsOf(before, light).length).toBeGreaterThan(40);
+    // The shell's toggle repaints the page in place: no reload.
+    await page.getByTestId('toggle-theme').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     const dark = await resolvedColour(page, 'var(--chart-series-1)');
     expect(near(light, dark, 4)).toBe(false);
+    await expect
+      .poll(async () => columnsOf(await pixelsOf(page, await canvasOf(page, 'column')), dark).length)
+      .toBeGreaterThan(40);
+    const after = await pixelsOf(page, await canvasOf(page, 'column'));
+    expect(columnsOf(after, light, 4).length).toBe(0);
   });
+
+  for (const [setting, media] of [
+    ['forced colours', { forcedColors: 'active' }],
+    ['more contrast', { contrast: 'more' }],
+  ] as const) {
+    test(`patterns one series' marks when the page asks for ${setting}, live`, async ({ page }) => {
+      // One series needs no pattern until the reader's settings ask for one:
+      // the pattern then covers part of every column's fill.
+      await page.goto(storyUrl('chart-lazy'));
+      await page.getByTestId('chart-lazy-add').click();
+      const canvas = await canvasOf(page, 'lazy-column');
+      await expect(canvas).toBeVisible();
+      await appStable(page);
+      const colour = await resolvedColour(page, 'var(--chart-series-1)');
+      const plain = columnsOf(await pixelsOf(page, canvas), colour, 4).length;
+      expect(plain).toBeGreaterThan(200);
+      await page.emulateMedia(media);
+      await expect
+        .poll(async () => columnsOf(await pixelsOf(page, canvas), colour, 4).length)
+        .toBeLessThan(plain * 0.8);
+    });
+  }
 
   test('does not mirror the plot in right-to-left', async ({ page }) => {
     // The first month's columns stay at the left: the categories run left
@@ -227,19 +261,23 @@ test.describe('text', () => {
 
 test.describe('the engine', () => {
   test('loads with the first plot, not with a card', async ({ page }) => {
-    const scripts: string[] = [];
-    page.on('request', (request) => {
-      if (request.resourceType() === 'script') {
-        scripts.push(request.url());
+    // Built chunks carry no module names, so a script is the engine's when
+    // its code holds the attribute ECharts marks its root with.
+    const scripts: Promise<boolean>[] = [];
+    page.on('response', (response) => {
+      if (response.request().resourceType() === 'script') {
+        scripts.push(response.text().then((code) => code.includes(ENGINE_MARK), () => false));
       }
     });
     await page.goto(storyUrl('chart-lazy'));
     await expect(chart(page, 'lazy-card').getByText('42')).toBeVisible();
     await appStable(page);
     const before = scripts.length;
+    expect(before).toBeGreaterThan(0);
+    expect(await Promise.all(scripts), 'the engine loaded with the card').not.toContain(true);
     await page.getByTestId('chart-lazy-add').click();
     await expect(chart(page, 'lazy-column').locator('canvas').first()).toBeVisible();
     // The plot fetched the engine's chunk, which the card had not.
-    expect(scripts.length).toBeGreaterThan(before);
+    expect(await Promise.all(scripts.slice(before)), 'the engine loaded with the plot').toContain(true);
   });
 });

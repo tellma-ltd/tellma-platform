@@ -286,9 +286,13 @@ function evaluate(raw: Node, value: unknown, pointer: string, problems: TmChartS
 
 /** A spec the schema accepted, with optional members still optional. */
 interface ValidSpec {
+  /** The chart type. */
   readonly type: string;
+  /** The dimensions, each with its members' labels and parts. */
   readonly dimensions: readonly { readonly members: readonly { readonly label: string; readonly parts?: readonly string[] }[] }[];
+  /** The points: member indexes and a value. */
   readonly rows: readonly (readonly [number | null, number | null, number | null])[];
+  /** The options the rules read: the value axis' fixed ends. */
   readonly options?: { readonly min?: number; readonly max?: number };
 }
 

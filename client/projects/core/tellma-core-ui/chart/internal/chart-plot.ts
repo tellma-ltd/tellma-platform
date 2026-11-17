@@ -13,7 +13,10 @@ import type { TmChartSpec } from '../tm-chart-types';
 export interface ɵTmChartTheme {
   /** The eight categorical series colours, in slot order. */
   readonly series: readonly string[];
-  /** The seven ramp steps, the faintest first. */
+  /**
+   * The ramp steps that meet 3:1 against the plot's ground, the faintest
+   * first; all seven when none does.
+   */
   readonly sequential: readonly string[];
   /** The diverging palette's colour for a negative value. */
   readonly divergingNegative: string;
@@ -26,7 +29,11 @@ export interface ɵTmChartTheme {
   /** Every other text: legend, data labels, tooltip, mark-line labels. */
   readonly label: string;
   /** The threshold lines' colours by tone. */
-  readonly tones: { readonly positive: string; readonly warning: string; readonly negative: string };
+  readonly tones: {
+    readonly positive: string;
+    readonly warning: string;
+    readonly negative: string;
+  };
   /** The surface behind the plot: the gaps between pie slices, hollow markers. */
   readonly surface: string;
   /** The tooltip's fill. */
@@ -116,7 +123,9 @@ export interface ɵTmChartEngine {
   /**
    * Draws a spec at the element's current size with the tokens' current
    * values, replacing whatever was drawn; an element without a size keeps
-   * its drawing until it has one again.
+   * its drawing until it has one again. A failure throws; one in a draw the
+   * instance makes later on its own, once the fonts have loaded, goes to
+   * the factory's `fail` callback instead.
    */
   render(request: ɵTmChartRenderRequest): void;
   /** Releases the instance and empties its element. */
@@ -129,5 +138,12 @@ export type ɵTmChartActivate = (
   modifiers: ɵTmChartPointerModifiers,
 ) => void;
 
+/** Called with the error of a draw the instance made on its own, after a render call returned. */
+export type ɵTmChartFail = (error: unknown) => void;
+
 /** The engine chunk's one export: creates an instance in an element. */
-export type ɵTmChartEngineFactory = (element: HTMLElement, activate: ɵTmChartActivate) => ɵTmChartEngine;
+export type ɵTmChartEngineFactory = (
+  element: HTMLElement,
+  activate: ɵTmChartActivate,
+  fail: ɵTmChartFail,
+) => ɵTmChartEngine;

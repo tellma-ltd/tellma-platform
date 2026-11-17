@@ -17,6 +17,7 @@ import type {
   ɵTmChartActivate,
   ɵTmChartEngine,
   ɵTmChartEngineFactory,
+  ɵTmChartFail,
   ɵTmChartPlot,
   ɵTmChartRenderRequest,
 } from './chart-plot';
@@ -42,7 +43,9 @@ use([
 
 /** A point under the pointer: its series, and its data index where the mark has one. */
 interface Hovered {
+  /** The series under the pointer. */
   readonly seriesIndex: number;
+  /** The point's index in its series, `undefined` over a line or an area away from a marker. */
   readonly dataIndex: number | undefined;
 }
 
@@ -111,11 +114,13 @@ function sampleText(request: ɵTmChartRenderRequest): string {
  *
  * @param element - The plot element the canvas fills; it is the chart's alone.
  * @param activate - Called with a clicked point's members and the modifiers held.
+ * @param fail - Called with the error of a draw made once the fonts loaded.
  * @returns The instance.
  */
 export const ɵtmCreateChartEngine: ɵTmChartEngineFactory = (
   element: HTMLElement,
   activate: ɵTmChartActivate,
+  fail: ɵTmChartFail,
 ): ɵTmChartEngine => {
   let chart: EChartsType | null = null;
   let restore: (() => void) | null = null;
@@ -224,7 +229,13 @@ ${sample}`;
         const done = (): void => {
           settled.add(fonts);
           waiting = null;
-          draw();
+          // This draw runs after render() returned, so its caller cannot
+          // catch what it throws: the chart hears of it through `fail`.
+          try {
+            draw();
+          } catch (error) {
+            fail(error);
+          }
         };
         document.fonts.load(font, sample).then(done, done);
       }

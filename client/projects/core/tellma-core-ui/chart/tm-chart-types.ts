@@ -97,11 +97,21 @@ export interface TmChartOptions {
   readonly labels?: boolean;
   /** How series are coloured; `categorical` unless set. */
   readonly palette?: TmChartPalette;
-  /** Fixes the low end of the value axis. */
+  /**
+   * Fixes the low end of the value axis. A `normalized` stack plots shares
+   * on a fixed 0–100 % axis and ignores it.
+   */
   readonly min?: number;
-  /** Fixes the high end of the value axis. */
+  /**
+   * Fixes the high end of the value axis. A `normalized` stack plots shares
+   * on a fixed 0–100 % axis and ignores it.
+   */
   readonly max?: number;
-  /** Values marked on the value axis by a dashed line in a status tone. */
+  /**
+   * Values marked on the value axis by a dashed line in a status tone; a
+   * card shows the one its value reaches as a badge. A `normalized` stack
+   * plots shares, not values, and draws none.
+   */
   readonly thresholds?: readonly TmChartThreshold[];
 }
 
