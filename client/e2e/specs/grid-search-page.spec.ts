@@ -604,6 +604,10 @@ test.describe('the active row under forced colors', () => {
     const highlightText = await systemColor(page, 'HighlightText');
     const selectedItem = await systemColor(page, 'SelectedItem');
     const selectedItemText = await systemColor(page, 'SelectedItemText');
+    // A highlighted cell's text keeps its readability backplate, so it reads
+    // CanvasText on the plate rather than the paired ink, which the plate
+    // would hide; the bar has no plate and takes the paired ink.
+    const canvasText = await systemColor(page, 'CanvasText');
 
     // The checkbox column starts the row: a plain chrome cell carries a
     // Highlight bar.
@@ -623,7 +627,7 @@ test.describe('the active row under forced colors', () => {
     paint = await barPaint(page, 2);
     expect(paint.background).toBe(selectedItem);
     expect(paint.bar).toBe(selectedItemText);
-    expect(paint.bar).toBe(paint.ink);
+    expect(paint.ink).toBe(canvasText);
 
     // Row numbers start the row: the active cell's row header is hit, so it
     // paints SelectedItem under the bar as well.
@@ -633,7 +637,7 @@ test.describe('the active row under forced colors', () => {
     expect(paint.first).toBe('rowhdr');
     expect(paint.background).toBe(selectedItem);
     expect(paint.bar).toBe(selectedItemText);
-    expect(paint.bar).toBe(paint.ink);
+    expect(paint.ink).toBe(canvasText);
 
     // No chrome column: the first data cell starts the row. Alone it is
     // plain; inside the range fill it paints Highlight, and the bar its ink.
@@ -651,7 +655,7 @@ test.describe('the active row under forced colors', () => {
     paint = await barPaint(page, 2);
     expect(paint.background).toBe(highlight);
     expect(paint.bar).toBe(highlightText);
-    expect(paint.bar).toBe(paint.ink);
+    expect(paint.ink).toBe(canvasText);
   });
 
   test('a focused header keeps a visible ring over its selected column', async ({ page }) => {
