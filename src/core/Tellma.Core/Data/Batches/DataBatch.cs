@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -389,10 +389,20 @@ namespace Tellma.Core.Data.Batches
         /// <inheritdoc />
         public SqlIdentifier DeclareIdTable()
         {
+            return DeclareKeyTable(typeof(int));
+        }
+
+        /// <inheritdoc />
+        public SqlIdentifier DeclareKeyTable(Type keyType)
+        {
+            ArgumentNullException.ThrowIfNull(keyType);
+            string keyword = keyType == typeof(int) ? "int"
+                : keyType == typeof(long) ? "bigint"
+                : throw new ArgumentException($"A key table holds int or long keys, not {keyType.Name}.", nameof(keyType));
             EnsureComposing();
             StatementDraft draft = Begin();
             string name = draft.Name(ReservedSqlNames.StatementNames.Ids);
-            Append(draft, $"DECLARE {name} TABLE ([Id] int PRIMARY KEY);");
+            Append(draft, $"DECLARE {name} TABLE ([Id] {keyword} PRIMARY KEY);");
             return new SqlIdentifier(name);
         }
 

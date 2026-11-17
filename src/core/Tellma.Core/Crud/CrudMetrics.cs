@@ -85,6 +85,15 @@ namespace Tellma.Core.Crud
                 "Confirmation warnings raised, by key and by whether the caller had confirmed them.");
         }
 
+        /// <summary>The <c>crud.lane</c> of an operation over a number of rows or ids.</summary>
+        /// <param name="count">The rows or ids.</param>
+        /// <param name="largeBatchThreshold">The data layer's large-batch threshold.</param>
+        /// <returns><see cref="LargeLane" /> beyond the threshold; <see cref="SmallLane" /> otherwise.</returns>
+        public static string Lane(int count, int largeBatchThreshold)
+        {
+            return count > largeBatchThreshold ? LargeLane : SmallLane;
+        }
+
         /// <summary>Records one operation: counted, and its duration measured.</summary>
         /// <param name="operation">The <c>crud.operation</c> value, such as <c>query</c>.</param>
         /// <param name="outcome">The <c>crud.outcome</c> value, such as <c>ok</c>.</param>

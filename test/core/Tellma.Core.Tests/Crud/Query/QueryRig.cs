@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Calendars;
+using Tellma.Core.Composition;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
@@ -45,14 +46,23 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The next permission's id.</summary>
         private int _nextPermission = 1;
 
-        /// <summary>Composes the model with the fakes.</summary>
+        /// <summary>Composes the query model with the fakes.</summary>
         public QueryRig()
+            : this(QueryModel.Compose)
         {
-            IServiceCollection services = TestComposition.Compose(QueryModel.Compose);
+        }
+
+        /// <summary>Composes a model with the fakes.</summary>
+        /// <param name="compose">Composes the model's features.</param>
+        /// <param name="configure">Adjusts the services last; nothing when null.</param>
+        public QueryRig(Action<TellmaBuilder> compose, Action<IServiceCollection>? configure = null)
+        {
+            IServiceCollection services = TestComposition.Compose(compose);
             _ = services.Replace(ServiceDescriptor.Scoped<IScopeConnection>(_ => new Connection(this)));
             _ = services.Replace(ServiceDescriptor.Scoped<IGuardedBatchRunner>(_ => new Runner(this)));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantDatabase>(provider => new Database(this, provider.GetRequiredService<IQueryexSchemaProvider>())));
             _ = services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
+            configure?.Invoke(services);
             _root = services.BuildServiceProvider(validateScopes: true);
             User = Connected(UserAccess.System);
         }

@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
+using Tellma.Core.Composition;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
@@ -98,10 +99,11 @@ namespace Tellma.Core.IntegrationTests.Access
         ///     flights, as a second process has. The caller disposes it.
         /// </summary>
         /// <param name="configure">Adjusts the instance's services last, such as its options; nothing when null.</param>
+        /// <param name="compose">Adds features beside the fixture's, such as a test's contributors; nothing when null.</param>
         /// <returns>The instance's composition.</returns>
-        public ServiceProvider CreateInstance(Action<IServiceCollection>? configure = null)
+        public ServiceProvider CreateInstance(Action<IServiceCollection>? configure = null, Action<TellmaBuilder>? compose = null)
         {
-            return Compose(_tenants ?? throw new InvalidOperationException("The databases are not created yet."), configure);
+            return Compose(_tenants ?? throw new InvalidOperationException("The databases are not created yet."), configure, compose);
         }
 
         /// <summary>
@@ -308,12 +310,13 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <summary>A composition of the platform, with both tenants behind the connection seams.</summary>
         /// <param name="tenants">The tenants.</param>
         /// <param name="configure">Adjusts the services last; nothing when null.</param>
+        /// <param name="compose">Adds features beside the fixture's; nothing when null.</param>
         /// <returns>The composition.</returns>
-        private static ServiceProvider Compose(Dictionary<int, TenantInfo> tenants, Action<IServiceCollection>? configure = null)
+        private static ServiceProvider Compose(Dictionary<int, TenantInfo> tenants, Action<IServiceCollection>? configure = null, Action<TellmaBuilder>? compose = null)
         {
             ServiceCollection services = [];
             _ = services.AddLogging();
-            _ = FixtureComposition.Compose(services);
+            _ = FixtureComposition.Compose(services, compose: compose);
             _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new Factory(tenants)));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(provider => new Provider(tenants, provider.GetRequiredService<IRequestContextAccessor>())));
             _ = services.AddSingleton<CacheEvictor>();
