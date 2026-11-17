@@ -11,6 +11,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.Data;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Tenancy
@@ -18,8 +19,9 @@ namespace Tellma.Core.AspNetCore.Tenancy
     /// <summary>
     ///     Binds a tenant request's context: resolves the tenant the route names from the registry's
     ///     snapshot, refuses one that is absent, retired or still provisioning, and binds the tenant and
-    ///     the authenticated principal in one write. On the hub it is also the access guard's front door.
-    ///     A request to an endpoint without tenant metadata proceeds tenantless.
+    ///     the authenticated principal in one write, and hands the request's aborted token to the
+    ///     scope's data access. On the hub it is also the access guard's front door. A request to an
+    ///     endpoint without tenant metadata proceeds tenantless.
     /// </summary>
     /// <param name="next">The rest of the pipeline.</param>
     /// <param name="registry">The tenant registry.</param>
@@ -38,12 +40,14 @@ namespace Tellma.Core.AspNetCore.Tenancy
         /// <param name="context">The request.</param>
         /// <param name="holder">The request scope's context holder.</param>
         /// <param name="guard">The request scope's access guard, for the hub's front door.</param>
+        /// <param name="cancellation">The request scope's data cancellation, which the request's aborted token is handed to.</param>
         /// <returns>A task that completes when the request is answered.</returns>
-        public async Task InvokeAsync(HttpContext context, IRequestContextHolder holder, ITenantAccessGuard guard)
+        public async Task InvokeAsync(HttpContext context, IRequestContextHolder holder, ITenantAccessGuard guard, DataCancellation cancellation)
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(holder);
             ArgumentNullException.ThrowIfNull(guard);
+            ArgumentNullException.ThrowIfNull(cancellation);
 
             // Only an endpoint a tenant group stamped resolves a tenant. Any other endpoint, an
             // anonymous one with a tenant id in its route included, stays tenantless and so cannot be
@@ -77,6 +81,11 @@ namespace Tellma.Core.AspNetCore.Tenancy
 
             holder.Set(bound);
             _ = Activity.Current?.SetTag(TenantIdTag, tenantId);
+
+            // --- The data access of the request, from its first round trip (the guard's connect) on ---
+            // A client that goes away cancels its reads, validations and retry waits; a persist once
+            // sent still runs to completion (spec 0012 §6.1).
+            cancellation.Token = context.RequestAborted;
             metrics.RecordScope(TenantScopeKind.Request);
 
             using (logger.BeginScope(new TenantLogScope(holder)))

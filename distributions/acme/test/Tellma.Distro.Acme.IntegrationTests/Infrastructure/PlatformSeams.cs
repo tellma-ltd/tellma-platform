@@ -39,6 +39,12 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// </summary>
         public static bool ServesTheAdministrator => Composed.Value.UserConnection && Composed.Value.Steps.Contains(BootstrapAdministratorStep);
 
+        /// <summary>
+        ///     Whether an initializer at the user connection's order is composed, so a tenant request makes
+        ///     its first round trip to the tenant's database inside the access guard.
+        /// </summary>
+        public static bool ConnectsTheUser => Composed.Value.UserConnection;
+
         /// <summary>Whether the users stack's own-locale action is projected onto the web API, for a served administrator.</summary>
         public static bool ServesTheLocaleAction => ServesTheAdministrator && Composed.Value.UserLocaleAction;
 

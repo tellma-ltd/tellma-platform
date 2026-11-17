@@ -12,8 +12,10 @@ import { storyUrl } from '../support/story-map';
  * Browser battery for TmBusyOverlay: the axe floor in both themes and
  * directions, idle and with the scrim up; the pointer and the keyboard held
  * from the click's own frame with the progress cursor; the scrim at 200 ms,
- * never for fast work, at once with `immediate`; nested runs' labels; and
- * focus returned to the trigger when the work settles.
+ * never for fast work, at once with `immediate`; nested runs' labels;
+ * focus returned to the trigger when the work settles; the overlay above a
+ * sticky toast; and a confirmation the write asks for mid-run, answered in
+ * its dialog while the overlay stands aside.
  */
 
 /** Where Playwright's fake clock starts. */
@@ -152,5 +154,52 @@ test.describe('scrim', () => {
     await page.clock.runFor(600);
     await expect(page.getByTestId('busy-log')).toHaveText('nested done');
     await expect(overlay(page)).not.toHaveClass(/tm-busy-overlay--active/);
+  });
+});
+
+test.describe('toasts and modals', () => {
+  /** Whether the overlay host takes the pointer at the centre of the toast. */
+  async function overlayHitsToast(page: Page): Promise<boolean> {
+    const box = (await page.locator('.tm-toast').boundingBox())!;
+    return page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.tm-busy-overlay') !== null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+  }
+
+  test('stays above a sticky toast, and stands aside for a confirmation the write asks for', async ({
+    page,
+  }) => {
+    await openPaused(page);
+    await page.getByTestId('toast').click();
+    await expect(page.locator('.tm-toast')).toBeVisible();
+
+    // --- The run blocks the toast's buttons too ---
+    const trigger = page.getByTestId('save-confirm');
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await page.clock.runFor(20);
+    await expect(overlay(page)).toHaveClass(/tm-busy-overlay--active/);
+    expect(await overlayHitsToast(page)).toBe(true);
+
+    // --- The write asks: the dialog takes focus and the keyboard, above the page ---
+    await page.clock.runFor(300);
+    const dialog = page.getByRole('alertdialog', { name: 'Confirm to continue' });
+    await expect(dialog).toBeVisible();
+    await expect(overlay(page)).not.toHaveClass(/tm-busy-overlay--active/);
+    await expect(overlay(page)).not.toHaveClass(/tm-busy-overlay--scrim/);
+    await expect(dialog.getByRole('button', { name: 'Continue' })).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    // --- Answered: the run goes on under the scrim, then focus returns to the trigger ---
+    await page.clock.runFor(20);
+    await expect(dialog).toBeHidden();
+    await expect(overlay(page)).toHaveClass(/tm-busy-overlay--scrim/);
+    expect(await overlayHitsToast(page)).toBe(true);
+    await page.clock.runFor(300);
+    await expect(page.getByTestId('busy-log')).toHaveText('saved after confirmation');
+    await expect(overlay(page)).not.toHaveClass(/tm-busy-overlay--active/);
+    await expect(trigger).toBeFocused();
+    expect(await overlayHitsToast(page)).toBe(false);
   });
 });

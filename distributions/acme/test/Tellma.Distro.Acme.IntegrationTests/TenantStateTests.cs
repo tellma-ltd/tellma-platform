@@ -34,6 +34,10 @@ namespace Tellma.Distro.Acme.IntegrationTests
             + "and the administrator bootstrap provisioning step, which makes the seeded administrator a user of the seed tenants; "
             + "until the initializer is composed, every request a tenant serves fails closed.";
 
+        /// <summary>Why a tenant request cannot reach the tenant's database yet.</summary>
+        private const string NeedsUserConnection =
+            "Needs the user connection initializer, whose round trip is a tenant request's first against the tenant's database.";
+
         /// <summary>Why an action a read-only tenant allows cannot be called yet.</summary>
         private const string NeedsProjectedActions =
             "Needs the web API projection of the users stack's actions, which stamps the ones a read-only tenant allows, "
@@ -126,6 +130,28 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(Tenant, served.TenantId);
             Assert.NotNull(served.UserId);
             Assert.True(served.Users > 0);
+        }
+
+        [Fact(Skip = NeedsUserConnection, SkipUnless = nameof(PlatformSeams.ConnectsTheUser), SkipType = typeof(PlatformSeams))]
+        public async Task A_tenant_whose_database_does_not_list_the_running_schema_answers_503_schema_behind_with_retry_after_30()
+        {
+            AcmeMigrator acme = new(sql, "acme_schema_behind");
+            _ = await acme.MigrateAsync();
+
+            // --- The tenant's database as a migrator that has not reached this release leaves it ---
+            await SqlServerFixture.ExecuteAsync(acme.TenantConnectionString(Tenant), "UPDATE [dbo].[__TellmaSchema] SET [Fingerprint] = REPLICATE('0', 64);");
+            await using AcmeHost host = await AcmeHost.StartAsync(acme.Values, new AcmeHostOptions { MapsProbes = true });
+            using OidcFlowClient flow = host.CreateFlowClient();
+            await AcmeSignIn.SignInAsync(flow);
+
+            using HttpResponseMessage read = await TenantProbes.ReadAsync(flow.Browser, Tenant);
+
+            // A transient verdict the client waits out, never a server error.
+            string answered = await TenantProbes.ProblemCodeAsync(read);
+            Assert.True(
+                read.StatusCode == HttpStatusCode.ServiceUnavailable && answered == TenantProblemCodes.SchemaBehind,
+                $"{(int)read.StatusCode} {answered}\n{host.Warnings}");
+            Assert.Equal(TimeSpan.FromSeconds(30), read.Headers.RetryAfter?.Delta);
         }
 
         [Fact]

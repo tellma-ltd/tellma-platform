@@ -15,6 +15,7 @@ import {
 import { Directionality } from '@angular/cdk/bidi';
 import { Dialog } from '@angular/cdk/dialog';
 import { createGlobalPositionStrategy } from '@angular/cdk/overlay';
+import { ɵtmModalOpened } from '@tellma/core-ui/overlay';
 
 import { TmModalRef, type TmModalResult, type ɵTmModalShellPayload } from './tm-modal-ref';
 import { ɵTmModalShell } from './internal/tm-modal-shell';
@@ -246,7 +247,14 @@ export class TmModal {
       overlayRef.setDirection(direction);
       overlayRef.updatePosition();
     });
-    dialogRef.closed.subscribe(() => directionChange.unsubscribe());
+    // The page-wide layers hear of the modal in this task, before its
+    // content takes focus: a busy overlay blocking the page stands aside
+    // for a modal opened during its run, so the modal can be answered.
+    const modalClosed = ɵtmModalOpened(overlayRef.hostElement);
+    dialogRef.closed.subscribe(() => {
+      directionChange.unsubscribe();
+      modalClosed();
+    });
     return ref;
   }
 }
