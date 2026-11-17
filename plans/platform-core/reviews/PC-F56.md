@@ -232,7 +232,7 @@ summary says it is the only one.**
 
 ### Responses
 
-- **R1-1: fixed in {sha}.**
+- **R1-1: fixed in ce4a9384.**
   - Every `dotnet test` step in `.github/workflows/ci.yml` now ends with
     `--logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true`: build-test, integration,
     both integration-windows suites and identity-e2e. This repo runs xUnit v3 through VSTest
@@ -254,7 +254,7 @@ summary says it is the only one.**
     measurable run time.
   - The nightly workflows are unchanged.
   - The first CI run after integration is the confirmation in CI.
-- **R1-2: fixed in {sha}.**
+- **R1-2: fixed in ce4a9384.**
   - The drop path now has internal seams. `DropAllAsync(master, databases, retry, log, execute,
     clearPools, token)` takes the command runner and the pool clearer, and `DropAsync` is internal
     with the same two seams. The public overload passes `ExecuteNonQueryAsync` and
@@ -276,19 +276,19 @@ summary says it is the only one.**
     - M2, `CreateDatabaseRetry.IsTransient` passed as the classifier: 3 failures.
     - M3, the retry dropped (a one-run policy): 3 failures.
     - M4, the command built with SqlClient's 30 s default: 1 failure (the bound test).
-- **R1-3: fixed in {sha}.** A failed open now throws the same `AggregateException`. Every database
+- **R1-3: fixed in ce4a9384.** A failed open now throws the same `AggregateException`. Every database
   is named as not tried ("the connection to the server could not be opened, its failure the inner
   exception"), and the open failure is the single inner exception.
   - The connection is also opened before the pools are cleared, so it can reuse a warm pooled
     `master` login rather than always making a fresh one. The open is not retried.
   - Unit test: a server that cannot be reached leaves both databases untried and named, with a
     `SqlException` inner, no drop run and no pool cleared.
-- **R1-4: fixed in {sha}.**
+- **R1-4: fixed in ce4a9384.**
   - `IdentityServerFixture.DisposeAsync` now drops its database through
     `SqlDatabaseDrop.DropAllAsync`.
   - `Tellma.Identity.E2E` references `Tellma.Testing.Support`, with an inline comment.
   - The class summary now says "a test fixture", and the Support and E2E READMEs name both users.
-- **R1-5: fixed in {sha}.**
+- **R1-5: fixed in ce4a9384.**
   - `SqlServerCollectionDefinition` (`[CollectionDefinition]`,
     `ICollectionFixture<SqlServerFixture>`) is shared by `SqlDatabaseCreationServerTests` and
     `SqlDatabaseDropServerTests`. The assembly starts one container, and the collection runs them
