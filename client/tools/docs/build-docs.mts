@@ -69,23 +69,33 @@ writeIfChanged(
 
 function llmsSection(component: ComponentDoc): string {
   const lines = [
-    `## ${component.name} (\`${component.selector}\`)`,
+    // A service has no selector: its heading names the kind instead.
+    `## ${component.name} (${component.selector === null ? component.kind : `\`${component.selector}\``})`,
     '',
     component.description,
     '',
     `- Kind: ${component.kind} | Group: ${component.group} | Status: ${component.status}`,
     `- Import: \`${component.entryPoint}\``,
-    `- Forms: ${component.formControl ?? 'not a form control'}`,
+    ...(component.kind === 'service'
+      ? [`- Inject: \`inject(${component.name})\` (a root service)`]
+      : [`- Forms: ${component.formControl ?? 'not a form control'}`]),
     component.harness
       ? `- Harness: \`${component.harness}\` (@tellma/core-ui-testing)`
       : '- Harness: none',
   ];
+  if (component.a11y.notes) {
+    lines.push(`- Accessibility: ${component.a11y.notes.replace(/\s*\n\s*/g, ' ')}`);
+  }
   if (component.inputs.length > 0) {
     lines.push('', '### Inputs', '');
     for (const input of component.inputs) {
       lines.push(
         `- \`${input.name}\` (${input.signal}): \`${input.type}\`` +
-          (input.required ? ' — required' : input.default ? ` — default \`${input.default}\`` : '') +
+          (input.required
+            ? ' — required'
+            : input.default
+              ? ` — default \`${input.default}\``
+              : '') +
           (input.description ? ` — ${input.description.split('\n')[0]}` : ''),
       );
     }
@@ -96,6 +106,15 @@ function llmsSection(component: ComponentDoc): string {
       lines.push(
         `- \`${output.name}\`: \`${output.type}\`` +
           (output.description ? ` — ${output.description.split('\n')[0]}` : ''),
+      );
+    }
+  }
+  if (component.members.length > 0) {
+    lines.push('', '### Members', '');
+    for (const member of component.members) {
+      lines.push(
+        `- \`${member.signature}\`` +
+          (member.description ? ` — ${member.description.split('\n')[0]}` : ''),
       );
     }
   }
@@ -112,7 +131,8 @@ function llmsSection(component: ComponentDoc): string {
     }
   }
   if (component.examples.length > 0) {
-    lines.push('', '### Example', '', '```html', component.examples[0].code, '```');
+    const [example] = component.examples;
+    lines.push('', '### Example', '', '```' + example.language, example.code, '```');
   }
   lines.push('', `Tokens read: ${component.tokens.join(', ') || '(none)'}`, '');
   return lines.join('\n');

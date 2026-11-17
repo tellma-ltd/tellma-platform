@@ -170,6 +170,14 @@ class ToastRef implements TmToastRef {
  * one; Tab and Shift+Tab move between the toasts' buttons, and Escape
  * closes the focused toast and returns focus where it came from.
  *
+ * @tmGroup overlay
+ * @tmHarness TmToastHarness
+ * @tmA11yNotes A region of buttons named "Recent messages", entered only
+ *   through `focus()`: Tab and Shift+Tab move between the toasts' buttons,
+ *   and Escape closes the focused toast and restores focus. Two persistent
+ *   live regions announce each toast, assertively for errors; the cards
+ *   themselves are not live, so nothing is read twice.
+ *
  * @example
  * ```ts
  * inject(TmToasts).show({

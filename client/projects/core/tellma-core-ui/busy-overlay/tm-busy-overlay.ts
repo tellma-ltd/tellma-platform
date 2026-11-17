@@ -56,6 +56,11 @@ function parseCssTime(value: string): number | null {
  * Runs nest and share the one overlay; the latest run's label shows.
  * Escape and every other key do nothing while the overlay is up.
  *
+ * @tmGroup overlay
+ * @tmA11yNotes No tab stop: the page behind goes `inert` and keys are held
+ *   until the work settles, then focus returns to where it was. The label
+ *   is a `status` that is announced as it changes.
+ *
  * @example
  * ```ts
  * const busy = inject(TmBusyOverlay);

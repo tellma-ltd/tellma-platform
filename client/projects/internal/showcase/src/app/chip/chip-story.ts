@@ -17,7 +17,7 @@ const LABELS = ['Service', 'Sale', 'Operation', 'Purchase', 'Payroll', 'Inventor
  * with projected content; tm-chip-set wrapping, collapsing behind a "+N"
  * chip at two widths, and scrolling beside an input the way a multi-value
  * field uses it (exit refocuses the input; Backspace in the empty input
- * focuses the last chip).
+ * focuses the last chip). Each set can have a chip added at its end.
  */
 @Component({
   imports: [TmButton, TmChip, TmChipSet],
@@ -50,7 +50,10 @@ const LABELS = ['Service', 'Sale', 'Operation', 'Purchase', 'Payroll', 'Inventor
         (remove)="log('remove')"
         data-testid="chip-removable"
       />
-      <tm-chip label="Posted after 1 May" (activate)="log('activate date')" data-testid="chip-projected"
+      <tm-chip
+        label="Posted after 1 May"
+        (activate)="log('activate date')"
+        data-testid="chip-projected"
         >Posted after <b>1 May</b></tm-chip
       >
       <tm-chip label="الرياض" lang="ar" [removable]="true" data-testid="chip-arabic" />
@@ -64,15 +67,18 @@ const LABELS = ['Service', 'Sale', 'Operation', 'Purchase', 'Payroll', 'Inventor
         <tm-chip [label]="label" [removable]="true" (remove)="removeFrom(wrapLabels, label)" />
       }
     </tm-chip-set>
-    <button tmButton type="button" data-testid="reset-wrap" (click)="wrapLabels.set(labels)">
-      Reset
-    </button>
+    <div class="row">
+      <button tmButton type="button" data-testid="reset-wrap" (click)="wrapLabels.set(labels)">
+        Reset
+      </button>
+      <button tmButton type="button" data-testid="add-wrap" (click)="addTo(wrapLabels)">Add</button>
+    </div>
 
     <!-- Collapse, in a box whose width the buttons switch. -->
     <h3>Collapse</h3>
     <div class="box" [style.inline-size.px]="collapseWidth()" data-testid="collapse-box">
       <tm-chip-set ariaLabel="Tags" overflow="collapse" data-testid="set-collapse">
-        @for (label of labels; track label) {
+        @for (label of collapseLabels(); track label) {
           <tm-chip [label]="label" (activate)="log('activate ' + label)" />
         }
       </tm-chip-set>
@@ -83,6 +89,9 @@ const LABELS = ['Service', 'Sale', 'Operation', 'Purchase', 'Payroll', 'Inventor
       </button>
       <button tmButton type="button" data-testid="collapse-wide" (click)="collapseWidth.set(640)">
         Wide
+      </button>
+      <button tmButton type="button" data-testid="add-collapse" (click)="addTo(collapseLabels)">
+        Add
       </button>
     </div>
 
@@ -109,9 +118,14 @@ const LABELS = ['Service', 'Sale', 'Operation', 'Purchase', 'Payroll', 'Inventor
         (keydown.backspace)="input.value === '' && chips.focusLast()"
       />
     </div>
-    <button tmButton type="button" data-testid="reset-scroll" (click)="scrollLabels.set(labels)">
-      Reset
-    </button>
+    <div class="row">
+      <button tmButton type="button" data-testid="reset-scroll" (click)="scrollLabels.set(labels)">
+        Reset
+      </button>
+      <button tmButton type="button" data-testid="add-scroll" (click)="addTo(scrollLabels)">
+        Add
+      </button>
+    </div>
   `,
   styles: `
     .row {
@@ -173,6 +187,9 @@ export class ChipStory {
   /** The wrapping set's chips. */
   protected readonly wrapLabels = signal(LABELS);
 
+  /** The collapsing set's chips. */
+  protected readonly collapseLabels = signal(LABELS);
+
   /** The scrolling set's chips. */
   protected readonly scrollLabels = signal(LABELS);
 
@@ -185,6 +202,11 @@ export class ChipStory {
   /** Records an event for the log line. */
   protected log(event: string): void {
     this.events.set([...this.events(), event]);
+  }
+
+  /** Adds a numbered chip to the end of one of the sets. */
+  protected addTo(list: WritableSignal<string[]>): void {
+    list.set([...list(), `Added ${list().length + 1}`]);
   }
 
   /** Removes a chip's label from one of the sets. */

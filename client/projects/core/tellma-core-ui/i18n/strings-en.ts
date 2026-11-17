@@ -371,8 +371,5 @@ export const TM_UI_STRINGS_EN = {
     select: 'Select {label}',
     // Announced after every selection change, over the loaded tiles.
     selected: '{count, number} of {total, number} selected',
-    // Announced when a batch of tree rows fails to load its children; the
-    // rows collapse. The label lists the rows' titles.
-    loadFailed: "Couldn't load {label}",
   },
 } as const;

@@ -8,6 +8,7 @@ import * as _angular_core from '@angular/core';
 import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
+import { Type } from '@angular/core';
 
 // @public
 export class TmTileContent<T = unknown> {
@@ -52,26 +53,18 @@ export class TmTiles<T> implements TmGridDriverTarget {
     readonly activeRowId: _angular_core.ModelSignal<TmRowId | null>;
     readonly ariaLabel: _angular_core.InputSignal<string>;
     protected readonly checkGlyph: lucide.IconNode;
-    protected readonly collapsedGlyph: {
-        node: lucide.IconNode;
-        mirrorInRtl: boolean;
-    };
     protected readonly columns: Signal<number>;
     protected readonly contentDef: Signal<TmTileContent<any> | undefined>;
     readonly controlsId: Signal<string>;
     readonly data: _angular_core.InputSignal<readonly T[]>;
     protected readonly emptyDef: Signal<TmTilesEmpty | undefined>;
     protected readonly emptyText: Signal<string>;
-    protected readonly expandedGlyph: lucide.IconNode;
-    readonly expandedIds: _angular_core.ModelSignal<ReadonlySet<TmRowId>>;
     protected readonly extent: Signal<number>;
     focus(): void;
-    readonly hasChildren: _angular_core.InputSignal<((row: T) => boolean) | undefined>;
     protected readonly imageSize = 40;
     readonly layout: _angular_core.InputSignal<TmTileLayout<T>>;
     protected readonly lineCount: Signal<number>;
     protected readonly lines: Signal<readonly LineView<T>[]>;
-    readonly loadChildren: _angular_core.InputSignal<((rows: readonly T[]) => Promise<void>) | undefined>;
     readonly loading: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected readonly loadingDef: Signal<TmTilesLoading | undefined>;
     moveActiveRow(by: 'first' | 'last' | number): void;
@@ -84,7 +77,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
     protected onPointerDown(event: PointerEvent): void;
     protected onScroll(): void;
     readonly pageStep: Signal<number>;
-    readonly parentId: _angular_core.InputSignal<((row: T) => TmRowId | null) | undefined>;
     protected readonly pitch: Signal<number>;
     protected readonly placeholderGlyph: lucide.IconNode;
     readonly rowActivate: _angular_core.OutputEmitterRef<TmGridRowActivation<T>>;
@@ -104,8 +96,10 @@ export class TmTiles<T> implements TmGridDriverTarget {
     protected readonly skeletonLines: Signal<readonly number[]>;
     protected readonly stacked: Signal<boolean>;
     protected readonly tree: Signal<boolean>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTiles<any>, "tm-tiles", never, { "data": { "alias": "data"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "layout": { "alias": "layout"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "ariaLabel"; "required": true; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; "activeRowId": { "alias": "activeRowId"; "required": false; "isSignal": true; }; "rowClass": { "alias": "rowClass"; "required": false; "isSignal": true; }; "parentId": { "alias": "parentId"; "required": false; "isSignal": true; }; "hasChildren": { "alias": "hasChildren"; "required": false; "isSignal": true; }; "expandedIds": { "alias": "expandedIds"; "required": false; "isSignal": true; }; "loadChildren": { "alias": "loadChildren"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; "activeRowId": "activeRowIdChange"; "expandedIds": "expandedIdsChange"; "rowActivate": "rowActivate"; }, ["contentDef", "emptyDef", "loadingDef"], never, true, never>;
+    protected readonly treeMode: Signal<ɵTmTilesTree<T> | null>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTiles<any>, "tm-tiles", never, { "data": { "alias": "data"; "required": false; "isSignal": true; }; "rowId": { "alias": "rowId"; "required": true; "isSignal": true; }; "layout": { "alias": "layout"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "ariaLabel"; "required": true; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "selectable": { "alias": "selectable"; "required": false; "isSignal": true; }; "selectedIds": { "alias": "selectedIds"; "required": false; "isSignal": true; }; "activeRowId": { "alias": "activeRowId"; "required": false; "isSignal": true; }; "rowClass": { "alias": "rowClass"; "required": false; "isSignal": true; }; }, { "selectedIds": "selectedIdsChange"; "activeRowId": "activeRowIdChange"; "rowActivate": "rowActivate"; }, ["contentDef", "emptyDef", "loadingDef"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTiles<any>, never>;
+    // @internal
 }
 
 // @public

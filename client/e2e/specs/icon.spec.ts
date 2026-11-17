@@ -24,18 +24,14 @@ function glyphTransform(icon: Locator): Promise<string> {
 
 test.describe('axe floor', () => {
   for (const theme of ['light', 'dark'] as const) {
-    test(`icon story is axe-clean (${theme})`, async ({ page }) => {
-      await page.goto(storyUrl('icon', { theme }));
-      await expect(page.getByTestId('gallery')).toBeVisible();
-      await expectNoAxeViolations(page);
-    });
+    for (const dir of ['ltr', 'rtl'] as const) {
+      test(`icon story is axe-clean (${theme}, ${dir})`, async ({ page }) => {
+        await page.goto(storyUrl('icon', { theme, dir }));
+        await expect(page.getByTestId('gallery')).toBeVisible();
+        await expectNoAxeViolations(page);
+      });
+    }
   }
-
-  test('icon story is axe-clean in RTL', async ({ page }) => {
-    await page.goto(storyUrl('icon', { dir: 'rtl' }));
-    await expect(page.getByTestId('gallery')).toBeVisible();
-    await expectNoAxeViolations(page);
-  });
 });
 
 test.describe('mirroring', () => {

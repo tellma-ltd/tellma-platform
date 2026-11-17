@@ -83,10 +83,13 @@ export default defineConfig({
     // The touch battery runs on a real coarse-pointer device descriptor
     // (chromium engine with touch + mobile emulation — no extra browser
     // install beyond chromium). Only the touch specs run here; chromium's
-    // testIgnore keeps the same specs out of the desktop run.
+    // testIgnore keeps the same specs out of the desktop run. The additions'
+    // resolved-size spec runs in both: the sizes follow the viewport width,
+    // so a phone and a desktop browser must resolve them alike.
     {
       name: 'touch',
-      testMatch: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch|tiles-touch/,
+      testMatch:
+        /grid-touch|tooltip-touch|splitter-touch|form-controls-touch|tiles-touch|additions-sizes/,
       use: { ...devices['Pixel 7'] },
     },
   ],

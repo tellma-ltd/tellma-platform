@@ -16,6 +16,7 @@ import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridRowActivation } from '@tellma/core-ui/grid';
 import { TM_BLOB_FETCHER, TmImage } from '@tellma/core-ui/image';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { TmTilesTree } from '@tellma/core-ui/tiles-tree';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 import { TmTilesHarness } from '@tellma/core-ui-testing';
 
@@ -57,8 +58,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void; reject: () =
 /** The platform's Mod key, as harness modifiers. */
 const MOD: ModifierKeys = tmIsApplePlatform() ? { meta: true } : { control: true };
 
+// The host applies tree mode (TmTilesTree) to every tiles it renders: with
+// no parent reader bound the tiles stay flat, so the same host exercises
+// both modes, and the flat tests prove the tree adds nothing until it binds.
 @Component({
-  imports: [Dir, TmTiles, TmTileContent, TmTilesEmpty],
+  imports: [Dir, TmTiles, TmTilesTree, TmTileContent, TmTilesEmpty],
   template: `
     <div [dir]="dir()" [style.inline-size.px]="width()" style="block-size: 420px">
       <tm-tiles

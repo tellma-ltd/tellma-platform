@@ -591,6 +591,72 @@ export class TmPagerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmPivotCellHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    fitWidth(): Promise<void>;
+    focus(): Promise<void>;
+    getColumn(): Promise<number>;
+    getRole(): Promise<TmPivotCellRole>;
+    getRow(): Promise<number>;
+    getStyle(): Promise<TmPivotCellStyle | null>;
+    getText(): Promise<string>;
+    getWidth(): Promise<number>;
+    static hostSelector: string;
+    isActivatable(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isRefused(): Promise<boolean>;
+    isResizable(): Promise<boolean>;
+    isSticky(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TmPivotKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    static with(options?: TmPivotCellHarnessFilters): HarnessPredicate<TmPivotCellHarness>;
+}
+
+// @public
+export interface TmPivotCellHarnessFilters extends BaseHarnessFilters {
+    column?: number;
+    role?: TmPivotCellRole;
+    row?: number;
+    text?: string | RegExp;
+}
+
+// @public
+export type TmPivotCellRole = 'columnheader' | 'gridcell' | 'rowheader';
+
+// @public
+export type TmPivotCellStyle = 'leaf' | 'phantom' | 'subtotal-1' | 'subtotal-2' | 'total';
+
+// @public
+export class TmPivotHarness extends ComponentHarness {
+    getAttributeCount(): Promise<number>;
+    getCell(filter?: TmPivotCellHarnessFilters): Promise<TmPivotCellHarness>;
+    getCells(filter?: TmPivotCellHarnessFilters): Promise<TmPivotCellHarness[]>;
+    getColumnCount(): Promise<number>;
+    getHeaderRowCount(): Promise<number>;
+    getHeaderTexts(): Promise<string[][]>;
+    getLabel(): Promise<string>;
+    getRowCount(): Promise<number>;
+    getRowLabels(): Promise<string[]>;
+    getStickyColumnCount(): Promise<number>;
+    getTabStop(): Promise<TmPivotCellHarness>;
+    getValueCell(rowLabel: string | RegExp, dataColumn: number): Promise<TmPivotCellHarness>;
+    static hostSelector: string;
+    press(key: TmPivotKey, modifiers?: ModifierKeys): Promise<void>;
+    static with(options?: TmPivotHarnessFilters): HarnessPredicate<TmPivotHarness>;
+}
+
+// @public
+export interface TmPivotHarnessFilters extends BaseHarnessFilters {
+    label?: string | RegExp;
+}
+
+// @public
+export type TmPivotKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'PageDown' | 'PageUp' | 'Space' | 'c';
+
+// @public
 export class TmPopoverHarness extends ComponentHarness {
     getAriaLabel(): Promise<string | null>;
     getSize(): Promise<'auto' | 'lg' | 'md' | 'sm'>;

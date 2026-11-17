@@ -8,8 +8,9 @@
 /* tm-tiles — a virtualized lattice of fixed-size tiles. The scroller is the
    grid; each lattice line is an absolutely placed row at its pitch (the
    component computes the offsets from the same tokens), and each tile a
-   cell: tree chrome, the reserved checkbox, the image, then the four
-   corners on a two-by-two grid. data-layout switches between the lattice
+   cell: the tree's chrome (its own component and styles, in tree mode
+   only), the reserved checkbox, the image, then the four corners on a
+   two-by-two grid. data-layout switches between the lattice
    (bordered cards with gaps) and the stacked list and tree (rows split by
    divider lines). */
 
@@ -129,33 +130,7 @@
   box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
 }
 
-/* ---- Twisty, spinner slot and checkbox ---- */
-
-/* A 24px target around a 13px chevron; on a leaf the slot stays, empty, so
-   titles align across levels. */
-.tm-tiles__twisty {
-  --icon-size: var(--tiles-twisty-size);
-
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  inline-size: var(--tiles-twisty-target);
-  block-size: var(--tiles-twisty-target);
-  color: var(--tiles-twisty);
-}
-
-/* Reserved whenever children load lazily, so a spinner that comes and goes
-   moves nothing. */
-.tm-tiles__spinner-slot {
-  --spinner-size: var(--tiles-spinner-size);
-
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  inline-size: var(--tiles-spinner-slot);
-}
+/* ---- Checkbox ---- */
 
 /* The checkbox: a 14px box in a 24px target, checked when selected. */
 .tm-tiles__check {

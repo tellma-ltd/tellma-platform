@@ -46,7 +46,11 @@ export class TmOptionGroup {
   /** The visible heading, which is also the group's accessible name. */
   readonly label = input.required<string>();
 
-  /** The id the rendered heading carries, which the group's `aria-labelledby` names. */
+  /**
+   * The id the rendered heading carries, which the group's `aria-labelledby` names.
+   *
+   * @tmWiring
+   */
   readonly headingId = `tm-option-group-${nextUniqueId++}`;
 
   /** Refuses a nested group in development. */

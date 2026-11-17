@@ -17,6 +17,8 @@ import {
 } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
+import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
+import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 import { TM_LOCALE_AR_STRINGS } from './strings-ar';
@@ -188,11 +190,14 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
  */
 const AMBIENT_ARGS = new Set(['gender']);
 
+/** Every built-in English string: the core table and the tables entry points register beside it. */
+const ENGLISH = { ...TM_UI_STRINGS_EN, pivot: TM_PIVOT_STRINGS_EN, tilesTree: TM_TILES_TREE_STRINGS_EN };
+
 describe('EN↔AR string parity (DoD 18)', () => {
   it('the Arabic pack covers exactly the built-in English key set', () => {
     // A key missing from AR silently falls back to English mid-sentence;
     // a key missing from EN is dead weight the fallback path can't serve.
-    expect(keyPaths(TM_LOCALE_AR_STRINGS)).toEqual(keyPaths(TM_UI_STRINGS_EN));
+    expect(keyPaths(TM_LOCALE_AR_STRINGS)).toEqual(keyPaths(ENGLISH));
   });
 
   it('the Arabic message of each key takes exactly the English arguments', () => {
@@ -201,8 +206,8 @@ describe('EN↔AR string parity (DoD 18)', () => {
     // number from the sentence, and one AR invents renders as empty text.
     const dropped: string[] = [];
     const invented: string[] = [];
-    for (const path of keyPaths(TM_UI_STRINGS_EN)) {
-      const english = icuArguments(messageAt(TM_UI_STRINGS_EN, path));
+    for (const path of keyPaths(ENGLISH)) {
+      const english = icuArguments(messageAt(ENGLISH, path));
       const arabic = icuArguments(messageAt(TM_LOCALE_AR_STRINGS, path));
       for (const name of english.keys()) {
         if (!arabic.has(name)) {
