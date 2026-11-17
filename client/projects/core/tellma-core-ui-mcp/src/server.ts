@@ -20,19 +20,31 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
+/** The fields of one components.json entry that the tools read by name. */
 interface ComponentDoc {
+  /** The selector of a component or directive, the class name of a service. */
   name: string;
+  /** `component`, `directive` or `service`. */
   kind: string;
+  /** The docs group the entry sorts under. */
   group: string;
-  selector: string;
+  /** The element or attribute selector; `null` for a service. */
+  selector: string | null;
+  /** The import path that exports it. */
   entryPoint: string;
+  /** The Signal Forms contract it implements, if any. */
   formControl: string | null;
+  /** Its TSDoc description. */
   description: string;
-  examples: { title: string; code: string }[];
+  /** Its usage examples: templates (`html`) and service calls (`ts`). */
+  examples: { title: string; code: string; language: 'html' | 'ts' }[];
 }
 
+/** The generated components.json, as far as the tools read it. */
 interface ComponentsJson {
+  /** The @tellma/core-ui version the record describes. */
   libraryVersion: string;
+  /** Every documented component, directive and service. */
   components: ComponentDoc[];
 }
 
@@ -43,11 +55,12 @@ const doc: ComponentsJson = JSON.parse(
 
 const server = new McpServer({ name: 'tellma-core-ui-mcp', version: doc.libraryVersion });
 
+/** Finds an entry by its name or selector, ignoring case. */
 function findComponent(name: string): ComponentDoc | undefined {
   const needle = name.toLowerCase();
   return doc.components.find(
     (component) =>
-      component.name.toLowerCase() === needle || component.selector.toLowerCase() === needle,
+      component.name.toLowerCase() === needle || component.selector?.toLowerCase() === needle,
   );
 }
 
@@ -55,7 +68,7 @@ server.registerTool(
   'list',
   {
     description:
-      'Lists every component in @tellma/core-ui with its selector, entry point, and one-line role.',
+      'Lists every component, directive and service in @tellma/core-ui with its selector (null for a service), entry point, and one-line role.',
     inputSchema: {},
   },
   () => ({
@@ -87,8 +100,10 @@ server.registerTool(
   'describe',
   {
     description:
-      'Full reference for one component: inputs/outputs/slots, tokens read, a11y model, harness.',
-    inputSchema: { name: z.string().describe('Component name or selector, e.g. "tm-select"') },
+      'Full reference for one component, directive or service: inputs/outputs, members, slots, tokens read, a11y model, harness.',
+    inputSchema: {
+      name: z.string().describe('Name or selector, e.g. "tm-select" or "TmToasts"'),
+    },
   },
   ({ name }) => {
     const component = findComponent(name);
@@ -110,8 +125,11 @@ server.registerTool(
 server.registerTool(
   'example',
   {
-    description: 'Canonical usage examples (from the co-located stories) for one component.',
-    inputSchema: { name: z.string().describe('Component name or selector, e.g. "tm-select"') },
+    description:
+      'Canonical usage examples for one component, directive or service: templates from the co-located examples, and code from its documentation.',
+    inputSchema: {
+      name: z.string().describe('Name or selector, e.g. "tm-select" or "TmToasts"'),
+    },
   },
   ({ name }) => {
     const component = findComponent(name);
@@ -126,12 +144,17 @@ server.registerTool(
         isError: true,
       };
     }
+    // Each example is titled in its own language's comment syntax.
     const examples =
       component.examples.length > 0
         ? component.examples
-            .map((example) => `<!-- ${example.title} -->\n${example.code}`)
+            .map((example) =>
+              example.language === 'ts'
+                ? `// ${example.title}\n${example.code}`
+                : `<!-- ${example.title} -->\n${example.code}`,
+            )
             .join('\n\n')
-        : `No story examples yet; import ${component.name} from '${component.entryPoint}'.`;
+        : `No examples yet; import ${component.name} from '${component.entryPoint}'.`;
     return { content: [{ type: 'text', text: examples }] };
   },
 );

@@ -1095,5 +1095,53 @@ export const tmTokensDefault: TmTokens = {
       border: '{action.primary}',
       borderWidth: '2px',
     },
+    // tm-tiles: square-cornered 60px cards (a 40px image inside 9px of
+    // padding and a hairline) on a lattice of columns at least 220px wide
+    // with a 10px gap; below the small breakpoint, and always as a tree,
+    // they stack as one column of rows split by divider lines. The active
+    // tile takes the grid's active-row tint under a 2px accent bar; a
+    // selected tile takes the selection tint and its checkbox's check.
+    tiles: {
+      height: '60px',
+      imageSize: '40px',
+      padding: '9px',
+      gap: '10px',
+      minWidth: '220px',
+      contentGap: '10px',
+      radius: '0',
+      bg: '{surface.card}',
+      border: '{border.subtle}',
+      divider: '{border.divider}',
+      hoverBg: '{surface.hover}',
+      activeBg: '{surface.selected}',
+      activeBar: '{action.accent}',
+      selectedBg: '{selection.bg}',
+      markedBg: '{surface.subtle}',
+      text: '{text.body}',
+      titleText: '{text.strong}',
+      secondaryText: '{text.secondary}',
+      contextText: '{text.secondary}',
+      titleFontSize: '13px',
+      titleFontWeight: '{font.weight.medium}',
+      markedFontWeight: '{font.weight.semibold}',
+      cornerFontSize: '12px',
+      placeholderBg: '{surface.sunken}',
+      placeholderIcon: '{text.muted}',
+      // The pulse a tile gets when code scrolls it into view, as the grid's.
+      flashBg: '{status.info.bg}',
+      flashDuration: '1200ms',
+      // Tree chrome, sized as tm-tree's: a 14px indent per level, a 13px
+      // chevron in a 24px target, a reserved spinner slot, and the
+      // checkbox's 14px box in a 24px target.
+      indent: '14px',
+      twistySize: '13px',
+      twistyTarget: '24px',
+      twisty: '{text.secondary}',
+      spinnerSlot: '16px',
+      spinnerSize: '12px',
+      checkSize: '14px',
+      checkTarget: '24px',
+      check: '{action.primary}',
+    },
   },
 };

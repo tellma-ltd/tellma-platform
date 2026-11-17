@@ -107,6 +107,9 @@ namespace Tellma.Core.Abstractions.Settings
         }
 
         /// <inheritdoc />
+        internal override bool HasOwnContract => TypeInfo is not null;
+
+        /// <inheritdoc />
         public override bool TryReadValue(JsonElement json, out object? value, out string? validationCode)
         {
             validationCode = null;

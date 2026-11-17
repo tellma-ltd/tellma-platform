@@ -18,6 +18,7 @@ import {
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
 import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
+import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 import { TM_LOCALE_AR_STRINGS } from './strings-ar';
@@ -190,7 +191,7 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
 const AMBIENT_ARGS = new Set(['gender']);
 
 /** Every built-in English string: the core table and the tables entry points register beside it. */
-const ENGLISH = { ...TM_UI_STRINGS_EN, pivot: TM_PIVOT_STRINGS_EN };
+const ENGLISH = { ...TM_UI_STRINGS_EN, pivot: TM_PIVOT_STRINGS_EN, tilesTree: TM_TILES_TREE_STRINGS_EN };
 
 describe('EN↔AR string parity (DoD 18)', () => {
   it('the Arabic pack covers exactly the built-in English key set', () => {

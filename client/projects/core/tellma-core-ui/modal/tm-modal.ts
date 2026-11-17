@@ -126,6 +126,11 @@ let nextTitleId = 0;
  * top layer, above the modal, with no z-index management — and consume
  * their own Escape first, so Escape closes innermost-first.
  *
+ * @tmGroup overlay
+ * @tmA11yNotes A dialog (or an alert dialog) named by its title. Focus is
+ *   trapped inside and restored to the opener on close; Tab cycles and
+ *   Escape dismisses the topmost layer.
+ *
  * @example
  * ```ts
  * const ref = this.modal.open<boolean>(ConfirmDiscard, {

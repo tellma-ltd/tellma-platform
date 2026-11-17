@@ -13,10 +13,11 @@ namespace Tellma.Core.AspNetCore.Hosting
 {
     /// <summary>
     ///     The per-worktree ports of local development. A gitignored <c>.dev-ports.local</c> at the
-    ///     repository root names the web host's port (<c>&lt;SLUG&gt;_WEB</c>), so several worktrees of
-    ///     one distribution run side by side. In Development the web host listens on that port, and its
-    ///     public origin is its own, the origin the browser sees while no client dev server fronts it;
-    ///     the file's other lines, the client dev server's port among them, are not read.
+    ///     repository root names the web host's port (<c>&lt;SLUG&gt;_WEB</c>) and the client dev
+    ///     server's (<c>&lt;SLUG&gt;_CLIENT</c>), so several worktrees of one distribution run side by
+    ///     side. In Development the web host listens on the web port, and its public origin is the
+    ///     client dev server's, the origin the browser sees through the SPA proxy; the file's other
+    ///     lines are not read.
     /// </summary>
     /// <remarks>
     ///     The derived values sit below the environment's variables and the command line, so
@@ -40,6 +41,14 @@ namespace Tellma.Core.AspNetCore.Hosting
         public static string WebKey(string slug)
         {
             return KeyPrefix(slug) + "_WEB";
+        }
+
+        /// <summary>The key of the client dev server's port.</summary>
+        /// <param name="slug">The distribution's slug.</param>
+        /// <returns>The key, such as <c>ACME_CLIENT</c>.</returns>
+        public static string ClientKey(string slug)
+        {
+            return KeyPrefix(slug) + "_CLIENT";
         }
 
         /// <summary>
@@ -129,11 +138,15 @@ namespace Tellma.Core.AspNetCore.Hosting
             return values;
         }
 
-        /// <summary>The configuration the web port derives: the listening address and the public origin, both the web host's own.</summary>
+        /// <summary>
+        ///     The configuration the ports derive: the web port the listening address, the client port
+        ///     the public origin. A port the file does not name derives nothing, so its fallback, from
+        ///     the launch profile or the configuration files, stands.
+        /// </summary>
         /// <param name="slug">The distribution's slug.</param>
         /// <param name="ports">The file's values.</param>
         /// <param name="file">The file's path, named by a failure.</param>
-        /// <returns>The derived configuration; empty when the file names no web port.</returns>
+        /// <returns>The derived configuration; empty when the file names neither port.</returns>
         /// <exception cref="InvalidOperationException">A named port is not a port.</exception>
         public static Dictionary<string, string?> Derive(string slug, IReadOnlyDictionary<string, string> ports, string file)
         {
@@ -141,13 +154,25 @@ namespace Tellma.Core.AspNetCore.Hosting
             Dictionary<string, string?> derived = new(StringComparer.OrdinalIgnoreCase);
             if (Port(ports, WebKey(slug), file) is { } web)
             {
-                // No client dev server fronts the host yet, so the browser sees the host's own origin.
-                string origin = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{web}");
-                derived[UrlsKey] = origin;
-                derived[PublicOriginKey] = origin;
+                derived[UrlsKey] = Localhost(web);
+            }
+
+            // The browser reaches the app through the client dev server, which forwards the server's
+            // own paths to the web host, so sign-in redirects and the issuer live at its origin.
+            if (Port(ports, ClientKey(slug), file) is { } client)
+            {
+                derived[PublicOriginKey] = Localhost(client);
             }
 
             return derived;
+        }
+
+        /// <summary>The HTTPS origin of a port on the local machine.</summary>
+        /// <param name="port">The port.</param>
+        /// <returns>The origin, such as <c>https://localhost:4200</c>.</returns>
+        private static string Localhost(int port)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
         }
 
         /// <summary>One port the file names, or null when it names none under the key.</summary>

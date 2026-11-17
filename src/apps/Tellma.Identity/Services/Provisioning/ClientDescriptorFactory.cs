@@ -172,6 +172,90 @@ namespace Tellma.Identity.Services.Provisioning
             return descriptor;
         }
 
+        /// <summary>
+        ///     A document client: a client whose id is the URL of its own metadata document. The
+        ///     document decides its name, redirect URIs and client type; everything else is fixed
+        ///     here. Authorization Code + PKCE (pushed or not) with refresh tokens, explicit consent,
+        ///     no device flow, no end-session, no stored resource permission — the distribution-origin
+        ///     list is evaluated at request time — and never the first-party marker. A loopback
+        ///     redirect is stored without its port and makes the client native, so any port matches
+        ///     it; a <c>private_key_jwt</c> client is confidential with the fetched key set and no
+        ///     secret.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="createdUtc">When the row was first created, kept across updates.</param>
+        /// <returns>The descriptor, stamped with the document's fetch time.</returns>
+        public static OpenIddictApplicationDescriptor DocumentClient(ClientMetadataDocument document, DateTimeOffset createdUtc)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            return DocumentClient(document, createdUtc, document.FetchedAt);
+        }
+
+        /// <summary>
+        ///     A document client, as <see cref="DocumentClient(ClientMetadataDocument, DateTimeOffset)" />,
+        ///     stamped with a given fetch time rather than the document's own: the stamp a stored
+        ///     row already carries, when deciding whether a copy fetched earlier differs from it.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="createdUtc">When the row was first created, kept across updates.</param>
+        /// <param name="fetchedUtc">The fetch time the descriptor is stamped with.</param>
+        /// <returns>The descriptor.</returns>
+        public static OpenIddictApplicationDescriptor DocumentClient(
+            ClientMetadataDocument document, DateTimeOffset createdUtc, DateTimeOffset fetchedUtc)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            bool privateKeyJwt = string.Equals(
+                document.TokenEndpointAuthMethod,
+                ClientMetadata.ClientMetadataDocumentParser.AuthMethodPrivateKeyJwt,
+                StringComparison.Ordinal);
+            if (privateKeyJwt && document.Keys is null)
+            {
+                throw new ArgumentException("A private_key_jwt document client needs its fetched key set.", nameof(document));
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new()
+            {
+                ClientId = document.ClientId.OriginalString,
+                DisplayName = document.ClientName ?? ClientMetadata.ClientIdUrl.DisplayHost(document.ClientId),
+                ClientType = privateKeyJwt ? ClientTypes.Confidential : ClientTypes.Public,
+                ApplicationType = document.RedirectUris.Any(ClientMetadata.DocumentClientRedirects.IsLoopback)
+                    ? ApplicationTypes.Native
+                    : ApplicationTypes.Web,
+                ConsentType = ConsentTypes.Explicit,
+                JsonWebKeySet = privateKeyJwt ? document.Keys : null,
+                Permissions =
+                {
+                    Permissions.Endpoints.Authorization,
+                    Permissions.Endpoints.PushedAuthorization,
+                    Permissions.Endpoints.Token,
+                    Permissions.Endpoints.Revocation,
+                    Permissions.GrantTypes.AuthorizationCode,
+                    Permissions.GrantTypes.RefreshToken,
+                    Permissions.ResponseTypes.Code,
+                    Permissions.Scopes.Email,
+                    Permissions.Scopes.Profile,
+                    Permissions.Prefixes.Scope + TellmaIdentityConstants.ApiScope,
+                },
+                Requirements =
+                {
+                    Requirements.Features.ProofKeyForCodeExchange,
+                },
+            };
+
+            foreach (Uri redirectUri in document.RedirectUris)
+            {
+                descriptor.RedirectUris.Add(new Uri(ClientMetadata.DocumentClientRedirects.ToStored(redirectUri), UriKind.Absolute));
+            }
+
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.DocumentClient, "true");
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.CreatedUtc, createdUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FetchedUtc, fetchedUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+
+            return descriptor;
+        }
+
         /// <summary>Builds the descriptor for one seeded platform client.</summary>
         /// <param name="options">The engine options.</param>
         /// <param name="seed">The seed definition.</param>

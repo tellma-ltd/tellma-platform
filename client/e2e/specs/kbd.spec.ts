@@ -17,18 +17,14 @@ import { storyUrl } from '../support/story-map';
 
 test.describe('axe floor', () => {
   for (const theme of ['light', 'dark'] as const) {
-    test(`kbd story is axe-clean (${theme})`, async ({ page }) => {
-      await page.goto(storyUrl('kbd', { theme }));
-      await expect(page.getByTestId('bindings')).toBeVisible();
-      await expectNoAxeViolations(page);
-    });
+    for (const dir of ['ltr', 'rtl'] as const) {
+      test(`kbd story is axe-clean (${theme}, ${dir})`, async ({ page }) => {
+        await page.goto(storyUrl('kbd', { theme, dir }));
+        await expect(page.getByTestId('bindings')).toBeVisible();
+        await expectNoAxeViolations(page);
+      });
+    }
   }
-
-  test('kbd story is axe-clean in RTL', async ({ page }) => {
-    await page.goto(storyUrl('kbd', { dir: 'rtl' }));
-    await expect(page.getByTestId('bindings')).toBeVisible();
-    await expectNoAxeViolations(page);
-  });
 });
 
 test.describe('caps', () => {

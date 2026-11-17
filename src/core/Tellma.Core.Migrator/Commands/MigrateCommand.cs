@@ -129,10 +129,11 @@ namespace Tellma.Core.Migrator.Commands
         {
             CatalogConnection catalog = context.Services.GetRequiredService<CatalogConnection>();
             TellmaSqlOptions sql = context.Services.GetRequiredService<IOptionsMonitor<TellmaSqlOptions>>().CurrentValue;
+            MigratorOptions bounds = context.Options;
 
             // --- The database, created when missing; read-committed snapshot in a fresh one, before the lock ---
-            TargetDatabase database = new(catalog.ConnectionString);
-            if (await database.EnsureExistsAsync(create: true, sql.CreateDatabaseOptions, cancellationToken).ConfigureAwait(false))
+            TargetDatabase database = new(catalog.ConnectionString, bounds);
+            if (await database.EnsureExistsAsync(create: true, sql.CreateDatabaseOptions, bounds.CreateDatabaseRetryPolicy(), context.Logger, cancellationToken).ConfigureAwait(false))
             {
                 MigratorLog.DatabaseCreated(context.Logger, database.Name, database.Server);
             }
@@ -142,23 +143,23 @@ namespace Tellma.Core.Migrator.Commands
             await using (connection.ConfigureAwait(false))
             {
                 await database.CheckCollationAsync(connection, cancellationToken).ConfigureAwait(false);
-                fresh = await TargetDatabase.IsFreshAsync(connection, CatalogDbContext.Schema, cancellationToken).ConfigureAwait(false);
+                fresh = await database.IsFreshAsync(connection, CatalogDbContext.Schema, cancellationToken).ConfigureAwait(false);
                 if (fresh)
                 {
-                    await TargetDatabase.EnableReadCommittedSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
+                    await database.EnableReadCommittedSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
                 }
             }
 
-            await using MigrationLock held = await MigrationLock.AcquireAsync(catalog.ConnectionString, MigrationLock.CatalogResource, cancellationToken).ConfigureAwait(false);
+            await using MigrationLock held = await MigrationLock.AcquireAsync(catalog.ConnectionString, MigrationLock.CatalogResource, bounds.CommandTimeout, cancellationToken).ConfigureAwait(false);
 
             // --- The role, and the application's user in a fresh catalog ---
             connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
             {
-                await TargetDatabase.ExecuteAsync(connection, ApplicationGrants.EnsureRole, cancellationToken).ConfigureAwait(false);
+                await database.ExecuteAsync(connection, ApplicationGrants.EnsureRole, cancellationToken).ConfigureAwait(false);
                 if (fresh && sql.ApplicationPrincipal is { Length: > 0 } principal)
                 {
-                    await TargetDatabase.ExecuteAsync(connection, ApplicationGrants.ForPrincipal(principal, database.EngineEdition), cancellationToken).ConfigureAwait(false);
+                    await database.ExecuteAsync(connection, ApplicationGrants.ForPrincipal(principal, database.EngineEdition), cancellationToken).ConfigureAwait(false);
                 }
             }
 
@@ -167,6 +168,7 @@ namespace Tellma.Core.Migrator.Commands
             IReadOnlyList<string> grants;
             await using (var migrations = CatalogDbContext.Create(catalog.ConnectionString))
             {
+                migrations.Database.SetCommandTimeout(bounds.MigrationCommandTimeout);
                 applied = (await migrations.Database.GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false)).Count();
                 await migrations.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
                 grants = ApplicationGrants.ForCatalog(migrations.Model, context.InProcIdentity);
@@ -180,14 +182,15 @@ namespace Tellma.Core.Migrator.Commands
             if (context.InProcIdentity)
             {
                 // The usage check refused in-proc mode without the delegate before the host started.
-                await context.MigrateIdentityStore!(catalog.ConnectionString).ConfigureAwait(false);
+                // The store creates its own commands, so its bound travels in the connection string.
+                await context.MigrateIdentityStore!(bounds.MigrationConnectionString(catalog.ConnectionString)).ConfigureAwait(false);
             }
 
             // --- The grants, recomputed over everything the catalog now holds ---
             connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
             {
-                await TargetDatabase.ExecuteAsync(connection, grants, cancellationToken).ConfigureAwait(false);
+                await database.ExecuteAsync(connection, grants, cancellationToken).ConfigureAwait(false);
             }
 
             // --- The registry, then the seed tenants the catalog lacks ---

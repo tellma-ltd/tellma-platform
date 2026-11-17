@@ -47,6 +47,13 @@ namespace Tellma.Identity.Services.Provisioning
         /// <summary>When the client registration was created (ISO 8601).</summary>
         public const string CreatedUtc = "tellma:created_utc";
 
+        /// <summary>
+        ///     When the document a document client's row was last written from was fetched
+        ///     (ISO 8601). A copy fetched earlier never rewrites the row, so instances holding
+        ///     different copies cannot flip it back and forth.
+        /// </summary>
+        public const string FetchedUtc = "tellma:fetched_utc";
+
         /// <summary>Writes a string property value.</summary>
         /// <param name="properties">The descriptor's properties bag.</param>
         /// <param name="key">The property key.</param>

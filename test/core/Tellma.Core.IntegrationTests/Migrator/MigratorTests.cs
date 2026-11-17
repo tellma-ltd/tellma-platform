@@ -49,7 +49,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Migrate_turns_on_read_committed_snapshot_in_a_fresh_catalog_another_connection_holds_open()
         {
             MigratorHarness migrator = new(sql, "mig_held");
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{migrator.CatalogName}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, migrator.CatalogName, cancellationToken: Token);
 
             // A web host started before the catalog existed: its connection stays open in the database.
             SqlConnectionStringBuilder unpooled = new(migrator.CatalogConnectionString) { Pooling = false };
@@ -66,7 +66,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
         public async Task Migrate_refuses_an_existing_catalog_in_another_collation()
         {
             MigratorHarness migrator = new(sql, "mig_collation");
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{migrator.CatalogName}] COLLATE SQL_Latin1_General_CP1_CI_AS;");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, migrator.CatalogName, "SQL_Latin1_General_CP1_CI_AS", Token);
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
@@ -309,7 +309,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             await using (SqlConnection connection = new(tenant))
             {
                 await connection.OpenAsync(Token);
-                rows.AddRange((await SchemaFingerprints.ReadAsync(connection, Token)).Select(static row => row.Fingerprint));
+                rows.AddRange((await SchemaFingerprints.ReadAsync(connection, MigratorOptions.DefaultCommandTimeout, Token)).Select(static row => row.Fingerprint));
             }
 
             Assert.Equal([third, second], rows);
@@ -374,7 +374,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             // --- An operator's database: a history table, read-committed snapshot and the query store off ---
             string name = migrator.TenantDatabaseName(5);
-            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, $"CREATE DATABASE [{name}] COLLATE {DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, name, cancellationToken: Token);
             await SqlServerFixture.ExecuteAsync(
                 migrator.TenantConnectionString(5),
                 "ALTER DATABASE CURRENT SET QUERY_STORE = OFF;",
@@ -569,10 +569,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
+            // The platform's own settings step runs beside the three.
             Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
-            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 3 step(s)", StringComparison.Ordinal));
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 4 step(s)", StringComparison.Ordinal));
             Assert.Equal(
-                ["probe.counter", "probe.seed-a", "probe.seed-b"],
+                ["core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
                 await ListAsync(migrator.TenantConnectionString(1), "SELECT [Step] FROM [dbo].[__TellmaProvisioning] ORDER BY [Step];"));
         }
 
@@ -651,6 +652,53 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.Equal("Active", await StateAsync(migrator, 5));
         }
 
+        /// <summary>
+        ///     A statement of the migrator's own that another session's lock holds up fails its tenant
+        ///     at the configured bound, not at SqlClient's 30-second default: here the fingerprint
+        ///     write, behind an open transaction holding the fingerprint table exclusively.
+        /// </summary>
+        /// <returns>A task that completes when the test has run.</returns>
+        [Fact]
+        public async Task A_statement_held_up_by_a_lock_fails_its_tenant_at_the_configured_bound()
+        {
+            MigratorHarness migrator = new(sql, "mig_bound");
+            migrator.Seed(1);
+            _ = await migrator.RunConvergedAsync("migrate");
+            migrator.Values[$"{MigratorOptions.SectionPath}:{nameof(MigratorOptions.CommandTimeout)}"] = "00:00:02";
+
+            // --- Another session holds the fingerprint table until its transaction rolls back ---
+            SqlConnectionStringBuilder unpooled = new(migrator.TenantConnectionString(1)) { Pooling = false };
+            SqlConnection holder = new(unpooled.ConnectionString);
+            MigratorResult result;
+            TimeSpan blocked;
+            await using (holder.ConfigureAwait(false))
+            {
+                await holder.OpenAsync(Token);
+                var transaction = (SqlTransaction)await holder.BeginTransactionAsync(Token);
+                await using (transaction.ConfigureAwait(false))
+                {
+                    SqlCommand hold = new("SELECT COUNT(*) FROM [dbo].[__TellmaSchema] WITH (TABLOCKX, HOLDLOCK);", holder, transaction);
+                    await using (hold.ConfigureAwait(false))
+                    {
+                        _ = await hold.ExecuteScalarAsync(Token);
+                    }
+
+                    // --- The rerun reaches the fingerprint write and waits; its bound ends the wait ---
+                    Task<MigratorResult> run = migrator.RunAsync("migrate");
+                    await WaitForBlockedRequestAsync(migrator.TenantDatabaseName(1), run);
+                    var waiting = Stopwatch.StartNew();
+                    result = await run;
+                    blocked = waiting.Elapsed;
+                }
+            }
+
+            Assert.True(result.ExitCode == MigratorExitCodes.PartialFailure, result.ToString());
+            Assert.Contains(result.Lines, line => line.StartsWith("tenant 1: failed (SqlException: Execution Timeout Expired", StringComparison.Ordinal));
+
+            // The bound is 2 seconds; SqlClient's default would have held the run for 30.
+            Assert.True(blocked < TimeSpan.FromSeconds(20), string.Create(CultureInfo.InvariantCulture, $"The run waited {blocked} after its statement was held up.\n{result}"));
+        }
+
         /// <summary>Adds the counted step to a harness's runs, counted under the harness's own key.</summary>
         /// <param name="migrator">The harness.</param>
         /// <returns>The harness.</returns>
@@ -667,6 +715,27 @@ namespace Tellma.Core.IntegrationTests.Migrator
         private static string RunKey(MigratorHarness migrator)
         {
             return migrator.CatalogName;
+        }
+
+        /// <summary>Waits until a request in a database waits for a lock, failing if the run ends first.</summary>
+        /// <param name="database">The database.</param>
+        /// <param name="run">The run expected to wait.</param>
+        /// <returns>A task that completes when a request in the database waits for a lock.</returns>
+        private async Task WaitForBlockedRequestAsync(string database, Task<MigratorResult> run)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            timeout.CancelAfter(TimeSpan.FromMinutes(2));
+            string query = $"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [database_id] = DB_ID(N'{database}') AND [wait_type] LIKE N'LCK%';";
+            while (await SqlServerFixture.ScalarAsync<int>(sql.MasterConnectionString, query) == 0)
+            {
+                // A run that ended never waited: fail with what it printed.
+                if (run.IsCompleted)
+                {
+                    Assert.Fail($"The run ended without waiting for a lock in {database}.\n{await run}");
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+            }
         }
 
         /// <summary>Waits until a run waits for a migration lock in a harness's catalog.</summary>
@@ -715,7 +784,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
             await SqlServerFixture.ExecuteAsync(tenant, $"INSERT INTO [dbo].[__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'{migrationId}', N'10.0.11');");
             await using SqlConnection connection = new(tenant);
             await connection.OpenAsync(Token);
-            Assert.True(await SchemaFingerprints.RecordAsync(connection, fingerprint, migrationId, "1.0.0", Token));
+            Assert.True(await SchemaFingerprints.RecordAsync(connection, fingerprint, migrationId, "1.0.0", MigratorOptions.DefaultCommandTimeout, Token));
         }
 
         /// <summary>Asserts that the role holds the data grants on exactly the given schemas, and none on <c>dbo</c>.</summary>

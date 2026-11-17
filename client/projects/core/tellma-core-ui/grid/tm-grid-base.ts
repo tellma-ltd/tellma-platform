@@ -14,7 +14,6 @@ import {
   inject,
   Injector,
   input,
-  isDevMode,
   model,
   output,
   signal,
@@ -46,6 +45,14 @@ import {
 } from './tm-grid-templates';
 import { TmGridStateStore } from './tm-grid-state-store';
 import type { TmGridRowActivation, TmGridSort } from './tm-grid-types';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the checks it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /**
  * The shared shell of `tm-grid` and `tm-tree-grid`: declares the inputs,
@@ -285,7 +292,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     this.activeDescendantId = this.core.activeDescendantId;
     this.pageStep = this.core.pageSize;
 
-    if (isDevMode()) {
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
       // Exactly one of data/field must be bound — a configuration error,
       // surfaced loudly in dev mode.
       effect(() => {
@@ -396,7 +403,9 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
    * (`'center'`, the default) or just inside its nearest edge
    * (`'nearest'`). `flash` pulses the row's cells once with
    * `--grid-flash-bg` for `--grid-flash-duration`: a still tint for the same
-   * time under reduced motion, an outline under forced colors.
+   * time under reduced motion; under forced colors no tint, but a ring
+   * around the row in two system colours that contrast with each other, so
+   * it shows over every cell, whatever system colour the cell paints.
    */
   scrollToRow(
     rowId: TmRowId,

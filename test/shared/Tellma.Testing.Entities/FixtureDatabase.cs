@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Testing.Support.Sql;
 
 namespace Tellma.Testing.Entities
 {
@@ -55,12 +56,12 @@ namespace Tellma.Testing.Entities
             ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
             ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
 
-            // --- The empty database, as provisioning creates it ---
+            // --- The empty database, as provisioning creates it; the shared creation retries the model lock ---
             string quoted = Quote(databaseName);
+            await SqlDatabaseCreation.CreateAsync(masterConnectionString, databaseName, DatabaseCollations.Platform, cancellationToken).ConfigureAwait(false);
             await ExecuteAsync(
                 masterConnectionString,
                 cancellationToken,
-                $"CREATE DATABASE {quoted} COLLATE {DatabaseCollations.Platform};",
                 $"ALTER DATABASE {quoted} SET READ_COMMITTED_SNAPSHOT {(readCommittedSnapshot ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE;",
                 $"ALTER DATABASE {quoted} SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 1 DAYS, AUTO_CLEANUP = ON);");
 

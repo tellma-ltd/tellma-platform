@@ -25,6 +25,9 @@ describe('tmRefToVarName', () => {
     expect(tmRefToVarName('action.accent')).toBe('--accent');
     expect(tmRefToVarName('status.error.fg')).toBe('--error');
     expect(tmRefToVarName('status.error.bg')).toBe('--error-bg');
+    // The divider is emitted under its bare name, and a reference resolves to it.
+    expect(tmRefToVarName('border.divider')).toBe('--divider');
+    expect(tmRefToVarName('border.subtle')).toBe('--border-subtle');
     expect(tmRefToVarName('field.bgDisabled')).toBe('--field-bg-disabled');
     expect(tmRefToVarName('formField.heightSm')).toBe('--field-height-sm');
     expect(tmRefToVarName('focusRing.color')).toBe('--focus-ring-color');
@@ -266,6 +269,23 @@ describe('tmEmitCss', () => {
       '--pivot-phantom-text: var(--text-secondary);',
       '--pivot-link-text: var(--color-primary);',
       '--pivot-ring: var(--accent);',
+    ]) {
+      expect(css).toContain(declaration);
+    }
+  });
+
+  it('emits the tiles geometry: 60px tiles with a 40px image on a 70px lattice pitch', () => {
+    // The pitch is the tile plus the gap; tm-tiles reads the height, the
+    // gap and the minimum width to lay the lattice out.
+    for (const declaration of [
+      '--tiles-height: 60px;',
+      '--tiles-image-size: 40px;',
+      '--tiles-padding: 9px;',
+      '--tiles-gap: 10px;',
+      '--tiles-min-width: 220px;',
+      '--tiles-divider: var(--divider);',
+      '--tiles-flash-duration: 1200ms;',
+      '--tiles-indent: 14px;',
     ]) {
       expect(css).toContain(declaration);
     }

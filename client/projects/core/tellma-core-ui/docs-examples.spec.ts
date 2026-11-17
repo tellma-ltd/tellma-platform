@@ -79,6 +79,14 @@ import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
 import { TmSwitch } from '@tellma/core-ui/switch';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
+import {
+  TmTileContent,
+  TmTiles,
+  TmTilesEmpty,
+  TmTilesLoading,
+  type TmTileLayout,
+} from '@tellma/core-ui/tiles';
+import { TmTilesTree } from '@tellma/core-ui/tiles-tree';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 import { TmTree, TmTreeNode } from '@tellma/core-ui/tree';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
@@ -133,7 +141,9 @@ import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
 import * as splitterExamples from './splitter/tm-splitter.examples';
 import * as switchExamples from './switch/tm-switch.examples';
-import * as tabsExamples from './tabs/tm-tabs.examples';
+import * as tabsExamples from './tabs/tm-tab-group.examples';
+import * as tilesExamples from './tiles/tm-tiles.examples';
+import * as tilesTreeExamples from './tiles-tree/tm-tiles-tree.examples';
 import * as tooltipExamples from './tooltip/tm-tooltip.examples';
 import * as treeExamples from './tree/tm-tree.examples';
 import * as treeGridExamples from './tree-grid/tm-tree-grid.examples';
@@ -274,6 +284,11 @@ class ExamplePage {}
     TmTabContent,
     TmTabGroup,
     TmTabLabel,
+    TmTileContent,
+    TmTiles,
+    TmTilesEmpty,
+    TmTilesLoading,
+    TmTilesTree,
     TmTimeField,
     TmTooltip,
     TmTree,
@@ -403,6 +418,17 @@ class ExamplePage {}
       <tm-grid-column key="name" header="placeholder" />
     </tm-tree-grid>
     <tm-pivot [model]="pivotModel" ariaLabel="placeholder" style="block-size: 120px" />
+    <tm-tiles [rowId]="rowId" [layout]="rowTile" ariaLabel="placeholder">
+      <ng-template tmTileContent>placeholder</ng-template>
+      <span *tmTilesEmpty>placeholder</span>
+      <span *tmTilesLoading>placeholder</span>
+    </tm-tiles>
+    <tm-tiles
+      [rowId]="treeRowId"
+      [layout]="treeTile"
+      [parentId]="treeParentId"
+      ariaLabel="placeholder-tree"
+    />
   `,
 })
 class ExampleHost {
@@ -421,6 +447,19 @@ class ExampleHost {
     { id: 4, parentId: null, name: 'Liabilities', qty: 3 },
   ];
   protected readonly treeRowId = (row: ExampleTreeRow): number => row.id;
+  // The tiles examples' layouts: a placeholder image, the price as a number
+  // and the status as a badge; tree tiles show the quantity.
+  protected readonly rowTile: TmTileLayout<ExampleRow> = {
+    image: (row) => ({ src: null, alt: row.name }),
+    title: (row) => row.name,
+    topEnd: (row) => ({ text: String(row.price), numeric: true }),
+    bottomStart: (row) => row.status,
+    bottomEnd: (row) => ({ text: row.active ? 'Active' : 'Inactive', badge: row.active ? 'success' : 'neutral' }),
+  };
+  protected readonly treeTile: TmTileLayout<ExampleTreeRow> = {
+    title: (row) => row.name,
+    topEnd: (row) => ({ text: String(row.qty), numeric: true }),
+  };
   protected readonly treeParentId = (row: ExampleTreeRow): number | null => row.parentId;
   // The pivot examples' model: two regions under the total by two quarters,
   // one measure; the two-way expansion sets and widths; the drill handler.
@@ -571,6 +610,23 @@ function grids(fixture: ComponentFixture<ExampleHost>): TmGrid<unknown>[] {
 
 /** An element carrying `*tmGridEditor`, with its content: a cell editor's template. */
 const EDITOR_TEMPLATE = /<([a-z][a-z0-9-]*)\b[^>]*\*tmGridEditor\b[^>]*>(?:[\s\S]*?<\/\1>)?/g;
+
+/** The example templates' tiles, read off the debug tree. */
+function tiles(fixture: ComponentFixture<ExampleHost>): TmTiles<unknown>[] {
+  return fixture.debugElement
+    .queryAll(By.directive(TmTiles))
+    .map((element) => element.componentInstance as TmTiles<unknown>);
+}
+
+/** Reads a protected content-query signal off each of the example templates' tiles. */
+function tilesTemplates(
+  fixture: ComponentFixture<ExampleHost>,
+  query: 'contentDef' | 'emptyDef' | 'loadingDef',
+): boolean {
+  return tiles(fixture).some(
+    (list) => (list as unknown as Record<typeof query, () => unknown>)[query]() !== undefined,
+  );
+}
 
 /**
  * Element selectors are covered by `errorOnUnknownElements` (an unmatched
@@ -840,7 +896,9 @@ const MARKERS: {
   {
     name: 'selectable',
     pattern: /\bselectable\b/,
-    instantiated: (fixture) => grids(fixture).some((grid) => grid.selectable()),
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.selectable()) ||
+      tiles(fixture).some((list) => list.selectable()),
   },
   {
     name: 'searchable',
@@ -850,7 +908,25 @@ const MARKERS: {
   {
     name: 'loading',
     pattern: /\bloading\b/,
-    instantiated: (fixture) => grids(fixture).some((grid) => grid.loading()),
+    instantiated: (fixture) =>
+      grids(fixture).some((grid) => grid.loading()) ||
+      tiles(fixture).some((list) => list.loading()),
+  },
+  {
+    // The tiles' templates are unprojected content, read off its content queries.
+    name: 'TmTileContent',
+    pattern: /\btmTileContent\b/,
+    instantiated: (fixture) => tilesTemplates(fixture, 'contentDef'),
+  },
+  {
+    name: 'TmTilesEmpty',
+    pattern: /\btmTilesEmpty\b/,
+    instantiated: (fixture) => tilesTemplates(fixture, 'emptyDef'),
+  },
+  {
+    name: 'TmTilesLoading',
+    pattern: /\btmTilesLoading\b/,
+    instantiated: (fixture) => tilesTemplates(fixture, 'loadingDef'),
   },
   {
     name: 'TmGridDriver',
@@ -919,6 +995,8 @@ const SUITES = [
   { source: 'tree/tm-tree.examples.ts', examples: treeExamples },
   { source: 'drag-drop/tm-drag-drop.examples.ts', examples: dragDropExamples },
   { source: 'reorder-list/tm-reorder-list.examples.ts', examples: reorderListExamples },
+  { source: 'tiles/tm-tiles.examples.ts', examples: tilesExamples },
+  { source: 'tiles-tree/tm-tiles-tree.examples.ts', examples: tilesTreeExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
   { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },
@@ -929,7 +1007,7 @@ const SUITES = [
   { source: 'empty-state/tm-empty-state.examples.ts', examples: emptyStateExamples },
   { source: 'icon/tm-icon.examples.ts', examples: iconExamples },
   { source: 'kbd/tm-kbd.examples.ts', examples: kbdExamples },
-  { source: 'tabs/tm-tabs.examples.ts', examples: tabsExamples },
+  { source: 'tabs/tm-tab-group.examples.ts', examples: tabsExamples },
   { source: 'modal/tm-modal-footer.examples.ts', examples: modalFooterExamples },
   { source: 'popover/tm-popover.examples.ts', examples: popoverExamples },
   { source: 'tooltip/tm-tooltip.examples.ts', examples: tooltipExamples },

@@ -129,7 +129,7 @@ namespace Tellma.Core.Migrator.Commands
                 : new TenantLocation(TenantLocations.Canonicalize(line.Server ?? catalogConnection.Server), line.Database, TellmaSqlOptions.DefaultProfile);
 
             await using MigrationLock held = await MigrationLock
-                .AcquireAsync(catalogConnection.ConnectionString, MigrationLock.CatalogResource, cancellationToken)
+                .AcquireAsync(catalogConnection.ConnectionString, MigrationLock.CatalogResource, context.Options.CommandTimeout, cancellationToken)
                 .ConfigureAwait(false);
 
             // --- A rerun of the same line: the row it registered before ---

@@ -3,24 +3,31 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-/**
- * components.json extractor (spec 0002 §11, plan D5): derives every field
- * from typed source — signal input()/model()/output() call-sites, JSDoc
- * (incl. the @tmGroup, @tmA11yNotes and @tmStatus tags), inline-template ng-content
- * scan, component-CSS var(--…) scan, and the co-located *.examples.ts —
- * so docs cannot drift from code. Nothing is hand-authored.
- *
- * (API Extractor's .api.json stays goldens-only: it cannot see templates,
- * slots, CSS tokens, or examples — recorded deviation from §11's framing.)
- */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+// components.json extractor (spec 0002 §11): derives every field from typed
+// source — signal input()/model()/output()/outputFromObservable()
+// call-sites, public members, JSDoc (incl. the @tmGroup, @tmA11yNotes,
+// @tmHarness, @tmStatus and @tmWiring tags), inline-template ng-content
+// scan, CSS var(--…) scan, the co-located *.examples.ts and the TSDoc's
+// fenced code — so docs cannot drift from code. Nothing is hand-authored.
+//
+// Components and directives are documented by their decorator. A service
+// (an exported `@Injectable`) is documented when its TSDoc carries a
+// `@tmGroup` tag: the toast, busy-overlay, confirm, error-dialog, modal and
+// drag-drop entry points expose their API through one.
+//
+// (API Extractor's .api.json stays goldens-only: it cannot see templates,
+// slots, CSS tokens, or examples — recorded deviation from §11's framing.)
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   Node,
   Project,
+  Scope,
   TypeFormatFlags,
   type ClassDeclaration,
+  type GetAccessorDeclaration,
+  type MethodDeclaration,
   type ObjectLiteralExpression,
   type PropertyDeclaration,
 } from 'ts-morph';
@@ -36,11 +43,14 @@ const uiDir = join(clientDir, 'projects', 'core', 'tellma-core-ui');
 
 /**
  * The documented surfaces, DERIVED from the workspace: every root-level
- * component/directive source (tm-*.ts) of every @tellma/core-ui entry point.
- * Entry points without decorated classes (contracts, the primary) simply
- * contribute nothing; harnesses pair by the `<ClassName>Harness` convention,
- * and a directive's global stylesheet (it has no styleUrl) is declared in
- * the package's "tellma".docs.globalStyles.
+ * component, directive or service source (tm-*.ts) of every @tellma/core-ui
+ * entry point. Entry points without documented classes (contracts, the
+ * primary) simply contribute nothing; harnesses pair by the
+ * `<ClassName>Harness` convention unless a `@tmHarness` tag names one, and
+ * the stylesheet a directive's tokens come from (it has no styleUrl) is
+ * declared in the package's "tellma".docs.globalStyles: a global
+ * stylesheet, or the stylesheet of the internal component that draws the
+ * directive's chrome (the tiles' tree mode).
  */
 const coreUi = discoverLibraries(clientDir).find(
   (library: { name: string }) => library.name === '@tellma/core-ui',
@@ -58,7 +68,20 @@ const TESTING_SOURCE = readdirSync(testingDir)
   .map((name) => readFileSync(join(testingDir, name), 'utf8'))
   .join('\n');
 const GLOBAL_STYLES: Record<string, string> = coreUi.tellma?.docs?.globalStyles ?? {};
-const SOURCES: { file: string; entryPoint: string; styles?: string }[] = coreUi.entryPoints.flatMap(
+/** One documented source file: its entry point and the stylesheet its directives' tokens come from. */
+export interface DocumentedSource {
+  /** The tm-*.ts file. */
+  readonly file: string;
+  /** The entry point's import path. */
+  readonly entryPoint: string;
+  /** The entry point's folder, whose stylesheets a service's tokens come from. */
+  readonly entryDir: string;
+  /** The "tellma".docs.globalStyles stylesheet of the entry point, if any. */
+  readonly styles?: string;
+}
+
+/** Every documented source, in entry-point order. */
+export const SOURCES: readonly DocumentedSource[] = coreUi.entryPoints.flatMap(
   (entryPoint: { id: string; dir: string; importPath: string }) =>
     readdirSync(entryPoint.dir)
       .filter(
@@ -70,18 +93,24 @@ const SOURCES: { file: string; entryPoint: string; styles?: string }[] = coreUi.
       .map((name) => ({
         file: join(entryPoint.dir, name),
         entryPoint: entryPoint.importPath,
+        entryDir: entryPoint.dir,
         styles: GLOBAL_STYLES[entryPoint.id]
           ? join(coreUi.dir, GLOBAL_STYLES[entryPoint.id])
           : undefined,
       })),
 );
 
-function jsDocText(node: { getJsDocs(): { getDescription(): string }[] }): string {
+/** Anything that carries JSDoc: a class or one of its members. */
+type Documented = { getJsDocs(): ReturnType<ClassDeclaration['getJsDocs']> };
+
+/** The description of the node's last JSDoc block, trimmed; empty without one. */
+function jsDocText(node: Documented): string {
   const docs = node.getJsDocs();
   return docs.length === 0 ? '' : docs[docs.length - 1].getDescription().trim();
 }
 
-function jsDocTag(node: ClassDeclaration, tag: string): string | undefined {
+/** The text of the node's first `@<tag>`, or `undefined` without one. */
+function jsDocTag(node: Documented, tag: string): string | undefined {
   for (const doc of node.getJsDocs()) {
     for (const docTag of doc.getTags()) {
       if (docTag.getTagName() === tag) {
@@ -92,10 +121,22 @@ function jsDocTag(node: ClassDeclaration, tag: string): string | undefined {
   return undefined;
 }
 
-function decoratorMeta(cls: ClassDeclaration): {
-  kind: 'component' | 'directive';
-  meta: ObjectLiteralExpression;
-} | null {
+/** Whether the node's JSDoc carries `tag` at all (a flag tag such as `@internal` has no text). */
+function hasJsDocTag(node: Documented, tag: string): boolean {
+  return node.getJsDocs().some((doc) => doc.getTags().some((t) => t.getTagName() === tag));
+}
+
+/**
+ * What a documented class is, and the decorator metadata a component or
+ * directive declares. A service has no metadata: it is documented when it
+ * is an `@Injectable` whose TSDoc opts in with `@tmGroup`.
+ */
+function decoratorMeta(
+  cls: ClassDeclaration,
+):
+  | { kind: 'component' | 'directive'; meta: ObjectLiteralExpression }
+  | { kind: 'service'; meta: null }
+  | null {
   for (const name of ['Component', 'Directive'] as const) {
     const decorator = cls.getDecorator(name);
     const arg = decorator?.getArguments()[0];
@@ -103,7 +144,152 @@ function decoratorMeta(cls: ClassDeclaration): {
       return { kind: name === 'Component' ? 'component' : 'directive', meta: arg };
     }
   }
+  if (cls.getDecorator('Injectable') && jsDocTag(cls, 'tmGroup') !== undefined) {
+    return { kind: 'service', meta: null };
+  }
   return null;
+}
+
+/** Angular lifecycle hooks: public by necessity, never API. */
+const LIFECYCLE_HOOKS = new Set([
+  'ngOnChanges',
+  'ngOnInit',
+  'ngDoCheck',
+  'ngAfterContentInit',
+  'ngAfterContentChecked',
+  'ngAfterViewInit',
+  'ngAfterViewChecked',
+  'ngOnDestroy',
+]);
+
+/** Strips the machine-local `import("…").` qualifiers a type printer can emit. */
+function stripImports(text: string): string {
+  return text.replace(/import\("[^"]*"\)\./g, '');
+}
+
+/** Whether a class member is public API: public, not `ɵ`-prefixed, not `@internal`, not a hook. */
+function isPublicMember(
+  member: MethodDeclaration | GetAccessorDeclaration | PropertyDeclaration,
+): boolean {
+  const name = member.getName();
+  return (
+    member.getScope() === Scope.Public &&
+    !member.isStatic() &&
+    !name.startsWith('ɵ') &&
+    !name.startsWith('#') &&
+    !LIFECYCLE_HOOKS.has(name) &&
+    !hasJsDocTag(member, 'internal')
+  );
+}
+
+/** The signature text of a method declaration, without its body. */
+function methodSignature(method: MethodDeclaration): string {
+  const typeParams = method.getTypeParameters().map((param) => param.getText());
+  // A parameter with a default reads as optional; the default itself is
+  // an implementation detail the description states when it matters.
+  const params = method.getParameters().map((param) => {
+    const rest = param.isRestParameter() ? '...' : '';
+    const optional = param.hasQuestionToken() || param.hasInitializer() ? '?' : '';
+    const type =
+      param.getTypeNode()?.getText() ??
+      stripImports(
+        param.getType().getText(param, TypeFormatFlags.UseAliasDefinedOutsideCurrentScope),
+      );
+    return `${rest}${param.getName()}${optional}: ${type}`.replace(/\s+/g, ' ');
+  });
+  const returnType =
+    method.getReturnTypeNode()?.getText() ??
+    stripImports(
+      method.getReturnType().getText(method, TypeFormatFlags.UseAliasDefinedOutsideCurrentScope),
+    );
+  const generics = typeParams.length > 0 ? `<${typeParams.join(', ')}>` : '';
+  return `${method.getName()}${generics}(${params.join(', ')}): ${returnType}`;
+}
+
+/**
+ * The public members beyond the signal inputs, models and outputs: methods
+ * (each overload, when it has overloads), getters and other public
+ * properties, the way a caller holding the instance — a `viewChild`, an
+ * injected service — reaches them.
+ */
+function extractMembers(cls: ClassDeclaration): ComponentDoc['members'] {
+  const members: ComponentDoc['members'] = [];
+  // Members an implemented interface declares (the form-field control
+  // contract, a driver target) belong to that interface's documentation:
+  // the library calls them, an app author does not.
+  const contract = new Set(
+    cls.getImplements().flatMap((clause) =>
+      clause
+        .getType()
+        .getProperties()
+        .map((symbol) => symbol.getName()),
+    ),
+  );
+  /**
+   * Whether a member is public API that this class itself adds. A member
+   * tagged `@tmWiring` is public only so that the library's own classes can
+   * reach it (an option's derived text, a generated id), so it stays out.
+   */
+  const documented = (
+    member: MethodDeclaration | GetAccessorDeclaration | PropertyDeclaration,
+  ): boolean =>
+    isPublicMember(member) && !contract.has(member.getName()) && !hasJsDocTag(member, 'tmWiring');
+  for (const prop of cls.getProperties()) {
+    const init = prop.getInitializer();
+    const callee = init && Node.isCallExpression(init) ? init.getExpression().getText() : undefined;
+    // Signal inputs, models and outputs are documented as inputs/outputs;
+    // signal queries and injected dependencies are wiring, not API.
+    if (
+      callee !== undefined &&
+      /^(input|model|output|outputFromObservable|contentChild|contentChildren|viewChild|viewChildren|inject)(\.required)?$/.test(
+        callee,
+      )
+    ) {
+      continue;
+    }
+    if (!documented(prop)) {
+      continue;
+    }
+    const readonly = prop.isReadonly() ? 'readonly ' : '';
+    members.push({
+      name: prop.getName(),
+      signature: `${readonly}${prop.getName()}: ${prop.getTypeNode()?.getText() ?? propTypeText(prop)}`,
+      description: jsDocText(prop),
+    });
+  }
+  for (const accessor of cls.getGetAccessors()) {
+    if (!documented(accessor)) {
+      continue;
+    }
+    const type =
+      accessor.getReturnTypeNode()?.getText() ??
+      stripImports(
+        accessor
+          .getReturnType()
+          .getText(accessor, TypeFormatFlags.UseAliasDefinedOutsideCurrentScope),
+      );
+    members.push({
+      name: accessor.getName(),
+      signature: `get ${accessor.getName()}(): ${type}`,
+      description: jsDocText(accessor),
+    });
+  }
+  for (const method of cls.getMethods()) {
+    if (!documented(method)) {
+      continue;
+    }
+    // An overloaded method documents each overload; its implementation
+    // signature is not callable from outside.
+    const overloads = method.getOverloads();
+    for (const declaration of overloads.length > 0 ? overloads : [method]) {
+      members.push({
+        name: declaration.getName(),
+        signature: methodSignature(declaration),
+        description: jsDocText(declaration) || jsDocText(method),
+      });
+    }
+  }
+  return members;
 }
 
 function metaString(meta: ObjectLiteralExpression, key: string): string | undefined {
@@ -193,10 +379,13 @@ function extractProps(cls: ClassDeclaration) {
       if (name === 'checked') {
         formControl = 'FormCheckboxControl';
       }
-    } else if (callee === 'output') {
+    } else if (callee === 'output' || callee === 'outputFromObservable') {
+      // An output bridged from an observable declares its type as
+      // `OutputRef<T>`; its emitted type is that T.
+      const bridged = /^OutputRef<(.+)>$/.exec(prop.getTypeNode()?.getText() ?? '')?.[1];
       outputs.push({
         name,
-        type: typeArg ?? 'void',
+        type: typeArg ?? bridged ?? 'void',
         required: false,
         description,
         signal: 'output',
@@ -232,18 +421,48 @@ function extractSlots(template: string, classText: string): ComponentDoc['slots'
   return slots;
 }
 
+/** Every `var(--…)` a stylesheet reads, sorted and deduplicated. */
+function tokensOf(cssPaths: readonly string[]): string[] {
+  const names = cssPaths.flatMap((cssPath) =>
+    [...readFileSync(cssPath, 'utf8').matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]),
+  );
+  return [...new Set(names)].sort();
+}
+
+/** Every stylesheet under `dir`, its internal folders included, in a stable order. */
+function stylesheetsUnder(dir: string): string[] {
+  return readdirSync(dir)
+    .sort()
+    .flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) {
+        return stylesheetsUnder(path);
+      }
+      return name.endsWith('.css') ? [path] : [];
+    });
+}
+
+/**
+ * The tokens a documented class reads. A component reads its own
+ * stylesheet (`styleUrl`), a directive its global one; a service draws
+ * through its entry point's internal components, so it reads every
+ * stylesheet of the entry point.
+ */
 function extractTokens(
   componentDir: string,
-  meta: ObjectLiteralExpression,
+  meta: ObjectLiteralExpression | null,
+  entryDir: string,
   globalStyles?: string,
 ): string[] {
+  if (meta === null) {
+    return tokensOf(stylesheetsUnder(entryDir));
+  }
   const styleUrl = metaString(meta, 'styleUrl');
   const cssPath = styleUrl ? join(componentDir, styleUrl) : globalStyles;
   if (!cssPath || !existsSync(cssPath)) {
     return [];
   }
-  const css = readFileSync(cssPath, 'utf8');
-  return [...new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]))].sort();
+  return tokensOf([cssPath]);
 }
 
 /**
@@ -252,10 +471,7 @@ function extractTokens(
  * template-less export is skipped cleanly instead of corrupting the scan,
  * and extra properties beside `template` don't confuse it.
  */
-export function extractExamples(
-  project: Project,
-  sourceFile: string,
-): ComponentDoc['examples'] {
+export function extractExamples(project: Project, sourceFile: string): ComponentDoc['examples'] {
   const examplesPath = sourceFile.replace(/\.ts$/, '.examples.ts');
   if (!existsSync(examplesPath)) {
     return [];
@@ -273,10 +489,52 @@ export function extractExamples(
     }
     const value = templateProp.getInitializer();
     if (value && (Node.isNoSubstitutionTemplateLiteral(value) || Node.isStringLiteral(value))) {
-      examples.push({ title: decl.getName(), code: value.getLiteralText().trim() });
+      examples.push({
+        title: decl.getName(),
+        code: value.getLiteralText().trim(),
+        language: 'html',
+      });
     }
   }
   return examples;
+}
+
+/**
+ * The fenced TypeScript in a class's TSDoc — its description and its
+ * `@example` tags — titled by the class: how a service is called, which no
+ * template shows. JSDoc's leading ` * ` is already stripped from the text.
+ */
+export function extractCodeExamples(cls: ClassDeclaration): ComponentDoc['examples'] {
+  const text = cls
+    .getJsDocs()
+    .map((doc) => doc.getInnerText())
+    .join('\n');
+  return [...text.matchAll(/```ts\r?\n([\s\S]*?)```/g)].map((match, index, all) => ({
+    title: all.length === 1 ? cls.getName()! : `${cls.getName()!} (${index + 1})`,
+    code: match[1].trim(),
+    language: 'ts' as const,
+  }));
+}
+
+/**
+ * The harness a class pairs with: the one its `@tmHarness` tag names, else
+ * `<ClassName>Harness`, and only when that class exists in
+ * @tellma/core-ui-testing. A tag that names a missing harness throws, so
+ * docs:build never advertises an import that does not exist.
+ */
+function harnessOf(cls: ClassDeclaration): string | null {
+  const tagged = jsDocTag(cls, 'tmHarness');
+  if (tagged !== undefined) {
+    if (!TESTING_SOURCE.includes(`class ${tagged} `)) {
+      throw new Error(
+        `${cls.getName()} names @tmHarness ${tagged}, which @tellma/core-ui-testing does not export.`,
+      );
+    }
+    return tagged;
+  }
+  return TESTING_SOURCE.includes(`class ${cls.getName()}Harness`)
+    ? `${cls.getName()}Harness`
+    : null;
 }
 
 /** Roles/keyboard facts derivable from the template + host metadata. */
@@ -314,60 +572,18 @@ function extractA11y(cls: ClassDeclaration, template: string): ComponentDoc['a11
   };
 }
 
-export function extractComponents(): ComponentsJson {
-  const project = new Project({
+/** A ts-morph project over the client's tsconfig, with no files added yet. */
+export function createDocsProject(): Project {
+  return new Project({
     tsConfigFilePath: join(clientDir, 'tsconfig.json'),
     skipAddingFilesFromTsConfig: true,
   });
+}
 
-  const components: ComponentDoc[] = [];
-
-  for (const source of SOURCES) {
-    const filePath = source.file;
-    const sourceFile = project.addSourceFileAtPath(filePath);
-    for (const cls of sourceFile.getClasses()) {
-      const decorated = decoratorMeta(cls);
-      if (!decorated || !cls.isExported()) {
-        continue;
-      }
-      const { kind, meta } = decorated;
-      const selector = metaString(meta, 'selector') ?? '';
-      const template = metaString(meta, 'template') ?? '';
-      const { inputs, outputs, formControl } = extractProps(cls);
-
-      // Multi-selectors ('input[tmInput], textarea[tmInput]') derive the
-      // display name from their FIRST part — the whole-string strip would
-      // mangle it into 'tmInput], textarea[tmInput'.
-      const primarySelector = selector.split(',')[0].trim();
-      components.push({
-        name: primarySelector.startsWith('input[')
-          ? primarySelector.replace(/^input\[|\]$/g, '')
-          : selector,
-        kind,
-        // Unchecked here: docs:build validates the closed set against the
-        // schema and names the offending component.
-        group: (jsDocTag(cls, 'tmGroup') ?? 'form-control') as ComponentDoc['group'],
-        selector,
-        entryPoint: source.entryPoint,
-        formControl,
-        description: jsDocText(cls),
-        inputs,
-        outputs,
-        slots: extractSlots(template, cls.getText()),
-        tokens: extractTokens(
-          dirname(filePath),
-          meta,
-          source.styles,
-        ),
-        a11y: extractA11y(cls, template),
-        examples: extractExamples(project, filePath),
-        harness: TESTING_SOURCE.includes(`class ${cls.getName()}Harness`)
-          ? `${cls.getName()}Harness`
-          : null,
-        status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
-      });
-    }
-  }
+/** Extracts every documented component, directive and service of @tellma/core-ui. */
+export function extractComponents(): ComponentsJson {
+  const project = createDocsProject();
+  const components = SOURCES.flatMap((source) => extractSource(project, source));
 
   const uiPackage = JSON.parse(readFileSync(join(uiDir, 'package.json'), 'utf8')) as {
     version: string;
@@ -378,4 +594,55 @@ export function extractComponents(): ComponentsJson {
     libraryVersion: uiPackage.version,
     components,
   };
+}
+
+/** The documented classes of one source file, in declaration order. */
+export function extractSource(project: Project, source: DocumentedSource): ComponentDoc[] {
+  const components: ComponentDoc[] = [];
+  const filePath = source.file;
+  const sourceFile = project.addSourceFileAtPath(filePath);
+  for (const cls of sourceFile.getClasses()) {
+    const decorated = decoratorMeta(cls);
+    if (!decorated || !cls.isExported()) {
+      continue;
+    }
+    const { kind, meta } = decorated;
+    const selector = meta === null ? null : (metaString(meta, 'selector') ?? '');
+    const template = meta === null ? '' : (metaString(meta, 'template') ?? '');
+    const { inputs, outputs, formControl } = extractProps(cls);
+
+    // A service is named by its class. Multi-selectors ('input[tmInput],
+    // textarea[tmInput]') derive the display name from their FIRST part —
+    // the whole-string strip would mangle it into 'tmInput], textarea[tmInput'.
+    const primarySelector = selector?.split(',')[0].trim() ?? '';
+    const name =
+      selector === null
+        ? cls.getName()!
+        : primarySelector.startsWith('input[')
+          ? primarySelector.replace(/^input\[|\]$/g, '')
+          : selector;
+    components.push({
+      name,
+      kind,
+      // Unchecked here: docs:build validates the closed set against the
+      // schema and names the offending component.
+      group: (jsDocTag(cls, 'tmGroup') ?? 'form-control') as ComponentDoc['group'],
+      selector,
+      entryPoint: source.entryPoint,
+      formControl,
+      description: jsDocText(cls),
+      inputs,
+      outputs,
+      members: extractMembers(cls),
+      slots: extractSlots(template, cls.getText()),
+      tokens: extractTokens(dirname(filePath), meta, source.entryDir, source.styles),
+      a11y: extractA11y(cls, template),
+      // Templates first: they are what a page author copies; a service's
+      // call shows in its TSDoc's code.
+      examples: [...extractExamples(project, filePath), ...extractCodeExamples(cls)],
+      harness: harnessOf(cls),
+      status: (jsDocTag(cls, 'tmStatus') as ComponentDoc['status'] | undefined) ?? 'stable',
+    });
+  }
+  return components;
 }

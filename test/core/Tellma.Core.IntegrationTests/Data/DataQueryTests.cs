@@ -87,6 +87,7 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = await batch.ExecuteAsync(Token);
 
             Assert.Equal((3, 4, 4), (capped.Value, under.Value, page.Value.Count));
+            Assert.Equal(3, page.Value.CountCap);
             Assert.Equal(1, page.Value.Rows.RowCount);
         }
 

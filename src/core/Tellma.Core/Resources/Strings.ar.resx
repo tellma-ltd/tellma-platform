@@ -448,6 +448,9 @@
   <data name="Validation_ValueNotInSet" xml:space="preserve">
     <value>هذه القيمة ليست من القيم المسموح بها.</value>
   </data>
+  <data name="Validation_Invalid" xml:space="preserve">
+    <value>هذه القيمة غير صالحة.</value>
+  </data>
   <data name="Entity_NotFound" xml:space="preserve">
     <value>هذا السجل غير موجود أو لا يمكنك رؤيته.</value>
   </data>

@@ -48,7 +48,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
+      testIgnore: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch|tiles-touch/,
     },
     // Firefox/WebKit run the @cross-engine subset: tests that dispatch
     // synthetic ClipboardEvents (no OS clipboard, no Chromium-only
@@ -83,10 +83,13 @@ export default defineConfig({
     // The touch battery runs on a real coarse-pointer device descriptor
     // (chromium engine with touch + mobile emulation — no extra browser
     // install beyond chromium). Only the touch specs run here; chromium's
-    // testIgnore keeps the same specs out of the desktop run.
+    // testIgnore keeps the same specs out of the desktop run. The additions'
+    // resolved-size spec runs in both: the sizes follow the viewport width,
+    // so a phone and a desktop browser must resolve them alike.
     {
       name: 'touch',
-      testMatch: /grid-touch|tooltip-touch|splitter-touch|form-controls-touch/,
+      testMatch:
+        /grid-touch|tooltip-touch|splitter-touch|form-controls-touch|tiles-touch|additions-sizes/,
       use: { ...devices['Pixel 7'] },
     },
   ],
@@ -95,14 +98,20 @@ export default defineConfig({
     // widens the grid's async post-click focus race, so synthetic key
     // presses intermittently land before focus settles and get dropped
     // (broad keyboard/clipboard flakiness). Local keeps `ng serve` for fast
-    // rebuilds. The prod path folds a full build into startup, hence the
-    // wider timeout.
+    // rebuilds.
+    //
+    // The prod server never builds (`--no-build`): scripts/e2e.mjs makes the
+    // bundle current before Playwright starts, outside any timeout, so this
+    // one times a static file server's start alone, which takes about half a
+    // second even on a loaded machine. A minute is ample for that and still
+    // stops a hung server quickly. The dev server compiles the app on start,
+    // hence its wider timeout.
     command: process.env['CI']
-      ? `node scripts/serve.mjs showcase --port ${port} --prod`
+      ? `node scripts/serve.mjs showcase --port ${port} --prod --no-build`
       : `node scripts/serve.mjs showcase --port ${port}`,
     url: `http://localhost:${port}`,
     cwd: '..',
     reuseExistingServer: !process.env['CI'],
-    timeout: process.env['CI'] ? 300_000 : 180_000,
+    timeout: process.env['CI'] ? 60_000 : 180_000,
   },
 });

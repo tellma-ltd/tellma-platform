@@ -13,15 +13,17 @@ namespace Tellma.Core.Composition
     {
         /// <summary>
         ///     The platform version is this assembly's informational version; the distribution
-        ///     version is the entry assembly's, or, when the process has no managed entry assembly,
-        ///     that of the assembly declaring the composition method.
+        ///     version is that of the distribution's composition library, the assembly declaring the
+        ///     composition method, so the web host, the migrator and the client metadata the
+        ///     migrator emits all report one version. A method with no declaring type falls back to
+        ///     the entry assembly.
         /// </summary>
         /// <param name="compose">The distribution's composition method.</param>
         /// <returns>The versions.</returns>
         public static DeploymentVersions Read(Delegate compose)
         {
             Assembly platform = typeof(DeploymentVersionsReader).Assembly;
-            Assembly distribution = Assembly.GetEntryAssembly() ?? compose.Method.DeclaringType?.Assembly ?? platform;
+            Assembly distribution = compose.Method.DeclaringType?.Assembly ?? Assembly.GetEntryAssembly() ?? platform;
             return new DeploymentVersions(InformationalVersion(platform), InformationalVersion(distribution));
         }
 

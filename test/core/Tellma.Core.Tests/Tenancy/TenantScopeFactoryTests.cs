@@ -58,8 +58,9 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.Equal(TenantContextHarness.Start + TimeSpan.FromHours(20), context.Now);
             Assert.Equal(new DateOnly(2026, 11, 10), context.Today);
 
-            // --- No locale travels in a snapshot: the platform's defaults until an initializer negotiates ---
-            Assert.Equal(("en", "en", "gc", "UTC", "UTC"), (context.Language, context.Culture, context.Calendar, context.TimeZone, context.TenantTimeZone));
+            // --- No locale travels in a snapshot: the negotiation reads it from the tenant's settings, with empty inputs ---
+            Assert.Equal(("en", "en-GB", "gc", "UTC", "UTC"), (context.Language, context.Culture, context.Calendar, context.TimeZone, context.TenantTimeZone));
+            Assert.Equal(17, context.TenantSettings?.TenantId);
         }
 
         [Fact]

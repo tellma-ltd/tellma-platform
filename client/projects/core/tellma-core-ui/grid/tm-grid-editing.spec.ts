@@ -7,6 +7,9 @@ import { Component, computed, ErrorHandler, inject, signal, viewChild } from '@a
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { applyEach, disabled, form, readonly, required } from '@angular/forms/signals';
+import { cdp } from 'vitest/browser';
+// The Playwright provider's typings, which give the CDP session its methods.
+import type {} from '@vitest/browser-playwright';
 
 import {
   TM_PARSE_ERROR,
@@ -22,6 +25,7 @@ import {
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
 import type { TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
+import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { TmModalRef } from '@tellma/core-ui/modal';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 
@@ -54,6 +58,7 @@ function makeLines(): Line[] {
       [rowId]="rowId"
       [newRow]="makeRow"
       [readonly]="readonly()"
+      [searchable]="searchable()"
       style="block-size: 300px"
     >
       <tm-grid-column key="name" header="Name" [width]="140" />
@@ -82,6 +87,7 @@ class EditHost {
     });
   });
   readonly readonly = signal(false);
+  readonly searchable = signal(false);
   /** Display cap on qty's fraction digits (undefined ⇒ unbounded default). */
   readonly qtyMaxDecimals = signal<number | undefined>(undefined);
   readonly units = ['kg', 'pcs', 'ltr'];
@@ -182,6 +188,18 @@ function editorInput(scroller: HTMLElement): HTMLInputElement | null {
   return scroller.querySelector<HTMLInputElement>('[data-tm-editor] input');
 }
 
+/** Resolves a system color to its computed `rgb()` form under the page's current palette. */
+function systemColor(name: string): string {
+  const probe = document.createElement('div');
+  // Kept as authored, so the probe reads the keyword's own value.
+  probe.style.forcedColorAdjust = 'none';
+  probe.style.backgroundColor = name;
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return resolved;
+}
+
 /** Types `text` into the open editor's input through native input events. */
 function typeInto(input: HTMLInputElement, text: string): void {
   input.value = text;
@@ -259,6 +277,24 @@ describe('tm-grid (editing)', () => {
     expect(editorInput(scroller)).toBeNull();
     // Selection moved to (0,1); no editor opened on the target.
     expect(document.activeElement).toBe(cellAt(scroller, 0, 1));
+  });
+
+  it('Mod+F in an open editor commits it and opens the grid find, not the browser find', async () => {
+    const { fixture, host, scroller } = await setup();
+    host.searchable.set(true);
+    await stable(fixture);
+    await activateOrigin(fixture, scroller);
+
+    keydown(scroller, 'F');
+    const input = editorInput(scroller) as HTMLInputElement;
+    typeInto(input, 'Found');
+    const mod: KeyboardEventInit = tmIsApplePlatform() ? { metaKey: true } : { ctrlKey: true };
+    expect(keydown(input, 'f', mod).defaultPrevented).toBe(true);
+    await stable(fixture);
+    expect(host.model()[0].name).toBe('Found');
+    expect(editorInput(scroller)).toBeNull();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-tm-find-input]')).not.toBeNull();
   });
 
   it('Esc cancels the edit and never writes the model', async () => {
@@ -874,6 +910,64 @@ describe('tm-grid (editing)', () => {
     await stable(fixture);
 
     expect(host.model()[0].name).toBe(''); // the clear reached the model
+  });
+
+  it("keeps an on boolean box's edge in the range fill, and readonly booleans boxless, under forced colors", async () => {
+    const { fixture, scroller } = await setup();
+    // The box's border tokens, which a unit test's page does not load:
+    // without them the border is invalid and never drawn at all.
+    const grid = scroller.closest<HTMLElement>('tm-grid')!;
+    grid.style.setProperty('--border-width', '1px');
+    grid.style.setProperty('--field-border', 'gray');
+    await activateOrigin(fixture, scroller);
+    // A range from the first cell over the boolean column of row 1 (true).
+    keydown(scroller, 'ArrowRight', { shiftKey: true });
+    keydown(scroller, 'ArrowRight', { shiftKey: true });
+    await stable(fixture);
+
+    await cdp().send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'forced-colors', value: 'active' }],
+    });
+    try {
+      expect(matchMedia('(forced-colors: active)').matches).toBe(true);
+      const cell = cellAt(scroller, 0, 2)!;
+      const box = cell.querySelector<HTMLElement>('.tm-grid-bool--on')!;
+      // The box is Highlight like the fill around it, so its edge takes the
+      // fill's paired ink.
+      expect(getComputedStyle(cell).backgroundColor).toBe(systemColor('Highlight'));
+      expect(getComputedStyle(box).backgroundColor).toBe(systemColor('Highlight'));
+      expect(getComputedStyle(box).borderTopStyle).toBe('solid');
+      expect(getComputedStyle(box).borderTopColor).toBe(systemColor('HighlightText'));
+      expect(getComputedStyle(box, '::after').backgroundColor).toBe(systemColor('HighlightText'));
+
+      // Readonly, the booleans stay boxless: a bare check in the cell's ink
+      // (the fill's HighlightText, CanvasText on a plain cell) and nothing
+      // for false, as outside forced colors.
+      fixture.componentInstance.readonly.set(true);
+      await stable(fixture);
+      // Forced colors swap a transparent colour's channels but keep its
+      // zero alpha.
+      const transparent = /^rgba\(.*, 0\)$/;
+      const glyphs = [
+        { row: 0, ink: 'HighlightText' },
+        { row: 1, ink: null },
+        { row: 2, ink: 'CanvasText' },
+      ];
+      for (const { row, ink } of glyphs) {
+        const glyph = cellAt(scroller, row, 2)!.querySelector<HTMLElement>(
+          '.tm-grid-bool--readonly',
+        )!;
+        expect(glyph.classList.contains('tm-grid-bool--on')).toBe(ink !== null);
+        expect(getComputedStyle(glyph).backgroundColor).toMatch(transparent);
+        expect(getComputedStyle(glyph).borderTopStyle).toBe('none');
+        if (ink !== null) {
+          expect(getComputedStyle(glyph, '::after').backgroundColor).toBe(systemColor(ink));
+        }
+      }
+    } finally {
+      // The page is shared with the other suites of the run.
+      await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+    }
   });
 });
 

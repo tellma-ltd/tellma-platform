@@ -7,6 +7,9 @@ import { Dir } from '@angular/cdk/bidi';
 import { Component, effect, input, signal, untracked, viewChild } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { cdp } from 'vitest/browser';
+// The Playwright provider's typings, which give the CDP session its methods.
+import type {} from '@vitest/browser-playwright';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmGridHarness } from '@tellma/core-ui-testing';
@@ -96,12 +99,21 @@ class DeepLinkHost {
 
 /**
  * Twenty 150px columns in a 400px-wide grid, in either direction, with
- * the row-header track's token, which a unit test's page does not load.
+ * the tokens a unit test's page does not load: the row-header track, the
+ * ring width, and a long flash, so the ring is still on when a test reads it.
  */
 @Component({
   imports: [Dir, TmGrid, TmGridColumn],
   template: `
-    <div [dir]="dir()" style="inline-size: 400px; --grid-row-header-width: 40px">
+    <div
+      [dir]="dir()"
+      style="
+        inline-size: 400px;
+        --grid-row-header-width: 40px;
+        --grid-flash-duration: 60s;
+        --focus-ring-width: 2px
+      "
+    >
       <tm-grid
         gridId="spec-grid-scroll-wide"
         [data]="rows"
@@ -121,6 +133,54 @@ class WideHost {
   readonly keys = Array.from({ length: 20 }, (_, i) => `c${i}`);
   readonly rows = makeRows(200);
   readonly rowId = (row: Row): number => row.id;
+}
+
+/**
+ * A list with row numbers and the checkbox column, row 1 checked, and the
+ * tokens a unit test's page does not load: once a range crosses row 1, its
+ * cells mix every surface forced colors paint. A long flash, so the ring is
+ * still on when a test reads it.
+ */
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid
+      gridId="spec-grid-flash-ring"
+      [data]="rows"
+      [rowId]="rowId"
+      selectable
+      [(selectedIds)]="selection"
+      style="
+        block-size: 300px;
+        --grid-flash-duration: 60s;
+        --grid-row-header-width: 40px;
+        --grid-check-col-width: 40px;
+        --focus-ring-width: 2px
+      "
+    >
+      <tm-grid-column key="name" header="Name" [width]="120" />
+      <tm-grid-column key="qty" type="number" header="Qty" [width]="120" />
+      <tm-grid-column key="id" type="number" header="Id" [width]="120" />
+    </tm-grid>
+  `,
+})
+class RingHost {
+  readonly grid = viewChild.required(TmGrid<Row>);
+  readonly rows = makeRows(200);
+  readonly selection = signal<ReadonlySet<string | number>>(new Set([1]));
+  readonly rowId = (row: Row): number => row.id;
+}
+
+/** Resolves a system color to its computed `rgb()` form under the page's current palette. */
+function systemColor(name: string): string {
+  const probe = document.createElement('div');
+  // Kept as authored, so the probe reads the keyword's own value.
+  probe.style.forcedColorAdjust = 'none';
+  probe.style.backgroundColor = name;
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return resolved;
 }
 
 async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
@@ -197,12 +257,18 @@ describe('tm-grid scrollToRow', () => {
     await stable(fixture);
     expect(await harness.getActiveCell()).toEqual({ row: 10, col: 1 });
 
+    // The page is shared between files, so the spy is restored even when an
+    // assertion fails: a live spy would carry its calls into the next file.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    grid.scrollToRow(12, { column: 'nope' });
-    await stable(fixture);
-    expect(await harness.getActiveCell()).toEqual({ row: 12, col: 1 });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toContain("'nope'");
+    try {
+      grid.scrollToRow(12, { column: 'nope' });
+      await stable(fixture);
+      expect(await harness.getActiveCell()).toEqual({ row: 12, col: 1 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("'nope'");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('activate false scrolls without moving the active cell', async () => {
@@ -300,6 +366,75 @@ describe('tm-grid scrollToRow', () => {
     expect(Math.abs(view.scrollTop - expected)).toBeLessThanOrEqual(1);
   });
 
+  it('rings the flashing row above its cells, untinted, under forced colors', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(RingHost);
+    await stable(fixture);
+    const harness = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmGridHarness);
+    const grid = fixture.componentInstance.grid();
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    // A range over rows 1-2 and columns 0-1: the checked row 1 then mixes
+    // the hit row header, the checked cells and the range fill.
+    await harness.clickCell(1, 0);
+    await harness.shiftClickCell(2, 1);
+
+    await cdp().send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'forced-colors', value: 'active' }],
+    });
+    try {
+      expect(matchMedia('(forced-colors: active)').matches).toBe(true);
+      grid.scrollToRow(1, { flash: true, activate: false });
+      await stable(fixture);
+      const row = scroller.querySelector<HTMLElement>('[role="row"][aria-rowindex="3"]')!;
+      expect(row.classList).toContain('tm-grid__row--flash');
+
+      // No tint: forced colors would paint it as Canvas over every cell, so
+      // the cells keep their own surfaces while the row flashes.
+      const cells = [...row.children];
+      const selectedItem = systemColor('SelectedItem');
+      const highlight = systemColor('Highlight');
+      expect(cells.map((cell) => getComputedStyle(cell).backgroundColor)).toEqual([
+        selectedItem,
+        selectedItem,
+        highlight,
+        highlight,
+        selectedItem,
+      ]);
+      expect(cells.flatMap((cell) => cell.getAnimations())).toEqual([]);
+
+      // The ring: a pseudo-element over the whole row, above the cells'
+      // layers, in two bands of a guaranteed-contrast pair.
+      const ring = getComputedStyle(row, '::after');
+      expect(getComputedStyle(row).position).toBe('relative');
+      expect(ring.content).toBe('""');
+      expect(ring.position).toBe('absolute');
+      expect([ring.top, ring.right, ring.bottom, ring.left]).toEqual(['0px', '0px', '0px', '0px']);
+      expect(ring.zIndex).toBe('3');
+      expect(ring.borderTopStyle).toBe('solid');
+      expect(ring.borderTopWidth).toBe('2px');
+      expect(ring.borderTopColor).toBe(highlight);
+      expect(ring.outlineStyle).toBe('solid');
+      expect(ring.outlineWidth).toBe('2px');
+      expect(ring.outlineOffset).toBe('-4px');
+      expect(ring.outlineColor).toBe(systemColor('HighlightText'));
+
+      // Scrolled out of view, the active row keeps flashing as the outlier,
+      // which stays absolutely positioned.
+      grid.scrollToRow(150, { activate: false });
+      await stable(fixture);
+      const outlier = scroller.querySelector<HTMLElement>('.tm-grid__row--outlier')!;
+      expect(outlier.getAttribute('aria-rowindex')).toBe('3');
+      expect(outlier.classList).toContain('tm-grid__row--flash');
+      expect(getComputedStyle(outlier).position).toBe('absolute');
+      expect(getComputedStyle(outlier, '::after').content).toBe('""');
+    } finally {
+      // The page is shared with the other suites of the run.
+      await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+    }
+  });
+
   for (const dir of ['ltr', 'rtl'] as const) {
     it(`brings a far row's last column into view in a wide grid (${dir})`, async () => {
       TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
@@ -323,6 +458,46 @@ describe('tm-grid scrollToRow', () => {
       expect(cell).not.toBeNull();
       expect(Math.abs(scroller.scrollLeft)).toBeGreaterThan(0);
       expect(insideScroller(scroller, cell!)).toBe(true);
+    });
+
+    it(`rings every column of a flashing row in a wide grid under forced colors (${dir})`, async () => {
+      TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+      const fixture = TestBed.createComponent(WideHost);
+      fixture.componentInstance.dir.set(dir);
+      await stable(fixture);
+      const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tm-grid__scroller',
+      ) as HTMLElement;
+
+      await cdp().send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'forced-colors', value: 'active' }],
+      });
+      try {
+        // Flashed into its last column, the row sits scrolled sideways.
+        expect(
+          fixture.componentInstance.grid().scrollToRow(180, { column: 'c19', flash: true }),
+        ).toBe(true);
+        await stable(fixture);
+        expect(Math.abs(scroller.scrollLeft)).toBeGreaterThan(0);
+        const row = scroller.querySelector<HTMLElement>('[role="row"][aria-rowindex="182"]')!;
+        expect(row.classList).toContain('tm-grid__row--flash');
+        expect(getComputedStyle(row, '::after').content).toBe('""');
+
+        // The ring fills the row's box, so the box must span every track:
+        // a view-wide row would leave the scrolled-to columns unringed.
+        const box = row.getBoundingClientRect();
+        const cells = [...row.querySelectorAll('[data-tm-cell]')];
+        expect(cells.at(-1)!.getAttribute('aria-colindex')).toBe('21');
+        for (const element of cells) {
+          const cell = element.getBoundingClientRect();
+          expect(cell.left).toBeGreaterThanOrEqual(box.left - 1);
+          expect(cell.right).toBeLessThanOrEqual(box.right + 1);
+        }
+        expect(box.width).toBeGreaterThan(scroller.clientWidth);
+      } finally {
+        // The page is shared with the other suites of the run.
+        await cdp().send('Emulation.setEmulatedMedia', { features: [] });
+      }
     });
   }
 });

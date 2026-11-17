@@ -22,7 +22,9 @@ import { WritableSignal } from '@angular/core';
 
 // @public
 export class TmTreeGrid<T> extends TmGridBase<T> {
+    protected readonly collapsedGlyph: TmIconSource;
     readonly defaultExpandedDepth: _angular_core.InputSignal<number | undefined>;
+    protected readonly expandedGlyph: TmIconSource;
     readonly expandedIds: _angular_core.ModelSignal<ReadonlySet<TmRowId>>;
     readonly expansionSource: _angular_core.InputSignal<"model" | "store">;
     readonly hasChildren: _angular_core.InputSignal<((row: T) => boolean) | undefined>;

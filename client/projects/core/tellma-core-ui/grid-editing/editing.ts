@@ -7,14 +7,15 @@
 // mounting its editor, commit (with the entity label-resolution ladder)
 // and cancel. A readonly grid never needs any of it, so it ships in this
 // entry point, which the grid preloads with import() once it is editable
-// (spec 0010 §C.11, Part C flag 6); the grid's own core keeps every path a
-// readonly grid runs, the editing keys included. The core implements
+// (spec 0010 §C.11, Part C flag 6). The popup pane's keys live here too: a
+// pane, even a readonly grid's read-only view, only exists once this entry
+// point has arrived. The grid's own core keeps every other path a readonly
+// grid runs, and the in-cell editing keys. The core implements
 // `ɵTmGridEditingHost`, the seam this controller works through, and keeps
 // a draft input for what the user types while this code is on its way
 // (`resume`, `resolveLabel`).
 
 import {
-  isDevMode,
   untracked,
   type ApplicationRef,
   type Injector,
@@ -38,6 +39,7 @@ import type {
   TmGridResolutionRequest,
   TmRowCol,
 } from '@tellma/core-ui/grid-engine';
+import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 
 import {
   ɵTmGridEditorSession,
@@ -46,6 +48,15 @@ import {
   type ɵTmGridEditorTemplateContext,
   type ɵTmGridMountedEditor,
 } from './editor-session';
+import { tmPopupKeepsEnter, tmPopupTabLeaves, tmResolvePopupKey } from './popup-keys';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which drops the errors it guards with their text (`isDevMode()`, a call
+ * into @angular/core, cannot be folded away). Read through `typeof`, so
+ * code running where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /**
  * "This session recorded no value baseline" — distinct from every value a
@@ -109,10 +120,14 @@ export interface ɵTmGridEditingColumn<T> {
   readonly popup: ɵTmGridEditorPopupVm | null;
 }
 
+/** Where a key in a popup pane moves the active cell after its commit. */
+export type ɵTmGridPopupMoveTarget = 'tabNext' | 'tabPrev' | 'enterRun' | 'enterRunBack';
+
 /**
  * The grid core as the editing controller sees it: the engine, the column
  * model, the editor checks it shares with the core, focus and reveal
- * requests, and the label-resolution runner the paste path shares.
+ * requests, the label-resolution runner the paste path shares, and the
+ * read-only view and key routing a popup pane's keys work through.
  */
 export interface ɵTmGridEditingHost<T> {
   /** The grid's headless engine. */
@@ -150,6 +165,21 @@ export interface ɵTmGridEditingHost<T> {
     requests: readonly TmGridResolutionRequest[],
     fallback?: TmLabelResolution<unknown>,
   ): void;
+  /** The cell whose popup pane shows read-only, or `null`; such a view has no session. */
+  readonly popupViewSignal: Signal<TmRowCol | null>;
+  /** Closes the read-only view and, when asked, returns focus to the active cell. */
+  closePopupView(opts: { refocus: boolean }): void;
+  /** Whether a node sits in a popup pane itself, not in an overlay nested inside it. */
+  inPopupPane(node: Element): boolean;
+  /**
+   * Mod+F from inside an editor or a pane: closes the view or commits the
+   * editor, then opens the grid's find. Returns whether it consumed the key.
+   */
+  findFromEditor(event: KeyboardEvent): boolean;
+  /** Commits the session, then moves the active cell as the key says. */
+  commitAndMove(target: ɵTmGridPopupMoveTarget, event: KeyboardEvent): void;
+  /** Handles a key on the rows as a cell with no editor open does. */
+  onBodyKeydown(event: KeyboardEvent): void;
 }
 
 /** The grid's draft as an editor takes it over: its text and caret. */
@@ -412,6 +442,83 @@ export class ɵTmGridEditing<T> {
     this.close(opts);
   }
 
+  // ---- popup panes (spec 0010 §C.15) ----
+
+  /**
+   * A keydown inside a popup editor's pane, which the grid routes here. The
+   * pane's editor is always in edit mode, so the arrows stay inside it:
+   * Escape cancels, Mod+Enter commits and keeps the cell, Enter commits and
+   * moves unless the editor keeps it, and Tab commits and moves only from
+   * the pane's first or last control, moving natively among the others. A
+   * read-only view closes instead of committing, and its Enter and Tab then
+   * act on the cell as a readonly cell's do. A key the editor consumed stays
+   * its own, and any keystroke on a scrolled-away cell scrolls it back first.
+   */
+  popupKeydown(event: KeyboardEvent): void {
+    const host = this.host;
+    const viewing = untracked(host.popupViewSignal) !== null;
+    if (!viewing && untracked(() => host.engine.edit.session()) === null) {
+      return;
+    }
+    host.revealActiveCell();
+    // `keyCode` 229 is the IME-composition status sentinel, read through a
+    // non-deprecated view as the grid reads it.
+    const imeKeyCode = (event as { readonly keyCode: number }).keyCode;
+    if (event.defaultPrevented || event.isComposing || imeKeyCode === 229) {
+      return;
+    }
+    if (host.findFromEditor(event)) {
+      return;
+    }
+    const resolved = tmResolvePopupKey(event, {
+      apple: tmIsApplePlatform(),
+      isDropdownOpen: !viewing && this.isDropdownOpen(),
+    });
+    if (resolved === null) {
+      return;
+    }
+    const target = event.target as Element;
+    switch (resolved.kind) {
+      case 'cancel':
+        event.preventDefault();
+        if (viewing) {
+          host.closePopupView({ refocus: true });
+        } else {
+          this.cancel({ refocus: true });
+        }
+        return;
+      case 'openDropdown':
+        if (!viewing && this.openDropdown()) {
+          event.preventDefault();
+        }
+        return;
+      case 'enter':
+        if (tmPopupKeepsEnter(target)) {
+          return; // a line break, or the control's own activation
+        }
+        break;
+      case 'tab':
+        if (!tmPopupTabLeaves(target, resolved.backward, (element) => host.inPopupPane(element))) {
+          return; // the browser moves focus to the pane's next control
+        }
+        break;
+      case 'commit':
+        break;
+    }
+    if (viewing) {
+      // Nothing commits: the view closes, and the key acts on the cell.
+      host.closePopupView({ refocus: true });
+      host.onBodyKeydown(event);
+    } else if (resolved.kind === 'commit') {
+      event.preventDefault();
+      this.commit({ refocus: true });
+    } else if (resolved.kind === 'tab') {
+      host.commitAndMove(resolved.backward ? 'tabPrev' : 'tabNext', event);
+    } else {
+      host.commitAndMove(resolved.backward ? 'enterRunBack' : 'enterRun', event);
+    }
+  }
+
   // ---- opening ----
 
   /**
@@ -428,7 +535,12 @@ export class ɵTmGridEditing<T> {
     const column = untracked(this.host.columnsInternal)[cell.col];
     // A cell that could never have opened an editor stays quiet; an
     // editable one reports the misconfiguration in development.
-    if (column !== undefined && isDevMode() && untracked(() => engine.model.isCellEditable(cell))) {
+    if (
+      column !== undefined &&
+      typeof ngDevMode !== 'undefined' &&
+      ngDevMode &&
+      untracked(() => engine.model.isCellEditable(cell))
+    ) {
       throw new Error(
         column.entitySearch === undefined
           ? `tm-grid: column "${column.id}" of type 'entity' has no editor — bind ` +
