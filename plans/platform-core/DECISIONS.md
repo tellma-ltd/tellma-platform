@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-106 (orchestrator, 2026-11-16): user-run job scopes have no assurance, so sensitive pairs refuse them; for Ahmad with the jobs work
+
+- Situation: in PC-052, RequireAsync refuses a sensitive pair with StepUpRequired when the scope's Assurance is below spec 0011's bar. A job scope run for a user carries no Assurance, so every sensitive pair is refused in jobs. Spec 0014 §4.3/§5.1 say this applies to every caller, request or not, and spec 0015 §9.1 names "a job" explicitly, so the code follows the spec.
+- For Ahmad: should such a job run as the system, carry the requester's assurance captured when it was enqueued, or stay refused? This carries to the job-runner checkpoints of spec 0020.
+- Also from PC-052 (accepted as deviation 14, consistent with D-073): AccessHolders.Grants lists the all-roles decision's grants, not every matching row as spec 0014 §5.1's sketch says. A filtered wildcard-action row on an action with no filter root grants nothing there and is omitted. Spec 0014 §5.1 should be aligned.
+
 ### D-105 (Ahmad, 2026-11-16): the integration gate runs on the item's scope; slow suites are left to CI unless touched
 
 - Situation: integrations run one at a time and took 60-95 min each (PC-151 65, PC-F50 92, PC-193 96) on a host loaded by 4-6 slots, against 17 min for CI. The release briefs asked for every suite, beyond PLAN.md §7.1 item 4's touched-only rule. PC-193 (client only) spent about an hour on .NET suites. The last three red CIs (PC-F42 via PC-F51, the VersionTag flake, PC-F53) were Linux-only, and each had passed the full local gate on Windows.
