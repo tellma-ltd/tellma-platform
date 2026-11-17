@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Ids;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Tests.Data.Saves;
 
@@ -358,6 +359,37 @@ namespace Tellma.Core.Tests.Data.Ids
             Assert.Equal([100, 101], mine.Select(static crate => crate.Id));
             Assert.Equal(3, Allocator.Buffered(Tenant, typeof(Crate)));
             Assert.Equal(5, Allocator.Buffered(Tenant + 1, typeof(Crate)));
+        }
+
+        [Fact]
+        public void A_buffer_filled_from_another_database_than_the_tenants_current_one_is_dropped()
+        {
+            // The tenant moved to another database and this instance never saw it frozen: the ids
+            // buffered from the old database must never serve the new one.
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109, new TenantLocation("old-server", "tellma_1", "default"));
+            Allocator.Replenish(Tenant, typeof(Crate), 500, 504, new TenantLocation("new-server", "tellma_1", "default"));
+
+            Crate[] crates = [new Crate(), new Crate()];
+            using IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), crates);
+            reservation.Assign(crates);
+
+            Assert.Equal([500, 501], crates.Select(static crate => crate.Id));
+            Assert.Equal(3, Allocator.Buffered(Tenant, typeof(Crate)));
+        }
+
+        [Fact]
+        public void A_buffer_compares_its_database_as_sql_server_names_it_whatever_the_credentials()
+        {
+            SequenceInfo crates = Allocator.SequenceOf(_harness.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Crate)));
+            SequenceBuffer buffer = new(Tenant, crates, new TenantLocation("Server-A", "Tellma_1", "default"));
+
+            Assert.True(buffer.IsFrom(new TenantLocation("server-a", "tellma_1", "rotated")));
+            Assert.False(buffer.IsFrom(new TenantLocation("server-b", "tellma_1", "default")));
+            Assert.False(buffer.IsFrom(new TenantLocation("server-a", "tellma_2", "default")));
+
+            // A connection that cannot tell its database proves no move.
+            Assert.True(buffer.IsFrom(null));
+            Assert.True(new SequenceBuffer(Tenant, crates).IsFrom(new TenantLocation("server-b", "tellma_1", "default")));
         }
 
         [Fact]

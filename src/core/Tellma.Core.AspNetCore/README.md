@@ -26,7 +26,8 @@ feature or entity added there would diverge the web host's model from the migrat
   `Tellma:ClientTelemetry`, `Tellma:Links`, `Tellma:Api`), validated by the startup gate's options
   check;
 - the access evaluator's step-up bar for a sensitive securable, taken from `Tellma:Session:StepUp`
-  in place of Core's default (`urn:tellma:acr:mfa` within 15 minutes);
+  in place of Core's default (`urn:tellma:acr:aal2` within 15 minutes, which a session holding
+  `urn:tellma:acr:aal3` also meets);
 - the `Tellma.Session` cookie scheme, the `Tellma.OpenIdConnect` sign-in scheme and the `Tellma.Bearer` JWT
   scheme, and the policies `Tellma.Web`, `Tellma.Api`, `Tellma.Mcp` and `Tellma.ControlPlane`. No
   scheme is the default: each policy names its own, and the fallback policy requires an
@@ -159,7 +160,8 @@ A sign-in pushes its request (PAR) with PKCE as the distribution's confidential 
 `returnUrl` must be a local path of visible ASCII characters (anything else arrives
 percent-encoded). The distribution's `IAuthenticationPolicyProvider` bounds what the login's query
 asks for: the stronger of the policy's and the caller's `acr_values` is sent (ranked by the identity
-server's tiers, `aal1` < `aal2`/`phr` < `aal3`/`phrh`, a list as its weakest member; when either
+server's tiers, `aal1` < `aal2`/`phr` < `aal3`/`phrh`, a list as its strongest member, as the
+identity server requires the highest tier a list names; when either
 cannot be ranked, the caller's wins only when it is `Tellma:Session:StepUp:Acr`), the shorter
 `max_age` wins, and the allowed methods are the policy's alone.
 

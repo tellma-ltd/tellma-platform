@@ -158,7 +158,16 @@ namespace Tellma.Core.Data.Batches
                 _ = text.Append(CultureInfo.InvariantCulture, $"IF (SELECT COUNT(*) FROM {keysTable}) <> (SELECT COUNT(*) FROM {ids}) THROW {TellmaSqlErrors.RowSecurity}, N'{TellmaSqlErrors.RowSecurityCode}', 1;\n");
             }
 
-            WriteUpdate(text, metadata, assigned, stamps, ordinal, keysTable, now, recompile);
+            // The users the updated rows name, before and after, which the bump epilogue reads.
+            IReadOnlyList<string> userColumns = UserIdCapture.Columns(_executor.VersionTags, metadata.Table);
+            string? userCapture = null;
+            if (userColumns.Count > 0)
+            {
+                userCapture = ReservedSqlNames.Statement(ordinal, UserIdCapture.Word(metadata.Table));
+                _ = text.Append(UserIdCapture.Declaration(userCapture, isLong ? "bigint" : "int", userColumns)).Append('\n');
+            }
+
+            WriteUpdate(text, metadata, assigned, stamps, ordinal, keysTable, now, recompile, userCapture is null ? null : (userCapture, userColumns));
             bool recount = metadata.Tree is { ActiveSubtreeCount: not null }
                 && assigned.Exists(static item => string.Equals(item.Property.Name, nameof(IActivatable.IsActive), StringComparison.Ordinal));
             if (recount)
@@ -199,6 +208,11 @@ namespace Tellma.Core.Data.Batches
                     }
 
                     _ = draft.Name(ReservedSqlNames.StatementNames.Keys);
+                    if (userCapture is not null)
+                    {
+                        _ = draft.Name(UserIdCapture.Word(metadata.Table));
+                    }
+
                     Engine(draft, keySlots);
                 },
                 idParameters + scalars + keySlots.Count,
@@ -214,6 +228,13 @@ namespace Tellma.Core.Data.Batches
                 }));
 
             AppendWrites(statements);
+            if (userCapture is not null)
+            {
+                foreach (UserIdSource source in UserIdCapture.Sources(metadata.Table, userColumns, userCapture))
+                {
+                    AddUserIdSource(source);
+                }
+            }
 
             // --- Once it ran: a tree's recount counts as a tree statement ---
             if (recount)
@@ -386,6 +407,7 @@ namespace Tellma.Core.Data.Batches
         /// <param name="keys">The keys table.</param>
         /// <param name="now">The stamp variable.</param>
         /// <param name="recompile">Whether the statement carries <c>OPTION (RECOMPILE)</c>.</param>
+        /// <param name="users">The user-id capture and its columns, when the table has a user-level version tag rule; else null.</param>
         private static void WriteUpdate(
             StringBuilder text,
             EntityMetadata metadata,
@@ -394,7 +416,8 @@ namespace Tellma.Core.Data.Batches
             int ordinal,
             string keys,
             string now,
-            bool recompile)
+            bool recompile,
+            (string Capture, IReadOnlyList<string> Columns)? users)
         {
             List<string> set = [];
             List<string> stored = [];
@@ -416,8 +439,13 @@ namespace Tellma.Core.Data.Batches
                 set.Add($"t.{SqlNames.Quote(stamped.ModifiedById.Column)} = {ReservedSqlNames.Statement(ordinal, ReservedSqlNames.StatementNames.Scalar(assigned.Count))}");
             }
 
-            _ = text.Append(CultureInfo.InvariantCulture, $"UPDATE t SET {string.Join(", ", set)}\n")
-                .Append("OUTPUT inserted.[Id]\n")
+            _ = text.Append(CultureInfo.InvariantCulture, $"UPDATE t SET {string.Join(", ", set)}\n");
+            if (users is { } capture)
+            {
+                _ = text.Append(CultureInfo.InvariantCulture, $"OUTPUT {UserIdCapture.Values("inserted.[Id]", "deleted", "inserted", capture.Columns)} INTO {capture.Capture} ({UserIdCapture.Targets(capture.Columns)})\n");
+            }
+
+            _ = text.Append("OUTPUT inserted.[Id]\n")
                 .Append(CultureInfo.InvariantCulture, $"FROM {metadata.Table.Delimited} AS t\n")
                 .Append(CultureInfo.InvariantCulture, $"WHERE t.[Id] IN (SELECT [Id] FROM {keys})\n")
                 .Append(CultureInfo.InvariantCulture, $"  AND EXISTS (SELECT {string.Join(", ", stored)} EXCEPT SELECT {string.Join(", ", values)})")

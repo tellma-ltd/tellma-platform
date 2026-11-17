@@ -118,7 +118,8 @@ namespace Tellma.Core.IntegrationTests.Catalog
             int[] ids = await RegisterAsync(host, 2);
             await host.Directory.RecordAsync([Hint(ids[0], "alice", true), Hint(ids[0], "bob", true), Hint(ids[1], "bob", true)], Token);
 
-            int changed = await host.Directory.ReconcileAsync(ids[0], [Hint(ids[0], "alice", false), Hint(ids[0], "carol", true)], Token);
+            DateTimeOffset readAt = await host.Directory.CatalogTimeAsync(Token);
+            int changed = await host.Directory.ReconcileAsync(ids[0], [Hint(ids[0], "alice", false), Hint(ids[0], "carol", true)], readAt, Token);
 
             // alice updated, carol inserted, bob deleted from the first tenant only.
             Assert.Equal(3, changed);
@@ -134,7 +135,7 @@ namespace Tellma.Core.IntegrationTests.Catalog
             int[] ids = await RegisterAsync(host, 2);
             await host.Directory.RecordAsync([Hint(ids[0], "alice", true), Hint(ids[1], "alice", true)], Token);
 
-            Assert.Equal(1, await host.Directory.ReconcileAsync(ids[0], [], Token));
+            Assert.Equal(1, await host.Directory.ReconcileAsync(ids[0], [], await host.Directory.CatalogTimeAsync(Token), Token));
 
             Assert.Equal([ids[1]], (await host.Directory.ListAsync("alice", Token)).Select(static m => m.Tenant.Id));
         }
@@ -146,10 +147,33 @@ namespace Tellma.Core.IntegrationTests.Catalog
             int[] ids = await RegisterAsync(host, 2);
             await host.Directory.RecordAsync([Hint(ids[1], "alice", true)], Token);
 
-            _ = await Assert.ThrowsAsync<ArgumentException>(() => host.Directory.ReconcileAsync(ids[0], [Hint(ids[1], "mallory", true)], Token));
+            DateTimeOffset readAt = await host.Directory.CatalogTimeAsync(Token);
+            _ = await Assert.ThrowsAsync<ArgumentException>(() => host.Directory.ReconcileAsync(ids[0], [Hint(ids[1], "mallory", true)], readAt, Token));
 
             Assert.Equal([ids[1]], (await host.Directory.ListAsync("alice", Token)).Select(static m => m.Tenant.Id));
             Assert.Empty(await host.Directory.ListAsync("mallory", Token));
+        }
+
+        [Fact]
+        public async Task A_hint_written_after_the_users_were_read_survives_the_reconciliation()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "members_race");
+            int[] ids = await RegisterAsync(host, 1);
+            await host.Directory.RecordAsync([Hint(ids[0], "alice", true), Hint(ids[0], "bob", true), Hint(ids[0], "erin", true)], Token);
+
+            // The reconciliation takes the catalog's time and reads the tenant's users: alice and
+            // erin, bob being gone. Then, before it writes, user saves commit: dave joins, erin is
+            // deactivated; their hints are written after the read.
+            // No wait between: a hint stamped in the same millisecond as the time still counts as newer.
+            DateTimeOffset readAt = await host.Directory.CatalogTimeAsync(Token);
+            await host.Directory.RecordAsync([Hint(ids[0], "dave", true), Hint(ids[0], "erin", false)], Token);
+
+            int changed = await host.Directory.ReconcileAsync(ids[0], [Hint(ids[0], "alice", true), Hint(ids[0], "erin", true)], readAt, Token);
+
+            // bob, stale before the read, goes; dave and erin keep what the saves wrote.
+            Assert.Equal(1, changed);
+            IReadOnlyList<TenantMemberHint> members = await host.Directory.ListMembersAsync(ids[0], Token);
+            Assert.Equal([("alice", true), ("dave", true), ("erin", false)], members.Select(static member => (member.Subject, member.IsActive)));
         }
 
         /// <summary>Registers tenants.</summary>

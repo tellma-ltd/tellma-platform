@@ -177,19 +177,29 @@ namespace Tellma.Core.Tenancy
             """;
 
         /// <summary>
+        ///     The catalog's clock, rounded as the hints' <c>UpdatedAt</c> stamps are: a stamp taken at or
+        ///     after the clock never rounds below it.
+        /// </summary>
+        public const string CatalogTime = """
+            SELECT CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3));
+            """;
+
+        /// <summary>
         ///     The reconciliation of one tenant's hints from <c>@rows</c>: the upsert, then the delete of
-        ///     the tenant's hints <c>@rows</c> does not hold, in one transaction.
+        ///     the tenant's hints <c>@rows</c> does not hold, in one transaction. A hint written at or after
+        ///     <c>@readAt</c>, the catalog's time before the tenant's users were read, is newer than the
+        ///     read, so neither its activity nor its existence is overwritten.
         /// </summary>
         public const string ReconcileMemberships = """
             SET XACT_ABORT ON; BEGIN TRAN;
             UPDATE m SET m.[IsActive] = r.[IsActive], m.[UpdatedAt] = SYSUTCDATETIME()
               FROM [catalog].[TenantMemberships] AS m JOIN @rows AS r ON r.[TenantId] = m.[TenantId] AND r.[Subject] = m.[Subject]
-             WHERE m.[IsActive] <> r.[IsActive];
+             WHERE m.[IsActive] <> r.[IsActive] AND m.[UpdatedAt] < @readAt;
             INSERT INTO [catalog].[TenantMemberships] ([Subject], [TenantId], [IsActive], [UpdatedAt])
             SELECT r.[Subject], r.[TenantId], r.[IsActive], SYSUTCDATETIME() FROM @rows AS r
              WHERE NOT EXISTS (SELECT 1 FROM [catalog].[TenantMemberships] AS m WHERE m.[Subject] = r.[Subject] AND m.[TenantId] = r.[TenantId]);
             DELETE m FROM [catalog].[TenantMemberships] AS m
-             WHERE m.[TenantId] = @tenantId AND NOT EXISTS (SELECT 1 FROM @rows AS r WHERE r.[Subject] = m.[Subject]);
+             WHERE m.[TenantId] = @tenantId AND m.[UpdatedAt] < @readAt AND NOT EXISTS (SELECT 1 FROM @rows AS r WHERE r.[Subject] = m.[Subject]);
             COMMIT;
             """;
     }

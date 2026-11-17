@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Realtime;
@@ -23,8 +24,9 @@ namespace Tellma.Core.IntegrationTests.Data
     ///     Version tags against a fixture database whose every batch is audited: the prelude heading
     ///     every batch and replacing the process's snapshot, the bump moving a cacheable list's tags
     ///     and the named users' preferences or permissions tags and announcing each move after the
-    ///     commit, an expectation of no tag guarded, no missing-row warning from a batch that writes
-    ///     the tags itself, and a missing row failing the bump.
+    ///     commit, the platform's save, update and delete naming the users they write themselves, an
+    ///     expectation of no tag guarded, no missing-row warning from a batch that writes the tags
+    ///     itself, and a missing row failing the bump.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -217,6 +219,86 @@ namespace Tellma.Core.IntegrationTests.Data
                 fixture.Events.Published.Select(static clientEvent => (clientEvent.UserIds.SingleOrDefault(), (CacheChangedPayload)clientEvent.Payload!)).OrderBy(static pair => pair.Item1));
         }
 
+        // ===================== The platform statements name the users they write =====================
+
+        [Fact]
+        public async Task A_user_save_that_adds_then_removes_a_membership_moves_that_users_tags_alone_and_tells_that_user_alone()
+        {
+            int member = DataBatchDatabase.CallerId + 1;
+            await fixture.SeedUserAsync(member);
+            int role = await SeedRoleAsync();
+            (Guid Permissions, Guid Preferences) caller = await StampsAsync(DataBatchDatabase.CallerId);
+
+            // --- Adding: the new membership's row names the member, the stamped user row too ---
+            User user = await StoredUserAsync(member);
+            user.RoleMemberships = [new RoleMembership { RoleId = role }];
+            Guid added = await SaveAsync(user);
+
+            Assert.Equal((added, added), await StampsAsync(member));
+            Assert.Equal(caller, await StampsAsync(DataBatchDatabase.CallerId));
+            Assert.Equal([(member, VersionTagWire.PermissionsItem), (member, VersionTagWire.PreferencesItem)], UserEvents());
+
+            // --- Removing: the deleted membership's captured row names the member ---
+            fixture.Events.Clear();
+            user = await StoredUserAsync(member);
+            user.RoleMemberships = [];
+            Guid removed = await SaveAsync(user);
+
+            Assert.Equal(0, await MembershipCountAsync());
+            Assert.Equal((removed, removed), await StampsAsync(member));
+            Assert.Equal(caller, await StampsAsync(DataBatchDatabase.CallerId));
+            Assert.Equal([(member, VersionTagWire.PermissionsItem), (member, VersionTagWire.PreferencesItem)], UserEvents());
+        }
+
+        [Fact]
+        public async Task A_profile_only_user_save_moves_that_users_preferences_tag_alone()
+        {
+            int member = DataBatchDatabase.CallerId + 1;
+            await fixture.SeedUserAsync(member);
+            (Guid permissions, _) = await StampsAsync(member);
+
+            User user = await StoredUserAsync(member);
+            user.Name = "Renamed";
+            Guid saved = await SaveAsync(user);
+
+            Assert.Equal((permissions, saved), await StampsAsync(member));
+            Assert.Equal([(member, VersionTagWire.PreferencesItem)], UserEvents());
+        }
+
+        [Fact]
+        public async Task A_user_update_moves_the_updated_users_preferences_tag_alone()
+        {
+            int member = DataBatchDatabase.CallerId + 1;
+            await fixture.SeedUserAsync(member);
+            (Guid Permissions, Guid Preferences) caller = await StampsAsync(DataBatchDatabase.CallerId);
+            Guid permissions = (await StampsAsync(member)).Permissions;
+
+            Guid tag = await RunAsync(batch => _ = batch.Update(new UpdateSpec<User>.ByIds([member], null, null, new Dictionary<string, object?> { [nameof(User.IsActive)] = false })));
+
+            Assert.Equal((permissions, tag), await StampsAsync(member));
+            Assert.Equal(caller, await StampsAsync(DataBatchDatabase.CallerId));
+            Assert.Equal([(member, VersionTagWire.PreferencesItem)], UserEvents());
+        }
+
+        [Fact]
+        public async Task A_user_delete_takes_the_memberships_and_tells_the_deleted_user_alone()
+        {
+            int member = DataBatchDatabase.CallerId + 1;
+            await fixture.SeedUserAsync(member);
+            int role = await SeedRoleAsync();
+            User user = await StoredUserAsync(member);
+            user.RoleMemberships = [new RoleMembership { RoleId = role }];
+            _ = await SaveAsync(user);
+            fixture.Events.Clear();
+            (Guid Permissions, Guid Preferences) caller = await StampsAsync(DataBatchDatabase.CallerId);
+
+            _ = await RunAsync(batch => _ = batch.Delete(new DeleteSpec<User>.ByIds([member], null, null)));
+
+            Assert.Equal(0, await MembershipCountAsync());
+            Assert.Equal(caller, await StampsAsync(DataBatchDatabase.CallerId));
+            Assert.Equal([(member, VersionTagWire.PermissionsItem), (member, VersionTagWire.PreferencesItem)], UserEvents());
+        }
+
         [Fact]
         public async Task A_dependency_that_expects_no_tag_fails_stale_once_the_row_exists()
         {
@@ -291,6 +373,104 @@ namespace Tellma.Core.IntegrationTests.Data
         private static HashSet<TableName> Set(params TableName[] tables)
         {
             return [.. tables];
+        }
+
+        /// <summary>Stores an active role above the reserved band.</summary>
+        /// <returns>The role's id.</returns>
+        private async Task<int> SeedRoleAsync()
+        {
+            const int role = WellKnownIds.ReservedIdBandEnd + 1;
+            await SqlServerFixture.ExecuteAsync(
+                fixture.Tenant.ConnectionString,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[Roles] ([Id], [Name], [IsPublic], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({role}, N'Clerks', 0, 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId});"));
+            return role;
+        }
+
+        /// <summary>How many role memberships the database holds.</summary>
+        /// <returns>The count.</returns>
+        private Task<int> MembershipCountAsync()
+        {
+            return SqlServerFixture.ScalarAsync<int>(fixture.Tenant.ConnectionString, "SELECT COUNT(*) FROM [core].[RoleMemberships];");
+        }
+
+        /// <summary>
+        ///     A stored user as a save expects it: the columns the seed wrote, and the stamps the
+        ///     concurrency check compares.
+        /// </summary>
+        /// <param name="userId">The user.</param>
+        /// <returns>The user.</returns>
+        private async Task<User> StoredUserAsync(int userId)
+        {
+            string where = string.Create(CultureInfo.InvariantCulture, $" FROM [core].[Users] WHERE [Id] = {userId};");
+            return new User
+            {
+                Id = userId,
+                Kind = UserKind.Individual,
+                Email = await SqlServerFixture.ScalarAsync<string>(fixture.Tenant.ConnectionString, "SELECT [Email]" + where),
+                Name = await SqlServerFixture.ScalarAsync<string>(fixture.Tenant.ConnectionString, "SELECT [Name]" + where) ?? string.Empty,
+                IsActive = true,
+                CreatedAt = await SqlServerFixture.ScalarAsync<DateTimeOffset>(fixture.Tenant.ConnectionString, "SELECT [CreatedAt]" + where),
+                CreatedById = WellKnownIds.SystemUserId,
+                ModifiedAt = await SqlServerFixture.ScalarAsync<DateTimeOffset>(fixture.Tenant.ConnectionString, "SELECT [ModifiedAt]" + where),
+                ModifiedById = WellKnownIds.SystemUserId,
+            };
+        }
+
+        /// <summary>
+        ///     Saves a user through the platform's save statement, ids reserved for its new memberships
+        ///     first, in a persist batch that declares no users of its own.
+        /// </summary>
+        /// <param name="user">The user.</param>
+        /// <returns>The persist batch's tag.</returns>
+        private async Task<Guid> SaveAsync(User user)
+        {
+            await using AsyncServiceScope scope = fixture.CreateSettledScope(WellKnownIds.SystemUserId);
+            ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
+            IDataBatch validate = database.CreateBatch(BatchPurpose.Validate);
+            using IdReservation reservation = scope.ServiceProvider.GetRequiredService<IIdAllocator>().Reserve(validate, typeof(User), [user]);
+            if (!reservation.IsImmediate)
+            {
+                _ = await validate.ExecuteAsync(Token);
+            }
+
+            reservation.Assign([user]);
+            var persist = (DataBatch)database.CreateBatch(BatchPurpose.Persist);
+            _ = persist.Save([user]);
+            _ = await persist.ExecuteAsync(Token);
+            return persist.Tag;
+        }
+
+        /// <summary>Runs a persist batch holding one platform statement, in a settled scope of the system user.</summary>
+        /// <param name="write">Adds the statement.</param>
+        /// <returns>The batch's tag.</returns>
+        private async Task<Guid> RunAsync(Action<DataBatch> write)
+        {
+            await using AsyncServiceScope scope = fixture.CreateSettledScope(WellKnownIds.SystemUserId);
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            write(batch);
+            _ = await batch.ExecuteAsync(Token);
+            return batch.Tag;
+        }
+
+        /// <summary>Each announcement addressed to a user, as the user and the item it moved, ordered.</summary>
+        /// <returns>The announcements.</returns>
+        private List<(int UserId, string Item)> UserEvents()
+        {
+            return [.. fixture.Events.Published
+                .Where(static clientEvent => clientEvent.UserIds.Count > 0)
+                .Select(static clientEvent => (UserId: Assert.Single(clientEvent.UserIds), Item: ((CacheChangedPayload)clientEvent.Payload!).Tag))
+                .OrderBy(static pair => pair.UserId)
+                .ThenBy(static pair => pair.Item, StringComparer.Ordinal)];
+        }
+
+        /// <summary>A user's permissions and preferences tags.</summary>
+        /// <param name="userId">The user.</param>
+        /// <returns>The tags.</returns>
+        private async Task<(Guid Permissions, Guid Preferences)> StampsAsync(int userId)
+        {
+            return (await StampAsync("PermissionsTag", userId), await StampAsync("PreferencesTag", userId));
         }
 
         /// <summary>One tag column of a user's stamp.</summary>

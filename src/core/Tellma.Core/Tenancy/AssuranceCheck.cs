@@ -18,7 +18,7 @@ namespace Tellma.Core.Tenancy
         /// <param name="now">The instant the session's age is judged at.</param>
         /// <exception cref="ArgumentNullException">The context or the bar is null.</exception>
         /// <exception cref="IndividualRequiredException">The caller is a service account.</exception>
-        /// <exception cref="StepUpRequiredException">The session did not reach the bar's class, or not recently enough.</exception>
+        /// <exception cref="StepUpRequiredException">The session did not reach the bar's class or a higher tier, or not recently enough.</exception>
         public static void Ensure(RequestContext context, RequireAssuranceMetadata bar, DateTimeOffset now)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -30,8 +30,9 @@ namespace Tellma.Core.Tenancy
                 throw new IndividualRequiredException();
             }
 
+            // A session above the bar's tier reaches it: a device-bound passkey's aal3 meets an aal2 bar.
             AuthenticationAssurance? held = context.Assurance;
-            bool reachedClass = string.Equals(held?.Acr, bar.Acr, StringComparison.Ordinal);
+            bool reachedClass = AssuranceTiers.Satisfies(held?.Acr, bar.Acr);
 
             // The age counts from when the session reached the class, else from the sign-in; a
             // session that says neither, such as a background scope's, cannot prove it is recent enough.

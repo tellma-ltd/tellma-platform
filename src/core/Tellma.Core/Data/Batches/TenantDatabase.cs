@@ -56,6 +56,9 @@ namespace Tellma.Core.Data.Batches
         public int TenantId => accessor.Current.RequireTenant().Id;
 
         /// <inheritdoc />
+        public TenantLocation? Location => connections.Tenant.Location;
+
+        /// <inheritdoc />
         public int? UserId => accessor.Current.UserId;
 
         /// <inheritdoc />

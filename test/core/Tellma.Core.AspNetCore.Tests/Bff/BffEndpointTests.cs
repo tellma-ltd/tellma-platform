@@ -118,11 +118,15 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
                 { "urn:tellma:acr:aal2", "urn:tellma:acr:aal1", "urn:tellma:acr:aal2" },
                 { "urn:tellma:acr:aal3", "phr", "urn:tellma:acr:aal3" },
                 { "urn:tellma:acr:aal2", "phr", "urn:tellma:acr:aal2" },
-                // A list ranks as its weakest member.
-                { "urn:tellma:acr:aal2", "urn:tellma:acr:aal3 urn:tellma:acr:aal1", "urn:tellma:acr:aal2" },
-                // A class outside the tiers wins only when it is the configured step-up class.
-                { "urn:tellma:acr:aal1", "urn:tellma:acr:mfa", "urn:tellma:acr:mfa" },
+                // A list ranks as its strongest member, the tier the identity server requires of it.
+                { "urn:tellma:acr:aal2", "urn:tellma:acr:aal3 urn:tellma:acr:aal1", "urn:tellma:acr:aal3 urn:tellma:acr:aal1" },
+                { "urn:tellma:acr:aal1 urn:tellma:acr:aal3", "urn:tellma:acr:aal2", "urn:tellma:acr:aal1 urn:tellma:acr:aal3" },
+                { "urn:tellma:acr:aal2 urn:tellma:acr:aal3", "phr", "urn:tellma:acr:aal2 urn:tellma:acr:aal3" },
+                // A list the tiers cannot rank yields to the caller's class only when that is the
+                // configured step-up class; otherwise the policy's stands.
                 { "urn:tellma:acr:aal1", "urn:example:other", "urn:tellma:acr:aal1" },
+                { "urn:tellma:acr:aal1 urn:example:other", "urn:tellma:acr:aal3", "urn:tellma:acr:aal1 urn:example:other" },
+                { "urn:tellma:acr:aal1 urn:example:other", "urn:tellma:acr:aal2", "urn:tellma:acr:aal2" },
             };
         }
 
@@ -138,6 +142,27 @@ namespace Tellma.Core.AspNetCore.Tests.Bff
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             IdentityRequest pushed = Assert.Single(host.IdentityServer.Requests, static request => request.Path == "/connect/par");
             Assert.Equal(sent, pushed.Form["acr_values"]);
+        }
+
+        [Fact]
+        public async Task A_class_outside_the_tiers_wins_over_the_policy_only_when_it_is_the_configured_step_up_class()
+        {
+            const string StepUp = "urn:example:acr:strong";
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            {
+                options.Settings["Tellma:Session:StepUp:Acr"] = StepUp;
+                options.ConfigureServices = services => services.AddSingleton<IAuthenticationPolicyProvider>(
+                    new StubPolicyProvider(new LoginPolicy("urn:tellma:acr:aal1", null, null)));
+            });
+
+            using HttpResponseMessage stepUp = await host.Client.GetAsync(
+                new Uri("/bff/login?acr_values=" + Uri.EscapeDataString(StepUp), UriKind.Relative), TestContext.Current.CancellationToken);
+            using HttpResponseMessage other = await host.Client.GetAsync(
+                new Uri("/bff/login?acr_values=urn%3Aexample%3Aacr%3Aother", UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(
+                [StepUp, "urn:tellma:acr:aal1"],
+                host.IdentityServer.Requests.Where(static request => request.Path == "/connect/par").Select(static request => request.Form["acr_values"]));
         }
 
         [Fact]

@@ -71,6 +71,20 @@ namespace Tellma.Core.Data.Ids
             Message = "The id buffers of tenant {TenantId} were forgotten, dropping {Dropped} ids: the database behind the tenant may change.")]
         public static partial void TenantForgotten(ILogger logger, int tenantId, long dropped);
 
+        /// <summary>
+        ///     A buffer was filled from another database than the one the tenant's registry entry now
+        ///     names (a relocation or a restore this instance never saw frozen), so it was replaced.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="sequence">The sequence.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="dropped">How many buffered ids were dropped.</param>
+        [LoggerMessage(
+            EventName = "IdAllocator.DatabaseMoved",
+            Level = LogLevel.Information,
+            Message = "The id buffer of {Sequence} of tenant {TenantId} was filled from another database than the tenant's current one; its {Dropped} ids were dropped.")]
+        public static partial void DatabaseMoved(ILogger logger, string sequence, int tenantId, long dropped);
+
         /// <summary>A duplicate primary key surfaced on a table the buffer serves, so its buffered ranges were dropped.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="sequence">The sequence.</param>

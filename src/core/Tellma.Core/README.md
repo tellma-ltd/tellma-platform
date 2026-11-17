@@ -1373,8 +1373,10 @@ advances the set's `ValidatedAt`, a moved tag brings the fresh rows, and a scope
 once, however many calls race; a re-check that fails (cancelled, timed out or refused) leaves the
 scope's one re-check to its next stale denial. `RequireAsync` raises `ForbiddenException` (`forbidden`, the
 registered pair, `NoGrant`) for a denial, then holds a sensitive pair to `StepUpBar` (the
-`urn:tellma:acr:mfa` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
-says otherwise; never for the system; `IndividualRequiredException` for a service account). Every
+`urn:tellma:acr:aal2` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
+says otherwise; never for the system; `IndividualRequiredException` for a service account). A
+session meets a bar of the identity server's tier scheme by rank, so `aal3` meets an `aal2` bar;
+a class outside the scheme is met only by itself. Every
 pair `EvaluateAsync` or `RequireAsync` decides is recorded in the scope's `AccessWitness` and counted
 (`tellma.access.decisions`, by `outcome`), once per pair however many re-checks it took.
 `EvaluateForAsync` decides for another user from that user's set, loaded once per scope and user

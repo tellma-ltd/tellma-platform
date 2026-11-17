@@ -6,6 +6,7 @@
 using System.Collections.Frozen;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
@@ -13,8 +14,9 @@ namespace Tellma.Core.Data.Saves
 {
     /// <summary>
     ///     What a save of one root entity writes, fixed by its metadata: the root and every child
-    ///     collection, recursively, each with its table-valued parameters, its columns and its blob
-    ///     captures. The emitter's text is cached on the plan.
+    ///     collection, recursively, each with its table-valued parameters, its columns, its blob
+    ///     captures and the user-id columns its user-level version tag rules name. The emitter's text
+    ///     is cached on the plan.
     /// </summary>
     internal sealed class SavePlan
     {
@@ -24,21 +26,27 @@ namespace Tellma.Core.Data.Saves
         /// <summary>Builds the plan of a root entity.</summary>
         /// <param name="root">The root entity, top-level.</param>
         /// <param name="binder">The table-type binder, whose definitions give each table's columns.</param>
-        public SavePlan(EntityMetadata root, TableTypeBinder binder)
+        /// <param name="userIdColumns">
+        ///     The user-id columns of a table's user-level version tag rules, whose values the save
+        ///     captures for the bump; none when null.
+        /// </param>
+        public SavePlan(EntityMetadata root, TableTypeBinder binder, Func<TableName, IReadOnlyList<string>>? userIdColumns = null)
         {
             ArgumentNullException.ThrowIfNull(root);
             ArgumentNullException.ThrowIfNull(binder);
+            userIdColumns ??= static _ => [];
 
             // --- The nodes, in pre-order, numbering the table-valued parameters as they are bound ---
             List<SaveNode> nodes = [];
             int tables = 0;
-            Root = Build(root, parent: null, collection: null, ordinal: 0, rootCollection: 0, binder, nodes, ref tables);
+            Root = Build(root, parent: null, collection: null, ordinal: 0, rootCollection: 0, binder, userIdColumns, nodes, ref tables);
             Nodes = nodes;
             TableCount = tables;
 
             // --- What the save declares: every table of the aggregate, and every blob column's capture ---
             Writes = nodes.Select(static node => node.Entity.Table).ToFrozenSet();
             Captures = [.. nodes.SelectMany(static node => node.BlobColumns.Select(column => new SaveCapture(node, column)))];
+            UserIdCaptures = [.. nodes.Where(static node => node.UserIdColumns.Count > 0)];
         }
 
         /// <summary>The root's node.</summary>
@@ -52,6 +60,9 @@ namespace Tellma.Core.Data.Saves
 
         /// <summary>The blob captures, one per blob column of every table, in node order.</summary>
         public IReadOnlyList<SaveCapture> Captures { get; }
+
+        /// <summary>The nodes whose table has a user-level version tag rule, each capturing its rows' users, in node order.</summary>
+        public IReadOnlyList<SaveNode> UserIdCaptures { get; }
 
         /// <summary>How many table-valued parameters the statement binds.</summary>
         public int TableCount { get; }
@@ -79,6 +90,7 @@ namespace Tellma.Core.Data.Saves
         /// <param name="ordinal">The collection's position among its owner's collections.</param>
         /// <param name="rootCollection">The position of the root's collection the node descends through.</param>
         /// <param name="binder">The table-type binder.</param>
+        /// <param name="userIdColumns">The user-id columns of a table's user-level version tag rules.</param>
         /// <param name="nodes">The nodes built so far, in pre-order.</param>
         /// <param name="tables">The table-valued parameters numbered so far.</param>
         /// <returns>The node.</returns>
@@ -89,6 +101,7 @@ namespace Tellma.Core.Data.Saves
             int ordinal,
             int rootCollection,
             TableTypeBinder binder,
+            Func<TableName, IReadOnlyList<string>> userIdColumns,
             List<SaveNode> nodes,
             ref int tables)
         {
@@ -98,12 +111,12 @@ namespace Tellma.Core.Data.Saves
             int parents = parent is null ? -1 : tables++;
             int newRows = tables++;
             int existingRows = tables++;
-            SaveNode node = new(entity, parent, collection, ordinal, rootCollection, parents, newRows, existingRows, definition.Columns);
+            SaveNode node = new(entity, parent, collection, ordinal, rootCollection, parents, newRows, existingRows, definition.Columns, userIdColumns(entity.Table));
             nodes.Add(node);
 
             for (int index = 0; index < entity.Children.Count; index++)
             {
-                node.Children.Add(Build(entity.Children[index].Child, node, entity.Children[index], index, parent is null ? index : rootCollection, binder, nodes, ref tables));
+                node.Children.Add(Build(entity.Children[index].Child, node, entity.Children[index], index, parent is null ? index : rootCollection, binder, userIdColumns, nodes, ref tables));
             }
 
             return node;
@@ -135,6 +148,7 @@ namespace Tellma.Core.Data.Saves
         /// <param name="newTable">The new rows parameter's index.</param>
         /// <param name="existingTable">The existing rows parameter's index.</param>
         /// <param name="columns">The row-image type's columns, in order.</param>
+        /// <param name="userIdColumns">The user-id columns of the table's user-level version tag rules.</param>
         public SaveNode(
             EntityMetadata entity,
             SaveNode? parent,
@@ -144,7 +158,8 @@ namespace Tellma.Core.Data.Saves
             int parentsTable,
             int newTable,
             int existingTable,
-            IReadOnlyList<TableTypeColumnDefinition> columns)
+            IReadOnlyList<TableTypeColumnDefinition> columns,
+            IReadOnlyList<string> userIdColumns)
         {
             Entity = entity;
             Parent = parent;
@@ -175,6 +190,7 @@ namespace Tellma.Core.Data.Saves
 
             Columns = saveColumns;
             BlobColumns = [.. entity.BlobReferences.Select(static blob => blob.Property.Column)];
+            UserIdColumns = userIdColumns;
         }
 
         /// <summary>The table's entity.</summary>
@@ -209,6 +225,12 @@ namespace Tellma.Core.Data.Saves
 
         /// <summary>The columns that hold a blob reference.</summary>
         public IReadOnlyList<string> BlobColumns { get; }
+
+        /// <summary>The user-id columns of the table's user-level version tag rules, whose values each write captures.</summary>
+        public IReadOnlyList<string> UserIdColumns { get; }
+
+        /// <summary>The statement-local word of the table's user-id capture.</summary>
+        public string UserIdWord => UserIdCapture.Word(Entity.Table);
 
         /// <summary>The child collections' nodes, in metadata order.</summary>
         public List<SaveNode> Children { get; } = [];

@@ -128,21 +128,27 @@ namespace Tellma.Core.Caching
                     List<UserIdSource> covering = [.. sources.Where(source => source.Tables.Contains(rule.Table) && (source.Column is null || source.Column == rule.UserIdColumn))];
                     if (covering.Count == 0)
                     {
+                        // The platform's save, update and delete statements capture their own rows'
+                        // users, so only a raw statement can leave a rule uncovered.
                         throw new InvalidOperationException(
-                            $"The batch writes {rule.Table}, whose writes bump the {rule.Column} tag of the users they name, but no statement declared which users it wrote. Declare them: SqlOptions.UserIds on a raw statement, or the rows of the platform's own statement.");
+                            $"The batch writes {rule.Table}, whose writes bump the {rule.Column} tag of the users they name, but no statement declared which users it wrote. Declare them on the raw statement that writes the table: SqlOptions.UserIds, or SqlOptions.ForCaller for the caller's own rows.");
                     }
 
+                    // A platform statement's capture holds each written row's user before and after the
+                    // write, so a row moved from one user to another moves both users' tags.
                     foreach (UserIdSource source in covering)
                     {
-                        string sourceColumn = source.Column ?? "Id";
-                        if (!filled.Add((rule.Column, source.Identifier.Name, sourceColumn)))
+                        foreach (string sourceColumn in source.ReadColumns)
                         {
-                            continue;
-                        }
+                            if (!filled.Add((rule.Column, source.Identifier.Name, sourceColumn)))
+                            {
+                                continue;
+                            }
 
-                        string target = UserIdsTable(rule.Column);
-                        string read = $"s.[{sourceColumn.Replace("]", "]]", StringComparison.Ordinal)}]";
-                        _ = text.Append(CultureInfo.InvariantCulture, $"INSERT INTO {target} ([Id]) SELECT DISTINCT {read} FROM {source.Identifier.Name} AS s WHERE {read} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {target} AS i WHERE i.[Id] = {read});\n");
+                            string target = UserIdsTable(rule.Column);
+                            string read = $"s.[{sourceColumn.Replace("]", "]]", StringComparison.Ordinal)}]";
+                            _ = text.Append(CultureInfo.InvariantCulture, $"INSERT INTO {target} ([Id]) SELECT DISTINCT {read} FROM {source.Identifier.Name} AS s WHERE {read} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {target} AS i WHERE i.[Id] = {read});\n");
+                        }
                     }
                 }
 

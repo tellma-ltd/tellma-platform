@@ -92,7 +92,7 @@ namespace Tellma.Core.Tenancy
                     ValidateSubject(row.Subject, nameof(records));
                 }
 
-                _ = await WriteAsync(CatalogStatements.UpsertMemberships, rows, tenantId: null, cancellationToken).ConfigureAwait(false);
+                _ = await WriteAsync(CatalogStatements.UpsertMemberships, rows, reconciled: null, cancellationToken).ConfigureAwait(false);
                 metrics.RecordMembershipWrite(succeeded: true, source);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -135,14 +135,17 @@ namespace Tellma.Core.Tenancy
         ///     Rebuilds one tenant's hints from its users: the upsert of <paramref name="records" />, and
         ///     the delete of the tenant's hints they do not hold, in one catalog transaction. Unlike the
         ///     writers' upsert, a failure is thrown, so the reconciliation can log the tenant and go on.
+        ///     A hint written since <paramref name="readAt" /> is left as it is: a user save committed
+        ///     after the read wrote it, so it is newer than the records.
         /// </summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="records">Every hint the tenant should have; each record's tenant must be <paramref name="tenantId" />.</param>
+        /// <param name="readAt">The catalog's time (<see cref="CatalogTimeAsync" />) taken before the records were read.</param>
         /// <param name="cancellationToken">Cancels the write.</param>
         /// <returns>How many hint rows were inserted, updated or deleted.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="records" /> or one of its entries is null.</exception>
         /// <exception cref="ArgumentException">A record names another tenant, or a subject is malformed.</exception>
-        public async Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, CancellationToken cancellationToken)
+        public async Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, DateTimeOffset readAt, CancellationToken cancellationToken)
         {
             List<TenantMembershipRecord> rows = Deduplicate(records);
             foreach (TenantMembershipRecord row in rows)
@@ -157,7 +160,7 @@ namespace Tellma.Core.Tenancy
 
             try
             {
-                int changed = await WriteAsync(CatalogStatements.ReconcileMemberships, rows, tenantId, cancellationToken).ConfigureAwait(false);
+                int changed = await WriteAsync(CatalogStatements.ReconcileMemberships, rows, (tenantId, readAt), cancellationToken).ConfigureAwait(false);
                 metrics.RecordMembershipWrite(succeeded: true, TenantMembershipWriteSource.Reconcile);
                 return changed;
             }
@@ -165,6 +168,24 @@ namespace Tellma.Core.Tenancy
             {
                 metrics.RecordMembershipWrite(succeeded: false, TenantMembershipWriteSource.Reconcile);
                 throw;
+            }
+        }
+
+        /// <summary>
+        ///     The catalog's clock, which a reconciliation reads before it reads a tenant's users: the
+        ///     hints stamped from then on are newer than the read. The catalog's own clock, so the
+        ///     stamps and the instant compare on one clock whatever the instances' skew.
+        /// </summary>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The catalog's time.</returns>
+        public async Task<DateTimeOffset> CatalogTimeAsync(CancellationToken cancellationToken)
+        {
+            SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
+            await using (connection.ConfigureAwait(false))
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.CommandText = CatalogStatements.CatalogTime;
+                return (DateTimeOffset)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -245,10 +266,13 @@ namespace Tellma.Core.Tenancy
         /// <summary>Runs one membership write statement over the rows.</summary>
         /// <param name="statement">The statement.</param>
         /// <param name="rows">The rows, bound to <c>@rows</c>.</param>
-        /// <param name="tenantId">The reconciled tenant, bound to <c>@tenantId</c>; null for the upsert.</param>
+        /// <param name="reconciled">
+        ///     The reconciled tenant and the catalog's time before its users were read, bound to
+        ///     <c>@tenantId</c> and <c>@readAt</c>; null for the upsert.
+        /// </param>
         /// <param name="cancellationToken">Cancels the write.</param>
         /// <returns>How many rows the statement inserted, updated or deleted.</returns>
-        private async Task<int> WriteAsync(string statement, IReadOnlyList<TenantMembershipRecord> rows, int? tenantId, CancellationToken cancellationToken)
+        private async Task<int> WriteAsync(string statement, IReadOnlyList<TenantMembershipRecord> rows, (int TenantId, DateTimeOffset ReadAt)? reconciled, CancellationToken cancellationToken)
         {
             SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
             await using (connection.ConfigureAwait(false))
@@ -256,9 +280,10 @@ namespace Tellma.Core.Tenancy
                 await using SqlCommand command = connection.CreateCommand();
                 command.CommandText = statement;
                 _ = command.Parameters.Add(catalogModel.Binder.Parameter(RowsParameter, rows));
-                if (tenantId is int id)
+                if (reconciled is { } tenant)
                 {
-                    _ = command.Parameters.Add(new SqlParameter("@tenantId", SqlDbType.Int) { Value = id });
+                    _ = command.Parameters.Add(new SqlParameter("@tenantId", SqlDbType.Int) { Value = tenant.TenantId });
+                    _ = command.Parameters.Add(new SqlParameter("@readAt", SqlDbType.DateTimeOffset) { Scale = 3, Value = tenant.ReadAt });
                 }
 
                 return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

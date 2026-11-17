@@ -31,8 +31,18 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The reconciliations asked for, in order.</summary>
         public ConcurrentQueue<(int TenantId, IReadOnlyList<TenantMembershipRecord> Records)> Reconciled { get; } = new();
 
+        /// <summary>
+        ///     The store's calls, in order: <c>time N</c> for the catalog's time, which is the epoch plus N
+        ///     seconds and moves on by one each call, <c>read T</c> for a read of tenant T's users, and
+        ///     <c>reconcile T at N</c> for a reconciliation of tenant T against the time N.
+        /// </summary>
+        public ConcurrentQueue<string> Steps { get; } = new();
+
         /// <summary>How many runs took the lock.</summary>
         public int Leads { get; private set; }
+
+        /// <summary>The seconds past the epoch of the catalog's last time.</summary>
+        private int _clock;
 
         /// <inheritdoc />
         public Task<IAsyncDisposable?> TryLeadAsync(CancellationToken cancellationToken)
@@ -47,16 +57,26 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         }
 
         /// <inheritdoc />
+        public Task<DateTimeOffset> CatalogTimeAsync(CancellationToken cancellationToken)
+        {
+            int clock = Interlocked.Increment(ref _clock);
+            Steps.Enqueue($"time {clock}");
+            return Task.FromResult(DateTimeOffset.UnixEpoch.AddSeconds(clock));
+        }
+
+        /// <inheritdoc />
         public Task<IReadOnlyList<TenantMembershipRecord>> ReadUsersAsync(int tenantId, CancellationToken cancellationToken)
         {
+            Steps.Enqueue($"read {tenantId}");
             return Failing.ContainsKey(tenantId)
                 ? Task.FromException<IReadOnlyList<TenantMembershipRecord>>(new InvalidOperationException("The tenant's database is unreachable."))
                 : Task.FromResult(Users.GetValueOrDefault(tenantId) ?? []);
         }
 
         /// <inheritdoc />
-        public Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, CancellationToken cancellationToken)
+        public Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, DateTimeOffset readAt, CancellationToken cancellationToken)
         {
+            Steps.Enqueue($"reconcile {tenantId} at {(readAt - DateTimeOffset.UnixEpoch).TotalSeconds}");
             Reconciled.Enqueue((tenantId, records));
             return Task.FromResult(records.Count);
         }

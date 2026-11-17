@@ -107,8 +107,11 @@ namespace Tellma.Core.AspNetCore.Tenancy
                     {
                         try
                         {
+                            // The catalog's time before the read: a hint a user save writes after it is
+                            // newer than the read, and the reconciliation leaves it alone.
+                            DateTimeOffset readAt = await store.CatalogTimeAsync(cancellationToken).ConfigureAwait(false);
                             IReadOnlyList<TenantMembershipRecord> records = await store.ReadUsersAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
-                            rows += await store.ReconcileAsync(tenant.Id, records, cancellationToken).ConfigureAwait(false);
+                            rows += await store.ReconcileAsync(tenant.Id, records, readAt, cancellationToken).ConfigureAwait(false);
                             tenants++;
                         }
                         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

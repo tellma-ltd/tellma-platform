@@ -5,16 +5,19 @@
 
 using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Data.Writes
 {
     /// <summary>
     ///     What a delete of one entity removes, fixed by its metadata: the entity's table, every child
-    ///     collection's table under it (recursively), the blob columns of each, and the sibling tables
-    ///     whose rows the database removes with their owner's, a sibling holding a blob reference
-    ///     removed explicitly so its blobs are captured. Built once per entity.
+    ///     collection's table under it (recursively), the blob columns and user-id columns of each,
+    ///     and the sibling tables whose rows the database removes with their owner's, a sibling holding
+    ///     a blob reference or a user-level version tag rule removed explicitly so its blobs and users
+    ///     are captured. Built once per entity.
     /// </summary>
     internal sealed class DeletePlan
     {
@@ -24,7 +27,8 @@ namespace Tellma.Core.Data.Writes
         /// <summary>Builds the plan.</summary>
         /// <param name="root">The deleted entity.</param>
         /// <param name="metadata">The running model's metadata, which names the siblings.</param>
-        private DeletePlan(EntityMetadata root, IEntityMetadataProvider metadata)
+        /// <param name="versionTags">The version tag registry, whose user-level rules name the user-id columns; null when none is composed.</param>
+        private DeletePlan(EntityMetadata root, IEntityMetadataProvider metadata, IVersionTagRegistry? versionTags)
         {
             // --- The siblings of the running model, each with the entity it belongs to ---
             List<(Type Owner, EntityMetadata Entity)> siblings = [];
@@ -37,12 +41,13 @@ namespace Tellma.Core.Data.Writes
             }
 
             // --- The tables, in pre-order: the root, then each collection and each explicitly deleted sibling under its owner ---
-            Builder builder = new(siblings);
+            Builder builder = new(siblings, table => UserIdCapture.Columns(versionTags, table));
             Root = builder.Build(root, parentKey: null, isSiblings: false);
             Nodes = builder.Nodes;
             Aggregate = builder.Aggregate.ToFrozenSet();
             Writes = builder.Writes.ToFrozenSet();
             Captures = [.. Nodes.SelectMany(static node => node.BlobColumns.Select(column => new DeleteCapture(node, column)))];
+            UserIdCaptures = [.. Nodes.Where(static node => node.UserIdColumns.Count > 0)];
         }
 
         /// <summary>The deleted entity's node.</summary>
@@ -65,27 +70,32 @@ namespace Tellma.Core.Data.Writes
         /// <summary>The blob captures, one per blob column of every node, the explicitly deleted siblings' included, in node order.</summary>
         public IReadOnlyList<DeleteCapture> Captures { get; }
 
+        /// <summary>The nodes whose table has a user-level version tag rule, each capturing its rows' users, in node order.</summary>
+        public IReadOnlyList<DeleteNode> UserIdCaptures { get; }
+
         /// <summary>The plan of an entity, built on first use.</summary>
         /// <param name="root">The deleted entity.</param>
         /// <param name="metadata">The running model's metadata.</param>
+        /// <param name="versionTags">The running model's version tag registry; null when none is composed.</param>
         /// <returns>The plan.</returns>
-        public static DeletePlan For(EntityMetadata root, IEntityMetadataProvider metadata)
+        public static DeletePlan For(EntityMetadata root, IEntityMetadataProvider metadata, IVersionTagRegistry? versionTags)
         {
             ArgumentNullException.ThrowIfNull(root);
             ArgumentNullException.ThrowIfNull(metadata);
-            return Plans.GetValue(root, entity => new DeletePlan(entity, metadata));
+            return Plans.GetValue(root, entity => new DeletePlan(entity, metadata, versionTags));
         }
 
         /// <summary>
         ///     Builds a plan's nodes. A sibling's rows leave with their owner's by its cascading key,
         ///     so a sibling is only declared among the writes; but a cascade reports no rows, so a
-        ///     sibling that holds a blob reference (itself, in a collection or in a sibling of its own)
-        ///     is deleted explicitly before its owner, its blobs captured like the aggregate's. Its
-        ///     tables stay out of the aggregate's: the sibling's feature declared the cascade, so the
-        ///     caller needs no authority over them.
+        ///     sibling that holds a blob reference or a user-level version tag rule (itself, in a
+        ///     collection or in a sibling of its own) is deleted explicitly before its owner, its blobs
+        ///     and users captured like the aggregate's. Its tables stay out of the aggregate's: the
+        ///     sibling's feature declared the cascade, so the caller needs no authority over them.
         /// </summary>
         /// <param name="siblings">The siblings of the running model, each with the entity it belongs to.</param>
-        private sealed class Builder(List<(Type Owner, EntityMetadata Entity)> siblings)
+        /// <param name="userIdColumns">The user-id columns of a table's user-level version tag rules.</param>
+        private sealed class Builder(List<(Type Owner, EntityMetadata Entity)> siblings, Func<TableName, IReadOnlyList<string>> userIdColumns)
         {
             /// <summary>Every node built, in pre-order.</summary>
             public List<DeleteNode> Nodes { get; } = [];
@@ -103,7 +113,7 @@ namespace Tellma.Core.Data.Writes
             /// <returns>The node.</returns>
             public DeleteNode Build(EntityMetadata entity, string? parentKey, bool isSiblings)
             {
-                DeleteNode node = new(entity, parentKey);
+                DeleteNode node = new(entity, parentKey, userIdColumns(entity.Table));
                 Nodes.Add(node);
                 _ = Writes.Add(entity.Table);
                 if (!isSiblings)
@@ -120,7 +130,7 @@ namespace Tellma.Core.Data.Writes
                 foreach ((Type _, EntityMetadata sibling) in siblings.Where(candidate => candidate.Owner.IsAssignableFrom(entity.ClrType)))
                 {
                     _ = Writes.Add(sibling.Table);
-                    if (HoldsBlobs(sibling))
+                    if (NeedsCapture(sibling))
                     {
                         node.Children.Add(Build(sibling, sibling.Key.Column, isSiblings: true));
                     }
@@ -129,14 +139,18 @@ namespace Tellma.Core.Data.Writes
                 return node;
             }
 
-            /// <summary>Whether an entity, one of its collections or one of its siblings holds a blob reference.</summary>
+            /// <summary>
+            ///     Whether an entity, one of its collections or one of its siblings holds a blob
+            ///     reference or a user-level version tag rule.
+            /// </summary>
             /// <param name="entity">The entity.</param>
-            /// <returns>Whether a delete of its rows has blobs to capture.</returns>
-            private bool HoldsBlobs(EntityMetadata entity)
+            /// <returns>Whether a delete of its rows has blobs or users to capture.</returns>
+            private bool NeedsCapture(EntityMetadata entity)
             {
                 return entity.BlobReferences.Count > 0
-                    || entity.Children.Any(collection => HoldsBlobs(collection.Child))
-                    || siblings.Exists(candidate => candidate.Owner.IsAssignableFrom(entity.ClrType) && HoldsBlobs(candidate.Entity));
+                    || userIdColumns(entity.Table).Count > 0
+                    || entity.Children.Any(collection => NeedsCapture(collection.Child))
+                    || siblings.Exists(candidate => candidate.Owner.IsAssignableFrom(entity.ClrType) && NeedsCapture(candidate.Entity));
             }
         }
     }
@@ -144,7 +158,8 @@ namespace Tellma.Core.Data.Writes
     /// <summary>One table a delete removes rows from: the deleted entity's, a collection's or an explicitly deleted sibling's, under its owner.</summary>
     /// <param name="entity">The table's entity.</param>
     /// <param name="parentKey">The column that names the owning row; null for the root, and the key for a sibling.</param>
-    internal sealed class DeleteNode(EntityMetadata entity, string? parentKey)
+    /// <param name="userIdColumns">The user-id columns of the table's user-level version tag rules.</param>
+    internal sealed class DeleteNode(EntityMetadata entity, string? parentKey, IReadOnlyList<string> userIdColumns)
     {
         /// <summary>The table's entity.</summary>
         public EntityMetadata Entity { get; } = entity;
@@ -157,6 +172,12 @@ namespace Tellma.Core.Data.Writes
 
         /// <summary>The columns that hold a blob reference.</summary>
         public IReadOnlyList<string> BlobColumns { get; } = [.. entity.BlobReferences.Select(static blob => blob.Property.Column)];
+
+        /// <summary>The user-id columns of the table's user-level version tag rules, whose values each delete captures.</summary>
+        public IReadOnlyList<string> UserIdColumns { get; } = userIdColumns;
+
+        /// <summary>The statement-local word of the table's user-id capture.</summary>
+        public string UserIdWord => UserIdCapture.Word(Entity.Table);
 
         /// <summary>The table, delimited.</summary>
         public string Table => Entity.Table.Delimited;

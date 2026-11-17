@@ -55,6 +55,7 @@ namespace Tellma.Core.Data.Batches
             string created;
             string touched;
             List<ColumnCapture> captures = [];
+            List<UserIdSource> users = [];
             try
             {
                 foreach (SaveNode node in plan.Nodes)
@@ -82,6 +83,12 @@ namespace Tellma.Core.Data.Batches
                 foreach (SaveCapture capture in plan.Captures)
                 {
                     captures.Add(new ColumnCapture(capture.Node.Entity.Table, capture.Column, new SqlIdentifier(draft.Name(capture.Word))));
+                }
+
+                // The users the written rows name, before and after, which the bump epilogue reads.
+                foreach (SaveNode node in plan.UserIdCaptures)
+                {
+                    users.AddRange(UserIdCapture.Sources(node.Entity.Table, node.UserIdColumns, draft.Name(node.UserIdWord)));
                 }
 
                 // A table above the threshold makes every data-modifying statement plan for its rows.
@@ -123,6 +130,12 @@ namespace Tellma.Core.Data.Batches
             {
                 Discard(draft);
                 throw;
+            }
+
+            // --- The user-id captures, once the statement is in the batch ---
+            foreach (UserIdSource source in users)
+            {
+                AddUserIdSource(source);
             }
 
             // --- What the round trip needs: the inserted roots for the commit probe, one transaction, kept ids ---
