@@ -90,6 +90,18 @@ function filled(count: TmPaintedCount): boolean {
   return count.painted > count.total / 3;
 }
 
+/**
+ * Whether what lies beneath still shows through a text box: more than 40%
+ * of its pixels match `backdrop`, the same box with the text hidden. Text
+ * keeps to its strokes and their anti-aliasing (a short label covers about
+ * half its box), so a box that changes almost everywhere has something
+ * painted behind the text as well.
+ */
+function showsThrough(pixels: TmPixels, backdrop: TmPixels): boolean {
+  const total = pixels.width * pixels.height;
+  return total - pixels.differingPixels(backdrop) > total * 0.4;
+}
+
 test('a selected tile draws a highlight outline, an unselected one none', async ({ page }) => {
   await page.goto(storyUrl('tiles'));
   const tile = (id: number): Locator =>
@@ -127,11 +139,21 @@ test('the checked segment is filled with the highlight, its label legible on it'
   const unchecked = await pixelsOf(page, segments.nth(0));
   const uncheckedBackdrop = await backdropOf(page, segments.nth(0));
   expect(filled(checked.paintedOver(checkedBackdrop, [highlight]))).toBe(true);
-  // The label, in the highlight's text colour on the fill.
-  expect(checked.paintedOver(checkedBackdrop, [highlight, highlightText]).painted).toBeGreaterThan(
+  expect(unchecked.paintedOver(uncheckedBackdrop, [highlight]).painted).toBe(0);
+
+  // Section: the label, read in its own box against the same box with the
+  // label hidden, which shows the fill. Its strokes are in the highlight's
+  // text colour, and between them the fill shows through: a backplate the
+  // browser paints behind adjusted text would hide it, and with it a label
+  // whose colour matches the backplate.
+  const label = segments.nth(1).locator('.tm-segmented__label');
+  const ink = await pixelsOf(page, label);
+  const inkBackdrop = await backdropOf(page, label);
+  // Anti-aliased strokes come near the text colour but rarely reach it.
+  expect(ink.paintedOver(inkBackdrop, [highlightText], { tolerance: 24 }).painted).toBeGreaterThan(
     0,
   );
-  expect(unchecked.paintedOver(uncheckedBackdrop, [highlight]).painted).toBe(0);
+  expect(showsThrough(ink, inkBackdrop)).toBe(true);
 });
 
 test('a switch turned on fills its track with the highlight, one turned off does not', async ({
@@ -147,9 +169,15 @@ test('a switch turned on fills its track with the highlight, one turned off does
   const off = await pixelsOf(page, track('switch-notify'));
   const offBackdrop = await backdropOf(page, track('switch-notify'));
   expect(filled(on.paintedOver(onBackdrop, [highlight]))).toBe(true);
-  // The knob stands out on the fill.
-  expect(on.paintedOver(onBackdrop, [highlight, highlightText]).painted).toBeGreaterThan(0);
   expect(off.paintedOver(offBackdrop, [highlight]).painted).toBe(0);
+
+  // Section: the knob, read in its own box against the same box with the
+  // knob hidden, which shows the track's fill: the highlight's text colour
+  // fills it.
+  const knob = page.getByTestId('switch-on').locator('.tm-switch__knob');
+  const knobPixels = await pixelsOf(page, knob);
+  const knobBackdrop = await backdropOf(page, knob);
+  expect(filled(knobPixels.paintedOver(knobBackdrop, [highlightText]))).toBe(true);
 });
 
 test('every counter tone keeps a visible edge, and the attention tone alone a highlight fill', async ({

@@ -101,14 +101,20 @@ export class TmPixels {
   /**
    * How many pixels show `layers` painted over the same pixel of `before`, a
    * shot of the same box without them: this image's pixel is within
-   * `tolerance` of the layers composited on `before`'s. A pixel the top
-   * layer would barely change (no channel moves by more than `minChange`
-   * from the layers under it) is not counted, since it cannot tell paint
-   * from no paint. Reading against the
+   * `tolerance` of the layers composited on `before`'s. Reading against the
    * pixel beneath, not a fixed colour, holds on a platform whose system
    * colour is translucent and blends with what it covers. `where` limits
    * the read to some pixels, such as a ring at the edge. The images must be
    * the same size.
+   *
+   * Every layer is assumed painted at every pixel read, and only the top
+   * one is tested: a pixel counts when the top layer moves some channel by
+   * more than `minChange` from the lower layers composited on `before`'s
+   * pixel, so a pixel where the lower layers are not painted counts
+   * whenever it happens to show the top layer's colour. Pass more than one
+   * layer only for pixels where the lower ones are known to be painted;
+   * to read a mark drawn on a fill, shoot the mark's own box against the
+   * same box with the mark hidden, and pass the mark's colour alone.
    */
   paintedOver(
     before: TmPixels,
