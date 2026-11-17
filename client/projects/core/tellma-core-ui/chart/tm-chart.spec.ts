@@ -429,6 +429,24 @@ describe('TmChart', () => {
       }
     });
 
+    it('draws once a font load fails, as when a fallback face’s local font is missing', async () => {
+      // A metric fallback face whose local() font the system lacks fails,
+      // and fails the whole load with it: the chart draws with the faces it has.
+      const check = vi.spyOn(document.fonts, 'check').mockReturnValue(false);
+      const load = vi
+        .spyOn(document.fonts, 'load')
+        .mockRejectedValue(new DOMException('A font face failed to load.', 'NetworkError'));
+      try {
+        const { fixture, chart } = await setup(undefined, 'fr');
+        await settleUntil(fixture, () => chart.hasCanvas());
+        expect(load).toHaveBeenCalled();
+        expect(await chart.hasCanvas()).toBe(true);
+      } finally {
+        check.mockRestore();
+        load.mockRestore();
+      }
+    });
+
     it('waits for the fonts of the locale’s digits, compact words and templates before measuring', async () => {
       const check = vi.spyOn(document.fonts, 'check');
       try {

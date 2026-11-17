@@ -355,7 +355,13 @@ export class ChartBidiStory {
       void document.fonts.ready.then(async () => {
         const family = getComputedStyle(this.canvases()[0]!.nativeElement).fontFamily;
         const font = `${FONT_SIZE}px ${family}`;
-        await document.fonts.load(font, CASES.map((item) => this.plain(item.pieces)).join(''));
+        // A face that cannot load rejects the whole load: a metric fallback
+        // whose local() font the system lacks (Arial or Tahoma on Linux)
+        // does. The canvas then draws with the faces that did load, as CSS
+        // does, so the drawing goes on; both drawings compared share them.
+        await document.fonts
+          .load(font, CASES.map((item) => this.plain(item.pieces)).join(''))
+          .catch(() => []);
         for (const canvas of this.canvases()) {
           this.draw(canvas.nativeElement, font);
         }
