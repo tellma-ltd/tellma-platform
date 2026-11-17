@@ -84,7 +84,26 @@ namespace Tellma.Core.Access
         {
             ArgumentNullException.ThrowIfNull(resource);
             ArgumentNullException.ThrowIfNull(action);
-            IReadOnlyList<AccessDecision> decisions = await EvaluateCallerAsync([new SecurableRef(resource, action)], cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<AccessDecision> decisions = await EvaluateCallerAsync([new SecurableRef(resource, action)], recheckFiltered: false, cancellationToken).ConfigureAwait(false);
+            return decisions[0];
+        }
+
+        /// <summary>
+        ///     Decides one pair for the caller as <see cref="EvaluateAsync(string, string, CancellationToken)" />
+        ///     does, but re-checks a filtered decision as well as a denial when the set is older than
+        ///     the fast-deny window. A refusal raised before any batch ran needs this, because no
+        ///     batch's prologue compares the set's tags for it. The scope still re-checks at most
+        ///     once, sharing that one re-check with the denials.
+        /// </summary>
+        /// <param name="resource">The resource.</param>
+        /// <param name="action">The action.</param>
+        /// <param name="cancellationToken">Cancels the connection or the re-check.</param>
+        /// <returns>The decision, from the re-checked set when a re-check ran.</returns>
+        internal async Task<AccessDecision> RecheckAsync(string resource, string action, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(resource);
+            ArgumentNullException.ThrowIfNull(action);
+            IReadOnlyList<AccessDecision> decisions = await EvaluateCallerAsync([new SecurableRef(resource, action)], recheckFiltered: true, cancellationToken).ConfigureAwait(false);
             return decisions[0];
         }
 
@@ -128,7 +147,7 @@ namespace Tellma.Core.Access
                 ArgumentNullException.ThrowIfNull(pair.Action, nameof(securables));
             }
 
-            return EvaluateCallerAsync(pairs, cancellationToken);
+            return EvaluateCallerAsync(pairs, recheckFiltered: false, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -297,13 +316,14 @@ namespace Tellma.Core.Access
         }
 
         /// <summary>
-        ///     Decides pairs for the caller from one set, re-checks once when a denial is stale,
-        ///     records each pair as evaluated and counts each decision.
+        ///     Decides pairs for the caller from one set, re-checks once when a denial is stale (or a
+        ///     filter, when asked), records each pair as evaluated and counts each decision.
         /// </summary>
         /// <param name="pairs">The pairs, none null.</param>
+        /// <param name="recheckFiltered">Whether a stale filtered decision is re-checked too.</param>
         /// <param name="cancellationToken">Cancels the connection or the re-check.</param>
         /// <returns>One decision per pair, in order.</returns>
-        private async Task<IReadOnlyList<AccessDecision>> EvaluateCallerAsync(SecurableRef[] pairs, CancellationToken cancellationToken)
+        private async Task<IReadOnlyList<AccessDecision>> EvaluateCallerAsync(SecurableRef[] pairs, bool recheckFiltered, CancellationToken cancellationToken)
         {
             // --- Resolved once: a pair the registry does not hold is a denial with its problem ---
             var securables = new SecurableDescriptor?[pairs.Length];
@@ -316,9 +336,9 @@ namespace Tellma.Core.Access
             DateTimeOffset now = time.GetUtcNow();
             AccessDecision[] decisions = Decide(access, pairs, securables, now);
 
-            // --- A stale denial: one prologue-only round trip per scope, then every pair decided again
-            // from what it returned (spec 0014 §6.4) ---
-            if (user is not null && IsStaleDenial(access, securables, decisions, now) && Interlocked.Exchange(ref _rechecked, 1) == 0)
+            // --- A stale denial, or a stale filter when asked: one prologue-only round trip per
+            // scope, then every pair decided again from what it returned (spec 0014 §6.4) ---
+            if (user is not null && IsStaleRestriction(access, securables, decisions, now, recheckFiltered) && Interlocked.Exchange(ref _rechecked, 1) == 0)
             {
                 ConnectedUser revalidated;
                 try
@@ -366,15 +386,17 @@ namespace Tellma.Core.Access
         }
 
         /// <summary>
-        ///     Whether a registered pair was denied from a set no prologue confirmed within the
-        ///     fast-deny window: a loaded set, not the system's and not one without a user.
+        ///     Whether a registered pair was denied, or filtered when that counts, from a set no
+        ///     prologue confirmed within the fast-deny window: a loaded set, not the system's and not
+        ///     one without a user.
         /// </summary>
         /// <param name="access">The set.</param>
         /// <param name="securables">The registered securables.</param>
         /// <param name="decisions">Their decisions.</param>
         /// <param name="now">The instant decided.</param>
+        /// <param name="filtered">Whether a filtered decision counts as a restriction a re-check could lift.</param>
         /// <returns>True when a re-check could change a decision.</returns>
-        private bool IsStaleDenial(UserAccess access, SecurableDescriptor?[] securables, AccessDecision[] decisions, DateTimeOffset now)
+        private bool IsStaleRestriction(UserAccess access, SecurableDescriptor?[] securables, AccessDecision[] decisions, DateTimeOffset now, bool filtered)
         {
             if (access.IsSystem || access.UserId <= 0 || now - access.ValidatedAt <= options.Value.FastDenyWindow)
             {
@@ -383,7 +405,8 @@ namespace Tellma.Core.Access
 
             for (int index = 0; index < decisions.Length; index++)
             {
-                if (securables[index] is not null && decisions[index].Outcome == AccessOutcome.Denied)
+                if (securables[index] is not null
+                    && (decisions[index].Outcome == AccessOutcome.Denied || (filtered && decisions[index].Outcome == AccessOutcome.Filtered)))
                 {
                     return true;
                 }

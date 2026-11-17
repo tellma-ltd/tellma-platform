@@ -11,15 +11,16 @@ namespace Tellma.Core.IntegrationTests.Crud
     /// <summary>
     ///     The two tenant databases of <see cref="ConnectDatabase" />, served by the real connect
     ///     prologue, runner and access evaluator, with the first tenant seeded once with the rows the
-    ///     query pipeline reads: four widgets with parts and a small tree of nodes. Each test seeds its
-    ///     own caller and roles.
+    ///     query pipeline reads: four widgets with parts, and a small tree of nodes with links between
+    ///     them. Each test seeds its own caller and roles.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class QueryPipelineDatabase(SqlServerFixture sql) : IAsyncLifetime
     {
         /// <summary>
         ///     The seed: widgets 1 to 4 (priced 10.5, none, 30 and 40), one or two parts each but the
-        ///     second's, and nodes 1 to 5 under two roots.
+        ///     second's, nodes 1 to 5 under two roots, and links 1 to 3, each on one node pointing at
+        ///     another: 1 on N111 at N12, 2 on N2 at N111, and 3 on N12 at N2.
         /// </summary>
         private static readonly string[] Seed =
         [
@@ -39,6 +40,7 @@ namespace Tellma.Core.IntegrationTests.Crud
                 "(3, 'N111', N'Leaf', '/1/1/1/', 2)",
                 "(4, 'N2', N'Other', '/2/', NULL)",
                 "(5, 'N12', N'Twig', '/1/2/', 1)"),
+            "INSERT INTO [fixture].[Links] ([Id], [NodeId], [OtherNodeId]) VALUES (1, 3, 5), (2, 4, 3), (3, 5, 4);",
         ];
 
         /// <summary>The two tenant databases and their composition.</summary>

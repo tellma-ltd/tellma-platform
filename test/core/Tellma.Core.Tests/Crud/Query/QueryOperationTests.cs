@@ -403,10 +403,70 @@ namespace Tellma.Core.Tests.Crud.Query
             Assert.Equal((ForbiddenReason.RestrictedPath, QueryModel.Counters, "Counter.Label"), (refused.Reason, refused.Resource, refused.Path));
         }
 
-        [Fact]
-        public async Task A_path_refused_by_a_denial_from_a_set_past_the_fast_deny_window_is_re_checked_once_and_reads_the_grant_found()
+        // --- The tree position a hierarchy predicate reads ---
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_hierarchy_predicate_over_a_path_reads_the_trees_position_which_an_absent_or_filtered_grant_refuses(bool filtered)
         {
-            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
+            (string, string, string?)[] grants = filtered
+                ? [(QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Nodes, AccessActions.Read, "Code != ''")]
+                : [(QueryModel.Tickets, AccessActions.Read, null)];
+            _rig.Grant(grants);
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+
+            // The key path alone reads the projection, which any grant on the root reaches.
+            _ = await RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["Folder.Id > 0"] });
+            ForbiddenException below = await Assert.ThrowsAsync<ForbiddenException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["descendantOf(Folder.Id, 1)"] }));
+            ForbiddenException above = await Assert.ThrowsAsync<ForbiddenException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["ancestorOf(Folder.Id, 2, 3)"] }));
+
+            // Refused at the position the predicate tests, a column of the node the text never names.
+            ForbiddenException[] refusals = [below, above];
+            Assert.All(refusals, static refused => Assert.Equal((ForbiddenReason.RestrictedPath, QueryModel.Nodes, "Folder.Node"), (refused.Reason, refused.Resource, refused.Path)));
+        }
+
+        [Fact]
+        public async Task A_hierarchy_predicate_over_a_path_into_a_sensitive_tree_asks_for_the_step_up_and_reads_at_the_bar()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Nodes, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+            _rig.Assurance = null;
+
+            // Below the bar the projection reads, while the position asks for what a direct read asks.
+            _ = await RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["Folder.Id > 0"] });
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => RowsAsync(QueryModel.Nodes, new QueryRequest()));
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["descendantOf(Folder.Id, 1)"] }));
+
+            _rig.Assurance = new AuthenticationAssurance(StepUpBar.DefaultAcr, QueryRig.Now, QueryRig.Now);
+            ScriptedStatement statement = await RowsAsync(QueryModel.Tickets, new QueryRequest { Filters = ["descendantOf(Folder.Id, 1)"] });
+
+            Assert.Contains("descendantOf(Folder.Id, 1)", QueryRig.Render(Spec(statement).Filter), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task From_a_child_root_without_a_grant_of_its_own_a_hierarchy_predicate_reads_the_owners_position()
+        {
+            _rig.Grant((QueryModel.Nodes, AccessActions.Read, "Code != ''"));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+
+            ScriptedStatement statement = await RowsAsync(QueryModel.Notes, new QueryRequest { Filters = ["descendantOf(Node.Id, 1)"] });
+
+            // Every note's node is one the caller may read, so its position is the root's own.
+            Assert.Contains("descendantOf(Node.Id, 1)", QueryRig.Render(Spec(statement).Filter), StringComparison.Ordinal);
+        }
+
+        // --- The re-check of a restriction a stale set decided ---
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_path_refused_by_a_denial_or_a_filter_from_a_set_past_the_fast_deny_window_is_re_checked_once_and_reads_the_grant_found(bool filtered)
+        {
+            (string, string, string?)[] grants = filtered
+                ? [(QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, "Number > 0")]
+                : [(QueryModel.Tickets, AccessActions.Read, null)];
+            _rig.Grant(grants);
             _rig.GrantOnRecheck((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
             _ = _rig.Script.OnRows(static _ => QueryRig.Page(7));
             _rig.Clock.Advance(TimeSpan.FromMinutes(1));
@@ -420,11 +480,16 @@ namespace Tellma.Core.Tests.Crud.Query
         }
 
         [Theory]
-        [InlineData(false, true)]
-        [InlineData(true, false)]
-        public async Task A_path_refused_by_a_fresh_denial_or_by_one_the_re_check_confirms_stays_refused(bool stale, bool grantFound)
+        [InlineData(false, true, false)]
+        [InlineData(true, false, false)]
+        [InlineData(false, true, true)]
+        [InlineData(true, false, true)]
+        public async Task A_path_refused_by_a_fresh_restriction_or_by_one_the_re_check_confirms_stays_refused(bool stale, bool grantFound, bool filtered)
         {
-            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
+            (string, string, string?)[] grants = filtered
+                ? [(QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, "Number > 0")]
+                : [(QueryModel.Tickets, AccessActions.Read, null)];
+            _rig.Grant(grants);
             if (grantFound)
             {
                 _rig.GrantOnRecheck((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
@@ -437,7 +502,7 @@ namespace Tellma.Core.Tests.Crud.Query
 
             ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" }));
 
-            // A fresh denial is trusted with no round trip; a stale one is re-checked once.
+            // A fresh restriction is trusted with no round trip; a stale one is re-checked once.
             Assert.Equal((ForbiddenReason.RestrictedPath, QueryModel.Counters), (refused.Reason, refused.Resource));
             Assert.Equal(stale ? 1 : 0, _rig.Revalidations);
         }
@@ -459,6 +524,37 @@ namespace Tellma.Core.Tests.Crud.Query
             await using AsyncServiceScope scope = _rig.Scope();
 
             _ = Assert.IsType<QueryTraversalRule>(scope.ServiceProvider.GetRequiredService<IQueryTraversalRule>());
+        }
+
+        [Fact]
+        public async Task The_public_traversal_rule_asks_for_the_step_up_itself_once_no_path_is_refused()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
+            _rig.Assurance = null;
+            await using AsyncServiceScope scope = _rig.Scope();
+            IQueryTraversalRule rule = scope.ServiceProvider.GetRequiredService<IQueryTraversalRule>();
+            QueryexEngine engine = scope.ServiceProvider.GetRequiredService<QueryexEngine>();
+            IAccessEvaluator evaluator = scope.ServiceProvider.GetRequiredService<IAccessEvaluator>();
+            Dictionary<string, AccessDecision> decisions = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [QueryModel.Tickets] = await evaluator.EvaluateAsync(QueryModel.Tickets, AccessActions.Read, Token),
+                [QueryModel.Counters] = await evaluator.EvaluateAsync(QueryModel.Counters, AccessActions.Read, Token),
+                [CoreResources.User] = await evaluator.EvaluateAsync(CoreResources.User, AccessActions.Read, Token),
+            };
+            DiscoveryResult Discover(string filter)
+            {
+                return engine.DiscoverQuery(
+                    new QueryDiscoverySpec { Filter = FilterTree.Leaf(filter) },
+                    new DiscoveryOptions { Schema = _rig.Schema, Root = _rig.Schema.FindEntity(QueryModel.Tickets) });
+            }
+
+            // The projection asks nothing; a column past it asks for the step-up, with no caller code to forget it.
+            Assert.Empty(rule.Check(QueryModel.Tickets, Discover("Counter.Number > 0"), entity => decisions[entity]));
+            _ = Assert.Throws<StepUpRequiredException>(() => rule.Check(QueryModel.Tickets, Discover("Counter.Label != ''"), entity => decisions[entity]));
+
+            // A refused path is returned first, as a direct read refuses before it asks for the step-up.
+            TraversalRefusal refusal = Assert.Single(rule.Check(QueryModel.Tickets, Discover("Counter.Label != '' and CreatedBy.Email != ''"), entity => decisions[entity]));
+            Assert.Equal(CoreResources.User, refusal.Entity);
         }
 
         // --- The select-item types ---
@@ -514,6 +610,44 @@ namespace Tellma.Core.Tests.Crud.Query
 
             Assert.Equal(("database", TimeSpan.FromSeconds(1)), (unavailable.Dependency, unavailable.RetryAfter));
             Assert.Same(exhausted, unavailable.InnerException);
+            Assert.Equal("unavailable", Assert.Single(operations.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.OutcomeTag]);
+        }
+
+        [Fact]
+        public async Task A_connect_whose_retries_ran_out_is_the_database_unavailable_and_counted_so()
+        {
+            using MetricCollector<long> operations = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.Operations);
+            DataAccessRetryExhaustedException exhausted = new(new TimeoutException("The connect's retries ran out."), 3);
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
+            _rig.ConnectFailure = exhausted;
+
+            DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest()));
+
+            Assert.Equal(("database", TimeSpan.FromSeconds(1)), (unavailable.Dependency, unavailable.RetryAfter));
+            Assert.Same(exhausted, unavailable.InnerException);
+            Assert.Equal("unavailable", Assert.Single(operations.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.OutcomeTag]);
+            Assert.Empty(_rig.Script.Batches);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task A_re_check_whose_retries_ran_out_is_the_database_unavailable_whether_the_root_or_a_path_asked_for_it(bool root)
+        {
+            using MetricCollector<long> operations = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.Operations);
+            DataAccessRetryExhaustedException exhausted = new(new TimeoutException("The re-check's retries ran out."), 3);
+            (string, string, string?)[] grants = root ? [] : [(QueryModel.Tickets, AccessActions.Read, null)];
+            _rig.Grant(grants);
+            _rig.RevalidateFailure = exhausted;
+            _rig.Clock.Advance(TimeSpan.FromMinutes(1));
+
+            // The root's stale denial is re-checked by the type-level check, the path's by the refusal.
+            DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(
+                () => RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" }));
+
+            Assert.Equal(("database", TimeSpan.FromSeconds(1)), (unavailable.Dependency, unavailable.RetryAfter));
+            Assert.Same(exhausted, unavailable.InnerException);
+            Assert.Equal(1, _rig.Revalidations);
             Assert.Equal("unavailable", Assert.Single(operations.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.OutcomeTag]);
         }
 

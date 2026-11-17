@@ -1117,19 +1117,20 @@ an authoring bug (`InvalidOperationException`), and the others are `NotSupported
    filter the request sent, else its last named filter, else `Select`; in a default select or
    ordering at that clause. Any other diagnostic in the platform's text (a default, a search branch,
    an access filter) is a defect, `InvalidOperationException`. Then the traversal rule
-   (`ForbiddenException` with `RestrictedPath`, the entity and the dotted path), the step-up of each
-   sensitive entity a path reads beyond its projection (as a direct `Read` of it asks:
-   `StepUpRequiredException`, or `IndividualRequiredException` for a service account), the
-   select-type rule (a geography column, `Query.GeographyNotSelectable` at `Select[i]`), and the one
-   row read with its count capped at `CountCap` and its ancestors under the access filter alone.
-4. **The deny re-check**: a path refused by a denial is re-checked once through
-   `AccessEvaluator.EvaluateAsync`, so a denial from a set older than `FastDenyWindow` costs one
-   prologue-only round trip, as a direct read's would; a grant it finds composes the read once more
-   under the refreshed set.
-5. **The data layer's failures**: a division by zero or an overflow in the caller's expressions is a
-   `ValidationException` with `Query.ArithmeticFailed` at the root, naming the reason; retries
-   exhausted on deadlocks or transient failures are `DependencyUnavailableException` naming
-   `database` with a one-second `RetryAfter`, counted as `unavailable`.
+   (`ForbiddenException` with `RestrictedPath`, the entity and the dotted path, or the step-up of a
+   sensitive entity a path reads beyond its projection), the select-type rule (a geography column,
+   `Query.GeographyNotSelectable` at `Select[i]`), and the one row read with its count capped at
+   `CountCap` and its ancestors under the access filter alone.
+4. **The re-check**: a path refused by a denial or a filter is re-checked once through
+   `AccessEvaluator.RecheckAsync`. A restriction from a set older than `FastDenyWindow` costs one
+   prologue-only round trip, at most once per scope, because a refusal raised in the composition
+   reaches no batch whose prologue would compare the set's tags. A grant the re-check finds composes
+   the read once more under the refreshed set.
+5. **The data layer's failures**, wherever they arise (the connect, a re-check or the read): a
+   division by zero or an overflow in the caller's expressions is a `ValidationException` with
+   `Query.ArithmeticFailed` at the root, naming the reason; retries exhausted on deadlocks or
+   transient failures are `DependencyUnavailableException` naming `database` with a one-second
+   `RetryAfter`, counted as `unavailable`.
 
 On warm caches the page, its count and its ancestors are one round trip. The arguments are bound
 from what the caller's own clauses declare (`QueryDiscoveries`, cached per tenant schema and clause
@@ -1151,9 +1152,12 @@ the first separator. A search no branch applies to matches no row.
 never the trusted trees beside them: a path into an entity other than the root reads all of it only
 under an unrestricted `Read` decision (its resource or the wildcard), and otherwise only its related
 projection. From a child surface's root without a grant of its own, the owner reached through the
-owner navigation counts as the root. The rule returns refusals only; the query operation also takes
-from it the entities its paths read beyond their projection, and asks for the step-up of the
-sensitive ones.
+owner navigation counts as the root. A `descendantOf` or `ancestorOf` whose key path leaves the root
+reads the reached entity's tree position, which discovery reports as a path of its own, so the
+position is held to the same rule (refused as `<navigations>.Node`). When no path is refused, the
+rule itself asks for the step-up of each sensitive entity a path reads beyond its projection, as a
+direct `Read` of it asks (`StepUpRequiredException`, or `IndividualRequiredException` for a service
+account), never for the platform's own work, so no consumer of the public contract can skip it.
 
 ### The validation stage
 

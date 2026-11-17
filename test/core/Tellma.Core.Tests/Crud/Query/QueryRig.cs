@@ -81,6 +81,12 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The deny re-checks the scopes' connections ran.</summary>
         public int Revalidations { get; private set; }
 
+        /// <summary>What connecting the caller throws, as a connect that failed would; null while it connects.</summary>
+        public Exception? ConnectFailure { get; set; }
+
+        /// <summary>What a re-check throws, as a revalidation that failed would; null while it finds a set.</summary>
+        public Exception? RevalidateFailure { get; set; }
+
         /// <summary>The root services.</summary>
         public IServiceProvider Services => _root;
 
@@ -264,7 +270,10 @@ namespace Tellma.Core.Tests.Crud.Query
             };
         }
 
-        /// <summary>The scope's connection: the rig's caller, cached; a re-check finds the set the rig names, else the same.</summary>
+        /// <summary>
+        ///     The scope's connection: the rig's caller, cached; a re-check finds the set the rig
+        ///     names, else the same; either fails with what the rig names.
+        /// </summary>
         /// <param name="rig">The rig.</param>
         private sealed class Connection(QueryRig rig) : IScopeConnection
         {
@@ -274,7 +283,7 @@ namespace Tellma.Core.Tests.Crud.Query
             /// <inheritdoc />
             public Task<ConnectedUser> CurrentAsync(CancellationToken cancellationToken)
             {
-                return Task.FromResult(rig.User);
+                return rig.ConnectFailure is Exception failure ? Task.FromException<ConnectedUser>(failure) : Task.FromResult(rig.User);
             }
 
             /// <inheritdoc />
@@ -282,6 +291,11 @@ namespace Tellma.Core.Tests.Crud.Query
             {
                 // The re-check applies what it found to the scope's connection, as a real one does.
                 rig.Revalidations++;
+                if (rig.RevalidateFailure is Exception failure)
+                {
+                    return Task.FromException<ConnectedUser>(failure);
+                }
+
                 rig.User = rig.Revalidated ?? rig.User;
                 return Task.FromResult(rig.User);
             }

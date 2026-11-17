@@ -65,7 +65,7 @@ namespace Tellma.Core.Queryex
 
     /// <summary>One resolved path use.</summary>
     /// <param name="Segments">The resolved logical path segments.</param>
-    /// <param name="Site">Where the path was written.</param>
+    /// <param name="Site">Where the path was written; for the tree position a hierarchy predicate reads, its key path's site.</param>
     public sealed record PathUse(IReadOnlyList<string> Segments, QueryexTextSite Site);
 
     /// <summary>How a filter conjunct compares its path or expression with its value.</summary>
@@ -136,7 +136,11 @@ namespace Tellma.Core.Queryex
     ///     </para>
     /// </remarks>
     /// <param name="Parameters">Every parameter the input refers to, with its inferred type.</param>
-    /// <param name="Paths">Every resolved path use.</param>
+    /// <param name="Paths">
+    ///     Every resolved path use, and after the key path of each <c>descendantOf</c> or
+    ///     <c>ancestorOf</c> whose key path leaves the query's root, the tree position it reads: the
+    ///     key path's navigations, then the reached entity's tree node, at the key path's site.
+    /// </param>
     /// <param name="Functions">The names of every function called, deduplicated.</param>
     /// <param name="UsesAggregation">True when any clause contains an aggregation.</param>
     /// <param name="Diagnostics">Whatever problems the input allowed to be reported.</param>

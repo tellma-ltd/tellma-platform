@@ -15,8 +15,9 @@ using Tellma.Core.Tests.Infrastructure;
 namespace Tellma.Core.Tests.Crud.Query
 {
     /// <summary>
-    ///     The query model: one stack per search shape, a child surface, a tree, a service that
-    ///     replaces the search, and a sensitive read a ticket's path reaches.
+    ///     The query model: one stack per search shape, a child surface, a tree with a child surface
+    ///     of its own, a service that replaces the search, and two sensitive reads a ticket's paths
+    ///     reach: a counter, and a node of the tree.
     /// </summary>
     internal static class QueryModel
     {
@@ -35,6 +36,9 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The node's resource.</summary>
         public const string Nodes = "qm.QmNode";
 
+        /// <summary>The node note's resource, a child query surface of a tree.</summary>
+        public const string Notes = "qm.QmNodeNote";
+
         /// <summary>Composes the model's feature.</summary>
         /// <param name="tellma">The builder.</param>
         public static void Compose(TellmaBuilder tellma)
@@ -45,7 +49,9 @@ namespace Tellma.Core.Tests.Crud.Query
                 .Entity<QmCounter, QmCounterService>()
                 .Entity<QmNode>()
                 .NamedFilters<QmAccount, QmAccountFilters>()
-                .Securables(static securables => securables.MarkSensitive(Counters, AccessActions.Read))));
+                .Securables(static securables => securables
+                    .MarkSensitive(Counters, AccessActions.Read)
+                    .MarkSensitive(Nodes, AccessActions.Read))));
         }
     }
 
@@ -106,7 +112,10 @@ namespace Tellma.Core.Tests.Crud.Query
         public decimal? Amount { get; set; }
     }
 
-    /// <summary>A ticket: a string display name behind an integer prefix, nothing searchable, and a counter it refers to.</summary>
+    /// <summary>
+    ///     A ticket: a string display name behind an integer prefix, nothing searchable, a counter
+    ///     it refers to, and the node of the tree it is filed under.
+    /// </summary>
     [Table("Tickets", Schema = "qm")]
     [TableType]
     [DisplayNameSource(nameof(Subject), Prefix = nameof(Number))]
@@ -122,6 +131,10 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The counter the ticket refers to, whose read is sensitive.</summary>
         [References(typeof(QmCounter))]
         public int? CounterId { get; set; }
+
+        /// <summary>The node the ticket is filed under, whose read is sensitive.</summary>
+        [References(typeof(QmNode))]
+        public int? FolderId { get; set; }
     }
 
     /// <summary>
@@ -141,7 +154,7 @@ namespace Tellma.Core.Tests.Crud.Query
         public string? Label { get; set; }
     }
 
-    /// <summary>A node of a tree.</summary>
+    /// <summary>A node of a tree, whose read is sensitive, with notes.</summary>
     [Table("Nodes", Schema = "qm")]
     [TableType]
     public class QmNode : ActivatableTreeEntity
@@ -153,6 +166,24 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
+
+        /// <summary>The notes.</summary>
+        [NotMapped]
+        public List<QmNodeNote>? Notes { get; set; }
+    }
+
+    /// <summary>A node's note: a child query surface whose owner is a tree.</summary>
+    [Table("NodeNotes", Schema = "qm")]
+    [TableType]
+    public class QmNodeNote : ChildEntity
+    {
+        /// <summary>The node.</summary>
+        [ParentKey]
+        public int NodeId { get; set; }
+
+        /// <summary>The text.</summary>
+        [MaxLength(255)]
+        public string? Text { get; set; }
     }
 
     /// <summary>The counter's service: its search reads the label.</summary>

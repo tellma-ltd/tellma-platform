@@ -6,17 +6,23 @@
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Query
 {
-    // The rule is spec 0015 §5.2 step 4; the child surfaces' owner path is spec 0014 §5.5.
+    // The rule is spec 0015 §5.2 step 4; the child surfaces' owner path is spec 0014 §5.5; the
+    // step-up of a sensitive read is spec 0014 §4.3, held to a traversal as to a direct read.
     /// <summary>
     ///     The navigation-traversal rule: a path into an entity other than the root reads every
     ///     column of it only under an unrestricted read decision, and otherwise only its related
     ///     projection. From a child surface's root without a grant of its own, the owner reached
     ///     through the owner navigation counts as the root, since every row already belongs to an
-    ///     owner row the caller may read. Scoped, over the tenant's schema.
+    ///     owner row the caller may read. When no path is refused, a path that reads a sensitive
+    ///     entity beyond its projection asks for the step-up a direct read of it asks for, so no
+    ///     consumer of the rule can skip it. Scoped, over the tenant's schema.
     /// </summary>
     /// <remarks>
     ///     Only the caller's text is checked: the discovery it reads covers the caller's clauses,
@@ -25,28 +31,38 @@ namespace Tellma.Core.Crud.Query
     /// </remarks>
     /// <param name="database">The tenant's database.</param>
     /// <param name="surfaces">The surfaces and the traversal facts.</param>
-    internal sealed class QueryTraversalRule(ITenantDatabase database, QuerySurfaces surfaces) : IQueryTraversalRule
+    /// <param name="securables">The registered securables, which say which reads are sensitive.</param>
+    /// <param name="accessor">The scope's request context, whose assurance a sensitive read is held to.</param>
+    /// <param name="stepUp">The assurance bar of the sensitive securables.</param>
+    /// <param name="time">The clock the assurance's age is measured by.</param>
+    internal sealed class QueryTraversalRule(
+        ITenantDatabase database,
+        QuerySurfaces surfaces,
+        ISecurableRegistry securables,
+        IRequestContextAccessor accessor,
+        StepUpBar stepUp,
+        TimeProvider time) : IQueryTraversalRule
     {
         /// <inheritdoc />
         public IReadOnlyList<TraversalRefusal> Check(string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
         {
-            return Check(database.Schema, root, discovery, decisions, fullReads: null);
+            return Check(database.Schema, root, discovery, decisions);
         }
 
-        /// <summary>Checks every path a query's text traverses, in a given schema.</summary>
+        /// <summary>
+        ///     Checks every path a query's text traverses, in a given schema, then, when none is
+        ///     refused, asks for the step-up of each sensitive entity a path reads beyond its
+        ///     projection.
+        /// </summary>
         /// <param name="schema">The schema the paths resolve in.</param>
         /// <param name="root">The query's root entity name.</param>
         /// <param name="discovery">What discovering the query's text found.</param>
         /// <param name="decisions">The caller's read decision per entity name.</param>
-        /// <param name="fullReads">
-        ///     Receives each entity past the root whose columns beyond its related projection an
-        ///     admitted path reads, so the caller can hold those reads to what a direct read of the
-        ///     entity asks; nothing is collected when null.
-        /// </param>
         /// <returns>One refusal per path the decisions do not admit, in discovery order.</returns>
         /// <exception cref="ArgumentException">The schema has no entity named <paramref name="root" />.</exception>
-        internal IReadOnlyList<TraversalRefusal> Check(
-            QueryexSchema schema, string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions, ISet<string>? fullReads)
+        /// <exception cref="StepUpRequiredException">No path is refused, and one reads a sensitive entity beyond its projection below the step-up bar.</exception>
+        /// <exception cref="Abstractions.Errors.IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
+        internal IReadOnlyList<TraversalRefusal> Check(QueryexSchema schema, string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
         {
             ArgumentNullException.ThrowIfNull(schema);
             ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -55,12 +71,27 @@ namespace Tellma.Core.Crud.Query
             EntityDescriptor entity = schema.FindEntity(root)
                 ?? throw new ArgumentException($"The tenant's schema has no entity named '{root}'.", nameof(root));
 
+            // --- Every path walked: its refusal, or the entities it reads beyond their projection ---
             List<TraversalRefusal> refusals = [];
+            HashSet<string> fullReads = new(StringComparer.OrdinalIgnoreCase);
             foreach (PathUse path in discovery.Paths)
             {
                 if (Refuser(entity, path.Segments, decisions, fullReads) is string refuser)
                 {
                     refusals.Add(new TraversalRefusal(refuser, path));
+                }
+            }
+
+            // --- The step-up, as a direct read asks for it: only once nothing is refused, and never of the platform's own work ---
+            RequestContext context = accessor.Current;
+            if (refusals.Count == 0 && !context.IsSystem)
+            {
+                foreach (string read in fullReads)
+                {
+                    if (securables.Find(read, AccessActions.Read) is { IsSensitive: true })
+                    {
+                        AssuranceCheck.Ensure(context, stepUp.Requirement, time.GetUtcNow());
+                    }
                 }
             }
 
@@ -75,9 +106,9 @@ namespace Tellma.Core.Crud.Query
         /// <param name="root">The root.</param>
         /// <param name="segments">The path's segments, from the root.</param>
         /// <param name="decisions">The caller's read decision per entity name.</param>
-        /// <param name="fullReads">Receives each entity past the root read beyond its projection; null to collect nothing.</param>
+        /// <param name="fullReads">Receives each entity past the root read beyond its projection.</param>
         /// <returns>The name of the entity that refuses the path; null when the path passes.</returns>
-        private string? Refuser(EntityDescriptor root, IReadOnlyList<string> segments, Func<string, AccessDecision> decisions, ISet<string>? fullReads)
+        private string? Refuser(EntityDescriptor root, IReadOnlyList<string> segments, Func<string, AccessDecision> decisions, HashSet<string> fullReads)
         {
             EntityDescriptor at = root;
             bool rootLike = true;
@@ -94,7 +125,7 @@ namespace Tellma.Core.Crud.Query
                         return at.Name;
                     }
 
-                    _ = fullReads?.Add(at.Name);
+                    _ = fullReads.Add(at.Name);
                 }
 
                 if (navigation is null)

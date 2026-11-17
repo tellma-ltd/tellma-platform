@@ -206,6 +206,49 @@ namespace Tellma.Core.Queryex.Tests.Binding
             Assert.Equal("Filter.And[1].Exists[InvoiceLine].And[1].Via[Party]", problem.Location);
         }
 
+        /// <summary>
+        ///     A hierarchy predicate whose key path leaves the root also reports the tree position it
+        ///     reads: the key path's navigations, as written, then the reached entity's tree node,
+        ///     right after the key path.
+        /// </summary>
+        /// <param name="text">The filter.</param>
+        /// <param name="expected">The paths reported, in order.</param>
+        [Theory]
+        [InlineData("descendantOf(Account.Id, 5)", "Account.Id, Account.Node")]
+        [InlineData("ancestorOf(account.Concept, 'Cash', @p)", "account.Concept, account.Node")]
+        [InlineData("not descendantOf(Account.Id, 1, 2) and Amount > 0", "Account.Id, Account.Node, Amount")]
+        public void Discover_ReportsTheTreePositionAHierarchyPredicateReadsOffTheRoot(string text, string expected)
+        {
+            DiscoveryResult result = Engine.Discover(text, Options);
+
+            Assert.Empty(result.Diagnostics);
+            Assert.Equal(expected, string.Join(", ", result.Paths.Select(path => string.Join('.', path.Segments))));
+
+            // The position is read where the key path was written.
+            Assert.Equal(result.Paths[0].Site, result.Paths[1].Site);
+        }
+
+        /// <summary>
+        ///     A hierarchy predicate over the root's own key reports no position, since the root's own
+        ///     decision governs it; a self-reference's target and a rebase's target are other rows, so
+        ///     their positions are reported.
+        /// </summary>
+        [Fact]
+        public void DiscoverQuery_ReportsATreePositionOnlyOffTheRoot()
+        {
+            DiscoveryOptions accounts = new() { Schema = LedgerFixture.Schema, Root = LedgerFixture.Account };
+            DiscoveryResult own = Engine.DiscoverQuery(new QueryDiscoverySpec { Filter = FilterTree.Leaf("descendantOf(Id, 5)") }, accounts);
+            DiscoveryResult parent = Engine.DiscoverQuery(new QueryDiscoverySpec { Filter = FilterTree.Leaf("descendantOf(Parent.Id, 5)") }, accounts);
+            DiscoveryResult rebased = Engine.DiscoverQuery(
+                new QueryDiscoverySpec { Filter = FilterTree.Via("Account", FilterTree.Leaf("ancestorOf(Id, @p)")) },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice });
+
+            Assert.Equal(["Id"], own.Paths.Select(path => string.Join('.', path.Segments)));
+            Assert.Equal(["Parent.Id", "Parent.Node"], parent.Paths.Select(path => string.Join('.', path.Segments)));
+            Assert.Equal(["Account.Id", "Account.Node"], rebased.Paths.Select(path => string.Join('.', path.Segments)));
+            Assert.Equal(rebased.Paths[0].Site, rebased.Paths[1].Site);
+        }
+
         /// <summary>A root without its schema is a caller mistake, not a diagnostic.</summary>
         [Fact]
         public void Discovery_WithARootButNoSchema_IsACallerMistake()

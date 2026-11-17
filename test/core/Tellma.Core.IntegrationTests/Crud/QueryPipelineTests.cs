@@ -10,6 +10,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data;
 using Tellma.Testing.Entities;
@@ -21,8 +22,9 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     runner and evaluator: a page of a tree with its count and ancestors in one round trip once
     ///     the caches are warm, the ancestors under the caller's access filter, a division by zero in
     ///     the caller's expression as a validation error, a child surface under its owner's filtered
-    ///     grant in one round trip, a path into an entity the caller may not read refused, and one
-    ///     refused by a stale denial read once the re-check finds the grant.
+    ///     grant in one round trip, a path into an entity the caller may not read refused, one
+    ///     refused by a stale denial read once the re-check finds the grant, and the tree position a
+    ///     hierarchy predicate reads held to the target's grant and step-up.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -36,6 +38,9 @@ namespace Tellma.Core.IntegrationTests.Crud
 
         /// <summary>The nodes' resource, a tree.</summary>
         private const string Nodes = "fixture.Node";
+
+        /// <summary>The links' resource, a child query surface of the nodes with a second reference to them.</summary>
+        private const string Links = "fixture.Link";
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -170,6 +175,63 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(["W1"], Strings(page.Rows, 0));
         }
 
+        // --- The tree position a hierarchy predicate reads ---
+
+        [Fact]
+        public async Task A_hierarchy_predicate_over_a_path_into_the_tree_is_refused_under_an_absent_or_filtered_grant_and_read_under_a_full_one()
+        {
+            (_, string absent) = await fixture.SeedCallerAsync((Links, AccessActions.Read, null));
+            (_, string filtered) = await fixture.SeedCallerAsync((Links, AccessActions.Read, null), (Nodes, AccessActions.Read, "Code != 'N1'"));
+            (_, string full) = await fixture.SeedCallerAsync((Links, AccessActions.Read, null), (Nodes, AccessActions.Read, null));
+            QueryRequest request = new() { Select = "Id", Filters = ["descendantOf(OtherNode.Id, 2)"] };
+
+            // --- Without a full read of the nodes, the key reads and the position it tests is refused ---
+            string[] restricted = [absent, filtered];
+            foreach (string subject in restricted)
+            {
+                await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+                RowPage projected = await Children(scope).QueryAsync(Links, new QueryRequest { Select = "Id", Filters = ["OtherNode.Id = 3"] }, Token);
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => Children(scope).QueryAsync(Links, request, Token));
+
+                Assert.Equal([2], (int[])projected.Rows.GetBuffer(0));
+                Assert.Equal((ForbiddenReason.RestrictedPath, Nodes, "OtherNode.Node"), (refused.Reason, refused.Resource, refused.Path));
+            }
+
+            // --- Under a full read, the link pointing below N11 ---
+            await using AsyncServiceScope reader = await fixture.Connect.ScopeAsync(full);
+            RowPage page = await Children(reader).QueryAsync(Links, request, Token);
+
+            Assert.Equal([2], (int[])page.Rows.GetBuffer(0));
+        }
+
+        [Fact]
+        public async Task From_a_child_root_without_a_grant_of_its_own_a_hierarchy_predicate_reads_the_owners_position()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, "Code != 'N2'"));
+
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+            RowPage page = await Children(scope).QueryAsync(Links, new QueryRequest { Select = "Id", Filters = ["descendantOf(Node.Id, 2)"] }, Token);
+
+            // Among the links of the nodes the caller reads, the one on a node below N11.
+            Assert.Equal([1], (int[])page.Rows.GetBuffer(0));
+        }
+
+        [Fact]
+        public async Task A_hierarchy_predicate_over_a_path_into_a_sensitive_tree_asks_for_the_step_up_a_direct_read_asks_for()
+        {
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(static services => services.AddSingleton<ISecurableContributor>(new SensitiveNodes()));
+            (_, string subject) = await fixture.SeedCallerAsync((Links, AccessActions.Read, null), (Nodes, AccessActions.Read, null));
+
+            // The caller's sign-in never stepped up: the key reads, while the position asks what a direct read asks.
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: instance);
+            RowPage projected = await Children(scope).QueryAsync(Links, new QueryRequest { Select = "Id", Filters = ["OtherNode.Id = 3"] }, Token);
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => NodeService(scope).QueryAsync(new QueryRequest(), Token));
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(
+                () => Children(scope).QueryAsync(Links, new QueryRequest { Select = "Id", Filters = ["descendantOf(OtherNode.Id, 2)"] }, Token));
+
+            Assert.Equal([2], (int[])projected.Rows.GetBuffer(0));
+        }
+
         /// <summary>Runs a query and counts the round trips it took on the scope's data-access counters.</summary>
         /// <param name="scope">The scope.</param>
         /// <param name="query">The query.</param>
@@ -214,6 +276,17 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             string?[] values = (string?[])rows.GetBuffer(column);
             return [.. values.Select((value, row) => rows.IsNull(column, row) ? null : value)];
+        }
+
+        /// <summary>The test's own mark: the nodes' read is sensitive.</summary>
+        private sealed class SensitiveNodes : ISecurableContributor
+        {
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
+                ArgumentNullException.ThrowIfNull(builder);
+                _ = builder.MarkSensitive(Nodes, AccessActions.Read);
+            }
         }
     }
 }

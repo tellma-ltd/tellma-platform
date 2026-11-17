@@ -541,6 +541,47 @@ namespace Tellma.Core.Queryex.Pipeline
                 {
                     ReadBound(child, location, scope);
                 }
+
+                // A hierarchy predicate reads the tree position of its key path's entity, a column
+                // the text never names; reported after the key path, so a rule over the paths sees it.
+                if (scope.Reports && TreePosition(node, location, scope) is PathUse position)
+                {
+                    _paths.Add(position);
+                }
+            }
+
+            /// <summary>
+            ///     The path to the tree position a hierarchy predicate reads on an entity other than
+            ///     the query's root: its key path's navigations, then the tree node of the entity
+            ///     they reach.
+            /// </summary>
+            /// <param name="node">The bound node.</param>
+            /// <param name="location">Which input this text is.</param>
+            /// <param name="scope">What the text's paths resolve from.</param>
+            /// <returns>
+            ///     The use, read from the query's root, at the key path's site; null when the node is
+            ///     no hierarchy predicate over a key path, when the key path reads the root itself, or
+            ///     when the entity it reaches is no tree, since the predicate then reads no position.
+            /// </returns>
+            private static PathUse? TreePosition(TypedExpr node, DiagnosticLocation location, PathScope scope)
+            {
+                if (node is not TypedCall call || !IsHierarchyPredicate(call) || call.Arguments[0] is not TypedPath key)
+                {
+                    return null;
+                }
+
+                // The root's own position is read under the root's decision, which no path rule governs.
+                if (key.Navigations.IsEmpty && scope.Prefix.IsEmpty)
+                {
+                    return null;
+                }
+
+                EntityDescriptor? entity = key.Navigations.IsEmpty ? scope.Root : key.Navigations[^1].Target;
+                return entity?.TreeNode is PropertyDescriptor treeNode
+                    ? new PathUse(
+                        [.. scope.Prefix, .. key.Segments.Take(key.Navigations.Length), treeNode.Name],
+                        new QueryexTextSite(location.Text, key.Span))
+                    : null;
             }
 
             /// <summary>Notes the path a bare parameter meets in one node, when it meets one.</summary>
