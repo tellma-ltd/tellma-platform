@@ -11,8 +11,9 @@ using Tellma.Core.Access;
 namespace Tellma.Core.Tests.Access
 {
     /// <summary>
-    ///     The connect cache: entries keyed by tenant and subject compared byte for byte, and cold
-    ///     connects of one key single-flighted, a starter's cancellation failing only the starter.
+    ///     The connect cache: entries keyed by tenant and subject compared byte for byte, a user's
+    ///     entries of a tenant dropped together, and cold connects of one key single-flighted, a
+    ///     starter's cancellation failing only the starter.
     /// </summary>
     public sealed class ConnectCacheTests : IDisposable
     {
@@ -37,6 +38,24 @@ namespace Tellma.Core.Tests.Access
 
             _cache.Remove(1, "sub-1");
             Assert.Null(_cache.Find(1, "sub-1"));
+        }
+
+        [Fact]
+        public void Removing_a_user_drops_their_entries_of_the_tenant_under_every_subject_and_nothing_else()
+        {
+            ConnectedUser user = User(7);
+            ConnectedUser other = User(8);
+            _cache.Set(1, "sub-7", user);
+            _cache.Set(1, "sub-7-former", user);
+            _cache.Set(2, "sub-7", user);
+            _cache.Set(1, "sub-8", other);
+
+            _cache.RemoveUser(1, 7);
+
+            Assert.Null(_cache.Find(1, "sub-7"));
+            Assert.Null(_cache.Find(1, "sub-7-former"));
+            Assert.Same(user, _cache.Find(2, "sub-7"));
+            Assert.Same(other, _cache.Find(1, "sub-8"));
         }
 
         [Fact]

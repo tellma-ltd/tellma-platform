@@ -10,9 +10,10 @@ using Tellma.Core.Abstractions.Tenancy;
 namespace Tellma.Core.Access
 {
     /// <summary>
-    ///     The scope's connection as the guarded runner drives it: the connected user, the premises
-    ///     of the next batch, the prologue's result applied, and the cold re-connect after a persist
-    ///     re-check found a moved tag. The user connector implements it; tests substitute a fake.
+    ///     The scope's connection as the guarded runner and the evaluator drive it: the connected
+    ///     user, the premises of the next batch, the prologue's result applied, the cold re-connect
+    ///     after a persist re-check found a moved tag, the deny re-check, and another user's
+    ///     permissions loaded on their own. The user connector implements it; tests substitute a fake.
     /// </summary>
     internal interface IScopeConnection
     {
@@ -59,6 +60,28 @@ namespace Tellma.Core.Access
         /// <returns>The connected user.</returns>
         /// <exception cref="TenantNotFoundException">The scope's caller is no longer an active user of the tenant.</exception>
         Task<ConnectedUser> ReconnectColdAsync(CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     Re-validates a connected user's permission set: one prologue-only round trip under the
+        ///     scope's warm premises for the user, which never asks for the rows of a set merely old.
+        ///     A passing prologue advances the set's validation time; a moved tag returns fresh rows,
+        ///     applied into a new set.
+        /// </summary>
+        /// <param name="user">The scope's connected user.</param>
+        /// <param name="cancellationToken">Cancels the round trip.</param>
+        /// <returns>The connected user the round trip describes.</returns>
+        /// <exception cref="TenantNotFoundException">The user is no longer an active user of the tenant.</exception>
+        Task<ConnectedUser> RevalidateAsync(ConnectedUser user, CancellationToken cancellationToken);
+
+        /// <summary>
+        ///     Loads another user's permission set on its own: one prologue-only round trip by the
+        ///     user's id that expects nothing cached. The set is neither cached nor connected, and
+        ///     the round trip reports none of the user's tags to the response.
+        /// </summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="cancellationToken">Cancels the round trip.</param>
+        /// <returns>The set; null when no user of the tenant has the id, or the user is inactive or the system user.</returns>
+        Task<UserAccess?> LoadDetachedAsync(int userId, CancellationToken cancellationToken);
 
         /// <summary>Drops a user's entries after a persist re-check found the user deactivated, counting and logging the refusal.</summary>
         /// <param name="user">The user.</param>

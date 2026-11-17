@@ -67,6 +67,25 @@ namespace Tellma.Core.Access
         }
 
         /// <summary>
+        ///     Drops every entry of a tenant whose connected user is the given one, under whatever
+        ///     subject. It walks the entries, which suits an invalidation and not every request.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The user.</param>
+        public void RemoveUser(int tenantId, int userId)
+        {
+            // --- The entries are keyed by subject, so the user's are found by what they hold ---
+            foreach (object key in _cache.Keys)
+            {
+                if (key is ConnectKey entry && entry.TenantId == tenantId
+                    && _cache.TryGetValue(entry, out ConnectedUser? user) && user?.UserId == userId)
+                {
+                    _cache.Remove(entry);
+                }
+            }
+        }
+
+        /// <summary>
         ///     Runs a cold connect of a subject once however many callers ask together: the first
         ///     caller runs it, the others wait for its user or its failure. A connect cancelled under
         ///     its starter fails only the starter: a caller still waiting runs one of its own.

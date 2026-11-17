@@ -12,7 +12,8 @@ namespace Tellma.Core.Tests.Access
 {
     /// <summary>
     ///     The connect initializer's cases that need no database: tenantless work connects no one,
-    ///     and an anonymous caller finds no tenant. The connecting cases run against a database.
+    ///     and an anonymous caller finds no tenant; neither is witnessed as a member. The connecting
+    ///     cases run against a database.
     /// </summary>
     public sealed class ConnectInitializerTests : IAsyncDisposable
     {
@@ -43,6 +44,7 @@ namespace Tellma.Core.Tests.Access
             RequestContext initialized = await Initializer(scope).InitializeAsync(tenantless, RequestContextInputs.Empty, TestContext.Current.CancellationToken);
 
             Assert.Same(tenantless, initialized);
+            Assert.False(scope.ServiceProvider.GetRequiredService<AccessWitness>().IsMemberWitnessed);
         }
 
         [Fact]
@@ -59,6 +61,7 @@ namespace Tellma.Core.Tests.Access
                 () => Initializer(scope).InitializeAsync(anonymous, RequestContextInputs.Empty, TestContext.Current.CancellationToken));
 
             Assert.Equal(3, refused.TenantId);
+            Assert.False(scope.ServiceProvider.GetRequiredService<AccessWitness>().IsMemberWitnessed);
         }
 
         /// <summary>The scope's connect initializer.</summary>

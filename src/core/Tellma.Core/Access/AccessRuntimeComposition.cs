@@ -14,17 +14,21 @@ namespace Tellma.Core.Access
 {
     /// <summary>
     ///     Registers what permission evaluation needs beyond <see cref="CoreFeature" />'s contribution:
-    ///     the access options, the permission classifier, the set builder and its instruments, and the
-    ///     user connection: its caches, the scoped connector and runner, and the connect initializer.
+    ///     the access options, the permission classifier, the set builder and its instruments; the
+    ///     user connection: its caches, the scoped connector and runner, and the connect initializer;
+    ///     and the scoped evaluator, its witness, the holders resolver, the administrator directory
+    ///     and the security tables' guards.
     /// </summary>
     internal static class AccessRuntimeComposition
     {
-        /// <summary>Registers the options, the builder, the instruments and the user connection.</summary>
+        /// <summary>Registers the options, the builder, the instruments, the user connection and the evaluation.</summary>
         /// <param name="services">The composition's services.</param>
+        /// <param name="record">The realised composition, whose user and role leaves close the holders resolver.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
-        public static void Register(IServiceCollection services, OptionsRegistrar options)
+        public static void Register(IServiceCollection services, TellmaCompositionRecord record, OptionsRegistrar options)
         {
             ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(record);
             ArgumentNullException.ThrowIfNull(options);
 
             // --- The options, through the gate's validation ---
@@ -55,6 +59,23 @@ namespace Tellma.Core.Access
             // --- The connect initializer at 100, and the connected profile the negotiation at 200 reads (§7.8) ---
             services.TryAddEnumerable(ServiceDescriptor.Scoped<IRequestContextInitializer, ConnectInitializer>());
             services.TryAddScoped<IUserLocalePreferences, ConnectedUserPreferences>();
+
+            // --- The evaluator and its witness (§5.1, §4.6), under the bar a sensitive securable asks (§4.3);
+            // a web host replaces the bar with its configured session bar ---
+            services.TryAddSingleton(StepUpBar.Default);
+            services.TryAddScoped<AccessWitness>();
+            services.TryAddScoped<AccessEvaluator>();
+            services.TryAddScoped<IAccessEvaluator>(static provider => provider.GetRequiredService<AccessEvaluator>());
+
+            // --- "Who holds this", closed over the distribution's user and role leaves, and the administrators (§10) ---
+            services.TryAddSingleton<HoldersComposer>();
+            services.TryAddScoped(
+                typeof(IAccessHoldersResolver),
+                typeof(AccessHoldersResolver<,>).MakeGenericType(record.LeafOf(typeof(User)), record.LeafOf(typeof(Role))));
+            services.TryAddScoped<IAdministratorDirectory, AdministratorDirectory>();
+
+            // --- The security tables' guards: none until they are registered in this seat (§8.3) ---
+            services.TryAddScoped<IAccessGuards, NullAccessGuards>();
         }
     }
 }

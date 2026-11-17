@@ -37,6 +37,28 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
+        public async Task The_evaluation_is_scoped_with_its_witness_under_the_default_step_up_bar()
+        {
+            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            await using AsyncServiceScope first = provider.CreateAsyncScope();
+            await using AsyncServiceScope second = provider.CreateAsyncScope();
+
+            // --- One evaluator per scope, the same instance behind its contract ---
+            AccessEvaluator evaluator = first.ServiceProvider.GetRequiredService<AccessEvaluator>();
+            Assert.Same(evaluator, first.ServiceProvider.GetRequiredService<IAccessEvaluator>());
+            Assert.NotSame(evaluator, second.ServiceProvider.GetRequiredService<IAccessEvaluator>());
+            Assert.Same(first.ServiceProvider.GetRequiredService<AccessWitness>(), first.ServiceProvider.GetRequiredService<AccessWitness>());
+            Assert.NotSame(first.ServiceProvider.GetRequiredService<AccessWitness>(), second.ServiceProvider.GetRequiredService<AccessWitness>());
+
+            // --- The default bar, the composer once, the holders resolver closed over the leaves, and no guards yet ---
+            Assert.Same(StepUpBar.Default, provider.GetRequiredService<StepUpBar>());
+            Assert.Same(provider.GetRequiredService<HoldersComposer>(), provider.GetRequiredService<HoldersComposer>());
+            _ = Assert.IsType<AccessHoldersResolver<User, Role>>(first.ServiceProvider.GetRequiredService<IAccessHoldersResolver>());
+            _ = Assert.IsType<AdministratorDirectory>(first.ServiceProvider.GetRequiredService<IAdministratorDirectory>());
+            _ = Assert.IsType<NullAccessGuards>(first.ServiceProvider.GetRequiredService<IAccessGuards>());
+        }
+
+        [Fact]
         public async Task The_sound_configuration_passes_the_options_check()
         {
             Assert.Empty((await TestComposition.CheckAsync(static _ => { })).From(CoreCheckNames.Options));

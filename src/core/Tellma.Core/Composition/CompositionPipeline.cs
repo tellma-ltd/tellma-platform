@@ -162,8 +162,8 @@ namespace Tellma.Core.Composition
             // --- Caching: the options and the version tags' instruments ---
             CachingComposition.Register(services, options);
 
-            // --- Access: the options, the permission classifier and the set builder (spec 0014 §6.2, §12.1) ---
-            AccessRuntimeComposition.Register(services, options);
+            // --- Access: the options, the classifier, the set builder, the connection and the evaluation (spec 0014 §5.1, §6.2, §12.1) ---
+            AccessRuntimeComposition.Register(services, _record, options);
 
             // --- The identity-server client: its options and the named HTTP client (spec 0018 §2) ---
             IdentityComposition.Register(services, options, slug, configuration, environment);

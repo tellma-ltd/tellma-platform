@@ -60,8 +60,12 @@
   }
 
   /* The selected row is already Highlight, so its box is drawn in the
-     row's own text colour rather than vanishing into the same fill. */
-  .tm-option__row[aria-selected='true'] .tm-option__box {
+     row's own text colour rather than vanishing into the same fill. The box
+     opts out of forced colours with the row's other parts (tm-select.css),
+     so a disabled selected row's muted box colours would show on the fill:
+     it takes the same. */
+  .tm-option__row[aria-selected='true'] .tm-option__box,
+  .tm-option__row[aria-disabled='true'][aria-selected='true'] .tm-option__box {
     border-color: HighlightText;
     background: Highlight;
     color: HighlightText;

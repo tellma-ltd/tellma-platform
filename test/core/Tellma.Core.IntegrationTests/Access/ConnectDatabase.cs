@@ -7,12 +7,14 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Globalization;
+using System.Text;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
+using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
@@ -95,10 +97,11 @@ namespace Tellma.Core.IntegrationTests.Access
         ///     Another instance of the platform over the same databases: its own caches and single
         ///     flights, as a second process has. The caller disposes it.
         /// </summary>
+        /// <param name="configure">Adjusts the instance's services last, such as its options; nothing when null.</param>
         /// <returns>The instance's composition.</returns>
-        public ServiceProvider CreateInstance()
+        public ServiceProvider CreateInstance(Action<IServiceCollection>? configure = null)
         {
-            return Compose(_tenants ?? throw new InvalidOperationException("The databases are not created yet."));
+            return Compose(_tenants ?? throw new InvalidOperationException("The databases are not created yet."), configure);
         }
 
         /// <summary>
@@ -238,10 +241,75 @@ namespace Tellma.Core.IntegrationTests.Access
                     """));
         }
 
+        /// <summary>Seeds an active, private role of the first tenant with permissions.</summary>
+        /// <param name="permissions">The permissions: a resource, an action and a filter, null for none.</param>
+        /// <returns>The role's id.</returns>
+        public Task<int> SeedRoleAsync(params (string Resource, string Action, string? Filter)[] permissions)
+        {
+            return SeedRoleAsync(TenantA, permissions);
+        }
+
+        /// <summary>Seeds an active, private role of a tenant with permissions.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="permissions">The permissions: a resource, an action and a filter, null for none.</param>
+        /// <returns>The role's id.</returns>
+        public Task<int> SeedRoleAsync(int tenantId, params (string Resource, string Action, string? Filter)[] permissions)
+        {
+            // --- The role, named after its id, then each permission with its filter's version ---
+            int system = WellKnownIds.SystemUserId;
+            StringBuilder sql = new();
+            _ = sql.Append(CultureInfo.InvariantCulture, $"""
+                DECLARE @role int = NEXT VALUE FOR [core].[sq_Roles];
+                INSERT INTO [core].[Roles] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (@role, N'Role ' + CAST(@role AS nvarchar(11)), SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
+
+                """);
+            foreach ((string resource, string action, string? filter) in permissions)
+            {
+                string text = filter is null ? "NULL" : $"N'{filter.Replace("'", "''", StringComparison.Ordinal)}'";
+                string version = filter is null ? "NULL" : QueryexLanguage.Version.ToString(CultureInfo.InvariantCulture);
+                _ = sql.Append(CultureInfo.InvariantCulture, $"""
+                    INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action], [Filter], [FilterQueryexVersion]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], @role, N'{resource}', N'{action}', {text}, {version});
+
+                    """);
+            }
+
+            _ = sql.Append("SELECT @role;");
+            return ScalarAsync<int>(tenantId, sql.ToString());
+        }
+
+        /// <summary>Makes a user a member of a role over a window.</summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="roleId">The role.</param>
+        /// <param name="startsAt">The window's start as a SQL expression, such as <c>DATEADD(day, 1, SYSDATETIMEOFFSET())</c>; null since always.</param>
+        /// <param name="endsAt">The window's exclusive end as a SQL expression; null for no end.</param>
+        /// <param name="tenantId">The tenant of the user and the role; the first when not given.</param>
+        /// <returns>A task that completes when the membership is seeded.</returns>
+        public Task SeedMembershipAsync(int userId, int roleId, string? startsAt = null, string? endsAt = null, int tenantId = TenantA)
+        {
+            return ExecuteAsync(
+                tenantId,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {userId}, {roleId}, {startsAt ?? "NULL"}, {endsAt ?? "NULL"});"));
+        }
+
+        /// <summary>Moves the first tenant's permissions tag and a user's own, as a save of the user's memberships does.</summary>
+        /// <param name="userId">The user.</param>
+        /// <returns>A task that completes when the tags moved.</returns>
+        public Task BumpPermissionsAsync(int userId)
+        {
+            return ExecuteAsync(
+                TenantA,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'permissions'; UPDATE [core].[UserStamps] SET [PermissionsTag] = NEWID() WHERE [UserId] = {userId};"));
+        }
+
         /// <summary>A composition of the platform, with both tenants behind the connection seams.</summary>
         /// <param name="tenants">The tenants.</param>
+        /// <param name="configure">Adjusts the services last; nothing when null.</param>
         /// <returns>The composition.</returns>
-        private static ServiceProvider Compose(Dictionary<int, TenantInfo> tenants)
+        private static ServiceProvider Compose(Dictionary<int, TenantInfo> tenants, Action<IServiceCollection>? configure = null)
         {
             ServiceCollection services = [];
             _ = services.AddLogging();
@@ -250,6 +318,7 @@ namespace Tellma.Core.IntegrationTests.Access
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(provider => new Provider(tenants, provider.GetRequiredService<IRequestContextAccessor>())));
             _ = services.AddSingleton<CacheEvictor>();
             _ = services.AddSingleton<IDataBatchContributor>(static provider => provider.GetRequiredService<CacheEvictor>());
+            configure?.Invoke(services);
             return services.BuildServiceProvider(validateScopes: true);
         }
 

@@ -18,11 +18,14 @@ using Tellma.Core.Settings;
 namespace Tellma.Core.Access
 {
     // The connector is spec 0014 §7.1; the caches it keeps are §6.2 and §6.3, the premises it builds
-    // follow §7.2's rule for the expected tags and §7.8's for the stamp and the flip.
+    // follow §7.2's rule for the expected tags and §7.8's for the stamp and the flip; the deny re-check
+    // is §6.4 and another user's load §5.1's EvaluateFor row.
     /// <summary>
     ///     Connects the scope's principal to its user in the tenant, through the connect prologue,
     ///     and keeps the process's connect, permission and profile caches from what each prologue
     ///     read. One per scope; the scope's connected user is the last one it applied for the scope.
+    ///     It also re-validates the connected user's set on the evaluator's behalf, and loads another
+    ///     user's set on its own, uncached and unreported.
     /// </summary>
     /// <param name="accessor">The scope's request context.</param>
     /// <param name="database">The scope's tenant database handle, on which the connector's own round trips run.</param>
@@ -187,6 +190,19 @@ namespace Tellma.Core.Access
         /// <inheritdoc />
         public BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises)
         {
+            return Contribute(batch, premises, detached: false);
+        }
+
+        /// <summary>Marks a fresh batch with the connect prologue for the premises.</summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="premises">The premises.</param>
+        /// <param name="detached">
+        ///     Whether the prologue loads a user's permissions on their own, so it reports none of
+        ///     the user's tags to the batch's outcome, whoever the user is.
+        /// </param>
+        /// <returns>What the prologue read, complete once the batch executed.</returns>
+        private BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises, bool detached)
+        {
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(premises);
             if (batch is not DataBatch data)
@@ -217,8 +233,9 @@ namespace Tellma.Core.Access
             }
 
             // --- The caller's own tags go into the batch's outcome; another user's (a load of their permissions) never do ---
-            bool reportUserTags = premises is ConnectPremises.ForSubject
-                || (premises is ConnectPremises.ForUser forUser && context.UserId == forUser.UserId);
+            bool reportUserTags = !detached
+                && (premises is ConnectPremises.ForSubject
+                    || (premises is ConnectPremises.ForUser forUser && context.UserId == forUser.UserId));
             // The read is recorded against the handle too: a round trip refused after the prologue was
             // read (a moved re-run input) never completes the handle, yet its result is still applied.
             BatchResult<ConnectResult>? handle = null;
@@ -325,6 +342,61 @@ namespace Tellma.Core.Access
             };
 
             return await RoundTripAsync(premises, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<ConnectedUser> RevalidateAsync(ConnectedUser user, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+
+            // --- The scope's warm premises for the user, without the age reload (spec 0014 §6.4) ---
+            ConnectPremises premises = PremisesFor(user) switch
+            {
+                ConnectPremises.ForSubject subject => subject with { ReloadPermissions = false },
+                ConnectPremises.ForUser forUser => forUser with { ReloadPermissions = false },
+                ConnectPremises.ForSystem system => system,
+                _ => throw new InvalidOperationException("The premises are not one of the three cases."),
+            };
+
+            // --- One prologue-only round trip: a pass validates the set, a moved tag brings its fresh rows ---
+            IDataBatch batch = database.CreateBatch(BatchPurpose.Read);
+            BatchResult<ConnectResult> result = Contribute(batch, premises);
+            _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return Apply(result.Value, user, missingIsNull: false)!;
+        }
+
+        /// <inheritdoc />
+        public async Task<UserAccess?> LoadDetachedAsync(int userId, CancellationToken cancellationToken)
+        {
+            RequestContext context = accessor.Current;
+            int tenantId = context.RequireTenant().Id;
+
+            // --- One prologue-only round trip by id that expects nothing, so the rows always come back
+            // (spec 0014 §5.1); it reports none of the user's tags, so the response header omits them ---
+            ConnectPremises.ForUser premises = new(userId, new ConnectExpectations(null, null, null, ExpectedSettingsTag(context)), ReloadPermissions: false);
+            IDataBatch batch = database.CreateBatch(BatchPurpose.Read);
+            BatchResult<ConnectResult> handle = Contribute(batch, premises, detached: true);
+            _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            ConnectResult result = handle.Value;
+
+            // --- No such user, an inactive one or the system user: no set; nothing cached is touched ---
+            if (result.UserId is not int found || result.Kind is not UserKind kind || kind == UserKind.System || !result.IsActive)
+            {
+                services.Metrics.CountConnect(result.UserId is null || result.Kind is null or UserKind.System
+                    ? AccessTelemetryNames.ResultUnknownSubject
+                    : AccessTelemetryNames.ResultDeactivated);
+                return null;
+            }
+
+            // --- The set, built from the fresh rows and handed back without being cached ---
+            IReadOnlyList<PermissionRow> rows = result.PermissionRows
+                ?? throw new InvalidOperationException("The connect prologue returned no permission rows to a load that expected none cached.");
+            Guid tenantTag = result.TenantTags.TryGetValue(VersionTagNames.Permissions, out Guid permissions) ? permissions : Guid.Empty;
+            TenantSettings schemaSettings = SettingsFor(context, result);
+            UserAccess access = services.Builder.Build(
+                tenantId, found, tenantTag, result.UserPermissionsTag ?? Guid.Empty, rows, services.Schemas.GetSchema(schemaSettings.Shape));
+            CountResult(premises, result);
+            return access;
         }
 
         /// <inheritdoc />
@@ -547,6 +619,7 @@ namespace Tellma.Core.Access
             Guid tenantTag = result.TenantTags.TryGetValue(VersionTagNames.Permissions, out Guid permissions) ? permissions : Guid.Empty;
             Guid userTag = result.UserPermissionsTag ?? Guid.Empty;
             UserAccess access;
+            bool scopeConfirmed = false;
             if (kind == UserKind.System)
             {
                 access = UserAccess.System;
@@ -565,14 +638,15 @@ namespace Tellma.Core.Access
                 // The tags of set 1 are a later read and may already have moved.
                 Guid confirmedTag = expected?.PermissionsTag ?? tenantTag;
                 Guid confirmedUserTag = expected?.UserPermissionsTag ?? userTag;
-                UserAccess? confirmed = (own?.Access is UserAccess held && held.Tag == confirmedTag && held.UserTag == confirmedUserTag ? held : null)
-                    ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
+                UserAccess? held = own?.Access is UserAccess basisSet && basisSet.Tag == confirmedTag && basisSet.UserTag == confirmedUserTag ? basisSet : null;
+                UserAccess? confirmed = held ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
                 if (confirmed is null)
                 {
                     return Missing(origin.Premises, result, missingIsNull, "The connect prologue confirmed a permission set this instance no longer holds.");
                 }
 
                 access = confirmed;
+                scopeConfirmed = held is not null;
             }
 
             // A prologue that read the set's own tags validates it.
@@ -610,7 +684,14 @@ namespace Tellma.Core.Access
             // --- The connect cache, and the scope's user when the result is the scope's caller ---
             if (subject is not null)
             {
-                services.Connections.Set(tenantId, subject, user);
+                // A set confirmed from the scope's own connection refreshes the subject's entry only while
+                // that entry holds the same set: it never restores an entry dropped since (an
+                // invalidation) nor replaces a newer one, so the next connection loads afresh.
+                if (!scopeConfirmed || ReferenceEquals(services.Connections.Find(tenantId, subject)?.Access, access))
+                {
+                    services.Connections.Set(tenantId, subject, user);
+                }
+
                 if (context.UserId is int bound && bound != userId)
                 {
                     // The subject now names another user than the one the scope is connected as.

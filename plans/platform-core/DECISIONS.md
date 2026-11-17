@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-107 (orchestrator, 2026-11-17): the tm-chart engine chunk ceiling is 200 KB gz; spec 0024 §12's 170 KB line goes to Ahmad
+
+- Situation: PC-194's lazy engine chunk measures 199.74 KB gz. ECharts 6.1.0 with exactly the modules spec 0034 §7.3 lists is about 194 KB on its own: PC-194's implementer measured 194.38 and its R1 measured 193.83. The facade adapter adds 5.32 KB. Within the module API, what remains in the chunk cannot be removed: the HTML tooltip that TooltipView imports statically, the zh locale that echarts/core registers, and the time scale. The only optional cut is LegendPlainComponent (-1.8 KB), which would lose the scroll legend.
+- Ruling (D-031 arithmetic): the chunk ceiling is 200 KB gz, recorded in the size-gate budget notes. The entry point ./chart stays at 6.6 KB, under spec 0034's 9 KB.
+- For Ahmad: spec 0024 §12's 170 KB line is unreachable with ECharts, so either the spec takes 200 KB, or the ECharts choice is revisited. Spec 0034 §7.5 should also say that zrender's innerHTML writes are routed to replaceChildren() under Trusted Types.
+- PC-194 R1 reported 4 majors, so the item escalates to Review 2 (inherit, xhigh) per PROCESS.md §4.4.
+
 ### D-106 (orchestrator, 2026-11-16): user-run job scopes have no assurance, so sensitive pairs refuse them; for Ahmad with the jobs work
 
 - Situation: in PC-052, RequireAsync refuses a sensitive pair with StepUpRequired when the scope's Assurance is below spec 0011's bar. A job scope run for a user carries no Assurance, so every sensitive pair is refused in jobs. Spec 0014 §4.3/§5.1 say this applies to every caller, request or not, and spec 0015 §9.1 names "a job" explicitly, so the code follows the spec.
