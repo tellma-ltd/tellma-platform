@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Queryex;
 using static Tellma.Core.Abstractions.Tests.Access.AccessFixture;
 
@@ -168,6 +169,54 @@ namespace Tellma.Core.Abstractions.Tests.Access
             _ = Assert.Throws<ArgumentNullException>(() => new AccessProblem(1, 10, Widget, null!, AccessProblemCode.FilterInvalid, []));
             _ = Assert.Throws<ArgumentNullException>(() => new AccessProblem(1, 10, Widget, "Read", AccessProblemCode.FilterInvalid, null!));
             _ = Assert.Throws<ArgumentException>(() => new AccessProblem(1, 10, Widget, "Read", AccessProblemCode.FilterInvalid, [null!]));
+        }
+
+        // --- Holders ---
+
+        [Fact]
+        public void A_holder_holds_the_securable_and_copies_its_permissions()
+        {
+            List<int> permissionIds = [3, 7];
+
+            AccessHolder holder = new(42, AccessOutcome.Filtered, permissionIds, Now);
+            permissionIds.Clear();
+
+            Assert.Equal([3, 7], holder.PermissionIds);
+            Assert.Equal(AccessOutcome.Unrestricted, new AccessHolder(42, AccessOutcome.Unrestricted, [], null).Outcome);
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new AccessHolder(42, AccessOutcome.Denied, [3], null));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new AccessHolder(42, (AccessOutcome)3, [3], null));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolder(42, AccessOutcome.Filtered, null!, null));
+        }
+
+        [Fact]
+        public void The_holders_copy_their_parts_and_refuse_null_parts_an_undefined_outcome_and_a_negative_total()
+        {
+            List<RoleAccessGrant> grants = [Grant(Widget, "Read")];
+            Dictionary<int, int> members = new() { [10] = 2 };
+            List<AccessHolder> listed = [new(42, AccessOutcome.Unrestricted, [1], null)];
+            List<BespokeAccessGrant> criteria = [new(Widget, "Read", "OwnerId = me()", "self")];
+            List<AccessProblem> problems = [Problem(2, Widget, "Read", AccessProblemCode.FilterInvalid)];
+
+            AccessHolders holders = new(Widget, "Read", AccessOutcome.Filtered, grants, members, listed, 5, true, criteria, problems, new RelatedEntities());
+            grants.Clear();
+            members.Clear();
+            listed.Clear();
+            criteria.Clear();
+            problems.Clear();
+
+            Assert.Equal((1, 1, 1, 1, 1), (holders.Grants.Count, holders.MembersByRole.Count, holders.Holders.Count, holders.Criteria.Count, holders.Problems.Count));
+            Assert.Equal((5, true, 2), (holders.Total, holders.Capped, holders.MembersByRole[10]));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(null!, "Read", AccessOutcome.Denied, [], members, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, null!, AccessOutcome.Denied, [], members, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, null!, members, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], null!, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], members, null!, 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], members, [], 0, false, null!, [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], members, [], 0, false, [], null!, new RelatedEntities()));
+            _ = Assert.Throws<ArgumentNullException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], members, [], 0, false, [], [], null!));
+            _ = Assert.Throws<ArgumentException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [null!], members, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new AccessHolders(Widget, "Read", (AccessOutcome)3, [], members, [], 0, false, [], [], new RelatedEntities()));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new AccessHolders(Widget, "Read", AccessOutcome.Denied, [], members, [], -1, false, [], [], new RelatedEntities()));
         }
 
         [Fact]

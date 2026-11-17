@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
@@ -18,7 +20,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
     /// <summary>
     ///     What the host checks at startup and reports when ready: the persisted key ring, the
     ///     framework's forwarded-headers switch, the identity clients' secrets, and the readiness of
-    ///     the catalog.
+    ///     the catalog; and the step-up bar the access evaluator takes from the session's options.
     /// </summary>
     public sealed class HostCompositionTests
     {
@@ -131,6 +133,33 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             await host.Services.GetRequiredService<ITenantRegistry>().RefreshAsync(force: true, TestContext.Current.CancellationToken);
             using HttpResponseMessage up = await host.Client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, up.StatusCode);
+        }
+
+        [Fact]
+        public async Task The_access_evaluator_holds_a_sensitive_securable_to_the_configured_session_bar()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.Settings["Tellma:Session:StepUp:Acr"] = "urn:example:acr:strong";
+                options.Settings["Tellma:Session:StepUp:MaxAge"] = "00:05:00";
+            });
+            await using (app)
+            {
+                RequireAssuranceMetadata bar = app.Services.GetRequiredService<StepUpBar>().Requirement;
+                Assert.Equal(("urn:example:acr:strong", TimeSpan.FromMinutes(5)), (bar.Acr, bar.MaxAge));
+            }
+        }
+
+        [Fact]
+        public async Task The_access_evaluator_holds_a_sensitive_securable_to_the_default_bar_when_the_session_names_none()
+        {
+            // The sound settings name no Tellma:Session:StepUp section.
+            (WebApplication app, _, _) = TellmaTestHost.Build();
+            await using (app)
+            {
+                RequireAssuranceMetadata bar = app.Services.GetRequiredService<StepUpBar>().Requirement;
+                Assert.Equal((StepUpBar.DefaultAcr, StepUpBar.DefaultMaxAge), (bar.Acr, bar.MaxAge));
+            }
         }
 
         [Fact]

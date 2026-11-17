@@ -13,10 +13,12 @@ namespace Tellma.Core.Access
     /// <summary>
     ///     Connects a tenant scope's principal to its user: a request's caller by subject, a background
     ///     scope that runs as a user by id, and the platform's own work as the system user. The
-    ///     completed context names the user.
+    ///     completed context names the user, and a connected user or service account is recorded as
+    ///     the scope's member witness.
     /// </summary>
     /// <param name="connector">The scope's user connector.</param>
-    internal sealed class ConnectInitializer(UserConnector connector) : IRequestContextInitializer
+    /// <param name="witness">The scope's access witness.</param>
+    internal sealed class ConnectInitializer(UserConnector connector, AccessWitness witness) : IRequestContextInitializer
     {
         /// <summary>The initializer's order: the first of the platform's.</summary>
         public const int ConnectOrder = 100;
@@ -49,6 +51,9 @@ namespace Tellma.Core.Access
                     ConnectedUser user = context.UserId is int userId
                         ? await connector.ConnectAsUserAsync(userId, cancellationToken).ConfigureAwait(false)
                         : await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
+
+                    // A connected member satisfies a member endpoint's witness (spec 0014 §4.6).
+                    witness.RecordMember();
                     return context with { UserId = user.UserId };
 
                 case PrincipalKind.Anonymous:

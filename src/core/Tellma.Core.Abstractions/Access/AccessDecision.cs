@@ -61,7 +61,7 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>Whether the caller may exercise the securable at all: the outcome is not <see cref="AccessOutcome.Denied" />.</summary>
         public bool IsAllowed => Outcome != AccessOutcome.Denied;
 
-        /// <summary>A denial with no grant and no problem, as for a caller without a user or a pair the registry does not hold.</summary>
+        /// <summary>A denial with no grant and no problem, as for a caller without a user or an owner pair the registry does not hold.</summary>
         /// <param name="resource">The securable's resource.</param>
         /// <param name="action">The securable's action.</param>
         /// <returns>The denial.</returns>

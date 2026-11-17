@@ -547,6 +547,18 @@ namespace Tellma.Core.Tests.Access
             }
 
             /// <inheritdoc />
+            public Task<ConnectedUser> RevalidateAsync(ConnectedUser user, CancellationToken cancellationToken)
+            {
+                throw new InvalidOperationException("The guarded runner never re-checks a denial.");
+            }
+
+            /// <inheritdoc />
+            public Task<UserAccess?> LoadDetachedAsync(int userId, CancellationToken cancellationToken)
+            {
+                throw new InvalidOperationException("The guarded runner never loads another user.");
+            }
+
+            /// <inheritdoc />
             public void Drop(ConnectedUser user)
             {
                 Dropped.Add(user);

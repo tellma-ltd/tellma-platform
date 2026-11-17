@@ -15,6 +15,8 @@ using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Identity;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
@@ -98,6 +100,13 @@ namespace Tellma.Core.AspNetCore
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<ForwardedHeadersHostOptions>, ForwardedHeadersHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DataProtectionHostOptions>, DataProtectionHostOptionsValidator>();
+
+            // --- The step-up bar the access evaluator applies to a sensitive securable: the session's configured bar ---
+            _ = services.Replace(ServiceDescriptor.Singleton(static provider =>
+            {
+                StepUpOptions stepUp = provider.GetRequiredService<IOptions<TellmaSessionOptions>>().Value.StepUp;
+                return new StepUpBar(new RequireAssuranceMetadata(stepUp.Acr, stepUp.MaxAge));
+            }));
 
             // --- Hosting: the shutdown drain ---
             _ = services.Configure<HostOptions>(static options => options.ShutdownTimeout = ShutdownTimeout);

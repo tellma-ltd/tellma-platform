@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Tenancy
@@ -82,34 +81,7 @@ namespace Tellma.Core.Tenancy
             // --- Step 3: the assurance bar ---
             if (requirement.Assurance is { } bar)
             {
-                EnsureAssurance(context, bar);
-            }
-        }
-
-        /// <summary>Refuses a session below an endpoint's assurance bar.</summary>
-        /// <param name="context">The completed context.</param>
-        /// <param name="bar">The bar.</param>
-        /// <exception cref="IndividualRequiredException">The caller is a service account.</exception>
-        /// <exception cref="StepUpRequiredException">The session did not reach the bar's class, or not recently enough.</exception>
-        private static void EnsureAssurance(RequestContext context, RequireAssuranceMetadata bar)
-        {
-            if (context.Kind == PrincipalKind.ServiceAccount)
-            {
-                // A service account has no interactive sign-in to step up.
-                throw new IndividualRequiredException();
-            }
-
-            AuthenticationAssurance? held = context.Assurance;
-            bool reachedClass = string.Equals(held?.Acr, bar.Acr, StringComparison.Ordinal);
-
-            // The age counts from when the session reached the class, else from the sign-in; a
-            // session that says neither cannot prove it is recent enough.
-            bool recentEnough = bar.MaxAge is not { } maxAge
-                || ((held?.AcrAuthTime ?? held?.AuthTime) is { } reachedAt && context.Now - reachedAt <= maxAge);
-
-            if (!reachedClass || !recentEnough)
-            {
-                throw new StepUpRequiredException(bar.Acr, bar.MaxAge);
+                AssuranceCheck.Ensure(context, bar, context.Now);
             }
         }
 

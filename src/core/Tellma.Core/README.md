@@ -1285,6 +1285,61 @@ caller's entries and answers `tenant-not-found`. Each prologue round trip record
 `cold`, `stale_permissions`, `stale_settings`, `stale_profile`, `unknown_subject`, `deactivated`),
 and a refusal logs `ConnectRejected` (3105) without the subject.
 
+A scope's decisions come from `IAccessEvaluator` (`AccessEvaluator`, one per scope), at the host's
+clock. `EvaluateAsync` decides one pair or a list from the caller's one set (the system set for the
+platform's own work), reading the bespoke criteria of the pair's resource on every call and deciding
+a child's owner first; a pair the registry does not hold is a denial with one `UnknownResource` or
+`UnknownAction` problem. A scope that names no caller is denied everything before any decision is
+composed, criteria included. When a registered pair is denied from a set no prologue confirmed
+within `FastDenyWindow`, the evaluator makes one prologue-only round trip (`RevalidateAsync` on the
+connection) and decides every pair of that call again from what it returned; a passing prologue
+advances the set's `ValidatedAt`, a moved tag brings the fresh rows, and a scope re-checks at most
+once, however many calls race. `RequireAsync` raises `ForbiddenException` (`forbidden`, the
+registered pair, `NoGrant`) for a denial, then holds a sensitive pair to `StepUpBar` (the
+`urn:tellma:acr:mfa` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
+says otherwise; never for the system; `IndividualRequiredException` for a service account). Every
+pair `EvaluateAsync` or `RequireAsync` decides is recorded in the scope's `AccessWitness` and counted
+(`tellma.access.decisions`, by `outcome`), once per pair however many re-checks it took.
+`EvaluateForAsync` decides for another user from that user's set, loaded once per scope and user
+(`LoadDetachedAsync`: by id, expecting nothing cached, never cached itself and never reporting the
+user's tags to the response); the caller's own id answers from the caller's set, and an unknown,
+inactive or system user, or a scope outside a tenant, is denied everything. `EvaluateAllAsync`
+decides every registered securable from the set as it is, for the caller's summary, whose own
+prologue has just validated it; neither it nor `EvaluateForAsync` re-checks, records or counts.
+`Invalidate` drops a user's cached set and the scope's load of them.
+
+`AccessWitness` also holds the member witness, which `ConnectInitializer` records when a user or a
+service account connects. `Confirm` answers, before a successful response, whether the endpoint's
+declared pair (in any spelling the registry resolves) or, for a member endpoint, the member witness
+was recorded; a missing one is counted (`tellma.access.witness.missing`) and logged
+(`MissingWitness`, 3100, at Error, with the tenant, the user, the endpoint and the expectation) for
+the host to replace the response with an error.
+
+`IAccessHoldersResolver` (`AccessHoldersResolver<TUser, TRole>`, closed over the distribution's
+leaves) answers who holds a securable, in one guarded read on the caller's behalf: the matching
+stored permissions of active roles (the securable's resource and every owner on its chain, their
+former names, the action or `*`, any action for `Read`, and on the resource `*` the actions the
+chain registers for `Read`), the current memberships of those roles' active members other than the
+system user, the audience every public role reaches, the members the caller may read under the
+caller's own `core.User` × `Read` decision, and the involved roles, each with its related
+projection. The current-membership predicate is `AccessFilters.CurrentMembershipSql("M")` written
+literally, since an interpolated text binds as a parameter. `HoldersComposer` composes the result
+with the evaluator's own composition, so a user is a holder exactly when a decision over the user's
+own memberships allows the securable: `Everyone` is the public roles' and the criteria's outcome,
+`Grants` and `Problems` those of every role at once (windowless), `MembersByRole` counts each role's
+members (a public role counts the audience), and the readable holders are listed by display name in
+the reader's content language, then by id, up to `MaxHolders`, with `Total` counting every holder and
+`Capped` whether the visible ones were cut. A users' filter beyond `QueryexProfiles.PipelineLimits`
+is an `InvalidOperationException`, logged (`FilterTooComplex`, 3107, at Error, with the roles behind
+it), never a silent empty list.
+
+`IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
+most 20 active individuals, invited or joined, with a current membership of the administrator role,
+lowest id first, for a tenant's administrative notices. `IAccessGuards` is the persist pipeline's
+seat for the security tables' in-transaction invariants (the security lock, the last administrator,
+the public roles' members, the administrator role itself); `NullAccessGuards` holds it for now and
+contributes no lock and no assertion.
+
 `AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.

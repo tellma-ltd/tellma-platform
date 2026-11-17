@@ -25,6 +25,8 @@ feature or entity added there would diverge the web host's model from the migrat
   `Tellma:DataProtection`, `Tellma:ForwardedHeaders`, `Tellma:Admin`, `Tellma:Support`,
   `Tellma:ClientTelemetry`, `Tellma:Links`, `Tellma:Api`), validated by the startup gate's options
   check;
+- the access evaluator's step-up bar for a sensitive securable, taken from `Tellma:Session:StepUp`
+  in place of Core's default (`urn:tellma:acr:mfa` within 15 minutes);
 - the `Tellma.Session` cookie scheme, the `Tellma.OpenIdConnect` sign-in scheme and the `Tellma.Bearer` JWT
   scheme, and the policies `Tellma.Web`, `Tellma.Api`, `Tellma.Mcp` and `Tellma.ControlPlane`. No
   scheme is the default: each policy names its own, and the fallback policy requires an
