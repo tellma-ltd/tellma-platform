@@ -30,7 +30,10 @@ keys), `TmReorderListHarness` (the rows, the handles and the grab
 model's keys, and the move menu a handle's click opens) and
 `TmTilesHarness` with `TmTileHarness` (one tile's corners, state,
 checkbox, twisty and keys); the drag-drop directives impose nothing a
-harness would add.
+harness would add. The pivot has `TmPivotHarness` (its counts, header
+and row labels, sticky columns, tab stop and keys) with
+`TmPivotCellHarness` (one rendered cell's text, look, expansion, drill
+state, handle and keys).
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

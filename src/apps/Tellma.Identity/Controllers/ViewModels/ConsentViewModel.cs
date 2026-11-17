@@ -11,6 +11,12 @@ namespace Tellma.Identity.Controllers.ViewModels
         /// <summary>The requesting application's display name.</summary>
         public string? ApplicationName { get; set; }
 
+        /// <summary>
+        ///     For a document client, the host its metadata document is published on, which is
+        ///     what vouches for the name above it; null for a registered client.
+        /// </summary>
+        public string? ClientHost { get; set; }
+
         /// <summary>The requested scopes, space-delimited.</summary>
         public string Scope { get; set; } = string.Empty;
 

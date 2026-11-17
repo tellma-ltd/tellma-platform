@@ -134,6 +134,28 @@ namespace Tellma.Core.Tests.Migrator
             Assert.Empty(run.Output);
         }
 
+        /// <summary>
+        ///     A migrator bound that does not parse or lies outside its range is a problem of the
+        ///     startup gate, which stops the run before the command reaches any database.
+        /// </summary>
+        /// <param name="key">The configuration key.</param>
+        /// <param name="value">Its value.</param>
+        /// <returns>A task that completes when the test is done.</returns>
+        [Theory]
+        [InlineData("Tellma:Migrator:CommandTimeout", "00:00:00")]
+        [InlineData("Tellma:Migrator:DatabaseCommandTimeout", "2.00:00:00")]
+        [InlineData("Tellma:Migrator:MigrationCommandTimeout", "an hour")]
+        [InlineData("Tellma:Migrator:CreateDatabaseAttempts", "0")]
+        [InlineData("Tellma:Migrator:VersionTagBumpTimeout", "-00:00:05")]
+        public async Task A_migrator_bound_that_is_malformed_or_out_of_range_stops_the_run_at_the_startup_gate(string key, string value)
+        {
+            Run run = await RunAsync(["status"], configuration: TestComposition.Sound((key, value)));
+
+            Assert.Equal(MigratorExitCodes.CompositionProblems, run.ExitCode);
+            Assert.Contains(key, run.Error, StringComparison.Ordinal);
+            Assert.Empty(run.Output);
+        }
+
         [Fact]
         public async Task A_hosted_service_that_fails_to_start_fails_the_run_before_the_command()
         {

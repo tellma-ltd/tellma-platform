@@ -1,0 +1,94 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "pnpm",
+    "analytics": false
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "acme": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "acme",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "tsConfig": "tsconfig.app.json",
+            "outputPath": "dist/acme",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "generated/assets",
+                "output": "tm-metadata"
+              },
+              {
+                "glob": "**/*",
+                "input": "generated/root",
+                "output": "/"
+              }
+            ],
+            "styles": [
+              "../../../../client/projects/core/tellma-core-ui-tokens/css/tellma-default.css",
+              "../../../../client/projects/core/tellma-core-ui/fonts/fonts.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-button.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-input.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-number.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-search.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-description-list.css",
+              "../../../../client/projects/core/tellma-core-ui/styles/tm-drop-target.css",
+              "../../../../client/projects/core/tellma-core/styles/tm-boot-page.css",
+              "../../../../client/projects/locale/tellma-locale-ar/fonts/fonts.css",
+              "src/styles.css"
+            ],
+            "serviceWorker": false,
+            "outputHashing": "all",
+            "optimization": {
+              "scripts": true,
+              "styles": {
+                "minify": true,
+                "inlineCritical": false
+              },
+              "fonts": true
+            },
+            "sourceMap": {
+              "scripts": true,
+              "styles": true,
+              "hidden": true
+            },
+            "extractLicenses": false
+          },
+          "configurations": {
+            "production": {},
+            "development": {
+              "optimization": false,
+              "sourceMap": true,
+              "outputHashing": "none"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": {
+            "buildTarget": "acme:build:development"
+          }
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "tsconfig.spec.json",
+            "browsers": ["chromiumHeadless"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -13,8 +14,8 @@ import { storyUrl } from '../support/story-map';
  * and directions, the set's roving keys in LTR and RTL, removal moving focus
  * on, the collapse fit following the set's width, the scrolling line
  * bringing the focused chip into view without scrolling the page, the
- * input hand-off of a multi-value field, and 24 px targets on the small
- * step.
+ * input hand-off of a multi-value field, 24 px targets on the small step,
+ * and a chip added at the end moving none of the chips already shown.
  */
 
 /** The text of the chip that holds focus. */
@@ -218,4 +219,39 @@ test.describe('targets', () => {
     );
     expect(hit).toBe(true);
   });
+});
+
+test.describe('stable layout', () => {
+  // Wrap may open a second line for the new chip; collapse and scroll keep
+  // their one line, so the set keeps its height too.
+  for (const { mode, oneLine } of [
+    { mode: 'wrap', oneLine: false },
+    { mode: 'collapse', oneLine: true },
+    { mode: 'scroll', oneLine: true },
+  ] as const) {
+    test(`a chip added to a ${mode} set moves none of the chips already shown`, async ({
+      page,
+    }) => {
+      await page.goto(storyUrl('chip'));
+      const set = page.getByTestId(`set-${mode}`);
+      const chips = visibleChips(set);
+      await expect(set.locator('tm-chip')).toHaveCount(6);
+      await appStable(page);
+      const shown = await chips.count();
+      const before = await Promise.all(
+        Array.from({ length: shown }, (_, index) => chips.nth(index).boundingBox()),
+      );
+      const setBefore = (await set.boundingBox())!;
+
+      await page.getByTestId(`add-${mode}`).click();
+      await expect(set.locator('tm-chip')).toHaveCount(7);
+      await appStable(page);
+      for (let index = 0; index < shown; index += 1) {
+        expect(await chips.nth(index).boundingBox(), `chip ${index + 1}`).toEqual(before[index]);
+      }
+      if (oneLine) {
+        expect((await set.boundingBox())!.height).toBe(setBefore.height);
+      }
+    });
+  }
 });

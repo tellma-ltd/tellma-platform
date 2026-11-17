@@ -50,11 +50,13 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
  * orders the rows; the source is paged, so checked rows survive paging and
  * select-all works on the current page only. Rows of inactive records render
  * muted, an optional totals row is emphasized, and the list carries no row
- * numbers. Header actions open filter popovers — Region is sortable and
- * filterable, Manager filter-only — and the row-end header holds the column
- * editor; a filter matching nothing shows the empty template under the
- * headers that undo it. The toolbar readouts mirror the grid's models for
- * the Playwright battery.
+ * numbers (toggles under the grid add them and remove the checkbox column,
+ * so either chrome column, or neither, starts the row), and a third button
+ * flashes the active row in place, as `scrollToRow` does. Header actions open
+ * filter popovers — Region is sortable and filterable, Manager filter-only —
+ * and the row-end header holds the column editor; a filter matching nothing
+ * shows the empty template under the headers that undo it. The toolbar
+ * readouts mirror the grid's models for the Playwright battery.
  */
 @Component({
   imports: [
@@ -138,9 +140,9 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
       [data]="pageRows()"
       [rowId]="rowId"
       rowActivation="row"
-      [rowHeaders]="false"
+      [rowHeaders]="rowNumbers()"
       [rowClass]="rowClass"
-      selectable
+      [selectable]="checkboxes()"
       [(selectedIds)]="selectedIds"
       [(activeRowId)]="activeRowId"
       [(orderBy)]="orderBy"
@@ -260,6 +262,28 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
         </button>
       </div>
     </tm-grid>
+
+    <!-- The chrome columns, switchable so each (or neither) is the row's
+         first painted cell, where the active row's accent bar sits. Below
+         the grid, so the rows keep their place on the page. -->
+    <div class="toolbar chrome">
+      <button
+        type="button"
+        data-testid="toggle-row-numbers"
+        (click)="rowNumbers.set(!rowNumbers())"
+      >
+        {{ rowNumbers() ? 'Hide row numbers' : 'Show row numbers' }}
+      </button>
+      <button type="button" data-testid="toggle-checkboxes" (click)="checkboxes.set(!checkboxes())">
+        {{ checkboxes() ? 'Hide checkboxes' : 'Show checkboxes' }}
+      </button>
+      <!-- scrollToRow's flash on the active row, in place: the active cell
+           and the range stay, so the flash can land on a row whose cells
+           mix the checked tint, the range fill and plain cells. -->
+      <button type="button" data-testid="flash-active" (click)="flashActive(grid)">
+        Flash the active row
+      </button>
+    </div>
   `,
   styles: `
     .toolbar {
@@ -268,6 +292,9 @@ type ToggleableColumn = 'qty' | 'region' | 'manager';
       gap: 12px;
       align-items: center;
       margin-block-end: 12px;
+    }
+    .chrome {
+      margin-block: 12px 0;
     }
     .search {
       inline-size: 240px;
@@ -308,6 +335,10 @@ export class GridSearchPageStory {
   readonly loaded = signal(true);
   /** Whether the page ends in an emphasized totals row. */
   readonly totals = signal(false);
+  /** Whether the list shows row numbers (a search page shows none). */
+  readonly rowNumbers = signal(false);
+  /** Whether the list shows its row-checkbox column. */
+  readonly checkboxes = signal(true);
   /** The two-way checked ids, across pages. */
   readonly selectedIds = signal<ReadonlySet<string | number>>(new Set());
   /** The two-way active row. */
@@ -475,6 +506,17 @@ export class GridSearchPageStory {
     const row = this.pageRows()[40];
     if (row !== undefined) {
       this.activeRowId.set(row.id);
+    }
+  }
+
+  /**
+   * Flashes the active row without moving the active cell, the range or,
+   * when the row is in view, the scroll position.
+   */
+  flashActive(grid: TmGrid<DemoRow>): void {
+    const id = this.activeRowId();
+    if (id !== null) {
+      grid.scrollToRow(id, { flash: true, activate: false, align: 'nearest' });
     }
   }
 

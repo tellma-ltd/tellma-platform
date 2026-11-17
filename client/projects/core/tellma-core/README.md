@@ -12,8 +12,16 @@ own.
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
 The other entry points of the framework arrive with the features they hold, each in the folder of
-its name. The package also ships two plain assets: `boot/tm-boot.template.js`, the boot script's
-template, and `styles/tm-boot-page.css`, the boot page's styles.
+its name. The package also ships plain assets: `boot/tm-boot.template.js`, the boot script's
+template, `styles/tm-boot-page.css`, the boot page's styles, and the default brand files
+`brand/{wordmark,mark}-on-{dark,light}.svg`.
+
+The brand files are the Tellma logo: the wordmark, and the mark (the wordmark's round "a" with its
+teal dot), each in ink for light backgrounds and in white for dark ones. They are cleaned from the
+logo's SVG exports: one `<path>` per glyph with its fill, no clip paths, ids or editor metadata,
+so two of them inline on one page cannot clash. The app renders them inline and gives them their
+accessible name. `tellma-client build` copies each to `brand/` in the output unless the
+distribution's `public/brand/` has a file of the same name.
 
 ## Boot
 

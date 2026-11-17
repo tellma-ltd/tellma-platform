@@ -5,7 +5,8 @@
 
 // Internal tree derivation: adjacency-list rows → parent-resolved node maps
 // → depth-first visible flattening. The data model consumes it directly;
-// the entry point re-exports it under ɵ names for tm-tiles' tree mode.
+// the entry point re-exports it under ɵ names for the tiles' tree mode
+// (TmTilesTree).
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
 

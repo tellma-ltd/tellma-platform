@@ -58,5 +58,35 @@ namespace Tellma.Core.Access
             Level = LogLevel.Debug,
             Message = "Built the permissions of user {UserId} in tenant {TenantId}: {Grants} grants and {Problems} permissions that grant nothing, in {Milliseconds} ms.")]
         public static partial void AccessSetBuilt(ILogger logger, int tenantId, int userId, int grants, int problems, double milliseconds);
+
+        /// <summary>
+        ///     A batch's guard failed twice in one call: the caller's permissions or the tenant's
+        ///     settings moved again after the batch was recomposed from fresh state.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The connected user.</param>
+        /// <param name="purpose">The batch's purpose.</param>
+        [LoggerMessage(
+            EventId = AccessEvents.GuardThrash,
+            EventName = nameof(AccessEvents.GuardThrash),
+            Level = LogLevel.Warning,
+            Message = "The guard of a {Purpose} batch of user {UserId} in tenant {TenantId} failed again after the batch was recomposed; the call is refused as stale.")]
+        public static partial void GuardThrash(ILogger logger, int tenantId, int userId, string purpose);
+
+        /// <summary>
+        ///     A connect prologue refused the caller: no user of the tenant matched, or the user is
+        ///     deactivated. The subject is never logged.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The user the prologue matched, when it matched one.</param>
+        /// <param name="reason">The connect result's tag value.</param>
+        [LoggerMessage(
+            EventId = AccessEvents.ConnectRejected,
+            EventName = nameof(AccessEvents.ConnectRejected),
+            Level = LogLevel.Information,
+            Message = "The connection to tenant {TenantId} was refused ({Reason}); matched user: {UserId}.")]
+        public static partial void ConnectRejected(ILogger logger, int tenantId, int? userId, string reason);
     }
 }

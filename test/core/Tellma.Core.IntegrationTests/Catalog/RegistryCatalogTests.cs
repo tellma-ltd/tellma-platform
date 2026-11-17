@@ -48,10 +48,8 @@ namespace Tellma.Core.IntegrationTests.Catalog
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "registry_connect");
             string first = sql.NewDatabaseName("tenant_a");
             string second = sql.NewDatabaseName("tenant_b");
-            await SqlServerFixture.ExecuteAsync(
-                sql.MasterConnectionString,
-                $"CREATE DATABASE [{first}] COLLATE {Abstractions.Hosting.DatabaseCollations.Platform};",
-                $"CREATE DATABASE [{second}] COLLATE {Abstractions.Hosting.DatabaseCollations.Platform};");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, first, cancellationToken: Token);
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, second, cancellationToken: Token);
 
             TenantDescriptor a = await host.Catalog.RegisterAsync(new TenantRegistration("A", TenantCategory.Live, null, new TenantLocation(sql.Server, first, "default")), "migrator", cancellationToken: Token);
             TenantDescriptor b = await host.Catalog.RegisterAsync(new TenantRegistration("B", TenantCategory.Live, null, new TenantLocation(sql.Server, second, "default")), "migrator", cancellationToken: Token);

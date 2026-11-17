@@ -211,7 +211,8 @@ namespace Tellma.Core.Tests.Data.Batches
         [Fact]
         public async Task The_connect_prologues_own_writes_bump_nothing()
         {
-            // The connect prologue's bookkeeping (the activity stamp, the join flip) is no cached input.
+            // The connect prologue's bookkeeping (the activity stamp, the join flip) is no cached input,
+            // and no write of the caller's: the audit sees it, the batch's written tables do not.
             DataBatch batch = Batch(BatchPurpose.Persist, new DelegateContributor(0, static (batch, stage) =>
             {
                 if (stage == DataBatchStage.Prologue)
@@ -226,7 +227,8 @@ namespace Tellma.Core.Tests.Data.Batches
             BatchAssembly assembly = await BatchHarness.SealAsync(batch);
 
             Assert.True(batch.Bumps.IsEmpty);
-            Assert.Contains(Profiles, batch.WrittenTables);
+            Assert.DoesNotContain(Profiles, batch.WrittenTables);
+            Assert.Contains(Profiles, batch.AuditedWrites);
             Assert.DoesNotContain("[core].[UserStamps] AS u", assembly.Text, StringComparison.Ordinal);
             _ = Assert.Throws<InvalidOperationException>(() => Batch(BatchPurpose.Persist).BeginConnectPrologue());
         }

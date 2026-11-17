@@ -55,7 +55,11 @@ export type TmGridColumnAlign = 'start' | 'end' | 'center' | 'left' | 'right';
 // eslint-disable-next-line @angular-eslint/directive-selector -- see above
 @Directive({ selector: 'tm-grid-column' })
 export class TmGridColumn<T = unknown, V = unknown> {
-  /** Stable identity when `key` is absent (accessor columns). */
+  /**
+   * Stable identity when `key` is absent (accessor columns).
+   *
+   * @tmWiring
+   */
   readonly generatedId = `tm-grid-col-${nextColumnId++}`;
 
   /**

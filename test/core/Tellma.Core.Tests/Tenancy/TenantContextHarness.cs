@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Settings;
 using Tellma.Core.Tests.Infrastructure;
@@ -67,6 +68,9 @@ namespace Tellma.Core.Tests.Tenancy
             ServiceCollection services = [];
             _ = services.AddSingleton<TimeProvider>(time);
             IServiceCollection composed = TestComposition.Compose(static _ => { }, services: services).UseFakeCatalog(catalog).UseFixedTenantSettings();
+
+            // The real user connection needs a tenant database with users; the tests script their own.
+            _ = composed.Remove(composed.Single(static descriptor => descriptor.ImplementationType == typeof(ConnectInitializer)));
             configure?.Invoke(composed);
 
             ServiceProvider provider = composed.BuildServiceProvider(validateScopes: true);

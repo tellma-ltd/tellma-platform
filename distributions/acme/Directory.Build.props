@@ -1,0 +1,11 @@
+<Project>
+  <!-- The repository's shared settings first. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Acme's version: every Acme assembly's informational version, so the composition library's is
+         the distribution version the client metadata, the worker's version and the Tellma-Build
+         header report. -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

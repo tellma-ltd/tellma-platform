@@ -8,9 +8,8 @@
  * const's `template` into components.json (→ llms.txt → the MCP `example`
  * tool), titled by the export name. Keep every template copy-pasteable.
  *
- * `rows`, `rowId`, `rowTile`, `treeRows`, `treeRowId`, `treeTile`, `treeParentId`,
- * `treeHasChildren`, `loadTreeChildren` and the two-way signals are members
- * of the consuming component — a template literal cannot express
+ * `rows`, `rowId`, `rowTile` and the two-way signals are members of the
+ * consuming component — a template literal cannot express
  * function-valued inputs. Real usage looks like:
  *
  * ```ts
@@ -68,23 +67,6 @@ export const SearchDriver = {
       [rowId]="rowId"
       [layout]="rowTile"
       (rowActivate)="onRow($event)"
-    />
-  `,
-};
-
-/** A tree of tiles over flat rows: `parentId` makes the hierarchy, and children load in batches. */
-export const Tree = {
-  template: `
-    <tm-tiles
-      style="block-size: 320px"
-      ariaLabel="Accounts"
-      [data]="treeRows"
-      [rowId]="treeRowId"
-      [layout]="treeTile"
-      [parentId]="treeParentId"
-      [hasChildren]="treeHasChildren"
-      [loadChildren]="loadTreeChildren"
-      [(expandedIds)]="treeExpandedIds"
     />
   `,
 };

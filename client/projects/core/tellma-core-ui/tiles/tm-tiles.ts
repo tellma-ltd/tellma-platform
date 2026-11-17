@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { NgTemplateOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   afterEveryRender,
   afterNextRender,
@@ -20,41 +20,36 @@ import {
   input,
   model,
   output,
+  PendingTasks,
   signal,
   type Signal,
   untracked,
   viewChild,
 } from '@angular/core';
-import { Check, ChevronDown, ChevronRight, Image } from 'lucide';
+import { Check, Image } from 'lucide';
 
-import { TM_ACTIVE_LOCALE, TM_BREAKPOINTS, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TM_BREAKPOINTS, TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmBadge, type TmBadgeTone } from '@tellma/core-ui/badge';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridDriverTarget, TmGridRowActivation } from '@tellma/core-ui/grid';
-import {
-  tmComputeAxisWindow,
-  ɵtmFlattenVisible,
-  ɵtmResolveTree,
-  type ɵTmTreeStructure,
-} from '@tellma/core-ui/grid-engine';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
-import { TmSpinner } from '@tellma/core-ui/spinner';
 
 import {
+  ɵtmTilesAssignSlots,
   ɵtmTilesColumns,
   ɵtmTilesLineCount,
   ɵtmTilesMove,
   ɵtmTilesRenderedLines,
+  ɵtmTilesSpan,
   type ɵTmTilesMove,
 } from './internal/tm-tiles-lattice';
+import type { ɵTmTilesRow, ɵTmTilesTree, ɵTmTilesTreePlace } from './internal/tm-tiles-tree-seam';
 import { TmTileContent, TmTilesEmpty, TmTilesLoading } from './tm-tiles-templates';
 import type { TmTileImage, TmTileLayout, TmTileText } from './tm-tiles-types';
 
-/** Lattice lines rendered beyond the visible ones on each side. */
-const OVERSCAN_LINES = 3;
 /** A second activation of the same row within this window (ms) is ignored. */
 const ACTIVATION_GUARD_MS = 400;
 /** A press that travels this far (px) before its click is a drag or a text selection, not a tap. */
@@ -75,6 +70,8 @@ let nextTilesId = 0;
 
 /** One corner's text, normalized from {@link TmTileText}. */
 interface Corner {
+  /** Where it sits: the suffix of its `tm-tiles__corner--` class. */
+  readonly place: 'top-end' | 'bottom-start' | 'bottom-end';
   readonly text: string;
   readonly numeric: boolean;
   readonly badge: TmBadgeTone | null;
@@ -87,25 +84,11 @@ interface TileContent {
   readonly href: string | null;
   /** `undefined`: the layout has no image column. */
   readonly image: TmTileImage | undefined;
-  readonly topEnd: Corner | null;
-  readonly bottomStart: Corner | null;
-  readonly bottomEnd: Corner | null;
+  /** The corners that have text, in reading order. */
+  readonly corners: readonly Corner[];
   readonly rowClass: string | null;
   /** The checkbox's accessible name ("Select …"); empty when not selectable. */
   readonly checkLabel: string;
-}
-
-/** One visible row, in display order: every row when flat, the expanded sequence in tree mode. */
-interface VisibleRow<T> {
-  readonly row: T;
-  readonly id: TmRowId;
-}
-
-/** Tree placement of the rows, for tree mode. */
-interface TreeInfo<T> {
-  readonly structure: ɵTmTreeStructure<T>;
-  /** Each row's 1-based position among its siblings. */
-  readonly posInSet: ReadonlyMap<TmRowId, number>;
 }
 
 /** One rendered tile. */
@@ -114,45 +97,42 @@ interface TileView<T> {
   readonly id: TmRowId;
   /** The position in the visible sequence. */
   readonly index: number;
-  readonly column: number;
   readonly elementId: string;
   readonly tabStop: boolean;
   readonly selected: boolean;
   readonly classes: string;
   readonly content: TileContent;
-  /** The image source to load now: `null` shows the placeholder (no source, or held while scrolling). */
-  readonly imageSrc: string | null;
-  /** Tree mode: the 1-based depth, and whether the row expands, is expanded and is loading. */
-  readonly level: number;
-  readonly expandable: boolean;
-  readonly expanded: boolean;
-  readonly loading: boolean;
+  /**
+   * The image source to load now, as at most one entry keyed by itself, so
+   * a tile that moves to another row's image gets a fresh `tm-image`; empty
+   * shows the placeholder (no source, or held while scrolling).
+   */
+  readonly images: readonly string[];
 }
 
 /** One rendered lattice line. */
 interface LineView<T> {
   readonly index: number;
+  /** What the line's element is tracked by: a slot the line keeps while rendered, then hands on. */
+  readonly slot: number;
   readonly top: number;
   readonly tiles: readonly TileView<T>[];
-  /** Tree mode's row attributes, from the line's one tile; `null` when flat. */
-  readonly tree: {
-    readonly level: number;
-    readonly expanded: boolean | null;
-    readonly posInSet: number;
-    readonly setSize: number;
-    readonly busy: boolean;
-  } | null;
+  /** Tree mode's place of the line's one tile: its row attributes and chrome; `null` when flat. */
+  readonly tree: ɵTmTilesTreePlace | null;
 }
 
-/** Normalizes one corner. */
-function corner(value: TmTileText | null | undefined): Corner | null {
-  if (value === null || value === undefined) {
-    return null;
+/** Normalizes one corner into the list of those with text. */
+function corner(
+  corners: Corner[],
+  place: Corner['place'],
+  value: TmTileText | null | undefined,
+): void {
+  // No corner for null, undefined or empty text.
+  if (!value) {
+    return;
   }
-  if (typeof value === 'string') {
-    return value === '' ? null : { text: value, numeric: false, badge: null };
-  }
-  return { text: value.text, numeric: value.numeric === true, badge: value.badge ?? null };
+  const { text, numeric, badge } = typeof value === 'string' ? { text: value } : value;
+  corners.push({ place, text, numeric: numeric === true, badge: badge ?? null });
 }
 
 /** Reads a px length token, or the fallback while it is unresolvable. */
@@ -165,11 +145,13 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
  * Rows as a virtualized lattice of fixed-size tiles — an image and four
  * text corners each — for browsing records as cards rather than a table.
  * Columns follow the container width (tiles at least 220px wide); below the
- * small breakpoint the lattice becomes a divided list, and with `parentId`
- * set it is a single-column tree whose children load lazily in batches.
- * Its members mirror the data grid's, so a page can swap grid and tiles
- * over one state, and `<input [tmGridDriver]="tiles">` moves the active
- * tile from a search field.
+ * small breakpoint the lattice becomes a divided list. Bound with
+ * `[parentId]` through `TmTilesTree` (from `@tellma/core-ui/tiles-tree`),
+ * it is a single-column tree whose children load lazily in batches, so a
+ * flat list carries none of the tree's code. Its members mirror the data
+ * grid's, so a page can swap grid and tiles over one state, and
+ * `<input [tmGridDriver]="tiles">` moves the active tile from a search
+ * field.
  *
  * ```html
  * <tm-tiles
@@ -187,8 +169,8 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
  * @tmA11yNotes Flat, the list is an APG layout grid: `role="grid"` with
  *   `aria-rowcount` and `aria-colcount` over every line, each lattice line
  *   a `row` and each tile a `gridcell` with `aria-colindex` (and
- *   `aria-selected` when selectable). In tree mode it is a `treegrid` of
- *   one cell per row, the rows carrying `aria-level`, `aria-expanded`,
+ *   `aria-selected` when selectable). In tree mode (`TmTilesTree`) it is a
+ *   `treegrid` of one cell per row, the rows carrying `aria-level`, `aria-expanded`,
  *   `aria-posinset` and `aria-setsize`; a row whose children load is
  *   `aria-busy`. One tab stop: the arrows move between tiles in the live
  *   direction (Up/Down keep the column), Home/End go to the line's ends,
@@ -205,7 +187,15 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
  */
 @Component({
   selector: 'tm-tiles',
-  imports: [NgTemplateOutlet, TmBadge, TmIcon, TmImage, TmImagePlaceholder, TmSkeleton, TmSpinner],
+  imports: [
+    NgComponentOutlet,
+    NgTemplateOutlet,
+    TmBadge,
+    TmIcon,
+    TmImage,
+    TmImagePlaceholder,
+    TmSkeleton,
+  ],
   template: `
     <!-- The scroll container is the grid: lines are its rows, tiles its
          cells. Pointer and keyboard handling is delegated here. -->
@@ -227,7 +217,7 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
       (click)="onClick($event)"
       (auxclick)="onAuxClick($event)"
       (focusin)="onFocusIn($event)"
-      (focusout)="onFocusOut($event)"
+      (focusout)="onFocusOut()"
     >
       <div class="tm-tiles__canvas" [style.block-size.px]="extent()">
         <!-- Skeleton tiles hold the final geometry while the first data loads. -->
@@ -255,8 +245,13 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
           }
         }
 
-        <!-- The windowed lines, plus the active tile's line wherever it is. -->
-        @for (line of lines(); track line.index) {
+        <!-- The windowed lines, plus the active tile's line wherever it is.
+             Lines are tracked by slot and built-in tiles by position, so a
+             scroll re-binds the elements of the lines that leave to the
+             lines that enter instead of rebuilding them; the DOM stays in
+             line order for the reading order. A custom body's tiles are
+             tracked by row: its views are never re-bound to another row. -->
+        @for (line of lines(); track line.slot) {
           <div
             class="tm-tiles__line"
             role="row"
@@ -265,40 +260,28 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
             [attr.aria-expanded]="line.tree?.expanded ?? null"
             [attr.aria-posinset]="line.tree?.posInSet ?? null"
             [attr.aria-setsize]="line.tree?.setSize ?? null"
-            [attr.aria-busy]="line.tree?.busy ? 'true' : null"
+            [attr.aria-busy]="line.tree?.loading ? 'true' : null"
             [style.transform]="'translateY(' + line.top + 'px)'"
           >
-            @for (tile of line.tiles; track tile.id) {
+            @for (tile of line.tiles; track contentDef() ? tile.id : $index) {
               <div
                 role="gridcell"
                 class="tm-tiles__item"
                 [class]="tile.classes"
                 [id]="tile.elementId"
                 [attr.data-index]="tile.index"
-                [attr.aria-colindex]="tile.column + 1"
+                [attr.aria-colindex]="$index + 1"
                 [attr.aria-selected]="selectable() ? tile.selected : null"
                 [attr.tabindex]="tile.tabStop ? 0 : -1"
-                [style.--tm-tiles-level]="tile.level"
+                [style.--tm-tiles-level]="line.tree?.level ?? 1"
               >
-                <!-- Tree chrome: the indent, the twisty, and the reserved spinner slot. -->
-                @if (tree()) {
-                  <span
-                    class="tm-tiles__twisty"
-                    data-tm-twisty
-                    aria-hidden="true"
-                    [class.tm-tiles__twisty--open]="tile.expanded"
-                  >
-                    @if (tile.expandable) {
-                      <tm-icon [svg]="tile.expanded ? expandedGlyph : collapsedGlyph" />
-                    }
-                  </span>
-                  @if (loadChildren()) {
-                    <span class="tm-tiles__spinner-slot">
-                      @if (tile.loading) {
-                        <tm-spinner />
-                      }
-                    </span>
-                  }
+                <!-- Tree chrome, the tree's own: the twisty and the reserved
+                     spinner slot (the indent is the tile's padding). -->
+                @if (line.tree; as place) {
+                  <ng-container
+                    [ngComponentOutlet]="treeMode()!.affordance"
+                    [ngComponentOutletInputs]="{ place }"
+                  />
                 }
                 <!-- The reserved checkbox: a pointer target that toggles selection only. -->
                 @if (selectable()) {
@@ -326,16 +309,18 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                   </div>
                 } @else {
                   <!-- The built-in body: the image column, then the four corners. -->
-                  <!-- Static DOM throughout: no embedded view per corner, so a
-                       window of new tiles costs elements, not views. -->
+                  <!-- Inline markup, no shared templates: a reused tile
+                       re-binds its title and corners in place. -->
                   @let content = tile.content;
                   @if (content.image; as image) {
                     <span class="tm-tiles__image">
                       <!-- A tile that arrives mid-scroll holds its source until
                            scrolling settles, so a fling fetches and decodes
                            nothing; the window already bounds the instances,
-                           so tm-image's own viewport deferral is off. -->
-                      @if (tile.imageSrc; as src) {
+                           so tm-image's own viewport deferral is off. The
+                           image is keyed by its source: a re-bound tile never
+                           shows its previous row's image. -->
+                      @for (src of tile.images; track src) {
                         <tm-image
                           [src]="src"
                           [etag]="image.etag ?? null"
@@ -349,7 +334,7 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                             <tm-icon [svg]="placeholderGlyph" />
                           </span>
                         </tm-image>
-                      } @else {
+                      } @empty {
                         <span class="tm-tiles__placeholder">
                           <tm-icon [svg]="placeholderGlyph" />
                         </span>
@@ -357,22 +342,15 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                     </span>
                   }
                   <span class="tm-tiles__text">
-                    <!-- The title: plain, or as parts each isolated in its own <bdi>. -->
-                    <span class="tm-tiles__title">
-                      @if (content.href; as href) {
-                        <a class="tm-tiles__link" tabindex="-1" [href]="href">
-                          @if (content.titleParts; as parts) {
-                            @for (part of parts; track $index) {
-                              @if (!$first) {
-                                {{ ' - ' }}
-                              }
-                              <bdi>{{ part }}</bdi>
-                            }
-                          } @else {
-                            {{ content.title }}
-                          }
-                        </a>
-                      } @else if (content.titleParts; as parts) {
+                    <!-- The title, a link when the row has one (without an
+                         href the <a> is no link and takes no focus): plain,
+                         or as parts each isolated in its own <bdi>. -->
+                    <a
+                      class="tm-tiles__title"
+                      [attr.href]="content.href"
+                      [attr.tabindex]="content.href === null ? null : -1"
+                    >
+                      @if (content.titleParts; as parts) {
                         @for (part of parts; track $index) {
                           @if (!$first) {
                             {{ ' - ' }}
@@ -382,38 +360,14 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
                       } @else {
                         {{ content.title }}
                       }
-                    </span>
+                    </a>
                     <!-- The corners: text, numeric text (LTR, tabular,
-                         physically right), or a badge. -->
-                    @if (content.topEnd; as value) {
+                         physically right), or a badge. They hold no state of
+                         their own, so they re-bind in place by position. -->
+                    @for (value of content.corners; track $index) {
                       <span
-                        class="tm-tiles__corner tm-tiles__corner--top-end"
-                        [class.tm-tiles__corner--numeric]="value.numeric"
-                        [attr.dir]="value.numeric ? 'ltr' : null"
-                      >
-                        @if (value.badge; as tone) {
-                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
-                        } @else {
-                          {{ value.text }}
-                        }
-                      </span>
-                    }
-                    @if (content.bottomStart; as value) {
-                      <span
-                        class="tm-tiles__corner tm-tiles__corner--bottom-start"
-                        [class.tm-tiles__corner--numeric]="value.numeric"
-                        [attr.dir]="value.numeric ? 'ltr' : null"
-                      >
-                        @if (value.badge; as tone) {
-                          <tm-badge [tone]="tone">{{ value.text }}</tm-badge>
-                        } @else {
-                          {{ value.text }}
-                        }
-                      </span>
-                    }
-                    @if (content.bottomEnd; as value) {
-                      <span
-                        class="tm-tiles__corner tm-tiles__corner--bottom-end"
+                        class="tm-tiles__corner"
+                        [class]="'tm-tiles__corner--' + value.place"
                         [class.tm-tiles__corner--numeric]="value.numeric"
                         [attr.dir]="value.numeric ? 'ltr' : null"
                       >
@@ -461,7 +415,6 @@ function pxToken(style: CSSStyleDeclaration, name: string, fallback: number): nu
 export class TmTiles<T> implements TmGridDriverTarget {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly translate = inject(TM_UI_TRANSLATE);
-  private readonly locale = inject(TM_ACTIVE_LOCALE);
   private readonly announcer = inject(LiveAnnouncer);
   private readonly changeDetector = inject(ChangeDetectorRef);
 
@@ -501,30 +454,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
    */
   readonly rowClass = input<((row: T) => string | null) | undefined>(undefined);
   /**
-   * Reads a row's parent id (`null` for a root). Set, the tiles are a
-   * single-column tree over the flat rows; a parent id that resolves to no
-   * row, or that closes a cycle, renders the row as a root.
-   */
-  readonly parentId = input<((row: T) => TmRowId | null) | undefined>(undefined);
-  /** Marks rows whose children may not be loaded yet, so they show a twisty before any child exists. */
-  readonly hasChildren = input<((row: T) => boolean) | undefined>(undefined);
-  /**
-   * The expanded row ids, two-way: the tree's only expansion state. Ids of
-   * rows that are not present are kept and expand when their rows arrive.
-   */
-  readonly expandedIds = model<ReadonlySet<TmRowId>>(new Set());
-  /**
-   * Loads the children of a batch of expanded rows: append the fetched rows
-   * to `data` and resolve. Every expanded `hasChildren` row with no loaded
-   * children that one moment collects arrives in one call, in data order —
-   * the first bind, a written `expandedIds`, the rows a resolved batch
-   * brings (so a deep expansion loads a level per batch), or the expands a
-   * user makes within one task. A row that loads no children becomes a
-   * leaf, until a refresh binds a new object for it. A rejection collapses
-   * the batch's rows and announces once.
-   */
-  readonly loadChildren = input<((rows: readonly T[]) => Promise<void>) | undefined>(undefined);
-  /**
    * Emits when a tile opens: a click or tap anywhere but the checkbox and
    * the twisty, Enter, or `activateRow`. `newTab` is set for a Mod-click, a
    * middle click and Mod+Enter. A second activation of the same row within
@@ -543,12 +472,18 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** The scroll container. */
   private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');
 
+  // ---- tree mode ----
+
+  /**
+   * The tree applied to these tiles, which `TmTilesTree` sets on itself
+   * when it is created on the same element; `null` for a flat list.
+   *
+   * @internal
+   */
+  readonly ɵtree = signal<ɵTmTilesTree<T> | null>(null);
+
   // ---- glyphs and constants the template reads ----
 
-  /** A collapsed row's twisty, mirrored in RTL. */
-  protected readonly collapsedGlyph = { node: ChevronRight, mirrorInRtl: true };
-  /** An expanded row's twisty. */
-  protected readonly expandedGlyph = ChevronDown;
   /** The checkbox's check. */
   protected readonly checkGlyph = Check;
   /** The image placeholder's glyph. */
@@ -595,8 +530,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
   private pendingFocus = false;
   /** Whether focus is inside the scroller, so a re-render that drops it gets it back. */
   private focusWithin = false;
-  /** The press a click is measured against for the tap slop. */
-  private press: { readonly x: number; readonly y: number } | null = null;
+  /** The row whose tile last took focus: a tile re-bound to another row under focus hands it on. */
+  private focusedId: TmRowId | undefined;
+  /** The press a click is measured against: the tap slop, and the row pressed. */
+  private press: {
+    readonly x: number;
+    readonly y: number;
+    readonly id: TmRowId | undefined;
+  } | null = null;
   /** The last activation, for the repeat guard. */
   private lastActivation: { readonly id: TmRowId; readonly at: number } | null = null;
   /** The flashing tile and its keyframes (`1` or `2`, alternating so a re-flash restarts). */
@@ -604,25 +545,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** Clears the flash once it has run. */
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // ---- tree loading state ----
-
-  /** Rows whose children batch is in flight. */
-  private readonly inFlight = signal<ReadonlySet<TmRowId>>(new Set());
-  /**
-   * The row objects whose children batch resolved, by id: one that brought
-   * no children is a leaf while that same object stays. A refresh brings new
-   * row objects, which may load again; an append keeps them.
-   */
-  private readonly settled = signal<ReadonlyMap<TmRowId, T>>(new Map());
-  /** Whether a batch flush is queued for the end of the task. */
-  private flushQueued = false;
-  /** Set on destroy: loads still in flight settle silently. */
-  private destroyed = false;
-
   // ---- derived state ----
 
+  /** The tree's rows on show while one is applied with a parent reader bound; `null` when flat. */
+  private readonly treeRows = computed(() => this.ɵtree()?.rows() ?? null);
+  /** The tree the tiles are, or `null` when flat. */
+  protected readonly treeMode = computed(() => (this.treeRows() === null ? null : this.ɵtree()));
   /** Whether the tiles are a tree. */
-  protected readonly tree = computed(() => this.parentId() !== undefined);
+  protected readonly tree = computed(() => this.treeMode() !== null);
   /** Whether the tiles stack one per line: narrow, or a tree. */
   protected readonly stacked = computed(() => this.tree() || !(this.width() >= TM_BREAKPOINTS.sm));
   /** Tiles per line. Recomputed on resize only: the width changes nowhere else. */
@@ -641,50 +571,14 @@ export class TmTiles<T> implements TmGridDriverTarget {
     return geometry.height + (this.stacked() ? 0 : geometry.gap);
   });
 
-  /** The tree's resolved structure and sibling positions; `null` when flat. */
-  private readonly treeInfo = computed((): TreeInfo<T> | null => {
-    const parentIdOf = this.parentId();
-    if (parentIdOf === undefined) {
-      return null;
+  /** The rows on show, in display order: every row when flat, the tree's expanded sequence. */
+  private readonly visible = computed((): readonly ɵTmTilesRow<T>[] => {
+    const rows = this.treeRows();
+    if (rows !== null) {
+      return rows;
     }
-    const hasChildrenOf = this.hasChildren();
-    const settled = this.settled();
     const rowIdOf = this.rowId();
-    // A row whose children loaded and brought none is a leaf: no twisty, no
-    // second load, until a refresh replaces the row object.
-    const structure = ɵtmResolveTree(
-      this.data(),
-      rowIdOf,
-      parentIdOf,
-      hasChildrenOf === undefined
-        ? null
-        : (row: T) => hasChildrenOf(row) && settled.get(rowIdOf(row)) !== row,
-    );
-    const posInSet = new Map<TmRowId, number>();
-    const number = (ids: readonly TmRowId[]): void => {
-      for (let i = 0; i < ids.length; i++) {
-        posInSet.set(ids[i], i + 1);
-      }
-    };
-    number(structure.roots);
-    for (const node of structure.nodes.values()) {
-      number(node.children);
-    }
-    return { structure, posInSet };
-  });
-
-  /** The rows on show, in display order. */
-  private readonly visible = computed((): readonly VisibleRow<T>[] => {
-    const info = this.treeInfo();
-    if (info === null) {
-      const rowIdOf = this.rowId();
-      return this.data().map((row) => ({ row, id: rowIdOf(row) }));
-    }
-    const nodes = info.structure.nodes;
-    return ɵtmFlattenVisible(info.structure, this.expandedIds()).map((id) => ({
-      row: nodes.get(id)!.row,
-      id,
-    }));
+    return this.data().map((row) => ({ row, id: rowIdOf(row) }));
   });
 
   /** Each visible row's index, by id. */
@@ -710,23 +604,40 @@ export class TmTiles<T> implements TmGridDriverTarget {
     ɵtmTilesLineCount({ columns: this.columns(), count: this.visible().length }),
   );
 
+  /**
+   * The offset a scroll started at, while its own frame holds the overscan
+   * back: set by the scroll and cleared in the next task, so a jump's frame
+   * re-binds only lines it already has and the overscan follows in a task
+   * of its own.
+   */
+  private readonly sliceFrom = signal<number | null>(null);
+  /** Keeps the application unstable until the held-back overscan renders. */
+  private readonly pendingTasks = inject(PendingTasks);
+
   /** The windowed lines over the scroll position. */
   private readonly lineWindow = computed(
     () =>
-      tmComputeAxisWindow({
-        scrollOffset: this.scrollTop(),
-        viewportSize: this.viewportHeight(),
-        itemSize: this.pitch(),
-        itemCount: this.lineCount(),
-        overscan: OVERSCAN_LINES,
-      }),
+      ɵtmTilesSpan(
+        this.scrollTop(),
+        this.sliceFrom(),
+        this.pitch(),
+        this.lineCount(),
+        this.viewportHeight(),
+      ),
     // A scroll within the same lines renders nothing new.
-    { equal: (a, b) => a.start === b.start && a.end === b.end && a.totalSize === b.totalSize },
+    { equal: (a, b) => a.start === b.start && a.end === b.end },
   );
+
+  /**
+   * The slot each line had in the last render, by line in rendering order:
+   * the lines a render keeps hold their slots, and the lines it brings in
+   * take the slots of those it drops.
+   */
+  private lineSlots = new Map<number, number>();
 
   /** The canvas height: every line at the pitch. */
   protected readonly extent = computed(() =>
-    this.showSkeleton() ? 0 : this.lineWindow().totalSize,
+    this.showSkeleton() ? 0 : this.lineCount() * this.pitch(),
   );
 
   /**
@@ -752,24 +663,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** The skeleton's tiles per line. */
   protected readonly skeletonColumns = computed(() => indexes(this.columns()));
 
-  /** Rows waiting on their children: expanded, on show, marked, with none loaded and a loader bound. */
-  private readonly loadingIds = computed((): ReadonlySet<TmRowId> => {
-    const info = this.treeInfo();
-    const hasChildrenOf = this.hasChildren();
-    if (info === null || hasChildrenOf === undefined || this.loadChildren() === undefined) {
-      return new Set();
-    }
-    const expanded = this.expandedIds();
-    const waiting = new Set<TmRowId>();
-    for (const { id } of this.visible()) {
-      const node = info.structure.nodes.get(id)!;
-      if (node.expandable && node.children.length === 0 && expanded.has(id)) {
-        waiting.add(id);
-      }
-    }
-    return waiting;
-  });
-
   /** The rendered lines and their tiles. */
   protected readonly lines = computed((): readonly LineView<T>[] => {
     const rows = this.visible();
@@ -778,27 +671,31 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const window = this.lineWindow();
     const active = this.activeIndex();
     const selected = this.selectable() ? this.selectedIds() : null;
-    const expanded = this.expandedIds();
     const flash = this.flash();
-    const info = this.treeInfo();
-    const loadingIds = this.loadingIds();
+    const tree = this.treeMode();
     const cache = this.contentCache();
     const scrolling = this.scrolling();
     const shownImages = this.shownImages;
     // One tab stop: the active tile, else the first rendered one.
     const tabStop = active ?? Math.min(window.start * columns, rows.length - 1);
-    const lineIndexes = ɵtmTilesRenderedLines(
-      window.start,
-      window.end,
-      active === null ? null : Math.floor(active / columns),
+    // The windowed lines, plus the active tile's line wherever it is, each
+    // with its slot. Slots follow from the last render's, and the same lines
+    // keep the same slots, so re-running this for another reason (a
+    // selection) re-binds nothing.
+    this.lineSlots = ɵtmTilesAssignSlots(
+      ɵtmTilesRenderedLines(
+        window.start,
+        window.end,
+        active === null ? null : Math.floor(active / columns),
+      ),
+      this.lineSlots,
     );
-    return lineIndexes.map((line): LineView<T> => {
+    return Array.from(this.lineSlots, ([line, slot]): LineView<T> => {
       const tiles: TileView<T>[] = [];
       const end = Math.min(rows.length, (line + 1) * columns);
       for (let index = line * columns; index < end; index++) {
         const { row, id } = rows[index];
         const content = this.contentOf(row, cache);
-        const node = info?.structure.nodes.get(id);
         const isSelected = selected?.has(id) === true;
         // The tile's state classes, after the consumer's.
         let classes = content.rowClass ?? '';
@@ -811,42 +708,27 @@ export class TmTiles<T> implements TmGridDriverTarget {
         if (flash !== null && flash.id === id) {
           classes += flash.keyframes === 1 ? ' tm-tiles__item--flash' : ' tm-tiles__item--reflash';
         }
+        const src = this.imageSrcOf(row, content, scrolling, shownImages);
         tiles.push({
           row,
           id,
+          images: src === null ? [] : [src],
           index,
-          column: index - line * columns,
           elementId: `${this.idPrefix}-t${index}`,
           tabStop: index === tabStop,
           selected: isSelected,
           classes,
           content,
-          imageSrc: this.imageSrcOf(row, content, scrolling, shownImages),
-          level: node === undefined ? 1 : node.level + 1,
-          expandable: node?.expandable === true,
-          expanded: node?.expandable === true && expanded.has(id),
-          loading: loadingIds.has(id),
         });
       }
+      // A tree is one tile per line: the line carries its row's place.
       const first = tiles[0];
-      const parent = parentOf(info, first?.id);
       return {
         index: line,
+        slot,
         top: line * pitch,
         tiles,
-        tree:
-          info === null || first === undefined
-            ? null
-            : {
-                level: first.level,
-                expanded: first.expandable ? first.expanded : null,
-                posInSet: info.posInSet.get(first.id) ?? 1,
-                setSize:
-                  parent === null
-                    ? info.structure.roots.length
-                    : (info.structure.nodes.get(parent)?.children.length ?? 1),
-                busy: first.loading,
-              },
+        tree: tree === null || first === undefined ? null : tree.place(first.id),
       };
     });
   });
@@ -897,29 +779,13 @@ export class TmTiles<T> implements TmGridDriverTarget {
           this.lastActiveIndex = at;
           return;
         }
-        const nodes = this.treeInfo()?.structure.nodes;
-        let ancestor = nodes?.get(id)?.parentId ?? null;
-        while (ancestor !== null && !index.has(ancestor)) {
-          ancestor = nodes?.get(ancestor)?.parentId ?? null;
-        }
+        const ancestor = this.treeMode()?.shownAncestor(id, index) ?? null;
         const rows = this.visible();
         const next =
           ancestor ??
           (rows.length === 0 ? null : rows[Math.min(this.lastActiveIndex, rows.length - 1)].id);
         this.setActive(next, { reveal: false, focus: this.focusWithin });
       });
-    });
-
-    // Lazy children: rows waiting on a load are batched at the end of the
-    // task, so a bind, a written expansion or a burst of expands is one call.
-    effect(() => {
-      const waiting = this.loadingIds();
-      const flying = this.inFlight();
-      if (this.flushQueued || ![...waiting].some((id) => !flying.has(id))) {
-        return;
-      }
-      this.flushQueued = true;
-      queueMicrotask(() => this.flushLoads());
     });
 
     // Measure once the scroller exists, then on every resize: the width
@@ -939,7 +805,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
     afterEveryRender({ write: () => this.afterRender() });
 
     destroyRef.onDestroy(() => {
-      this.destroyed = true;
       clearTimeout(this.flashTimer);
       clearTimeout(this.scrollTimer);
     });
@@ -1013,6 +878,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** Tracks the scroll offset for the line window. */
   protected onScroll(): void {
+    // The scroll's own frame re-binds the lines it has; the overscan
+    // renders in the next task, so a jump splits into two shorter tasks.
+    if (this.sliceFrom() === null) {
+      this.sliceFrom.set(this.scrollTop());
+      const done = this.pendingTasks.add();
+      setTimeout(() => {
+        this.sliceFrom.set(null);
+        done();
+      });
+    }
     this.scrollTop.set(this.scroller().nativeElement.scrollTop);
     this.scrolling.set(true);
     clearTimeout(this.scrollTimer);
@@ -1043,10 +918,17 @@ export class TmTiles<T> implements TmGridDriverTarget {
           return;
         }
         const forward = (event.key === 'ArrowRight') !== rtl;
-        if (this.tree()) {
-          this.treeArrow(forward);
-        } else {
+        const tree = this.treeMode();
+        if (tree === null) {
           this.move({ kind: 'step', by: forward ? 1 : -1 }, true);
+          break;
+        }
+        // The tree's Right and Left: expand or enter, collapse or leave.
+        const to = tree.arrow(this.activeId(), forward);
+        if (to === 'first') {
+          this.move({ kind: 'first' }, true);
+        } else if (to !== null) {
+          this.setActive(to, { reveal: true, focus: true });
         }
         break;
       }
@@ -1099,15 +981,15 @@ export class TmTiles<T> implements TmGridDriverTarget {
     event.preventDefault();
   }
 
-  /** Records a press for the tap slop; keeps a middle press from starting autoscroll. */
+  /** Records a press and its row for the click; keeps a middle press from starting autoscroll. */
   protected onPointerDown(event: PointerEvent): void {
-    this.press = { x: event.clientX, y: event.clientY };
+    const row = this.rowAt(event.target);
+    this.press = { x: event.clientX, y: event.clientY, id: row?.id };
     if (
       event.button === 1 &&
       event.pointerType !== 'touch' &&
-      event.target instanceof Element &&
-      event.target.closest('a[href]') === null &&
-      this.tileElement(event.target) !== null
+      row &&
+      (event.target as Element).closest('a[href]') === null
     ) {
       event.preventDefault();
     }
@@ -1123,24 +1005,20 @@ export class TmTiles<T> implements TmGridDriverTarget {
     // Each press measures one click only.
     const press = this.press;
     this.press = null;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
+    const row = this.rowAt(event.target);
+    // A click on another row than the press's (its tile re-bound in place
+    // between press and release, as when rows arrive above) is no click on
+    // either row.
+    if (row === undefined || this.pressedElsewhere(press, row.id, event)) {
       return;
     }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row === undefined) {
-      return;
-    }
-    const element = target as Element;
+    const element = event.target as Element;
     if (element.closest('[data-tm-check]') !== null) {
       this.toggleSelected(row.id);
       return;
     }
     if (element.closest('[data-tm-twisty]') !== null) {
-      if (this.treeInfo()?.structure.nodes.get(row.id)?.expandable === true) {
-        this.setExpanded(row.id, !this.expandedIds().has(row.id));
-      }
+      this.treeMode()?.toggle(row.id);
       return;
     }
     const apple = tmIsApplePlatform();
@@ -1171,15 +1049,13 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /** A middle click outside a link opens the tile in a new tab; on a link it is the browser's. */
   protected onAuxClick(event: MouseEvent): void {
-    if (event.button !== 1 || !(event.target instanceof Element)) {
-      return;
-    }
-    const tile = this.tileElement(event.target);
-    if (tile === null || event.target.closest('a[href]') !== null) {
-      return;
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
-    if (row !== undefined) {
+    const row = this.rowAt(event.target);
+    if (
+      event.button === 1 &&
+      row &&
+      (event.target as Element).closest('a[href]') === null &&
+      !this.pressedElsewhere(this.press, row.id, event)
+    ) {
       this.activate(row.id, 'pointer', true);
     }
   }
@@ -1187,26 +1063,28 @@ export class TmTiles<T> implements TmGridDriverTarget {
   /** Focus entering a tile makes it active; focus on its title link moves to the tile. */
   protected onFocusIn(event: FocusEvent): void {
     this.focusWithin = true;
-    const target = event.target;
-    const tile = target instanceof Element ? this.tileElement(target) : null;
-    if (tile === null) {
-      return;
+    // Focus lands on elements only.
+    const target = event.target as Element;
+    if (target.classList.contains('tm-tiles__title')) {
+      this.tileElement(target)?.focus({ preventScroll: true });
     }
-    if (target !== tile && (target as Element).classList.contains('tm-tiles__link')) {
-      tile.focus({ preventScroll: true });
-    }
-    const row = this.visible()[Number(tile.dataset['index'])];
+    const row = this.rowAt(target);
+    this.focusedId = row?.id;
     if (row !== undefined && row.id !== this.activeId()) {
       this.setActive(row.id, { reveal: false, focus: false });
     }
   }
 
-  /** Focus leaving the list ends the focus reclaim. */
-  protected onFocusOut(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    if (!(next instanceof Node) || !this.scroller().nativeElement.contains(next)) {
-      this.focusWithin = false;
-    }
+  /**
+   * Focus leaving the list ends the focus reclaim, decided once the focus
+   * change settles: a render that moves the focused tile's element to
+   * another place in the list blurs it on the way, and gets focus back
+   * before the task ends.
+   */
+  protected onFocusOut(): void {
+    queueMicrotask(() => {
+      this.focusWithin = this.scroller().nativeElement.contains(document.activeElement);
+    });
   }
 
   // ---- internals ----
@@ -1226,14 +1104,16 @@ export class TmTiles<T> implements TmGridDriverTarget {
     const layout = this.layout();
     const parts = layout.titleParts?.(row) ?? null;
     const title = layout.title(row);
+    const corners: Corner[] = [];
+    corner(corners, 'top-end', layout.topEnd?.(row));
+    corner(corners, 'bottom-start', layout.bottomStart?.(row));
+    corner(corners, 'bottom-end', layout.bottomEnd?.(row));
     return {
       title,
       titleParts: parts !== null && parts.length > 0 ? parts : null,
       href: layout.href?.(row) ?? null,
       image: layout.image?.(row),
-      topEnd: corner(layout.topEnd?.(row)),
-      bottomStart: corner(layout.bottomStart?.(row)),
-      bottomEnd: corner(layout.bottomEnd?.(row)),
+      corners,
       rowClass: this.rowClass()?.(row) ?? null,
       checkLabel: this.selectable() ? this.translate('tiles.select', { label: title })() : '',
     };
@@ -1259,6 +1139,24 @@ export class TmTiles<T> implements TmGridDriverTarget {
       return src;
     }
     return shownImages.has(row) ? src : null;
+  }
+
+  /** The row the tile holding `target` shows now, if `target` is in a tile. */
+  private rowAt(target: EventTarget | null): ɵTmTilesRow<T> | undefined {
+    const tile = target instanceof Element ? this.tileElement(target) : null;
+    return tile === null ? undefined : this.visible()[Number(tile.dataset['index'])];
+  }
+
+  /**
+   * Whether a pointer click's press was on another row than `id`; a click
+   * with no press of its own (`detail` 0) never is.
+   */
+  private pressedElsewhere(
+    press: { readonly id: TmRowId | undefined } | null,
+    id: TmRowId,
+    event: MouseEvent,
+  ): boolean {
+    return press !== null && event.detail !== 0 && press.id !== id;
   }
 
   /** The tile element a target is in, if it is one of this list's. */
@@ -1299,28 +1197,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
     this.moveColumn = result.column;
   }
 
-  /** Tree mode's Right and Left (mapped): expand or enter, collapse or leave. */
-  private treeArrow(forward: boolean): void {
-    const id = this.activeId();
-    const node = id === null ? undefined : this.treeInfo()?.structure.nodes.get(id);
-    if (id === null || node === undefined) {
-      this.move({ kind: 'first' }, true);
-      return;
-    }
-    const expanded = this.expandedIds().has(id);
-    if (forward) {
-      if (node.expandable && !expanded) {
-        this.setExpanded(id, true);
-      } else if (expanded && node.children.length > 0) {
-        this.setActive(node.children[0], { reveal: true, focus: true });
-      }
-    } else if (node.expandable && expanded) {
-      this.setExpanded(id, false);
-    } else if (node.parentId !== null) {
-      this.setActive(node.parentId, { reveal: true, focus: true });
-    }
-  }
-
   /**
    * Makes a row the active tile and writes `activeRowId`. `reveal` scrolls it
    * into view (nearest) after the render; `focus` moves focus to it.
@@ -1342,32 +1218,11 @@ export class TmTiles<T> implements TmGridDriverTarget {
 
   /**
    * Prepares a row to be shown: `false` when no row has the id; in tree
-   * mode, expands its collapsed ancestors.
+   * mode, the tree expands its collapsed ancestors.
    */
   private reveal(id: TmRowId): boolean {
-    const info = this.treeInfo();
-    if (info === null) {
-      return this.indexById().has(id);
-    }
-    const nodes = info.structure.nodes;
-    if (!nodes.has(id)) {
-      return false;
-    }
-    const expanded = this.expandedIds();
-    const missing: TmRowId[] = [];
-    for (
-      let parent = nodes.get(id)!.parentId;
-      parent !== null;
-      parent = nodes.get(parent)!.parentId
-    ) {
-      if (!expanded.has(parent)) {
-        missing.push(parent);
-      }
-    }
-    if (missing.length > 0) {
-      this.expandedIds.set(new Set([...expanded, ...missing]));
-    }
-    return true;
+    const tree = this.treeMode();
+    return tree === null ? this.indexById().has(id) : tree.reveal(id);
   }
 
   /** Opens a row, unless the same row opened within the guard window. */
@@ -1436,77 +1291,6 @@ export class TmTiles<T> implements TmGridDriverTarget {
     );
   }
 
-  /** Expands or collapses one row through the two-way expansion. */
-  private setExpanded(id: TmRowId, open: boolean): void {
-    const next = new Set(this.expandedIds());
-    if (open) {
-      next.add(id);
-    } else {
-      next.delete(id);
-    }
-    this.expandedIds.set(next);
-  }
-
-  /**
-   * Calls `loadChildren` once with every waiting row that is not in flight,
-   * in data order. A resolved batch settles its rows (a row that brought no
-   * children becomes a leaf); a rejected one collapses them and announces
-   * once.
-   */
-  private flushLoads(): void {
-    this.flushQueued = false;
-    const load = this.loadChildren();
-    const info = this.treeInfo();
-    if (this.destroyed || load === undefined || info === null) {
-      return;
-    }
-    const flying = this.inFlight();
-    const batch = [...this.loadingIds()]
-      .filter((id) => !flying.has(id))
-      .map((id) => info.structure.nodes.get(id)!)
-      .sort((a, b) => a.modelIndex - b.modelIndex);
-    if (batch.length === 0) {
-      return;
-    }
-    const ids = batch.map((node) => node.id);
-    this.inFlight.set(new Set([...flying, ...ids]));
-    const settle = (resolved: boolean): void => {
-      if (this.destroyed) {
-        return;
-      }
-      const remaining = new Set(this.inFlight());
-      for (const id of ids) {
-        remaining.delete(id);
-      }
-      this.inFlight.set(remaining);
-      if (resolved) {
-        const next = new Map(this.settled());
-        for (const node of batch) {
-          next.set(node.id, node.row);
-        }
-        this.settled.set(next);
-        return;
-      }
-      // The failed rows collapse and leave the expansion; the next expand
-      // tries again.
-      const expanded = new Set(this.expandedIds());
-      for (const id of ids) {
-        expanded.delete(id);
-      }
-      this.expandedIds.set(expanded);
-      const titles = batch.map((node) => this.layout().title(node.row));
-      const label = new Intl.ListFormat(this.locale(), { type: 'conjunction' }).format(titles);
-      void this.announcer.announce(this.translate('tiles.loadFailed', { label })(), 'polite');
-    };
-    // A loader that throws synchronously rejects the batch like one that rejects.
-    Promise.resolve()
-      .then(() => load(batch.map((node) => node.row)))
-      .then(
-        () => settle(true),
-        () => settle(false),
-      );
-  }
-
   /** Starts a flash on a tile for `--tiles-flash-duration`; a new flash replaces a running one. */
   private startFlash(id: TmRowId): void {
     clearTimeout(this.flashTimer);
@@ -1550,13 +1334,23 @@ export class TmTiles<T> implements TmGridDriverTarget {
         }
       }
     }
+    // Focus follows the row, not the element: a re-render that dropped
+    // focus onto <body>, or re-bound the focused tile to another row, moves
+    // it to the active tile.
+    const focused = document.activeElement;
+    const shown = this.rowAt(focused);
+    const stale = shown !== undefined && shown.id !== this.focusedId;
     const focusActive =
-      this.pendingFocus || (this.focusWithin && document.activeElement === document.body);
+      this.pendingFocus || (this.focusWithin && (focused === document.body || stale));
     this.pendingFocus = false;
     if (focusActive) {
       const id = this.activeDescendantId();
       const tile = id === null ? null : scroller.querySelector<HTMLElement>(`#${id}`);
-      if (tile !== null && document.activeElement !== tile) {
+      // A focused tile re-bound in place to the active row is focused
+      // already but has announced nothing: it is left and entered again, so
+      // the move fires its focus events and focusin records the row.
+      if (tile !== null && (focused !== tile || stale)) {
+        tile.blur();
         tile.focus({ preventScroll: true });
       }
     }
@@ -1566,11 +1360,4 @@ export class TmTiles<T> implements TmGridDriverTarget {
 /** The indexes `0 … count - 1`. */
 function indexes(count: number): readonly number[] {
   return Array.from({ length: count }, (_, i) => i);
-}
-
-/** A row's effective parent id in tree mode, or `null`. */
-function parentOf<T>(info: TreeInfo<T> | null, id: TmRowId | undefined): TmRowId | null {
-  return info === null || id === undefined
-    ? null
-    : (info.structure.nodes.get(id)?.parentId ?? null);
 }

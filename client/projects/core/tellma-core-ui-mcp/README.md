@@ -3,11 +3,14 @@
 Generated, version-exact component documentation plus a stdio MCP server
 answering against it.
 
-- `generated/components.json` — schema-validated record of every component:
-  inputs/outputs with types and defaults, slots, CSS tokens read, the a11y
-  model, canonical usage examples, and the matching test harness (`null` for
-  a component without one). Extracted from source by the docs pipeline;
-  never hand-written.
+- `generated/components.json` — schema-validated record of every component,
+  directive and documented service (`TmToasts`, `TmConfirm`, `TmModal` and
+  the other root services, which carry no selector): inputs/outputs with
+  types and defaults, public members, slots, CSS tokens read, the a11y
+  model, canonical usage examples (template examples and a service's
+  TypeScript ones), and the matching test harness (`null` for an entry
+  without one). Extracted from source by the docs pipeline; never
+  hand-written.
 - `generated/llms.txt` — the same content as a single flat digest a coding
   agent (or a person) can load in one read.
 - `tellma-core-ui-mcp` (bin) — a stdio MCP server exposing `list`,

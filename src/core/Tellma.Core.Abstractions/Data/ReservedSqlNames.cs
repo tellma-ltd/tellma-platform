@@ -112,6 +112,33 @@ namespace Tellma.Core.Abstractions.Data
         /// </summary>
         public const string LoadSettings = "@tm_LoadSettings";
 
+        /// <summary>The caller's subject the connect prologue resolves; a service account's client id.</summary>
+        public const string Subject = "@tm_Subject";
+
+        /// <summary>Whether the connect prologue may stamp the caller's activity.</summary>
+        public const string StampActivity = "@tm_StampActivity";
+
+        /// <summary>Whether the connect prologue may record the caller's first request in the tenant.</summary>
+        public const string AllowFlip = "@tm_AllowFlip";
+
+        /// <summary>The user id the connect prologue expects the subject to resolve to; null on the cold path.</summary>
+        public const string ExpectedUserId = "@tm_ExpectedUserId";
+
+        /// <summary>The tenant <c>permissions</c> tag the cached permission set was built under.</summary>
+        public const string ExpectedPermissionsTag = "@tm_ExpectedPermissionsTag";
+
+        /// <summary>The caller's preferences tag the cached profile was read under.</summary>
+        public const string ExpectedPreferencesTag = "@tm_ExpectedPreferencesTag";
+
+        /// <summary>The tenant <c>settings</c> tag of the settings the batch composes under.</summary>
+        public const string ExpectedSettingsTag = "@tm_ExpectedSettingsTag";
+
+        /// <summary>Whether the connect prologue returns the caller's permission rows even when the cached set's tags match.</summary>
+        public const string ReloadPermissions = "@tm_ReloadPermissions";
+
+        /// <summary>Whether a stale <c>settings</c> tag fails the connect prologue's guard, as on a validation or persist batch.</summary>
+        public const string SettingsStrict = "@tm_SettingsStrict";
+
         /// <summary>
         ///     The three reserved prefixes. <see cref="EnginePrefix" /> and <see cref="StatementPrefix" />
         ///     reserve a name only when a batch ordinal and <c>_</c> follow them (<c>@qx0_</c>,
