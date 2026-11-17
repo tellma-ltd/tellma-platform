@@ -39,6 +39,7 @@
     "@angular/service-worker": "catalog:",
     "@internationalized/date": "catalog:",
     "@jsverse/transloco": "catalog:",
+    "echarts": "catalog:",
     "lucide": "catalog:",
     "rxjs": "catalog:",
     "tslib": "catalog:"

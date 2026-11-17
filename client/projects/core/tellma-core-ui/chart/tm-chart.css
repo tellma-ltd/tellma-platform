@@ -1,0 +1,134 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-chart — one box holding the plot, the table view, the card or the
+   host's no-data state. The plot's canvas is the engine's; this sheet sizes
+   its box and gives it the page's direction, which canvas text starts from. */
+
+:host {
+  display: block;
+  position: relative;
+  inline-size: 100%;
+  block-size: var(--chart-height);
+  min-block-size: 0;
+  font-family: var(--font-ui);
+  color: var(--chart-label);
+}
+
+/* Forced colours force the page's ground and text but not the canvas'
+   pixels: the plot's ground is transparent, so its text, lines, data-label
+   borders and tooltip take the system colours, which the canvas resolves
+   to the forced palette, and read on the forced ground. */
+@media (forced-colors: active) {
+  :host {
+    --chart-label: CanvasText;
+    --chart-axis: CanvasText;
+    --chart-grid: GrayText;
+    --chart-surface: Canvas;
+    --chart-tooltip-bg: Canvas;
+    --chart-tooltip-border: CanvasText;
+  }
+}
+
+/* A card takes its content's height. */
+:host(.tm-chart--card) {
+  block-size: auto;
+}
+
+/* ---- The plot ---- */
+
+/* The figure does not mirror (it is dir="ltr"); the hidden attribute keeps
+   the engine's element while the table view shows. */
+.tm-chart__figure {
+  margin: 0;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-chart__figure[hidden] {
+  display: none;
+}
+
+.tm-chart__plot {
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: hidden;
+}
+
+/* The canvas lays its text out from the page's direction: the engine's
+   canvases inherit it from here, inside the left-to-right figure. */
+.tm-chart__plot--rtl {
+  direction: rtl;
+}
+
+/* ---- The table view ---- */
+
+.tm-chart__table {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.tm-chart__table > tm-grid {
+  block-size: 100%;
+}
+
+/* ---- The card ---- */
+
+.tm-chart__card {
+  display: block;
+}
+
+.tm-chart__card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--chart-card-gap);
+  inline-size: 100%;
+  padding: var(--chart-card-padding);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+/* A drilling card is a button: the hover fill and the focus ring. */
+.tm-chart__card-body--action {
+  cursor: pointer;
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.tm-chart__card-body--action:hover {
+  background: var(--surface-hover);
+}
+
+.tm-chart__card-body--action:focus-visible {
+  outline-color: var(--focus-ring-color);
+}
+
+.tm-chart__card-value {
+  font-size: var(--chart-card-value-size);
+  font-weight: var(--chart-card-value-weight);
+  line-height: 1.2;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-chart__card-label {
+  font-size: var(--chart-card-label-size);
+  color: var(--chart-axis);
+}
+
+/* ---- Forced colours ---- */
+
+@media (forced-colors: active) {
+  .tm-chart__card-body--action:focus-visible {
+    outline-color: Highlight;
+  }
+}

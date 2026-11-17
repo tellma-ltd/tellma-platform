@@ -359,6 +359,14 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-108 (orchestrator, 2026-11-17): PC-068 query path: spec alignments for Ahmad, and the culture carry
+
+- The query steps run compile, then the traversal rule, then the Geography select refusal, as spec 0015 §5.2 orders them. Spec 0016 §5.6 puts the traversal rule before the compile, and should be aligned with 0015. The outcomes differ only for a query that is both invalid and restricted.
+- A ceiling (QX5) diagnostic raised in the platform's own text is relocated to the Filter/Select/OrderBy clause at span (0,0). Spec 0016 §3.5's closed clause list should name that location.
+- Carry, binding on the edge, MCP and job call sites: after every pipeline call, re-apply RequestContext.ApplyCultures. An async callee cannot change its caller's AsyncLocal cultures, so a re-apply inside the pipeline does not reach the caller. This extends PC-050's carry on GuardedBatchRunner.
+- PC-068 R1-5: DataAccessRetryExhausted maps to 503 with Retry-After (spec 0015 §14.2) in the pipeline itself, not at the edge.
+- PC-068 R1-6: a traversal decision must not bypass step-up or the FastDenyWindow re-check that a direct Read of the same sensitive pair gets. It is fixed in PC-068, unless the implementer shows the specs intend otherwise, in which case the question goes to Ahmad.
+
 ### D-107 (orchestrator, 2026-11-17): the tm-chart engine chunk ceiling is 200 KB gz; spec 0024 §12's 170 KB line goes to Ahmad
 
 - Situation: PC-194's lazy engine chunk measures 199.74 KB gz. ECharts 6.1.0 with exactly the modules spec 0034 §7.3 lists is about 194 KB on its own: PC-194's implementer measured 194.38 and its R1 measured 193.83. The facade adapter adds 5.32 KB. Within the module API, what remains in the chunk cannot be removed: the HTML tooltip that TooltipView imports statically, the zh locale that echarts/core registers, and the time scale. The only optional cut is LegendPlainComponent (-1.8 KB), which would lose the scroll legend.

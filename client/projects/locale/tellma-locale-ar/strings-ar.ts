@@ -36,7 +36,8 @@ const rowsCounted =
  * The Arabic translations of the library's built-in strings — same shape as
  * `TM_UI_STRINGS_EN` with the entry points' own tables beside it (the
  * pivot's `TM_PIVOT_STRINGS_EN` under `pivot`, the tiles tree's
- * `TM_TILES_TREE_STRINGS_EN` under `tilesTree`); registered under the tmUi
+ * `TM_TILES_TREE_STRINGS_EN` under `tilesTree`, the chart's
+ * `TM_CHART_STRINGS_EN` under `chart`); registered under the tmUi
  * namespace of the 'ar' language resources by `provideTellmaLocaleAr()`.
  */
 export const TM_LOCALE_AR_STRINGS = {
@@ -392,5 +393,20 @@ export const TM_LOCALE_AR_STRINGS = {
   },
   tilesTree: {
     loadFailed: 'تعذر تحميل {label}',
+  },
+  chart: {
+    name: {
+      column: '{title}، مخطط أعمدة',
+      bar: '{title}، مخطط أشرطة',
+      line: '{title}، مخطط خطي',
+      area: '{title}، مخطط مساحي',
+      pie: '{title}، مخطط دائري',
+      doughnut: '{title}، مخطط حلقي',
+    },
+    description:
+      '{count, plural, zero {# نقطة} one {نقطة واحدة} two {نقطتان} few {# نقاط} many {# نقطة} other {# نقطة}}' +
+      `، من {min} إلى {max}. ${useVerb} «عرض كجدول» لقراءة كل القيم.`,
+    share: '{share} ({value})',
+    point: '{label}: {value}',
   },
 } as const;

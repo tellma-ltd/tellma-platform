@@ -30,6 +30,7 @@ import { TmBadge, TmCounter } from '@tellma/core-ui/badge';
 import { TmBannerBar } from '@tellma/core-ui/banner';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCard } from '@tellma/core-ui/card';
+import { TmChart, type TmChartPointActivation, type TmChartSpec } from '@tellma/core-ui/chart';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
@@ -98,6 +99,7 @@ import * as counterExamples from './badge/tm-counter.examples';
 import * as bannerBarExamples from './banner/tm-banner-bar.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as cardExamples from './card/tm-card.examples';
+import * as chartExamples from './chart/tm-chart.examples';
 import * as checkboxExamples from './checkbox/tm-checkbox.examples';
 import * as chipExamples from './chip/tm-chip.examples';
 import * as chipSetExamples from './chip/tm-chip-set.examples';
@@ -214,6 +216,7 @@ class ExamplePage {}
     TmBannerBar,
     TmButton,
     TmCard,
+    TmChart,
     TmCheckbox,
     TmChip,
     TmChipSet,
@@ -418,6 +421,7 @@ class ExamplePage {}
       <tm-grid-column key="name" header="placeholder" />
     </tm-tree-grid>
     <tm-pivot [model]="pivotModel" ariaLabel="placeholder" style="block-size: 120px" />
+    <tm-chart [spec]="salesSpec" style="block-size: 120px">placeholder</tm-chart>
     <tm-tiles [rowId]="rowId" [layout]="rowTile" ariaLabel="placeholder">
       <ng-template tmTileContent>placeholder</ng-template>
       <span *tmTilesEmpty>placeholder</span>
@@ -484,6 +488,30 @@ class ExampleHost {
   protected readonly expandedRows = signal<ReadonlySet<number>>(new Set());
   protected readonly expandedColumns = signal<ReadonlySet<number>>(new Set());
   protected readonly pivotWidths = signal<TmPivotWidths>({});
+  // The chart examples' specs: sales by two months, a revenue card with a
+  // reached threshold, the same sales without points; the table toggle and
+  // the drill handler.
+  protected readonly salesSpec: TmChartSpec = {
+    type: 'column',
+    title: 'Sales by month',
+    dimensions: [{ label: 'Month', members: [{ label: 'Jul' }, { label: 'Aug' }] }],
+    measure: { label: 'Sales', format: { maxDecimals: 0 } },
+    rows: [
+      [0, null, 41000],
+      [1, null, 52000],
+    ],
+  };
+  protected readonly revenueCardSpec: TmChartSpec = {
+    type: 'card',
+    title: 'Revenue this month',
+    dimensions: [],
+    measure: { label: 'Revenue' },
+    rows: [[null, null, 168500]],
+    options: { thresholds: [{ value: 150000, tone: 'positive' }] },
+  };
+  protected readonly emptySalesSpec: TmChartSpec = { ...this.salesSpec, rows: [] };
+  protected readonly salesAsTable = signal(false);
+  protected readonly onPoint = (activation: TmChartPointActivation): void => void activation;
   protected readonly onCell = (cell: unknown): void => void cell;
   protected readonly onImageChange = (): void => undefined;
   // The icon examples' direct-data binding: library code passes Lucide data.
@@ -992,6 +1020,7 @@ const SUITES = [
   { source: 'splitter/tm-splitter.examples.ts', examples: splitterExamples },
   { source: 'pager/tm-pager.examples.ts', examples: pagerExamples },
   { source: 'pivot/tm-pivot.examples.ts', examples: pivotExamples },
+  { source: 'chart/tm-chart.examples.ts', examples: chartExamples },
   { source: 'tree/tm-tree.examples.ts', examples: treeExamples },
   { source: 'drag-drop/tm-drag-drop.examples.ts', examples: dragDropExamples },
   { source: 'reorder-list/tm-reorder-list.examples.ts', examples: reorderListExamples },

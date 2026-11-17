@@ -33,7 +33,9 @@ checkbox, twisty and keys); the drag-drop directives impose nothing a
 harness would add. The pivot has `TmPivotHarness` (its counts, header
 and row labels, sticky columns, tab stop and keys) with
 `TmPivotCellHarness` (one rendered cell's text, look, expansion, drill
-state, handle and keys).
+state, handle and keys). The chart has `TmChartHarness` (what it shows,
+the plot's name and description, whether the engine drew, the card's
+value, label, badge and activation, and the table view's grid).
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

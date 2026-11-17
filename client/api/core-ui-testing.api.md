@@ -90,6 +90,30 @@ export class TmCardHarness extends ComponentHarness {
 }
 
 // @public
+export class TmChartHarness extends ComponentHarness {
+    activateCard(modifiers?: ModifierKeys): Promise<void>;
+    getCardBadge(): Promise<string | null>;
+    getCardLabel(): Promise<string | null>;
+    getCardValue(): Promise<string | null>;
+    getDescription(): Promise<string>;
+    getName(): Promise<string>;
+    getTable(): Promise<TmGridHarness | null>;
+    getView(): Promise<TmChartView>;
+    hasCanvas(): Promise<boolean>;
+    static hostSelector: string;
+    isCardActivatable(): Promise<boolean>;
+    static with(options?: TmChartHarnessFilters): HarnessPredicate<TmChartHarness>;
+}
+
+// @public
+export interface TmChartHarnessFilters extends BaseHarnessFilters {
+    name?: string | RegExp;
+}
+
+// @public
+export type TmChartView = 'card' | 'empty' | 'plot' | 'table';
+
+// @public
 export class TmCheckboxHarness extends ComponentHarness {
     blur(): Promise<void>;
     focus(): Promise<void>;
