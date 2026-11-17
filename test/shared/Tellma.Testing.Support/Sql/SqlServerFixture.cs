@@ -207,21 +207,17 @@ namespace Tellma.Testing.Support.Sql
                 return;
             }
 
-            // --- An existing server: drop what the suite reserved or created ---
-            SqlConnection connection = new(_masterConnectionString);
-            await using (connection.ConfigureAwait(false))
+            // --- An existing server: drop what the suite reserved or created, the process's pooled
+            // sessions closed first. Each drop outlasts a loaded server and reruns while the
+            // database is held for a moment, and one database left behind neither stops the rest
+            // nor goes unreported ---
+            string[] databases;
+            lock (_databases)
             {
-                await connection.OpenAsync().ConfigureAwait(false);
-                foreach (string name in _databases)
-                {
-                    SqlCommand command = connection.CreateCommand();
-                    await using (command.ConfigureAwait(false))
-                    {
-                        command.CommandText = $"IF DB_ID(N'{name}') IS NOT NULL BEGIN ALTER DATABASE [{name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{name}]; END";
-                        _ = await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-                    }
-                }
+                databases = [.. _databases.Distinct(StringComparer.Ordinal)];
             }
+
+            await SqlDatabaseDrop.DropAllAsync(_masterConnectionString, databases).ConfigureAwait(false);
         }
     }
 }

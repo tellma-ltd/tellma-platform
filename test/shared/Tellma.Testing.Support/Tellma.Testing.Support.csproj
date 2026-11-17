@@ -13,7 +13,8 @@
 
   <ItemGroup>
     <!-- The suite that pins this plumbing drives the database-creation retry loop through its
-         internal seams (classifier, wait, jitter), without a server or a clock. -->
+         internal seams (classifier, wait, jitter), and the end-of-suite drops through theirs (the
+         statement, and the loop over the databases), without a server or a clock. -->
     <InternalsVisibleTo Include="Tellma.Core.Testing.Tests" />
   </ItemGroup>
 
