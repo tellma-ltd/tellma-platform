@@ -633,9 +633,13 @@ goes to LEDGER.md and DECISIONS.md.
   - **Server scope** (any other file): `dotnet build` (0 warnings), `dotnet format`, the unit
     filter, and only the integration suites whose ProjectReference closure includes a changed
     project. No client step.
-  - **Shared triggers** run every .NET integration suite and the client gates above. They are
-    root files (`Directory.*`, `Tellma.slnx`, `global.json`, `package.json`, lockfiles,
-    `.github/`), `Tellma.Core.Abstractions`, and `test/shared/*`. The e2e stays targeted.
+  - **Shared triggers** widen the gate on their own side:
+    - .NET-wide files run every .NET integration suite: `Directory.*`, `Tellma.slnx`,
+      `global.json`, `Tellma.Core.Abstractions` and `test/shared/*`.
+    - Client-wide files run the client gates above: `package.json`, `pnpm-lock.yaml` and the
+      workspace config.
+    - `.github/` runs both.
+    - The e2e stays targeted.
   - A scope with both kinds of file runs both halves.
   - The §4.7 note states the scope, and the suites and spec files run.
   - If the platform-core push is rejected and the commits that landed in between touch only
