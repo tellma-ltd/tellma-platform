@@ -102,9 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B02 | pc-1 | pc/PC-B02 | batch: finders resumed after the reset (wf_08f0b9d9-329); fixer next | — | 3 finders (fable, xhigh) | 2026-11-17 |
-| PC-B03 | pc-2 | pc/PC-B03 | batch: finders resumed after the reset (wf_08f0b9d9-329); fixer next | — | 3 finders (fable, xhigh) | 2026-11-17 |
-| PC-072 | pc-3 | pc/PC-072 | impl | impl (Opus, xhigh, launched 2026-11-17) | — | 2026-11-17 |
+| PC-B02 | pc-1 | pc/PC-B02 | batch: fixer (Opus, high) → hold; finders done, 5 findings (0/3/2) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | batch: fixer (Opus, high) → hold; finders done, 6 findings (0/3/3) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | R1 (impl commit 1 1dfae484; 17 deviations) | impl (Opus, xhigh, launched 2026-11-17) | R1 (Opus inherit, high) | 2026-11-17 |
 
 ## Fix items
 
@@ -172,8 +172,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
-| PC-B02 | 2 (PC-015…PC-031) | finders resumed 20:03 UTC after the reset (D-110) | | |
-| PC-B03 | 3 (PC-032…PC-061) | finders resumed 20:03 UTC after the reset (D-110) | | |
+| PC-B02 | 2 (PC-015…PC-031) | fix → hold (finders done at b346ad7c: 5 findings (0/3/2); 924k finder tokens for both batches) | | |
+| PC-B03 | 3 (PC-032…PC-061) | fix → hold (finders done at b346ad7c: 6 findings (0/3/3); 924k finder tokens for both batches) | | |
 
 ## Merge-time tasks (before platform-core merges into main)
 
