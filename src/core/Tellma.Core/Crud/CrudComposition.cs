@@ -13,6 +13,7 @@ using Tellma.Core.Composition;
 using Tellma.Core.Crud.Checks;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
+using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Metadata;
 
@@ -81,8 +82,8 @@ namespace Tellma.Core.Crud
             services.TryAddScoped<IConfirmations>(static provider => provider.GetRequiredService<Confirmations>());
 
             // --- The pipeline: its factory, the operation scope, the query path's planner, rules and
-            // child surfaces, and the details path's projections, planner and reads; the singletons
-            // hold no caller state ---
+            // child surfaces, the details path's projections, planner and reads, and the save; the
+            // singletons hold no caller state ---
             services.TryAddScoped<IEntityPipelineFactory, EntityPipelineFactory>();
             services.TryAddScoped<CrudOperations>();
             services.TryAddSingleton<QuerySurfaces>();
@@ -95,6 +96,7 @@ namespace Tellma.Core.Crud
             services.TryAddSingleton<DetailsProjections>();
             services.TryAddScoped<DetailsPlanner>();
             services.TryAddScoped<DetailsOperation>();
+            services.TryAddScoped<SaveOperation>();
 
             // --- The checks, in the order they report, after the built-in checks of the record ---
             IStartupCheck[] checks =

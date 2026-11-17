@@ -38,6 +38,7 @@ namespace Tellma.Core.Data.Batches
             // --- The id allocator, its buffers per tenant and sequence, and the save emitter's plans ---
             _ = services.AddSingleton<IdAllocator>();
             _ = services.AddSingleton<IIdAllocator>(static services => services.GetRequiredService<IdAllocator>());
+            _ = services.AddSingleton<IIdBuffer>(static services => services.GetRequiredService<IdAllocator>());
             _ = services.AddSingleton<SaveEmitter>();
 
             // The tree statements a batch runs on its own: the verify job's recount.

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Globalization;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
@@ -28,18 +29,18 @@ namespace Tellma.Core.Crud.Validation
             ContextRef<IReadOnlyDictionary<TK, T>> Add(TK[] keys, TK[] missing, SelectSet select);
         }
 
-        /// <summary>A children load, seen by a caller whose entity class carries no class constraint.</summary>
-        /// <typeparam name="TChild">The child class.</typeparam>
-        /// <typeparam name="TK">The parent key's type.</typeparam>
-        private interface IChildrenLoad<TChild, TK>
+        /// <summary>A grouped load, seen by a caller whose entity class carries no class constraint.</summary>
+        /// <typeparam name="T">The entity class.</typeparam>
+        /// <typeparam name="TK">The grouping property's type.</typeparam>
+        private interface IGroupedLoad<T, TK>
             where TK : notnull
         {
             /// <summary>Adds a request; called under the loader's gate.</summary>
-            /// <param name="keys">Every parent id requested.</param>
-            /// <param name="missing">The parent ids the cache does not answer.</param>
+            /// <param name="keys">Every value requested.</param>
+            /// <param name="missing">The values the cache does not answer.</param>
             /// <param name="select">The request's select.</param>
             /// <returns>The request's ref.</returns>
-            ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> Add(TK[] keys, TK[] missing, SelectSet select);
+            ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> Add(TK[] keys, TK[] missing, SelectSet select);
         }
 
         /// <summary>An entity query, seen by a caller whose entity class carries no class constraint.</summary>
@@ -199,35 +200,40 @@ namespace Tellma.Core.Crud.Validation
             }
         }
 
-        /// <summary>The children requests of one child class: one entity query restricted to the union of their parent ids.</summary>
-        /// <typeparam name="TChild">The child class.</typeparam>
-        /// <typeparam name="TK">The parent key's type.</typeparam>
+        /// <summary>
+        ///     The grouped requests of one entity class and one property: one entity query restricted
+        ///     to the union of their values, its rows grouped by the property. Serves the children of
+        ///     parent ids, grouped by the parent key, and the rows holding values of a property unique
+        ///     within a parent, grouped by that property.
+        /// </summary>
+        /// <typeparam name="T">The entity class.</typeparam>
+        /// <typeparam name="TK">The grouping property's type.</typeparam>
         /// <param name="loader">The loader.</param>
-        /// <param name="metadata">The child's metadata.</param>
-        /// <param name="parentKey">The child's parent key.</param>
-        /// <param name="cache">The cache the parents are answered from.</param>
-        private sealed class ChildrenGroup<TChild, TK>(ContextLoader loader, EntityMetadata metadata, PropertyMetadata parentKey, ChildrenCache<TChild, TK> cache)
-            : LoadGroup, IChildrenLoad<TChild, TK>
-            where TChild : class
+        /// <param name="metadata">The entity's metadata.</param>
+        /// <param name="property">The grouping property: a child's parent key, or a property unique within its parent.</param>
+        /// <param name="cache">The cache the values are answered from.</param>
+        private sealed class GroupedGroup<T, TK>(ContextLoader loader, EntityMetadata metadata, PropertyMetadata property, GroupedCache<T, TK> cache)
+            : LoadGroup, IGroupedLoad<T, TK>
+            where T : class
             where TK : notnull
         {
-            /// <summary>Each request's ref and parent ids.</summary>
-            private readonly List<(ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> Target, TK[] Keys)> _requests = [];
+            /// <summary>Each request's ref and values.</summary>
+            private readonly List<(ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> Target, TK[] Keys)> _requests = [];
 
-            /// <summary>The parent ids to load, in first-requested order.</summary>
+            /// <summary>The values to load, in first-requested order.</summary>
             private readonly List<TK> _load = [];
 
-            /// <summary>The parent ids to load, for lookups.</summary>
+            /// <summary>The values to load, for lookups.</summary>
             private readonly HashSet<TK> _loading = new(KeySets.Comparer<TK>());
 
             /// <summary>The union of the requests' selects.</summary>
             private SelectSet? _select;
 
-            /// <summary>The children read.</summary>
-            private IReadOnlyList<TChild>? _loaded;
+            /// <summary>The rows read.</summary>
+            private IReadOnlyList<T>? _loaded;
 
             /// <inheritdoc />
-            public ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> Add(TK[] keys, TK[] missing, SelectSet select)
+            public ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> Add(TK[] keys, TK[] missing, SelectSet select)
             {
                 _select = _select?.Union(select) ?? select;
                 foreach (TK key in missing)
@@ -242,7 +248,7 @@ namespace Tellma.Core.Crud.Validation
                     }
                 }
 
-                ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> target = new();
+                ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> target = new();
                 _requests.Add((target, keys));
                 return target;
             }
@@ -251,11 +257,11 @@ namespace Tellma.Core.Crud.Validation
             public override Action Compose(IDataBatch batch)
             {
                 SqlIdentifier table = KeySets.Table(batch, _load);
-                BatchResult<EntityQueryResult<TChild>> result = batch.Query(new EntityQuery<TChild>
+                BatchResult<EntityQueryResult<T>> result = batch.Query(new EntityQuery<T>
                 {
                     Select = _select!.Render(loader.Declared(metadata)),
                     AllProperties = _select.IsAll,
-                    Restrictions = [new KeySetRestriction(parentKey.Name, table.Name)],
+                    Restrictions = [new KeySetRestriction(property.Name, table.Name)],
                     OrderBy = metadata.Key.Name,
                 });
                 return () => _loaded = result.Value.Entities;
@@ -264,27 +270,27 @@ namespace Tellma.Core.Crud.Validation
             /// <inheritdoc />
             public override void Finish()
             {
-                // --- Each parent's children in key order; a parent with none holds an empty list ---
-                Dictionary<TK, List<TChild>> byParent = new(KeySets.Comparer<TK>());
+                // --- Each value's rows in key order; a value no row holds keeps an empty list ---
+                Dictionary<TK, List<T>> byValue = new(KeySets.Comparer<TK>());
                 foreach (TK key in _load)
                 {
-                    byParent[key] = [];
+                    byValue[key] = [];
                 }
 
-                foreach (TChild child in _loaded!)
+                foreach (T row in _loaded!)
                 {
-                    if (parentKey.Getter(child) is TK key && byParent.TryGetValue(key, out List<TChild>? children))
+                    if (property.Getter(row) is TK key && byValue.TryGetValue(key, out List<T>? rows))
                     {
-                        children.Add(child);
+                        rows.Add(row);
                     }
                 }
 
-                foreach ((TK key, List<TChild> children) in byParent)
+                foreach ((TK key, List<T> rows) in byValue)
                 {
-                    cache.Store(key, children, _select!);
+                    cache.Store(key, rows, _select!);
                 }
 
-                foreach ((ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> target, TK[] keys) in _requests)
+                foreach ((ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> target, TK[] keys) in _requests)
                 {
                     target.Complete(cache.Answer(keys));
                 }
@@ -298,7 +304,12 @@ namespace Tellma.Core.Crud.Validation
         /// <param name="key">The structural key.</param>
         /// <param name="filter">The filter.</param>
         /// <param name="arguments">The filter's arguments, or null.</param>
-        private sealed class EntitiesGroup<T>(ContextLoader loader, EntityMetadata metadata, string key, FilterTree filter, QueryArguments? arguments)
+        /// <param name="visible">
+        ///     Whether the caller's read decision is conjoined, taken when the query is composed: the
+        ///     batch is composed for a connected user that may differ from the one the request was
+        ///     made under.
+        /// </param>
+        private sealed class EntitiesGroup<T>(ContextLoader loader, EntityMetadata metadata, string key, FilterTree filter, QueryArguments? arguments, bool visible)
             : LoadGroup, IEntitiesLoad<T>
             where T : class
         {
@@ -323,11 +334,30 @@ namespace Tellma.Core.Crud.Validation
             /// <inheritdoc />
             public override Action Compose(IDataBatch batch)
             {
+                // --- The caller's read decision: none reads nothing, a filter is conjoined, unrestricted adds nothing ---
+                FilterTree composed = filter;
+                if (visible)
+                {
+                    AccessDecision decision = loader.ReadDecision(metadata);
+                    switch (decision.Outcome)
+                    {
+                        case AccessOutcome.Denied:
+                            return () => _loaded = [];
+                        case AccessOutcome.Filtered:
+                            composed = FilterTree.And([filter, decision.Filter!]);
+                            break;
+                        case AccessOutcome.Unrestricted:
+                            break;
+                        default:
+                            throw new InvalidOperationException($"The read decision on {metadata.Name} has an unknown outcome, {decision.Outcome}.");
+                    }
+                }
+
                 BatchResult<EntityQueryResult<T>> result = batch.Query(new EntityQuery<T>
                 {
                     Select = _select!.Render(loader.Declared(metadata)),
                     AllProperties = _select.IsAll,
-                    Filter = filter,
+                    Filter = composed,
                     Arguments = arguments,
                     OrderBy = metadata.Key.Name,
                 });
@@ -509,50 +539,54 @@ namespace Tellma.Core.Crud.Validation
             private sealed record Entry(T? Value, SelectSet Select, bool Primed);
         }
 
-        /// <summary>What earlier rounds loaded of one child class by parent id: each parent's children and the select they were read under.</summary>
-        /// <typeparam name="TChild">The child class.</typeparam>
-        /// <typeparam name="TK">The parent key's type.</typeparam>
-        private sealed class ChildrenCache<TChild, TK>
+        /// <summary>
+        ///     What earlier rounds loaded of one entity class grouped by one property: each value's rows
+        ///     and the select they were read under. Holds a child class's rows by parent id, or a
+        ///     class's rows by the values of a property unique within its parent.
+        /// </summary>
+        /// <typeparam name="T">The entity class.</typeparam>
+        /// <typeparam name="TK">The grouping property's type.</typeparam>
+        private sealed class GroupedCache<T, TK>
             where TK : notnull
         {
-            /// <summary>Each parent's children and select.</summary>
-            private readonly Dictionary<TK, (IReadOnlyList<TChild> Children, SelectSet Select)> _entries = new(KeySets.Comparer<TK>());
+            /// <summary>Each value's rows and select.</summary>
+            private readonly Dictionary<TK, (IReadOnlyList<T> Rows, SelectSet Select)> _entries = new(KeySets.Comparer<TK>());
 
-            /// <summary>Whether a parent's children were read under a covering select.</summary>
-            /// <param name="key">The parent id.</param>
+            /// <summary>Whether a value's rows were read under a covering select.</summary>
+            /// <param name="key">The value.</param>
             /// <param name="select">The select.</param>
             /// <returns>True when they were.</returns>
             public bool Covers(TK key, SelectSet select)
             {
-                return _entries.TryGetValue(key, out (IReadOnlyList<TChild> Children, SelectSet Select) entry) && entry.Select.Covers(select);
+                return _entries.TryGetValue(key, out (IReadOnlyList<T> Rows, SelectSet Select) entry) && entry.Select.Covers(select);
             }
 
-            /// <summary>The select a parent's children were read under, or null when none were read.</summary>
-            /// <param name="key">The parent id.</param>
+            /// <summary>The select a value's rows were read under, or null when none were read.</summary>
+            /// <param name="key">The value.</param>
             /// <returns>The select.</returns>
             public SelectSet? SelectOf(TK key)
             {
-                return _entries.TryGetValue(key, out (IReadOnlyList<TChild> Children, SelectSet Select) entry) ? entry.Select : null;
+                return _entries.TryGetValue(key, out (IReadOnlyList<T> Rows, SelectSet Select) entry) ? entry.Select : null;
             }
 
-            /// <summary>Caches a parent's children.</summary>
-            /// <param name="key">The parent id.</param>
-            /// <param name="children">The children, in key order.</param>
+            /// <summary>Caches a value's rows.</summary>
+            /// <param name="key">The value.</param>
+            /// <param name="rows">The rows, in key order.</param>
             /// <param name="select">The select they were read under.</param>
-            public void Store(TK key, IReadOnlyList<TChild> children, SelectSet select)
+            public void Store(TK key, IReadOnlyList<T> rows, SelectSet select)
             {
-                _entries[key] = (children, select);
+                _entries[key] = (rows, select);
             }
 
-            /// <summary>The children of each parent.</summary>
-            /// <param name="keys">The parent ids, each cached.</param>
-            /// <returns>The children by parent id.</returns>
-            public Dictionary<TK, IReadOnlyList<TChild>> Answer(IEnumerable<TK> keys)
+            /// <summary>The rows of each value.</summary>
+            /// <param name="keys">The values, each cached.</param>
+            /// <returns>The rows by value.</returns>
+            public Dictionary<TK, IReadOnlyList<T>> Answer(IEnumerable<TK> keys)
             {
-                Dictionary<TK, IReadOnlyList<TChild>> answer = new(KeySets.Comparer<TK>());
+                Dictionary<TK, IReadOnlyList<T>> answer = new(KeySets.Comparer<TK>());
                 foreach (TK key in keys)
                 {
-                    answer[key] = _entries.TryGetValue(key, out (IReadOnlyList<TChild> Children, SelectSet Select) entry) ? entry.Children : [];
+                    answer[key] = _entries.TryGetValue(key, out (IReadOnlyList<T> Rows, SelectSet Select) entry) ? entry.Rows : [];
                 }
 
                 return answer;

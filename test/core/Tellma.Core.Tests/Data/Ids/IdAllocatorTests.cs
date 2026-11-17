@@ -55,6 +55,42 @@ namespace Tellma.Core.Tests.Data.Ids
         }
 
         [Fact]
+        public void A_buffered_reservation_is_immediate_when_every_table_is_covered_and_assigns_at_once()
+        {
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            Allocator.Replenish(Tenant, typeof(Compartment), 300, 309);
+            Allocator.Replenish(Tenant, typeof(Item), 500, 509);
+            Crate[] crates = [Packed(compartments: 2, items: 1), new Crate { Id = 42, Name = "existing" }];
+
+            using IdReservation reservation = Allocator.ReserveBuffered(Tenant, typeof(Crate), crates)!;
+            reservation.Assign(crates);
+
+            Assert.True(reservation.IsImmediate);
+            Assert.Equal([100, 42], crates.Select(static crate => crate.Id));
+            Assert.Equal([300, 301], crates[0].Compartments!.Select(static compartment => compartment.Id));
+            Assert.Equal((9, 8, 8), (Allocator.Buffered(Tenant, typeof(Crate)), Allocator.Buffered(Tenant, typeof(Compartment)), Allocator.Buffered(Tenant, typeof(Item))));
+        }
+
+        [Fact]
+        public void A_buffered_reservation_that_any_table_falls_short_of_is_none_and_leaves_every_buffer_as_it_was()
+        {
+            // The crates are covered, the compartments are not: the crates' take goes back too.
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
+            Allocator.Replenish(Tenant, typeof(Compartment), 300, 300);
+            Crate[] crates = [Packed(compartments: 2, items: 0)];
+
+            Assert.Null(Allocator.ReserveBuffered(Tenant, typeof(Crate), crates));
+            Assert.Equal((10, 1), (Allocator.Buffered(Tenant, typeof(Crate)), Allocator.Buffered(Tenant, typeof(Compartment))));
+            Assert.Equal(0, crates[0].Id);
+
+            // The next reservation is served from the front, as if nothing was taken.
+            Allocator.Replenish(Tenant, typeof(Compartment), 301, 301);
+            using IdReservation reservation = Allocator.ReserveBuffered(Tenant, typeof(Crate), crates)!;
+            reservation.Assign(crates);
+            Assert.Equal((100, 300, 301), (crates[0].Id, crates[0].Compartments![0].Id, crates[0].Compartments![1].Id));
+        }
+
+        [Fact]
         public void A_cold_reservation_is_one_statement_per_short_table_sized_to_the_shortfall_and_the_low_water_mark()
         {
             Allocator.Replenish(Tenant, typeof(Crate), 100, 101);

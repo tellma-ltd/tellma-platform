@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
+using Tellma.Core.Crud.Save;
 
 namespace Tellma.Core.Crud
 {
@@ -22,9 +23,9 @@ namespace Tellma.Core.Crud
     ///     outcome.
     /// </summary>
     /// <remarks>
-    ///     The query, the details reads and the tree read run here. The save, the deletes, the
-    ///     actions and the Excel row source refuse with <see cref="NotSupportedException" /> until
-    ///     their steps are built.
+    ///     The query, the details reads and the tree read run here. The save runs its validation
+    ///     and stops before it persists; it, the deletes, the actions and the Excel row source refuse
+    ///     with <see cref="NotSupportedException" /> until their steps are built.
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -33,8 +34,9 @@ namespace Tellma.Core.Crud
     /// <param name="surfaces">The query surfaces.</param>
     /// <param name="queries">The scope's query operation.</param>
     /// <param name="details">The scope's details reads.</param>
+    /// <param name="save">The scope's save operation.</param>
     internal sealed class EntityPipeline<TEntity, TKey>(
-        StackDescriptor descriptor, IEntityBehavior<TEntity, TKey> behavior, QuerySurfaces surfaces, QueryOperation queries, DetailsOperation details)
+        StackDescriptor descriptor, IEntityBehavior<TEntity, TKey> behavior, QuerySurfaces surfaces, QueryOperation queries, DetailsOperation details, SaveOperation save)
         : IEntityPipeline<TEntity, TKey>
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
@@ -84,8 +86,10 @@ namespace Tellma.Core.Crud
         /// <inheritdoc />
         public Task<EntitiesResult<TEntity>> SaveAsync(IReadOnlyList<TEntity> entities, SaveOptions options, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(entities);
+            ArgumentNullException.ThrowIfNull(options);
             Require(StackOperations.Save, CrudOperationNames.Save);
-            throw NotBuilt(CrudOperationNames.Save);
+            return save.SaveAsync(Descriptor, behavior, entities, options, cancellationToken);
         }
 
         /// <inheritdoc />

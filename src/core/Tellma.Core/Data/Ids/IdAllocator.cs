@@ -41,7 +41,7 @@ namespace Tellma.Core.Data.Ids
     ///         dropped, so the next reservation reads the table afresh.
     ///     </para>
     /// </remarks>
-    internal sealed class IdAllocator : IIdAllocator
+    internal sealed class IdAllocator : IIdAllocator, IIdBuffer
     {
         /// <summary>The execution settings: the low-water mark.</summary>
         private readonly IOptions<DataOptions> _options;
@@ -107,34 +107,7 @@ namespace Tellma.Core.Data.Ids
 
             // --- The exact deficit per table: every row with no id yet, children included ---
             EntityMetadata root = _metadata.Get(entityType);
-            List<PayloadRow> payload = PayloadRows.Enumerate(root, rows);
-            List<(EntityMetadata Entity, long Deficit)> deficits = [];
-            HashSet<(Type Type, long Id)> temporaries = [];
-            foreach (PayloadRow row in payload)
-            {
-                long id = row.Id;
-                if (id > 0)
-                {
-                    continue;
-                }
-
-                if (id < 0 && !temporaries.Add((row.Entity.ClrType, id)))
-                {
-                    throw new ArgumentException(
-                        string.Create(CultureInfo.InvariantCulture, $"Two new {row.Entity.Name} rows of the payload share the temporary id {id}; a temporary id is unique within its payload."),
-                        nameof(rows));
-                }
-
-                int index = deficits.FindIndex(entry => ReferenceEquals(entry.Entity, row.Entity));
-                if (index < 0)
-                {
-                    deficits.Add((row.Entity, 1));
-                }
-                else
-                {
-                    deficits[index] = (row.Entity, deficits[index].Deficit + 1);
-                }
-            }
+            List<(EntityMetadata Entity, long Deficit)> deficits = Deficits(root, rows);
 
             // --- Each table's deficit: from the buffer, else from a statement riding the batch ---
             int tenantId = data.Connection.TenantId;
@@ -166,6 +139,48 @@ namespace Tellma.Core.Data.Ids
                 // Nothing saw the ids taken so far.
                 hold.Dispose();
                 throw;
+            }
+
+            hold.Seal();
+            return new IdReservation(hold);
+        }
+
+        /// <inheritdoc />
+        public IdReservation? ReserveBuffered(int tenantId, Type entityType, IReadOnlyList<object> rows)
+        {
+            ArgumentNullException.ThrowIfNull(entityType);
+            ArgumentNullException.ThrowIfNull(rows);
+
+            EntityMetadata root = _metadata.Get(entityType);
+            List<(EntityMetadata Entity, long Deficit)> deficits = Deficits(root, rows);
+
+            // --- Every table's deficit from its buffer; a buffer that falls short gives everything back ---
+            // A take may race another reservation's, so each is checked after it happened rather than
+            // against the buffer's count beforehand.
+            List<(SequenceBuffer Buffer, List<IdRange> Taken)> takes = [];
+            foreach ((EntityMetadata entity, long deficit) in deficits)
+            {
+                SequenceBuffer buffer = BufferOf(tenantId, SequenceOf(entity));
+                List<IdRange> taken = buffer.Take(deficit);
+                takes.Add((buffer, taken));
+                if (taken.Sum(static range => range.Count) < deficit)
+                {
+                    // Nothing saw these ids, and none was metered as reserved: they go back unmetered.
+                    foreach ((SequenceBuffer source, List<IdRange> ranges) in takes)
+                    {
+                        _ = source.Return(ranges);
+                    }
+
+                    return null;
+                }
+            }
+
+            // --- The buffer covered every table: the reservation is immediate ---
+            ReservationHold hold = new(this, root);
+            foreach ((SequenceBuffer buffer, List<IdRange> taken) in takes)
+            {
+                _metrics.RecordIdsReserved(buffer.Sequence.Tag, taken.Sum(static range => range.Count));
+                _ = hold.Add(buffer, taken, pending: 0);
             }
 
             hold.Seal();
@@ -401,6 +416,45 @@ namespace Tellma.Core.Data.Ids
                 ? sequence
                 : throw new InvalidOperationException(
                     $"The table of {entity.Name}, {entity.Table}, has no sequence, so the allocator cannot give its rows ids. A sibling table takes each row's id from the row it extends.");
+        }
+
+        /// <summary>The exact deficit of a payload per table: every row with no id yet, children included, in payload order.</summary>
+        /// <param name="root">The payload's root entity.</param>
+        /// <param name="rows">The payload's roots.</param>
+        /// <returns>Each table with new rows and how many it has.</returns>
+        /// <exception cref="ArgumentException">Two new rows of a table share a temporary id, or a row is null or of another type.</exception>
+        private static List<(EntityMetadata Entity, long Deficit)> Deficits(EntityMetadata root, IReadOnlyList<object> rows)
+        {
+            List<PayloadRow> payload = PayloadRows.Enumerate(root, rows);
+            List<(EntityMetadata Entity, long Deficit)> deficits = [];
+            HashSet<(Type Type, long Id)> temporaries = [];
+            foreach (PayloadRow row in payload)
+            {
+                long id = row.Id;
+                if (id > 0)
+                {
+                    continue;
+                }
+
+                if (id < 0 && !temporaries.Add((row.Entity.ClrType, id)))
+                {
+                    throw new ArgumentException(
+                        string.Create(CultureInfo.InvariantCulture, $"Two new {row.Entity.Name} rows of the payload share the temporary id {id}; a temporary id is unique within its payload."),
+                        nameof(rows));
+                }
+
+                int index = deficits.FindIndex(entry => ReferenceEquals(entry.Entity, row.Entity));
+                if (index < 0)
+                {
+                    deficits.Add((row.Entity, 1));
+                }
+                else
+                {
+                    deficits[index] = (row.Entity, deficits[index].Deficit + 1);
+                }
+            }
+
+            return deficits;
         }
 
         /// <summary>A tenant's buffer of a sequence, created on first use.</summary>

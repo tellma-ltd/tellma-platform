@@ -291,34 +291,90 @@ namespace Tellma.Core.Tests.Crud.Validation
             Assert.Same(refs[0].Value, refs[3].Value);
         }
 
-        /// <summary>A visible load reads nothing under a denial, conjoins a filtered grant, and needs a read decision.</summary>
+        /// <summary>
+        ///     A visible load takes the read decision when its round is composed: a denial reads
+        ///     nothing and answers empty, a filtered grant is conjoined, and a loader that serves no
+        ///     decisions refuses the request.
+        /// </summary>
         /// <returns>A task that completes when the check has passed.</returns>
         [Fact]
-        public async Task A_visible_load_conjoins_the_read_decision()
+        public async Task A_visible_load_conjoins_the_read_decision_taken_when_its_round_is_composed()
         {
             var grant = FilterTree.Leaf("Code <> 'X'");
             BatchScript script = new BatchScript().OnQuery<VmWidget>(static _ => []);
+            List<Type> decided = [];
             (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(
                 script,
-                readDecisions: entity => entity == typeof(VmWidget)
-                    ? new AccessDecision("vm.VmWidget", "Read", AccessOutcome.Filtered, grant, [], [])
-                    : AccessDecision.Deny("vm.VmNode", "Read"));
+                readDecisions: entity =>
+                {
+                    decided.Add(entity);
+                    return entity == typeof(VmWidget)
+                        ? new AccessDecision("vm.VmWidget", "Read", AccessOutcome.Filtered, grant, [], [])
+                        : AccessDecision.Deny("vm.VmNode", "Read");
+                });
             var filter = FilterTree.Leaf("Quantity > 3");
+            ContextRef<IReadOnlyList<VmNode>>? denied = null;
 
             scheduler.Run("validator", async () =>
             {
-                Assert.True(loader.Visible<VmNode>(filter).IsLoaded);
-                Assert.Empty(loader.Visible<VmNode>(filter).Value);
+                // --- Nothing is decided while the requests are made ---
+                denied = loader.Visible<VmNode>(filter);
                 _ = loader.Visible<VmWidget>(filter, select: "Code");
+                Assert.False(denied.IsLoaded);
+                Assert.Empty(decided);
                 await loader.LoadAsync();
             });
 
             _ = await scheduler.RunAsync();
-            FilterTree.AndNode conjoined = Assert.IsType<FilterTree.AndNode>(Assert.Single(script.Batches[0].Of(ScriptedKind.Query)).Query<VmWidget>().Filter);
+
+            // --- The denied load read nothing and answers empty; the granted one carries the conjunction ---
+            Assert.Equal([typeof(VmNode), typeof(VmWidget)], decided);
+            Assert.Empty(denied!.Value);
+            ScriptedStatement query = Assert.Single(script.Batches[0].Of(ScriptedKind.Query));
+            Assert.Equal(typeof(VmWidget), query.Entity);
+            FilterTree.AndNode conjoined = Assert.IsType<FilterTree.AndNode>(query.Query<VmWidget>().Filter);
             Assert.Equal([filter, grant], conjoined.Children);
 
             (_, ContextLoader blind) = _rig.Loader(new BatchScript());
             _ = Assert.Throws<InvalidOperationException>(() => blind.Visible<VmWidget>(filter));
+        }
+
+        /// <summary>
+        ///     The rows holding each value of a property load in one grouped statement over the
+        ///     values' key set, every value answered, one no row holds by an empty list, strings
+        ///     meeting as the collation meets them.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task Rows_by_value_group_every_requested_value_and_meet_as_the_collation_meets()
+        {
+            BatchScript script = new BatchScript().OnQuery<VmWidget>(static _ =>
+                [new VmWidget { Id = 1, Code = "abc" }, new VmWidget { Id = 2, Code = "ABC" }, new VmWidget { Id = 3, Code = "Z" }]);
+            (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
+            PropertyMetadata code = _rig.Of<VmWidget>().Properties.Single(static property => property.Name == "Code");
+            ContextRef<IReadOnlyDictionary<string, IReadOnlyList<VmWidget>>>? rows = null;
+
+            scheduler.Run("validator", async () =>
+            {
+                rows = loader.ByValues<VmWidget, string>(code, ["Abc", "z", "none"], "Id");
+                await loader.LoadAsync();
+            });
+
+            _ = await scheduler.RunAsync();
+
+            // --- One statement restricted on the property, under the select and the property ---
+            ScriptedStatement query = Assert.Single(script.Batches[0].Of(ScriptedKind.Query));
+            Assert.Equal("Code", Assert.Single(query.Query<VmWidget>().Restrictions).Path);
+            Assert.Contains("Code", query.Query<VmWidget>().Select, StringComparison.Ordinal);
+
+            // --- Each value with every row holding it, ignoring case; a value nobody holds is empty ---
+            Assert.Equal([1, 2], rows!.Value["Abc"].Select(static widget => widget.Id).Order());
+            Assert.Equal([3], rows.Value["z"].Select(static widget => widget.Id));
+            Assert.Empty(rows.Value["none"]);
+
+            // --- A property of another entity is refused ---
+            PropertyMetadata foreign = _rig.Of<VmNode>().Properties.Single(static property => property.Name == "Code");
+            _ = Assert.Throws<ArgumentException>(() => loader.ByValues<VmWidget, string>(foreign, ["A"]));
         }
 
         /// <summary>An existence is a count capped at zero, so it shares the count's statement; another cap is another statement.</summary>

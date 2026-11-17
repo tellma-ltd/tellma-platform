@@ -343,7 +343,10 @@ reservation heals; no id at or below the largest id a read found the table holdi
 again, whichever path returns it (`IdAllocator.StaleDiscarded`). A tenant's buffers are forgotten
 when it enters or leaves `Frozen` or leaves the registry, since a relocation or a restore may put
 another database behind it. `TakeAsync` serves callers outside any batch, with one
-autocommit round trip when the buffer is short.
+autocommit round trip when the buffer is short. `ReserveBuffered` (the internal `IIdBuffer`) is the
+save pipeline's first try: an immediate reservation when the buffer covers every table's deficit,
+else nothing, every take given back unmetered so the reservation that rides round trip 1 starts
+from the same buffer.
 
 `IDataBatch.Save` appends one statement per save, its text cached per root entity and recompile
 hint: two table-valued parameters per table (new and existing rows) plus each child collection's
@@ -409,8 +412,8 @@ it. Updates and deletes, like saves, need their batch in one transaction; the ex
 form the weekly verify job runs in a maintenance batch; it returns how many rows it repaired,
 meters `tellma.data.tree.repairs`, and logs `TreeVerify.Repaired` at Warning when any were, since
 the persist-time statements keep the counts exact. `TreeCycleValidator<T>` is the C# form of the
-fence for the validation round trip: it loads every row's parent once, lays the payload's over
-them, and reports `Tree.Cycle` on the rows that close a cycle (a row its own parent included) and
+fence, which the save pipeline runs for a tree on round trip 1 (`Request`, then `Report` once the
+ids are assigned): it loads every row's parent once, lays the payload's over them, and reports `Tree.Cycle` on the rows that close a cycle (a row its own parent included) and
 `Tree.TooDeep` on a row whose subtree would nest past the depth, each at the row's `ParentId`.
 
 ### Queries
@@ -1094,8 +1097,10 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 (`tellma.crud.operations`) and timed (`tellma.crud.operation.duration`, with its `crud.lane`) under
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
 `crud.source`. The reads are built so far (the query, the details reads, the rows of a tree by
-parent and every row of a cacheable stack): an operation the stack does not serve is an authoring
-bug (`InvalidOperationException`), and the others are `NotSupportedException`.
+parent and every row of a cacheable stack), and the save up to its persist step (see
+[The save pipeline](#the-save-pipeline)): an operation the stack does not serve is an authoring bug
+(`InvalidOperationException`), and the others are `NotSupportedException`, as is a save whose
+validation passed.
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1220,15 +1225,18 @@ pipeline drives them:
   already read, or primed from a row the operation holds (`Prime`, which wins over a read), is served from the cache
   unless the request selects more, which reads it again under the union. `Query`, `Rows`, `Count`,
   `Exists` (which shares the cap-0 count) and `Sql` merge identical requests; `Visible` conjoins the
-  entity's read decision, reading nothing when it is denied; `Ancestors` reads a tree's ancestor
-  ids. `Sql` is read-only: a statement declaring a write is refused when it is requested. A round
+  entity's read decision, taken when its round is composed for the connected user, reading nothing
+  when it is denied; `Ancestors` reads a tree's ancestor ids. `ByValues` (internal) groups the rows
+  holding each of a property's values, unique or not, as the collation meets them: the save's
+  uniqueness check reads through it. `Sql` is read-only: a statement declaring a write is refused when it is requested. A round
   (`BeginRound`, `DispatchAsync`) appends every pending request to one batch and completes the refs
   once it executes; a round with nothing pending sends nothing.
 - **Scheduler.** `ValidationScheduler` runs the validators as tasks and dispatches one round each
   time every task is parked on `LoadAsync` or finished; a task registered during a round joins the
   next. A task that faults or a round that fails tears down the parked tasks; cancellation stops
   them. The ceiling counts dispatched rounds: one more is refused with an error naming the tasks
-  still parked. `tellma.crud.validation.rounds` records the rounds per operation, `crud.outcome`
+  still parked. `AddPipelineRound` raises it by one, before the rounds start, for a first round the
+  pipeline alone needs. `tellma.crud.validation.rounds` records the rounds per operation, `crud.outcome`
   `ok` or `exceeded`.
 - **Confirmations.** `Confirmations` (scoped, `IConfirmations`) is seeded once per scope with the
   keys the caller confirmed; a key no feature declared is an authoring error. Under a system
@@ -1250,6 +1258,47 @@ pipeline drives them:
   else to `Validation.Invalid` naming the property and the attribute.
 - **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
   and rows ceilings, and reports every repeat of a positive id at its path.
+
+### The save pipeline
+
+`SaveOperation` (scoped) runs a stack's save in the frame of `CrudOperations` under the save's
+`crud.source` and lane, and stops where the persist step will start: a save whose validation passed
+throws `NotSupportedException`. Exhausted retries on any of its round trips are
+`DependencyUnavailableException`. Each save is one `SaveRun`, in order:
+
+1. **The shape**, then the type-level `Save` grant, before any round trip.
+2. **Preprocessing.** On every row: the echoed stamp is kept, derived and server-owned columns are
+   reset, strings are trimmed (an empty nullable one becomes null) unless the property carries
+   `[PreserveWhitespace]`, a nested child takes its parent key from the nesting, the twins of a
+   language the tenant has not configured are dropped (refused under an import as
+   `Import.LanguageNotConfigured`), and a value-set value takes its set's spelling. Then the
+   service's `PreprocessAsync`, after which the payload is walked again: a `[Defaulted]` value the
+   hook left empty is `Required`, and a temporary id no row defines is `Entity.NotFound` at the
+   reference.
+3. **The ids.** A warm buffer assigns them at once and the validators start before round trip 1
+   with the final ids; otherwise the reservation statement rides round trip 1, which is then the
+   pipeline's alone (`AddPipelineRound`), and the validators start after it.
+4. **Round trip 1**, one guarded `Validate` batch composed for the connected user, carries beside
+   the validators' loads: the update roots' before images under the `Read` filter with every
+   collection the payload carries (a denied read loads none, so every update id is not found);
+   the `Save` filter's count over the same ids; each reference target's ids under its `Read`
+   decision (a denied target loads nothing; a target no securable guards is checked for existence
+   alone); the rows holding every unique value; and a tree's parents.
+5. **The ordered checks**, before any validator resumes: an update root missing or hidden is
+   `NotFoundException` naming the ids, one outside the save filter `ForbiddenException`
+   (`OutsideFilter`); under `ConcurrencyMode.Check`, an update without a stamp is
+   `Concurrency.StampRequired` and one the stored row moved past fails the save at once
+   (`ConcurrencyException`, the modifier's name read in a round trip of its own); the before images
+   are matched to the payload (an omitted collection is untouched, a present one matches its
+   children by id and deletes the rest) and primed into the loader; server-owned values are
+   restored, a write-once value is kept or refused as `WriteOnce`, and a prefix holding `" - "` is
+   `DisplayName.PrefixSeparator`; an update child its parent does not hold is `Entity.NotFound`; a
+   new or changed reference the caller cannot see is `Fk.NotFound`; a unique value repeated in the
+   payload (per parent for a child) or held by a stored row the save neither updates nor deletes is
+   `Unique`; a tree's cycles and depth are judged.
+6. **The validators' rounds**, then the value sets (a new or changed value outside its set is
+   `Validation.ValueNotInSet` unless an error is already recorded at its path), then
+   `ValidationOutcome.Raise`. A save that does not persist returns its ids to the buffer.
 
 ## The route model
 
@@ -1629,6 +1678,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
+| `Crud/Save/` | Internally: [the save pipeline](#the-save-pipeline) up to its persist step: the operation, one save's run (its steps, its rounds and its ordered checks), the per-entity row rules, the payload's rows, the uniqueness probes and the write host. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |

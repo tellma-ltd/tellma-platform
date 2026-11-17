@@ -245,6 +245,56 @@ namespace Tellma.Core.Tests.Crud.Validation
             Assert.True(loader.LoadAsync().IsCompleted);
         }
 
+        /// <summary>
+        ///     A first round only the pipeline needs raises the ceiling by one, so the tasks it starts
+        ///     keep every round of theirs; once the rounds started, the ceiling stays.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task A_round_the_pipeline_alone_needs_raises_the_ceiling_before_the_rounds_start()
+        {
+            BatchScript script = WidgetScript();
+            int resumed = 0;
+
+            // --- The validator starts once the first round, the pipeline's own, was dispatched ---
+            ContextLoader? loader = null;
+            ValidationScheduler? scheduler = null;
+            scheduler = new ValidationScheduler(
+                maxRounds: 2,
+                "save",
+                async (round, token) =>
+                {
+                    await loader!.DispatchAsync(script.NewBatch(), token);
+                    if (round == 1)
+                    {
+                        scheduler!.Run("Acme.TwoRoundValidator", async () =>
+                        {
+                            for (int id = 2; id <= 3; id++)
+                            {
+                                _ = loader.ByIds<VmWidget, int>([id]);
+                                await loader.LoadAsync();
+                                resumed++;
+                            }
+                        });
+                    }
+                },
+                metrics: null,
+                TestContext.Current.CancellationToken);
+            loader = new ContextLoader(_rig.Metadata, _rig.Map, scheduler, readDecisions: null);
+            ContextRef<IReadOnlyDictionary<int, VmWidget>> own = loader.ByIds<VmWidget, int>([1]);
+            scheduler.RequestRound();
+            scheduler.AddPipelineRound();
+            Assert.Equal(3, scheduler.MaxRounds);
+
+            // --- The validator keeps its two rounds after the pipeline's ---
+            Assert.Equal(3, await scheduler.RunAsync());
+            Assert.True(own.IsLoaded);
+            Assert.Equal(2, resumed);
+            Assert.Equal(3, script.RoundTrips);
+            _ = Assert.Throws<InvalidOperationException>(scheduler.AddPipelineRound);
+            Assert.Equal(3, scheduler.MaxRounds);
+        }
+
         /// <summary>One task parks at one load at a time.</summary>
         /// <returns>A task that completes when the check has passed.</returns>
         [Fact]

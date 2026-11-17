@@ -760,7 +760,7 @@ namespace Tellma.Core.Tests.Crud.Query
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.GetAllCachedAsync(new DetailsRequest(), Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.GetByParentIdsAsync(new ParentIdsRequest(null, null, null, null), Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.DeleteWithDescendantsAsync([1], Token));
-            _ = await Assert.ThrowsAsync<NotSupportedException>(() => accounts.SaveAsync([], new SaveOptions(), Token));
+            _ = await Assert.ThrowsAsync<NotSupportedException>(() => accounts.DeleteByIdsAsync([1], null, Token));
             _ = await Assert.ThrowsAsync<NotSupportedException>(() => nodes.DeleteWithDescendantsAsync([1], Token));
         }
 

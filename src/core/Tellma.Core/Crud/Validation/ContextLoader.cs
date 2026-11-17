@@ -29,7 +29,9 @@ namespace Tellma.Core.Crud.Validation
     ///         restricted to a key-set table of the requested values and never filtered by row-level
     ///         access. <see cref="Query{T}" />, <see cref="Rows" />, <see cref="Exists" /> and
     ///         <see cref="Count" /> compile their filters through the query engine;
-    ///         <see cref="Visible{T}" /> conjoins the caller's read decision first.
+    ///         <see cref="Visible{T}" /> conjoins the caller's read decision first, taken when the
+    ///         round is composed, so a batch recomposed for a refreshed caller reads under the
+    ///         refreshed decision.
     ///     </para>
     ///     <para>
     ///         A keyed load answers a dictionary: <see cref="ByIds{T, TK}" /> and
@@ -57,7 +59,11 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>The scheduler that parks the callers of <see cref="LoadAsync" />.</summary>
         private readonly ValidationScheduler _scheduler;
 
-        /// <summary>The caller's read decision on an entity, for <see cref="Visible{T}" />; null when the loader serves no visibility rule.</summary>
+        /// <summary>
+        ///     The caller's read decision on an entity, for <see cref="Visible{T}" />, taken for the
+        ///     connected user the round is being composed for; null when the loader serves no
+        ///     visibility rule.
+        /// </summary>
         private readonly Func<Type, AccessDecision>? _readDecisions;
 
         /// <summary>The groups the next round dispatches, by structural key, in request order.</summary>
@@ -77,8 +83,9 @@ namespace Tellma.Core.Crud.Validation
         /// <param name="map">The tenant's query schema and its map to the entities' metadata.</param>
         /// <param name="scheduler">The scheduler that parks the callers of <see cref="LoadAsync" />.</param>
         /// <param name="readDecisions">
-        ///     The caller's read decision on an entity class, for <see cref="Visible{T}" />; null when the
-        ///     loader serves no visibility rule, so a visible load is an authoring bug.
+        ///     The caller's read decision on an entity class, for <see cref="Visible{T}" />, called
+        ///     while a round is composed, so it answers for the connected user the batch is composed
+        ///     for; null when the loader serves no visibility rule, so a visible load is an authoring bug.
         /// </param>
         public ContextLoader(IEntityMetadataProvider metadata, QueryexSchemaMap map, ValidationScheduler scheduler, Func<Type, AccessDecision>? readDecisions = null)
         {
@@ -140,23 +147,33 @@ namespace Tellma.Core.Crud.Validation
             ArgumentNullException.ThrowIfNull(parentIds);
             EntityMetadata metadata = _metadata.Get(typeof(TChild));
             PropertyMetadata parentKey = ParentKeyOf(metadata);
-            KeySets.EnsureKeyType<TK>(parentKey, nameof(parentIds));
-            TK[] keys = KeySets.Distinct(parentIds, nameof(parentIds));
-            var selected = SelectSet.Parse(select);
-            selected = selected.IsAll ? selected : selected.With(parentKey.Name);
-            lock (_gate)
-            {
-                // --- Every parent an earlier round loaded under a covering select answers from the cache ---
-                ChildrenCache<TChild, TK> cache = Cache(typeof(TChild), "children", static () => new ChildrenCache<TChild, TK>());
-                TK[] missing = [.. keys.Where(key => !cache.Covers(key, selected))];
-                if (missing.Length == 0)
-                {
-                    return new ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>>(cache.Answer(keys));
-                }
+            return Grouped<TChild, TK>(metadata, parentKey, "children", parentIds, SelectSet.Parse(select), nameof(parentIds));
+        }
 
-                LoadGroup group = Pending((typeof(TChild), "children"), () => Open(typeof(ChildrenGroup<,>), [typeof(TChild), typeof(TK)], this, metadata, parentKey, cache));
-                return ((IChildrenLoad<TChild, TK>)group).Add(keys, missing, selected);
-            }
+        // The seam of spec 0015 §6.6 step 5 for a property unique only within its parent: ByKey's
+        // dictionary holds one row per value, so the rows holding each value are grouped instead, and
+        // the save pipeline scopes them by parent in C#.
+        /// <summary>
+        ///     Loads the rows holding each of a set of values of a property: one entity query restricted
+        ///     to the values' key-set table, its rows grouped by the property. String values compare
+        ///     ignoring case, as the database's collation does.
+        /// </summary>
+        /// <typeparam name="T">The entity class.</typeparam>
+        /// <typeparam name="TK">The property's type, nullable stripped.</typeparam>
+        /// <param name="property">The property, of the entity class.</param>
+        /// <param name="values">The values.</param>
+        /// <param name="select">The select; the property is always selected with it.</param>
+        /// <returns>The rows by value; every requested value is present, one no row holds under an empty list.</returns>
+        /// <exception cref="ArgumentException">The property is not the entity's, its type is not <typeparamref name="TK" />, or no key-set table holds it.</exception>
+        internal ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> ByValues<T, TK>(PropertyMetadata property, IReadOnlyList<TK> values, string? select = null)
+            where TK : notnull
+        {
+            ArgumentNullException.ThrowIfNull(property);
+            ArgumentNullException.ThrowIfNull(values);
+            EntityMetadata metadata = _metadata.Get(typeof(T));
+            return metadata.Properties.Any(candidate => ReferenceEquals(candidate, property))
+                ? Grouped<T, TK>(metadata, property, "values:" + property.Name, values, SelectSet.Parse(select), nameof(values))
+                : throw new ArgumentException($"The property {property.Name} is not one of {metadata.Name}'s.", nameof(property));
         }
 
         /// <inheritdoc />
@@ -164,7 +181,7 @@ namespace Tellma.Core.Crud.Validation
         {
             ArgumentNullException.ThrowIfNull(filter);
             EntityMetadata metadata = _metadata.Get(typeof(T));
-            return Entities<T>(metadata, filter, arguments, SelectSet.Parse(select));
+            return Entities<T>(metadata, filter, arguments, SelectSet.Parse(select), visible: false);
         }
 
         /// <inheritdoc />
@@ -172,19 +189,14 @@ namespace Tellma.Core.Crud.Validation
         {
             ArgumentNullException.ThrowIfNull(filter);
             EntityMetadata metadata = _metadata.Get(typeof(T));
-            var selected = SelectSet.Parse(select);
-            AccessDecision decision = _readDecisions?.Invoke(typeof(T))
-                ?? throw new InvalidOperationException(
-                    $"A visible load of {metadata.Name} was requested, but this loader serves no read decisions. Visible loads are served inside an operation that resolved the caller's access.");
-
-            // --- The caller's read decision: none reads nothing, a filter is conjoined, unrestricted adds nothing ---
-            return decision.Outcome switch
+            if (_readDecisions is null)
             {
-                AccessOutcome.Denied => new ContextRef<IReadOnlyList<T>>([]),
-                AccessOutcome.Filtered => Entities<T>(metadata, FilterTree.And([filter, decision.Filter!]), arguments, selected),
-                AccessOutcome.Unrestricted => Entities<T>(metadata, filter, arguments, selected),
-                _ => throw new InvalidOperationException($"The read decision on {metadata.Name} has an unknown outcome, {decision.Outcome}."),
-            };
+                throw new InvalidOperationException(
+                    $"A visible load of {metadata.Name} was requested, but this loader serves no read decisions. Visible loads are served inside an operation that resolved the caller's access.");
+            }
+
+            // The decision is taken when the round is composed, for the user it is composed for.
+            return Entities<T>(metadata, filter, arguments, SelectSet.Parse(select), visible: true);
         }
 
         /// <inheritdoc />
@@ -294,6 +306,33 @@ namespace Tellma.Core.Crud.Validation
         }
 
         /// <summary>
+        ///     Adds a load its operation composes itself to the next round, so a caller of
+        ///     <see cref="LoadAsync" /> parks until the round that serves it ran. A group already
+        ///     pending under the key is kept.
+        /// </summary>
+        /// <param name="key">The group's structural key, distinct from every request's.</param>
+        /// <param name="group">The group.</param>
+        internal void Enqueue(object key, LoadGroup group)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            ArgumentNullException.ThrowIfNull(group);
+            lock (_gate)
+            {
+                _ = _pending.TryAdd(key, group);
+            }
+        }
+
+        /// <summary>The caller's read decision on an entity, for the user the round is being composed for.</summary>
+        /// <param name="metadata">The entity's metadata.</param>
+        /// <returns>The decision.</returns>
+        /// <exception cref="InvalidOperationException">The loader serves no read decisions.</exception>
+        internal AccessDecision ReadDecision(EntityMetadata metadata)
+        {
+            return _readDecisions?.Invoke(metadata.ClrType)
+                ?? throw new InvalidOperationException($"A visible load of {metadata.Name} is composed, but this loader serves no read decisions.");
+        }
+
+        /// <summary>
         ///     Takes every pending request as one round: requests made from now on wait for the next.
         /// </summary>
         /// <returns>The round, empty when nothing was pending.</returns>
@@ -398,16 +437,49 @@ namespace Tellma.Core.Crud.Validation
             }
         }
 
+        /// <summary>Registers a grouped load, answered from the cache for every value it already holds.</summary>
+        /// <typeparam name="T">The entity class.</typeparam>
+        /// <typeparam name="TK">The grouping property's type.</typeparam>
+        /// <param name="metadata">The entity's metadata.</param>
+        /// <param name="property">The grouping property.</param>
+        /// <param name="kind">What the cache keys on, distinct per property.</param>
+        /// <param name="values">The requested values.</param>
+        /// <param name="select">The select.</param>
+        /// <param name="parameterName">The caller's parameter, for refusals.</param>
+        /// <returns>The ref.</returns>
+        private ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>> Grouped<T, TK>(
+            EntityMetadata metadata, PropertyMetadata property, string kind, IReadOnlyList<TK> values, SelectSet select, string parameterName)
+            where TK : notnull
+        {
+            KeySets.EnsureKeyType<TK>(property, parameterName);
+            TK[] keys = KeySets.Distinct(values, parameterName);
+            SelectSet selected = select.IsAll ? select : select.With(property.Name);
+            lock (_gate)
+            {
+                // --- Every value an earlier round loaded under a covering select answers from the cache ---
+                GroupedCache<T, TK> cache = Cache(typeof(T), kind, static () => new GroupedCache<T, TK>());
+                TK[] missing = [.. keys.Where(key => !cache.Covers(key, selected))];
+                if (missing.Length == 0)
+                {
+                    return new ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<T>>>(cache.Answer(keys));
+                }
+
+                LoadGroup group = Pending((typeof(T), kind), () => Open(typeof(GroupedGroup<,>), [typeof(T), typeof(TK)], this, metadata, property, cache));
+                return ((IGroupedLoad<T, TK>)group).Add(keys, missing, selected);
+            }
+        }
+
         /// <summary>Registers an entity query, answered by an earlier round when one served a covering select.</summary>
         /// <typeparam name="T">The entity class.</typeparam>
         /// <param name="metadata">The entity's metadata.</param>
         /// <param name="filter">The filter.</param>
         /// <param name="arguments">The filter's arguments, or null.</param>
         /// <param name="select">The select.</param>
+        /// <param name="visible">Whether the caller's read decision is conjoined when the round is composed.</param>
         /// <returns>The ref.</returns>
-        private ContextRef<IReadOnlyList<T>> Entities<T>(EntityMetadata metadata, FilterTree filter, QueryArguments? arguments, SelectSet select)
+        private ContextRef<IReadOnlyList<T>> Entities<T>(EntityMetadata metadata, FilterTree filter, QueryArguments? arguments, SelectSet select, bool visible)
         {
-            string key = QueryStatementKey.For("query").Add(typeof(T).AssemblyQualifiedName).Add(filter).Add(arguments).Build(QueryexLimits.Default).Text;
+            string key = QueryStatementKey.For(visible ? "visible" : "query").Add(typeof(T).AssemblyQualifiedName).Add(filter).Add(arguments).Build(QueryexLimits.Default).Text;
             lock (_gate)
             {
                 // --- An earlier round served the same query under a covering select ---
@@ -423,7 +495,7 @@ namespace Tellma.Core.Crud.Validation
                     wanted = wanted.Union(served.Select);
                 }
 
-                LoadGroup group = Pending(key, () => Open(typeof(EntitiesGroup<>), [typeof(T)], this, metadata, key, filter, arguments));
+                LoadGroup group = Pending(key, () => Open(typeof(EntitiesGroup<>), [typeof(T)], this, metadata, key, filter, arguments, visible));
                 return ((IEntitiesLoad<T>)group).Add(wanted);
             }
         }

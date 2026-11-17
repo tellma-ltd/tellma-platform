@@ -105,7 +105,7 @@ namespace Tellma.Core.Crud.Validation
         }
 
         /// <summary>The most rounds the scheduler dispatches, the first included.</summary>
-        public int MaxRounds { get; }
+        public int MaxRounds { get; private set; }
 
         /// <summary>The rounds dispatched so far.</summary>
         public int Dispatches
@@ -151,6 +151,25 @@ namespace Tellma.Core.Crud.Validation
             }
 
             _ = RunParticipantAsync(participant, task);
+        }
+
+        /// <summary>
+        ///     Raises the ceiling by one round, before the rounds run, for a first round that only the
+        ///     pipeline's own loads need: the tasks then start after it, and keep the rounds they would
+        ///     have had without it.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The rounds have started.</exception>
+        public void AddPipelineRound()
+        {
+            lock (_gate)
+            {
+                if (_started)
+                {
+                    throw new InvalidOperationException("The round ceiling is raised before the validation rounds start.");
+                }
+
+                MaxRounds++;
+            }
         }
 
         /// <summary>

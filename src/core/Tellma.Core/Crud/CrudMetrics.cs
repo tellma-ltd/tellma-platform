@@ -85,6 +85,23 @@ namespace Tellma.Core.Crud
                 "Confirmation warnings raised, by key and by whether the caller had confirmed them.");
         }
 
+        /// <summary>The <c>crud.source</c> of a write from who asked for it.</summary>
+        /// <param name="source">Who asked for the write.</param>
+        /// <returns>The tag's value: <c>web</c>, <c>public_api</c>, <c>agent</c>, <c>import</c> or <c>system</c>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The source is not one the platform defines.</exception>
+        public static string Source(SaveSource source)
+        {
+            return source switch
+            {
+                SaveSource.Web => "web",
+                SaveSource.PublicApi => "public_api",
+                SaveSource.Agent => "agent",
+                SaveSource.Import => "import",
+                SaveSource.System => "system",
+                _ => throw new ArgumentOutOfRangeException(nameof(source), source, "The save source is not one the platform defines."),
+            };
+        }
+
         /// <summary>The <c>crud.lane</c> of an operation over a number of rows or ids.</summary>
         /// <param name="count">The rows or ids.</param>
         /// <param name="largeBatchThreshold">The data layer's large-batch threshold.</param>

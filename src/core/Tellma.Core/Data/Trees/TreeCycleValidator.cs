@@ -16,7 +16,8 @@ namespace Tellma.Core.Data.Trees
     // The C# tree check of spec 0012 §10.4: the whole table's (Id, ParentId) with the payload's
     // parents laid over it, so a cycle or a depth beyond the limit is a field error with a path in
     // the common case. Under write skew the save's cycle fence and recursion limit (§10.2) catch
-    // what this check missed. Registered by the tree recipe of the CRUD stack.
+    // what this check missed. The save pipeline runs it as spec 0015 §6.6 step 6, its load riding
+    // round trip 1 and its report made once the ids are assigned; as a validator it runs alone.
     /// <summary>
     ///     Refuses a tree save whose parents would close a cycle (<see cref="ValidationCodes.TreeCycle" />,
     ///     a row's own id included) or nest a row deeper than the tree's depth limit
@@ -35,18 +36,34 @@ namespace Tellma.Core.Data.Trees
         public async Task ValidateAsync(SaveContext<TEntity> context)
         {
             ArgumentNullException.ThrowIfNull(context);
+            if (Request(context) is TreeCheck check)
+            {
+                await context.Loader.LoadAsync().ConfigureAwait(false);
+                Report(check, context);
+            }
+        }
+
+        /// <summary>
+        ///     Requests the table's ids and parents from the context's loader, unless no payload row
+        ///     names a parent: such a payload can close no cycle and nest no row deeper.
+        /// </summary>
+        /// <param name="context">The save's context.</param>
+        /// <returns>The pending check, which <see cref="Report" /> completes once the load ran; null when there is nothing to check.</returns>
+        /// <exception cref="InvalidOperationException">The entity is no tree, or the tenant's settings are not loaded.</exception>
+        internal TreeCheck? Request(SaveContext<TEntity> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
             EntityMetadata entity = metadata.Get(typeof(TEntity));
             TreeMetadata tree = entity.Tree
                 ?? throw new InvalidOperationException($"The entity {entity.Name} is not a tree, so it takes no tree check.");
 
-            // --- The payload's rows and parents; none that names a parent can close a cycle or nest deeper ---
-            List<(int Index, long Id, long? ParentId)> saved = [.. context.Entities.Select(static (row, index) => Payload(row, index))];
-            if (saved.TrueForAll(static row => row.ParentId is null))
+            // --- The payload's parents; none that names a parent can close a cycle or nest deeper ---
+            if (context.Entities.Select(static (row, index) => Payload(row, index)).All(static row => row.ParentId is null))
             {
-                return;
+                return null;
             }
 
-            // --- The table's parents, with the payload's laid over them ---
+            // --- The table's ids and parents, loaded with the round ---
             MultilingualShape shape = context.Context.TenantSettings?.Shape
                 ?? throw new InvalidOperationException("The tenant's settings are not loaded in this scope, so the tree check has no shape to load the table under.");
             EntityDescriptor root = schemas.Map(shape).Descriptor(entity);
@@ -55,8 +72,25 @@ namespace Tellma.Core.Data.Trees
                 Root = root,
                 Select = $"{root.Key.Name},{tree.ParentKey.Name}",
             });
-            await context.Loader.LoadAsync().ConfigureAwait(false);
-            Dictionary<long, long?> parents = Parents(loaded.Value);
+            return new TreeCheck(tree, loaded);
+        }
+
+        /// <summary>
+        ///     Reports the cycles and the depths beyond the limit, from the loaded table with the
+        ///     payload's parents laid over it. The payload's ids are read now, so a save reports after
+        ///     its new rows received their ids.
+        /// </summary>
+        /// <param name="check">The check <see cref="Request" /> returned, its load run.</param>
+        /// <param name="context">The save's context, whose errors take the report.</param>
+        internal static void Report(TreeCheck check, SaveContext<TEntity> context)
+        {
+            ArgumentNullException.ThrowIfNull(check);
+            ArgumentNullException.ThrowIfNull(context);
+            TreeMetadata tree = check.Tree;
+
+            // --- The table's parents, with the payload's laid over them ---
+            List<(int Index, long Id, long? ParentId)> saved = [.. context.Entities.Select(static (row, index) => Payload(row, index))];
+            Dictionary<long, long?> parents = Parents(check.Loaded.Value);
             foreach ((int _, long id, long? parentId) in saved)
             {
                 parents[id] = parentId;
@@ -94,6 +128,11 @@ namespace Tellma.Core.Data.Trees
                 }
             }
         }
+
+        /// <summary>A pending tree check: the tree, and the table's ids and parents once the round ran.</summary>
+        /// <param name="Tree">The tree's metadata.</param>
+        /// <param name="Loaded">The table's ids and parents.</param>
+        internal sealed record TreeCheck(TreeMetadata Tree, ContextRef<QueryRowSet> Loaded);
 
         /// <summary>A saved row's id and parent, read off the tree entity of its key type.</summary>
         /// <param name="row">The row.</param>
