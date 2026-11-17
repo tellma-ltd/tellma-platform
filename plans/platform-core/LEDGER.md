@@ -101,8 +101,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-052 | pc-1 | pc/PC-052 | released → integrating (held 99668d66; R2 0/1/4 all fixed, 17 deviations; D-105 server scope); D-106 | impl (Opus, xhigh, launched 2026-11-16) | R2 done (Fable) | 2026-11-16 |
-| PC-194 | pc-2 | pc/PC-194 | impl | impl (Opus, high, launched 2026-11-16) | — | 2026-11-16 |
+| PC-052 | — (pushed) | pc/PC-052 | integrated cdaef87a (CI pending); D-105 server scope + all .NET suites; D-106 | impl (Opus, xhigh, launched 2026-11-16) | R2 done (Fable) | 2026-11-16 |
+| PC-194 | pc-2 | pc/PC-194 | r1 (commit 1 7f81317c; 19 deviations; engine chunk 199.74 KB gz vs spec 0024 §12's 170 → proposes 200; zrender innerHTML → replaceChildren for Trusted Types; ./chart 6.56/6.6) | impl (Opus, high, launched 2026-11-16) | R1 (Opus, high) | 2026-11-16 |
 
 ## Fix items
 
@@ -326,7 +326,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
 | PC-050 | 0014-d | 1 | done (a11022e4; CI 43972112319 integration-windows flake → PC-F52; green 43972186530 on 1ab06bf1) | 1788470, 2ea33c0, b12dedf, a11022e (pc/PC-050) | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
-| PC-052 | 0014-e | 1 | released → integrating (held 99668d66) | b353f3d, 59ca98e, a2b2ee1, a070d70, 99668d6 (pc/PC-052) |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
+| PC-052 | 0014-e | 1 | integrated cdaef87a (CI pending) | b353f3d, 59ca98e, a2b2ee1, a070d70, 99668d6, cdaef87 (pc/PC-052) |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
 | PC-055 | 0018-a | 1 | done (CI 43625011160) | 9dce959, 166c532, 10bbca4, abd9413, c4acf1f (pc/PC-055) | | |
@@ -468,7 +468,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |
 | PC-193 | 0034-a | 3 | done (94ac0b22; CI 44024306068 green) | 0e2ea82, 5a16ff3, 141953f, 94ac0b2 (pc/PC-193) | | carry (D-102): if PC-F50 integrated first, move tiles.loadFailed into ./tiles-tree's own string registration via the new seam, with its Arabic string and the parity test |
-| PC-194 | 0034-b | 3 | impl | | | |
+| PC-194 | 0034-b | 3 | r1 | 7f81317 (pc/PC-194) | | |
 | PC-195 | 0034-c | 3 | todo | | | |
 | PC-196 | 0034-d | 3 | todo | | | |
 | PC-197 | 0034-e | 3 | todo | | | |
