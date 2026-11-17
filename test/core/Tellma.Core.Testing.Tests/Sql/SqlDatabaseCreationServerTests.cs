@@ -12,8 +12,8 @@ namespace Tellma.Core.Testing.Tests.Sql
 {
     /// <summary>
     ///     The shared database creation against a real server: its preparation runs every batch on
-    ///     one session; and, under real contention for the <c>model</c> lock on a container of the
-    ///     class's own, SQL Server's own 1807 is classified as transient, a bound of one run surfaces
+    ///     one session; and, under real contention for the <c>model</c> lock on the assembly's own
+    ///     container, SQL Server's own 1807 is classified as transient, a bound of one run surfaces
     ///     it unchanged, and concurrent creations it blocked are retried and all succeed once
     ///     <c>model</c> is free.
     /// </summary>
@@ -25,9 +25,10 @@ namespace Tellma.Core.Testing.Tests.Sql
     ///     a server named by <c>TELLMA_TEST_SQL</c>: the held lock would stall every other suite's
     ///     creations on a shared server.
     /// </remarks>
-    /// <param name="sql">The class's server: its own container unless an existing server is named.</param>
+    /// <param name="sql">The collection's server: the assembly's own container unless an existing server is named.</param>
     [Trait("Category", "Integration")]
-    public sealed class SqlDatabaseCreationServerTests(SqlServerFixture sql) : IClassFixture<SqlServerFixture>
+    [Collection(SqlServerCollectionDefinition.Name)]
+    public sealed class SqlDatabaseCreationServerTests(SqlServerFixture sql)
     {
         /// <summary>How many creations contend at once.</summary>
         private const int Contenders = 6;

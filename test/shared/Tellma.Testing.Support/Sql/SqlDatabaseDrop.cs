@@ -10,16 +10,17 @@ using System.Globalization;
 namespace Tellma.Testing.Support.Sql
 {
     /// <summary>
-    ///     The one way a fixture drops the databases a suite created on an existing server. The
-    ///     process's pooled connections are closed first, so no drop waits to roll back a session
-    ///     the suite left idle in the pool. Then each database is set to single-user,
-    ///     which rolls back any session still in it, and dropped, in one statement run in
-    ///     <c>master</c> under <see cref="SqlDatabaseCreation.CommandTimeout" />: a loaded server can
-    ///     hold a drop past the 30-second default, as it holds a creation. A drop that meets a lock or
-    ///     a session it could not take over (<see cref="IsTransient(IReadOnlyCollection{int})" />)
-    ///     runs again after the waits of <see cref="CreateDatabaseRetry.Default" />, and each rerun
-    ///     closes the pooled connections again first. A database that cannot be dropped does not
-    ///     stop the others: every failure is reported together at the end.
+    ///     The one way a test fixture drops the databases it created on an existing server. One
+    ///     connection to <c>master</c> is opened, and then the process's pooled connections are
+    ///     closed, so no drop waits to roll back a session the suite left idle in the pool. Each
+    ///     database is then set to single-user, which rolls back any session still in it, and
+    ///     dropped, in one statement run under <see cref="SqlDatabaseCreation.CommandTimeout" />: a
+    ///     loaded server can hold a drop past the 30-second default, as it holds a creation. A drop
+    ///     that meets a lock or a session it could not take over
+    ///     (<see cref="IsTransient(IReadOnlyCollection{int})" />) runs again after the waits of
+    ///     <see cref="CreateDatabaseRetry.Default" />, and each rerun closes the pooled connections
+    ///     again first. A database that cannot be dropped does not stop the others: every database
+    ///     left behind is reported together at the end.
     /// </summary>
     public static class SqlDatabaseDrop
     {
@@ -52,35 +53,20 @@ namespace Tellma.Testing.Support.Sql
         /// <param name="cancellationToken">Cancels the drops and the waits between runs.</param>
         /// <returns>A task that completes when every database is gone.</returns>
         /// <exception cref="AggregateException">
-        ///     A database could not be dropped, or the connection was lost before every one was
-        ///     tried. The message names each database left behind, and each failure is an inner
-        ///     exception.
+        ///     A database could not be dropped, the connection could not be opened, or it was lost
+        ///     before every database was tried. The message names each database left behind, and each
+        ///     failure is an inner exception.
         /// </exception>
-        public static async Task DropAllAsync(string masterConnectionString, IReadOnlyList<string> databases, CancellationToken cancellationToken = default)
+        public static Task DropAllAsync(string masterConnectionString, IReadOnlyList<string> databases, CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
-            ArgumentNullException.ThrowIfNull(databases);
-            if (databases.Count == 0)
-            {
-                return;
-            }
-
-            // --- The process's idle pooled connections close first, so the drops find none of its
-            // sessions to roll back. On LocalDB, rolling back the sessions in a database costs its
-            // drop about three seconds however few there are, so a suite's cleanup ran for minutes,
-            // against a fraction of a second per drop once the pools are clear ---
-            SqlConnection.ClearAllPools();
-
-            SqlConnection connection = new(masterConnectionString);
-            await using (connection.ConfigureAwait(false))
-            {
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                await DropEachAsync(
-                    databases,
-                    (database, token) => DropAsync(connection, database, CreateDatabaseRetry.Default, SqlDatabaseCreation.WriteToTestOutput, token),
-                    () => connection.State == ConnectionState.Open,
-                    cancellationToken).ConfigureAwait(false);
-            }
+            return DropAllAsync(
+                masterConnectionString,
+                databases,
+                CreateDatabaseRetry.Default,
+                SqlDatabaseCreation.WriteToTestOutput,
+                static (command, token) => command.ExecuteNonQueryAsync(token),
+                SqlConnection.ClearAllPools,
+                cancellationToken);
         }
 
         /// <summary>Whether a failed drop may succeed when run again.</summary>
@@ -104,6 +90,69 @@ namespace Tellma.Testing.Support.Sql
             ArgumentNullException.ThrowIfNull(errorNumbers);
             return errorNumbers.Any(static number => HeldErrorNumbers.Contains(number))
                 && errorNumbers.All(static number => number == AlterDatabaseFailedErrorNumber || HeldErrorNumbers.Contains(number));
+        }
+
+        /// <summary>
+        ///     <see cref="DropAllAsync(string, IReadOnlyList{string}, CancellationToken)" /> over its
+        ///     seams: the retry policy, the log, what runs a drop's command and what closes the pooled
+        ///     connections, so the path is proven without a server or a wait.
+        /// </summary>
+        /// <param name="masterConnectionString">A connection string to the server's <c>master</c> database.</param>
+        /// <param name="databases">The databases' exact names.</param>
+        /// <param name="retry">When a held drop runs again.</param>
+        /// <param name="log">Receives one line per retry and one on giving up.</param>
+        /// <param name="execute">Runs a drop's command, which carries the statement and the bound; it gets the cancellation token.</param>
+        /// <param name="clearPools">Closes the process's idle pooled connections.</param>
+        /// <param name="cancellationToken">Cancels the drops and the waits between runs.</param>
+        /// <returns>A task that completes when every database is gone.</returns>
+        /// <exception cref="AggregateException">A database was left behind; see the public overload.</exception>
+        internal static async Task DropAllAsync(
+            string masterConnectionString,
+            IReadOnlyList<string> databases,
+            CreateDatabaseRetry retry,
+            Action<string> log,
+            Func<SqlCommand, CancellationToken, Task> execute,
+            Action clearPools,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
+            ArgumentNullException.ThrowIfNull(databases);
+            ArgumentNullException.ThrowIfNull(retry);
+            ArgumentNullException.ThrowIfNull(log);
+            ArgumentNullException.ThrowIfNull(execute);
+            ArgumentNullException.ThrowIfNull(clearPools);
+            if (databases.Count == 0)
+            {
+                return;
+            }
+
+            SqlConnection connection = new(masterConnectionString);
+            await using (connection.ConfigureAwait(false))
+            {
+                // --- The connection opens before the pools are cleared, so it can reuse a warm pooled
+                // login rather than a fresh one. A connection that cannot be opened leaves every
+                // database untried, and they are all named ---
+                try
+                {
+                    await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw Report(databases.Count, [], [exception], [.. databases], "the connection to the server could not be opened, its failure the inner exception");
+                }
+
+                // --- The process's idle pooled connections close next, so the drops find none of its
+                // sessions to roll back. On LocalDB, rolling back the sessions in a database costs its
+                // drop about three seconds however few there are, so a suite's cleanup ran for minutes,
+                // against a fraction of a second per drop once the pools are clear ---
+                clearPools();
+
+                await DropEachAsync(
+                    databases,
+                    (database, token) => DropAsync(connection, database, retry, log, execute, clearPools, token),
+                    () => connection.State == ConnectionState.Open,
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
 
         /// <summary>
@@ -166,56 +215,57 @@ namespace Tellma.Testing.Support.Sql
                 }
             }
 
-            // --- Every database left behind is named, and each failure travels as an inner exception ---
             string[] untried = [.. databases.Skip(tried)];
-            if (failed.Count == 0 && untried.Length == 0)
+            if (failed.Count > 0 || untried.Length > 0)
             {
-                return;
+                throw Report(databases.Count, [.. failed], [.. failures], untried, "the connection to the server was lost");
             }
-
-            string message = string.Create(
-                CultureInfo.InvariantCulture,
-                $"{failed.Count + untried.Length} of the {databases.Count} test databases were not dropped and must be dropped by hand.");
-            if (failed.Count > 0)
-            {
-                message += $" Failed, each with its failure as an inner exception: {Names(failed)}.";
-            }
-
-            if (untried.Length > 0)
-            {
-                message += $" Not tried, as the connection to the server was lost: {Names(untried)}.";
-            }
-
-            throw new AggregateException(message, failures);
         }
 
         /// <summary>
-        ///     Drops one database under a retry policy, on an open connection to <c>master</c>. Each
-        ///     rerun first closes the process's idle pooled connections, since one of them may be the
-        ///     session that held the database.
+        ///     Drops one database under a retry policy, on an open connection to <c>master</c>, its
+        ///     command carrying the statement and <see cref="SqlDatabaseCreation.CommandTimeout" />.
+        ///     A held drop runs again under <see cref="IsTransient(Exception)" />, and each rerun
+        ///     first closes the process's idle pooled connections, since one of them may be the
+        ///     session that held the database. Any other failure surfaces at once.
         /// </summary>
-        /// <param name="master">An open connection to the server's <c>master</c> database.</param>
+        /// <param name="master">A connection to the server's <c>master</c> database; open, unless <paramref name="execute" /> never uses it.</param>
         /// <param name="database">The database's exact name.</param>
-        /// <param name="retry">When a failed drop runs again.</param>
+        /// <param name="retry">When a held drop runs again.</param>
         /// <param name="log">Receives one line per retry and one on giving up.</param>
+        /// <param name="execute">Runs the command; it gets the cancellation token.</param>
+        /// <param name="clearPools">Closes the process's idle pooled connections.</param>
         /// <param name="cancellationToken">Cancels the drop and the waits between runs.</param>
         /// <returns>A task that completes when the database is gone.</returns>
-        private static Task DropAsync(SqlConnection master, string database, CreateDatabaseRetry retry, Action<string> log, CancellationToken cancellationToken)
+        internal static Task DropAsync(
+            SqlConnection master,
+            string database,
+            CreateDatabaseRetry retry,
+            Action<string> log,
+            Func<SqlCommand, CancellationToken, Task> execute,
+            Action clearPools,
+            CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(master);
+            ArgumentNullException.ThrowIfNull(retry);
+            ArgumentNullException.ThrowIfNull(execute);
+            ArgumentNullException.ThrowIfNull(clearPools);
+
             string statement = DropStatement(database);
             int runs = 0;
             return retry.RunAsync(
                 async token =>
                 {
+                    // --- A rerun first closes the pooled connections that may hold the database ---
                     if (runs++ > 0)
                     {
-                        SqlConnection.ClearAllPools();
+                        clearPools();
                     }
 
                     SqlCommand command = SqlDatabaseCreation.CreateCommand(master, statement);
                     await using (command.ConfigureAwait(false))
                     {
-                        _ = await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                        await execute(command, token).ConfigureAwait(false);
                     }
                 },
                 $"DROP DATABASE {SqlDatabaseCreation.Quote(database)}",
@@ -224,6 +274,32 @@ namespace Tellma.Testing.Support.Sql
                 Task.Delay,
                 Random.Shared.NextDouble,
                 cancellationToken);
+        }
+
+        /// <summary>The report of a cleanup that left databases behind: each one named, each failure an inner exception.</summary>
+        /// <param name="total">How many databases the cleanup was given.</param>
+        /// <param name="failed">The databases whose drop failed.</param>
+        /// <param name="failures">The failures: one per failed database, or the connection's own.</param>
+        /// <param name="untried">The databases never tried.</param>
+        /// <param name="untriedReason">Why the untried ones were not tried.</param>
+        /// <returns>The exception.</returns>
+        private static AggregateException Report(
+            int total, string[] failed, Exception[] failures, string[] untried, string untriedReason)
+        {
+            string message = string.Create(
+                CultureInfo.InvariantCulture,
+                $"{failed.Length + untried.Length} of the {total} test databases were not dropped and must be dropped by hand.");
+            if (failed.Length > 0)
+            {
+                message += $" Failed, each with its failure as an inner exception: {Names(failed)}.";
+            }
+
+            if (untried.Length > 0)
+            {
+                message += $" Not tried, as {untriedReason}: {Names(untried)}.";
+            }
+
+            return new AggregateException(message, failures);
         }
 
         /// <summary>Names, each bracketed, joined by commas.</summary>

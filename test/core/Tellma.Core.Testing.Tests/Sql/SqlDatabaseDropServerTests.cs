@@ -4,33 +4,40 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using System.Globalization;
 using Tellma.Testing.Support.Sql;
 
 namespace Tellma.Core.Testing.Tests.Sql
 {
     /// <summary>
-    ///     The end-of-suite drops against a real server: a database that sessions are still in, an
-    ///     idle pooled one and one inside an open transaction, is dropped; and a database that was
+    ///     The end-of-suite drops against a real server: databases that sessions are still in, an
+    ///     idle pooled one and one inside an open transaction, are dropped, the pools cleared once
+    ///     before the first drop and every drop under the five-minute bound; and a database that was
     ///     reserved but never created is passed over.
     /// </summary>
-    /// <param name="sql">The class's server: its own container unless an existing server is named.</param>
+    /// <param name="sql">The collection's server: the assembly's own container unless an existing server is named.</param>
     [Trait("Category", "Integration")]
-    public sealed class SqlDatabaseDropServerTests(SqlServerFixture sql) : IClassFixture<SqlServerFixture>
+    [Collection(SqlServerCollectionDefinition.Name)]
+    public sealed class SqlDatabaseDropServerTests(SqlServerFixture sql)
     {
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         /// <summary>
-        ///     A database is dropped though sessions are still in it: one idle in the pool, and one
-        ///     holding a write in an open transaction, which the drop rolls back.
+        ///     Databases are dropped though sessions are still in them: one idle in the pool, and one
+        ///     holding a write in an open transaction, which the drop rolls back. The pools are cleared
+        ///     once, before the first drop, and each drop runs under the five-minute bound.
         /// </summary>
         /// <returns>A task that completes when the test is done.</returns>
         [Fact]
-        public async Task A_database_that_sessions_are_still_in_is_dropped()
+        public async Task Databases_that_sessions_are_still_in_are_dropped()
         {
             string connectionString = await sql.CreateDatabaseAsync("dropped");
             string name = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
+            string other = new SqlConnectionStringBuilder(await sql.CreateDatabaseAsync("dropped_too")).InitialCatalog;
             await SqlServerFixture.ExecuteAsync(connectionString, "CREATE TABLE dbo.Held (Id int NOT NULL);");
+            List<string> events = [];
+            List<string> log = [];
 
             // --- A session left idle in the pool ---
             Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(connectionString, "SELECT 1;"));
@@ -47,9 +54,28 @@ namespace Tellma.Core.Testing.Tests.Sql
                     _ = await write.ExecuteNonQueryAsync(Token);
                 }
 
-                await SqlDatabaseDrop.DropAllAsync(sql.MasterConnectionString, [name], Token);
+                // --- The real path, its command runner and pool clearer observed on the way through ---
+                await SqlDatabaseDrop.DropAllAsync(
+                    sql.MasterConnectionString,
+                    [name, other],
+                    CreateDatabaseRetry.Default,
+                    log.Add,
+                    (command, token) =>
+                    {
+                        events.Add(string.Create(CultureInfo.InvariantCulture, $"run {command.CommandTimeout} s"));
+                        return command.ExecuteNonQueryAsync(token);
+                    },
+                    () =>
+                    {
+                        events.Add("clear");
+                        SqlConnection.ClearAllPools();
+                    },
+                    Token);
 
+                Assert.Equal(["clear", "run 300 s", "run 300 s"], events);
+                Assert.Empty(log);
                 Assert.Null(await SqlServerFixture.ScalarAsync<int?>(sql.MasterConnectionString, $"SELECT DB_ID(N'{name}');"));
+                Assert.Null(await SqlServerFixture.ScalarAsync<int?>(sql.MasterConnectionString, $"SELECT DB_ID(N'{other}');"));
 
                 // --- The holder's session was rolled back and ended under it ---
                 SqlCommand after = holder.CreateCommand();

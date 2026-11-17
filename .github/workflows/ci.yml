@@ -45,7 +45,12 @@ jobs:
       # (eng/culture-data), so the test that regenerates the data must run there. The variable
       # turns its skip on any other ICU release into a failure: a runner image that moves on is
       # noticed here rather than silently dropping the guard.
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
+      # Every dotnet test step here logs at normal verbosity with xUnit's diagnostic messages on.
+      # The default verbosity prints a failed fixture cleanup as its exception type alone, and
+      # drops the lines a fixture writes outside a test (a database drop it had to retry, say):
+      # normal verbosity prints the cleanup's message and stack, and the diagnostic messages
+      # carry the fixture's own lines. CONTRIBUTING.md has the same flags for a local run.
+      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
         env:
           TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
 
@@ -80,7 +85,8 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true"
+      # Normal verbosity and xUnit's diagnostic messages: see build-test.
+      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # The distribution host's two integration suites on Windows, against LocalDB rather than a
   # container (the Windows runners have no Linux containers): the platform's catalog and migrator
@@ -134,8 +140,10 @@ jobs:
             Start-Sleep -Seconds 5
           }
           throw 'LocalDB did not answer a query against master.'
-      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
-      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
+      # Normal verbosity and xUnit's diagnostic messages: see build-test. Here they show what the
+      # end-of-suite drops on LocalDB retried, and every database a failed cleanup left behind.
+      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
@@ -232,7 +240,8 @@ jobs:
       - name: Install Chromium
         timeout-minutes: 10
         run: bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
-      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E&Category!=Nightly"
+      # Normal verbosity and xUnit's diagnostic messages: see build-test.
+      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E&Category!=Nightly" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
