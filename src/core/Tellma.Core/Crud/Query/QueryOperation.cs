@@ -13,29 +13,50 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Data;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Query
 {
-    // The steps are spec 0015 §5.2; the read's batch is §5.1; the arithmetic mapping is §14.2.
+    // The steps are spec 0015 §5.2; the read's batch is §5.1; the translations are §14.2; a direct
+    // read's step-up and deny re-check are spec 0014 §4.3 and §5.1.
     /// <summary>
     ///     The query operation of a stack or a child query surface: the type-level read check, the
     ///     ceilings, then one guarded read whose composition plans the query under the caller's
     ///     connected access, applies the traversal and select-type rules, and appends the one row
-    ///     read with its count and ancestors. Scoped.
+    ///     read with its count and ancestors. A path into another entity is held to what a direct
+    ///     read of that entity asks: the step-up of a sensitive read, and the re-check of a denial
+    ///     from a set the fast-deny window no longer vouches for. Scoped.
     /// </summary>
     /// <param name="evaluator">The caller's access decisions.</param>
     /// <param name="securables">The registered securables.</param>
     /// <param name="runner">The guarded batch runner.</param>
     /// <param name="database">The tenant's database.</param>
-    /// <param name="accessor">The scope's request context.</param>
+    /// <param name="accessor">The scope's request context, whose assurance a sensitive read is held to.</param>
+    /// <param name="stepUp">The assurance bar of the sensitive securables.</param>
     /// <param name="planner">The planner.</param>
     /// <param name="traversal">The traversal rule.</param>
     /// <param name="operations">The operation scope.</param>
     /// <param name="time">The clock.</param>
-    internal sealed class QueryOperation(AccessEvaluator evaluator, ISecurableRegistry securables, IGuardedBatchRunner runner, ITenantDatabase database, IRequestContextAccessor accessor, QueryPlanner planner, QueryTraversalRule traversal, CrudOperations operations, TimeProvider time)
+    internal sealed class QueryOperation(
+        AccessEvaluator evaluator,
+        ISecurableRegistry securables,
+        IGuardedBatchRunner runner,
+        ITenantDatabase database,
+        IRequestContextAccessor accessor,
+        StepUpBar stepUp,
+        QueryPlanner planner,
+        QueryTraversalRule traversal,
+        CrudOperations operations,
+        TimeProvider time)
     {
         /// <summary>The problem code of a refused securable.</summary>
         private const string ForbiddenCode = "forbidden";
+
+        /// <summary>The dependency a data-access failure names.</summary>
+        private const string DatabaseDependency = "database";
+
+        /// <summary>The wait a caller is told before retrying a read the database could not serve.</summary>
+        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
 
         /// <summary>Runs one query.</summary>
         /// <param name="surface">The surface it runs on.</param>
@@ -71,6 +92,42 @@ namespace Tellma.Core.Crud.Query
             // The service's branch reads only the text, so it is asked once, whatever the recompositions.
             FilterTree? customSearch = shape.Search is string search && searchFilter is not null ? searchFilter(search) : null;
 
+            // A path refused by a denial is re-checked once, as a direct read of its entity would be.
+            bool rechecked = false;
+            while (true)
+            {
+                string? denied = null;
+                try
+                {
+                    return await ReadAsync(surface, shape, customSearch, entity => denied = entity, cancellationToken).ConfigureAwait(false);
+                }
+                catch (ForbiddenException) when (!rechecked && denied is string entity)
+                {
+                    // The evaluator re-checks a denial from a set older than the fast-deny window in one
+                    // prologue-only round trip per scope; a grant it finds recomposes the read once.
+                    rechecked = true;
+                    AccessDecision decision = await evaluator.EvaluateAsync(entity, AccessActions.Read, cancellationToken).ConfigureAwait(false);
+                    if (decision.Outcome != AccessOutcome.Unrestricted)
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        ///     The query's one guarded read, with the data layer's failures translated into what the
+        ///     caller can act on.
+        /// </summary>
+        /// <param name="surface">The surface.</param>
+        /// <param name="shape">The admitted request.</param>
+        /// <param name="customSearch">The service's search branch, or null.</param>
+        /// <param name="refusedByDenial">Told the entity whose denial refused a path, before the refusal is thrown.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The page.</returns>
+        private async Task<RowPage> ReadAsync(
+            QuerySurface surface, QueryShape shape, FilterTree? customSearch, Action<string> refusedByDenial, CancellationToken cancellationToken)
+        {
             BatchResult<RowPage>? page = null;
             try
             {
@@ -78,7 +135,7 @@ namespace Tellma.Core.Crud.Query
                     BatchPurpose.Read,
                     (user, batch) =>
                     {
-                        page = Compose(surface, shape, customSearch, user, batch);
+                        page = Compose(surface, shape, customSearch, refusedByDenial, user, batch);
                         return ValueTask.CompletedTask;
                     },
                     (_, _) => page!.Value,
@@ -95,10 +152,10 @@ namespace Tellma.Core.Crud.Query
                         new Dictionary<string, object?>(StringComparer.Ordinal) { ["reason"] = failure.Reason }),
                 ]);
             }
-            finally
+            catch (DataAccessRetryExhaustedException failure)
             {
-                // The runner applies a refreshed context's cultures within its own call only.
-                accessor.Current.ApplyCultures();
+                // Deadlocks and transient failures outlasted the executor's retries: worth a retry soon.
+                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, failure);
             }
         }
 
@@ -109,10 +166,12 @@ namespace Tellma.Core.Crud.Query
         /// <param name="surface">The surface.</param>
         /// <param name="shape">The admitted request.</param>
         /// <param name="customSearch">The service's search branch, or null.</param>
+        /// <param name="refusedByDenial">Told the entity whose denial refused a path, before the refusal is thrown.</param>
         /// <param name="user">The connected user the batch is composed under.</param>
         /// <param name="batch">The batch.</param>
         /// <returns>The row read's handle.</returns>
-        private BatchResult<RowPage> Compose(QuerySurface surface, QueryShape shape, FilterTree? customSearch, ConnectedUser user, IDataBatch batch)
+        private BatchResult<RowPage> Compose(
+            QuerySurface surface, QueryShape shape, FilterTree? customSearch, Action<string> refusedByDenial, ConnectedUser user, IDataBatch batch)
         {
             // Every pipeline batch compiles under the pipeline's ceilings, so the batch admits what the plan admitted.
             batch.Limits = QueryexProfiles.PipelineLimits;
@@ -145,14 +204,34 @@ namespace Tellma.Core.Crud.Query
             // --- The plan, compiled: any diagnostic refuses the query here ---
             PlannedQuery plan = planner.Plan(surface, shape, schema, root, rootDecision.Filter, customSearch, hasUser: database.Context.UserId is not null);
 
-            // --- The traversal rule over the caller's paths, then the select-item types ---
-            IReadOnlyList<TraversalRefusal> refusals = traversal.Check(schema, root.Name, plan.Discovery, Decide);
+            // --- The traversal rule over the caller's paths: the first refusal, its entity told when a denial caused it ---
+            HashSet<string> fullReads = new(StringComparer.OrdinalIgnoreCase);
+            IReadOnlyList<TraversalRefusal> refusals = traversal.Check(schema, root.Name, plan.Discovery, Decide, fullReads);
             if (refusals.Count > 0)
             {
                 TraversalRefusal first = refusals[0];
+                if (Decide(first.Entity).Outcome == AccessOutcome.Denied)
+                {
+                    refusedByDenial(first.Entity);
+                }
+
                 throw new ForbiddenException(ForbiddenCode, first.Entity, AccessActions.Read, ForbiddenReason.RestrictedPath, string.Join('.', first.Path.Segments));
             }
 
+            // --- A sensitive entity read beyond its projection asks for the step-up a direct read of it asks for ---
+            RequestContext context = accessor.Current;
+            if (!context.IsSystem)
+            {
+                foreach (string entity in fullReads)
+                {
+                    if (securables.Find(entity, AccessActions.Read) is { IsSensitive: true })
+                    {
+                        AssuranceCheck.Ensure(context, stepUp.Requirement, now);
+                    }
+                }
+            }
+
+            // --- The select-item types ---
             QueryPlanner.RequireSelectable(plan, surface.Resource);
 
             // --- The one row read: the page, its capped count and its ancestors ---

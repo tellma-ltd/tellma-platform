@@ -1112,20 +1112,33 @@ an authoring bug (`InvalidOperationException`), and the others are `NotSupported
    an aggregate's to its select. The query compiles under `QueryexProfiles.PipelineLimits` (the
    batch is held to the same), and any diagnostic refuses it as `InvalidQueryException` located in
    the caller's clauses: `filters[i]` and `namedFilters[i]` by the request's indexes, `Select`,
-   `OrderBy`; a ceiling the whole query crossed at the clause it composed, at no span. Then the
-   traversal rule (`ForbiddenException` with `RestrictedPath`, the entity and the dotted path), the
+   `OrderBy`, an aggregate's ordering at the select it was taken from. A ceiling crossed in the
+   platform's own text is reported at no span: in the platform's filter conjuncts at the last
+   filter the request sent, else its last named filter, else `Select`; in a default select or
+   ordering at that clause. Any other diagnostic in the platform's text (a default, a search branch,
+   an access filter) is a defect, `InvalidOperationException`. Then the traversal rule
+   (`ForbiddenException` with `RestrictedPath`, the entity and the dotted path), the step-up of each
+   sensitive entity a path reads beyond its projection (as a direct `Read` of it asks:
+   `StepUpRequiredException`, or `IndividualRequiredException` for a service account), the
    select-type rule (a geography column, `Query.GeographyNotSelectable` at `Select[i]`), and the one
    row read with its count capped at `CountCap` and its ancestors under the access filter alone.
-4. **The arithmetic mapping**: a division by zero or an overflow in the caller's expressions is a
-   `ValidationException` with `Query.ArithmeticFailed` at the root, naming the reason.
+4. **The deny re-check**: a path refused by a denial is re-checked once through
+   `AccessEvaluator.EvaluateAsync`, so a denial from a set older than `FastDenyWindow` costs one
+   prologue-only round trip, as a direct read's would; a grant it finds composes the read once more
+   under the refreshed set.
+5. **The data layer's failures**: a division by zero or an overflow in the caller's expressions is a
+   `ValidationException` with `Query.ArithmeticFailed` at the root, naming the reason; retries
+   exhausted on deadlocks or transient failures are `DependencyUnavailableException` naming
+   `database` with a one-second `RetryAfter`, counted as `unavailable`.
 
 On warm caches the page, its count and its ancestors are one round trip. The arguments are bound
 from what the caller's own clauses declare (`QueryDiscoveries`, cached per tenant schema and clause
 texts and timed by `tellma.crud.query.discover.duration`): each JSON value converted to its
 parameter's inferred type by the wire's exact grammars (`QueryArgumentValues`), a JSON null or a
 missing value bound to null, a value no clause mentions ignored, and any other form a
-`BadRequestException` naming the parameter; while a search applies, the caller may not use the
-search's own parameter names.
+`BadRequestException` naming the parameter; while a search applies, a caller's parameter named as
+any the search can bind (`search`, `searchId`, `left`, `right`) is refused, whichever the search
+text binds.
 
 The search (`QuerySearch`) is one disjunction over declared parameters, so its filter takes a few
 constant shapes per root: each searchable column by its kind (`contains` or `startsWith`), or the
@@ -1138,7 +1151,9 @@ the first separator. A search no branch applies to matches no row.
 never the trusted trees beside them: a path into an entity other than the root reads all of it only
 under an unrestricted `Read` decision (its resource or the wildcard), and otherwise only its related
 projection. From a child surface's root without a grant of its own, the owner reached through the
-owner navigation counts as the root.
+owner navigation counts as the root. The rule returns refusals only; the query operation also takes
+from it the entities its paths read beyond their projection, and asks for the step-up of the
+sensitive ones.
 
 ### The validation stage
 

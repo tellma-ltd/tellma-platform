@@ -59,13 +59,26 @@ namespace Tellma.Core.IntegrationTests.Crud
 
         /// <summary>Seeds a caller of the first tenant who is a member of one role holding the permissions.</summary>
         /// <param name="permissions">The role's permissions: a resource, an action and a filter, null for none.</param>
-        /// <returns>The caller's subject.</returns>
-        public async Task<string> SeedCallerAsync(params (string Resource, string Action, string? Filter)[] permissions)
+        /// <returns>The caller's id and subject.</returns>
+        public async Task<(int UserId, string Subject)> SeedCallerAsync(params (string Resource, string Action, string? Filter)[] permissions)
         {
             (int userId, string subject) = await Connect.SeedCallerAsync("Caller");
+            await GrantAsync(userId, permissions);
+            return (userId, subject);
+        }
+
+        /// <summary>
+        ///     Makes a user a member of a new role holding the permissions, and moves the tags a save
+        ///     of the user's memberships moves.
+        /// </summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="permissions">The role's permissions: a resource, an action and a filter, null for none.</param>
+        /// <returns>A task that completes when the grant is saved.</returns>
+        public async Task GrantAsync(int userId, params (string Resource, string Action, string? Filter)[] permissions)
+        {
             int roleId = await Connect.SeedRoleAsync(permissions);
             await Connect.SeedMembershipAsync(userId, roleId);
-            return subject;
+            await Connect.BumpPermissionsAsync(userId);
         }
     }
 }

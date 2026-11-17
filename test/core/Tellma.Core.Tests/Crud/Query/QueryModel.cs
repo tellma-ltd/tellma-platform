@@ -5,6 +5,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Composition;
@@ -13,7 +14,10 @@ using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Crud.Query
 {
-    /// <summary>The query model: one stack per search shape, a child surface, a tree and a service that replaces the search.</summary>
+    /// <summary>
+    ///     The query model: one stack per search shape, a child surface, a tree, a service that
+    ///     replaces the search, and a sensitive read a ticket's path reaches.
+    /// </summary>
     internal static class QueryModel
     {
         /// <summary>The account's resource.</summary>
@@ -40,7 +44,8 @@ namespace Tellma.Core.Tests.Crud.Query
                 .Entity<QmTicket>()
                 .Entity<QmCounter, QmCounterService>()
                 .Entity<QmNode>()
-                .NamedFilters<QmAccount, QmAccountFilters>()));
+                .NamedFilters<QmAccount, QmAccountFilters>()
+                .Securables(static securables => securables.MarkSensitive(Counters, AccessActions.Read))));
         }
     }
 
@@ -101,7 +106,7 @@ namespace Tellma.Core.Tests.Crud.Query
         public decimal? Amount { get; set; }
     }
 
-    /// <summary>A ticket: a string display name behind an integer prefix, nothing searchable.</summary>
+    /// <summary>A ticket: a string display name behind an integer prefix, nothing searchable, and a counter it refers to.</summary>
     [Table("Tickets", Schema = "qm")]
     [TableType]
     [DisplayNameSource(nameof(Subject), Prefix = nameof(Number))]
@@ -113,9 +118,16 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The subject, the display name.</summary>
         [MaxLength(255)]
         public string Subject { get; set; } = null!;
+
+        /// <summary>The counter the ticket refers to, whose read is sensitive.</summary>
+        [References(typeof(QmCounter))]
+        public int? CounterId { get; set; }
     }
 
-    /// <summary>A counter: an integer display name, and a service whose search replaces the searchable columns'.</summary>
+    /// <summary>
+    ///     A counter: an integer display name, a service whose search replaces the searchable
+    ///     columns', and a read marked sensitive.
+    /// </summary>
     [Table("Counters", Schema = "qm")]
     [TableType]
     [DisplayNameSource(nameof(Number))]

@@ -21,7 +21,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     runner and evaluator: a page of a tree with its count and ancestors in one round trip once
     ///     the caches are warm, the ancestors under the caller's access filter, a division by zero in
     ///     the caller's expression as a validation error, a child surface under its owner's filtered
-    ///     grant in one round trip, and a path into an entity the caller may not read refused.
+    ///     grant in one round trip, a path into an entity the caller may not read refused, and one
+    ///     refused by a stale denial read once the re-check finds the grant.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -44,7 +45,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         [Fact]
         public async Task A_page_of_a_tree_with_its_count_and_ancestors_is_one_round_trip_once_the_caches_are_warm()
         {
-            string subject = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, null));
+            (_, string subject) = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, null));
             QueryRequest request = new()
             {
                 Select = "Id, Code",
@@ -74,7 +75,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         [Fact]
         public async Task The_ancestors_are_read_under_the_callers_access_filter()
         {
-            string subject = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, "Code != 'N1'"));
+            (_, string subject) = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, "Code != 'N1'"));
 
             await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
             RowPage page = await NodeService(scope).QueryAsync(
@@ -88,7 +89,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         [Fact]
         public async Task A_child_surface_reads_under_its_owners_filtered_grant_in_one_round_trip_once_the_caches_are_warm()
         {
-            string subject = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, "Price > 20"));
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, "Price > 20"));
             QueryRequest request = new() { Select = "Id, Notes, Widget.Subject", OrderBy = "Id", IncludeCount = true };
 
             await using (AsyncServiceScope cold = await fixture.Connect.ScopeAsync(subject))
@@ -111,7 +112,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         [Fact]
         public async Task A_division_by_zero_in_the_callers_expression_is_a_validation_error_at_the_root()
         {
-            string subject = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
 
             await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
             ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => WidgetService(scope).QueryAsync(
@@ -131,7 +132,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         [Fact]
         public async Task A_path_into_an_entity_the_caller_may_not_read_is_refused_naming_the_entity_and_the_path()
         {
-            string subject = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
 
             await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
             RowPage projected = await WidgetService(scope).QueryAsync(new QueryRequest { Select = "Code, CreatedBy.Name", Filters = ["Id = 1"] }, Token);
@@ -143,6 +144,30 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(
                 (ForbiddenReason.RestrictedPath, CoreResources.User, AccessActions.Read, "CreatedBy.Email"),
                 (refused.Reason, refused.Resource, refused.Action, refused.Path));
+        }
+
+        [Fact]
+        public async Task A_path_refused_by_a_stale_denial_reads_once_the_re_check_finds_a_grant_saved_since_the_set_was_cached()
+        {
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(
+                static services => services.PostConfigure<AccessOptions>(static options => options.FastDenyWindow = TimeSpan.FromTicks(1)));
+            (int caller, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+            QueryRequest request = new() { Select = "Code, CreatedBy.Email", Filters = ["Id = 1"] };
+
+            // --- The cached set denies the users' read, and the re-check finds nothing new: refused ---
+            await using (AsyncServiceScope cold = await fixture.Connect.ScopeAsync(subject, services: instance))
+            {
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => WidgetService(cold).QueryAsync(request, Token));
+                Assert.Equal((ForbiddenReason.RestrictedPath, CoreResources.User), (refused.Reason, refused.Resource));
+            }
+
+            // --- A save grants the users' read and moves the tags; the warm set still denies, the re-check reads ---
+            await fixture.GrantAsync(caller, (CoreResources.User, AccessActions.Read, null));
+
+            await using AsyncServiceScope warm = await fixture.Connect.ScopeAsync(subject, services: instance);
+            RowPage page = await WidgetService(warm).QueryAsync(request, Token);
+
+            Assert.Equal(["W1"], Strings(page.Rows, 0));
         }
 
         /// <summary>Runs a query and counts the round trips it took on the scope's data-access counters.</summary>

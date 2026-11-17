@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -15,7 +16,9 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Access;
 using Tellma.Core.Crud;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Data;
@@ -178,6 +181,55 @@ namespace Tellma.Core.Tests.Crud.Query
             Assert.Equal(("Select", new QueryexSpan(6, 4)), (diagnostic.Location, diagnostic.Span));
         }
 
+        [Fact]
+        public async Task An_aggregate_without_a_select_groups_and_orders_by_the_surfaces_default_select()
+        {
+            _rig.Grant(("*", AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+
+            QuerySpec accounts = Spec(await RowsAsync(QueryModel.Accounts, new QueryRequest { Aggregate = true }));
+            QuerySpec nodes = Spec(await RowsAsync(QueryModel.Nodes, new QueryRequest { Aggregate = true }));
+
+            // Both compiled as grouped queries before the batch was handed over.
+            Assert.Equal(Surface(QueryModel.Accounts).DefaultSelectFor(_rig.Schema, accounts.Root), accounts.Select);
+            Assert.Equal(Surface(QueryModel.Nodes).DefaultSelectFor(_rig.Schema, nodes.Root), nodes.Select);
+            QuerySpec[] specs = [accounts, nodes];
+            Assert.All(specs, static spec => Assert.Equal((true, spec.Select), (spec.Aggregate, spec.OrderBy)));
+        }
+
+        [Fact]
+        public async Task A_ceiling_the_platforms_filter_text_crosses_is_reported_at_the_callers_last_filter_with_no_span()
+        {
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            // The page's skip and take are two slots of the statement, so the caller's parameters
+            // fill the ceiling with two to spare.
+            int half = (QueryexProfiles.PipelineLimits.MaxParameters - 2) / 2;
+            string first = "Id in (" + string.Join(", ", Enumerable.Range(0, half).Select(static index => string.Create(CultureInfo.InvariantCulture, $"@a{index}"))) + ")";
+            string second = "Id in (" + string.Join(", ", Enumerable.Range(0, half).Select(static index => string.Create(CultureInfo.InvariantCulture, $"@b{index}"))) + ")";
+
+            // The caller's own parameters reach the ceiling; the split search's three cross it in the platform's conjunct.
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+            _ = await RowsAsync(QueryModel.Accounts, new QueryRequest { Filters = [first, second] });
+            InvalidQueryException refused = await Assert.ThrowsAsync<InvalidQueryException>(
+                () => RowsAsync(QueryModel.Accounts, new QueryRequest { Filters = [first, "", second], Search = "C - ab" }));
+
+            QueryexDiagnostic ceiling = Assert.Single(refused.Diagnostics);
+            Assert.Equal(("QX5007", "filters[2]", new QueryexSpan(0, 0)), (ceiling.Code, ceiling.Location, ceiling.Span));
+        }
+
+        [Fact]
+        public async Task A_platform_text_that_does_not_compile_is_a_defect_not_the_callers_error()
+        {
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            await using AsyncServiceScope scope = _rig.Scope();
+
+            InvalidOperationException defect = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Operation(scope).RunAsync(Surface(QueryModel.Accounts), new QueryRequest { Search = "ab" }, static _ => FilterTree.Leaf("Nope = 1"), Token));
+
+            Assert.Contains(QueryModel.Accounts, defect.Message, StringComparison.Ordinal);
+            Assert.Empty(_rig.Script.Batches.SelectMany(static batch => batch.Of(ScriptedKind.Rows)));
+        }
+
         // --- The arguments ---
 
         [Fact]
@@ -219,9 +271,18 @@ namespace Tellma.Core.Tests.Crud.Query
                 Search = "ab",
                 Arguments = Arguments("""{ "search": "x" }"""),
             }));
+
+            // A name this text's lowering does not bind is refused alike, so the outcome never turns on the text.
+            BadRequestException unbound = await Assert.ThrowsAsync<BadRequestException>(() => RowsAsync(QueryModel.Accounts, new QueryRequest
+            {
+                Filters = ["Code = @left"],
+                Search = "cash",
+                Arguments = Arguments("""{ "left": "x" }"""),
+            }));
             ScriptedStatement alone = await RowsAsync(QueryModel.Accounts, new QueryRequest { Filters = ["Code = @search"], Arguments = Arguments("""{ "search": "x" }""") });
 
-            Assert.Equal("search", refused.Arguments["parameter"]);
+            Assert.Equal("Search", refused.Arguments["parameter"]);
+            Assert.Equal("left", unbound.Arguments["parameter"]);
             Assert.Equal("x", alone.Arguments!.Values["search"]);
         }
 
@@ -313,6 +374,75 @@ namespace Tellma.Core.Tests.Crud.Query
         }
 
         [Fact]
+        public async Task A_path_reading_a_sensitive_entity_beyond_its_projection_asks_for_the_step_up_a_direct_read_asks_for()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+            _rig.Assurance = null;
+
+            // Below the bar: the direct read and the path past the projection ask alike; the projection asks nothing.
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => RowsAsync(QueryModel.Counters, new QueryRequest()));
+            StepUpRequiredException traversed = await Assert.ThrowsAsync<StepUpRequiredException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" }));
+            _ = await RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Number", Filters = ["Counter.Id > 0"] });
+
+            // At the bar, the same path reads.
+            _rig.Assurance = new AuthenticationAssurance(StepUpBar.DefaultAcr, QueryRig.Now, QueryRig.Now);
+            _ = await RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" });
+
+            Assert.Equal(StepUpBar.DefaultAcr, traversed.Acr);
+        }
+
+        [Fact]
+        public async Task A_path_into_a_sensitive_entity_under_a_filtered_grant_is_restricted_before_any_step_up()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, "Number > 0"));
+            _rig.Assurance = null;
+
+            ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" }));
+
+            Assert.Equal((ForbiddenReason.RestrictedPath, QueryModel.Counters, "Counter.Label"), (refused.Reason, refused.Resource, refused.Path));
+        }
+
+        [Fact]
+        public async Task A_path_refused_by_a_denial_from_a_set_past_the_fast_deny_window_is_re_checked_once_and_reads_the_grant_found()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
+            _rig.GrantOnRecheck((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page(7));
+            _rig.Clock.Advance(TimeSpan.FromMinutes(1));
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            RowPage page = await Operation(scope).RunAsync(Surface(QueryModel.Tickets), new QueryRequest { Select = "Id, Counter.Label" }, null, Token);
+
+            Assert.Equal(1, page.Rows.RowCount);
+            Assert.Equal(1, _rig.Revalidations);
+            Assert.Single(_rig.Script.Batches.SelectMany(static batch => batch.Of(ScriptedKind.Rows)));
+        }
+
+        [Theory]
+        [InlineData(false, true)]
+        [InlineData(true, false)]
+        public async Task A_path_refused_by_a_fresh_denial_or_by_one_the_re_check_confirms_stays_refused(bool stale, bool grantFound)
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
+            if (grantFound)
+            {
+                _rig.GrantOnRecheck((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
+            }
+
+            if (stale)
+            {
+                _rig.Clock.Advance(TimeSpan.FromMinutes(1));
+            }
+
+            ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => RowsAsync(QueryModel.Tickets, new QueryRequest { Select = "Id, Counter.Label" }));
+
+            // A fresh denial is trusted with no round trip; a stale one is re-checked once.
+            Assert.Equal((ForbiddenReason.RestrictedPath, QueryModel.Counters), (refused.Reason, refused.Resource));
+            Assert.Equal(stale ? 1 : 0, _rig.Revalidations);
+        }
+
+        [Fact]
         public async Task A_root_the_caller_may_not_read_is_refused_before_any_batch()
         {
             _rig.Grant((QueryModel.Tickets, AccessActions.Read, null));
@@ -368,6 +498,23 @@ namespace Tellma.Core.Tests.Crud.Query
             ValidationError error = Assert.Single(refused.Errors);
             Assert.Equal((ValidationPath.Root, ValidationCodes.QueryArithmeticFailed), (error.Path, error.Code));
             Assert.Equal(ArithmeticFailureException.DivideByZero, error.Arguments["reason"]);
+        }
+
+        [Fact]
+        public async Task A_read_whose_retries_ran_out_is_the_database_unavailable_for_a_second_and_counted_so()
+        {
+            using MetricCollector<long> operations = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.Operations);
+            DataAccessRetryExhaustedException exhausted = new(new TimeoutException("The deadlock retries ran out."), 3);
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            _ = _rig.Script
+                .OnRows(static _ => QueryRig.Page())
+                .OnExecute((_, _) => throw exhausted);
+
+            DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(() => RowsAsync(QueryModel.Accounts, new QueryRequest()));
+
+            Assert.Equal(("database", TimeSpan.FromSeconds(1)), (unavailable.Dependency, unavailable.RetryAfter));
+            Assert.Same(exhausted, unavailable.InnerException);
+            Assert.Equal("unavailable", Assert.Single(operations.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.OutcomeTag]);
         }
 
         // --- The operation's name and instruments ---

@@ -69,6 +69,18 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The connected caller every batch is composed for.</summary>
         public ConnectedUser User { get; private set; }
 
+        /// <summary>
+        ///     The caller's sign-in assurance: by default the step-up bar's class, reached now, so a
+        ///     sensitive read passes; null for a sign-in that never stepped up.
+        /// </summary>
+        public AuthenticationAssurance? Assurance { get; set; } = new(StepUpBar.DefaultAcr, Now, Now);
+
+        /// <summary>The set a deny re-check finds; null while it finds the caller's own.</summary>
+        public ConnectedUser? Revalidated { get; private set; }
+
+        /// <summary>The deny re-checks the scopes' connections ran.</summary>
+        public int Revalidations { get; private set; }
+
         /// <summary>The root services.</summary>
         public IServiceProvider Services => _root;
 
@@ -90,22 +102,14 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <param name="grants">The grants.</param>
         public void Grant(params (string Resource, string Action, string? Filter)[] grants)
         {
-            PermissionRow[] rows =
-            [
-                .. grants.Select(grant => new PermissionRow(
-                    _nextPermission++,
-                    10,
-                    "Queriers",
-                    false,
-                    grant.Resource,
-                    grant.Action,
-                    grant.Filter,
-                    grant.Filter is null ? null : QueryexLanguage.Version,
-                    null,
-                    null)),
-            ];
-            UserAccess access = _root.GetRequiredService<UserAccessBuilder>().Build(1, UserId, Guid.Empty, Guid.Empty, rows, Schema);
-            User = Connected(access);
+            User = Connect(grants);
+        }
+
+        /// <summary>Makes the next deny re-check find the caller with grants, as a grant saved since would.</summary>
+        /// <param name="grants">The grants the re-check finds.</param>
+        public void GrantOnRecheck(params (string Resource, string Action, string? Filter)[] grants)
+        {
+            Revalidated = Connect(grants);
         }
 
         /// <summary>A scope of the caller: user 42 of tenant 1.</summary>
@@ -194,6 +198,29 @@ namespace Tellma.Core.Tests.Crud.Query
             }
         }
 
+        /// <summary>The caller connected now with grants, each a resource, an action and an optional filter.</summary>
+        /// <param name="grants">The grants.</param>
+        /// <returns>The connected caller.</returns>
+        private ConnectedUser Connect((string Resource, string Action, string? Filter)[] grants)
+        {
+            PermissionRow[] rows =
+            [
+                .. grants.Select(grant => new PermissionRow(
+                    _nextPermission++,
+                    10,
+                    "Queriers",
+                    false,
+                    grant.Resource,
+                    grant.Action,
+                    grant.Filter,
+                    grant.Filter is null ? null : QueryexLanguage.Version,
+                    null,
+                    null)),
+            ];
+            UserAccess access = _root.GetRequiredService<UserAccessBuilder>().Build(1, UserId, Guid.Empty, Guid.Empty, rows, Schema);
+            return Connected(access);
+        }
+
         /// <summary>A connected caller with a set.</summary>
         /// <param name="access">The set.</param>
         /// <returns>The connected user.</returns>
@@ -220,6 +247,7 @@ namespace Tellma.Core.Tests.Crud.Query
                 Kind = PrincipalKind.User,
                 Subject = "sub-42",
                 UserId = UserId,
+                Assurance = Assurance,
                 TenantSettings = new TenantSettings
                 {
                     TenantId = 1,
@@ -236,7 +264,7 @@ namespace Tellma.Core.Tests.Crud.Query
             };
         }
 
-        /// <summary>The scope's connection: the rig's caller, cached; a re-check finds the same set.</summary>
+        /// <summary>The scope's connection: the rig's caller, cached; a re-check finds the set the rig names, else the same.</summary>
         /// <param name="rig">The rig.</param>
         private sealed class Connection(QueryRig rig) : IScopeConnection
         {
@@ -252,6 +280,9 @@ namespace Tellma.Core.Tests.Crud.Query
             /// <inheritdoc />
             public Task<ConnectedUser> RevalidateAsync(ConnectedUser user, CancellationToken cancellationToken)
             {
+                // The re-check applies what it found to the scope's connection, as a real one does.
+                rig.Revalidations++;
+                rig.User = rig.Revalidated ?? rig.User;
                 return Task.FromResult(rig.User);
             }
 

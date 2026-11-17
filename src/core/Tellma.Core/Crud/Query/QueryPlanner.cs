@@ -177,24 +177,25 @@ namespace Tellma.Core.Crud.Query
         }
 
         /// <summary>
-        ///     Binds a search's parameters beside the caller's; a caller's parameter that takes one of
-        ///     their names is refused while a search applies, since one name cannot hold two values.
+        ///     Binds a search's parameters beside the caller's. While a search applies, a caller's
+        ///     parameter named as any parameter a search can bind is refused, whichever ones this
+        ///     text binds, so whether a query runs never turns on what the user typed to search.
         /// </summary>
         /// <param name="arguments">The caller's bound arguments.</param>
         /// <param name="discovery">The discovery of the caller's clauses.</param>
         /// <param name="search">The lowered search.</param>
-        /// <exception cref="BadRequestException">A caller's parameter takes a name the search binds.</exception>
+        /// <exception cref="BadRequestException">A caller's parameter takes a name a search binds.</exception>
         private static void Bind(QueryArguments arguments, DiscoveryResult discovery, SearchFilter search)
         {
+            if (discovery.Parameters.FirstOrDefault(static parameter => QuerySearch.Parameters.Contains(parameter.Name)) is { } taken)
+            {
+                throw new BadRequestException(
+                    $"The parameter '@{taken.Name}' takes a name the search binds while a search applies; rename it in the query.",
+                    new Dictionary<string, object?>(StringComparer.Ordinal) { ["parameter"] = taken.Name });
+            }
+
             foreach ((QueryexParameterDeclaration declaration, object? value) in search.Parameters)
             {
-                if (discovery.Parameters.Any(parameter => string.Equals(parameter.Name, declaration.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new BadRequestException(
-                        $"The parameter '@{declaration.Name}' is the search's own while a search applies; rename it in the query.",
-                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["parameter"] = declaration.Name });
-                }
-
                 _ = arguments.Add(declaration, value);
             }
         }

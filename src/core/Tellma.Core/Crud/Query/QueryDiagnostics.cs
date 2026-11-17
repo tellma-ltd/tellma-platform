@@ -25,6 +25,12 @@ namespace Tellma.Core.Crud.Query
         /// <summary>The engine's code band of its ceilings.</summary>
         private const string CeilingBand = "QX5";
 
+        /// <summary>The engine's location of the select and its items.</summary>
+        private const string SelectClause = "Select";
+
+        /// <summary>The engine's location of the ordering and its items.</summary>
+        private const string OrderByClause = "OrderBy";
+
         /// <summary>The location of a filter the request sent, by its index in the request.</summary>
         /// <param name="index">The index.</param>
         /// <returns>The location.</returns>
@@ -93,32 +99,69 @@ namespace Tellma.Core.Crud.Query
                 {
                     ConjunctKind.UserFilter => diagnostic with { Location = UserFilter(origin.Index) + rest },
                     ConjunctKind.NamedFilter => diagnostic with { Location = NamedFilter(origin.Index) + rest },
-                    ConjunctKind.Platform => Trusted(diagnostic, "Filter", resource),
-                    _ => Trusted(diagnostic, "Filter", resource),
+                    ConjunctKind.Platform => Trusted(diagnostic, CallerFilterClause(map), resource),
+                    _ => Trusted(diagnostic, CallerFilterClause(map), resource),
                 };
             }
 
             // --- The select and the ordering: the caller's, the select standing in for the ordering, or a default ---
-            return location is not null && location.StartsWith("Select", StringComparison.Ordinal) && !map.SelectSent
-                ? Trusted(diagnostic, "Select", resource)
-                : location is not null && location.StartsWith("OrderBy", StringComparison.Ordinal)
+            return location is not null && location.StartsWith(SelectClause, StringComparison.Ordinal) && !map.SelectSent
+                ? Trusted(diagnostic, SelectClause, resource)
+                : location is not null && location.StartsWith(OrderByClause, StringComparison.Ordinal)
                 ? map.Ordering switch
                 {
                     OrderingSource.Sent => diagnostic,
-                    // The ordering is the select's text, so the span reads the same item there.
-                    OrderingSource.Select => diagnostic with { Location = string.Concat("Select", location.AsSpan("OrderBy".Length)) },
-                    OrderingSource.Default => Trusted(diagnostic, "OrderBy", resource),
-                    _ => Trusted(diagnostic, "OrderBy", resource),
+
+                    // The ordering is the select's text, so the span reads the same item there; a
+                    // default select standing in is the platform's text, as the select itself is.
+                    OrderingSource.Select => map.SelectSent
+                        ? diagnostic with { Location = string.Concat(SelectClause, location.AsSpan(OrderByClause.Length)) }
+                        : Trusted(diagnostic, SelectClause, resource),
+                    OrderingSource.Default => Trusted(diagnostic, OrderByClause, resource),
+                    _ => Trusted(diagnostic, OrderByClause, resource),
                 }
                 : diagnostic;
         }
 
         /// <summary>
+        ///     The clause the caller wrote that a ceiling the platform's own filter text reached is
+        ///     reported at: the last filter the request sent, else the last named filter it asked
+        ///     for, else the select, since a ceiling counts the whole query and these are the
+        ///     clauses the caller can shrink.
+        /// </summary>
+        /// <param name="map">Where the composed query's parts came from.</param>
+        /// <returns>The clause's location.</returns>
+        private static string CallerFilterClause(CompositionMap map)
+        {
+            Conjunct? filter = null;
+            Conjunct? named = null;
+            foreach (Conjunct conjunct in map.Conjuncts)
+            {
+                switch (conjunct.Kind)
+                {
+                    case ConjunctKind.UserFilter:
+                        filter = conjunct;
+                        break;
+                    case ConjunctKind.NamedFilter:
+                        named = conjunct;
+                        break;
+                    case ConjunctKind.Platform:
+                    default:
+                        break;
+                }
+            }
+
+            return filter is Conjunct sent ? UserFilter(sent.Index)
+                : named is Conjunct asked ? NamedFilter(asked.Index)
+                : SelectClause;
+        }
+
+        /// <summary>
         ///     A diagnostic in the platform's own text: a ceiling the whole query exceeds, located at
-        ///     the clause with no span the caller could edit; anything else a defect.
+        ///     a clause the caller wrote with no span the caller could edit; anything else a defect.
         /// </summary>
         /// <param name="diagnostic">The diagnostic.</param>
-        /// <param name="clause">The engine's name of the clause it arose in.</param>
+        /// <param name="clause">The location the ceiling is reported at.</param>
         /// <param name="resource">The root's resource.</param>
         /// <returns>The ceiling, located at the clause.</returns>
         /// <exception cref="InvalidOperationException">The diagnostic is not a ceiling.</exception>
@@ -127,7 +170,7 @@ namespace Tellma.Core.Crud.Query
             return diagnostic.Code.StartsWith(CeilingBand, StringComparison.Ordinal)
                 ? diagnostic with { Location = clause, Span = new QueryexSpan(0, 0) }
                 : throw new InvalidOperationException(
-                    $"The {resource} query's own text failed to compile: {diagnostic.Code} at {diagnostic.Location ?? clause}. A default, a named filter, a search branch or an access filter does not fit the tenant's schema.");
+                    $"The {resource} query's own text failed to compile: {diagnostic.Code} at {diagnostic.Location ?? clause}. A default, a search branch or an access filter does not fit the tenant's schema.");
         }
     }
 
