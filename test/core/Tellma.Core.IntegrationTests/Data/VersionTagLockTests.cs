@@ -470,8 +470,55 @@ namespace Tellma.Core.IntegrationTests.Data
                     Assert.Fail(string.Create(CultureInfo.InvariantCulture, $"The batch at {finished} was expected to wait for a lock that session {holder} holds and finished without waiting."));
                 }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+                // The barrier's own ceiling, not the test's cancellation: fail with what the server last
+                // reported for the session, since a strict barrier's likely failure is a wait it never saw.
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+                }
+                catch (OperationCanceledException) when (!Token.IsCancellationRequested)
+                {
+                    Assert.Fail(await DescribeUnobservedWaitAsync(DataBatchDatabase.LastSessionOf(waiter), holder));
+                }
             }
+        }
+
+        /// <summary>
+        ///     Describes a wait that was expected and never observed: the session expected to wait, the
+        ///     session expected to hold the lock, and the session's request as the server reports it now.
+        /// </summary>
+        /// <param name="session">The session the batch runs on, if it opened a connection.</param>
+        /// <param name="holder">The session expected to hold the lock.</param>
+        /// <returns>The failure message.</returns>
+        private async Task<string> DescribeUnobservedWaitAsync(int? session, int holder)
+        {
+            string expected = string.Create(CultureInfo.InvariantCulture, $"The batch was expected to wait for a lock that session {holder} holds and was not seen waiting for it within 30 seconds");
+            if (session is not int id)
+            {
+                return expected + ": it never opened a connection.";
+            }
+
+            // The session's current request, if any: what it waits for, on what, and behind whom.
+            const string Query = """
+                SELECT r.[status], r.[command], r.[wait_type], r.[wait_resource], CAST(ISNULL(r.[blocking_session_id], 0) AS int)
+                  FROM sys.dm_exec_requests AS r
+                 WHERE r.[session_id] = @session;
+                """;
+            await using SqlConnection connection = new(fixture.Database.MasterConnectionString);
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = Query;
+            _ = command.Parameters.Add(new SqlParameter("@session", System.Data.SqlDbType.Int) { Value = id });
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            if (!await reader.ReadAsync(Token))
+            {
+                return string.Create(CultureInfo.InvariantCulture, $"{expected}: session {id} has no request running.");
+            }
+
+            string? waitType = reader.IsDBNull(2) ? null : reader.GetString(2);
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{expected}: session {id} has a request with status '{reader.GetString(0)}', command '{reader.GetString(1)}', wait type '{waitType ?? "none"}', wait resource '{reader.GetString(3)}', blocked by session {reader.GetInt32(4)}.");
         }
 
         /// <summary>
