@@ -33,3 +33,9 @@
 - Fix: Make the reconciliation leave alone any hint written after its read began: capture the catalog's SYSUTCDATETIME() before ReadUsersAsync, pass it as @readAt, and add `AND m.[UpdatedAt] < @readAt` to the DELETE and to the UPDATE of ReconcileMemberships (the post-commit upsert stamps UpdatedAt on every insert and IsActive change, so the stamp is enough). Use the catalog server's clock for both sides so instance clock skew does not matter. Add an integration test: a hint upserted between the read and ReconcileAsync survives the run. The statement is spec 0011 §7.5's text, so the spec needs the same predicate.
 
 ## Verdicts
+- L0-B03-XC-1: fixed in 3adc83da
+- L0-B03-XC-2: fixed in 3adc83da
+- L0-B03-XC-3: fixed in 3adc83da
+- L1-B03-E2E-1: fixed in 3adc83da (same fix as L0-B03-XC-1)
+- L2-L3-B03-1: fixed in 3adc83da
+- L2-L3-B03-2: fixed in 3adc83da
