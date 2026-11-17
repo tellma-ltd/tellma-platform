@@ -4,7 +4,9 @@ Browser end-to-end tests (`[Trait("Category", "E2E")]`) for the identity server 
 Playwright (Chromium):
 
 - The real `Tellma.Identity.Web` host runs in-process on Kestrel at an ephemeral port, against a
-  Testcontainers SQL Server; emails are captured in-process for code/link scraping.
+  Testcontainers SQL Server, or the server `TELLMA_TEST_SQL` names, where the shared end-of-suite
+  drop in `Tellma.Testing.Support` removes the run's database; emails are captured in-process for
+  code/link scraping.
 - Passkey ceremonies use the CDP **virtual authenticator** (`WebAuthn.addVirtualAuthenticator`,
   ctap2/internal, resident keys, user verification). The browser's conditional-mediation account
   chooser cannot be driven deterministically over CDP, so conditional-UI coverage asserts the wiring

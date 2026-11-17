@@ -28,6 +28,11 @@ namespace Tellma.Testing.Support.Sql
     ///         finish, so a second run could meet the database the first one created. The creation's
     ///         command bound is long enough instead.
     ///     </para>
+    ///     <para>
+    ///         The same waits pace the drops at the end of a suite (<see cref="SqlDatabaseDrop" />),
+    ///         which run this loop under their own classifier: a database held for a moment by a
+    ///         session or a lock.
+    ///     </para>
     /// </remarks>
     public sealed class CreateDatabaseRetry
     {

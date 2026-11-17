@@ -157,7 +157,7 @@ namespace Tellma.Testing.Support.Sql
         /// <summary>A name in brackets, its closing brackets doubled.</summary>
         /// <param name="name">The name.</param>
         /// <returns>The quoted name.</returns>
-        private static string Quote(string name)
+        internal static string Quote(string name)
         {
             return "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]";
         }

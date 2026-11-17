@@ -14,6 +14,7 @@ using OpenIddict.Abstractions;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Testing.Email;
 using Tellma.Identity.Hosting;
+using Tellma.Testing.Support.Sql;
 using Testcontainers.MsSql;
 
 [assembly: AssemblyFixture(typeof(Tellma.Identity.E2E.Infrastructure.IdentityServerFixture))]
@@ -492,15 +493,11 @@ namespace Tellma.Identity.E2E.Infrastructure
 
             // Running against a server the developer supplied (TELLMA_TEST_SQL): the database
             // outlives the process unless this drops it, and one accumulates per fixture per run.
+            // The shared drop closes the stopped host's pooled sessions first and reruns a drop
+            // the server held for a moment.
             if (_masterConnectionString is not null && _databaseName is not null)
             {
-                await using SqlConnection connection = new(_masterConnectionString);
-                await connection.OpenAsync();
-                await using SqlCommand command = connection.CreateCommand();
-                command.CommandText =
-                    $"IF DB_ID('{_databaseName}') IS NOT NULL BEGIN ALTER DATABASE [{_databaseName}] "
-                    + $"SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{_databaseName}]; END";
-                await command.ExecuteNonQueryAsync();
+                await SqlDatabaseDrop.DropAllAsync(_masterConnectionString, [_databaseName]);
             }
         }
 

@@ -113,6 +113,11 @@ against an existing server drops the databases it created. Run them one test pro
 dotnet test <test project> --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
 ```
 
+CI adds `--logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true` to every `dotnet test`
+command. At the default verbosity a fixture whose cleanup fails, such as the end-of-suite database
+drops, shows only its exception type, and the lines a fixture writes outside a test (a retried drop,
+say) are dropped. Add the same flags to see them locally.
+
 The identity browser scenarios need Playwright's Chromium for .NET, installed once with
 `pwsh test/apps/Tellma.Identity.E2E/bin/Debug/net10.0/playwright.ps1 install chromium`:
 

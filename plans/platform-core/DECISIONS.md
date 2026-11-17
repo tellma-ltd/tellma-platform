@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-109 (PC-070, 2026-11-17): D-062 child-target loading confirmed; cached shared instances to R1; Gadgets = Lookup
+- Spec: 0015 §5.3, §5.5; 0012 EntityQuery.
+- D-062's provisional ruling is final: children's and collections' related entities load through a captured FK set, one grouped Rows per expand level, inside the details round trip. Spec 0012 stays unchanged. Spec 0015 §5.3 should name this mechanism (for Ahmad).
+- GetAllCached with no extras returns the cache's shared instances. Reviewer 1 judges whether that is safe for the entity types and callers, and proposes copies, a read-only contract or freezing if it is not. The fix round follows that verdict.
+- Spec 0015's cacheable "Gadgets" example corresponds to the test fixture's Lookup entity. The spec text should be aligned (for Ahmad).
+- PC-F56 (from the PC-068 CI integration-windows flake) adds `--logger "console;verbosity=normal"` and xUnit diagnostic messages to the CI .NET test steps, because the red log showed only the exception type. That item's integration therefore runs both gate sides (§11).
+
 ### D-108 (orchestrator, 2026-11-17): PC-068 query path: spec alignments for Ahmad, and the culture carry
 
 - The query steps run compile, then the traversal rule, then the Geography select refusal, as spec 0015 §5.2 orders them. Spec 0016 §5.6 puts the traversal rule before the compile, and should be aligned with 0015. The outcomes differ only for a query that is both invalid and restricted.
