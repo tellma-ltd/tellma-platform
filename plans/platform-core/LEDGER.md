@@ -102,10 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-173 | — (pushed) | pc/PC-173 | held 437a88f2 (R1 0/3/6 fixed except R1-8 carried to PC-175/PC-191; merge-tree clean vs platform-core; Linux 0600 file-mode test not yet run, CI ubuntu covers it); release queue T3 after PC-193 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
-| PC-151 | pc-2 | pc/PC-151 | released → integrating (held c678bc77; R1 0/3/5 fixed) | impl (Opus, high, launched 2026-11-15) | R1 done; no R2 | 2026-11-15 |
-| PC-193 | — (pushed) | pc/PC-193 | held 5a16ff3e (D-098 seam: '.' 9.14→9.17, ./pivot 13.9→14.1); merge-tree vs a4b2012b: 8 content conflicts from PC-F44/PC-061 (locale-ar api.md and strings-ar.ts, core-ui-testing README/public-api, tokens.spec, core-ui README, docs-examples.spec, core-ui package.json budgets: '.' on platform-core is 9.18 per D-072, so the seam's +0.03 stacks on it); release queue after T1 items | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
-| PC-F50 | pc-f2 | pc/PC-F50 | integrated f1ff5a3c (CI pending); D-102 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
+| PC-151 | — (pushed) | pc/PC-151 | integrated 99123772 (CI pending) | impl (Opus, high, launched 2026-11-15) | R1 done; no R2 | 2026-11-15 |
+| PC-193 | pc-3 | pc/PC-193 | released → integrating (held 5a16ff3e; D-098 seam; 8 content conflicts expected; D-102 carry: tiles.loadFailed → ./tiles-tree registration) | impl (Opus, high, launched 2026-11-15) | R1 done (Opus, high) | 2026-11-15 |
 | PC-F52 | pc-4 | pc/PC-F52 | impl | impl (Opus, high, launched 2026-11-16) | — | 2026-11-16 |
+| PC-052 | pc-1 | pc/PC-052 | impl | impl (Opus, xhigh, launched 2026-11-16) | — | 2026-11-16 |
 
 ## Fix items
 
@@ -159,7 +159,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F47 | test infra: integration fixtures fail with SQL error 1807 "Could not obtain exclusive lock on database 'model'" when several slots create databases at once (37 failures in Tellma.Core.IntegrationTests on PC-066's gate; the 3 classes passed alone). CREATE DATABASE needs an exclusive lock on model; retry it with backoff on 1807 in the shared fixture's database creation | done (12783cb3; CI 43871886742 green) | b153b6e, abd089d (pc/PC-F47) | | from PC-066 impl |
 | PC-F48 | migrator (production): TargetDatabase.EnsureExistsAsync runs CREATE DATABASE with no retry on SQL 1807 (model locked) while MigrateCommand provisions tenants with Parallel.ForEachAsync (--parallelism, default 4), and its later statements (read-committed snapshot, query store, EF catalog migrations) run on SqlClient's 30 s default command timeout; seen as "catalog: failed (Execution Timeout Expired)" in MigratorTests/VersionTagSeedTests under load. Add a bounded, logged 1807 retry (timeouts not retried: the server may finish an abandoned statement) and explicit command bounds, with tests | done (cb62a77c; CI 43898647922 green) | 59c9672f, 49772346 (pc/PC-F48) | | from PC-F47 impl |
 | PC-F49 | tree-grid e2e tree-grid.spec.ts:281 '@cross-engine a load that settles after its content switched away lands in that content' passed only on retry in CI 43814037969 (first try: element not found after 5 s), in PC-F37's area (story contentKey switching over shared rows); line stopped (§8.3) | done (291435b9; CI 43841571799 green; line reopened) | f3c8d699, 291435b9 (pc/PC-F49) | | red CI on platform-core |
-| PC-F50 | ./tiles re-split (D-031 revisit clause): born at 10.14 KB over spec 0023's 7 KB cap, then raised to 10.32 (PC-061) and 10.35 (PC-F46 R1). Split the lazy parts (sliced jumps, recycling, keyboard paging) or the shared grid-engine tree resolution into their own chunk, or ask Ahmad to rule a new cap; also the 50 ms @perf bar if the platform-core nightly fails it (D-100) | integrated (CI pending) | b04c5796, 9aa0ecc8, f1ff5a3c (pc/PC-F50) | | from PC-F46 R1 |
+| PC-F50 | ./tiles re-split (D-031 revisit clause): born at 10.14 KB over spec 0023's 7 KB cap, then raised to 10.32 (PC-061) and 10.35 (PC-F46 R1). Split the lazy parts (sliced jumps, recycling, keyboard paging) or the shared grid-engine tree resolution into their own chunk, or ask Ahmad to rule a new cap; also the 50 ms @perf bar if the platform-core nightly fails it (D-100) | done (f1ff5a3c; CI 43985672321 green) | b04c5796, 9aa0ecc8, f1ff5a3c (pc/PC-F50) | | from PC-F46 R1 |
 | PC-F51 | CI red on e4338cb3 (client, Linux PR-tier e2e chromium; client-windows green): grid-search-page.spec.ts:857 "the flash rings a mixed row above every cell and keeps the cells painted" expects ring band rgba(5, 0, 73, 0.8), Linux paints rgb(9, 20, 100) (fails on retry). Find whether the ring CSS or the test's expectation is platform-fragile and fix the cause; the test must still fail on pre-PC-F42 CSS | done (fe74e874; CI 43962867277 green; line reopened) | 5ebb8fbb, fe74e874 (pc/PC-F51) | | from PC-F42 integration (CI 43938757831) |
 | PC-F52 | flake: Tellma.Core.IntegrationTests VersionTagLockTests.A_tag_the_guard_read_is_held_until_commit_so_a_bump_of_it_waits failed on integration-windows (LocalDB) in CI 43972112319 on a11022e4: "The batch at 1 was expected to wait for a lock and finished without waiting" (WaitForLockWaitersAsync, 422 ms); ubuntu green, and green on the next run 1ab06bf1. Find whether the test races or the guard read can lose its lock (PC-050 connect prologue in play); fix the cause, wait on observable lock state | impl (pc-4) | | | from PC-050 integration CI |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
@@ -326,7 +326,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-049 | 0013-f | 1 | done 9edabb18 (CI 43769028326 green) | 8691142, fc2c8b7 (pc/PC-049), 18b909b, 9edabb1 (pc) |  | carry (PC-044 D-076): a tenant language change must reach the client's entity wire tags (the shape is not in entity:*), or the client keeps the old shape |
 | PC-050 | 0014-d | 1 | done (a11022e4; CI 43972112319 integration-windows flake → PC-F52; green 43972186530 on 1ab06bf1) | 1788470, 2ea33c0, b12dedf, a11022e (pc/PC-050) | | carry from PC-049: call SettingsColdLoadContributor.Absorb from the connect prologue, and register IUserLocalePreferences (nothing registers it yet) |
 | PC-051 | 0010-c4 | 1 | done (integrated e65654e, CI 43456272658 green; ./grid 40.42 of 40.51, 1.58 KB under 42 for PC-054; e2e 924) | 6927550, 2dfda91, 6ebe667, 7f49700, e927e10, e65654e (pc) |  |  |
-| PC-052 | 0014-e | 1 | todo |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
+| PC-052 | 0014-e | 1 | impl |  |  | carry (PC-043): short-circuit a caller with no user and a deactivated EvaluateFor target before Decide (bespoke criteria grant on their own) |
 | PC-053 | 0017-b | 1 | done | 7f6643a, 8c01d52, 4dd6091, 8a27e10, 81a154f, 63f0394 (pc) | 27.83M | 11 deviations; D-030; ESCALATED to R2 (2 blocking) |
 | PC-054 | 0010-c5 | 1 | done (integrated 285e993, CI 43582291207 green) | 12871ed, 5b36220, 334566b, 6610d25, 285e993 (pc) |  |  |
 | PC-055 | 0018-a | 1 | done (CI 43625011160) | 9dce959, 166c532, 10bbca4, abd9413, c4acf1f (pc/PC-055) | | |
@@ -425,7 +425,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-148 | 0022-a | 2 | todo | | | |
 | PC-149 | 0022-b | 2 | todo | | | |
 | PC-150 | 0026-d | 2 | todo | | | |
-| PC-151 | 0023-h | 2 | released → integrating (held c678bc77) | 7b9c658, c678bc7 (pc/PC-151) | | |
+| PC-151 | 0023-h | 2 | integrated 99123772 (CI pending) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |
 | PC-153 | 0025-d | 2 | todo | | | |
 | PC-154 | 0026-f | 2 | todo | | | |
@@ -467,7 +467,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-190 | 0016-h | 3 | todo | | | |
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |
-| PC-193 | 0034-a | 3 | held 5a16ff3e | 0e2ea82, 5a16ff3 (pc/PC-193) | | carry (D-102): if PC-F50 integrated first, move tiles.loadFailed into ./tiles-tree's own string registration via the new seam, with its Arabic string and the parity test |
+| PC-193 | 0034-a | 3 | released → integrating (held 5a16ff3e) | 0e2ea82, 5a16ff3 (pc/PC-193) | | carry (D-102): if PC-F50 integrated first, move tiles.loadFailed into ./tiles-tree's own string registration via the new seam, with its Arabic string and the parity test |
 | PC-194 | 0034-b | 3 | todo | | | |
 | PC-195 | 0034-c | 3 | todo | | | |
 | PC-196 | 0034-d | 3 | todo | | | |
