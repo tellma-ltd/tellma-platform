@@ -108,9 +108,14 @@ namespace Tellma.Core.Abstractions.Access
         Task<UserAccess> GetAccessAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        ///     Drops a user's cached permission set, so the next connection of the user loads it
-        ///     afresh, and the scope's load of that user's permissions with it.
+        ///     Drops what the process caches of a user, their permission set, their profile and every
+        ///     connection composing them, so the next connection of the user loads them afresh; and
+        ///     the scope's load of that user's permissions with it.
         /// </summary>
+        /// <remarks>
+        ///     A scope already connected as the user keeps its connection to its end, and a round trip
+        ///     of that scope that confirms it never caches it again.
+        /// </remarks>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="userId">The user.</param>
         void Invalidate(int tenantId, int userId);

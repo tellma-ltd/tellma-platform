@@ -89,6 +89,12 @@ namespace Tellma.Core.Tests.Access
         /// <summary>The process's permission sets.</summary>
         private readonly PermissionsCache _cache;
 
+        /// <summary>The process's profiles.</summary>
+        private readonly ProfileCache _profiles;
+
+        /// <summary>The process's connected users.</summary>
+        private readonly ConnectCache _connections = new(Options.Create(new CacheOptions()));
+
         /// <summary>The fake connection, connected as the caller with an empty set.</summary>
         private readonly FakeConnection _connection;
 
@@ -102,6 +108,7 @@ namespace Tellma.Core.Tests.Access
             _metrics = new AccessMetrics(meters);
             _builder = new UserAccessBuilder(new PermissionClassifier(Registry, new QueryexEngine()), _metrics, _services.GetRequiredService<ILoggerFactory>(), _time);
             _cache = new PermissionsCache(Options.Create(new CacheOptions()), meters);
+            _profiles = new ProfileCache(Options.Create(new CacheOptions()), meters);
             _connection = new FakeConnection(Connected(Set(Caller)), _time);
         }
 
@@ -114,6 +121,8 @@ namespace Tellma.Core.Tests.Access
             }
 
             _cache.Dispose();
+            _profiles.Dispose();
+            _connections.Dispose();
             _services.Dispose();
         }
 
@@ -211,6 +220,28 @@ namespace Tellma.Core.Tests.Access
 
             Assert.Equal(AccessOutcome.Denied, decision.Outcome);
             _ = Assert.Single(_connection.Revalidations);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task A_re_check_that_fails_leaves_the_scopes_one_re_check_to_the_next_stale_denial(bool cancelled)
+        {
+            _time.Advance(TimeSpan.FromMinutes(1));
+
+            // --- The first round trip fails; the next one completes and changes nothing, so the set stays stale ---
+            int calls = 0;
+            Exception failure = cancelled ? new OperationCanceledException("The round trip was cancelled.") : new TimeoutException("The round trip timed out.");
+            _connection.Revalidated = user => ++calls > 1 ? user : throw failure;
+            AccessEvaluator evaluator = NewEvaluator();
+
+            Assert.Same(failure, await Assert.ThrowsAnyAsync<Exception>(() => evaluator.EvaluateAsync(Doc, "Read", TestContext.Current.CancellationToken)));
+            AccessDecision retried = await evaluator.EvaluateAsync(Doc, "Read", TestContext.Current.CancellationToken);
+            AccessDecision later = await evaluator.EvaluateAsync(Doc, "Save", TestContext.Current.CancellationToken);
+
+            // --- The failed one spent nothing: the next stale denial re-checked, and the one after it did not ---
+            Assert.Equal((AccessOutcome.Denied, AccessOutcome.Denied), (retried.Outcome, later.Outcome));
+            Assert.Equal(2, _connection.Revalidations.Count);
         }
 
         [Fact]
@@ -713,17 +744,33 @@ namespace Tellma.Core.Tests.Access
         // --- Invalidate and GetAccessAsync ---
 
         [Fact]
-        public async Task Invalidating_a_user_drops_their_cached_set_and_the_scopes_load_of_them()
+        public async Task Invalidating_a_user_drops_their_cached_set_profile_and_connections_and_the_scopes_load_of_them()
         {
-            UserAccess cached = Set(Other);
-            _cache.Set(new TenantUserCacheKey(Acme.Id, Other), cached, new VersionTag(PermissionsTag));
+            // --- The process's entries of the user, of the caller, and of the user in another tenant ---
+            TenantUserCacheKey key = new(Acme.Id, Other);
+            ConnectedUser other = Connected(Set(Other));
+            VersionTag preferences = new(new Guid("9e40a000-0000-0000-0000-000000000002"));
+            _cache.Set(key, other.Access, new VersionTag(PermissionsTag));
+            _profiles.Set(key, other.Profile, preferences);
+            _connections.Set(Acme.Id, "sub-9", other);
+            _connections.Set(Acme.Id, "sub-9-former", other);
+            _connections.Set(2, "sub-9", other);
+            _connections.Set(Acme.Id, "sub-7", _connection.Connected);
             _connection.Others[Other] = Set(Other);
             AccessEvaluator evaluator = NewEvaluator();
             _ = await evaluator.EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken);
 
             evaluator.Invalidate(Acme.Id, Other);
 
-            Assert.Null(_cache.Peek(new TenantUserCacheKey(Acme.Id, Other), new VersionTag(PermissionsTag)));
+            // --- The user's set, profile and every connection of the tenant are gone; nothing else is ---
+            Assert.Null(_cache.Peek(key, new VersionTag(PermissionsTag)));
+            Assert.Null(_profiles.Peek(key, preferences));
+            Assert.Null(_connections.Find(Acme.Id, "sub-9"));
+            Assert.Null(_connections.Find(Acme.Id, "sub-9-former"));
+            Assert.Same(other, _connections.Find(2, "sub-9"));
+            Assert.Same(_connection.Connected, _connections.Find(Acme.Id, "sub-7"));
+
+            // --- The scope loads the user again ---
             _connection.Others[Other] = Set(Other, Row(1, Doc, "Read"));
             Assert.Equal(AccessOutcome.Unrestricted, (await evaluator.EvaluateForAsync(Other, Doc, "Read", TestContext.Current.CancellationToken)).Outcome);
             Assert.Equal([Other, Other], _connection.Loads);
@@ -836,6 +883,8 @@ namespace Tellma.Core.Tests.Access
                 [.. _providers],
                 witness ?? NewWitness(),
                 _cache,
+                _profiles,
+                _connections,
                 stepUp ?? StepUpBar.Default,
                 _metrics,
                 Options.Create(_options),

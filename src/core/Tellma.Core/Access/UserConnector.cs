@@ -619,6 +619,7 @@ namespace Tellma.Core.Access
             Guid tenantTag = result.TenantTags.TryGetValue(VersionTagNames.Permissions, out Guid permissions) ? permissions : Guid.Empty;
             Guid userTag = result.UserPermissionsTag ?? Guid.Empty;
             UserAccess access;
+            bool scopeConfirmed = false;
             if (kind == UserKind.System)
             {
                 access = UserAccess.System;
@@ -637,14 +638,15 @@ namespace Tellma.Core.Access
                 // The tags of set 1 are a later read and may already have moved.
                 Guid confirmedTag = expected?.PermissionsTag ?? tenantTag;
                 Guid confirmedUserTag = expected?.UserPermissionsTag ?? userTag;
-                UserAccess? confirmed = (own?.Access is UserAccess held && held.Tag == confirmedTag && held.UserTag == confirmedUserTag ? held : null)
-                    ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
+                UserAccess? held = own?.Access is UserAccess basisSet && basisSet.Tag == confirmedTag && basisSet.UserTag == confirmedUserTag ? basisSet : null;
+                UserAccess? confirmed = held ?? services.Permissions.Peek(key, set => set.Tag == confirmedTag && set.UserTag == confirmedUserTag);
                 if (confirmed is null)
                 {
                     return Missing(origin.Premises, result, missingIsNull, "The connect prologue confirmed a permission set this instance no longer holds.");
                 }
 
                 access = confirmed;
+                scopeConfirmed = held is not null;
             }
 
             // A prologue that read the set's own tags validates it.
@@ -682,7 +684,14 @@ namespace Tellma.Core.Access
             // --- The connect cache, and the scope's user when the result is the scope's caller ---
             if (subject is not null)
             {
-                services.Connections.Set(tenantId, subject, user);
+                // A set confirmed from the scope's own connection refreshes the subject's entry only while
+                // that entry holds the same set: it never restores an entry dropped since (an
+                // invalidation) nor replaces a newer one, so the next connection loads afresh.
+                if (!scopeConfirmed || ReferenceEquals(services.Connections.Find(tenantId, subject)?.Access, access))
+                {
+                    services.Connections.Set(tenantId, subject, user);
+                }
+
                 if (context.UserId is int bound && bound != userId)
                 {
                     // The subject now names another user than the one the scope is connected as.

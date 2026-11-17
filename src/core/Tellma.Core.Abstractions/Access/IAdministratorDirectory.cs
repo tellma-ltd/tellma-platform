@@ -9,6 +9,11 @@ namespace Tellma.Core.Abstractions.Access
 {
     // The directory is spec 0014 §10.
     /// <summary>The recipients of a tenant's administrative notices. One per scope.</summary>
+    /// <remarks>
+    ///     The directory checks no permission of the scope's caller: it serves the platform's own
+    ///     notices. A caller that would hand its result to a user decides that user's access to it
+    ///     first.
+    /// </remarks>
     public interface IAdministratorDirectory
     {
         /// <summary>

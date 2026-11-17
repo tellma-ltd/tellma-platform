@@ -23,9 +23,10 @@ namespace Tellma.Core.Access
     ///     A scope that names no caller is denied everything before any decision is composed, since a
     ///     bespoke criterion would otherwise grant on its own. The deny re-check runs at most once per
     ///     scope, and another user's load at most once per scope and user, however many calls
-    ///     race for either. A load runs for the scope, not for the call that started it: each call
-    ///     waits on it under its own cancellation, and disposing the evaluator, as the scope's end
-    ///     does, cancels it.
+    ///     race for either; a re-check that fails, cancelled or refused, leaves the scope's one
+    ///     re-check to the next stale denial. A load runs for the scope, not for the call that
+    ///     started it: each call waits on it under its own cancellation, and disposing the
+    ///     evaluator, as the scope's end does, cancels it.
     /// </remarks>
     /// <param name="accessor">The scope's request context.</param>
     /// <param name="connection">The scope's connection, which connects the caller, re-checks a denial and loads another user.</param>
@@ -33,6 +34,8 @@ namespace Tellma.Core.Access
     /// <param name="criteriaProviders">Every registered bespoke criteria provider.</param>
     /// <param name="witness">The scope's access witness.</param>
     /// <param name="permissions">The process's permission sets, which an invalidation drops from.</param>
+    /// <param name="profiles">The process's profiles, which an invalidation drops from.</param>
+    /// <param name="connections">The process's connected users, which an invalidation drops from.</param>
     /// <param name="stepUp">The assurance bar of the sensitive securables.</param>
     /// <param name="metrics">The access instruments.</param>
     /// <param name="options">The access options: the fast-deny window.</param>
@@ -44,6 +47,8 @@ namespace Tellma.Core.Access
         IEnumerable<IAccessCriteriaProvider> criteriaProviders,
         AccessWitness witness,
         PermissionsCache permissions,
+        ProfileCache profiles,
+        ConnectCache connections,
         StepUpBar stepUp,
         AccessMetrics metrics,
         IOptions<AccessOptions> options,
@@ -68,7 +73,7 @@ namespace Tellma.Core.Access
         /// <summary>Cancels the scope's loads of other users when the evaluator is disposed.</summary>
         private readonly CancellationTokenSource _lifetime = new();
 
-        /// <summary>1 once the scope's deny re-check ran.</summary>
+        /// <summary>1 once the scope's deny re-check started; back to 0 when it failed.</summary>
         private int _rechecked;
 
         /// <summary>1 once the evaluator is disposed.</summary>
@@ -189,7 +194,13 @@ namespace Tellma.Core.Access
         /// <inheritdoc />
         public void Invalidate(int tenantId, int userId)
         {
-            permissions.Remove(new TenantUserCacheKey(tenantId, userId));
+            // --- The process's entries of the user: the set, the profile and every connection composing them ---
+            TenantUserCacheKey key = new(tenantId, userId);
+            permissions.Remove(key);
+            profiles.Remove(key);
+            connections.RemoveUser(tenantId, userId);
+
+            // --- The scope's own load of the user, when the scope is of the same tenant ---
             if (accessor.Current.Tenant?.Id == tenantId)
             {
                 lock (_gate)
@@ -309,7 +320,19 @@ namespace Tellma.Core.Access
             // from what it returned (spec 0014 §6.4) ---
             if (user is not null && IsStaleDenial(access, securables, decisions, now) && Interlocked.Exchange(ref _rechecked, 1) == 0)
             {
-                ConnectedUser revalidated = await connection.RevalidateAsync(user, cancellationToken).ConfigureAwait(false);
+                ConnectedUser revalidated;
+                try
+                {
+                    revalidated = await connection.RevalidateAsync(user, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // A re-check that failed verified no set: the scope's one re-check is left to the
+                    // next stale denial, which would otherwise answer from this set to the scope's end.
+                    Volatile.Write(ref _rechecked, 0);
+                    throw;
+                }
+
                 decisions = Decide(revalidated.Access, pairs, securables, time.GetUtcNow());
             }
 

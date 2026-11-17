@@ -26,6 +26,13 @@ namespace Tellma.Core.Abstractions.Access
     ///         name; every holder is counted. A pair the registry does not hold answers with no holder
     ///         and one problem naming no stored permission, without a round trip.
     ///     </para>
+    ///     <para>
+    ///         The resolver authorises nothing itself: the matching roles' names and filters, their
+    ///         member counts and the holder count come back to any connected caller, and only the
+    ///         listed users are narrowed, by the caller's own read of the users. A caller that returns
+    ///         the result holds the scope's caller to <see cref="CoreResources.Role" /> ×
+    ///         <see cref="AccessActions.Read" /> first.
+    ///     </para>
     /// </remarks>
     public interface IAccessHoldersResolver
     {

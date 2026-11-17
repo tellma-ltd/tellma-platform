@@ -246,6 +246,15 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <returns>The role's id.</returns>
         public Task<int> SeedRoleAsync(params (string Resource, string Action, string? Filter)[] permissions)
         {
+            return SeedRoleAsync(TenantA, permissions);
+        }
+
+        /// <summary>Seeds an active, private role of a tenant with permissions.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="permissions">The permissions: a resource, an action and a filter, null for none.</param>
+        /// <returns>The role's id.</returns>
+        public Task<int> SeedRoleAsync(int tenantId, params (string Resource, string Action, string? Filter)[] permissions)
+        {
             // --- The role, named after its id, then each permission with its filter's version ---
             int system = WellKnownIds.SystemUserId;
             StringBuilder sql = new();
@@ -265,19 +274,20 @@ namespace Tellma.Core.IntegrationTests.Access
             }
 
             _ = sql.Append("SELECT @role;");
-            return ScalarAsync<int>(TenantA, sql.ToString());
+            return ScalarAsync<int>(tenantId, sql.ToString());
         }
 
-        /// <summary>Makes a user of the first tenant a member of a role over a window.</summary>
+        /// <summary>Makes a user a member of a role over a window.</summary>
         /// <param name="userId">The user.</param>
         /// <param name="roleId">The role.</param>
         /// <param name="startsAt">The window's start as a SQL expression, such as <c>DATEADD(day, 1, SYSDATETIMEOFFSET())</c>; null since always.</param>
         /// <param name="endsAt">The window's exclusive end as a SQL expression; null for no end.</param>
+        /// <param name="tenantId">The tenant of the user and the role; the first when not given.</param>
         /// <returns>A task that completes when the membership is seeded.</returns>
-        public Task SeedMembershipAsync(int userId, int roleId, string? startsAt = null, string? endsAt = null)
+        public Task SeedMembershipAsync(int userId, int roleId, string? startsAt = null, string? endsAt = null, int tenantId = TenantA)
         {
             return ExecuteAsync(
-                TenantA,
+                tenantId,
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId], [StartsAt], [EndsAt]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {userId}, {roleId}, {startsAt ?? "NULL"}, {endsAt ?? "NULL"});"));

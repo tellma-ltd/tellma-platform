@@ -1270,7 +1270,9 @@ persist, the settings are too; a read runs under the settings it composed with. 
 writes are autocommit, are audited, never count among the batch's written tables and bump nothing;
 an `Explicit` batch that carries the subject prologue is refused. The permission sets
 (`PermissionsCache`) and profiles (`ProfileCache`) are versioned caches keyed by tenant and user,
-so two tenants that reuse an id never share an entry.
+so two tenants that reuse an id never share an entry. A round trip that confirms the scope's own
+set refreshes the subject's connect-cache entry only while that entry holds the same set, so it
+never restores an entry dropped since or replaces a newer one.
 
 `IGuardedBatchRunner` runs a read, a validation or a persist for the scope's caller: it composes the
 prologue and the caller's statements, executes, applies what the prologue read, and returns the
@@ -1294,7 +1296,8 @@ composed, criteria included. When a registered pair is denied from a set no prol
 within `FastDenyWindow`, the evaluator makes one prologue-only round trip (`RevalidateAsync` on the
 connection) and decides every pair of that call again from what it returned; a passing prologue
 advances the set's `ValidatedAt`, a moved tag brings the fresh rows, and a scope re-checks at most
-once, however many calls race. `RequireAsync` raises `ForbiddenException` (`forbidden`, the
+once, however many calls race; a re-check that fails (cancelled, timed out or refused) leaves the
+scope's one re-check to its next stale denial. `RequireAsync` raises `ForbiddenException` (`forbidden`, the
 registered pair, `NoGrant`) for a denial, then holds a sensitive pair to `StepUpBar` (the
 `urn:tellma:acr:mfa` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
 says otherwise; never for the system; `IndividualRequiredException` for a service account). Every
@@ -1308,7 +1311,9 @@ answers from the caller's set; a scope that names no caller, a scope outside a t
 unknown, inactive or system user are denied everything, the first two with no load. `EvaluateAllAsync`
 decides every registered securable from the set as it is, for the caller's summary, whose own
 prologue has just validated it; neither it nor `EvaluateForAsync` re-checks, records or counts.
-`Invalidate` drops a user's cached set and the scope's load of them.
+`Invalidate` drops a user's cached set, profile and connect-cache entries (`ConnectCache.RemoveUser`,
+which walks the entries), so the next connection of the user loads afresh, and the scope's load of
+them; a scope already connected as the user keeps its connection to its end.
 
 `AccessWitness` also holds the member witness, which `ConnectInitializer` records when a user or a
 service account connects. `Confirm` answers, before a successful response, whether the endpoint's
@@ -1333,11 +1338,14 @@ members (a public role counts the audience), and the readable holders are listed
 the reader's content language, then by id, up to `MaxHolders`, with `Total` counting every holder and
 `Capped` whether the visible ones were cut. A users' filter beyond `QueryexProfiles.PipelineLimits`
 is an `InvalidOperationException`, logged (`FilterTooComplex`, 3107, at Error, with the roles behind
-it), never a silent empty list.
+it), never a silent empty list. The resolver authorises nothing itself: the roles' names, filters and
+member counts and the holder count reach any connected caller, so a caller that returns the result
+holds the scope's caller to `core.Role` × `Read` first.
 
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
-lowest id first, for a tenant's administrative notices. `IAccessGuards` is the persist pipeline's
+lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
+`IAccessGuards` is the persist pipeline's
 seat for the security tables' in-transaction invariants (the security lock, the last administrator,
 the public roles' members, the administrator role itself); `NullAccessGuards` holds it for now and
 contributes no lock and no assertion.
