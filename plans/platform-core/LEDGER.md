@@ -101,8 +101,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-194 | pc-2 | pc/PC-194 | fix1 (R1 0/4/6: line series colour-only; sequential palette first step 1.3:1; bidi battery bypasses zrender; no live-redraw tests) → ESCALATED to R2 (inherit, xhigh, ≥4 majors); D-107 | impl (Opus, high, launched 2026-11-16) | R1 done (Opus, high) | 2026-11-16 |
-| PC-068 | pc-1 | pc/PC-068 | impl | impl (Opus, xhigh, launched 2026-11-17) | — | 2026-11-17 |
+| PC-194 | pc-2 | pc/PC-194 | integrated a3fc777e (CI pending); R2 fixes 9ee401ca; budgets ./chart 6.87, chart-engine 200.15 (D-031); D-107 | impl (Opus, high, launched 2026-11-16) | R2 done (inherit, xhigh) | 2026-11-16 |
+| PC-068 | pc-1 | pc/PC-068 | fix1 (R1 0/0/6: search-name collision, QX5 relocation untested, aggregate default select, dead culture finally, retry-exhausted → 503, traversal skips step-up/re-check) → R2 inherit xhigh (complex list); D-108 | impl (Opus, xhigh, launched 2026-11-17) | R1 done (Opus, high) | 2026-11-17 |
 
 ## Fix items
 
@@ -261,6 +261,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | e2e grid-lazy-editing "entity draft committed before the code arrives" failed in a loaded full run; passed alone | 2026-11-16 (PC-F50 integrate) | watch; host load |
 | e2e tiles "arrow move that re-binds the focused tile" failed in a loaded full run; passed alone | 2026-11-16 (PC-F50 integrate) | watch; host load |
 | dotnet Core integration DataQueryTests.Two_pages_of_one_query_share_one_plan: 30 s SQL timeout under host load; passed on a filtered rerun | 2026-11-16 (PC-052 R1) | watch; host load |
+| client unit tm-grid-lazy-editing "a failed load leaves the draft whole…" (full-suite load only) | 2026-11-17 | PC-194 note |
+| client unit tm-grid-selectable "…paired ink under forced colors" 15 s timeout (full-suite load only) | 2026-11-17 | PC-194 note |
 
 ## Deferred tests
 
@@ -342,7 +344,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-065 | 0024-a | 1 | done | e5ad0db, 1bfcefa, eee616f (pc) | 62.04M | red run fixed by PC-F10; green at b0bb12e; 14 deviations; workspace root moved (D-032) |
 | PC-066 | 0015-c | 1 | done (b9725f38; CI 43791517653 green) | 56de9db, a1abbef, b9725f3 (merge) | | carry from PC-040 r1 (R1-11): extend the SQL-text analyzer (TELLMA0003) to IContextLoader.Sql (spec 0015 §7.2) |
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
-| PC-068 | 0015-d | 1 | impl | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
+| PC-068 | 0015-d | 1 | fix1 | 51ecfbf (pc/PC-068) | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | todo | | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
@@ -468,7 +470,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |
 | PC-193 | 0034-a | 3 | done (94ac0b22; CI 44024306068 green) | 0e2ea82, 5a16ff3, 141953f, 94ac0b2 (pc/PC-193) | | carry (D-102): if PC-F50 integrated first, move tiles.loadFailed into ./tiles-tree's own string registration via the new seam, with its Arabic string and the parity test |
-| PC-194 | 0034-b | 3 | fix1 (escalated R2) | 7f81317 (pc/PC-194) | | |
+| PC-194 | 0034-b | 3 | integrated (CI pending) | 7f81317, 307999b, 650bf34, 9ee401c, defdad0, 66f3e37, a3fc777 (pc/PC-194) | | |
 | PC-195 | 0034-c | 3 | todo | | | |
 | PC-196 | 0034-d | 3 | todo | | | |
 | PC-197 | 0034-e | 3 | todo | | | |
