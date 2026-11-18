@@ -130,6 +130,13 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>Whether the current asynchronous flow runs as one of this scheduler's tasks.</summary>
         public bool IsInTask => CurrentParticipant.Value?.Scheduler == this;
 
+        /// <summary>
+        ///     The task the current asynchronous flow runs as, as an opaque token a caller compares by
+        ///     reference: a flow of one task always answers the same one; null outside every task of
+        ///     this scheduler.
+        /// </summary>
+        public object? CurrentTask => CurrentParticipant.Value is { } current && current.Scheduler == this ? current : null;
+
         /// <summary>Whether the rounds run: started, and not over.</summary>
         public bool IsRunning
         {

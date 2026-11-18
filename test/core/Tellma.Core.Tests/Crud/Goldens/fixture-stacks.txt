@@ -190,7 +190,7 @@ stack fixture.Shipment
   service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Shipment, long>
   key: long
   description: -
-  operations: All
+  operations: All, Enlist
   capabilities: job-entity, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, State:Editable, Payload:Editable, JobId:ServerOwned
   children: -

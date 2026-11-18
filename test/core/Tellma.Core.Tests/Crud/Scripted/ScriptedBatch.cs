@@ -31,7 +31,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///         needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -407,6 +407,14 @@ namespace Tellma.Core.Tests.Crud.Scripted
         {
             ArgumentNullException.ThrowIfNull(authority);
             CallerAuthority = authority;
+        }
+
+        /// <inheritdoc />
+        /// <remarks>The ordinal is the next call's position among the batch's calls, its <see cref="ScriptedStatement.Ordinal" />.</remarks>
+        public int NextOrdinal()
+        {
+            EnsureComposing();
+            return _statements.Count;
         }
 
         /// <summary>

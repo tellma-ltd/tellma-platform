@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Details;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
@@ -26,9 +27,12 @@ namespace Tellma.Core.Crud.Save
     // runner, composed in §6.7's order between the executor's fixed prefix and suffix: the access
     // guards' lock, the emitter, the service hook and the effects through the recording view, the
     // caller's OnPersist, the guards' invariants, the post-check of §9.3 and the read-back of §6.9.
-    // A re-entered compose re-runs the validators in memory, recomposes the pipeline's own statements
-    // under the fresh grants and replays the recording (§5.1). The executor's failures are
-    // translated by §14.2, and a committed save runs its post-commit phase (§13.2) whatever the
+    // The groups enlisted with the save (§13.3) sit around its own statements: the BeforeHost ones
+    // ahead of its emitter, the AfterHost ones after its effects and before OnPersist, and the access
+    // guards run over every table any of them writes. A re-entered compose re-runs the validators in
+    // memory, recomposes the pipeline's own statements under the fresh grants and replays the
+    // recording (§5.1). The executor's failures are translated by §14.2, a group's against the
+    // group, and a committed save runs its post-commit phase (§13.2), then its groups', whatever the
     // caller's token says, since a sent persist completes (§14.1).
     /// <summary>One save of one stack: the persist, its translation and its post-commit phase.</summary>
     internal sealed partial class SaveRun<TEntity, TKey>
@@ -81,8 +85,19 @@ namespace Tellma.Core.Crud.Save
             catch (DataAccessException failure)
             {
                 // The runner may have refreshed the context in its own frame: the conflict names its
-                // modifier in the culture of the context the batch was composed under.
+                // modifier in the culture of the context the batch was composed under. A failure of a
+                // statement a group composed is the group's.
                 _operation.Accessor.Current.ApplyCultures();
+                if (Enlistments?.Translate(failure) is Exception grouped)
+                {
+                    if (ReferenceEquals(grouped, failure))
+                    {
+                        throw;
+                    }
+
+                    throw grouped;
+                }
+
                 if (PersistFailures.Translate(failure, FailureContext(), _operation.Metrics) is Exception translated)
                 {
                     throw translated;
@@ -129,41 +144,48 @@ namespace Tellma.Core.Crud.Save
             // --- The tags the validation rounds were served under, held by the persist's guard ---
             DependOnServed(batch);
 
-            // --- Step 4, ahead of item 1: the access guards' lock, when the stack writes a security table ---
-            bool guarded = !_operation.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
+            // --- Step 4, ahead of item 1: the access guards' lock, when the stack or a group enlisted
+            // with it writes a security table ---
+            IEnumerable<TableName> written = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
+            bool guarded = !_operation.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(written);
             if (guarded)
             {
                 _operation.AccessGuards.ContributeLock(batch);
             }
 
-            // --- Step 1: the emitter, under the stack's authority ---
+            // --- Step 1: the groups enlisted ahead of the save, then the emitter, under the stack's authority ---
+            await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             Authorize(batch, StackTables);
             SaveHandle handle = batch.Save(_entities, _options.Concurrency);
             _handle = handle;
 
-            // --- Steps 2 and 3, then OnPersist: called on the first entry, replayed on a re-entry ---
+            // --- Steps 2 and 3: called on the first entry, replayed on a re-entry; then the groups
+            // enlisted after the save ---
             if (first)
             {
                 _firstHandle = handle;
                 await ContributeAsync(batch, handle).ConfigureAwait(false);
-                if (_options.OnPersist is Action<IDataBatch> onPersist)
-                {
-                    // The caller's statements, under the caller's authority, never the stack's.
-                    Authorize(batch, callers);
-                    _callerAppends = new RecordingBatch(batch, CallbackFailed);
-                    onPersist(_callerAppends);
-                    _callerAppends.Seal();
-                }
             }
             else
             {
                 EnsureSameNames(handle);
                 _participants!.Replay(batch);
-                if (_callerAppends is RecordingBatch appends)
-                {
-                    Authorize(batch, callers);
-                    appends.Replay(batch);
-                }
+            }
+
+            await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
+
+            // --- OnPersist: the caller's statements, under the caller's authority, never the stack's ---
+            if (first && _options.OnPersist is Action<IDataBatch> onPersist)
+            {
+                Authorize(batch, callers);
+                _callerAppends = new RecordingBatch(batch, CallbackFailed);
+                onPersist(_callerAppends);
+                _callerAppends.Seal();
+            }
+            else if (!first && _callerAppends is RecordingBatch appends)
+            {
+                Authorize(batch, callers);
+                appends.Replay(batch);
             }
 
             // --- Step 4: the guards' invariants, after every contribution ---
@@ -192,6 +214,16 @@ namespace Tellma.Core.Crud.Save
                 : null;
         }
 
+        /// <summary>Appends the groups of one order enlisted with the save, each with its own groups around it.</summary>
+        /// <param name="batch">The persist batch.</param>
+        /// <param name="order">The groups' order.</param>
+        /// <param name="first">Whether this is the batch's first composition.</param>
+        /// <returns>A task that completes when the groups are composed.</returns>
+        private ValueTask ComposeEnlistedAsync(IDataBatch batch, EnlistOrder order, bool first)
+        {
+            return Enlistments is null ? ValueTask.CompletedTask : _frame!.ComposeGroupsAsync(batch, order, first);
+        }
+
         /// <summary>Calls the service hook, then every effect in registration order, through the recording view.</summary>
         /// <param name="batch">The persist batch.</param>
         /// <param name="handle">The emitter's handle.</param>
@@ -201,6 +233,7 @@ namespace Tellma.Core.Crud.Save
             _participants = new RecordingBatch(batch, CallbackFailed);
             SavePersistContext<TEntity> context = new()
             {
+                Enlistment = _enlisted?.Site.Pair,
                 Entities = _entities,
                 Context = _operation.Accessor.Current,
                 Batch = _participants,
@@ -253,7 +286,7 @@ namespace Tellma.Core.Crud.Save
                 Context = _operation.Accessor.Current,
                 Loader = _loader,
                 Errors = errors,
-                Host = new PipelineWriteHost(_stack.Resource, CrudOperationNames.Save, frame),
+                Host = new RerunHost(_frame!, frame, _operation.Metadata),
                 CancellationToken = _cancellationToken,
                 NewRows = _context.NewRows,
                 BeforeImages = _context.BeforeImages,
@@ -339,7 +372,7 @@ namespace Tellma.Core.Crud.Save
         // Spec 0015 §13.2: the hook, then every effect, after the commit is acknowledged and outside
         // any transaction. A failure is logged with the operation's trace id and counted by the
         // component's type name; it never changes the response and is never retried.
-        /// <summary>Meters the committed save and runs its post-commit phase.</summary>
+        /// <summary>Meters the committed save and runs its post-commit phase, then its groups'.</summary>
         /// <param name="committed">The outcome of the batch that committed, or of the read that proved it; null when neither answered.</param>
         /// <param name="stamp">The batch's stamp; the default when no read answered it.</param>
         /// <returns>A task that completes when every participant returned.</returns>
@@ -367,6 +400,12 @@ namespace Tellma.Core.Crud.Save
                 BeforeImages = _context.BeforeImages,
             };
             await AfterCommitAsync(_behavior, outcome).ConfigureAwait(false);
+
+            // --- The groups' post-commit phase, in the order the batch composed them ---
+            if (Enlistments is not null)
+            {
+                await _frame!.AfterGroupsCommitAsync(committed).ConfigureAwait(false);
+            }
         }
 
         /// <summary>Whether an update root overwrote a stored row whose stamp differed from the one the caller echoed.</summary>

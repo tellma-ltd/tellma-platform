@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Frozen;
 using System.Reflection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
@@ -112,6 +113,24 @@ namespace Tellma.Core.Crud
             return _contents.Value.Methods.GetValueOrDefault(action);
         }
 
+        /// <summary>The stack a class of the composition is attached to: as the stack's service, a companion or a component.</summary>
+        /// <param name="writer">The class.</param>
+        /// <returns>The stack, or null for a class attached to none, such as a routed service or a job handler.</returns>
+        public StackDescriptor? StackOfWriter(Type writer)
+        {
+            ArgumentNullException.ThrowIfNull(writer);
+            return _contents.Value.WriterStacks.GetValueOrDefault(writer);
+        }
+
+        /// <summary>The classes attached to a stack, which take part in its writes: its service, companions and components.</summary>
+        /// <param name="resource">The stack's resource.</param>
+        /// <returns>The classes; empty for a resource no stack serves.</returns>
+        public IReadOnlySet<Type> ParticipantsOf(string resource)
+        {
+            ArgumentNullException.ThrowIfNull(resource);
+            return _contents.Value.Participants.GetValueOrDefault(resource) ?? FrozenSet<Type>.Empty;
+        }
+
         /// <summary>Builds the registry's contents.</summary>
         /// <param name="composition">The settled stacks.</param>
         /// <param name="source">The source of the entity metadata.</param>
@@ -177,6 +196,23 @@ namespace Tellma.Core.Crud
                 _ = childByResource.TryAdd(child.Resource, child);
             }
 
+            // --- The classes attached to each stack, which take part in its writes ---
+            Dictionary<Type, StackDescriptor> writerStacks = [];
+            Dictionary<string, HashSet<Type>> participants = new(StringComparer.Ordinal);
+            foreach ((Type writer, Type? leaf) in composition.Writers())
+            {
+                if (leaf is not null && byLeaf.TryGetValue(leaf, out StackDescriptor? owner))
+                {
+                    writerStacks[writer] = owner;
+                    if (!participants.TryGetValue(owner.Resource, out HashSet<Type>? attached))
+                    {
+                        participants[owner.Resource] = attached = [];
+                    }
+
+                    _ = attached.Add(writer);
+                }
+            }
+
             return new Contents(
                 Failed: false,
                 problems,
@@ -189,7 +225,9 @@ namespace Tellma.Core.Crud
                 byTable,
                 byLeaf,
                 builder.Methods,
-                [.. stacks.Select(static stack => new StackRoute(stack.ResourceSegment, stack.Operations))]);
+                [.. stacks.Select(static stack => new StackRoute(stack.ResourceSegment, stack.Operations))],
+                writerStacks,
+                participants.ToDictionary(static entry => entry.Key, static entry => (IReadOnlySet<Type>)entry.Value, StringComparer.Ordinal));
         }
 
         /// <summary>
@@ -331,7 +369,7 @@ namespace Tellma.Core.Crud
                 if (ActionMethods.Api(type, method, attribute, securable, problems) is ApiActionDescriptor action)
                 {
                     actions.Add(action);
-                    methods[action] = new ActionMethod(type, method);
+                    methods[action] = new ActionMethod(type, method, route.Route);
                 }
             }
 
@@ -559,6 +597,8 @@ namespace Tellma.Core.Crud
         /// <param name="ByLeaf">The stacks by leaf entity type.</param>
         /// <param name="Methods">The method behind each declared action, by descriptor instance.</param>
         /// <param name="Routes">Every stack's route.</param>
+        /// <param name="WriterStacks">The stack each attached class belongs to: its service, companions and components.</param>
+        /// <param name="Participants">The classes attached to each stack, by resource.</param>
         private sealed record Contents(
             bool Failed,
             IReadOnlyList<CompositionProblem> Problems,
@@ -571,14 +611,16 @@ namespace Tellma.Core.Crud
             Dictionary<(string Schema, string Name), StackDescriptor> ByTable,
             Dictionary<Type, StackDescriptor> ByLeaf,
             Dictionary<ActionDescriptor, ActionMethod> Methods,
-            IReadOnlyCollection<StackRoute> Routes)
+            IReadOnlyCollection<StackRoute> Routes,
+            Dictionary<Type, StackDescriptor> WriterStacks,
+            Dictionary<string, IReadOnlySet<Type>> Participants)
         {
             /// <summary>The contents of a registry whose tenant model failed.</summary>
             /// <param name="problems">The problems found before the model was needed.</param>
             /// <returns>The contents.</returns>
             public static Contents Empty(List<CompositionProblem> problems)
             {
-                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), [], new(ReferenceEqualityComparer.Instance), []);
+                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), [], new(ReferenceEqualityComparer.Instance), [], [], new(StringComparer.Ordinal));
             }
         }
     }

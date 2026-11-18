@@ -207,9 +207,13 @@ namespace Tellma.Core.Provisioning
                 TenantScope scope = await scopes.CreateScopeAsync(SystemSnapshot(tenant.Id), allowNonActive: true, cancellationToken).ConfigureAwait(false);
                 await using (scope.ConfigureAwait(false))
                 {
-                    scope.Services.GetService<IProvisioningFrameOpener>()?.Open(scope.Services, step.Name);
-                    ITenantProvisioningStep instance = step.Registration.Create(scope.Services);
-                    await instance.RunAsync(new TenantProvisioningContext(tenant, scope.Services, isNew, adminSubject, adminEmail)).ConfigureAwait(false);
+                    Task Run()
+                    {
+                        return step.Registration.Create(scope.Services).RunAsync(new TenantProvisioningContext(tenant, scope.Services, isNew, adminSubject, adminEmail));
+                    }
+
+                    IProvisioningFrameOpener? opener = scope.Services.GetService<IProvisioningFrameOpener>();
+                    await (opener is null ? Run() : opener.RunAsync(scope.Services, step.Name, step.Registration.StepType, Run, cancellationToken)).ConfigureAwait(false);
                 }
             }
             finally

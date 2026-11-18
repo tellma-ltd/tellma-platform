@@ -5,6 +5,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Testing.Entities
@@ -181,9 +182,10 @@ namespace Tellma.Testing.Entities
         public int OtherNodeId { get; set; }
     }
 
-    /// <summary>A job entity with a <see cref="long" /> key.</summary>
+    /// <summary>A job entity with a <see cref="long" /> key, whose stack accepts enlisted writes.</summary>
     [Table("Shipments", Schema = FixtureSchema.Name)]
     [TableType]
+    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
     public class Shipment : TopLevelEntity<long>, IJobEntity
     {
         /// <summary>The state, <c>varchar(8)</c>.</summary>

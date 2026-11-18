@@ -18,6 +18,7 @@ using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Details;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
@@ -30,7 +31,8 @@ namespace Tellma.Core.Crud.Save
     // (§6.4), round trip 1 with the pipeline's own loads (§6.1 step 5), the ordered checks of §6.6
     // and the validators' rounds (§7.2), the value sets, then the raise order of §7.5. This part
     // holds the steps up to round trip 1; the round's composition and the checks that follow it
-    // are the other parts.
+    // are the other parts. The same run serves a save enlisted with another operation's frame
+    // (§13.3), whose stages run as tasks of its host's rounds: that mode is the enlisted part.
     /// <summary>One save of one stack, from its payload's shape to the outcome of its validation.</summary>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -40,9 +42,16 @@ namespace Tellma.Core.Crud.Save
     /// <param name="entities">The payload's roots.</param>
     /// <param name="options">The save's options.</param>
     /// <param name="cancellationToken">Cancels the save.</param>
+    /// <param name="enlisted">The frame the save is enlisted with and how; null for a save of its own.</param>
     internal sealed partial class SaveRun<TEntity, TKey>(
-        SaveOperation operation, StackDescriptor stack, IEntityBehavior<TEntity, TKey> behavior, IReadOnlyList<TEntity> entities, SaveOptions options, CancellationToken cancellationToken)
-        : WriteRun(operation, stack.Resource, CrudOperationNames.Save)
+        SaveOperation operation,
+        StackDescriptor stack,
+        IEntityBehavior<TEntity, TKey> behavior,
+        IReadOnlyList<TEntity> entities,
+        SaveOptions options,
+        CancellationToken cancellationToken,
+        EnlistedSaveSite? enlisted = null)
+        : WriteRun(operation, stack.Resource, CrudOperationNames.Save), IEnlistedSave
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
     {
@@ -70,8 +79,16 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The roots' entity.</summary>
         private readonly EntityMetadata _root = operation.Metadata.Get(typeof(TEntity));
 
-        /// <summary>The save's errors, every step's.</summary>
-        private readonly ValidationErrors<TEntity> _errors = new();
+        /// <summary>The frame the save is enlisted with and how; null for a save of its own.</summary>
+        private readonly EnlistedSaveSite? _enlisted = enlisted;
+
+        /// <summary>The save's errors, every step's: its own list, or the view that re-homes them into its host's.</summary>
+        private readonly ValidationErrors<TEntity> _errors = enlisted is null
+            ? new()
+            : new ValidationErrors<TEntity>(enlisted.Site.Host.Errors, enlisted.Site.MapPath, stack.Resource);
+
+        /// <summary>The frame a save of its own runs its participants in; null until opened, and for an enlisted save.</summary>
+        private PipelineFrame? _frame;
 
         /// <summary>Every payload row at every depth, each before its children.</summary>
         private readonly List<SaveRow> _rows = [];
@@ -118,6 +135,14 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The payload's roots, as the allocator and the walkers take them.</summary>
         private IReadOnlyList<object> Payload => _entities;
 
+        /// <summary>The rounds the groups enlisted with a save of its own run in; null while none can have enlisted.</summary>
+        private EnlistmentRounds? Enlistments => _frame is { HasRounds: true } frame ? frame.Rounds : null;
+
+        /// <summary>The frame the save's participants run in: its own, or its group's when enlisted.</summary>
+        private EnlistmentFrame ParticipantFrame => _enlisted is null
+            ? _frame ?? throw new InvalidOperationException("The save's frame opens before its participants run.")
+            : Frame;
+
         /// <summary>Runs the save.</summary>
         /// <returns>The saved rows' ids, and the rows when asked for.</returns>
         public async Task<EntitiesResult<TEntity>> RunAsync()
@@ -141,6 +166,7 @@ namespace Tellma.Core.Crud.Save
             try
             {
                 Open(frame);
+                using IDisposable flow = FrameFlow.Enter(_frame!);
 
                 // --- Step 3: preprocessing, the pipeline's then the hook's; the rows are walked
                 // again after the hook, which may add or drop children ---
@@ -160,7 +186,9 @@ namespace Tellma.Core.Crud.Save
                 RequestUniqueness();
                 RequestTree();
 
-                // --- Step 4: the ids, at once from a warm buffer, else riding round trip 1 ---
+                // --- Step 4: the ids, at once from a warm buffer, else riding round trip 1; from here
+                // to the close of the last round the frame composes, and admits enlistment ---
+                _frame!.BeginComposing(_scheduler, _loader, _map, _errors, _cancellationToken);
                 ReserveIds();
 
                 // --- Steps 5 and 6: round trip 1, the ordered checks, the validators and their rounds ---
@@ -191,18 +219,29 @@ namespace Tellma.Core.Crud.Save
                     await SettleAsync().ConfigureAwait(false);
                 }
 
-                // --- The value sets, then the outcome in the order a caller can act on ---
+                // --- The value sets, the enlisted groups' with them, then the outcome in the order a
+                // caller can act on ---
                 CheckValueSets();
+                _frame.Close(complete: true);
                 ValidationOutcome.Raise(staleStamp: null, _errors, frame);
 
                 // --- Steps 7 to 10: the persist, its commit and the post-commit phase ---
-                return await PersistAsync().ConfigureAwait(false);
+                EntitiesResult<TEntity> result = await PersistAsync().ConfigureAwait(false);
+                Enlistments?.Count(failure: null);
+                return result;
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                Enlistments?.Count(failure);
+                throw;
             }
             finally
             {
                 // A save that never sent its persist returns its ids: nothing outside the process saw
                 // them. Once a persist was attempted, the batch marked the reservation, which then
-                // keeps them whatever the outcome.
+                // keeps them whatever the outcome. The groups enlisted with the save do the same.
+                _frame?.Close();
+                Enlistments?.Release();
                 _reservation?.Dispose();
             }
         }
@@ -220,14 +259,24 @@ namespace Tellma.Core.Crud.Save
             // visibility for the user each round is composed for.
             _scheduler = new ValidationScheduler(_stack.Limits.MaxValidationRounds, CrudOperationNames.Save, DispatchAsync, _operation.Metrics, _cancellationToken);
             _loader = new ContextLoader(_operation.Metadata, _map, _scheduler, ReadDecision);
-            _context = new SaveContext<TEntity>
+            _frame = new PipelineFrame(_operation, _stack, CrudOperationNames.Save, frame, _options.Source);
+            _context = NewContext(_frame);
+        }
+
+        /// <summary>The context the hooks and validators see.</summary>
+        /// <param name="host">The frame they see as their host.</param>
+        /// <returns>The context.</returns>
+        private SaveContext<TEntity> NewContext(IWriteHost host)
+        {
+            return new SaveContext<TEntity>
             {
                 Entities = _entities,
                 Options = _options,
                 Context = _request,
                 Loader = _loader,
                 Errors = _errors,
-                Host = new PipelineWriteHost(_stack.Resource, CrudOperationNames.Save, frame),
+                Host = host,
+                Enlistment = _enlisted?.Site.Pair,
                 CancellationToken = _cancellationToken,
                 NewRows = [.. _entities.Select(static entity => entity.Id <= TKey.Zero)],
             };
@@ -477,6 +526,23 @@ namespace Tellma.Core.Crud.Save
             }
 
             _reservation.Assign(Payload);
+            PrimeNewRows();
+        }
+
+        // Spec 0015 §13.3: every payload row of every stack taking part in a frame is primed on the
+        // shared loader, so a validator of another stack in the frame reading a row by id costs
+        // nothing, the rows of this payload included. An update row is primed with its before image
+        // once the first round ran; a new row is primed once its id is final.
+        /// <summary>Primes the payload's new roots on the loader, their ids final.</summary>
+        private void PrimeNewRows()
+        {
+            foreach (SaveRow root in _roots)
+            {
+                if (root.IsNew)
+                {
+                    _loader.Prime<TEntity, TKey>((TEntity)root.Row);
+                }
+            }
         }
 
         /// <summary>Whether the pipeline's own loads need round trip 1: a deferred reservation, update rows, or references.</summary>
@@ -489,11 +555,21 @@ namespace Tellma.Core.Crud.Save
         /// <summary>Starts the service's validation hook, then every validator of the entity, as tasks of the rounds.</summary>
         private void StartValidators()
         {
-            _scheduler.Run(_behavior.GetType().Name, () => _behavior.ValidateAsync(_context));
+            _validatorsStarted ??= _scheduler.Dispatches;
+            RunTask(_behavior.GetType().Name, () => _behavior.ValidateAsync(_context));
             foreach (IEntityValidator<TEntity> validator in _operation.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                _scheduler.Run(validator.GetType().Name, () => validator.ValidateAsync(_context));
+                RunTask(validator.GetType().Name, () => validator.ValidateAsync(_context));
             }
+        }
+
+        /// <summary>Runs a task of the rounds inside the frame the save's participants run in.</summary>
+        /// <param name="name">The task's name.</param>
+        /// <param name="task">The task's body.</param>
+        private void RunTask(string name, Func<Task> task)
+        {
+            EnlistmentFrame frame = ParticipantFrame;
+            _scheduler.Run(name, () => FrameFlow.RunInAsync(frame, task));
         }
 
         // Spec 0015 §6.6 step 8: a new or changed value outside its set, unless a validator already

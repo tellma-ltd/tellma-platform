@@ -12,12 +12,15 @@ using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Crud.Actions;
 using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
 
 namespace Tellma.Core.Crud
 {
-    // The pipeline is spec 0015 §3.1; an operation the stack omits is §2.2's authoring bug.
+    // The pipeline is spec 0015 §3.1; an operation the stack omits is §2.2's authoring bug. A write
+    // called from inside a frame that is composing is refused (§13.3): it would run in a second
+    // transaction beside the frame's, so it enlists instead.
     /// <summary>
     ///     The platform's sealed pipeline behind one entity service instance: each operation's
     ///     steps, run against the service's hooks under the stack's descriptor. An operation the
@@ -100,6 +103,7 @@ namespace Tellma.Core.Crud
             ArgumentNullException.ThrowIfNull(entities);
             ArgumentNullException.ThrowIfNull(options);
             Require(StackOperations.Save, CrudOperationNames.Save);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.Save);
             return save.SaveAsync(Descriptor, behavior, entities, options, cancellationToken);
         }
 
@@ -108,6 +112,7 @@ namespace Tellma.Core.Crud
         {
             ArgumentNullException.ThrowIfNull(ids);
             Require(StackOperations.Delete, CrudOperationNames.Delete);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.Delete);
             return deletes.DeleteByIdsAsync(Descriptor, behavior, ids, expectedStamps, cancellationToken);
         }
 
@@ -116,6 +121,7 @@ namespace Tellma.Core.Crud
         {
             ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Delete, CrudOperationNames.DeleteByQuery);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.DeleteByQuery);
             return deletes.DeleteByQueryAsync(Descriptor, behavior, request, cancellationToken);
         }
 
@@ -126,6 +132,7 @@ namespace Tellma.Core.Crud
             ArgumentException.ThrowIfNullOrWhiteSpace(action);
             ArgumentNullException.ThrowIfNull(ids);
             ArgumentNullException.ThrowIfNull(options);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.Action);
             return actions.ExecuteAsync(Descriptor, behavior, action, ids, arguments, options, cancellationToken);
         }
 
@@ -136,6 +143,7 @@ namespace Tellma.Core.Crud
             ArgumentException.ThrowIfNullOrWhiteSpace(action);
             ArgumentNullException.ThrowIfNull(ids);
             ArgumentNullException.ThrowIfNull(options);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.Action);
             return actions.ExecuteAsync<TEntity, TKey, TResult>(Descriptor, behavior, action, ids, arguments, options, cancellationToken);
         }
 
@@ -152,6 +160,7 @@ namespace Tellma.Core.Crud
         {
             ArgumentNullException.ThrowIfNull(ids);
             Require(StackOperations.Delete, CrudOperationNames.DeleteWithDescendants, TreeCapability);
+            FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.DeleteWithDescendants);
             return deletes.DeleteWithDescendantsAsync(Descriptor, behavior, ids, cancellationToken);
         }
 

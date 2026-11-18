@@ -24,8 +24,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     scope's connections, with the first tenant seeded once with the rows the
     ///     details reads cover: four widgets with parts, a small tree of nodes with links between
     ///     them, a root with more children than a level may return, and two lookups, and the second
-    ///     tenant with more lookups than the list's cache holds. Each test seeds its own caller and
-    ///     roles.
+    ///     tenant with more lookups than the list's cache holds. The first tenant also holds
+    ///     <see cref="CallerRows" />, a table no stack owns. Each test seeds its own caller and roles.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class DetailsPipelineDatabase(SqlServerFixture sql) : IAsyncLifetime
@@ -40,12 +40,19 @@ namespace Tellma.Core.IntegrationTests.Crud
         public const int OversizedLookups = 51;
 
         /// <summary>
-        ///     The seed: widgets 1 to 4 (priced 10.5, none, 30 and 40), one or two parts each but the
+        ///     A table outside the model, which no stack owns: the statements of a caller or of an
+        ///     effect write it, as a module writes a table of its own beside a save.
+        /// </summary>
+        public static readonly TableName CallerRows = new("dbo", "CallerRows");
+
+        /// <summary>
+        ///     The seed: the caller rows' table, widgets 1 to 4 (priced 10.5, none, 30 and 40), one or two parts each but the
         ///     second's, nodes 1 to 5 under two roots with links 1 to 3 (1 on N111 at N12, 2 on N2 at
         ///     N111, 3 on N12 at N2), the crowded root and its children, and lookups 1 and 2.
         /// </summary>
         private static readonly string[] Seed =
         [
+            "CREATE TABLE [dbo].[CallerRows] ([Id] int NOT NULL PRIMARY KEY);",
             DataQueryDatabase.Stamped(
                 "fixture.Widgets",
                 "[Id], [Code], [Kind], [Name], [Subject], [Price]",

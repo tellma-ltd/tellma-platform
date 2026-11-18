@@ -14,7 +14,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Validation;
-using Tellma.Core.Crud.Save;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Batches;
 
@@ -36,7 +36,9 @@ namespace Tellma.Core.Crud.Actions
     // whichever flow raised it; one recorded before the persist is sent abandons the action, and
     // one recorded after it is raised once the action committed, for every action, never answered
     // as success. A method that throws PartialFailureException leaves what it composed to be
-    // persisted, and the exception to be rethrown once the action committed.
+    // persisted, and the exception to be rethrown once the action committed. The tasks run inside
+    // the action's pipeline frame, which admits enlistment while the rounds run (§13.3), from every
+    // flow but one whose task read Persisted.
     /// <summary>One action of one stack: the general path's context, its tasks and their rounds.</summary>
     internal sealed partial class ActionRun<TEntity, TKey>
     {
@@ -90,6 +92,12 @@ namespace Tellma.Core.Crud.Actions
         /// <summary>The partial failure the method threw after composing, rethrown once the action committed.</summary>
         private ExceptionDispatchInfo? _partial;
 
+        /// <summary>The frame the first run's tasks run in; null on the one-round-trip path.</summary>
+        private PipelineFrame? _frame;
+
+        /// <summary>The rounds the groups enlisted with the action run in; null while none can have enlisted.</summary>
+        private EnlistmentRounds? Enlistments => _frame is { HasRounds: true } frame ? frame.Rounds : null;
+
         /// <summary>Runs the general path: round trip 1, the validators and the method with their rounds, then the persist.</summary>
         /// <returns>The method's own result, or the target ids and, when asked, the rows read back.</returns>
         private async Task<object?> RunGeneralAsync()
@@ -99,7 +107,13 @@ namespace Tellma.Core.Crud.Actions
             _scheduler = scheduler;
             _loader = new ContextLoader(Services.Metadata, _map, scheduler, ReadDecision);
             _recording = RecordingBatch.Deferred(CallbackFailed, PersistGate.EnsureComposing);
-            _context = NewContext(_loader, _errors, frame, _recording, scheduler, tracked: true);
+
+            // The ids are known, so the frame composes from the start; a flow whose task read
+            // Persisted composes nothing more, an enlistment included.
+            _frame = new PipelineFrame(Services, _stack, OperationName, frame, OpenWriteFrame.SourceOf(Services.Accessor.Current), PersistGate.EnsureComposing);
+            using IDisposable flow = FrameFlow.Enter(_frame);
+            _frame.BeginComposing(scheduler, _loader, _map, _errors, _cancellationToken);
+            _context = NewContext(_loader, _errors, _frame, _recording, scheduler, tracked: true);
             try
             {
                 // --- Round trip 1 carries the targets; the tasks join it with their first loads ---
@@ -110,13 +124,17 @@ namespace Tellma.Core.Crud.Actions
                 Start(scheduler, _context, withMethod: true);
                 _ = await scheduler.RunAsync().ConfigureAwait(false);
 
-                // --- Composing closes, then the outcome in the order a caller can act on ---
+                // --- Composing closes, the enlisted groups' with it, then the outcome in the order a
+                // caller can act on ---
                 _context.Close();
                 ThrowIfReleasedFlowFailed();
                 _recording.Seal();
+                _frame.Close(complete: true);
                 ValidationOutcome.Raise(staleStamp: null, _errors, frame);
                 Compose(_context);
-                return await PersistAsync().ConfigureAwait(false);
+                object? result = await PersistAsync().ConfigureAwait(false);
+                Enlistments?.Count(failure: null);
+                return result;
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
@@ -124,19 +142,26 @@ namespace Tellma.Core.Crud.Actions
                 // Persisted already completed, so this changes nothing then.
                 _ = _context.FaultPersisted(failure);
                 Observe(_methodTask);
+                Enlistments?.Count(failure);
                 throw;
+            }
+            finally
+            {
+                // The groups enlisted with the action return the ids they reserved and never sent.
+                _frame.Close();
+                Enlistments?.Release();
             }
         }
 
         /// <summary>The context the hook, the components and the method see.</summary>
         /// <param name="loader">The loader.</param>
         /// <param name="errors">The errors.</param>
-        /// <param name="frame">The confirmation frame.</param>
+        /// <param name="host">The frame the context's tasks see as their host.</param>
         /// <param name="batch">The batch the context's appends are recorded on.</param>
         /// <param name="scheduler">The rounds the context's tasks run in.</param>
         /// <param name="tracked">Whether the context's refusals are recorded on the run: the first run's, never a re-run's.</param>
         /// <returns>The context.</returns>
-        private ActionContext<TEntity, TKey> NewContext(ContextLoader loader, ValidationErrors<TEntity> errors, ConfirmationFrame frame, RecordingBatch batch, ValidationScheduler scheduler, bool tracked)
+        private ActionContext<TEntity, TKey> NewContext(ContextLoader loader, ValidationErrors<TEntity> errors, IWriteHost host, RecordingBatch batch, ValidationScheduler scheduler, bool tracked)
         {
             Action<Exception>? late = tracked ? RecordLate : null;
             return new ActionContext<TEntity, TKey>
@@ -147,7 +172,7 @@ namespace Tellma.Core.Crud.Actions
                 Loader = loader,
                 Errors = errors,
                 Batch = batch,
-                Host = new PipelineWriteHost(Resource, OperationName, frame),
+                Host = host,
                 CancellationToken = _cancellationToken,
                 Resource = Resource,
                 Notifier = Services.Services.GetService<INotifier>(),
@@ -163,18 +188,29 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="withMethod">Whether the method runs: on the first run, never on a re-run.</param>
         private void Start(ValidationScheduler scheduler, ActionContext<TEntity, TKey> context, bool withMethod)
         {
-            // --- A re-run's flows wait on a context that never persists, so only the first run's count ---
+            // --- A re-run's flows wait on a context that never persists, so only the first run's count;
+            // the first run's tasks run inside the action's frame ---
             string name = _descriptor.Name;
-            Gated(scheduler, _behavior.GetType().Name, () => _behavior.ValidateActionAsync(name, context), tracked: withMethod, isMethod: false);
+            EnlistmentFrame? frame = withMethod ? _frame : null;
+            Gated(scheduler, _behavior.GetType().Name, InFrame(frame, () => _behavior.ValidateActionAsync(name, context)), tracked: withMethod, isMethod: false);
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                Gated(scheduler, validator.GetType().Name, () => validator.ValidateActionAsync(name, context), tracked: withMethod, isMethod: false);
+                Gated(scheduler, validator.GetType().Name, InFrame(frame, () => validator.ValidateActionAsync(name, context)), tracked: withMethod, isMethod: false);
             }
 
             if (withMethod && _method is MethodInfo method)
             {
-                Gated(scheduler, method.Name, () => _methodTask = InvokeAsync(method, context), tracked: true, isMethod: true);
+                Gated(scheduler, method.Name, InFrame(frame, () => _methodTask = InvokeAsync(method, context)), tracked: true, isMethod: true);
             }
+        }
+
+        /// <summary>A task's body, run inside a frame when one is given.</summary>
+        /// <param name="frame">The frame; null to run the body as it is.</param>
+        /// <param name="body">The body.</param>
+        /// <returns>The body to run.</returns>
+        private static Func<Task> InFrame(EnlistmentFrame? frame, Func<Task> body)
+        {
+            return frame is null ? body : () => FrameFlow.RunInAsync(frame, body);
         }
 
         /// <summary>
@@ -341,7 +377,10 @@ namespace Tellma.Core.Crud.Actions
             }
         }
 
-        /// <summary>Dispatches one round; after the first, settles the targets before any task resumes.</summary>
+        /// <summary>
+        ///     Dispatches one round; after the first, settles the targets before any task resumes; then
+        ///     the checks of every group enlisted with the action that the round served.
+        /// </summary>
         /// <param name="round">The round's 1-based number.</param>
         /// <param name="cancellationToken">Cancels the round.</param>
         /// <returns>A task that completes when the round's refs are filled.</returns>
@@ -353,6 +392,11 @@ namespace Tellma.Core.Crud.Actions
                 // An absent or hidden id is not found, before a row outside the grant is forbidden.
                 _targets = SettleTargets(_ids, _loaded.Rows, _loaded.Granted, _descriptor.Action);
                 _context!.Entities = _targets;
+            }
+
+            if (Enlistments is EnlistmentRounds enlistments)
+            {
+                await enlistments.AfterRoundAsync(round).ConfigureAwait(false);
             }
         }
 
@@ -380,7 +424,7 @@ namespace Tellma.Core.Crud.Actions
                 static (_, _) => throw new InvalidOperationException("A re-run of the validators answers from the rounds already run and dispatches none."),
                 metrics: null,
                 _cancellationToken);
-            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, frame, RecordingBatch.Deferred(), scheduler, tracked: false);
+            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, new RerunHost(_frame!, frame, Services.Metadata), RecordingBatch.Deferred(), scheduler, tracked: false);
             context.Entities = _targets;
 
             // --- The validators, with every round trip refused as stale ---

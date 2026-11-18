@@ -17,7 +17,9 @@ namespace Tellma.Testing.Entities
     ///     A fixture host bound to one fixture database as tenant <see cref="TenantId" />: the fixture
     ///     composition with the tenant connection seams pointed at the database, and scopes whose
     ///     request context binds the tenant for the platform's own principal, so a scope's
-    ///     <see cref="ITenantDatabase" /> runs batches against the fixture database.
+    ///     <see cref="ITenantDatabase" /> runs batches against the fixture database. The host maps no
+    ///     table to a stack, so a batch writes every table through its public members as the table's
+    ///     own stack would.
     /// </summary>
     public sealed class FixtureTenant : IAsyncDisposable
     {
@@ -85,6 +87,11 @@ namespace Tellma.Testing.Entities
             _ = FixtureComposition.Compose(services);
             _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new FixtureConnectionFactory(info)));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(_ => new FixtureConnectionProvider(info)));
+
+            // The data layer's suites append every statement the way a stack's own pipeline does, so
+            // no stack owns a table here; the refusal of a write to a stack's table from outside it
+            // belongs to the suites that run the pipeline over the full composition.
+            _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(new NoStackTableOwners()));
             if (audit)
             {
                 _ = services.AddSingleton<IDataBatchAudit>(new ChangeTrackingAudit(connectionString));

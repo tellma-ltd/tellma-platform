@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -697,6 +697,20 @@ namespace Tellma.Core.Data.Batches
             _parameterNames.UnionWith(draft.Parameters.Select(static parameter => parameter.Name));
             _declared.UnionWith(draft.Declared);
             _open = null;
+        }
+
+        /// <inheritdoc />
+        public int NextOrdinal()
+        {
+            EnsureComposing();
+            if (_open is not null)
+            {
+                throw new InvalidOperationException("A statement of the batch is being composed, so the next ordinal is not known yet. Append or discard it first.");
+            }
+
+            // The prologue stage takes the first ordinals: run it now, so no caller's mark covers it.
+            EnsurePrologue();
+            return _statements.Count;
         }
 
         /// <summary>Abandons the statement a draft was composing; its ordinal is given to the next statement.</summary>

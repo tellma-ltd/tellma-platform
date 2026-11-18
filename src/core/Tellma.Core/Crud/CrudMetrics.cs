@@ -76,6 +76,9 @@ namespace Tellma.Core.Crud
         /// <summary>The composes the guarded runner re-entered, by the tag that moved.</summary>
         private readonly Counter<long> _staleReruns;
 
+        /// <summary>The enlisted writes, by the host's operation, the write's kind and the host's outcome.</summary>
+        private readonly Counter<long> _enlistments;
+
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
         public CrudMetrics(IMeterFactory meterFactory)
@@ -133,6 +136,11 @@ namespace Tellma.Core.Crud
                 CrudTelemetryNames.StaleContextReruns,
                 "{rerun}",
                 "Batches recomposed because a tag they rested on moved, by the tag, or by the guard for one the persist transaction refused.");
+
+            _enlistments = meter.CreateCounter<long>(
+                CrudTelemetryNames.Enlistments,
+                "{enlistment}",
+                "Writes enlisted with another operation's frame, by the host's operation, the write's kind and the host's outcome.");
         }
 
         /// <summary>The <c>crud.source</c> of a write from who asked for it.</summary>
@@ -239,6 +247,22 @@ namespace Tellma.Core.Crud
         public void CountOverride()
         {
             _overrides.Add(1);
+        }
+
+        /// <summary>Counts one enlisted write, once its host's outcome is known.</summary>
+        /// <param name="operation">The <c>crud.operation</c> of the host: <c>save</c>, <c>delete</c>, <c>action</c>, <c>api_action</c>, <c>job</c> or <c>provisioning</c>.</param>
+        /// <param name="kind">The <c>crud.kind</c> of the write: <c>save</c> or <c>delete</c>.</param>
+        /// <param name="outcome">The <c>crud.outcome</c> of the host: <c>ok</c>, <c>validation</c> or <c>error</c>.</param>
+        public void CountEnlistment(string operation, string kind, string outcome)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+            ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+            ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+            _enlistments.Add(
+                1,
+                new KeyValuePair<string, object?>(CrudTelemetryNames.OperationTag, operation),
+                new KeyValuePair<string, object?>(CrudTelemetryNames.KindTag, kind),
+                new KeyValuePair<string, object?>(CrudTelemetryNames.OutcomeTag, outcome));
         }
 
         /// <summary>Counts one post-commit failure.</summary>

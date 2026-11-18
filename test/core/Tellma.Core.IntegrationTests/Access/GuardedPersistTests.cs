@@ -35,8 +35,11 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <summary>Deactivates the user the prologue resolved.</summary>
         private const string DeactivateCaller = "UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = @tm_UserId;";
 
-        /// <summary>The table the persists write.</summary>
+        /// <summary>The table the persists write, which the jobs' stack owns.</summary>
         private static readonly HashSet<TableName> Jobs = [new("core", "Jobs")];
+
+        /// <summary>The tables a widget save writes, which the widgets' stack owns.</summary>
+        private static readonly HashSet<TableName> WidgetTables = [new("fixture", "Widgets"), new("fixture", "WidgetParts"), new("fixture", "WidgetPartNotes")];
 
         /// <summary>The prologue round trips, one measurement each, tagged by variant.</summary>
         private readonly MetricCollector<double> _prologues = new(
@@ -269,6 +272,8 @@ namespace Tellma.Core.IntegrationTests.Access
                 BatchPurpose.Persist,
                 (user, batch) =>
                 {
+                    // The save is appended as the widgets' own stack appends it, holding its tables.
+                    ((DataBatch)batch).SetCallerAuthority(WidgetTables);
                     _ = batch.Save([widget]);
                     return ValueTask.CompletedTask;
                 },
@@ -299,6 +304,8 @@ namespace Tellma.Core.IntegrationTests.Access
                         data.Append(data.Begin(BatchSection.TransactionHead), statement);
                     }
 
+                    // The insert is appended as the jobs' own stack would append it, holding its table.
+                    data.SetCallerAuthority(Jobs);
                     _ = batch.Sql(
                         $"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({jobId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());",
                         new SqlOptions(writes: Jobs));

@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Crud.Save
@@ -33,7 +34,13 @@ namespace Tellma.Core.Crud.Save
         /// <summary>Whether the checks that follow round trip 1 ran.</summary>
         private bool _settled;
 
-        /// <summary>Dispatches one round: its loads on one guarded batch, then, after the first, the ordered checks.</summary>
+        /// <summary>The rounds dispatched when the validators started; null until they did.</summary>
+        private int? _validatorsStarted;
+
+        /// <summary>
+        ///     Dispatches one round: its loads on one guarded batch, then, after the first, the ordered
+        ///     checks, and the checks of every group enlisted with the save that the round served.
+        /// </summary>
         /// <param name="round">The round's 1-based number.</param>
         /// <param name="cancellationToken">Cancels the round.</param>
         /// <returns>A task that completes when the round's refs are filled and, after the first, the checks ran.</returns>
@@ -53,6 +60,12 @@ namespace Tellma.Core.Crud.Save
                 {
                     StartValidators();
                 }
+            }
+
+            // --- The enlisted groups' checks, once the round that served their loads ran ---
+            if (Enlistments is EnlistmentRounds enlistments)
+            {
+                await enlistments.AfterRoundAsync(round).ConfigureAwait(false);
             }
         }
 

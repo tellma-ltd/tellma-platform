@@ -1460,6 +1460,64 @@ no row and every id is not found.
   value of its own has none to give, so its failure is raised. Any other ambiguous end is `DependencyUnavailableException`
   (`database`, one second).
 
+### Write frames and enlisted writes
+
+Every write runs in a frame. Each save, delete and action runs in a pipeline frame (`IWriteHost`,
+handed to its hooks as `context.Host`); an `[ApiAction]` method, a job handler and a provisioning
+step run in an open frame, which the scoped `IOpenWriteHost` resolves to (the innermost open frame
+of the flow). A frame names its kind and its `Operation`: `<Resource>:<op>`, `job:<key>` or
+`provisioning:<step>`.
+
+- **Enlisting.** A writer that declares `IEnlists<TTarget>` adds a save (`EnlistSaveAsync`) or a
+  delete by ids (`EnlistDelete`) of the target's stack to a frame. The frame admits it only for a
+  pair the registry holds, from a participant of the frame (the host's service, companions and
+  components, a group's own participants, or the class an open frame was opened for), and only
+  while a pipeline frame validates or before an open frame's `PersistAsync`. A write to the
+  writer's own stack is admitted from the open frame of that stack's API action alone, and a root
+  id enlisted twice with one target in one frame is refused at the second. Each refusal is
+  `InvalidOperationException`.
+- **A group** runs the target's own stages as tasks of the host's scheduler, on the host's rounds:
+  preprocessing, the before images of its updates read unfiltered (a missing row is
+  `Entity.NotFound` at the mapped path, with its ids), the server-owned members the writer names
+  re-applied, the ids (at once from a warm buffer, else reserved on the host's next round, which an
+  enlistment awaited after it then waits for), the validators and the components. The caller's
+  grants and reference visibility are not asked of it. An enlisted save overrides stamps by
+  default; under `Concurrency = Check` a default stamp is `Concurrency.StampRequired`. A delete
+  that nothing validates loads nothing and deletes by its ids alone.
+- **Errors** land in a re-homing view: each participant writes its own payload's paths, and the
+  host's list receives every error through the enlistment's `MapPath` (the host's root when none),
+  composed along the nesting, with `enlistedResource` naming the innermost target's entity.
+- **The persist** is the host's one batch. Each group's statements sit ahead of (`BeforeHost`) or
+  after (`AfterHost`, the default) its immediate host's own, so a group's own groups nest: B
+  enlisted ahead of A, with C after B, composes B, C, A. Each group appends under its target's
+  authority, the access guards cover every write, and a failure is attributed by its statement's
+  ordinal to the group that raised it, translated by that group and re-rooted onto the host's
+  paths. After the commit the host's post-commit phase runs first, then each group's in
+  composition order. Each enlisted write is counted once (`tellma.crud.enlistments`) under the
+  host's operation and outcome.
+- **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
+  `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
+  while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
+  runs a pipeline frame of its own, and the open frame's `PersistAsync` is refused while it composes.
+- **Open frames** run their work as a task of their own rounds. `PersistAsync` is called once, from
+  the work itself: it waits for the groups' rounds, raises their errors and then their warnings,
+  and sends every group in one persist batch (none enlisted: no round trip). Work that returns with
+  groups it never persisted is `InvalidOperationException`, and nothing is sent. A job's frame
+  appends its groups to the completion batch the worker composes, after the outcome statement, and
+  runs their post-commit phase once the worker reports the commit. A provisioning step runs inside
+  a frame of its own, opened by `IProvisioningFrameOpener` around the step's creation and run.
+- **`IApiActionInvoker`** accepts only the registry's own `ApiActionDescriptor` instance, resolves
+  the handler for each request, requires the action's securable (or, for a member-only action, a
+  connected member; the system scope passes), walks the body's annotations at the body's own member
+  paths (no body where one is declared is `BadRequestException`), names the scope's operation after
+  the action, and runs the method inside the action's open frame through every
+  `IApiActionInterceptor`, the first registered outermost.
+- **Stack table ownership.** `StackTableOwners` maps every root and child table of every stack to
+  it, for the batch's append-time check: a statement appended through `IDataBatch`'s public members
+  whose declared writes include a stack's table outside the appender's authority is
+  `InvalidOperationException`. The platform's own composers (the emitter, the access guards, the
+  job, notification and tree statements) append through the batch's internal channel.
+
 ## The route model
 
 `IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from

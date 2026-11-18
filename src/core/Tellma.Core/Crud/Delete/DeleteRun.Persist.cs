@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
@@ -28,8 +29,11 @@ namespace Tellma.Core.Crud.Delete
     // runner, composed in §6.7's order: the access guards' lock, the delete, the participants through
     // the recording view, the guards' invariants. A re-entered compose re-runs the validators in
     // memory, keeps round trip 1's verdicts, recomposes the delete under the fresh grants and replays
-    // the recording (§5.1). The executor's failures are translated by §14.2, and a committed delete
-    // runs its post-commit phase (§13.2).
+    // the recording (§5.1). The groups the validators enlisted (§13.3) sit around the delete: the
+    // BeforeHost ones ahead of it, the AfterHost ones after its participants, and the access guards
+    // run over every table any of them writes. The executor's failures are translated by §14.2, a
+    // group's against the group, and a committed delete runs its post-commit phase (§13.2), then its
+    // groups'.
     /// <summary>One delete of one stack: its validation rounds, its persist and its post-commit phase.</summary>
     internal sealed partial class DeleteRun<TEntity, TKey>
     {
@@ -38,16 +42,22 @@ namespace Tellma.Core.Crud.Delete
         /// <returns>A task that completes when every validator returned.</returns>
         private async Task ValidateAsync(ConfirmationFrame frame)
         {
-            // --- The scheduler, the loader and the context the validators see ---
+            // --- The scheduler, the loader, the frame and the context the validators see; the ids are
+            // known, so the frame composes from the start ---
             ValidationScheduler scheduler = new(_stack.Limits.MaxValidationRounds, OperationName, DispatchAsync, Services.Metrics, _cancellationToken);
             _loader = new ContextLoader(Services.Metadata, _map, scheduler, ReadDecision);
+            _frame = _site is null
+                ? new PipelineFrame(Services, _stack, OperationName, frame, OpenWriteFrame.SourceOf(Services.Accessor.Current))
+                : throw new InvalidOperationException($"An enlisted delete of {Resource} composes in its host's frame and opens no frame of its own.");
+            using IDisposable flow = FrameFlow.Enter(_frame);
+            _frame.BeginComposing(scheduler, _loader, _map, _errors, _cancellationToken);
             _context = new DeleteContext<TEntity, TKey>
             {
                 Ids = _ids,
                 Context = Services.Accessor.Current,
                 Loader = _loader,
                 Errors = _errors,
-                Host = new PipelineWriteHost(Resource, OperationName, frame),
+                Host = _frame,
                 CancellationToken = _cancellationToken,
             };
 
@@ -55,11 +65,14 @@ namespace Tellma.Core.Crud.Delete
             _loader.Enqueue(this, new PipelineLoad(batch => ComposeTargets<TEntity, TKey>(
                 batch, Composer, _map, _root, _ids, AccessActions.Delete, [], (rows, granted) => _loaded = (rows, granted))));
             scheduler.RequestRound();
-            StartValidators(scheduler, _context);
+            StartValidators(scheduler, _context, _frame);
             _ = await scheduler.RunAsync().ConfigureAwait(false);
         }
 
-        /// <summary>Dispatches one round; after the first, settles the targets before any validator resumes.</summary>
+        /// <summary>
+        ///     Dispatches one round; after the first, settles the targets before any validator resumes;
+        ///     then the checks of every group enlisted with the delete that the round served.
+        /// </summary>
         /// <param name="round">The round's 1-based number.</param>
         /// <param name="cancellationToken">Cancels the round.</param>
         /// <returns>A task that completes when the round's refs are filled.</returns>
@@ -72,18 +85,34 @@ namespace Tellma.Core.Crud.Delete
                 _targets = SettleTargets(_ids, _loaded.Rows, _loaded.Granted, AccessActions.Delete);
                 _context!.Entities = _targets;
             }
+
+            if (Enlistments is EnlistmentRounds enlistments)
+            {
+                await enlistments.AfterRoundAsync(round).ConfigureAwait(false);
+            }
         }
 
         /// <summary>Starts the service's delete hook, then every validator's, as tasks of the rounds.</summary>
         /// <param name="scheduler">The rounds' scheduler.</param>
         /// <param name="context">The context the hooks see.</param>
-        private void StartValidators(ValidationScheduler scheduler, DeleteContext<TEntity, TKey> context)
+        /// <param name="frame">The frame the validators run in; null for a re-run, which enlists nothing of its own.</param>
+        private void StartValidators(ValidationScheduler scheduler, DeleteContext<TEntity, TKey> context, EnlistmentFrame? frame)
         {
-            scheduler.Run(_behavior.GetType().Name, () => _behavior.ValidateDeleteAsync(context));
+            Run(scheduler, frame, _behavior.GetType().Name, () => _behavior.ValidateDeleteAsync(context));
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                scheduler.Run(validator.GetType().Name, () => validator.ValidateDeleteAsync(context));
+                Run(scheduler, frame, validator.GetType().Name, () => validator.ValidateDeleteAsync(context));
             }
+        }
+
+        /// <summary>Runs a task of the rounds, inside a frame when one is given.</summary>
+        /// <param name="scheduler">The rounds' scheduler.</param>
+        /// <param name="frame">The frame; null to run the task as it is.</param>
+        /// <param name="name">The task's name.</param>
+        /// <param name="task">The task's body.</param>
+        private static void Run(ValidationScheduler scheduler, EnlistmentFrame? frame, string name, Func<Task> task)
+        {
+            scheduler.Run(name, frame is null ? task : () => FrameFlow.RunInAsync(frame, task));
         }
 
         // Spec 0015 §5.1 step 1 of a re-entry, as a save's: the validators run again over the loaded
@@ -115,7 +144,7 @@ namespace Tellma.Core.Crud.Delete
                 Context = Services.Accessor.Current,
                 Loader = _loader,
                 Errors = errors,
-                Host = new PipelineWriteHost(Resource, OperationName, frame),
+                Host = new RerunHost(_frame!, frame, Services.Metadata),
                 CancellationToken = _cancellationToken,
                 Entities = _targets,
             };
@@ -123,7 +152,7 @@ namespace Tellma.Core.Crud.Delete
             // --- The validators, with every round trip refused as stale ---
             using (ComposeFence.Close(static () => new StaleContextException([])))
             {
-                StartValidators(scheduler, context);
+                StartValidators(scheduler, context, frame: null);
                 _ = await scheduler.RunAsync().ConfigureAwait(false);
             }
 
@@ -157,8 +186,19 @@ namespace Tellma.Core.Crud.Delete
             catch (DataAccessException failure)
             {
                 // The runner may have refreshed the context in its own frame: the conflict names its
-                // modifier in the culture of the context the batch was composed under.
+                // modifier in the culture of the context the batch was composed under. A failure of a
+                // statement a group composed is the group's.
                 Services.Accessor.Current.ApplyCultures();
+                if (Enlistments?.Translate(failure) is Exception grouped)
+                {
+                    if (ReferenceEquals(grouped, failure))
+                    {
+                        throw;
+                    }
+
+                    throw grouped;
+                }
+
                 if (PersistFailures.Translate(failure, FailureContext(), Services.Metrics) is Exception translated)
                 {
                     throw translated;
@@ -199,14 +239,16 @@ namespace Tellma.Core.Crud.Delete
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack writes a security table ---
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
+            // --- The access guards' lock, when the stack or a group enlisted with it writes a security table ---
+            IEnumerable<TableName> written = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
+            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(written);
             if (guarded)
             {
                 Services.AccessGuards.ContributeLock(batch);
             }
 
-            // --- The delete, under the stack's authority ---
+            // --- The groups enlisted ahead of the delete, then the delete, under the stack's authority ---
+            await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             Authorize(batch, StackTables);
             DeleteHandle handle = batch.Delete(Spec(batch, user, granted));
             _handle = handle;
@@ -235,6 +277,9 @@ namespace Tellma.Core.Crud.Delete
                 EnsureSameNames(handle);
                 _participants!.Replay(batch);
             }
+
+            // --- The groups enlisted after the delete ---
+            await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
             // --- The guards' invariants, after every contribution ---
             Authorize(batch, callers);
@@ -293,11 +338,21 @@ namespace Tellma.Core.Crud.Delete
             return new AffectedResult(_shape == DeleteShape.ByQuery ? _expectedCount : _ids.Length);
         }
 
-        /// <summary>Runs the post-commit phase of a committed delete.</summary>
+        /// <summary>Appends the groups of one order enlisted with the delete, each with its own groups around it.</summary>
+        /// <param name="batch">The persist batch.</param>
+        /// <param name="order">The groups' order.</param>
+        /// <param name="first">Whether this is the batch's first composition.</param>
+        /// <returns>A task that completes when the groups are composed.</returns>
+        private ValueTask ComposeEnlistedAsync(IDataBatch batch, EnlistOrder order, bool first)
+        {
+            return Enlistments is null ? ValueTask.CompletedTask : _frame!.ComposeGroupsAsync(batch, order, first);
+        }
+
+        /// <summary>Runs the post-commit phase of a committed delete, then its groups'.</summary>
         /// <param name="committed">The outcome of the batch that committed; null when none answered.</param>
         /// <param name="deleted">The deleted ids.</param>
         /// <returns>A task that completes when every participant returned.</returns>
-        private Task AfterCommitAsync(BatchOutcome? committed, IReadOnlyList<TKey> deleted)
+        private async Task AfterCommitAsync(BatchOutcome? committed, IReadOnlyList<TKey> deleted)
         {
             DeletePersistOutcome<TEntity, TKey> outcome = new()
             {
@@ -308,7 +363,13 @@ namespace Tellma.Core.Crud.Delete
                 UserVersionTags = committed?.UserVersionTags,
                 DeletedIds = deleted,
             };
-            return AfterCommitAsync(_behavior, outcome);
+            await AfterCommitAsync(_behavior, outcome).ConfigureAwait(false);
+
+            // --- The groups' post-commit phase, in the order the batch composed them ---
+            if (Enlistments is not null)
+            {
+                await _frame!.AfterGroupsCommitAsync(committed).ConfigureAwait(false);
+            }
         }
 
         /// <summary>The deleted ids: those the request named, in its order, then any other, ascending.</summary>
