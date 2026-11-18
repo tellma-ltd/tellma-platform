@@ -21,6 +21,10 @@ namespace Tellma.Core.Access
     ///     with no invitation evidence and a permanent administrator membership, or an existing user
     ///     of the email address given that membership when it lacks one. One per scope.
     /// </summary>
+    /// <remarks>
+    ///     An existing user who is deactivated fails the bootstrap: it is never reactivated, so an
+    ///     operator decides whether that user's privileges come back.
+    /// </remarks>
     /// <typeparam name="TUser">The distribution's user leaf.</typeparam>
     /// <param name="users">The users' stack.</param>
     /// <param name="database">The tenant's database, which the email address is looked up in.</param>
@@ -63,6 +67,16 @@ namespace Tellma.Core.Access
             {
                 EntitiesResult<TUser> loaded = await users.GetByIdAsync(existing, DetailsRequest.None, cancellationToken).ConfigureAwait(false);
                 TUser user = loaded.Entities.Single();
+
+                // A deactivated user would leave the tenant without an active administrator, and the
+                // bootstrap never restores a privilege silently, so it fails with the user named.
+                if (!user.IsActive)
+                {
+                    throw new InvalidOperationException(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"User {existing}, whose email address the administrator bootstrap names, is deactivated, and the bootstrap does not reactivate a user. Reactivate the user, or bootstrap another email address, then run the step again."));
+                }
+
                 if (Grant(user.RoleMemberships ?? [], time.GetUtcNow()) is IReadOnlyList<RoleMembership> memberships)
                 {
                     user.RoleMemberships = memberships;

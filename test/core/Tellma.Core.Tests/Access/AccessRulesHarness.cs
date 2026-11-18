@@ -344,6 +344,9 @@ namespace Tellma.Core.Tests.Access
         /// <summary>The roles each permissions load asked for, in order.</summary>
         public List<IReadOnlyList<int>> PermissionLoads { get; } = [];
 
+        /// <summary>The roles a permissions load leaves out of its answer, as a defective loader would.</summary>
+        public HashSet<int> Omitted { get; } = [];
+
         /// <summary>The number of raw loads asked.</summary>
         public int SqlLoads { get; private set; }
 
@@ -351,10 +354,16 @@ namespace Tellma.Core.Tests.Access
         public ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>> ByParentIds<TChild, TK>(IReadOnlyList<TK> parentIds, string? select = null)
             where TK : notnull
         {
-            // The rules ask for the permissions of roles, keyed by the role.
+            // The rules ask for the permissions of roles, keyed by the role; as the real loader does,
+            // every requested role is answered, one the test gave nothing under an empty list.
             var ids = (IReadOnlyList<int>)parentIds;
             PermissionLoads.Add(ids);
-            var found = ids.Where(Permissions.ContainsKey).ToDictionary(static id => id, id => Permissions[id]);
+            var found = ids.Distinct().ToDictionary(static id => id, id => Permissions.TryGetValue(id, out IReadOnlyList<Permission>? held) ? held : []);
+            foreach (int id in Omitted)
+            {
+                _ = found.Remove(id);
+            }
+
             return new ContextRef<IReadOnlyDictionary<TK, IReadOnlyList<TChild>>>((IReadOnlyDictionary<TK, IReadOnlyList<TChild>>)(object)found);
         }
 

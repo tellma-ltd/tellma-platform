@@ -22,7 +22,8 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Crud.Actions
 {
     // Spec 0015 §11.1 and §11.2 step 4: one Persist batch through the runner. Between the executor's
-    // fixed prefix and suffix it carries the access guards' lock, the emitter for the rows Save
+    // fixed prefix and suffix it carries the access guards' lock (a transaction-head statement,
+    // appended beside the invariants once every write is declared), the emitter for the rows Save
     // marked (ConcurrencyMode.Override: an action is a command over rows it just loaded), the
     // updates over the target ids under the caller's Read filter and the action grant, all or
     // nothing (the built-in action's own, then those Update composed), the statements the hook, the
@@ -197,13 +198,6 @@ namespace Tellma.Core.Crud.Actions
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack writes a security table ---
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeLock(batch);
-            }
-
             // --- The stack's own writes, under its authority: the emitter, the target ids, the updates ---
             Authorize(batch, StackTables);
             SaveHandle? saved = _marked.Length > 0 ? batch.Save(_marked, ConcurrencyMode.Override) : null;
@@ -228,10 +222,14 @@ namespace Tellma.Core.Crud.Actions
                 _participants!.Replay(batch);
             }
 
-            // --- The guards' invariants, after every contribution ---
+            // --- The access guards' lock and invariants, after every contribution, when a write meets a security table ---
+            // Decided over the stack's tables and every statement's declared writes, a participant's
+            // or the caller's raw ones included (spec 0014 §8.3); the lock is a transaction-head
+            // statement, written first in the transaction whenever it is appended.
             Authorize(batch, callers);
-            if (guarded)
+            if (!Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables.Concat(batch.WrittenTables)))
             {
+                Services.AccessGuards.ContributeLock(batch);
                 Services.AccessGuards.ContributeInvariants(batch);
             }
 

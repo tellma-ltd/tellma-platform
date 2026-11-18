@@ -26,10 +26,11 @@ namespace Tellma.Core.Crud.Delete
     // and counts them under the Delete grant (§9.2), beside every load the validators request before
     // their first await; the validators then run their rounds. The persist is one batch through the
     // runner, composed in §6.7's order: the access guards' lock, the delete, the participants through
-    // the recording view, the guards' invariants. A re-entered compose re-runs the validators in
-    // memory, keeps round trip 1's verdicts, recomposes the delete under the fresh grants and replays
-    // the recording (§5.1). The executor's failures are translated by §14.2, and a committed delete
-    // runs its post-commit phase (§13.2).
+    // the recording view, the guards' invariants. The lock is a transaction-head statement, so it is
+    // appended beside the invariants, once every write is declared. A re-entered compose re-runs the
+    // validators in memory, keeps round trip 1's verdicts, recomposes the delete under the fresh
+    // grants and replays the recording (§5.1). The executor's failures are translated by §14.2, and
+    // a committed delete runs its post-commit phase (§13.2).
     /// <summary>One delete of one stack: its validation rounds, its persist and its post-commit phase.</summary>
     internal sealed partial class DeleteRun<TEntity, TKey>
     {
@@ -199,13 +200,6 @@ namespace Tellma.Core.Crud.Delete
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack writes a security table ---
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeLock(batch);
-            }
-
             // --- The delete, under the stack's authority ---
             Authorize(batch, StackTables);
             DeleteHandle handle = batch.Delete(Spec(batch, user, granted));
@@ -236,10 +230,14 @@ namespace Tellma.Core.Crud.Delete
                 _participants!.Replay(batch);
             }
 
-            // --- The guards' invariants, after every contribution ---
+            // --- The access guards' lock and invariants, after every contribution, when a write meets a security table ---
+            // Decided over the stack's tables and every statement's declared writes, a participant's
+            // or the caller's raw ones included (spec 0014 §8.3); the lock is a transaction-head
+            // statement, written first in the transaction whenever it is appended.
             Authorize(batch, callers);
-            if (guarded)
+            if (!Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables.Concat(batch.WrittenTables)))
             {
+                Services.AccessGuards.ContributeLock(batch);
                 Services.AccessGuards.ContributeInvariants(batch);
             }
         }

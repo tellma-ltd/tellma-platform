@@ -8,19 +8,23 @@ using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Access
 {
     /// <summary>
     ///     The security guards inside real transactions: the tenant's lock serialising two removals
     ///     of its last two administrators, a refusal rolling back the whole save, the platform's own
-    ///     scope standing aside, a time-bounded administrator not counting, and the public-role and
-    ///     administrator-role invariants refusing a raw write; each refusal counted.
+    ///     scope standing aside, a time-bounded administrator not counting, the public-role and
+    ///     administrator-role invariants refusing a raw write, and another stack's save held to the
+    ///     guards by a security write of its own statements; each refusal counted.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -31,6 +35,9 @@ namespace Tellma.Core.IntegrationTests.Access
 
         /// <summary>The table the raw writes declare.</summary>
         private static readonly HashSet<TableName> RolesTable = [new("core", "Roles")];
+
+        /// <summary>The table a caller's raw removal of memberships declares.</summary>
+        private static readonly HashSet<TableName> MembershipsTable = [new("core", "RoleMemberships")];
 
         /// <summary>The guards counter's measurements.</summary>
         private readonly MetricCollector<long> _guards = new(
@@ -163,7 +170,46 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.Equal([AccessTelemetryNames.GuardPublicRoleMembers, AccessTelemetryNames.GuardAdministratorDamaged], Tags(_guards));
         }
 
+        // --- A security write from another stack's persist ---
+
+        [Fact]
+        public async Task A_save_of_another_stack_whose_own_statement_removes_the_last_administrator_is_refused_and_rolled_back()
+        {
+            await fixture.ResetAdministratorsAsync();
+            (int ann, string subject) = await fixture.SeedAdministratorAsync("Ann");
+            int exports = await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports];");
+
+            // --- An export's save, whose caller statement declares a write of the memberships ---
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
+            {
+                SaveOptions options = new() { ReturnEntities = false, OnPersist = batch => RemoveMemberships(batch, ann) };
+
+                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().SaveAsync([new Export { Name = "beside" }], options, Token));
+                Assert.Equal([AccessCodes.LastAdministrator], refused.Codes());
+            }
+
+            // --- Neither the export nor the removal committed ---
+            Assert.Equal(1, await fixture.AdministratorsAsync());
+            Assert.Equal(exports, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports];"));
+            Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(_guards));
+        }
+
         // --- Fixtures ---
+
+        /// <summary>Appends a caller's raw removal of a user's memberships, declaring the table it writes and the user whose tag it moves.</summary>
+        /// <param name="batch">The persist batch.</param>
+        /// <param name="userId">The user.</param>
+        private static void RemoveMemberships(IDataBatch batch, int userId)
+        {
+            // The removal stands for a participant of a stack that owns no security table writing one
+            // raw: the test writes the platform's memberships table from a class that owns no stack,
+            // deliberately, as such a caller's OnPersist would.
+            SqlIdentifier users = batch.Tvp([new IdList { Id = userId }]);
+#pragma warning disable TELLMA0006
+            _ = batch.Sql($"DELETE FROM [core].[RoleMemberships] WHERE [UserId] = {userId};", new SqlOptions(writes: MembershipsTable, userIds: users));
+#pragma warning restore TELLMA0006
+        }
 
         /// <summary>The guard tag of each measurement, in order.</summary>
         /// <param name="guards">The collector.</param>

@@ -1706,9 +1706,11 @@ however often it is made:
   unfiltered `*` × `*` permission). A membership that ends later never stands in for a permanent
   one, so ending the last permanent membership is refused even while a time-bounded one remains.
 
-The save, delete and action pipelines call both, around the writes, for a stack whose tables
-include `core.Users`, `Roles`, `RoleMemberships` or `Permissions`, unless the context is the
-system's. A guarded batch composed by hand that writes those tables calls them itself. Because every
+The save, delete and action pipelines call both once every write is composed, when the stack's
+tables or any statement's declared writes (`IDataBatch.WrittenTables`: a participant's, the
+caller's `OnPersist`, an action's own) include `core.Users`, `Roles`, `RoleMemberships` or
+`Permissions`, unless the context is the system's; the lock still runs first, at the transaction's
+head. A guarded batch composed by hand that writes those tables calls them itself. Because every
 security write holds the lock, the assertions, which read under the transaction's snapshot, can never
 pass for two concurrent writes that together break them. A save's `50422` surfaces as a
 `ValidationException` carrying the code at the root; a hand-composed run's surfaces as
@@ -1771,6 +1773,15 @@ are exempt. Self-protection refusals are counted with the guards (`self_deactiva
 
 Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
 
+`RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
+resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
+since no unique index can hold them apart: a stored row survives over a new one, and a stored
+duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+A delete by query runs no validation round, so the delete rules above would never see its targets:
+the users' and the roles' stacks refuse it, for every caller, as a `BadRequestException` naming the
+`resource` before any round trip. Their rows are deleted by id.
+
 ### Stamps and preferences
 
 `UserStampsCompanion<TUser>`, a persist effect of the users' stack, inserts the `core.UserStamps` row
@@ -1781,10 +1792,11 @@ activity and an empty inbox. A row already there is kept, so a re-run after a lo
 `UserPreferenceList` rows, each write one statement appended to a persist batch: `Set` updates changed
 values and inserts absent keys, `Delete` removes the named keys, and `Replace` deletes the keys the
 items do not name, then sets the rest. `Set` and `Replace` assert the key cap after their insert
-(`Users.TooManyPreferenceKeys`, a `50422`), and the version-tag guard serialises two writes of one bag
-on the user's stamp row, so they cannot pass the cap together. The caller's own bag is written against
-the connect prologue's user; another user's is named in a one-row id list, so the epilogue moves that
-user's `PreferencesTag` either way. Keys compare as the database compares them, ignoring case; a value
+(`Users.TooManyPreferenceKeys`, a `50422`), and every write of one bag holds its owner's stamp row
+under an update lock to its commit, so two writes cannot pass the cap together. The caller's own bag
+is written against the connect prologue's user, whose re-check holds that row from the batch's head;
+another user's is locked on that user's row by the statement's first line and named in a one-row id
+list, so the epilogue moves that user's `PreferencesTag` either way. Keys compare as the database compares them, ignoring case; a value
 compares in binary, so a change of case alone is written. `Check` and `CheckKeys` judge the items in
 memory first: the key grammar (dotted segments, the first led by a lower-case letter, at most 128
 characters; `Users.PreferenceKeyInvalid`), a key named twice ignoring case
@@ -1802,7 +1814,9 @@ email address is trimmed and lower-cased, as the users' stack stores it.
   it is invited, and one permanent administrator membership.
 - **An existing user** keeps its state and its other roles, and gains the membership only when it
   lacks a started, permanent one. Every administrator membership that has not ended is replaced by one
-  permanent row starting where the last ended one ended, so the windows never overlap.
+  permanent row starting where the last ended one ended, so the windows never overlap. A deactivated
+  user is never reactivated: the bootstrap fails with an `InvalidOperationException` naming the user,
+  so an operator decides whether its privileges come back.
 - **A subject** is accepted in a Development environment only (`InvalidOperationException` before
   anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
   effect of the users' stack, records it on the created user as an invitation would (the subject, the

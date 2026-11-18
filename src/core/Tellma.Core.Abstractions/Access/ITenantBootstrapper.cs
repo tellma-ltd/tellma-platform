@@ -13,7 +13,8 @@ namespace Tellma.Core.Abstractions.Access
     /// </summary>
     /// <remarks>
     ///     Idempotent on the email address: an existing user keeps its state and gains the membership
-    ///     when it lacks one, and its id is returned again.
+    ///     when it lacks one, and its id is returned again. An existing user who is deactivated is
+    ///     refused rather than reactivated.
     /// </remarks>
     public interface ITenantBootstrapper
     {
@@ -28,8 +29,8 @@ namespace Tellma.Core.Abstractions.Access
         /// <exception cref="ArgumentNullException"><paramref name="request" /> is null.</exception>
         /// <exception cref="ArgumentException">The email address or the name is empty.</exception>
         /// <exception cref="InvalidOperationException">
-        ///     The scope is not the platform's own, or the request carries a subject outside a
-        ///     development environment.
+        ///     The scope is not the platform's own, the request carries a subject outside a
+        ///     development environment, or the existing user of the email address is deactivated.
         /// </exception>
         Task<int> BootstrapAdministratorAsync(TenantBootstrapRequest request, CancellationToken cancellationToken = default);
     }

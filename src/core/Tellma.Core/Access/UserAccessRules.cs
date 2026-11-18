@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Validation;
@@ -357,6 +358,7 @@ namespace Tellma.Core.Access
         /// <param name="caller">The caller's set.</param>
         /// <param name="permissions">The loaded permissions of the roles the memberships name, by role.</param>
         /// <param name="now">The save's instant.</param>
+        /// <exception cref="InvalidOperationException">The permissions of a role a membership grants were not loaded.</exception>
         private void CheckEscalation(
             SaveContext<TUser> context,
             ValidationPath list,
@@ -372,10 +374,18 @@ namespace Tellma.Core.Access
                 RoleMembership? was = Stored(storedById, membership);
                 bool grants = was is null || was.RoleId != membership.RoleId || Widens(was, membership);
 
-                // A role that does not exist is the reference check's to report.
-                if (!grants || !permissions.TryGetValue(membership.RoleId, out IReadOnlyList<Permission>? held))
+                if (!grants)
                 {
                     continue;
+                }
+
+                // Every role a membership names was loaded, and the loader answers every requested
+                // role (one that does not exist under an empty list, the reference check's to
+                // report), so an absent role is a defect, refused rather than passed.
+                if (!permissions.TryGetValue(membership.RoleId, out IReadOnlyList<Permission>? held))
+                {
+                    throw new InvalidOperationException(
+                        string.Create(CultureInfo.InvariantCulture, $"The permissions of role {membership.RoleId} were not loaded, so the membership granting it cannot be tested for escalation."));
                 }
 
                 foreach (Permission permission in held)

@@ -15,9 +15,9 @@ namespace Tellma.Core.IntegrationTests.Access
 {
     /// <summary>
     ///     The administrator bootstrap against a real tenant database: once per address however
-    ///     often it runs, an existing user granted the role, a development subject recorded as an
-    ///     invitation, and a subject refused outside development; and the provisioning step that
-    ///     calls it.
+    ///     often it runs, an existing user granted the role, a deactivated one refused, a development
+    ///     subject recorded as an invitation, and a subject refused outside development; and the
+    ///     provisioning step that calls it.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -55,6 +55,20 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.Equal(1, await CountAsync(Where("SELECT COUNT(*) FROM [core].[RoleMemberships]", ann, "UserId", "AND [RoleId] = 1 AND [EndsAt] IS NULL")));
             Assert.Equal(0, await CountAsync(Where("SELECT COUNT(*) FROM [core].[RoleMemberships]", ann, "UserId", "AND [RoleId] = 1 AND [EndsAt] IS NOT NULL")));
             Assert.Equal(1, await CountAsync(Where("SELECT COUNT(*) FROM [core].[RoleMemberships]", ann, "UserId", "AND [RoleId] <> 1")));
+        }
+
+        [Fact]
+        public async Task A_deactivated_existing_user_fails_the_bootstrap_naming_the_user_and_is_neither_reactivated_nor_granted()
+        {
+            (int ann, _) = await fixture.SeedCallerAsync("Ann");
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, Where("UPDATE [core].[Users] SET [IsActive] = 0", ann, "Id"));
+            string email = await fixture.ScalarAsync<string>(ConnectDatabase.TenantA, Where("SELECT [Email] FROM [core].[Users]", ann, "Id")) ?? throw new InvalidOperationException("The seeded user has no email address.");
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => BootstrapAsync(new TenantBootstrapRequest(email, "Ann", "en", null)));
+
+            Assert.Contains(ann.ToString(CultureInfo.InvariantCulture), refused.Message, StringComparison.Ordinal);
+            Assert.False(await fixture.ScalarAsync<bool>(ConnectDatabase.TenantA, Where("SELECT [IsActive] FROM [core].[Users]", ann, "Id")));
+            Assert.Equal(0, await CountAsync(Where("SELECT COUNT(*) FROM [core].[RoleMemberships]", ann, "UserId", "AND [RoleId] = 1")));
         }
 
         [Fact]

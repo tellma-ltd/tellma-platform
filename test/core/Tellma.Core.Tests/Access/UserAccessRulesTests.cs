@@ -26,6 +26,9 @@ namespace Tellma.Core.Tests.Access
         /// <summary>The administrator role.</summary>
         private const int Administrators = WellKnownIds.AdministratorRoleId;
 
+        /// <summary>The wildcard action.</summary>
+        private const string Any = AccessActions.Wildcard;
+
         /// <summary>The instruments, logs and clock.</summary>
         private readonly AccessRulesHarness _harness = new();
 
@@ -207,6 +210,40 @@ namespace Tellma.Core.Tests.Access
             Assert.Empty(await SaveAsync(caller, (unchanged, stored)));
             Assert.Empty(await SaveAsync(caller, (narrowed, stored)));
             Assert.Equal([("[0].RoleMemberships[0].RoleId", AccessCodes.MembershipEscalation)], await SaveAsync(caller, (widened, stored)));
+        }
+
+        [Theory]
+        [InlineData(Widget, Any, Widget, AccessActions.Save, true)]
+        [InlineData(Widget, Any, Widget, Any, true)]
+        [InlineData(Widget, Any, "*", AccessActions.Save, false)]
+        [InlineData(Widget, Any, Kind, AccessActions.Read, false)]
+        [InlineData("*", AccessActions.Save, Widget, AccessActions.Save, true)]
+        [InlineData("*", AccessActions.Save, "*", AccessActions.Save, true)]
+        [InlineData("*", AccessActions.Save, Widget, Any, false)]
+        [InlineData("*", AccessActions.Save, Kind, AccessActions.Read, false)]
+        [InlineData("*", Any, "*", Any, true)]
+        [InlineData("*", Any, Kind, AccessActions.Read, true)]
+        [InlineData(Widget, AccessActions.Save, "fx.Gadget", AccessActions.Read, true)]
+        [InlineData(Widget, AccessActions.Read, "fx.Gadget", AccessActions.Save, false)]
+        public async Task A_role_is_granted_only_when_the_caller_holds_each_of_its_permissions_unrestricted(string heldResource, string heldAction, string resource, string action, bool granted)
+        {
+            _loader.Permissions[3] = [Pair(resource, action)];
+            User user = WithMemberships(Individual(OtherId), Membership(0, 3, null, null));
+
+            IReadOnlyList<(string Path, string Code)> errors = await SaveAsync(Caller(CallerId, (heldResource, heldAction)), (user, null));
+
+            (string Path, string Code)[] expected = granted ? [] : [("[0].RoleMemberships[0].RoleId", AccessCodes.MembershipEscalation)];
+            Assert.Equal(expected, errors);
+        }
+
+        [Fact]
+        public async Task A_granted_role_whose_permissions_the_load_did_not_answer_fails_the_save_rather_than_passing_it()
+        {
+            _loader.Permissions[3] = [Pair(Widget, AccessActions.Save)];
+            _loader.Omitted.Add(3);
+            User user = WithMemberships(Individual(OtherId), Membership(0, 3, null, null));
+
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => SaveAsync(Caller(CallerId, (Widget, AccessActions.Read)), (user, null)));
         }
 
         [Fact]
