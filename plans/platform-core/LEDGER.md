@@ -102,9 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-084 | pc-2 | pc/PC-084 | impl | impl (Opus, high, launched 2026-11-18) | — | 2026-11-18 |
 | PC-077 | pc-3 | pc/PC-077 | fix1 | impl (Opus, xhigh, launched 2026-11-18) | R1 done (0/2/3); fix1 resumed 2026-11-18 | 2026-11-18 |
 | PC-078 | pc-1 | pc/PC-078 | R2 | impl (Opus, xhigh, launched 2026-11-18) | R2 (fable, launched 2026-11-18) | 2026-11-18 |
-| PC-083 | pc-2 | pc/PC-083 | CI | impl (Opus, high, launched 2026-11-18) | fix1 6b4a02bf; integrated 9d5dd16d (plans-only merge); CI watch 2026-11-18 | 2026-11-18 |
 
 ## Fix items
 
@@ -368,8 +368,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-080 | 0016-c | 1 | todo | | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
 | PC-081 | 0016-d | 1 | todo | | | |
 | PC-082 | 0016-e | 1 | todo | | | |
-| PC-083 | 0017-c1 | 1 | CI | fe0edcc6, 6b4a02bf, 9d5dd16d | | |
-| PC-084 | 0017-c2 | 1 | todo | | | |
+| PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
+| PC-084 | 0017-c2 | 1 | impl | | | |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | todo | | | |
 | PC-087 | 0018-b | 1 | todo | | | |
