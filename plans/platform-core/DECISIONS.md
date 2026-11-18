@@ -363,7 +363,7 @@ Format, one entry per ruling:
 
 - R2-2: a re-entered persist keeps round trip 1's row-level verdicts (before images under Read, the Save-grant pre-check, reference visibility), even if the stack's Read or Save filter narrowed in between. So an edit that moves another user's row into a just-narrowed Save filter can commit. Spec 0015 §5.1 is silent on this for a save's pre-check. Interim: kept as built and noted as a deviation. Ahmad to decide whether a changed filter should raise StaleContextException.
 - R2-5: a caller whose Save comes only from a bespoke criterion with `Action = Save` has Read denied, so the read-back refuses (fails closed). Interim: failing closed stands, and deviation 12's wording is corrected. Ahmad to decide whether the read-back needs a Read decision at all.
-- R2-3 (fix 2): a committed save must not be answered in a way that invites a duplicating retry.
+- R2-3 (fix 2): a committed save must not be answered in a way that invites a duplicating retry. Outcome (1cdc5f20): when the read after a proven commit fails, the save answers with the ids alone and Entities empty, even under ReturnEntities. That departs from spec 0015 §6.9 (PC-074 deviation 20); a 503 was rejected because a caller would retry it and insert again. R2-2 stays deferred as deviation 19. Fix 2 also made `ForeignKeyViolationException` (Abstractions) carry a public `Conflict` (MissingTarget / StillReferenced / Unknown), read from the 547 message.
 
 ### D-115 (orchestrator, 2026-11-18): PC-074 R1-7, a spec gap for Ahmad
 
