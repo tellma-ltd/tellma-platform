@@ -361,7 +361,7 @@ Format, one entry per ruling:
 
 ### D-115 (orchestrator, 2026-11-18): PC-074 R1-7, a spec gap for Ahmad
 
-- Spec 0015 §14.2 has no row for a 547 raised by child synchronisation's deletes, when another table still references the deleted child row. Today it passes through as a 500 when the referencing table is outside the stack, and as `Fk.NotFound` when it is inside. Interim: if §14.2 already maps a delete's 547 to an in-use code, PC-074 reuses it; otherwise PC-074 keeps the current behaviour as a listed deviation. Ahmad to decide the row (likely an in-use code naming the child row).
+- Spec 0015 §14.2 has no row for a 547 raised by child synchronisation's deletes, when another table still references the deleted child row. Today it passes through as a 500 when the referencing table is outside the stack, and as `Fk.NotFound` when it is inside. Interim: if §14.2 already maps a delete's 547 to an in-use code, PC-074 reuses it; otherwise PC-074 keeps the current behaviour as a listed deviation. Ahmad to decide the row (likely an in-use code naming the child row). Outcome of fix 1 (f206fbc2): mapped to the existing delete-row code `Fk.InUse` (entity/property, at the dropping collection or the root) and pinned by a unit test. A payload row of the same entity that writes the referencing column stays `Fk.NotFound` (PC-074 deviation 18). Ahmad to confirm and amend §14.2.
 
 ### D-114 (orchestrator, 2026-11-18): PC-074 hand-offs
 
