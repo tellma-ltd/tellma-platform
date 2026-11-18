@@ -255,6 +255,47 @@ namespace Tellma.Core.Tests.Access
             Assert.Empty(_loader.PermissionLoads);
         }
 
+        [Fact]
+        public async Task A_new_user_s_changed_email_tests_every_membership_that_has_not_ended_as_granted()
+        {
+            _loader.Permissions[3] = [Pair(Widget, AccessActions.Save)];
+            _loader.Permissions[4] = [Pair(Widget, AccessActions.Read)];
+            _loader.Permissions[5] = [Pair(Widget, AccessActions.Save)];
+            UserAccess caller = Caller(CallerId, (Widget, AccessActions.Read));
+            User stored = WithMemberships(Individual(OtherId, "ann@example.com", UserState.New), Membership(9, 3, null, null), Membership(8, 4, null, null), Membership(7, 5, Now.AddDays(-10), Now.AddDays(-5)));
+
+            // --- The same memberships, the email unchanged: nothing is granted ---
+            User same = WithMemberships(Individual(OtherId, "ann@example.com", UserState.New), Membership(9, 3, null, null), Membership(8, 4, null, null), Membership(7, 5, Now.AddDays(-10), Now.AddDays(-5)));
+            Assert.Empty(await SaveAsync(caller, (same, stored)));
+
+            // --- The email changed: the standing membership of a role holding more than the caller is refused; the ended one is not tested ---
+            User moved = WithMemberships(Individual(OtherId, "clerk@example.com", UserState.New), Membership(9, 3, null, null), Membership(8, 4, null, null), Membership(7, 5, Now.AddDays(-10), Now.AddDays(-5)));
+            Assert.Equal([("[0].RoleMemberships[0].RoleId", AccessCodes.MembershipEscalation)], await SaveAsync(caller, (moved, stored)));
+            Assert.Equal(0, _loader.SqlLoads);
+        }
+
+        [Fact]
+        public async Task A_new_user_s_changed_email_without_the_memberships_tests_the_stored_ones_in_a_second_load()
+        {
+            _loader.Permissions[3] = [Pair(Widget, AccessActions.Save)];
+            _loader.Standing[OtherId] = [3];
+            _loader.Standing[OtherId + 1] = [3];
+            UserAccess caller = Caller(CallerId, (Widget, AccessActions.Read));
+
+            // --- One new user's email changed, another's left as it was ---
+            IReadOnlyList<(string Path, string Code)> errors = await SaveAsync(
+                caller,
+                (Individual(OtherId, "clerk@example.com", UserState.New), Individual(OtherId, "ann@example.com", UserState.New)),
+                (Individual(OtherId + 1, "ben@example.com", UserState.New), Individual(OtherId + 1, "ben@example.com", UserState.New)));
+
+            Assert.Equal([("[0].Email", AccessCodes.MembershipEscalation)], errors);
+            Assert.Equal(1, _loader.SqlLoads);
+            Assert.Equal([AccessTelemetryNames.GuardEscalation], _harness.GuardTags);
+
+            // --- A caller who holds the role's pairs may move the address ---
+            Assert.Empty(await SaveAsync(Caller(CallerId, (Widget, AccessActions.Save)), (Individual(OtherId, "clerk@example.com", UserState.New), Individual(OtherId, "ann@example.com", UserState.New))));
+        }
+
         // --- Deletes and actions ---
 
         [Fact]

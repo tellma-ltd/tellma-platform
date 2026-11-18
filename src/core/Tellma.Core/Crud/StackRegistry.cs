@@ -10,6 +10,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
+using Tellma.Core.Crud.Save;
 using Tellma.Core.Data.Metadata;
 
 namespace Tellma.Core.Crud
@@ -144,7 +145,7 @@ namespace Tellma.Core.Crud
                 }
 
                 StackDescriptor stack = builder.Build(composed, metadata);
-                CheckOperations(stack, problems);
+                CheckOperations(stack, metadata, problems);
                 stacks.Add(stack);
                 byLeaf[composed.Leaf] = stack;
                 children.AddRange(builder.ChildQueries(stack, metadata));
@@ -194,11 +195,13 @@ namespace Tellma.Core.Crud
 
         /// <summary>
         ///     Reports an operation set the pipeline cannot serve: a save without the details plan it
-        ///     reads back through, an import without what it reads and writes, an export without a query.
+        ///     reads back through, an import without what it reads and writes, an export without a query,
+        ///     a delete by query without the delete, or one over a security table.
         /// </summary>
         /// <param name="stack">The stack.</param>
+        /// <param name="metadata">The stack's entity, whose tables are judged.</param>
         /// <param name="problems">Receives the problems.</param>
-        private static void CheckOperations(StackDescriptor stack, List<CompositionProblem> problems)
+        private static void CheckOperations(StackDescriptor stack, EntityMetadata metadata, List<CompositionProblem> problems)
         {
             StackOperations operations = stack.Operations;
             if (operations.HasFlag(StackOperations.Save) && !operations.HasFlag(StackOperations.Details))
@@ -215,6 +218,18 @@ namespace Tellma.Core.Crud
             if (operations.HasFlag(StackOperations.Export) && !operations.HasFlag(StackOperations.Query))
             {
                 Report(stack, "keeps Export but omits Query; an export runs the stack's query.", "Add Query to the operations, or remove Export.");
+            }
+
+            if (operations.HasFlag(StackOperations.DeleteByQuery) && !operations.HasFlag(StackOperations.Delete))
+            {
+                Report(stack, "keeps DeleteByQuery but omits Delete; a delete by query is a delete, under its securable action.", "Add Delete to the operations, or remove DeleteByQuery.");
+            }
+
+            // A delete by query runs no validation hook, so a stack over a security table would let
+            // it delete past the rules that keep the tenant's administrators (spec 0014 §3.9).
+            if (operations.HasFlag(StackOperations.DeleteByQuery) && StackTableSet.WritesSecurityTable(StackTableSet.Of(metadata)))
+            {
+                Report(stack, "keeps DeleteByQuery over a security table; its rows are deleted by their ids, so each deletion meets the rules that keep the tenant's administrators.", "Remove DeleteByQuery from the operations.");
             }
 
             void Report(StackDescriptor stack, string problem, string fix)

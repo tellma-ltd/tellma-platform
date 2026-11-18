@@ -8,6 +8,8 @@ using Microsoft.Extensions.Options;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
 
 namespace Tellma.Core.Access
@@ -27,6 +29,12 @@ namespace Tellma.Core.Access
     ///         The rule loads the permissions of the roles the payload's memberships name, with the
     ///         save's first round, unless the caller holds every pair unrestricted. The caller's own
     ///         set is in memory.
+    ///     </para>
+    ///     <para>
+    ///         A new user's email is where the invitation goes, so changing it hands the user's
+    ///         memberships to whoever holds the new address: every membership that has not ended is
+    ///         then tested as granted. When the payload omits the memberships, the stored ones stay,
+    ///         and the pairs of their roles load in a second round.
     ///     </para>
     ///     <para>
     ///         The rule validates deletes and the built-in actions too, so they run the pipeline's
@@ -74,12 +82,30 @@ namespace Tellma.Core.Access
                 ? context.Loader.ByParentIds<Permission, int>(roleIds, PermissionSelect)
                 : null;
 
-            // --- The before images and the permissions, then every row's rules ---
+            // --- The before images and the permissions ---
             await context.Loader.LoadAsync().ConfigureAwait(false);
             IReadOnlyDictionary<int, IReadOnlyList<Permission>> granted = permissions?.Value ?? new Dictionary<int, IReadOnlyList<Permission>>();
+
+            // --- A new user's changed email, with the memberships left out: their stored pairs, in a second round ---
+            // Which emails change is known only once the before images loaded.
+            int[] kept = exempt
+                ? []
+                : [.. Enumerable.Range(0, context.Entities.Count)
+                    .Where(index => context.Entities[index].RoleMemberships is null && Retargets(context, index))
+                    .Select(index => context.Entities[index].Id)
+                    .Distinct()
+                    .Order()];
+            ContextRef<RawResult>? standing = kept.Length > 0 ? StandingPairs(context.Loader, kept, now) : null;
+            if (standing is not null)
+            {
+                await context.Loader.LoadAsync().ConfigureAwait(false);
+            }
+
+            // --- Every row's rules ---
+            ILookup<int, (int Role, string Resource, string Action)> standingByUser = Pairs(standing?.Value);
             for (int index = 0; index < context.Entities.Count; index++)
             {
-                CheckRow(context, index, caller, exempt, granted, now);
+                CheckRow(context, index, caller, exempt, granted, standingByUser, now);
             }
         }
 
@@ -168,12 +194,61 @@ namespace Tellma.Core.Access
             return leftStartsFirst && rightStartsFirst;
         }
 
+        /// <summary>
+        ///     Whether a payload row changes the email of a stored user who is still new, so the
+        ///     invitation, and the user's memberships with it, would go to another address.
+        /// </summary>
+        /// <param name="context">The save's context, after its first round.</param>
+        /// <param name="index">The row.</param>
+        /// <returns>True when the stored user is new and the email differs.</returns>
+        private static bool Retargets(SaveContext<TUser> context, int index)
+        {
+            return context.Before(index) is { State: UserState.New } before
+                && !string.Equals(context.Entities[index].Email, before.Email, StringComparison.Ordinal);
+        }
+
+        /// <summary>The pairs of every role a user holds a membership of that has not ended, for each of the users.</summary>
+        /// <param name="loader">The save's loader.</param>
+        /// <param name="userIds">The users, distinct and ordered.</param>
+        /// <param name="now">The save's instant, which a membership must not have ended by.</param>
+        /// <returns>The pending load: one row per user, role and pair.</returns>
+        private static ContextRef<RawResult> StandingPairs(IContextLoader loader, int[] userIds, DateTimeOffset now)
+        {
+            List<IdList> keys = [.. userIds.Select(static id => new IdList { Id = id })];
+            return loader.Sql(
+                $"""
+                SELECT M.[UserId], M.[RoleId], P.[Resource], P.[Action]
+                  FROM [core].[RoleMemberships] AS M JOIN [core].[Permissions] AS P ON P.[RoleId] = M.[RoleId]
+                 WHERE M.[UserId] IN (SELECT K.[Id] FROM {keys} AS K) AND (M.[EndsAt] IS NULL OR M.[EndsAt] > {now});
+                """,
+                new SqlOptions(resultSets: 1));
+        }
+
+        /// <summary>The pairs a load of <see cref="StandingPairs" /> returned, by user.</summary>
+        /// <param name="result">The load's result; null when nothing was loaded.</param>
+        /// <returns>The roles' pairs, by user.</returns>
+        private static ILookup<int, (int Role, string Resource, string Action)> Pairs(RawResult? result)
+        {
+            if (result is null)
+            {
+                return Array.Empty<int>().ToLookup(static user => user, static _ => (0, string.Empty, string.Empty));
+            }
+
+            QueryRowSet set = result.ResultSets[0];
+            int[] users = (int[])set.GetBuffer(0);
+            int[] roles = (int[])set.GetBuffer(1);
+            string?[] resources = (string?[])set.GetBuffer(2);
+            string?[] actions = (string?[])set.GetBuffer(3);
+            return Enumerable.Range(0, set.RowCount).ToLookup(row => users[row], row => (roles[row], resources[row] ?? string.Empty, actions[row] ?? string.Empty));
+        }
+
         /// <summary>The rules of one payload row, its before image and its memberships.</summary>
         /// <param name="context">The save's context, after its first round.</param>
         /// <param name="index">The row.</param>
         /// <param name="caller">The caller's set.</param>
         /// <param name="exempt">Whether the caller may grant every role.</param>
         /// <param name="permissions">The loaded permissions of the roles the memberships name, by role.</param>
+        /// <param name="standing">The roles' pairs of the stored memberships of each new user whose email changes and whose payload omits them.</param>
         /// <param name="now">The save's instant.</param>
         private void CheckRow(
             SaveContext<TUser> context,
@@ -181,6 +256,7 @@ namespace Tellma.Core.Access
             UserAccess caller,
             bool exempt,
             IReadOnlyDictionary<int, IReadOnlyList<Permission>> permissions,
+            ILookup<int, (int Role, string Resource, string Action)> standing,
             DateTimeOffset now)
         {
             TUser user = context.Entities[index];
@@ -215,9 +291,23 @@ namespace Tellma.Core.Access
             }
 
             // --- The memberships, when the payload carries them: the whole list, synchronised under the user ---
+            bool retargets = Retargets(context, index);
             if (user.RoleMemberships is IReadOnlyList<RoleMembership> memberships)
             {
-                CheckMemberships(context, index, user, before?.RoleMemberships ?? [], memberships, caller, exempt, permissions, now);
+                CheckMemberships(context, index, user, before?.RoleMemberships ?? [], memberships, caller, exempt, permissions, retargets, now);
+            }
+            else if (retargets && !exempt)
+            {
+                // --- The stored memberships, which the changed email hands over as they stand ---
+                foreach (IGrouping<int, (int Role, string Resource, string Action)> role in standing[user.Id].GroupBy(static pair => pair.Role))
+                {
+                    if (FirstUncovered(role.Select(static pair => (pair.Resource, pair.Action)), caller, now) is (string resource, string action))
+                    {
+                        context.Errors.Add(index, static row => row.Email, AccessCodes.MembershipEscalation, AccessRefusals.Arguments(("resource", resource), ("action", action)));
+                        AccessRefusals.Escalation(metrics, _logger, context.Context, role.Key, resource, action, AccessCodes.MembershipEscalation);
+                        break;
+                    }
+                }
             }
         }
 
@@ -230,6 +320,7 @@ namespace Tellma.Core.Access
         /// <param name="caller">The caller's set.</param>
         /// <param name="exempt">Whether the caller may grant every role.</param>
         /// <param name="permissions">The loaded permissions of the roles the memberships name, by role.</param>
+        /// <param name="retargets">Whether the save changes a new user's email, so every membership that has not ended is a grant.</param>
         /// <param name="now">The save's instant.</param>
         private void CheckMemberships(
             SaveContext<TUser> context,
@@ -240,6 +331,7 @@ namespace Tellma.Core.Access
             UserAccess caller,
             bool exempt,
             IReadOnlyDictionary<int, IReadOnlyList<Permission>> permissions,
+            bool retargets,
             DateTimeOffset now)
         {
             ValidationPath list = ValidationPath.Root.Index(index).Property(nameof(User.RoleMemberships));
@@ -297,7 +389,7 @@ namespace Tellma.Core.Access
             // --- A granted or widened membership hands out at most what the caller holds ---
             if (!exempt)
             {
-                CheckEscalation(context, list, storedById, memberships, caller, permissions, now);
+                CheckEscalation(context, list, storedById, memberships, caller, permissions, retargets, now);
             }
         }
 
@@ -349,7 +441,8 @@ namespace Tellma.Core.Access
 
         /// <summary>
         ///     Refuses a membership granted to a role, or widened, when the role holds a permission the
-        ///     caller lacks unrestricted.
+        ///     caller lacks unrestricted. When the save hands the user to another address, every
+        ///     membership that has not ended counts as granted.
         /// </summary>
         /// <param name="context">The save's context.</param>
         /// <param name="list">The path of the memberships.</param>
@@ -357,6 +450,7 @@ namespace Tellma.Core.Access
         /// <param name="memberships">The saved memberships.</param>
         /// <param name="caller">The caller's set.</param>
         /// <param name="permissions">The loaded permissions of the roles the memberships name, by role.</param>
+        /// <param name="retargets">Whether the save changes a new user's email.</param>
         /// <param name="now">The save's instant.</param>
         /// <exception cref="InvalidOperationException">The permissions of a role a membership grants were not loaded.</exception>
         private void CheckEscalation(
@@ -366,13 +460,16 @@ namespace Tellma.Core.Access
             IReadOnlyList<RoleMembership> memberships,
             UserAccess caller,
             IReadOnlyDictionary<int, IReadOnlyList<Permission>> permissions,
+            bool retargets,
             DateTimeOffset now)
         {
             for (int position = 0; position < memberships.Count; position++)
             {
                 RoleMembership membership = memberships[position];
                 RoleMembership? was = Stored(storedById, membership);
-                bool grants = was is null || was.RoleId != membership.RoleId || Widens(was, membership);
+                bool grants = retargets
+                    ? membership.EndsAt is not DateTimeOffset end || end > now
+                    : was is null || was.RoleId != membership.RoleId || Widens(was, membership);
 
                 if (!grants)
                 {
@@ -388,20 +485,34 @@ namespace Tellma.Core.Access
                         string.Create(CultureInfo.InvariantCulture, $"The permissions of role {membership.RoleId} were not loaded, so the membership granting it cannot be tested for escalation."));
                 }
 
-                foreach (Permission permission in held)
+                if (FirstUncovered(held.Select(static permission => (permission.Resource, permission.Action)), caller, now) is (string resource, string action))
                 {
-                    string resource = permission.Resource == CoreResources.Wildcard ? CoreResources.Wildcard : registry.FindResource(permission.Resource) ?? permission.Resource;
-                    if (!AccessDelegation.Covers(caller, resource, permission.Action, now))
-                    {
-                        context.Errors.Add(
-                            list.Index(position).Property(nameof(RoleMembership.RoleId)),
-                            AccessCodes.MembershipEscalation,
-                            AccessRefusals.Arguments(("resource", permission.Resource), ("action", permission.Action)));
-                        AccessRefusals.Escalation(metrics, _logger, context.Context, membership.RoleId, permission.Resource, permission.Action, AccessCodes.MembershipEscalation);
-                        break;
-                    }
+                    context.Errors.Add(
+                        list.Index(position).Property(nameof(RoleMembership.RoleId)),
+                        AccessCodes.MembershipEscalation,
+                        AccessRefusals.Arguments(("resource", resource), ("action", action)));
+                    AccessRefusals.Escalation(metrics, _logger, context.Context, membership.RoleId, resource, action, AccessCodes.MembershipEscalation);
                 }
             }
+        }
+
+        /// <summary>The first of a role's pairs the caller lacks unrestricted, with the resource resolved as registered.</summary>
+        /// <param name="pairs">The pairs, as stored.</param>
+        /// <param name="caller">The caller's set.</param>
+        /// <param name="now">The save's instant.</param>
+        /// <returns>The pair as stored; null when the caller holds every one.</returns>
+        private (string Resource, string Action)? FirstUncovered(IEnumerable<(string Resource, string Action)> pairs, UserAccess caller, DateTimeOffset now)
+        {
+            foreach ((string stored, string action) in pairs)
+            {
+                string resource = stored == CoreResources.Wildcard ? CoreResources.Wildcard : registry.FindResource(stored) ?? stored;
+                if (!AccessDelegation.Covers(caller, resource, action, now))
+                {
+                    return (stored, action);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>The stored membership a saved one updates; null for a new one.</summary>

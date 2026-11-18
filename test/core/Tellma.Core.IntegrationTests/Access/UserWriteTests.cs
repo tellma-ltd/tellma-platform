@@ -167,6 +167,46 @@ namespace Tellma.Core.IntegrationTests.Access
         }
 
         [Fact]
+        public async Task A_clerk_cannot_send_a_new_administrator_s_invitation_to_another_address_with_or_without_the_memberships()
+        {
+            // --- A new user holding the administrator role, as the bootstrap leaves one until the invitation ---
+            (_, string administrator) = await fixture.SeedAdministratorAsync("Ann");
+            int newcomer;
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(administrator))
+            {
+                User created = new()
+                {
+                    Kind = UserKind.Individual,
+                    Email = "newcomer@example.com",
+                    Name = "Newcomer",
+                    RoleMemberships = [new RoleMembership { RoleId = WriteSideRig.Administrators }],
+                };
+                newcomer = checked((int)(await scope.SaveUsersAsync(created))[0]);
+            }
+
+            (int clerk, string subject) = await fixture.SeedCallerAsync("Clerk");
+            int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Read, null), (CoreResources.User, AccessActions.Save, null), (CoreResources.Role, AccessActions.Read, null));
+            await fixture.SeedMembershipAsync(clerk, role);
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
+            {
+                // --- The memberships sent as they stand, then left out: either way they are tested as granted ---
+                User carried = await scope.LoadUserAsync(newcomer);
+                carried.Email = "clerk@example.com";
+                ValidationException withMemberships = await Assert.ThrowsAsync<ValidationException>(() => scope.SaveUsersAsync(carried));
+
+                User bare = await scope.LoadUserAsync(newcomer);
+                bare.Email = "clerk@example.com";
+                bare.RoleMemberships = null;
+                ValidationException withoutMemberships = await Assert.ThrowsAsync<ValidationException>(() => scope.SaveUsersAsync(bare));
+
+                Assert.Equal([AccessCodes.MembershipEscalation], withMemberships.Codes());
+                Assert.Equal([AccessCodes.MembershipEscalation], withoutMemberships.Codes());
+            }
+
+            Assert.Equal("newcomer@example.com", await fixture.ScalarAsync<string>(ConnectDatabase.TenantA, Where("SELECT [Email] FROM [core].[Users]", newcomer, "Id")));
+        }
+
+        [Fact]
         public async Task A_role_editor_cannot_give_a_role_they_hold_a_permission_beyond_their_own()
         {
             _ = await fixture.SeedAdministratorAsync("Ann");
@@ -211,20 +251,27 @@ namespace Tellma.Core.IntegrationTests.Access
         // --- Deletes by query ---
 
         [Fact]
-        public async Task The_users_and_the_roles_refuse_a_delete_by_query_and_delete_nothing()
+        public async Task The_users_and_the_roles_serve_no_delete_by_query_and_delete_nothing()
         {
             (int ann, string subject) = await fixture.SeedAdministratorAsync("Ann");
             (int ben, _) = await fixture.SeedCallerAsync("Ben");
             int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Read, null));
             await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject);
 
-            // --- A joined user no row references, the caller themselves, and a role without members ---
-            BadRequestException joined = await Assert.ThrowsAsync<BadRequestException>(() => scope.Users().DeleteByQueryAsync(ById(ben), Token));
-            _ = await Assert.ThrowsAsync<BadRequestException>(() => scope.Users().DeleteByQueryAsync(ById(ann), Token));
-            BadRequestException roles = await Assert.ThrowsAsync<BadRequestException>(() => scope.Roles().DeleteByQueryAsync(ById(role), Token));
+            // --- Neither stack serves the operation, so neither projects its segment ---
+            IStackRegistry stacks = scope.ServiceProvider.GetRequiredService<IStackRegistry>();
+            foreach (string resource in new[] { CoreResources.User, CoreResources.Role })
+            {
+                StackDescriptor stack = stacks.Find(resource) ?? throw new InvalidOperationException($"No stack serves {resource}.");
+                Assert.False(stack.Operations.HasFlag(StackOperations.DeleteByQuery), resource);
+                Assert.True(stack.Operations.HasFlag(StackOperations.Delete), resource);
+            }
 
-            Assert.Equal(CoreResources.User, joined.Arguments["resource"]);
-            Assert.Equal(CoreResources.Role, roles.Arguments["resource"]);
+            // --- A joined user no row references, the caller themselves, and a role without members: refused before any round trip ---
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => scope.Users().DeleteByQueryAsync(ById(ben), Token));
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => scope.Users().DeleteByQueryAsync(ById(ann), Token));
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => scope.Roles().DeleteByQueryAsync(ById(role), Token));
+
             Assert.Equal(2, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[Users] WHERE [Id] IN ({ann}, {ben});")));
             Assert.Equal(1, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, Where("SELECT COUNT(*) FROM [core].[Roles]", role, "Id")));
         }

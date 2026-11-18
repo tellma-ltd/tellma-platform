@@ -3,7 +3,6 @@ POST /{tenantId}/api/web/users/get | get | core.User | - | GetRequest | Entities
 POST /{tenantId}/api/web/users/get-by-ids | get-by-ids | core.User | - | GetByIdsRequest | EntitiesResult<User> | core.User:Read | idempotent | 016CNBOTi-m_
 POST /{tenantId}/api/web/users/save | save | core.User | - | SaveRequest<User> | EntitiesResult<User> | core.User:Save | mutation | U_dw-KdBaB56
 POST /{tenantId}/api/web/users/delete | delete | core.User | - | IdsRequest | AffectedResult | core.User:Delete | mutation | lisU15N3Oj5S
-POST /{tenantId}/api/web/users/delete-by-query | delete-by-query | core.User | - | DeleteByQueryRequest | AffectedResult | core.User:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/users/activate | activate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
 POST /{tenantId}/api/web/users/deactivate | deactivate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
@@ -11,7 +10,6 @@ POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | Entities
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
 POST /{tenantId}/api/web/roles/save | save | core.Role | - | SaveRequest<Role> | EntitiesResult<Role> | core.Role:Save | mutation | KsDT7P_A94QM
 POST /{tenantId}/api/web/roles/delete | delete | core.Role | - | IdsRequest | AffectedResult | core.Role:Delete | mutation | lisU15N3Oj5S
-POST /{tenantId}/api/web/roles/delete-by-query | delete-by-query | core.Role | - | DeleteByQueryRequest | AffectedResult | core.Role:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/roles/activate | activate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
 POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx

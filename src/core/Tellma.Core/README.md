@@ -1466,7 +1466,8 @@ no row and every id is not found.
 the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
 projects its standard operations as its operations and capabilities imply them (`query`, and
 `get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
-`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+`delete`, `delete-by-query` when the stack keeps `DeleteByQuery`, and `delete-with-descendants` for
+a tree), then every action, the
 built-in ones and its companions' included; each child query surface projects `query`, then its
 actions; each routed service its actions. A route's template is
 `POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
@@ -1779,8 +1780,16 @@ since no unique index can hold them apart: a stored row survives over a new one,
 duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
 
 A delete by query runs no validation round, so the delete rules above would never see its targets:
-the users' and the roles' stacks refuse it, for every caller, as a `BadRequestException` naming the
-`resource` before any round trip. Their rows are deleted by id.
+the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
+`delete-by-query` and their services refuse it before any round trip. Their rows are deleted by id.
+The startup gate refuses any stack over a security table that keeps it, such as a distribution's
+leaf that declares every operation again.
+
+A new user's email is where the invitation goes, so a save that changes it hands the user's
+memberships to whoever holds the new address: every membership that has not ended is then tested
+for escalation as if granted (`Users.MembershipEscalation`). A payload that omits the memberships
+keeps the stored ones, whose roles' pairs load in a second round, and the refusal is reported at
+`Email`.
 
 ### Stamps and preferences
 
@@ -1815,8 +1824,9 @@ email address is trimmed and lower-cased, as the users' stack stores it.
 - **An existing user** keeps its state and its other roles, and gains the membership only when it
   lacks a started, permanent one. Every administrator membership that has not ended is replaced by one
   permanent row starting where the last ended one ended, so the windows never overlap. A deactivated
-  user is never reactivated: the bootstrap fails with an `InvalidOperationException` naming the user,
-  so an operator decides whether its privileges come back.
+  user is never reactivated: the bootstrap fails with an `InvalidOperationException` naming the user
+  and pointing to another address, whose administrator then decides whether its privileges come
+  back (no administrator may remain to reactivate it).
 - **A subject** is accepted in a Development environment only (`InvalidOperationException` before
   anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
   effect of the users' stack, records it on the created user as an invitation would (the subject, the
@@ -1824,8 +1834,12 @@ email address is trimmed and lower-cased, as the users' stack stores it.
 
 The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
 (order 10, before `core.settings`) calls it with the administrator the run names, named by the address's
-local part and preferring the distribution's first offered language. A run that names none, such as a
-plain migration, leaves the tenant as it is.
+local part and preferring the distribution's first offered language. The step runner schedules it by
+the run's administrator, not by the tenant's record: a run that names none, such as a migration,
+neither runs nor records it (and logs `ProvisioningAdministratorNotBootstrapped` while no run ever
+has), and a run that names one runs it whatever the tenant records. `provision --tenant <id>
+--admin-email <address>` on an active or read-only tenant runs it alone, which is how a tenant
+provisioned without an administrator, or left without one, gets one.
 
 ### The drift scan
 

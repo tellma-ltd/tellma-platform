@@ -32,5 +32,14 @@ namespace Tellma.Core.Provisioning
             Level = LogLevel.Error,
             Message = "Provisioning step {Step} failed on tenant {TenantId}; the steps after it did not run.")]
         public static partial void StepFailed(ILogger logger, int tenantId, string step, Exception exception);
+
+        /// <summary>A run that names no administrator ran on a tenant that no run has bootstrapped an administrator of.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        [LoggerMessage(
+            EventName = "ProvisioningAdministratorNotBootstrapped",
+            Level = LogLevel.Warning,
+            Message = "No run has bootstrapped an administrator of tenant {TenantId}, and this run names none; provision the tenant with an administrator's email address to give it one.")]
+        public static partial void AdministratorNotBootstrapped(ILogger logger, int tenantId);
     }
 }

@@ -32,13 +32,17 @@ namespace Tellma.Core.Abstractions.Access
     ///         <see cref="IsActive" /> is orthogonal to the state: a deactivated user is refused on
     ///         every request. Each write of the user's own row moves the user's preferences tag.
     ///     </para>
+    ///     <para>
+    ///         The stack serves no delete by query: users are deleted by their ids, so every deletion
+    ///         meets the rules that keep the tenant's administrators.
+    ///     </para>
     /// </remarks>
     [Table("Users", Schema = "core")]
     [TableType]
     [Temporal]
     [BumpsUserVersionTag(UserVersionTagNames.Preferences, nameof(Id))]
     [ApiResource]
-    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
+    [Stack(Operations = (StackOperations.All & ~StackOperations.DeleteByQuery) | StackOperations.Enlist)]
     public class User : TopLevelEntity, IActivatable
     {
         /// <summary>

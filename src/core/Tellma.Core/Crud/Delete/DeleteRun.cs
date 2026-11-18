@@ -197,25 +197,14 @@ namespace Tellma.Core.Crud.Delete
         /// <param name="request">The filter, its arguments and the confirmed count.</param>
         /// <param name="engine">The Queryex engine, which discovers the filter's parameters and compiles it before any round trip.</param>
         /// <returns>The rows deleted.</returns>
-        /// <exception cref="BadRequestException">The stack writes a security table, the filter is blank, or the expected count is negative.</exception>
         public async Task<AffectedResult> ByQueryAsync(DeleteByQueryRequest request, QueryexEngine engine)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(engine);
 
-            // --- A security stack takes no delete by query ---
-            // A delete by query runs no validation round (spec 0015 §10.2), so the users' and the
-            // roles' delete rules (spec 0014 §3.9) would never see its targets; refused for every
-            // caller before any round trip, so those rules hold on every delete that reaches them.
-            _shape = DeleteShape.ByQuery;
-            if (StackTableSet.WritesSecurityTable(StackTables))
-            {
-                throw new BadRequestException(
-                    $"The rows of {Resource} are deleted by their ids, not by a query.",
-                    new Dictionary<string, object?>(StringComparer.Ordinal) { ["resource"] = Resource });
-            }
-
             // --- A blank filter is "delete all", never exposed; then the type-level grant ---
+            // A stack over a security table serves no delete by query: the startup gate refuses it.
+            _shape = DeleteShape.ByQuery;
             if (string.IsNullOrWhiteSpace(request.Filter))
             {
                 throw new BadRequestException("A delete by query names the rows it deletes: its filter is blank.");

@@ -6,6 +6,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.CodeAnalysis;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
@@ -154,6 +155,12 @@ namespace Tellma.Core.Tests.Crud
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
+    }
+
+    /// <summary>A distribution's role leaf that serves every operation, the delete by query among them, which the startup gate refuses.</summary>
+    [Stack(Operations = StackOperations.All)]
+    public sealed class SmEveryRole : Role
+    {
     }
 
     /// <summary>The arguments of the gadget's repricing.</summary>

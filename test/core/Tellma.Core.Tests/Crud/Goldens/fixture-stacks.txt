@@ -4,7 +4,7 @@ stack core.User
   service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
   key: int
   description: -
-  operations: All, Enlist
+  operations: Save, Delete, Import, Read, Enlist
   capabilities: activatable, temporal, multilingual, blobs, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Kind:WriteOnce, Subject:ServerOwned, Email:Editable, State:DatabaseOwned, InvitedAt:ServerOwned, InviteStatus:ServerOwned, LastInviteError:ServerOwned, JoinedAt:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, ImageId:Editable, SignatureId:Editable, PreferredLanguage:Editable, PreferredCalendar:Editable, PreferredTimeZone:Editable, PreferredRegion:Editable, PreferredDigits:Editable, Gender:Editable, ContactEmail:Editable, ContactMobile:Editable, IsActive:ServerOwned
   children: RoleMemberships(RoleMembership by UserId, max 10000)
@@ -28,7 +28,7 @@ stack core.Role
   service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
   key: int
   description: -
-  operations: All
+  operations: Save, Delete, Import, Read
   capabilities: activatable, temporal, multilingual, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable, IsPublic:Editable, IsActive:ServerOwned
   children: Permissions(Permission by RoleId, max 10000)

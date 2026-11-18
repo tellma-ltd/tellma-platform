@@ -3,11 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
@@ -21,10 +24,12 @@ namespace Tellma.Core.IntegrationTests.Access
 {
     /// <summary>
     ///     The security guards inside real transactions: the tenant's lock serialising two removals
-    ///     of its last two administrators, a refusal rolling back the whole save, the platform's own
-    ///     scope standing aside, a time-bounded administrator not counting, the public-role and
-    ///     administrator-role invariants refusing a raw write, and another stack's save held to the
-    ///     guards by a security write of its own statements; each refusal counted.
+    ///     of its last two administrators, a save that cannot take it in time unavailable after its
+    ///     retries, a refusal rolling back the whole save, the platform's own scope standing aside, a
+    ///     time-bounded administrator not counting, a deactivation of the last administrator refused
+    ///     in the action's persist, the public-role and administrator-role invariants refusing a raw
+    ///     write, and another stack's save and delete held to the guards by a security write of their
+    ///     own statements; each refusal counted.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -104,6 +109,40 @@ namespace Tellma.Core.IntegrationTests.Access
         }
 
         [Fact]
+        public async Task A_save_that_cannot_take_the_security_lock_in_time_is_unavailable_after_its_retries_and_each_attempt_is_counted()
+        {
+            await fixture.ResetAdministratorsAsync();
+            _ = await fixture.SeedAdministratorAsync("Ann");
+            (int ben, _) = await fixture.SeedAdministratorAsync("Ben");
+            (_, string clerk) = await fixture.SeedClerkAsync();
+
+            // A short lock wait, so every attempt times out while the side transaction holds the lock.
+            await using ServiceProvider instance = fixture.CreateInstance(static services => services.PostConfigure<AccessOptions>(static options => options.SecurityLockTimeout = TimeSpan.FromMilliseconds(200)));
+            using MetricCollector<long> guards = new(instance.GetRequiredService<IMeterFactory>(), AccessTelemetryNames.MeterName, AccessTelemetryNames.GuardsTriggered);
+
+            // --- The lock, held by a side transaction until the save gave up ---
+            DataAccessRetryExhaustedException exhausted;
+            await using (SqlConnection holder = new(fixture.ConnectionString(ConnectDatabase.TenantA)))
+            {
+                await holder.OpenAsync(Token);
+                await using var transaction = (SqlTransaction)await holder.BeginTransactionAsync(Token);
+                await using (SqlCommand take = new(TakeSecurityLock, holder, transaction))
+                {
+                    _ = await take.ExecuteNonQueryAsync(Token);
+                }
+
+                DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(() => RemoveAsync(instance, clerk, ben));
+                exhausted = Assert.IsType<DataAccessRetryExhaustedException>(unavailable.InnerException);
+                await transaction.RollbackAsync(Token);
+            }
+
+            // --- Every attempt timed out on the lock and was counted once; nothing committed ---
+            Assert.True(exhausted.Attempts > 1, exhausted.ToString());
+            Assert.Equal(Enumerable.Repeat<string?>(AccessTelemetryNames.GuardLockTimeout, exhausted.Attempts), Tags(guards));
+            Assert.Equal(2, await fixture.AdministratorsAsync());
+        }
+
+        [Fact]
         public async Task Another_administrator_counts_only_while_their_membership_is_permanent_and_started()
         {
             await fixture.ResetAdministratorsAsync();
@@ -145,6 +184,28 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.Equal(0, await fixture.AdministratorsAsync());
             Assert.Empty(Tags(_guards));
             await fixture.SeedMembershipAsync(ann, WriteSideRig.Administrators);
+        }
+
+        [Fact]
+        public async Task A_non_administrator_deactivating_the_last_administrator_is_refused_in_the_action_s_persist_and_nothing_changes()
+        {
+            await fixture.ResetAdministratorsAsync();
+            (int ann, _) = await fixture.SeedAdministratorAsync("Ann");
+            (int activator, string subject) = await fixture.SeedCallerAsync("Activator");
+            int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Read, null), (CoreResources.User, AccessActions.Activate, null));
+            await fixture.SeedMembershipAsync(activator, role);
+
+            // --- The action's own rules refuse only the caller's own row: the guards refuse this one ---
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
+            {
+                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => scope.Users().DeactivateAsync([ann], cancellationToken: Token));
+                Assert.Equal([AccessCodes.LastAdministrator], refused.Codes());
+            }
+
+            // --- Ann stays active, and the refusal was counted ---
+            Assert.True(await fixture.ScalarAsync<bool>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT [IsActive] FROM [core].[Users] WHERE [Id] = {ann};")));
+            Assert.Equal(1, await fixture.AdministratorsAsync());
+            Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(_guards));
         }
 
         // --- The public role and the administrator role ---
@@ -195,6 +256,37 @@ namespace Tellma.Core.IntegrationTests.Access
             Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(_guards));
         }
 
+        [Fact]
+        public async Task A_delete_of_another_stack_whose_effect_removes_the_last_administrator_is_refused_and_rolled_back()
+        {
+            await fixture.ResetAdministratorsAsync();
+            (int ann, string subject) = await fixture.SeedAdministratorAsync("Ann");
+            int export;
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
+            {
+                EntitiesResult<Export> saved = await scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>()
+                    .SaveAsync([new Export { Name = "doomed" }], new SaveOptions { ReturnEntities = false }, Token);
+                export = checked((int)saved.Ids[0]);
+            }
+
+            // --- An instance whose effect on the exports' persists removes Ann's memberships, as a raw write ---
+            await using ServiceProvider instance = fixture.CreateInstance(
+                services => services.AddSingleton(new MembershipRemoval(ann)),
+                static tellma => tellma.AddFeature(new MembershipRemovalFeature()));
+            using MetricCollector<long> guards = new(instance.GetRequiredService<IMeterFactory>(), AccessTelemetryNames.MeterName, AccessTelemetryNames.GuardsTriggered);
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, instance))
+            {
+                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().DeleteByIdsAsync([export], null, Token));
+                Assert.Equal([AccessCodes.LastAdministrator], refused.Codes());
+            }
+
+            // --- Neither the delete nor the removal committed ---
+            Assert.Equal(1, await fixture.AdministratorsAsync());
+            Assert.Equal(1, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Id] = {export};")));
+            Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(guards));
+        }
+
         // --- Fixtures ---
 
         /// <summary>Appends a caller's raw removal of a user's memberships, declaring the table it writes and the user whose tag it moves.</summary>
@@ -209,6 +301,45 @@ namespace Tellma.Core.IntegrationTests.Access
 #pragma warning disable TELLMA0006
             _ = batch.Sql($"DELETE FROM [core].[RoleMemberships] WHERE [UserId] = {userId};", new SqlOptions(writes: MembershipsTable, userIds: users));
 #pragma warning restore TELLMA0006
+        }
+
+        /// <summary>The user whose memberships the exports' effect removes.</summary>
+        /// <param name="UserId">The user.</param>
+        private sealed record MembershipRemoval(int UserId);
+
+        /// <summary>
+        ///     An effect of the exports, a stack that owns no security table, whose statement removes a
+        ///     user's memberships raw, as a careless participant would.
+        /// </summary>
+        /// <param name="removal">The user.</param>
+        private sealed class MembershipRemovalEffect(MembershipRemoval removal) : IPersistEffect<Export>
+        {
+            /// <inheritdoc />
+            public Task ContributeAsync(PersistContext<Export> context)
+            {
+                ArgumentNullException.ThrowIfNull(context);
+                RemoveMemberships(context.Batch, removal.UserId);
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>The feature that attaches <see cref="MembershipRemovalEffect" /> to the fixture's exports.</summary>
+        private sealed class MembershipRemovalFeature : ITellmaFeature
+        {
+            /// <inheritdoc />
+            public string Name => "membership-removal";
+
+            /// <inheritdoc />
+            public void Declare(FeatureDeclaration declaration)
+            {
+            }
+
+            /// <inheritdoc />
+            public void Contribute(FeatureContribution contribution)
+            {
+                ArgumentNullException.ThrowIfNull(contribution);
+                _ = contribution.PersistEffect<Export, MembershipRemovalEffect>();
+            }
         }
 
         /// <summary>The guard tag of each measurement, in order.</summary>

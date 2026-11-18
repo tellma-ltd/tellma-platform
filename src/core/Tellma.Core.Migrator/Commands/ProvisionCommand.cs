@@ -21,7 +21,9 @@ namespace Tellma.Core.Migrator.Commands
     ///     A rerun of a line that requests an id converges: when the catalog already holds that id
     ///     with the same name, category, live tenant and location, the row is resumed instead of
     ///     registered again, and a tenant an earlier run turned active is reported provisioned
-    ///     already. A line without <c>--tenant</c> draws a new id from the sequence each time, so the
+    ///     already. On such a tenant, active or read-only, a line that names an administrator
+    ///     bootstraps that administrator, which is how a tenant without one gets one. A line without
+    ///     <c>--tenant</c> draws a new id from the sequence each time, so the
     ///     command prints the id it registered at once and names <c>provision --tenant &lt;id&gt;</c>
     ///     as the resume when the run fails.
     /// </remarks>

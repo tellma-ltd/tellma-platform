@@ -58,7 +58,7 @@ namespace Tellma.Core.IntegrationTests.Access
         }
 
         [Fact]
-        public async Task A_deactivated_existing_user_fails_the_bootstrap_naming_the_user_and_is_neither_reactivated_nor_granted()
+        public async Task A_deactivated_existing_user_fails_the_bootstrap_naming_the_user_and_another_address_and_is_neither_reactivated_nor_granted()
         {
             (int ann, _) = await fixture.SeedCallerAsync("Ann");
             await fixture.ExecuteAsync(ConnectDatabase.TenantA, Where("UPDATE [core].[Users] SET [IsActive] = 0", ann, "Id"));
@@ -67,6 +67,10 @@ namespace Tellma.Core.IntegrationTests.Access
             InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(() => BootstrapAsync(new TenantBootstrapRequest(email, "Ann", "en", null)));
 
             Assert.Contains(ann.ToString(CultureInfo.InvariantCulture), refused.Message, StringComparison.Ordinal);
+
+            // The way out is another address: no administrator may remain to reactivate the user.
+            Assert.Contains("Bootstrap another email address", refused.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Reactivate the user", refused.Message, StringComparison.Ordinal);
             Assert.False(await fixture.ScalarAsync<bool>(ConnectDatabase.TenantA, Where("SELECT [IsActive] FROM [core].[Users]", ann, "Id")));
             Assert.Equal(0, await CountAsync(Where("SELECT COUNT(*) FROM [core].[RoleMemberships]", ann, "UserId", "AND [RoleId] = 1")));
         }

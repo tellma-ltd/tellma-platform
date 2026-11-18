@@ -10,16 +10,25 @@ using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Access
 {
-    // The step is spec 0011 §6.2's platform step 10, which calls spec 0014 §11's bootstrapper.
+    // The step is spec 0011 §6.2's platform step 10, which calls spec 0014 §11's bootstrapper. Its
+    // run on a provisioned tenant is spec 0014 §8.3's recovery path, which spec 0011 §6.1 leaves out.
     /// <summary>
-    ///     <c>core.bootstrap-administrator</c>: makes the administrator the run names the tenant's
-    ///     first individual administrator, named by the local part of the email address and
-    ///     preferring the distribution's default language. A run that names no administrator, such as
-    ///     a plain migration, leaves the tenant as it is.
+    ///     <c>core.bootstrap-administrator</c>: makes the administrator the run names an individual
+    ///     administrator of the tenant, named by the local part of the email address and preferring
+    ///     the distribution's default language.
     /// </summary>
     /// <remarks>
-    ///     The bootstrap is idempotent on the email address, so a re-run, or a later run naming
-    ///     another administrator, adds to the tenant and never removes one.
+    ///     <para>
+    ///         The step runner schedules it by the run's administrator, not by the tenant's record: a
+    ///         run that names none, such as a migration, neither runs nor records it, and a run that
+    ///         names one runs it whatever the tenant records. A <c>provision</c> that names an
+    ///         administrator of an active or read-only tenant therefore bootstraps that administrator,
+    ///         which is how a tenant provisioned without one, or left without one, gets one.
+    ///     </para>
+    ///     <para>
+    ///         The bootstrap is idempotent on the email address, so a re-run leaves the tenant as it
+    ///         was, and a run naming another administrator adds to the tenant and never removes one.
+    ///     </para>
     /// </remarks>
     /// <param name="languages">The language catalogue, whose first offered language is the distribution's default.</param>
     internal sealed class BootstrapAdministratorStep(ILanguageCatalog languages) : ITenantProvisioningStep
@@ -43,6 +52,8 @@ namespace Tellma.Core.Access
         public async Task RunAsync(TenantProvisioningContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
+
+            // The runner never runs the step without an administrator; a direct call without one does nothing.
             if (context.AdminEmail is not string email || string.IsNullOrWhiteSpace(email))
             {
                 return;

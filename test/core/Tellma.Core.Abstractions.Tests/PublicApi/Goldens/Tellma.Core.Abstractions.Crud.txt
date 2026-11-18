@@ -534,8 +534,9 @@ public sealed record StackLimits : IEquatable<StackLimits>
 
 [Flags]
 public enum StackOperations : int
-    All = 63
+    All = 191
     Delete = 8
+    DeleteByQuery = 128
     Details = 2
     Enlist = 64
     Export = 32

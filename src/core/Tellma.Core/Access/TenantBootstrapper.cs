@@ -22,8 +22,10 @@ namespace Tellma.Core.Access
     ///     of the email address given that membership when it lacks one. One per scope.
     /// </summary>
     /// <remarks>
-    ///     An existing user who is deactivated fails the bootstrap: it is never reactivated, so an
-    ///     operator decides whether that user's privileges come back.
+    ///     An existing user who is deactivated fails the bootstrap: it is never reactivated, so the
+    ///     failure points to another email address, whose administrator then decides whether that
+    ///     user's privileges come back. Reactivating the user is not offered, because the bootstrap
+    ///     may be running precisely because no administrator remains to do it.
     /// </remarks>
     /// <typeparam name="TUser">The distribution's user leaf.</typeparam>
     /// <param name="users">The users' stack.</param>
@@ -74,7 +76,7 @@ namespace Tellma.Core.Access
                 {
                     throw new InvalidOperationException(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"User {existing}, whose email address the administrator bootstrap names, is deactivated, and the bootstrap does not reactivate a user. Reactivate the user, or bootstrap another email address, then run the step again."));
+                        $"User {existing}, whose email address the administrator bootstrap names, is deactivated, and the bootstrap never reactivates a user. Bootstrap another email address instead; that administrator can then decide whether to reactivate this user."));
                 }
 
                 if (Grant(user.RoleMemberships ?? [], time.GetUtcNow()) is IReadOnlyList<RoleMembership> memberships)

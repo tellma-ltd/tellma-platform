@@ -196,7 +196,8 @@ namespace Tellma.Core.Crud
 
             if (operations.HasFlag(StackOperations.Delete))
             {
-                segments.UnionWith(["delete", "delete-by-query"]);
+                segments.Add("delete");
+                AddIf(segments, operations.HasFlag(StackOperations.DeleteByQuery), "delete-by-query");
                 AddIf(segments, tree, "delete-with-descendants");
             }
 

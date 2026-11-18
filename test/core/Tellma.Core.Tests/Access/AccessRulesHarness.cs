@@ -331,7 +331,8 @@ namespace Tellma.Core.Tests.Access
 
     /// <summary>
     ///     A loader that answers the access rules' loads from what the test gives it: the permissions
-    ///     of each role, and the roles that have members. It records what it was asked.
+    ///     of each role, the roles that have members, and each user's standing memberships. It
+    ///     records what it was asked.
     /// </summary>
     internal sealed class RulesLoader : IContextLoader
     {
@@ -340,6 +341,9 @@ namespace Tellma.Core.Tests.Access
 
         /// <summary>The roles that have members.</summary>
         public HashSet<int> WithMembers { get; } = [];
+
+        /// <summary>The roles of each user's memberships that have not ended, which the pairs load joins to <see cref="Permissions" />.</summary>
+        public Dictionary<int, int[]> Standing { get; } = [];
 
         /// <summary>The roles each permissions load asked for, in order.</summary>
         public List<IReadOnlyList<int>> PermissionLoads { get; } = [];
@@ -370,9 +374,15 @@ namespace Tellma.Core.Tests.Access
         /// <inheritdoc />
         public ContextRef<RawResult> Sql(FormattableString sql, SqlOptions? options = null)
         {
-            // The one raw load is of the roles with members among a list of ids, its one table hole.
+            // The raw loads are of the roles with members among a list of ids, or of the users'
+            // standing pairs; each has one table hole.
             SqlLoads++;
             IReadOnlyList<int> asked = [.. sql.GetArguments().OfType<IEnumerable<IdList>>().Single().Select(static key => key.Id)];
+            if (sql.Format.Contains("[core].[Permissions]", StringComparison.Ordinal))
+            {
+                return StandingPairs(asked);
+            }
+
             using DataTable table = new();
             _ = table.Columns.Add("RoleId", typeof(int));
             foreach (int id in asked.Where(WithMembers.Contains))
@@ -381,6 +391,45 @@ namespace Tellma.Core.Tests.Access
             }
 
             QueryRowSet.Builder builder = new([new QueryColumn("RoleId", QueryexType.QxNumeric, null, null, false, null, false)], [typeof(int)], table.Rows.Count);
+            using DataTableReader reader = table.CreateDataReader();
+            while (reader.Read())
+            {
+                builder.AppendRow(reader);
+            }
+
+            return new ContextRef<RawResult>(new RawResult([builder.Build()]));
+        }
+
+        /// <summary>The standing pairs of the users asked: a row per user, role and permission.</summary>
+        /// <param name="asked">The users.</param>
+        /// <returns>The result.</returns>
+        private ContextRef<RawResult> StandingPairs(IReadOnlyList<int> asked)
+        {
+            using DataTable table = new();
+            _ = table.Columns.Add("UserId", typeof(int));
+            _ = table.Columns.Add("RoleId", typeof(int));
+            _ = table.Columns.Add("Resource", typeof(string));
+            _ = table.Columns.Add("Action", typeof(string));
+            foreach (int user in asked)
+            {
+                foreach (int role in Standing.TryGetValue(user, out int[]? roles) ? roles : [])
+                {
+                    foreach (Permission permission in Permissions.TryGetValue(role, out IReadOnlyList<Permission>? held) ? held : [])
+                    {
+                        _ = table.Rows.Add(user, role, permission.Resource, permission.Action);
+                    }
+                }
+            }
+
+            QueryRowSet.Builder builder = new(
+                [
+                    new QueryColumn("UserId", QueryexType.QxNumeric, null, null, false, null, false),
+                    new QueryColumn("RoleId", QueryexType.QxNumeric, null, null, false, null, false),
+                    new QueryColumn("Resource", QueryexType.QxString, null, null, false, null, false),
+                    new QueryColumn("Action", QueryexType.QxString, null, null, false, null, false),
+                ],
+                [typeof(int), typeof(int), typeof(string), typeof(string)],
+                table.Rows.Count);
             using DataTableReader reader = table.CreateDataReader();
             while (reader.Read())
             {
