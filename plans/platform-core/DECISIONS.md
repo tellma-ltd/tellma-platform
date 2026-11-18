@@ -366,6 +366,8 @@ Format, one entry per ruling:
 - `Persisted` is a plain `Task`. Awaiting one goes through the non-virtual TaskAwaiter, so nothing distinguishes "suspended on Persisted" from any other await. No fix within the current contract can prevent the loss.
 - Interim: the verification fixes make the loss loud. Every late refusal is recorded on the run and checked before RT2 is sent. After a commit it is raised for void and value actions alike, under a distinct Error event, and the residual is documented in Persisted's remarks.
 - **For Ahmad:** change spec 0015 §7.1 so that `Persisted` is a custom awaitable (or a method such as `await context.PersistAsync()`). RT2 can then wait until the flow actually awaits it. This fully closes the race.
+- Outcome (b665e864): late refusals from any flow are recorded on the run and checked before every send. After a commit they are logged as ActionComposedAfterPersisted and raised for void and value actions alike. Released hook and component flows are awaited after the commit. One case stays silent: a child flow that nobody awaits and that composes after the response has gone out (PC-076 deviation 9).
+- Also for Ahmad: spec 0012 has no long-id stamp list (stamped deletes of long-keyed stacks are refused with a 400). The `@tb` table names in spec 0018's invite should read as illustrative, since the deferred batch names its tables under `@tm_rec`.
 - Related, still open: D-117 Q5, how a committed action whose result is lost is answered (a closed-set code, or an idempotency rule).
 
 ### D-117 (orchestrator, 2026-11-18): PC-076 implementer's open questions; R1 to judge, for Ahmad
