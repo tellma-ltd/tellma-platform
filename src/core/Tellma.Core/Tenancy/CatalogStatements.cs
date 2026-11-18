@@ -180,7 +180,9 @@ namespace Tellma.Core.Tenancy
         ///     The instant that splits the hints written before a read from those written after it, at
         ///     the millisecond the hints' <c>UpdatedAt</c> stamps keep: one millisecond past the
         ///     catalog's clock, so every stamp already written is below it, returned only once the
-        ///     clock has reached it, so every stamp written from then on is at or above it.
+        ///     clock has reached it, so every stamp written from then on is at or above it. The wait is
+        ///     up to one clock tick (about 16 ms on Windows), and the split assumes a clock that does
+        ///     not step back.
         /// </summary>
         public const string CatalogTime = """
             DECLARE @readAt datetimeoffset(3) = DATEADD(MILLISECOND, 1, CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3)));

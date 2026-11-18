@@ -174,9 +174,10 @@ namespace Tellma.Core.Tenancy
         /// <summary>
         ///     The instant a reconciliation takes before it reads a tenant's users: every hint stamped
         ///     before it is below it, and every hint stamped after it returns is at or above it, at the
-        ///     stamps' millisecond precision. It waits for the catalog's clock to pass the millisecond it
-        ///     was called in, so it may take a millisecond or two. The catalog's own clock, so the
-        ///     stamps and the instant compare on one clock whatever the instances' skew.
+        ///     stamps' millisecond precision, provided the catalog's clock does not step back. It waits
+        ///     until the catalog's clock passes the millisecond it was called in, which is up to one
+        ///     clock tick (about 16 ms on Windows). The catalog's own clock, so the stamps and the
+        ///     instant compare on one clock whatever the instances' skew.
         /// </summary>
         /// <param name="cancellationToken">Cancels the read.</param>
         /// <returns>The instant.</returns>
