@@ -269,6 +269,18 @@ namespace Tellma.Core.Abstractions.Data
             /// <summary>The number of rows a statement counted, such as the size of an id range to reserve.</summary>
             public const string Count = "n";
 
+            /// <summary>The staged blobs a staging statement counted against the uploader's quota.</summary>
+            public const string StagedCount = "count";
+
+            /// <summary>The staged bytes a staging statement summed against the uploader's quota.</summary>
+            public const string StagedBytes = "bytes";
+
+            /// <summary>The deadline a statement computes, such as a staged blob's.</summary>
+            public const string Expiry = "exp";
+
+            /// <summary>The one id a statement takes from a sequence.</summary>
+            public const string Id = "id";
+
             /// <summary>The name of the statement's <paramref name="index" />th table-valued parameter, <c>t{i}</c>.</summary>
             /// <param name="index">The parameter's index within the statement.</param>
             /// <returns>The name within the statement's namespace.</returns>

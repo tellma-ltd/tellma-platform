@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using Tellma.Core.AspNetCore;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
 using Tellma.Distro.Acme.Web;
 using Tellma.Identity.Services.BackchannelLogout;
@@ -130,6 +131,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                 TellmaAuthentication.OidcScheme, oidc => oidc.BackchannelHttpHandler = new ServerHandler(() => host!.Server.CreateHandler()));
             _ = builder.Services.AddHttpClient(BackchannelLogoutService.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => new ServerHandler(() => host!.BackchannelLogoutSink ?? host.Server.CreateHandler()));
+
+            // --- Blobs in memory, so a suite never writes under the developer's application data ---
+            _ = builder.Services.AddInMemoryBlobs();
 
             // --- The tenant probes' record, one per host, so two hosts of one test keep theirs apart ---
             TenantProbeLog? probes = options.MapsProbes ? new TenantProbeLog() : null;

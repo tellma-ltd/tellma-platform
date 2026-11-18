@@ -37,6 +37,12 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <summary><see cref="BlobTelemetryNames.OutcomeTag" /> of an upload: failed (a store or database failure).</summary>
         public const string UploadFailed = "failed";
 
+        /// <summary>
+        ///     <see cref="BlobTelemetryNames.OutcomeTag" /> of an upload: refused because the image
+        ///     processor had no free slot within its time budget; the client may retry.
+        /// </summary>
+        public const string UploadBusy = "busy";
+
         /// <summary><see cref="BlobTelemetryNames.OutcomeTag" /> of a download: bytes served.</summary>
         public const string DownloadServed = "served";
 

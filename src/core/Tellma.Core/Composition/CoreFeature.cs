@@ -168,8 +168,10 @@ namespace Tellma.Core.Composition
             // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
             _ = contribution.Model<CalendarMonthRowConfiguration>();
 
-            // --- Blobs: the table every blob reference resolves to; never a stack ---
-            _ = contribution.Model<BlobConfiguration>();
+            // --- Blobs: the table every blob reference resolves to (never a stack), and the tenant's container at provisioning ---
+            _ = contribution
+                .Model<BlobConfiguration>()
+                .ProvisioningStep<BlobContainerStep>();
 
             // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
             // spec 0021 §11. Notification is a read-only stack with the platform's default service,

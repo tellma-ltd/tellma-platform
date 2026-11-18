@@ -550,6 +550,57 @@ Internally the namespace also holds the upload content-type sniffer (signatures 
 declaration; executables, HTML and SVG never stored) and the file-name sanitiser, which the
 staging service uses.
 
+## Blobs: kinds, options and staging
+
+```csharp
+// A feature adjusts a kind it or another feature declares; the host adjusts after every feature.
+contribution.BlobKind("acme-scan", policy => policy with { MaxSize = 8 * 1024 * 1024 });
+tellma.Blobs(blobs => blobs
+    .Kind("user-image", policy => policy with { Thumbnail = null })
+    .ImageProcessor<MyProcessor>());
+```
+
+- **Kinds come from the model.** Every `[BlobReference(kind, preset)]` of a stack's aggregate
+  declares one kind, once across the composition. `IBlobKindRegistry` lists them with the policy
+  (the preset after every transform, features' in contribution order and then the host's) and the
+  owner: the nearest entity with a query surface (a stack's root, or a child that is queryable),
+  the column, and the navigation path from the declaring entity up to that owner (`Spread.Album`
+  for a grandchild whose parent has no query surface). The entity metadata carries the same policy
+  instance. A transform that throws or returns null, or a kind on an entity no stack carries, fails
+  the composition naming the kind.
+- **Options.** `BlobOptions` binds `Tellma:Blobs`: `StagingTtl` (24 h; a kind's own `StagingTtl`
+  overrides it), `MaxStagedPerUser` (200) and `MaxStagedBytesPerUser` (512 MiB) for the soft
+  per-user quota, `MaxUploadSize` (100 MiB, the ceiling over every kind's `MaxSize`),
+  `ThumbnailTimeout` (5 s), `ImageProcessTimeout` (15 s), and the sweep's `SweepBatchSize` and
+  `SweepReclaimAfter`. A large body spools to `Tellma:ScratchPath` (the system temp directory when
+  unset), in a file deleted on close.
+- **Staging.** `IBlobService.StageAsync` (scoped) checks the declared length against the kind's
+  `MaxSize` and the ceiling before reading, reads at most one byte more than declared, sniffs the
+  type against the kind's allow-list, normalises an image kind through the one `IImageProcessor`
+  (bounded by `ImageProcessTimeout`), renders a thumbnail where the policy asks for one (a failure
+  stores none), inserts the `Staged` row — its id from `core.sq_Blobs`, its deadline from the
+  database clock — and then writes the primary and the thumbnail to the store under a fresh
+  storage key. A refusal is a `BlobRejectedException` whose code names a resource string:
+  `Blob.UnknownKind`, `Blob.LengthRequired` (no length, or a body shorter than declared),
+  `Blob.TooLarge`, `Blob.UnsupportedType`, `Blob.ImageRejected` and `Blob.StagingQuotaExceeded`.
+  The quota counts the caller's unexpired staged rows and bytes in the same statement as the
+  insert, without locks (it is soft: two racing uploads may both pass), and does not apply to the
+  platform's own scope. A store write that fails leaves the staged row for the sweep.
+- **Provisioning.** The `core.blob-container` step (order 20, after `core.settings`) creates the
+  tenant's container or directory through `IBlobStore.EnsureTenantAsync`, so the first upload finds
+  it; a write that finds it missing still creates it. Removing a retired tenant's storage is an
+  operator's action.
+- **The startup check.** `blobs` (needs infrastructure) requires exactly one `IBlobStore` and at
+  most one `IImageProcessor` (exactly one when an image kind exists), a transform only for a declared
+  kind, every policy well formed, every kind's `MaxSize` within `MaxUploadSize`, positive options, an
+  absolute scratch path and, for the file-system store, bound options and a passing create-only
+  publish probe. A host that runs no real store composes `AddInMemoryBlobs()` from
+  `Tellma.Core.Testing` in its tests.
+- **Telemetry.** `tellma.blobs.uploads` counts every staging call by kind and outcome (`staged`,
+  each refusal, `busy`, `failed`), with `tellma.blobs.upload.bytes` and
+  `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments
+  alone have the `Tellma.Blobs` meter); never a tenant, a user or a file name.
+
 ## Calendars
 
 `CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over

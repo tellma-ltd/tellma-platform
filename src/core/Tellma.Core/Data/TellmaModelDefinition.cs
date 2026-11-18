@@ -5,6 +5,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
+using Tellma.Core.Blobs;
 using Tellma.Core.Composition;
 using Tellma.Core.Jobs;
 
@@ -12,8 +13,9 @@ namespace Tellma.Core.Data
 {
     /// <summary>
     ///     What one composition puts in the tenant model: the leaf entity classes, the standalone
-    ///     table-type classes and Core's model configurations, each closed over the leaves, and the
-    ///     built-in schedules the migrations seed. A
+    ///     table-type classes and Core's model configurations, each closed over the leaves, the
+    ///     built-in schedules the migrations seed, and the transforms of the blob kinds' policies,
+    ///     which the entity metadata applies. A
     ///     <see cref="TellmaDbContext" /> builds its model from exactly this, so the web host, the
     ///     workers and the migrator, composing the same features, build the same model.
     /// </summary>
@@ -37,12 +39,14 @@ namespace Tellma.Core.Data
     /// <param name="configurations">The closed model configuration classes, in the order they apply.</param>
     /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
     /// <param name="builtInSchedules">The built-in schedules the features declared, in realisation order; null for none.</param>
+    /// <param name="blobKindTransforms">The blob-kind transforms, the features' then the host's; null for none.</param>
     internal sealed class TellmaModelDefinition(
         IReadOnlyList<Type> entityTypes,
         IReadOnlyList<Type> tableTypes,
         IReadOnlyList<Type> configurations,
         IReadOnlyDictionary<Type, Type> leaves,
-        IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null)
+        IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null,
+        IReadOnlyList<BlobKindTransform>? blobKindTransforms = null)
     {
         /// <summary>The leaf entity classes, children included, in model order.</summary>
         public IReadOnlyList<Type> EntityTypes { get; } = [.. entityTypes];
@@ -62,6 +66,13 @@ namespace Tellma.Core.Data
 
         /// <summary>The built-in schedules the migrations seed, in realisation order.</summary>
         public IReadOnlyList<BuiltInScheduleSeed> BuiltInSchedules { get; } = [.. builtInSchedules ?? []];
+
+        /// <summary>
+        ///     The transforms of the blob kinds' policies, the features' in realisation order then the
+        ///     host's; the entity metadata applies each kind's in this order to the policy its
+        ///     attribute produced.
+        /// </summary>
+        public IReadOnlyList<BlobKindTransform> BlobKindTransforms { get; } = [.. blobKindTransforms ?? []];
 
         /// <summary>The leaf registered for an entity class: its substitute, else the class itself.</summary>
         /// <param name="entityType">The entity class.</param>
@@ -84,7 +95,8 @@ namespace Tellma.Core.Data
                 record.TableTypes.Select(static tableType => tableType.Type),
                 record.ModelConfigurations.Select(static configuration => configuration.Type),
                 record.Leaves,
-                [.. record.BuiltInSchedules.Select(static schedule => schedule.Seed)]);
+                [.. record.BuiltInSchedules.Select(static schedule => schedule.Seed)],
+                record.BlobKindTransforms);
         }
 
         /// <summary>A definition from contributed parts and the leaf substitutions.</summary>
@@ -93,13 +105,15 @@ namespace Tellma.Core.Data
         /// <param name="configurations">The contributed model configurations, closed or open.</param>
         /// <param name="leaves">The leaf substitutions: each replaced default and the leaf that replaces it.</param>
         /// <param name="builtInSchedules">The built-in schedules the migrations seed; null for none.</param>
+        /// <param name="blobKindTransforms">The blob-kind transforms, the features' then the host's; null for none.</param>
         /// <returns>The definition.</returns>
         public static TellmaModelDefinition Create(
             IEnumerable<Type> entities,
             IEnumerable<Type> tableTypes,
             IEnumerable<Type> configurations,
             IReadOnlyDictionary<Type, Type> leaves,
-            IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null)
+            IReadOnlyList<BuiltInScheduleSeed>? builtInSchedules = null,
+            IReadOnlyList<BlobKindTransform>? blobKindTransforms = null)
         {
             ArgumentNullException.ThrowIfNull(entities);
             ArgumentNullException.ThrowIfNull(tableTypes);
@@ -129,7 +143,7 @@ namespace Tellma.Core.Data
                 }
             }
 
-            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed, leaves, builtInSchedules);
+            return new TellmaModelDefinition(entityTypes, [.. tableTypes.Distinct()], closed, leaves, builtInSchedules, blobKindTransforms);
         }
 
         /// <summary>

@@ -13,6 +13,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Migrator
@@ -316,6 +317,7 @@ namespace Tellma.Core.Tests.Migrator
                     ConfigureServices = collection =>
                     {
                         _ = collection.AddLogging(static logging => logging.ClearProviders());
+                        _ = collection.AddInMemoryBlobs();
                         services?.Invoke(collection);
                     },
                 },

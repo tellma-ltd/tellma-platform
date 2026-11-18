@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Settings;
 
 namespace Tellma.Core.IntegrationTests.Infrastructure
@@ -116,6 +117,9 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
             // The tenant databases the tests register are created empty: their scopes' locale
             // negotiation reads fixed settings instead of a settings table they do not have.
             _ = services.UseFixedTenantSettings();
+
+            // No suite here stores blob bytes: the blobs check is satisfied by an in-memory store.
+            _ = services.AddInMemoryBlobs();
 
             // The same databases hold no users, so the real user connection is left out: a scope
             // binds the user its snapshot names, and a test adds a stand-in when it needs one.

@@ -68,7 +68,7 @@ namespace Tellma.Core.Tests.Blobs
         public void The_closed_tag_value_sets_keep_their_spellings()
         {
             Pin(
-                ["staged", "rejected_size", "rejected_type", "rejected_image", "quota", "failed"],
+                ["staged", "rejected_size", "rejected_type", "rejected_image", "quota", "failed", "busy"],
                 [
                     BlobTelemetryTagValues.UploadStaged,
                     BlobTelemetryTagValues.UploadRejectedSize,
@@ -76,6 +76,7 @@ namespace Tellma.Core.Tests.Blobs
                     BlobTelemetryTagValues.UploadRejectedImage,
                     BlobTelemetryTagValues.UploadQuota,
                     BlobTelemetryTagValues.UploadFailed,
+                    BlobTelemetryTagValues.UploadBusy,
                 ]);
             Pin(
                 ["served", "not_modified", "not_found"],

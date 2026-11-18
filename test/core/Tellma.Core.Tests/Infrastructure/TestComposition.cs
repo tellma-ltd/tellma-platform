@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Blobs;
 
 namespace Tellma.Core.Tests.Infrastructure
 {
@@ -75,8 +76,8 @@ namespace Tellma.Core.Tests.Infrastructure
         }
 
         /// <summary>
-        ///     Composes into a fresh service collection over a fake catalog, so only the problem under
-        ///     test fails the gate.
+        ///     Composes into a fresh service collection over a fake catalog and in-memory blobs, so only
+        ///     the problem under test fails the gate.
         /// </summary>
         /// <param name="compose">The composition method.</param>
         /// <param name="configuration">The configuration; the sound configuration when null.</param>
@@ -85,6 +86,7 @@ namespace Tellma.Core.Tests.Infrastructure
         /// <param name="realizers">The realizers; the built-in ones when null.</param>
         /// <param name="icuProbe">The ICU probe; reports ICU when null.</param>
         /// <param name="services">The collection to compose into; a fresh one when null.</param>
+        /// <param name="inMemoryBlobs">Whether to register the in-memory blob store and stub image processor in place of any other.</param>
         /// <returns>The composed services.</returns>
         public static IServiceCollection Compose(
             Action<TellmaBuilder> compose,
@@ -93,10 +95,11 @@ namespace Tellma.Core.Tests.Infrastructure
             string slug = Slug,
             ContributionRealizerSet? realizers = null,
             Func<bool>? icuProbe = null,
-            IServiceCollection? services = null)
+            IServiceCollection? services = null,
+            bool inMemoryBlobs = true)
         {
             services ??= new ServiceCollection();
-            return TellmaServiceCollectionExtensions.AddTellma(
+            IServiceCollection composed = TellmaServiceCollectionExtensions.AddTellma(
                 services,
                 slug,
                 configuration ?? Configuration(),
@@ -105,6 +108,14 @@ namespace Tellma.Core.Tests.Infrastructure
                 realizers ?? ContributionRealizerSet.CreateBuiltIn(),
                 icuProbe ?? (static () => true))
                 .UseFakeCatalog();
+
+            // The blobs check needs one store and, for the platform's image kinds, a processor.
+            if (inMemoryBlobs)
+            {
+                _ = composed.AddInMemoryBlobs();
+            }
+
+            return composed;
         }
 
         /// <summary>Composes, expecting the composition root to throw, and returns the problems.</summary>

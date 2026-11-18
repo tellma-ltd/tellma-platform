@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Localization;
@@ -191,6 +192,24 @@ namespace Tellma.Core.Abstractions.Composition
         {
             ArgumentNullException.ThrowIfNull(name);
             return Add(new ClientEventContributionItem(name));
+        }
+
+        /// <summary>
+        ///     Transforms the policy of a blob kind an entity of the feature declares with
+        ///     <c>[BlobReference]</c>, such as turning off its thumbnail. Transforms apply in the
+        ///     features' dependency order, then the host's, each to the result of the one before; the
+        ///     owner still comes from the attribute. The startup gate refuses a kind no blob reference
+        ///     declares.
+        /// </summary>
+        /// <param name="kind">The kind, such as <c>email-attachment</c>.</param>
+        /// <param name="configure">The transform, usually <c>p =&gt; p with { … }</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="kind" /> or <paramref name="configure" /> is null.</exception>
+        public FeatureContribution BlobKind(string kind, Func<BlobKindPolicy, BlobKindPolicy> configure)
+        {
+            ArgumentNullException.ThrowIfNull(kind);
+            ArgumentNullException.ThrowIfNull(configure);
+            return Add(new BlobKindContributionItem(kind, configure));
         }
 
         /// <summary>

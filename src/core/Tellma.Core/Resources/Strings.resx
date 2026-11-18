@@ -475,6 +475,24 @@
   <data name="Blob_DuplicateReference" xml:space="preserve">
     <value>The same file is attached more than once.</value>
   </data>
+  <data name="Blob_UnknownKind" xml:space="preserve">
+    <value>This kind of file can’t be uploaded here.</value>
+  </data>
+  <data name="Blob_LengthRequired" xml:space="preserve">
+    <value>The upload didn’t say how large the file is, or the file was cut short. Upload it again.</value>
+  </data>
+  <data name="Blob_TooLarge" xml:space="preserve">
+    <value>The file is too large. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Blob_UnsupportedType" xml:space="preserve">
+    <value>Files of type “{contentType}” can’t be uploaded here.</value>
+  </data>
+  <data name="Blob_StagingQuotaExceeded" xml:space="preserve">
+    <value>You have too many uploaded files that aren’t saved yet: at most {maxCount, number} files or {maxBytes, number} bytes. Save or discard your changes, then upload again.</value>
+  </data>
+  <data name="Blob_ImageRejected" xml:space="preserve">
+    <value>{reason, select, format {This image format isn’t supported. Use a JPEG, PNG, WebP or GIF image.} too-many-pixels {The image is too large. Use a smaller image.} timeout {The image took too long to process. Try a smaller image.} other {The image can’t be read. It may be damaged.}}</value>
+  </data>
   <data name="Concurrency_StampRequired" xml:space="preserve">
     <value>Reload the record, then try again.</value>
   </data>

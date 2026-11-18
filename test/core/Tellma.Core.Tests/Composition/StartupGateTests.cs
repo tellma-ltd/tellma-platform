@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition
@@ -208,6 +209,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-pipeline"] = false,
                 ["core.enlistments"] = false,
                 ["core.stack-securables"] = false,
+                ["blobs"] = true,
             };
 
             Assert.Equal(expected, checks);
@@ -226,7 +228,7 @@ namespace Tellma.Core.Tests.Composition
 
             builder.Configuration.AddInMemoryCollection(configuration ?? TestComposition.SoundConfiguration);
             configureServices(builder.Services);
-            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, compose).UseFakeCatalog();
+            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, compose).UseFakeCatalog().AddInMemoryBlobs();
             return builder.Build();
         }
     }
