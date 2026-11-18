@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-122 (orchestrator, 2026-11-18): PC-077 R2 rulings; for Ahmad
+
+- R2-1 (major, fixed in fix 2): the open write frame re-decides the [ApiAction] securable for the fresh ConnectedUser on every compose, as the other pipeline hosts do. A revoked grant must not commit enlisted writes on a permissions re-entry.
+- R2-2 (interim, fail closed): on a re-entry caused by a permissions change, a frame with enlisted groups does not commit on validators decided under stale grants. It either re-runs the groups' validators in memory or raises StaleContextException. **For Ahmad:** spec 0015 §5.1 should say which; PC-078's UserAccessRules and RoleAccessRules are grant-dependent target rules.
+- **For spec 0020:** PC-078's AccessGuards casts the batch to DataBatch, and the job seam runs PersistGuards on the worker's completion batch, so the worker must hand the frame a DataBatch.
+- Release order: PC-078 integrates first. PC-077 holds after fix 2 (D-087), then integrates under D-121.
+
 ### D-121 (orchestrator, 2026-11-18): PC-077 and PC-078 meet at the access guards; the later to integrate reconciles
 
 - PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
