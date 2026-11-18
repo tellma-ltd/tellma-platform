@@ -359,6 +359,21 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-116 (orchestrator, 2026-11-18): PC-074 R2 open questions; interim rulings, for Ahmad
+
+- R2-2: a re-entered persist keeps round trip 1's row-level verdicts (before images under Read, the Save-grant pre-check, reference visibility), even if the stack's Read or Save filter narrowed in between. So an edit that moves another user's row into a just-narrowed Save filter can commit. Spec 0015 §5.1 is silent on this for a save's pre-check. Interim: kept as built and noted as a deviation. Ahmad to decide whether a changed filter should raise StaleContextException.
+- R2-5: a caller whose Save comes only from a bespoke criterion with `Action = Save` has Read denied, so the read-back refuses (fails closed). Interim: failing closed stands, and deviation 12's wording is corrected. Ahmad to decide whether the read-back needs a Read decision at all.
+- R2-3 (fix 2): a committed save must not be answered in a way that invites a duplicating retry. Outcome (1cdc5f20): when the read after a proven commit fails, the save answers with the ids alone and Entities empty, even under ReturnEntities. That departs from spec 0015 §6.9 (PC-074 deviation 20); a 503 was rejected because a caller would retry it and insert again. R2-2 stays deferred as deviation 19. Fix 2 also made `ForeignKeyViolationException` (Abstractions) carry a public `Conflict` (MissingTarget / StillReferenced / Unknown), read from the 547 message.
+
+### D-115 (orchestrator, 2026-11-18): PC-074 R1-7, a spec gap for Ahmad
+
+- Spec 0015 §14.2 has no row for a 547 raised by child synchronisation's deletes, when another table still references the deleted child row. Today it passes through as a 500 when the referencing table is outside the stack, and as `Fk.NotFound` when it is inside. Interim: if §14.2 already maps a delete's 547 to an in-use code, PC-074 reuses it; otherwise PC-074 keeps the current behaviour as a listed deviation. Ahmad to decide the row (likely an in-use code naming the child row). Outcome of fix 1 (f206fbc2): mapped to the existing delete-row code `Fk.InUse` (entity/property, at the dropping collection or the root) and pinned by a unit test. A payload row of the same entity that writes the referencing column stays `Fk.NotFound` (PC-074 deviation 18). Ahmad to confirm and amend §14.2.
+
+### D-114 (orchestrator, 2026-11-18): PC-074 hand-offs
+
+- PC-074 keeps `NoStackTableOwners` as the `IStackTableOwners` default and nothing produces write frames yet, so a ReadOnly tenant refuses every save and the foreign-stack refusal in OnPersist is pinned by unit tests only. PC-077 (write frames and enlisted writes) owns the producer; its brief must carry this so it wires the real owners and adds the integration test.
+- `Assignments.Concurrent` is a local constant because `ValidationCodes` in Abstractions lacks it. Kept for PC-074; moving it into Abstractions is a follow-up for the next checkpoint that touches `ValidationCodes`, or a fix item if R1 calls it out.
+
 ### D-113 (orchestrator, 2026-11-17): PC-072 R2 open questions; interim rulings, for Ahmad
 - Sensitive-Read stacks: a self-reference asks for (R, Read) step-up through the reference checks (D-111), but the before images, ModifiedByName and the write-once "differs" read of the same stack R do not; only the Save pair is asked, through RequireAsync. Reviewer 2 found this is not a bypass under spec 0014 §4.3. Interim ruling: keep it as built (the Save pair's step-up covers reading the rows being saved). Ahmad to choose one rule.
 - Spec 0015 §6.6 step 5 says uniqueness holders are skipped "on create and update alike", which is stricter than deviation 18 (a value is freed only where the persist's statement order frees it). Interim ruling: deviation 18 stands, because the literal rule lets a save pass validation and then fail on the unique index. Ahmad to amend the spec or overrule.

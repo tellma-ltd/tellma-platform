@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-072 | pc-3 | pc/PC-072 | integrate (released after PC-F57 green; IdAllocator text + BufferOf location semantic conflict) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
+| PC-074 | pc-3 | pc/PC-074 | integrate | impl (Opus, xhigh, launched 2026-11-18) | fix2 done (5 fixed, R2-2 deferred); integrate 2026-11-18 | 2026-11-18 |
 
 ## Fix items
 
@@ -355,9 +355,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
 | PC-070 | 0015-e | 1 | done (906264cb; CI 44158133741 green) | f77c6f9, 5b9c29b, c7589a3, 906264c (pc/PC-070) | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
-| PC-072 | 0015-f | 1 | impl | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
+| PC-072 | 0015-f | 1 | done (dd5e55ca; green 44238677820) | 1dfae484, 7d99c0ac, 6e362741, dd5e55ca (pc/PC-072) | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
-| PC-074 | 0015-g | 1 | todo | | | |
+| PC-074 | 0015-g | 1 | integrate | 2f168363, f206fbc2, b1a5382f, 1cdc5f20, ba639bf1 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
 | PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15) |
