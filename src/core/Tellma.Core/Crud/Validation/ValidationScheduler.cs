@@ -12,7 +12,9 @@ namespace Tellma.Core.Crud.Validation
     // at LoadAsync; when every running validator has parked or completed, one dispatch serves every
     // pending request and resumes the parked ones. A task may join a round in progress (§13.3's
     // enlisted writes), and a validator awaiting anything other than LoadAsync is active, so the
-    // dispatch waits for it. Exceeding MaxValidationRounds is an authoring bug.
+    // dispatch waits for it. A task may leave the rounds while it still runs (an action's method
+    // about to wait for its persist, §11.2); a later park of its flow is a stray. Exceeding
+    // MaxValidationRounds is an authoring bug.
     /// <summary>
     ///     Runs an operation's validators as concurrent tasks and dispatches their loads in shared
     ///     rounds: one dispatch each time every registered task has parked at the loader or completed.
@@ -254,7 +256,12 @@ namespace Tellma.Core.Crud.Validation
             {
                 // --- A flow that outlived its task, or the rounds, would unbalance the quiet-point count
                 // and park on a round nobody dispatches: it is an authoring bug, and stops the rounds ---
-                if (participant.State == ParticipantState.Completed || _finished)
+                if (participant.Leaving)
+                {
+                    stray = new InvalidOperationException(
+                        $"LoadAsync was awaited by the task '{participant.Name}' after it left the validation rounds to wait for the persist. Await every load before reading Persisted.");
+                }
+                else if (participant.State == ParticipantState.Completed || _finished)
                 {
                     stray = new InvalidOperationException(
                         $"LoadAsync was awaited by a flow that outlived the task '{participant.Name}'{(_finished ? " and the validation rounds" : string.Empty)}. Await the work a validator starts before it returns, or run it as a task of its own.");
@@ -280,6 +287,55 @@ namespace Tellma.Core.Crud.Validation
             // The stray flow's own caller may never observe it, so the rounds fail with it too.
             Fail(stray);
             throw stray;
+        }
+
+        /// <summary>
+        ///     Marks the current task as leaving the rounds while it still runs, because it is about to
+        ///     wait for what follows them: from now on a park of its flow is refused as a stray, and the
+        ///     task leaves the rounds when the returned callback runs, once the flow stopped running.
+        /// </summary>
+        /// <returns>Takes the task out of the rounds; a second call, or one after the task completed, changes nothing.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The current flow is no task of this scheduler, or its task is parked at a load: a flow
+        ///     of the task runs beside the parked one, and the rounds stop with the error.
+        /// </exception>
+        public Action BeginLeave()
+        {
+            Participant participant = CurrentParticipant.Value is { } current && current.Scheduler == this
+                ? current
+                : throw new InvalidOperationException("A task left the validation rounds from a flow that is no task of them.");
+
+            InvalidOperationException stray;
+            lock (_gate)
+            {
+                // --- Marked under the gate, so no park of the flow slips in between ---
+                if (participant.State != ParticipantState.Parked)
+                {
+                    participant.Leaving = true;
+                    return () => Release(participant);
+                }
+
+                stray = new InvalidOperationException(
+                    $"The task '{participant.Name}' left the validation rounds from one flow while another of its flows was parked at LoadAsync. Await every load before the task leaves the rounds.");
+            }
+
+            // The parked flow would wait on a round nobody dispatches, so the rounds fail with it.
+            Fail(stray);
+            throw stray;
+        }
+
+        /// <summary>Takes a task that is leaving out of the rounds, unless it completed meanwhile.</summary>
+        /// <param name="participant">The task.</param>
+        private void Release(Participant participant)
+        {
+            lock (_gate)
+            {
+                if (participant.State == ParticipantState.Running)
+                {
+                    participant.State = ParticipantState.Released;
+                    Leave();
+                }
+            }
         }
 
         /// <summary>A gate whose continuations never run inline on the thread that releases it.</summary>
@@ -318,7 +374,7 @@ namespace Tellma.Core.Crud.Validation
                         // Completed straight from a failed park: it no longer waits for the round.
                         _ = _parked.Remove(participant);
                     }
-                    else
+                    else if (participant.State == ParticipantState.Running)
                     {
                         Leave();
                     }
@@ -459,6 +515,9 @@ namespace Tellma.Core.Crud.Validation
             /// <summary>Parked at the loader for the round now collecting.</summary>
             Parked,
 
+            /// <summary>Still running, but left the rounds: it no longer counts toward a quiet point.</summary>
+            Released,
+
             /// <summary>Completed.</summary>
             Completed,
         }
@@ -476,6 +535,9 @@ namespace Tellma.Core.Crud.Validation
 
             /// <summary>What it is doing; read and written under the scheduler's gate.</summary>
             public ParticipantState State { get; set; }
+
+            /// <summary>Whether it is leaving the rounds while it still runs, so its flow may park no more; written under the scheduler's gate.</summary>
+            public bool Leaving { get; set; }
 
             /// <summary>Completes when the task has, never faulted; created with the participant, so it is never missing.</summary>
             public TaskCompletionSource Done { get; } = NewGate();

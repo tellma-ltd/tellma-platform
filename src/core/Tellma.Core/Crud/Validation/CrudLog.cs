@@ -72,5 +72,21 @@ namespace Tellma.Core.Crud.Validation
             Level = LogLevel.Warning,
             Message = "The read after {Operation} on {Resource} committed with its response lost failed, in trace {TraceId}; it answers its ids alone.")]
         public static partial void ProvenCommitReadFailed(ILogger logger, string resource, string operation, string? traceId, Exception exception);
+
+        /// <summary>
+        ///     An action's method answering no value of its own failed after its action committed: the
+        ///     committed action answers its ids, never an error a caller might retry into a second commit.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="method">The method's name.</param>
+        /// <param name="resource">The stack's resource.</param>
+        /// <param name="operation">The operation, such as <c>action:close</c>.</param>
+        /// <param name="traceId">The operation's trace id; null outside a trace.</param>
+        /// <param name="exception">The method's failure.</param>
+        [LoggerMessage(
+            EventName = "ActionMethodFailedAfterCommit",
+            Level = LogLevel.Error,
+            Message = "The method {Method} of {Operation} on {Resource} failed after the action committed, in trace {TraceId}; it answers its ids.")]
+        public static partial void ActionMethodFailedAfterCommit(ILogger logger, string method, string resource, string operation, string? traceId, Exception exception);
     }
 }

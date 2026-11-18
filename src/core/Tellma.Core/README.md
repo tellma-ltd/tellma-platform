@@ -1406,14 +1406,17 @@ no row and every id is not found.
   check and the validators' first round.
 - **A delete by ids** compares the stamps it is given, parallel to the ids (a null one is
   `Concurrency.StampRequired` at `Ids[<i>]`, another count than the ids' is `BadRequestException`), and
-  a stale stamp is `ConcurrencyException`. **With descendants**, the roots are checked under the
+  a stale stamp is `ConcurrencyException`. A stack whose keys are `long` compares no stamps: a delete
+  of it given stamps is `BadRequestException` before any round trip. **With descendants**, the roots are checked under the
   Read filter and the whole closure under the Delete grant: a subtree holding a row outside it is
   refused whole.
 - **A delete by query** refuses a blank filter and a negative expected count (`BadRequestException`),
   compiles the filter before any round trip (its diagnostics at `filter`), runs no validation hook,
   and, in one round trip, counts the rows it matches beside the capped delete: more than
   `MaxDeleteByQueryRows` is `LimitExceededException` and another count than the caller confirmed
-  `CountMismatchException`, both raised inside the transaction, so nothing is deleted.
+  `CountMismatchException`, both raised inside the transaction, so nothing is deleted. The count is
+  capped as the delete is, reading one past the cap, so `StackLimits` refuses a cap of the largest
+  integer.
 - **A row still referenced** (`ForeignKeyViolationException.Conflict` on the delete side) is
   `Fk.InUse` naming the referencing entity and property, at `Ids[0]` for one id, at `Ids` for several,
   and at the root by query.
@@ -1423,23 +1426,31 @@ no row and every id is not found.
 - **The general action path**: the action resolves by name, the overload must match its method
   (`ExecuteActionAsync<TResult>` for a method returning a value, the other for one returning none:
   else `InvalidOperationException`, before any round trip), a single-target action takes exactly one
-  id (`BadRequestException`), and the arguments, as JSON or as the action's record, are
+  id (else `InvalidOperationException`), and the arguments, as JSON or as the action's record, are
   deserialised and walked for their attributes at `Arguments.<Property>`. Round trip 1 loads the
   targets and checks them under the grant beside the validators' first loads; the validation hook,
   the components and the method run over one `ActionContext` with their rounds; then one persist:
-  the method's and the components' recorded appends (a method composes before the persist batch
-  exists, so an append that answers a batch-local name or a result at once is
-  `InvalidOperationException`), the stamped `Update`s of the targets, the post-check when the action
-  asks for it, and the read-back. `ActionContext.Persisted` holds the method until the persist
-  committed and then answers what its appends read. A `PartialFailure` the method throws is
-  rethrown once its persist committed. A re-entered persist re-runs the hooks and components in
-  memory under round trip 1's verdicts and replays the recordings; the method is never re-invoked.
+  the method's and the components' recorded appends, the stamped `Update`s of the targets, the
+  post-check when the action asks for it, and the read-back. A method composes before the persist
+  batch exists: its table-valued parameters and declared tables are named by the recording
+  (`@tm_rec<n>_…`, in the once-per-batch namespace) and keep those names wherever the recording
+  lands, while an append that answers at once from its batch (a raw save or delete, a cache read) is
+  `InvalidOperationException`. `ActionContext.Persisted` holds the method until the persist
+  committed and then answers what its appends read: the task that read it leaves the rounds once
+  the reading flow stops running, and from the read on it composes nothing (a load, a save, an
+  update or an append is `InvalidOperationException`, and one raised before the flow stops running
+  fails the rounds, so nothing is sent). A `PartialFailure` the method throws is rethrown once its
+  persist committed. Any other failure of the method after the commit is raised only when the method
+  answers a value of its own; otherwise it is logged (`ActionMethodFailedAfterCommit`) and the
+  action answers its ids. The outcome's stamp is the one the rows `Save` marked carry, else the
+  clock at the commit. A re-entered persist re-runs the hooks and components in memory under round
+  trip 1's verdicts and replays the recordings; the method is never re-invoked.
 - **A commit whose response was lost**: one the executor's probe proved answers a delete with the
   rows it was asked to delete and an action with its ids (and, when asked, the rows read back by a
-  plain read). A failure then, of that read or of a method reading a result the lost batch never
-  answered, is logged (`ProvenCommitReadFailed`) and never answers the committed write with an
-  error a caller might retry, except that a method answering a value of its own has none to give,
-  so its failure is raised. Any other ambiguous end is `DependencyUnavailableException`
+  plain read). A failure of that read is logged (`ProvenCommitReadFailed`), and one of a method
+  reading a result the lost batch never answered is treated as any failure after a commit; neither
+  answers the committed write with an error a caller might retry, except that a method answering a
+  value of its own has none to give, so its failure is raised. Any other ambiguous end is `DependencyUnavailableException`
   (`database`, one second).
 
 ## The route model

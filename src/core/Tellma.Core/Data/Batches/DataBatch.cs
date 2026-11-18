@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchAuthority, IBatchDependencies
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -387,18 +387,52 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <inheritdoc />
+        public SqlIdentifier Tvp<TRow>(IReadOnlyList<TRow> rows, string name)
+            where TRow : class
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+            EnsureComposing();
+            EnsureFreeName(name);
+
+            // As an unnamed table-valued parameter, bound under the caller's name.
+            StatementDraft draft = Begin();
+            try
+            {
+                _ = draft.Table(rows, name);
+                Append(draft, string.Empty);
+                return new SqlIdentifier(name);
+            }
+            catch
+            {
+                Discard(draft);
+                throw;
+            }
+        }
+
+        /// <inheritdoc />
         public SqlIdentifier DeclareIdTable()
         {
             return DeclareKeyTable(typeof(int));
         }
 
         /// <inheritdoc />
+        public SqlIdentifier DeclareKeyTable(Type keyType, string name)
+        {
+            ArgumentNullException.ThrowIfNull(keyType);
+            string keyword = KeyKeyword(keyType);
+            EnsureComposing();
+            EnsureFreeName(name);
+            StatementDraft draft = Begin();
+            draft.Declare(name);
+            Append(draft, $"DECLARE {name} TABLE ([Id] {keyword} PRIMARY KEY);");
+            return new SqlIdentifier(name);
+        }
+
+        /// <inheritdoc />
         public SqlIdentifier DeclareKeyTable(Type keyType)
         {
             ArgumentNullException.ThrowIfNull(keyType);
-            string keyword = keyType == typeof(int) ? "int"
-                : keyType == typeof(long) ? "bigint"
-                : throw new ArgumentException($"A key table holds int or long keys, not {keyType.Name}.", nameof(keyType));
+            string keyword = KeyKeyword(keyType);
             EnsureComposing();
             StatementDraft draft = Begin();
             string name = draft.Name(ReservedSqlNames.StatementNames.Ids);
@@ -1030,6 +1064,35 @@ namespace Tellma.Core.Data.Batches
             }
 
             return false;
+        }
+
+        /// <summary>The SQL type of a key table's keys.</summary>
+        /// <param name="keyType">The keys' CLR type.</param>
+        /// <returns>The SQL type's keyword.</returns>
+        /// <exception cref="ArgumentException">The keys are neither int nor long.</exception>
+        private static string KeyKeyword(Type keyType)
+        {
+            return keyType == typeof(int) ? "int"
+                : keyType == typeof(long) ? "bigint"
+                : throw new ArgumentException($"A key table holds int or long keys, not {keyType.Name}.", nameof(keyType));
+        }
+
+        /// <summary>Refuses a caller-chosen table name outside the once-per-batch namespace, or one the batch already declared.</summary>
+        /// <param name="name">The name.</param>
+        /// <exception cref="ArgumentException">The name is no variable of the once-per-batch namespace.</exception>
+        /// <exception cref="InvalidOperationException">The batch already declared the name.</exception>
+        private void EnsureFreeName(string name)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            if (!SqlNames.IsVariableName(name) || !name.StartsWith(ReservedSqlNames.BatchPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"The table name '{name}' is no variable of the batch's once-per-batch namespace ({ReservedSqlNames.BatchPrefix}).", nameof(name));
+            }
+
+            if (_declared.Contains(name) || _parameterNames.Contains(name))
+            {
+                throw new InvalidOperationException($"The batch already declares '{name}'; each batch-local table has a name of its own.");
+            }
         }
 
         /// <summary>Renders one hole of a raw statement.</summary>

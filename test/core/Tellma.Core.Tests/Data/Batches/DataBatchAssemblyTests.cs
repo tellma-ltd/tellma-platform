@@ -212,6 +212,28 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
+        public async Task A_table_named_by_its_caller_keeps_that_name_wherever_it_lands_and_a_name_outside_the_batch_namespace_or_taken_is_refused()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Read, new TextContributor(1, "PRINT 'p';", null));
+            IdList[] rows = [new() { Id = 1 }];
+            SqlIdentifier tvp = batch.Tvp(rows, "@tm_rec0_t");
+            SqlIdentifier ids = batch.DeclareKeyTable(typeof(long), "@tm_rec1_ids");
+            _ = batch.Sql($"SELECT [Id] FROM {tvp} UNION ALL SELECT [Id] FROM {ids};", new SqlOptions(resultSets: 1));
+
+            // --- Refused: a name outside the once-per-batch namespace, a name taken, a key type no table holds ---
+            _ = Assert.Throws<ArgumentException>(() => batch.Tvp(rows, "@mine"));
+            _ = Assert.Throws<InvalidOperationException>(() => batch.Tvp(rows, "@tm_rec0_t"));
+            _ = Assert.Throws<InvalidOperationException>(() => batch.DeclareKeyTable(typeof(int), "@TM_REC1_IDS"));
+            _ = Assert.Throws<ArgumentException>(() => batch.DeclareKeyTable(typeof(string), "@tm_rec2_ids"));
+
+            BatchAssembly assembly = await BatchHarness.SealAsync(batch);
+            Assert.Equal(("@tm_rec0_t", "@tm_rec1_ids"), (tvp.Name, ids.Name));
+            Assert.Contains("DECLARE @tm_rec1_ids TABLE ([Id] bigint PRIMARY KEY);", assembly.Text, StringComparison.Ordinal);
+            Assert.Contains("SELECT [Id] FROM @tm_rec0_t UNION ALL SELECT [Id] FROM @tm_rec1_ids;", assembly.Text, StringComparison.Ordinal);
+            Assert.Equal(["@tm_schema", "@tm_rec0_t"], assembly.Parameters.Select(static parameter => parameter.Name));
+        }
+
+        [Fact]
         public async Task A_discarded_statement_gives_its_ordinal_to_the_next()
         {
             DataBatch batch = _harness.Batch();

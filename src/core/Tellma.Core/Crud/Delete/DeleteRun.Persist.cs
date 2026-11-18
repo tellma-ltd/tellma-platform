@@ -262,7 +262,7 @@ namespace Tellma.Core.Crud.Delete
                 FilterTree filter = Filter(granted);
                 int cap = _stack.Limits.MaxDeleteByQueryRows;
                 EntityDescriptor root = _map.Descriptor(_root);
-                BatchResult<int> counted = batch.Count(new QuerySpec { Root = root, Select = root.Key.Name, Filter = filter }, _arguments, cap == int.MaxValue ? cap : cap + 1);
+                BatchResult<int> counted = batch.Count(new QuerySpec { Root = root, Select = root.Key.Name, Filter = filter }, _arguments, cap);
                 _counts = new QueryDeleteCounts(cap, _expectedCount, counted);
                 return new DeleteSpec<TEntity>.ByQuery(filter, _arguments, cap, _expectedCount);
             }

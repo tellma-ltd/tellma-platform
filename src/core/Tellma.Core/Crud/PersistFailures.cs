@@ -125,9 +125,10 @@ namespace Tellma.Core.Crud
                 >= TellmaSqlErrors.DistroMin and <= TellmaSqlErrors.DistroMax => AtRoot(assertion.Code, Arguments()),
 
                 // A delete by query's cap and the count the caller confirmed, checked inside the
-                // transaction. The count rides before the delete, so a failed batch still hands it
-                // over; past the cap it is at least one more than the cap, and a mismatch whose count
-                // was never read passes through rather than report a count nobody read.
+                // transaction. The count rides before the delete, capped at the same cap, so a failed
+                // batch still hands it over and past the cap it reads as one more than the cap (a cap
+                // is below the largest integer); a mismatch whose count was never read passes through
+                // rather than report a count nobody read.
                 TellmaSqlErrors.LimitExceeded when assertion.Code == TellmaSqlErrors.DeleteCapExceededCode && context.DeleteCounts is QueryDeleteCounts counts
                     => new LimitExceededException(LimitNames.MaxDeleteByQueryRows, counts.Counted.IsCompleted ? counts.Counted.Value : counts.Cap + 1, counts.Cap),
                 TellmaSqlErrors.CountMismatch when assertion.Code == TellmaSqlErrors.DeleteCountMismatchCode && context.DeleteCounts is { Counted.IsCompleted: true } counts

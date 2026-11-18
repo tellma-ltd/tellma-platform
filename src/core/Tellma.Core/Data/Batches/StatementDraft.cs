@@ -19,10 +19,11 @@ namespace Tellma.Core.Data.Batches
     /// </summary>
     internal sealed class StatementDraft
     {
-        /// <summary>The generic <see cref="Table{TRow}" />, closed per row type for a list a raw statement's hole holds.</summary>
-        private static readonly MethodInfo TableMethod = typeof(StatementDraft).GetMethods().Single(static method => method.Name == nameof(Table) && method.IsGenericMethodDefinition);
+        /// <summary>The generic <see cref="Table{TRow}(IReadOnlyList{TRow})" />, closed per row type for a list a raw statement's hole holds.</summary>
+        private static readonly MethodInfo TableMethod = typeof(StatementDraft).GetMethods()
+            .Single(static method => method.Name == nameof(Table) && method.IsGenericMethodDefinition && method.GetParameters().Length == 1);
 
-        /// <summary>The closed <see cref="Table{TRow}" /> methods, by row type.</summary>
+        /// <summary>The closed <see cref="Table{TRow}(IReadOnlyList{TRow})" /> methods, by row type.</summary>
         private static readonly ConcurrentDictionary<Type, MethodInfo> TableMethods = new();
 
         /// <summary>The binder table-valued parameters stream their rows through.</summary>
@@ -90,6 +91,14 @@ namespace Tellma.Core.Data.Batches
             return name;
         }
 
+        /// <summary>Declares a batch-local name the caller chose, for later statements to name.</summary>
+        /// <param name="name">The name.</param>
+        public void Declare(string name)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            _declared.Add(name);
+        }
+
         /// <summary>Binds a scalar parameter, <c>@tb{ordinal}_p{n}</c>, typed from the value's CLR type.</summary>
         /// <param name="value">The value, or null for SQL <c>NULL</c>.</param>
         /// <returns>The parameter's name.</returns>
@@ -127,10 +136,23 @@ namespace Tellma.Core.Data.Batches
             where TRow : class
         {
             ArgumentNullException.ThrowIfNull(rows);
+            return Table(rows, ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.TableValued(_tables)));
+        }
+
+        /// <summary>Binds rows of a table type as a table-valued parameter under a name the caller chose.</summary>
+        /// <typeparam name="TRow">The row type: a standalone table type or an entity with a table type.</typeparam>
+        /// <param name="rows">The rows, enumerated anew each time the command is sent.</param>
+        /// <param name="name">The parameter's name.</param>
+        /// <returns>The parameter's name.</returns>
+        /// <exception cref="InvalidOperationException">The row type has no table type.</exception>
+        public string Table<TRow>(IReadOnlyList<TRow> rows, string name)
+            where TRow : class
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
             // Resolving the binding now refuses a type without a table type at append, not at send.
             TableTypeBinding binding = _binder.Binding(typeof(TRow));
-            string name = ReservedSqlNames.Statement(Ordinal, ReservedSqlNames.StatementNames.TableValued(_tables));
             _parameters.Add(new TableParameter(name, rows, rows.Count, parameterName => binding.Parameter(parameterName, rows)));
             _declared.Add(name);
             _tables++;

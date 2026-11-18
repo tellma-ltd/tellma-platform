@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Access;
@@ -23,15 +24,34 @@ namespace Tellma.Core.Crud.Actions
     // grant, beside every load the hook, the components and the method request before their first
     // await. The three run as tasks of the validation rounds over one ActionContext. The method
     // composes before the persist batch exists: its Batch is a deferred recording replayed onto the
-    // persist, and a task that reads Persisted leaves the rounds, so the persist it waits for runs
-    // once every other task completed or parked (§11.2, reading its own writes). A method that throws
-    // PartialFailureException leaves what it composed to be persisted, and the exception to be
-    // rethrown once the action committed.
+    // persist, and a task that reads Persisted leaves the rounds once the flow that read it stops
+    // running on its thread, so the persist it waits for runs once every other task completed or
+    // parked (§11.2, reading its own writes). From the read on, the task composes nothing more: a
+    // load, a save, an update or an append is refused, and a refusal raised before the flow stops
+    // running faults it before the task leaves, so the rounds fail with it and the action is
+    // abandoned unsent (§11.2: the method's exception abandons the batch); a refusal raised later,
+    // from a flow that awaited something other than Persisted, abandons the action at the persist
+    // when it is not sent yet. A method that throws PartialFailureException leaves what it composed
+    // to be persisted, and the exception to be rethrown once the action committed.
     /// <summary>One action of one stack: the general path's context, its tasks and their rounds.</summary>
     internal sealed partial class ActionRun<TEntity, TKey>
     {
-        /// <summary>The gate of the task the current flow runs in: completed when the task reads <see cref="ActionContext{TEntity}.Persisted" />.</summary>
-        private static readonly AsyncLocal<TaskCompletionSource?> Waiting = new();
+        /// <summary>
+        ///     The gate of the task the current flow runs in. A flow of a task that read
+        ///     <see cref="ActionContext{TEntity}.Persisted" /> leaves the gate's context when it stops running
+        ///     on its thread, and the task leaves the rounds there.
+        /// </summary>
+        private static readonly AsyncLocal<PersistGate?> Waiting = new(static change =>
+        {
+            // The thread switched away from the reading flow's context: the flow stopped running there.
+            if (change.ThreadContextChanged && change.PreviousValue is { IsLeaving: true } gate && !ReferenceEquals(change.CurrentValue, gate))
+            {
+                gate.Left();
+            }
+        });
+
+        /// <summary>The flows that left the rounds to wait for the persist, whose failure before it is sent abandons the action.</summary>
+        private readonly ConcurrentQueue<Task> _released = new();
 
         /// <summary>The operation's loader; null on the one-round-trip path.</summary>
         private ContextLoader? _loader;
@@ -64,7 +84,7 @@ namespace Tellma.Core.Crud.Actions
             using ConfirmationFrame frame = Services.Confirmations.Frame(Resource, OperationName);
             ValidationScheduler scheduler = new(_stack.Limits.MaxValidationRounds, OperationName, DispatchAsync, Services.Metrics, _cancellationToken);
             _loader = new ContextLoader(Services.Metadata, _map, scheduler, ReadDecision);
-            _recording = RecordingBatch.Deferred(CallbackFailed);
+            _recording = RecordingBatch.Deferred(CallbackFailed, PersistGate.EnsureComposing);
             _context = NewContext(_loader, _errors, frame, _recording);
             try
             {
@@ -78,6 +98,7 @@ namespace Tellma.Core.Crud.Actions
 
                 // --- Composing closes, then the outcome in the order a caller can act on ---
                 _context.Close();
+                ThrowIfReleasedFlowFailed();
                 _recording.Seal();
                 ValidationOutcome.Raise(staleStamp: null, _errors, frame);
                 Compose(_context);
@@ -114,7 +135,8 @@ namespace Tellma.Core.Crud.Actions
                 Resource = Resource,
                 Notifier = Services.Services.GetService<INotifier>(),
                 AssignmentsService = Services.Services.GetService<IAssignments>(),
-                PersistedRead = static () => Waiting.Value?.TrySetResult(),
+                PersistedRead = static () => Waiting.Value?.Read(),
+                ComposeGuard = PersistGate.EnsureComposing,
             };
         }
 
@@ -124,16 +146,17 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="withMethod">Whether the method runs: on the first run, never on a re-run.</param>
         private void Start(ValidationScheduler scheduler, ActionContext<TEntity, TKey> context, bool withMethod)
         {
+            // --- A re-run's flows wait on a context that never persists, so only the first run's count ---
             string name = _descriptor.Name;
-            Gated(scheduler, _behavior.GetType().Name, () => _behavior.ValidateActionAsync(name, context));
+            Gated(scheduler, _behavior.GetType().Name, () => _behavior.ValidateActionAsync(name, context), tracked: withMethod);
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                Gated(scheduler, validator.GetType().Name, () => validator.ValidateActionAsync(name, context));
+                Gated(scheduler, validator.GetType().Name, () => validator.ValidateActionAsync(name, context), tracked: withMethod);
             }
 
             if (withMethod && _method is MethodInfo method)
             {
-                Gated(scheduler, method.Name, () => _methodTask = InvokeAsync(method, context));
+                Gated(scheduler, method.Name, () => _methodTask = InvokeAsync(method, context), tracked: true);
             }
         }
 
@@ -144,23 +167,49 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="scheduler">The rounds' scheduler.</param>
         /// <param name="name">The task's name.</param>
         /// <param name="body">The task.</param>
-        private static void Gated(ValidationScheduler scheduler, string name, Func<Task> body)
+        /// <param name="tracked">Whether the flow, once it left the rounds, abandons the action by failing before the persist is sent.</param>
+        private void Gated(ValidationScheduler scheduler, string name, Func<Task> body, bool tracked)
         {
             scheduler.Run(name, async () =>
             {
                 // The gate flows into the task's body, and no further than it.
-                TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                PersistGate gate = new(scheduler);
                 Waiting.Value = gate;
                 Task flow = body();
-                if (await Task.WhenAny(flow, gate.Task).ConfigureAwait(false) == flow)
+                if (await Task.WhenAny(flow, gate.Released).ConfigureAwait(false) == flow)
                 {
                     await flow.ConfigureAwait(false);
                     return;
                 }
 
-                // Parked on the persist: the flow resumes once the action committed or ended.
+                // Left the rounds for the persist: the flow resumes once the action committed or ended.
+                if (tracked)
+                {
+                    _released.Enqueue(flow);
+                }
+
                 Observe(flow);
             });
+        }
+
+        /// <summary>
+        ///     Abandons the action unsent when a flow that left the rounds to wait for the persist has
+        ///     failed already: it composed after reading Persisted, or failed otherwise.
+        /// </summary>
+        private void ThrowIfReleasedFlowFailed()
+        {
+            foreach (Task flow in _released)
+            {
+                if (flow.IsFaulted && flow.Exception is AggregateException { InnerExceptions: [Exception failure] })
+                {
+                    ExceptionDispatchInfo.Capture(failure).Throw();
+                }
+
+                if (flow.IsCanceled)
+                {
+                    throw new OperationCanceledException("A task of the action that left its validation rounds was cancelled before the action persisted.");
+                }
+            }
         }
 
         /// <summary>Invokes the action's method, keeping its result, or the partial failure it threw after composing.</summary>
@@ -240,6 +289,79 @@ namespace Tellma.Core.Crud.Actions
             }
 
             ValidationOutcome.Raise(staleStamp: null, errors, frame);
+        }
+
+        /// <summary>
+        ///     The gate of one task of the rounds. When a flow of the task reads
+        ///     <see cref="ActionContext{TEntity}.Persisted" />, the task is leaving: it composes nothing
+        ///     more, and it leaves the rounds once that flow stopped running on its thread, so a refusal
+        ///     raised before then fails the rounds rather than race the persist.
+        /// </summary>
+        /// <param name="scheduler">The rounds the task runs in.</param>
+        private sealed class PersistGate(ValidationScheduler scheduler)
+        {
+            /// <summary>Guards the leave, which flows of the task on several threads may race.</summary>
+            private readonly Lock _lock = new();
+
+            /// <summary>Completes when the task left the rounds.</summary>
+            private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <summary>Takes the task out of the rounds; null until a flow read Persisted, and once it ran.</summary>
+            private Action? _leave;
+
+            /// <summary>Whether a flow of the task read Persisted.</summary>
+            private volatile bool _leaving;
+
+            /// <summary>Completes when the task left the rounds.</summary>
+            public Task Released => _released.Task;
+
+            /// <summary>Whether a flow of the task read Persisted: the task composes nothing more.</summary>
+            public bool IsLeaving => _leaving;
+
+            /// <summary>Refuses a save, an update or an append from a flow whose task read Persisted.</summary>
+            /// <exception cref="InvalidOperationException">The calling flow's task read Persisted.</exception>
+            public static void EnsureComposing()
+            {
+                if (Waiting.Value is { IsLeaving: true })
+                {
+                    throw new InvalidOperationException(
+                        "The action's task read Persisted and then composed more: a save, an update or an append to the action's batch after reading Persisted is refused. Read Persisted where it is awaited, after every load and every write is composed.");
+                }
+            }
+
+            /// <summary>Marks the task as leaving the rounds, when a flow of it reads Persisted.</summary>
+            /// <exception cref="InvalidOperationException">Another flow of the task is parked at a load.</exception>
+            public void Read()
+            {
+                lock (_lock)
+                {
+                    if (_leaving)
+                    {
+                        return;
+                    }
+
+                    _leave = scheduler.BeginLeave();
+                    _leaving = true;
+                }
+            }
+
+            /// <summary>Takes the leaving task out of the rounds, then releases the gate; runs as the thread switches context, so it never throws.</summary>
+            public void Left()
+            {
+                Action? leave;
+                lock (_lock)
+                {
+                    leave = _leave;
+                    _leave = null;
+                }
+
+                if (leave is not null)
+                {
+                    // Under the scheduler's own lock; it raises nothing.
+                    leave();
+                    _ = _released.TrySetResult();
+                }
+            }
         }
 
         /// <summary>Observes a task's fault, so a flow nobody awaits leaves no unobserved exception.</summary>

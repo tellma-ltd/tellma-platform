@@ -31,7 +31,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///         needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchAuthority, IBatchDependencies
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -273,9 +273,32 @@ namespace Tellma.Core.Tests.Crud.Scripted
         }
 
         /// <inheritdoc />
+        public SqlIdentifier Tvp<TRow>(IReadOnlyList<TRow> rows, string name)
+            where TRow : class
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            EnsureComposing();
+            _tvps.Add(name, [.. rows]);
+            _ = Append(ScriptedKind.Tvp, typeof(TRow), rows, arguments: null, options: null, name);
+            return new SqlIdentifier(name);
+        }
+
+        /// <inheritdoc />
         public SqlIdentifier DeclareIdTable()
         {
             return DeclareKeyTable(typeof(int));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>The statement's options hold the keys' type.</remarks>
+        public SqlIdentifier DeclareKeyTable(Type keyType, string name)
+        {
+            ArgumentNullException.ThrowIfNull(keyType);
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            EnsureComposing();
+            _ = Append(ScriptedKind.DeclareIdTable, entity: null, statement: null, arguments: null, keyType, name);
+            return new SqlIdentifier(name);
         }
 
         /// <inheritdoc />

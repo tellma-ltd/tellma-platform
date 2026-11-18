@@ -97,10 +97,11 @@ namespace Tellma.Core.Abstractions.Validation
         /// <remarks>
         ///     The persist batch is assembled once the validation rounds end, so the appends are recorded
         ///     and composed onto it then, in order; a result read from an append completes once the action
-        ///     committed (await <see cref="Persisted" /> first). An append that names a batch-local table
-        ///     for the statements after it (a table-valued parameter, a declared id or key table, a raw
-        ///     save or delete, a cache read) is refused: a statement passes its rows in its own text, and
-        ///     the stack's rows are written through <see cref="Save" /> and <see cref="Update" />.
+        ///     committed (await <see cref="Persisted" /> first). A table-valued parameter or a declared id
+        ///     or key table is named when it is appended, and keeps that name in the persist batch. An
+        ///     append that answers at once from the batch it lands in (a raw save or delete, a cache read)
+        ///     is refused: the stack's rows are written through <see cref="Save" /> and
+        ///     <see cref="Update" />.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Set to null.</exception>
         public required IDataBatch Batch
@@ -126,9 +127,12 @@ namespace Tellma.Core.Abstractions.Validation
         ///     must read a batch result it appended awaits this before returning.
         /// </summary>
         /// <remarks>
-        ///     Reading this property tells the pipeline the reader is about to wait for the persist, so
-        ///     the persist runs without waiting for the reader any longer. Read it where it is awaited,
-        ///     after every load and every write is composed: a load awaited after it is refused.
+        ///     Reading this property tells the pipeline the reader is about to wait for the persist: once
+        ///     the reading flow stops running, the persist runs without waiting for the reader any longer.
+        ///     Read it where it is awaited, after every load and every write is composed: a load, a save,
+        ///     an update or an append to <see cref="Batch" /> after the read is refused, and the action is
+        ///     abandoned unsent when the refusal comes before its persist is sent, as it always does when
+        ///     the reading flow raises it before awaiting anything.
         /// </remarks>
         public Task Persisted
         {
@@ -156,6 +160,9 @@ namespace Tellma.Core.Abstractions.Validation
 
         /// <summary>Tells the pipeline that the flow reading <see cref="Persisted" /> waits for the persist; set by the pipeline.</summary>
         internal Action? PersistedRead { get; init; }
+
+        /// <summary>Refuses a save or an update from a flow that may compose no more; set by the pipeline.</summary>
+        internal Action? ComposeGuard { get; init; }
 
         /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
         private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -192,7 +199,7 @@ namespace Tellma.Core.Abstractions.Validation
         /// <param name="entities">The rows; none null.</param>
         /// <exception cref="ArgumentNullException"><paramref name="entities" /> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="entities" /> holds a null row.</exception>
-        /// <exception cref="InvalidOperationException">Composing has closed.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
         public void Save(IReadOnlyList<TEntity> entities)
         {
             ArgumentNullException.ThrowIfNull(entities);
@@ -202,6 +209,7 @@ namespace Tellma.Core.Abstractions.Validation
                 throw new ArgumentException("A row marked for saving is never null.", nameof(entities));
             }
 
+            ComposeGuard?.Invoke();
             lock (_gate)
             {
                 ThrowIfClosed();
@@ -216,7 +224,7 @@ namespace Tellma.Core.Abstractions.Validation
         /// <param name="assignments">The new values, by property name; at least one.</param>
         /// <exception cref="ArgumentNullException"><paramref name="assignments" /> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
-        /// <exception cref="InvalidOperationException">Composing has closed.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
         public void Update(IReadOnlyDictionary<string, object?> assignments)
         {
             ArgumentNullException.ThrowIfNull(assignments);
@@ -226,6 +234,7 @@ namespace Tellma.Core.Abstractions.Validation
             }
 
             IReadOnlyDictionary<string, object?> copy = ReadOnlyCopies.Of(assignments);
+            ComposeGuard?.Invoke();
             lock (_gate)
             {
                 ThrowIfClosed();

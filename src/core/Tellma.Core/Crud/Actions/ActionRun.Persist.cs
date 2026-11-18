@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Access;
@@ -13,6 +14,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Save;
+using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
@@ -49,6 +51,9 @@ namespace Tellma.Core.Crud.Actions
 
         /// <summary>The read-back composed last; null when the action answers no rows.</summary>
         private DetailsComposition<TEntity, TKey>? _readBack;
+
+        /// <summary>The emitter's handle of the entry composed last; null when no row was marked.</summary>
+        private SaveHandle? _saved;
 
         /// <summary>Takes what the validators and the method composed, and the built-in action's own update.</summary>
         /// <param name="context">The context they composed on; null on the one-round-trip path.</param>
@@ -116,9 +121,30 @@ namespace Tellma.Core.Crud.Actions
             Services.Accessor.Current.ApplyCultures();
             ExceptionDispatchInfo? failed = await ResumeMethodAsync().ConfigureAwait(false);
             await AfterPersistAsync(outcome).ConfigureAwait(false);
-            failed?.Throw();
+            RaiseAfterCommit(failed);
             _partial?.Throw();
             return OwnResult ? _result : _readBack?.Complete() ?? IdsOnly();
+        }
+
+        // Spec 0015 §8's rule for a committed write: once the action committed, nothing answers it
+        // with an error a caller might retry into a second commit. A method answering no value of its
+        // own that fails after the commit is logged, and the action answers its ids; a method
+        // answering a value has no other answer to give, so its failure is raised.
+        /// <summary>Raises, or logs, the method's failure after the action committed.</summary>
+        /// <param name="failed">The method's failure after the commit; null when it returned.</param>
+        private void RaiseAfterCommit(ExceptionDispatchInfo? failed)
+        {
+            if (failed is null)
+            {
+                return;
+            }
+
+            if (OwnResult)
+            {
+                failed.Throw();
+            }
+
+            CrudLog.ActionMethodFailedAfterCommit(Services.Logger, _method?.Name ?? _descriptor.Name, Resource, OperationName, Activity.Current?.TraceId.ToString(), failed.SourceException);
         }
 
         // Spec 0015 §11.2 step 4, in this order on every entry; compose performs no I/O, and the
@@ -131,9 +157,14 @@ namespace Tellma.Core.Crud.Actions
         /// <exception cref="NotFoundException">The connected user reads no row of the stack, so every target is hidden.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
-            // --- A re-entry, which the operation's frame counts: the validators re-run in memory under the fresh user ---
+            // --- A re-entry, which the operation's frame counts: the validators re-run in memory under
+            // the fresh user; the first entry is abandoned when a task that left the rounds failed ---
             bool first = ++_entries == 1;
-            if (!first && _context is not null)
+            if (first)
+            {
+                ThrowIfReleasedFlowFailed();
+            }
+            else if (_context is not null)
             {
                 await RevalidateAsync(user).ConfigureAwait(false);
             }
@@ -155,6 +186,7 @@ namespace Tellma.Core.Crud.Actions
             // --- The stack's own writes, under its authority: the emitter, the target ids, the updates ---
             Authorize(batch, StackTables);
             SaveHandle? saved = _marked.Length > 0 ? batch.Save(_marked, ConcurrencyMode.Override) : null;
+            _saved = saved;
             SqlIdentifier affected = KeyTables.Bind(batch, _ids);
             ComposeUpdates(batch, user, granted);
 
@@ -282,17 +314,14 @@ namespace Tellma.Core.Crud.Actions
         // target ids; its failure never answers the committed action with an error a caller might
         // retry: it is logged, and the action answers its ids alone. A method waiting for its persist
         // resumes, though the lost batch completed none of the results it appended; a failure that
-        // follows is logged the same way, and raised only by a method answering a value of its own.
+        // follows is logged as any failure after a commit, and raised only by a method answering a
+        // value of its own.
         /// <summary>Answers an action whose commit the probe proved, then runs its post-commit phase.</summary>
         /// <returns>The method's own result, or the target ids and, when asked and the read answered, the rows.</returns>
         private async Task<object?> AfterProvenCommitAsync()
         {
-            // --- The method resumes; a failure reading what the lost batch never answered is logged ---
+            // --- The method resumes, and may fail reading what the lost batch never answered ---
             ExceptionDispatchInfo? failed = await ResumeMethodAsync().ConfigureAwait(false);
-            if (failed is not null)
-            {
-                ProvenCommitReadFailed(failed.SourceException);
-            }
 
             // --- The read-back over the target ids, when the action answers them ---
             DetailsComposition<TEntity, TKey>? composition = null;
@@ -325,11 +354,7 @@ namespace Tellma.Core.Crud.Actions
 
             // --- The answer: a method answering a value of its own has none to give once it failed,
             // so its failure is raised; any other action committed, and its ids answer it ---
-            if (OwnResult)
-            {
-                failed?.Throw();
-            }
-
+            RaiseAfterCommit(failed);
             _partial?.Throw();
             return OwnResult ? _result : answered && composition is not null ? composition.Complete() : IdsOnly();
         }
@@ -342,7 +367,10 @@ namespace Tellma.Core.Crud.Actions
             ActionPersistOutcome<TEntity, TKey> outcome = new()
             {
                 Entities = _targets,
-                Stamp = Services.Time.GetUtcNow(),
+
+                // The rows the emitter saved carry the batch's stamp; an update-only action's rows are
+                // stamped in SQL, so it reports the clock at the commit.
+                Stamp = _saved is { Receipt.IsCompleted: true } saved ? saved.Receipt.Value.Stamp : Services.Time.GetUtcNow(),
                 Context = Services.Accessor.Current,
                 VersionTags = TagsAfter(committed),
                 UserVersionTags = committed?.UserVersionTags,

@@ -182,19 +182,65 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
-        public void A_deferred_view_refuses_an_append_that_answers_a_batch_local_name_or_a_result_at_once()
+        public void A_deferred_view_refuses_an_append_that_answers_a_handle_or_a_result_at_compose_time()
         {
             var view = RecordingBatch.Deferred();
 
             InvalidOperationException save = Assert.Throws<InvalidOperationException>(() => view.Save([new Row()]));
             _ = Assert.Throws<InvalidOperationException>(() => view.Delete(new DeleteSpec<Row>.ByIds([1], null, null, null)));
-            _ = Assert.Throws<InvalidOperationException>(() => view.Tvp([new Row()]));
-            _ = Assert.Throws<InvalidOperationException>(view.DeclareIdTable);
-            _ = Assert.Throws<InvalidOperationException>(() => view.DeclareKeyTable(typeof(int)));
             _ = Assert.Throws<InvalidOperationException>(view.FromCache<Row>);
 
             Assert.Contains("persist batch exists", save.Message, StringComparison.Ordinal);
             Assert.Equal(0, view.Recorded);
+        }
+
+        [Fact]
+        public void A_deferred_view_names_its_tables_itself_and_every_replay_declares_them_under_those_names_wherever_the_recording_lands()
+        {
+            var view = RecordingBatch.Deferred();
+            SqlIdentifier rows = view.Tvp([new Row { Id = 1 }]);
+            SqlIdentifier ids = view.DeclareIdTable();
+            SqlIdentifier keys = view.DeclareKeyTable(typeof(long));
+            _ = view.Sql($"UPDATE [x] SET [y] = 1 WHERE [Id] IN (SELECT [Id] FROM {rows});", new SqlOptions(userIds: rows));
+            view.Seal();
+
+            // --- The names are the view's, in the once-per-batch namespace ---
+            Assert.Equal(["@tm_rec0_t", "@tm_rec1_ids", "@tm_rec2_ids"], new[] { rows, ids, keys }.Select(static name => name.Name));
+
+            // --- Two replays, each landing after a different number of statements, declare the same names ---
+            ScriptedBatch first = _script.NewBatch(BatchPurpose.Persist);
+            view.Replay(first);
+            ScriptedBatch second = _script.NewBatch(BatchPurpose.Persist);
+            _ = second.DeclareIdTable();
+            view.Replay(second);
+
+            static string[] Names(ScriptedBatch batch)
+            {
+                return [.. batch.Statements.Where(static statement => statement.Kind is ScriptedKind.Tvp or ScriptedKind.DeclareIdTable).Select(static statement => statement.Name!).TakeLast(3)];
+            }
+
+            Assert.Equal(["@tm_rec0_t", "@tm_rec1_ids", "@tm_rec2_ids"], Names(first));
+            Assert.Equal(Names(first), Names(second));
+        }
+
+        [Fact]
+        public void A_deferred_views_guard_runs_before_every_append_and_refuses_one_by_throwing()
+        {
+            bool refusing = false;
+            var view = RecordingBatch.Deferred(guard: () =>
+            {
+                if (refusing)
+                {
+                    throw new InvalidOperationException("Refused.");
+                }
+            });
+            _ = view.Sql($"SELECT 1", SqlOptions.None);
+            refusing = true;
+
+            _ = Assert.Throws<InvalidOperationException>(() => view.Sql($"SELECT 2", SqlOptions.None));
+            _ = Assert.Throws<InvalidOperationException>(view.DeclareIdTable);
+            _ = Assert.Throws<InvalidOperationException>(() => view.BumpVersionTag("entity:ps.PsCategory"));
+            Assert.Equal(1, view.Recorded);
         }
 
         /// <summary>A row the tests save.</summary>

@@ -139,6 +139,18 @@ namespace Tellma.Core.Tests.Crud.Writes
         }
 
         [Fact]
+        public async Task A_delete_comparing_stamps_on_a_long_keyed_stack_is_a_bad_request_before_any_round_trip()
+        {
+            await using AsyncServiceScope scope = _rig.Scope();
+            EntityService<PwBig, long> bigs = scope.ServiceProvider.GetRequiredService<EntityService<PwBig, long>>();
+
+            BadRequestException refused = await Assert.ThrowsAsync<BadRequestException>(() => bigs.DeleteByIdsAsync([1L], [DateTimeOffset.UnixEpoch], Token));
+
+            Assert.Equal(PipelineWriteModel.Bigs, refused.Arguments!["resource"]);
+            Assert.Equal(0, _rig.Script.RoundTrips);
+        }
+
+        [Fact]
         public async Task A_delete_beyond_the_id_ceiling_or_without_the_grant_is_refused_before_any_round_trip()
         {
             LimitExceededException ceiling = await Assert.ThrowsAsync<LimitExceededException>(() => TicketsAsync(tickets => tickets.DeleteByIdsAsync([1, 2, 3, 4, 5, 6], null, Token)));
@@ -234,7 +246,7 @@ namespace Tellma.Core.Tests.Crud.Writes
             Assert.Equal([ScriptedKind.Count, ScriptedKind.Delete], persist.Statements.Where(static statement => statement.Kind is ScriptedKind.Count or ScriptedKind.Delete).Select(static statement => statement.Kind));
             ScriptedStatement count = Assert.Single(persist.Of(ScriptedKind.Count));
             DeleteSpec<PwTicket>.ByQuery spec = Assert.IsType<DeleteSpec<PwTicket>.ByQuery>(Assert.Single(persist.Of(ScriptedKind.Delete)).Statement);
-            Assert.Equal((11, 10, 2), (count.Cap, spec.Cap, spec.ExpectedCount));
+            Assert.Equal((10, 10, 2), (count.Cap, spec.Cap, spec.ExpectedCount));
             Assert.Equal("and(Name = 'x' | or(Name != 'locked'))", QueryRig.Render(spec.Filter));
             Assert.Equal(QueryRig.Render(spec.Filter), QueryRig.Render(count.Spec.Filter));
         }
@@ -293,6 +305,44 @@ namespace Tellma.Core.Tests.Crud.Writes
             Assert.Equal([$"Ids {ValidationCodes.FkInUse}"], Lines(several));
         }
 
+        // --- A re-entered persist ---
+
+        [Fact]
+        public async Task A_hooked_delete_recomposed_for_a_moved_tag_re_runs_its_validator_in_memory_and_replays_its_participant_without_calling_it_again()
+        {
+            int validated = 0;
+            _hooks.ValidateDelete = async context =>
+            {
+                validated++;
+                await context.Loader.LoadAsync();
+            };
+            int contributed = 0;
+            _hooks.Contribute = context =>
+            {
+                // The persist batch's guard will find the permissions tag moved.
+                if (++contributed == 1)
+                {
+                    _rig.GrantOnRecompose(Grants());
+                }
+
+                _ = context.Batch.Sql($"SELECT {"contributed"};", SqlOptions.None);
+                return Task.CompletedTask;
+            };
+
+            AffectedResult deleted = await TicketsAsync(tickets => tickets.DeleteByIdsAsync([2, 1], null, Token));
+
+            // --- The validator twice, the second time in memory; the participant once, replayed once ---
+            Assert.Equal(2, deleted.Count);
+            Assert.Equal((2, 1), (validated, contributed));
+            Assert.Equal([BatchPurpose.Validate, BatchPurpose.Persist, BatchPurpose.Persist], _rig.Script.Batches.Select(static batch => batch.Purpose));
+            (ScriptedBatch refused, ScriptedBatch committed) = (_rig.Script.Batches[1], _rig.Script.Batches[2]);
+            Assert.True(refused.IsRefused && committed.IsExecuted && !committed.IsRefused);
+            Assert.Equal(refused.Statements.Select(static statement => statement.Kind), committed.Statements.Select(static statement => statement.Kind));
+            Assert.Single(committed.Of(ScriptedKind.Sql));
+            Assert.Single(committed.Of(ScriptedKind.Delete));
+            _ = Assert.Single(_hooks.Outcomes);
+        }
+
         // --- Helpers ---
 
         /// <summary>Grants the caller every operation of every stack, under the filters given.</summary>
@@ -300,7 +350,17 @@ namespace Tellma.Core.Tests.Crud.Writes
         /// <param name="write">The filter of every Delete grant and action grant; every row when null.</param>
         private void Grant(string? read = null, string? write = null)
         {
-            _rig.Grant(
+            _rig.Grant(Grants(read, write));
+        }
+
+        /// <summary>Every operation of every stack, under the filters given.</summary>
+        /// <param name="read">The filter of every Read grant; every row when null.</param>
+        /// <param name="write">The filter of every Delete grant and action grant; every row when null.</param>
+        /// <returns>The grants.</returns>
+        private static (string Resource, string Action, string? Filter)[] Grants(string? read = null, string? write = null)
+        {
+            return
+            [
                 (PipelineWriteModel.Tickets, AccessActions.Read, read),
                 (PipelineWriteModel.Tickets, AccessActions.Delete, write),
                 (PipelineWriteModel.Tickets, AccessActions.Activate, write),
@@ -311,7 +371,10 @@ namespace Tellma.Core.Tests.Crud.Writes
                 (PipelineWriteModel.Labels, AccessActions.Delete, write),
                 (PipelineWriteModel.Labels, AccessActions.Activate, write),
                 (PipelineWriteModel.Nodes, AccessActions.Read, read),
-                (PipelineWriteModel.Nodes, AccessActions.Delete, write));
+                (PipelineWriteModel.Nodes, AccessActions.Delete, write),
+                (PipelineWriteModel.Bigs, AccessActions.Read, read),
+                (PipelineWriteModel.Bigs, AccessActions.Delete, write),
+            ];
         }
 
         /// <summary>Makes every persist batch's execution fail, as the executor raises a failure of its statements.</summary>

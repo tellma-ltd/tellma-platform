@@ -18,12 +18,12 @@ namespace Tellma.Core.Abstractions.Crud
     /// <param name="MaxSaveCount">The entities one save may carry.</param>
     /// <param name="MaxRowsPerSave">The rows one save may carry at every depth.</param>
     /// <param name="MaxIds">The ids one get by ids, delete by ids, action or get by parent ids may name.</param>
-    /// <param name="MaxDeleteByQueryRows">The rows one delete by query may match.</param>
+    /// <param name="MaxDeleteByQueryRows">The rows one delete by query may match: less than the largest integer, which counts one past it.</param>
     /// <param name="MaxExpandDepth">The navigation depth of the details projection.</param>
     /// <param name="MaxValidationRounds">The validation rounds one save, delete or action may dispatch.</param>
     /// <param name="MaxSearchLength">The characters of a search term.</param>
     /// <param name="MaxExtras">The extras one details request may include.</param>
-    /// <exception cref="ArgumentOutOfRangeException">A ceiling is zero or negative.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A ceiling is zero or negative, or the delete by query's is the largest integer.</exception>
     public sealed record StackLimits(
         int MaxTake,
         int CountCap,
@@ -74,7 +74,7 @@ namespace Tellma.Core.Abstractions.Crud
         public int MaxIds { get; init => field = Positive(value, nameof(MaxIds)); } = Positive(MaxIds, nameof(MaxIds));
 
         /// <inheritdoc cref="StackLimits(int, int, int, int, int, int, int, int, int, int, int)" />
-        public int MaxDeleteByQueryRows { get; init => field = Positive(value, nameof(MaxDeleteByQueryRows)); } = Positive(MaxDeleteByQueryRows, nameof(MaxDeleteByQueryRows));
+        public int MaxDeleteByQueryRows { get; init => field = Countable(value, nameof(MaxDeleteByQueryRows)); } = Countable(MaxDeleteByQueryRows, nameof(MaxDeleteByQueryRows));
 
         /// <inheritdoc cref="StackLimits(int, int, int, int, int, int, int, int, int, int, int)" />
         public int MaxExpandDepth { get; init => field = Positive(value, nameof(MaxExpandDepth)); } = Positive(MaxExpandDepth, nameof(MaxExpandDepth));
@@ -87,6 +87,20 @@ namespace Tellma.Core.Abstractions.Crud
 
         /// <inheritdoc cref="StackLimits(int, int, int, int, int, int, int, int, int, int, int)" />
         public int MaxExtras { get; init => field = Positive(value, nameof(MaxExtras)); } = Positive(MaxExtras, nameof(MaxExtras));
+
+        /// <summary>
+        ///     Refuses a cap that is not positive, or that leaves no room to count one row past it:
+        ///     the capped statement and its count read up to the cap plus one.
+        /// </summary>
+        /// <param name="value">The cap.</param>
+        /// <param name="name">The cap's name.</param>
+        /// <returns>The cap.</returns>
+        private static int Countable(int value, string name)
+        {
+            _ = Positive(value, name);
+            ArgumentOutOfRangeException.ThrowIfEqual(value, int.MaxValue, name);
+            return value;
+        }
 
         /// <summary>Refuses a ceiling that is not positive.</summary>
         /// <param name="value">The ceiling.</param>

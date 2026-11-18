@@ -138,6 +138,15 @@ namespace Tellma.Core.Crud.Delete
                     new Dictionary<string, object?>(StringComparer.Ordinal) { ["ids"] = ids.Count, ["stamps"] = expectedStamps.Count });
             }
 
+            // The data layer compares stamps of int keys alone, so a long-keyed stack takes its
+            // deletes without them; refused here rather than by the data layer once composing.
+            if (expectedStamps is not null && typeof(TKey) == typeof(long))
+            {
+                throw new BadRequestException(
+                    $"The deletes of {Resource} compare no stamps: its keys are long. Delete its rows without expected stamps.",
+                    new Dictionary<string, object?>(StringComparer.Ordinal) { ["resource"] = Resource });
+            }
+
             _ = await Services.Evaluator.RequireAsync(Resource, AccessActions.Delete, _cancellationToken).ConfigureAwait(false);
             if (expectedStamps is not null)
             {

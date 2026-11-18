@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud;
 using Tellma.Core.Data;
@@ -105,6 +106,9 @@ namespace Tellma.Core.Tests.Crud.Writes
             Assert.Equal(PipelineWriteModel.Close, outcome.Action);
             Assert.Equal([2, 1], outcome.Ids);
             Assert.Equal([2, 1], outcome.Entities.Select(static ticket => ticket.Id));
+
+            // --- The stamp the saved rows carry ---
+            Assert.Equal(Committed, outcome.Stamp);
         }
 
         [Fact]
@@ -230,6 +234,90 @@ namespace Tellma.Core.Tests.Crud.Writes
         }
 
         [Fact]
+        public async Task A_task_that_reads_Persisted_before_a_load_is_refused_at_the_load_and_the_action_sends_no_persist()
+        {
+            _hooks.Close = async context =>
+            {
+                Task persisted = context.Persisted;
+                await context.Loader.LoadAsync();
+                await persisted;
+            };
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+
+            Assert.Contains("after it left the validation rounds", refused.Message, StringComparison.Ordinal);
+            Assert.All(_rig.Script.Batches, static batch => Assert.Equal(BatchPurpose.Validate, batch.Purpose));
+            Assert.Empty(_hooks.Outcomes);
+        }
+
+        [Fact]
+        public async Task A_task_that_reads_Persisted_and_then_composes_is_refused_and_the_action_is_abandoned_unsent()
+        {
+            int attempt = 0;
+            _hooks.Close = async context =>
+            {
+                await context.Loader.LoadAsync();
+                Task persisted = context.Persisted;
+                switch (++attempt)
+                {
+                    case 1:
+                        context.Update(new Dictionary<string, object?> { [nameof(PwTicket.Name)] = "late" });
+                        break;
+                    case 2:
+                        context.Save([context.Entities[0]]);
+                        break;
+                    default:
+                        _ = context.Batch.Sql($"SELECT {"late"};", SqlOptions.None);
+                        break;
+                }
+
+                await persisted;
+            };
+
+            // --- An update, a save, an append: each refused, and nothing persists ---
+            for (int run = 0; run < 3; run++)
+            {
+                InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                    () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+                Assert.Contains("read Persisted and then composed more", refused.Message, StringComparison.Ordinal);
+            }
+
+            Assert.All(_rig.Script.Batches, static batch => Assert.Equal(BatchPurpose.Validate, batch.Purpose));
+            Assert.Empty(_hooks.Outcomes);
+        }
+
+        [Fact]
+        public async Task A_void_method_failing_after_the_commit_is_logged_and_the_action_answers_its_ids_while_a_value_method_failing_raises()
+        {
+            InvalidOperationException late = new("The method failed after the commit.");
+            _hooks.Close = async context =>
+            {
+                await context.Loader.LoadAsync();
+                context.Update(new Dictionary<string, object?> { [nameof(PwTicket.Name)] = "closed" });
+                await context.Persisted;
+                throw late;
+            };
+
+            // --- No value of its own: the committed action answers its ids ---
+            EntitiesResult<PwTicket> closed = await TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [2, 1], null, new ActionOptions(), Token));
+            Assert.Equal([2L, 1L], closed.Ids);
+            FakeLogRecord logged = Assert.Single(_rig.Services.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Name == "ActionMethodFailedAfterCommit");
+            Assert.Equal((LogLevel.Error, late), (logged.Level, logged.Exception));
+
+            // --- A value of its own: nothing else answers it, so its failure is raised ---
+            _hooks.Count = async context =>
+            {
+                await context.Persisted;
+                throw late;
+            };
+            InvalidOperationException raised = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => TicketsAsync(tickets => tickets.ExecuteActionAsync<int>(PipelineWriteModel.Count, [1], null, new ActionOptions(), Token)));
+            Assert.Same(late, raised);
+            Assert.Equal(2, _hooks.Outcomes.Count);
+        }
+
+        [Fact]
         public async Task A_method_awaiting_Persisted_sees_the_failure_that_kept_the_persist_from_running()
         {
             Exception? seen = null;
@@ -306,8 +394,8 @@ namespace Tellma.Core.Tests.Crud.Writes
             Assert.Equal([2L, 1L], closed.Ids);
             Assert.Empty(closed.Entities);
             _ = Assert.Single(_hooks.Outcomes);
-            FakeLogRecord logged = Assert.Single(_rig.Services.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Name == "ProvenCommitReadFailed");
-            Assert.Equal(LogLevel.Warning, logged.Level);
+            FakeLogRecord logged = Assert.Single(_rig.Services.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Name == "ActionMethodFailedAfterCommit");
+            Assert.Equal(LogLevel.Error, logged.Level);
         }
 
         [Fact]
@@ -331,6 +419,63 @@ namespace Tellma.Core.Tests.Crud.Writes
             DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(
                 () => LabelsAsync(labels => labels.DeleteByIdsAsync([1], null, Token)));
             Assert.Equal(("database", TimeSpan.FromSeconds(1)), (unavailable.Dependency, unavailable.RetryAfter));
+        }
+
+        // --- A re-entered persist ---
+
+        [Fact]
+        public async Task An_action_recomposed_for_a_moved_tag_re_runs_its_hook_in_memory_replays_its_method_and_participant_and_names_its_tables_alike()
+        {
+            int validated = 0;
+            _hooks.ValidateAction = async (_, context) =>
+            {
+                validated++;
+                await context.Loader.LoadAsync();
+            };
+            int invoked = 0;
+            RawResult? read = null;
+            _hooks.Close = async context =>
+            {
+                invoked++;
+                await context.Loader.LoadAsync();
+                SqlIdentifier users = context.Batch.Tvp<IdList>([new() { Id = 7 }]);
+                BatchResult<RawResult> appended = context.Batch.Sql($"SELECT [Id] FROM {users};", new SqlOptions(userIds: users));
+                context.Update(new Dictionary<string, object?> { [nameof(PwTicket.Name)] = "closed" });
+                await context.Persisted;
+                read = appended.Value;
+            };
+            int contributed = 0;
+            _hooks.Contribute = context =>
+            {
+                if (++contributed == 1)
+                {
+                    _rig.GrantOnRecompose(Grants());
+                }
+
+                return Task.CompletedTask;
+            };
+            Dictionary<int, RawResult> answers = [];
+            _ = _rig.Script.OnSql(statement => answers[statement.Batch.Number] = new RawResult([]));
+
+            EntitiesResult<PwTicket> closed = await TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token));
+
+            // --- The hook twice, the second time in memory; the method and the participant once ---
+            Assert.Equal([1L], closed.Ids);
+            Assert.Equal((2, 1, 1), (validated, invoked, contributed));
+            Assert.Equal([BatchPurpose.Validate, BatchPurpose.Persist, BatchPurpose.Persist], _rig.Script.Batches.Select(static batch => batch.Purpose));
+            (ScriptedBatch refused, ScriptedBatch committed) = (_rig.Script.Batches[1], _rig.Script.Batches[2]);
+            Assert.True(refused.IsRefused && committed.IsExecuted && !committed.IsRefused);
+
+            // --- The method's statements replayed once into each batch, its table under one name ---
+            Assert.Equal(refused.Statements.Select(static statement => statement.Kind), committed.Statements.Select(static statement => statement.Kind));
+            _ = Assert.Single(refused.Of(ScriptedKind.Tvp), static statement => statement.Name == "@tm_rec0_t");
+            _ = Assert.Single(committed.Of(ScriptedKind.Tvp), static statement => statement.Name == "@tm_rec0_t");
+            Assert.Single(committed.Of(ScriptedKind.Sql));
+            Assert.Single(committed.Of(ScriptedKind.Update));
+
+            // --- The method read the result of the batch that committed ---
+            Assert.Same(answers[committed.Number], read);
+            _ = Assert.Single(_hooks.Outcomes);
         }
 
         // --- Which stacks need the validation round ---

@@ -17,7 +17,8 @@ namespace Tellma.Core.Tests.Crud.Writes
     // deletes and actions and declares three entity actions (one answering the target ids, one
     // single-target answering a count of its own, one taking an arguments record), an activatable
     // label whose service validates nothing, so its deletes and its built-in actions persist on one
-    // round trip, and a tree. Every hook and method reports to one shared body a test sets.
+    // round trip, a tree, and a long-keyed row. Every hook and method reports to one shared body a
+    // test sets.
 
     /// <summary>Composes the delete and action pipeline suite's model.</summary>
     internal static class PipelineWriteModel
@@ -30,6 +31,9 @@ namespace Tellma.Core.Tests.Crud.Writes
 
         /// <summary>The nodes' resource, a tree.</summary>
         public const string Nodes = "pw.PwNode";
+
+        /// <summary>The long-keyed rows' resource.</summary>
+        public const string Bigs = "pw.PwBig";
 
         /// <summary>The ticket action that answers the target ids.</summary>
         public const string Close = "close";
@@ -47,7 +51,8 @@ namespace Tellma.Core.Tests.Crud.Writes
             _ = tellma.AddFeature(new TestFeature<Tag.B>("pipeline-write", contribute: static contribution => contribution
                 .Entity<PwTicket, PwTicketService>()
                 .Entity<PwLabel>()
-                .Entity<PwNode>()));
+                .Entity<PwNode>()
+                .Entity<PwBig>()));
         }
     }
 
@@ -90,6 +95,16 @@ namespace Tellma.Core.Tests.Crud.Writes
         /// <summary>The code.</summary>
         [MaxLength(10)]
         public string Code { get; set; } = null!;
+    }
+
+    /// <summary>The model's long-keyed row, whose deletes compare no stamps.</summary>
+    [Table("Bigs", Schema = "pw")]
+    [TableType]
+    public class PwBig : TopLevelEntity<long>
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(50)]
+        public string Name { get; set; } = null!;
     }
 
     /// <summary>The arguments of the rename action.</summary>

@@ -27,8 +27,9 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     round trip; a write without its grant is refused before any; a delete by query refuses a
     ///     blank filter, and inside its transaction more rows than its cap or another count than the
     ///     caller confirmed; a subtree with a row outside the delete grant is refused whole; a row still
-    ///     referenced is in use; a delete compares the stamps it is given; and the built-in actions
-    ///     stamp the rows they change, skip those already in the state, and answer alike on either path.
+    ///     referenced is in use; a delete compares the stamps it is given; the built-in actions
+    ///     stamp the rows they change, skip those already in the state, and answer alike on either path;
+    ///     and a custom action whose permissions move before its persist commits once, recomposed.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -335,6 +336,38 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(widgets.Ids, widgets.Entities.Select(static widget => (long)widget.Id));
             Assert.All(lookups.Entities, static lookup => Assert.False(lookup.IsActive));
             Assert.All(widgets.Entities, static widget => Assert.False(widget.IsActive));
+        }
+
+        // --- A re-entry: the persist recomposed for a moved permission ---
+
+        [Fact]
+        public async Task A_custom_action_whose_permissions_move_after_its_validation_round_re_runs_its_hook_in_memory_replays_its_method_and_commits_once()
+        {
+            fixture.Probe.Reset();
+            await SeedWidgetsAsync(541);
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, RenameGrant, null));
+            await WarmAsync<Widget>(subject);
+            int validated = 0;
+            fixture.Probe.ValidateAction = async (_, context) =>
+            {
+                // The first run moves the caller's permissions once its round answered, before the persist is sent.
+                await context.Loader.LoadAsync();
+                if (++validated == 1)
+                {
+                    await fixture.Connect.BumpPermissionsAsync(userId);
+                }
+            };
+
+            (EntitiesResult<Widget> renamed, int trips) = await CountedAsync(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [541], new WidgetRename { Name = "Recomposed" }, new ActionOptions(), Token));
+
+            // --- The validation round, the persist its guard refused and the recomposed one: the hook
+            // ran again in memory, the method once, and its update committed once ---
+            Assert.Equal([541L], renamed.Ids);
+            Assert.Equal((3, 2), (trips, validated));
+            Assert.Equal(["W-541"], fixture.Probe.Renamed);
+            Assert.Equal(1, await CountAsync("[fixture].[Widgets] WHERE [Id] = 541 AND [Name] = N'Recomposed'"));
         }
 
         // --- Helpers ---

@@ -42,6 +42,15 @@ namespace Tellma.Core.Abstractions.Tests.Crud
             Assert.Equal(5, (StackLimits.Default with { MaxExpandDepth = 5 }).MaxExpandDepth);
         }
 
+        [Fact]
+        public void A_delete_by_query_cap_leaves_room_to_count_one_row_past_it()
+        {
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => new StackLimits(1, 1, 1, 1, 1, 1, int.MaxValue, 1, 1, 1, 1));
+            _ = Assert.Throws<ArgumentOutOfRangeException>(() => StackLimits.Default with { MaxDeleteByQueryRows = int.MaxValue });
+
+            Assert.Equal(int.MaxValue - 1, (StackLimits.Default with { MaxDeleteByQueryRows = int.MaxValue - 1 }).MaxDeleteByQueryRows);
+        }
+
         [Theory]
         [InlineData(typeof(PersistContext<Widget>))]
         [InlineData(typeof(PersistOutcome<Widget>))]

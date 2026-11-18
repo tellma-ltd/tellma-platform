@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
@@ -18,9 +19,11 @@ namespace Tellma.Core.Data.Batches
     // participant holds is unchanged, and every result a participant holds reads the batch that
     // executes: the view hands out results of its own and completes them from that batch. An action's
     // method composes before its persist batch exists (spec 0015 §11.2): a deferred view records its
-    // appends without a batch and composes them all on the first replay; an append that names a
-    // batch-local table for the statements after it cannot answer that name before the batch exists,
-    // so a deferred view refuses it.
+    // appends without a batch and composes them all on the first replay. A batch-local table it is
+    // asked for is named by the view itself, in the once-per-batch namespace, and declared under that
+    // name on every replay, so the statements after it name it alike wherever the recording lands.
+    // An append that answers at compose time (a save's or a delete's handle, a cache read) has no
+    // batch to answer it, so a deferred view refuses it.
     /// <summary>
     ///     A recording view of a persist batch for its participants: every append reaches the batch
     ///     and is recorded, so the recording can be replayed into a recomposed batch without calling
@@ -40,6 +43,12 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Receives a participant's commit callback that failed; null to let the executor log it.</summary>
         private readonly Action<Action<BatchOutcome>, Exception>? _callbackFailed;
+
+        /// <summary>Refuses an append from a flow that may compose no more; null refuses none.</summary>
+        private readonly Action? _guard;
+
+        /// <summary>The batch-local tables a deferred view named so far.</summary>
+        private int _named;
 
         /// <summary>Whether the participants returned, so the view takes no more appends.</summary>
         private bool _sealed;
@@ -63,9 +72,11 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Creates a deferred view, whose appends reach no batch until its first replay.</summary>
         /// <param name="callbackFailed">Receives a commit callback that failed; null to let the executor log it.</param>
-        private RecordingBatch(Action<Action<BatchOutcome>, Exception>? callbackFailed)
+        /// <param name="guard">Refuses an append from a flow that may compose no more; null refuses none.</param>
+        private RecordingBatch(Action<Action<BatchOutcome>, Exception>? callbackFailed, Action? guard)
         {
             _callbackFailed = callbackFailed;
+            _guard = guard;
         }
 
         /// <summary>The batch the appends reach: the first entry's, then each replay's.</summary>
@@ -80,10 +91,11 @@ namespace Tellma.Core.Data.Batches
         ///     onto the batch of its first replay, then again onto each later one.
         /// </summary>
         /// <param name="callbackFailed">Receives a commit callback that failed, which then fails no other callback; null to let the executor log it.</param>
+        /// <param name="guard">Runs before every append, and refuses one by throwing; null refuses none.</param>
         /// <returns>The view.</returns>
-        public static RecordingBatch Deferred(Action<Action<BatchOutcome>, Exception>? callbackFailed = null)
+        public static RecordingBatch Deferred(Action<Action<BatchOutcome>, Exception>? callbackFailed = null, Action? guard = null)
         {
-            return new RecordingBatch(callbackFailed);
+            return new RecordingBatch(callbackFailed, guard);
         }
 
         /// <summary>The appends recorded.</summary>
@@ -226,20 +238,20 @@ namespace Tellma.Core.Data.Batches
             where TRow : class
         {
             ArgumentNullException.ThrowIfNull(rows);
-            return RecordName(inner => inner.Tvp(rows));
+            return RecordName(inner => inner.Tvp(rows), (inner, name) => NamedTablesOf(inner).Tvp(rows, name), "t");
         }
 
         /// <inheritdoc />
         public SqlIdentifier DeclareIdTable()
         {
-            return RecordName(static inner => inner.DeclareIdTable());
+            return DeclareKeyTable(typeof(int));
         }
 
         /// <inheritdoc />
         public SqlIdentifier DeclareKeyTable(Type keyType)
         {
             ArgumentNullException.ThrowIfNull(keyType);
-            return RecordName(inner => KeyTablesOf(inner).DeclareKeyTable(keyType));
+            return RecordName(inner => KeyTablesOf(inner).DeclareKeyTable(keyType), (inner, name) => NamedTablesOf(inner).DeclareKeyTable(keyType, name), "ids");
         }
 
         /// <inheritdoc />
@@ -321,6 +333,7 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(append);
             EnsureOpen();
+            _guard?.Invoke();
             if (_inner is IDataBatch inner)
             {
                 append(inner);
@@ -342,6 +355,7 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(append);
             EnsureOpen();
+            _guard?.Invoke();
 
             // A deferred view hands out a result no batch answers until the first replay.
             Link<T> link = _inner is IDataBatch inner ? HandOut(append(inner)) : Pending<T>();
@@ -400,15 +414,27 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <summary>Records an append that names a batch-local table, which a replay must name alike.</summary>
-        /// <param name="append">Appends to a batch and returns the name.</param>
+        /// <param name="append">Appends to a batch and returns the name the batch chose.</param>
+        /// <param name="named">Appends to a batch under a name the view chose, for a deferred view.</param>
+        /// <param name="word">The table's word in the name a deferred view chooses.</param>
         /// <returns>The first entry's name.</returns>
-        private SqlIdentifier RecordName(Func<IDataBatch, SqlIdentifier> append)
+        private SqlIdentifier RecordName(Func<IDataBatch, SqlIdentifier> append, Func<IDataBatch, string, SqlIdentifier> named, string word)
         {
             EnsureOpen();
-            EnsureBatch("a batch-local table");
-            SqlIdentifier first = append(Inner);
-            _replays.Add(inner => EnsureSame(first, append(inner)));
-            return first;
+            _guard?.Invoke();
+            if (_inner is IDataBatch inner)
+            {
+                SqlIdentifier first = append(inner);
+                _replays.Add(again => EnsureSame(first, append(again)));
+                return first;
+            }
+
+            // --- A deferred view names the table itself, in the once-per-batch namespace no
+            // statement's ordinal enters, and every replay declares it under that name ---
+            string name = string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.BatchPrefix}rec{_named++}_{word}");
+            SqlIdentifier chosen = new(name);
+            _replays.Add(again => EnsureSame(chosen, named(again, name)));
+            return chosen;
         }
 
         /// <summary>Hands out a result of the view's own for one of the batch's, completed at once when the batch's already is.</summary>
@@ -442,6 +468,16 @@ namespace Tellma.Core.Data.Batches
                 ?? throw new InvalidOperationException("The batch is not one the platform composes, so it declares no key tables of its own.");
         }
 
+        /// <summary>The caller-named tables of a batch, which a deferred view declares its tables through.</summary>
+        /// <param name="batch">The batch.</param>
+        /// <returns>The channel.</returns>
+        /// <exception cref="InvalidOperationException">The batch is not one the platform composes.</exception>
+        private static IBatchNamedTables NamedTablesOf(IDataBatch batch)
+        {
+            return batch as IBatchNamedTables
+                ?? throw new InvalidOperationException("The batch is not one the platform composes, so it declares no table under a name of the caller's.");
+        }
+
         /// <summary>Refuses an append once the participants returned.</summary>
         /// <exception cref="InvalidOperationException">The participants already returned.</exception>
         private void EnsureOpen()
@@ -453,7 +489,7 @@ namespace Tellma.Core.Data.Batches
             }
         }
 
-        /// <summary>Refuses, on a deferred view, an append that answers a batch-local name or a result at once: no batch exists to answer it.</summary>
+        /// <summary>Refuses, on a deferred view, an append that answers at compose time: no batch exists to answer it.</summary>
         /// <param name="append">The append, for the message.</param>
         /// <exception cref="InvalidOperationException">The view is deferred.</exception>
         private void EnsureBatch(string append)
@@ -461,7 +497,7 @@ namespace Tellma.Core.Data.Batches
             if (_inner is null)
             {
                 throw new InvalidOperationException(
-                    $"An action's batch takes {append} only once its persist batch exists, after the validation rounds. Pass the rows a statement needs in its own text, and write the stack's rows through the context's Save and Update.");
+                    $"An action's batch takes {append} only once its persist batch exists, after the validation rounds. Write the stack's rows through the context's Save and Update.");
             }
         }
 
