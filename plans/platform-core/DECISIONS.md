@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-116 (orchestrator, 2026-11-18): PC-074 R2 open questions; interim rulings, for Ahmad
+
+- R2-2: a re-entered persist keeps round trip 1's row-level verdicts (before images under Read, the Save-grant pre-check, reference visibility), even if the stack's Read or Save filter narrowed in between. So an edit that moves another user's row into a just-narrowed Save filter can commit. Spec 0015 §5.1 is silent on this for a save's pre-check. Interim: kept as built and noted as a deviation. Ahmad to decide whether a changed filter should raise StaleContextException.
+- R2-5: a caller whose Save comes only from a bespoke criterion with `Action = Save` has Read denied, so the read-back refuses (fails closed). Interim: failing closed stands, and deviation 12's wording is corrected. Ahmad to decide whether the read-back needs a Read decision at all.
+- R2-3 (fix 2): a committed save must not be answered in a way that invites a duplicating retry.
+
 ### D-115 (orchestrator, 2026-11-18): PC-074 R1-7, a spec gap for Ahmad
 
 - Spec 0015 §14.2 has no row for a 547 raised by child synchronisation's deletes, when another table still references the deleted child row. Today it passes through as a 500 when the referencing table is outside the stack, and as `Fk.NotFound` when it is inside. Interim: if §14.2 already maps a delete's 547 to an in-use code, PC-074 reuses it; otherwise PC-074 keeps the current behaviour as a listed deviation. Ahmad to decide the row (likely an in-use code naming the child row). Outcome of fix 1 (f206fbc2): mapped to the existing delete-row code `Fk.InUse` (entity/property, at the dropping collection or the root) and pinned by a unit test. A payload row of the same entity that writes the referencing column stays `Fk.NotFound` (PC-074 deviation 18). Ahmad to confirm and amend §14.2.
