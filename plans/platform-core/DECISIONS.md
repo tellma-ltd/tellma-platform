@@ -359,6 +359,33 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-121 (orchestrator, 2026-11-18): PC-077 and PC-078 meet at the access guards; the later to integrate reconciles
+
+- PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
+- PC-078 places the guards on a stack's own tables. Its fix 1 may move the decision to batch.WrittenTables ∪ StackTables (D-119 R1-2).
+- Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
+- Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
+
+### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
+
+- Ruling: PC-083 built spec 0017 §6.4 BlobContainerStep (`core.blob-container`, order 20). D-096 had given it to PC-089. R1 accepted the build, and it is kept as PC-083 deviation 8. PC-089 no longer owns §6.4.
+- Carry: D-096's provisioning-record row (Acme MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions) needs `core.bootstrap-administrator` (PC-078), `core.settings` (PC-049, done) and `core.blob-container` (now PC-083). Whichever of PC-078 and PC-083 integrates last must see it run green. The carry is on PC-078's status row and in PC-083's integration message.
+
+### D-119 (orchestrator, 2026-11-18): PC-078 implementer's open questions; R1 to judge, for Ahmad
+
+- Q1: delete-by-query bypasses ValidateDeleteAsync, so the user and role delete rules (self-deletion, the system user, OnlyNewUsersDeletable, HasMembers, the administrator role) rest only on L1-L3 and the foreign keys. Should users and roles refuse delete-by-query, or validate it?
+- Q2: a deployed bootstrap leaves the administrator New (no subject, no invite), so L1 is unmet and non-System security writes are refused until the invite. This is by design; to be confirmed.
+- Q3: the bootstrap does not reactivate an existing inactive user. The spec is silent.
+- Q4: users' and roles' saves are sensitive, so every fixture that writes them supplies aal2 step-up.
+- Q5: PC-078 places the guards on the stack's own tables only. The union over enlisted groups is PC-077's, being built in parallel; PC-077 was told.
+- R1 (0/1/5) and interim rulings for fix 1:
+  - Q1: users' and roles' delete-by-query is refused with a closed-set error before any round trip (R1-1; spec 0015 §16.2's budget row). Today it skips CannotDeleteSelf and OnlyNewUsersDeletable for a user that no audit foreign key references.
+  - Q3: the bootstrap never silently restores privileges. An inactive existing administrator fails the step with an actionable error (R1-6). **For Ahmad:** reactivate or fail.
+  - Q5 / R1-2: the guard decision covers batch.WrittenTables ∪ StackTables. It lands in PC-078 if WrittenTables exists on platform-core; otherwise it carries to PC-077.
+  - R1-4: duplicate-permission collapse (spec 0014 §3.7) is owned by no checkpoint. PC-078 does it if contained; otherwise it carries to a later checkpoint.
+  - **For Ahmad:** spec 0014 §3.4's "DELETE half" deletes the wrong keys for delete actions. PC-078's fix is right, and the spec wording needs amending.
+- Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
+
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
 
 - A §4.4 verification of PC-076 confirmed a residual race. An action flow reads `Persisted`, awaits something else (say a slow HTTP call), then composes a write or an `Errors.Add`. RT2 may already have committed without it.
