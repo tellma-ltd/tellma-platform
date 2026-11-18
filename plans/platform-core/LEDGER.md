@@ -102,8 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B03 | pc-2 | pc/PC-B03 | PC-F57 fix1 → integrate | — | 3 finders done (fable, xhigh) | 2026-11-17 |
-| PC-072 | pc-3 | pc/PC-072 | fix2 → hold (line stopped, PC-F57) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | integrate (released after PC-F57 green; IdAllocator text + BufferOf location semantic conflict) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
 
 ## Fix items
 
@@ -164,7 +163,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F54 | forced-colors sweep (D-103): checkbox, date-popup, entity-picker, select/multi-select and tree stylesheets set color: HighlightText without forced-color-adjust: none, so Chromium's Canvas backplate may hide the ink (as PC-F53 R1-1 found on the checked segment). Check each, fix the ones that hide ink, and add forced-colors legibility checks that fail on the broken CSS | done (ea71a9f8; CI 44038078823 green, Linux ink checks pass) | dbadf1ac, 6b41b8dd, ea71a9f8 (pc/PC-F54) | | from PC-F53 R1-1 |
 | PC-F55 | CI red on a3fc777e (client, Linux PR-tier e2e chromium; client-windows green): chart-bidi.spec.ts :77 and :90 fail in open() :74, bidi-drawn stays "drawing" past 5 s on try and retry; deterministic on Linux. The test must still fail when runs are not drawn apart; line stopped (§8.3) | done (ae550897; CI 44100453494 green; line reopened) | 4c7e1259, 0818687f, e6d1955b, ae550897 (pc/PC-F55) | | from PC-194 integration (CI 44086742988) |
 | PC-F56 | CI red on 1e9332ad (integration-windows, LocalDB; ubuntu integration green; all-checks-passed green as it does not cover integration-windows): Tellma.Core.IntegrationTests passed 395/398 (3 ModelLock skips) then "[Test Assembly Cleanup Failure] Xunit.Sdk.TestPipelineException", exit 1; first Windows hit; PC-068 added integration fixtures (one-tick FastDenyWindow instance, GrantAsync). Find the cause, fix it; flake: next run 44113932638 on 05467a2f all green, so the line reopened (PC-F52 precedent) | done (6f6390ce; CI 44149790190 green, verbose test logs live) | fd88ced2, ce4a9384, be61035a, 6f6390ce (pc/PC-F56) | | from PC-068 integration (CI 44110298098) |
-| PC-F57 | CI red on b4849737 (integration, Linux SQL container; integration-windows green): Core MembershipDirectoryTests.Reconciliation_rebuilds_one_tenants_hints_and_leaves_every_other_tenants_alone expected 3 changes, got 1 (test file :125). Likely PC-B03's B03-2 `UpdatedAt < @readAt` predicate with @readAt rounded to datetimeoffset(3): hints written just before CatalogTimeAsync in the same millisecond are excluded, so the alice update and bob delete are skipped. | fix1 → integrate (R1 0/1/1: fix judged correct; commit-message Tests block, docs wording) | 562077d8 (pc/PC-F57) | | from PC-B03 integration (CI 44215268639) |
+| PC-F57 | CI red on b4849737 (integration, Linux SQL container; integration-windows green): Core MembershipDirectoryTests.Reconciliation_rebuilds_one_tenants_hints_and_leaves_every_other_tenants_alone expected 3 changes, got 1 (test file :125). Likely PC-B03's B03-2 `UpdatedAt < @readAt` predicate with @readAt rounded to datetimeoffset(3): hints written just before CatalogTimeAsync in the same millisecond are excluded, so the alice update and bob delete are skipped. | done (735456ab; green 44231237483) | 562077d8, d6c3a1a3, 66eb4ea8, 735456ab (pc/PC-F57) | | from PC-B03 integration (CI 44215268639) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -173,7 +172,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
 | PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
-| PC-B03 | 3 (PC-032…PC-061) | fix → hold (finders done at b346ad7c: 6 findings (0/3/3); 924k finder tokens for both batches) | | |
+| PC-B03 | 3 (PC-032…PC-061) | done (6 findings 0/3/3: 6 fixed; fixes 3adc83da; integrated b4849737; CI 44215268639 red → PC-F57; green 44231237483 on 735456ab) | | |
 
 ## Merge-time tasks (before platform-core merges into main)
 
