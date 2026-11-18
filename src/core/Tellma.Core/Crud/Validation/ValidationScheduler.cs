@@ -87,6 +87,9 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>Whether the rounds are over: no task may register any more.</summary>
         private bool _finished;
 
+        /// <summary>The first load refused because its task had left the rounds; written under the gate.</summary>
+        private Exception? _lateFailure;
+
         /// <summary>Creates a scheduler.</summary>
         /// <param name="maxRounds">The most rounds it dispatches, the first included.</param>
         /// <param name="operation">The <c>crud.operation</c> the rounds are recorded under, such as <c>save</c>.</param>
@@ -126,6 +129,34 @@ namespace Tellma.Core.Crud.Validation
 
         /// <summary>Whether the current asynchronous flow runs as one of this scheduler's tasks.</summary>
         public bool IsInTask => CurrentParticipant.Value?.Scheduler == this;
+
+        /// <summary>Whether the rounds run: started, and not over.</summary>
+        public bool IsRunning
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _started && !_finished;
+                }
+            }
+        }
+
+        /// <summary>
+        ///     The first load refused because its task had left the rounds to wait for what follows
+        ///     them; null when none was. The rounds may be over when it is refused, so the owner of what
+        ///     follows them checks it.
+        /// </summary>
+        public Exception? LateFailure
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _lateFailure;
+                }
+            }
+        }
 
         /// <summary>
         ///     Registers a task and starts it at once, up to its first await. Allowed before the rounds
@@ -260,6 +291,7 @@ namespace Tellma.Core.Crud.Validation
                 {
                     stray = new InvalidOperationException(
                         $"LoadAsync was awaited by the task '{participant.Name}' after it left the validation rounds to wait for the persist. Await every load before reading Persisted.");
+                    _lateFailure ??= stray;
                 }
                 else if (participant.State == ParticipantState.Completed || _finished)
                 {

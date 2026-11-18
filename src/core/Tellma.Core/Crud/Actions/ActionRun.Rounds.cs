@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Tellma.Core.Abstractions.Access;
@@ -29,10 +30,13 @@ namespace Tellma.Core.Crud.Actions
     // parked (§11.2, reading its own writes). From the read on, the task composes nothing more: a
     // load, a save, an update or an append is refused, and a refusal raised before the flow stops
     // running faults it before the task leaves, so the rounds fail with it and the action is
-    // abandoned unsent (§11.2: the method's exception abandons the batch); a refusal raised later,
-    // from a flow that awaited something other than Persisted, abandons the action at the persist
-    // when it is not sent yet. A method that throws PartialFailureException leaves what it composed
-    // to be persisted, and the exception to be rethrown once the action committed.
+    // abandoned unsent (§11.2: the method's exception abandons the batch). A plain Task tells no
+    // await of Persisted from an await of anything else, so a flow that read Persisted and awaited
+    // something else may compose after the persist was sent: every refusal is recorded on the run,
+    // whichever flow raised it; one recorded before the persist is sent abandons the action, and
+    // one recorded after it is raised once the action committed, for every action, never answered
+    // as success. A method that throws PartialFailureException leaves what it composed to be
+    // persisted, and the exception to be rethrown once the action committed.
     /// <summary>One action of one stack: the general path's context, its tasks and their rounds.</summary>
     internal sealed partial class ActionRun<TEntity, TKey>
     {
@@ -43,7 +47,10 @@ namespace Tellma.Core.Crud.Actions
         /// </summary>
         private static readonly AsyncLocal<PersistGate?> Waiting = new(static change =>
         {
-            // The thread switched away from the reading flow's context: the flow stopped running there.
+            // The thread left the reading flow's context: as a rule because the flow suspended or
+            // returned, though also when the flow synchronously completes a source whose continuation
+            // runs inline under another task's context. "Stopped running" means the thread left the
+            // flow's context; a refusal the flow raises after that is recorded, never lost.
             if (change.ThreadContextChanged && change.PreviousValue is { IsLeaving: true } gate && !ReferenceEquals(change.CurrentValue, gate))
             {
                 gate.Left();
@@ -51,7 +58,13 @@ namespace Tellma.Core.Crud.Actions
         });
 
         /// <summary>The flows that left the rounds to wait for the persist, whose failure before it is sent abandons the action.</summary>
-        private readonly ConcurrentQueue<Task> _released = new();
+        private readonly ConcurrentQueue<ReleasedFlow> _released = new();
+
+        /// <summary>The first refusal of a write composed after its task read Persisted, whichever flow raised it; null when none was.</summary>
+        private Exception? _composedLate;
+
+        /// <summary>The first run's scheduler, which records a load refused after its task left the rounds; null on the one-round-trip path.</summary>
+        private ValidationScheduler? _scheduler;
 
         /// <summary>The operation's loader; null on the one-round-trip path.</summary>
         private ContextLoader? _loader;
@@ -83,9 +96,10 @@ namespace Tellma.Core.Crud.Actions
         {
             using ConfirmationFrame frame = Services.Confirmations.Frame(Resource, OperationName);
             ValidationScheduler scheduler = new(_stack.Limits.MaxValidationRounds, OperationName, DispatchAsync, Services.Metrics, _cancellationToken);
+            _scheduler = scheduler;
             _loader = new ContextLoader(Services.Metadata, _map, scheduler, ReadDecision);
             _recording = RecordingBatch.Deferred(CallbackFailed, PersistGate.EnsureComposing);
-            _context = NewContext(_loader, _errors, frame, _recording);
+            _context = NewContext(_loader, _errors, frame, _recording, scheduler, tracked: true);
             try
             {
                 // --- Round trip 1 carries the targets; the tasks join it with their first loads ---
@@ -119,9 +133,12 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="errors">The errors.</param>
         /// <param name="frame">The confirmation frame.</param>
         /// <param name="batch">The batch the context's appends are recorded on.</param>
+        /// <param name="scheduler">The rounds the context's tasks run in.</param>
+        /// <param name="tracked">Whether the context's refusals are recorded on the run: the first run's, never a re-run's.</param>
         /// <returns>The context.</returns>
-        private ActionContext<TEntity, TKey> NewContext(ContextLoader loader, ValidationErrors<TEntity> errors, ConfirmationFrame frame, RecordingBatch batch)
+        private ActionContext<TEntity, TKey> NewContext(ContextLoader loader, ValidationErrors<TEntity> errors, ConfirmationFrame frame, RecordingBatch batch, ValidationScheduler scheduler, bool tracked)
         {
+            Action<Exception>? late = tracked ? RecordLate : null;
             return new ActionContext<TEntity, TKey>
             {
                 Ids = _ids,
@@ -135,7 +152,7 @@ namespace Tellma.Core.Crud.Actions
                 Resource = Resource,
                 Notifier = Services.Services.GetService<INotifier>(),
                 AssignmentsService = Services.Services.GetService<IAssignments>(),
-                PersistedRead = static () => Waiting.Value?.Read(),
+                PersistedRead = () => ReadPersisted(scheduler, late),
                 ComposeGuard = PersistGate.EnsureComposing,
             };
         }
@@ -148,15 +165,15 @@ namespace Tellma.Core.Crud.Actions
         {
             // --- A re-run's flows wait on a context that never persists, so only the first run's count ---
             string name = _descriptor.Name;
-            Gated(scheduler, _behavior.GetType().Name, () => _behavior.ValidateActionAsync(name, context), tracked: withMethod);
+            Gated(scheduler, _behavior.GetType().Name, () => _behavior.ValidateActionAsync(name, context), tracked: withMethod, isMethod: false);
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                Gated(scheduler, validator.GetType().Name, () => validator.ValidateActionAsync(name, context), tracked: withMethod);
+                Gated(scheduler, validator.GetType().Name, () => validator.ValidateActionAsync(name, context), tracked: withMethod, isMethod: false);
             }
 
             if (withMethod && _method is MethodInfo method)
             {
-                Gated(scheduler, method.Name, () => _methodTask = InvokeAsync(method, context), tracked: true);
+                Gated(scheduler, method.Name, () => _methodTask = InvokeAsync(method, context), tracked: true, isMethod: true);
             }
         }
 
@@ -167,13 +184,17 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="scheduler">The rounds' scheduler.</param>
         /// <param name="name">The task's name.</param>
         /// <param name="body">The task.</param>
-        /// <param name="tracked">Whether the flow, once it left the rounds, abandons the action by failing before the persist is sent.</param>
-        private void Gated(ValidationScheduler scheduler, string name, Func<Task> body, bool tracked)
+        /// <param name="tracked">
+        ///     Whether the flow, once it left the rounds, abandons the action by failing before the persist
+        ///     is sent, is awaited once it committed, and has its refusals recorded on the run.
+        /// </param>
+        /// <param name="isMethod">Whether the task is the action's method, which the commit awaits on its own.</param>
+        private void Gated(ValidationScheduler scheduler, string name, Func<Task> body, bool tracked, bool isMethod)
         {
             scheduler.Run(name, async () =>
             {
                 // The gate flows into the task's body, and no further than it.
-                PersistGate gate = new(scheduler);
+                PersistGate gate = new(scheduler, tracked ? RecordLate : null);
                 Waiting.Value = gate;
                 Task flow = body();
                 if (await Task.WhenAny(flow, gate.Released).ConfigureAwait(false) == flow)
@@ -185,7 +206,7 @@ namespace Tellma.Core.Crud.Actions
                 // Left the rounds for the persist: the flow resumes once the action committed or ended.
                 if (tracked)
                 {
-                    _released.Enqueue(flow);
+                    _released.Enqueue(new ReleasedFlow(name, flow, isMethod));
                 }
 
                 Observe(flow);
@@ -193,22 +214,112 @@ namespace Tellma.Core.Crud.Actions
         }
 
         /// <summary>
-        ///     Abandons the action unsent when a flow that left the rounds to wait for the persist has
-        ///     failed already: it composed after reading Persisted, or failed otherwise.
+        ///     Abandons the action unsent when a task composed after reading Persisted, whichever flow
+        ///     of it did, or a flow that left the rounds to wait for the persist has failed already.
         /// </summary>
         private void ThrowIfReleasedFlowFailed()
         {
-            foreach (Task flow in _released)
+            // --- A refusal recorded from any flow, the ones nobody awaits included ---
+            if (LateRefusal() is Exception late)
             {
-                if (flow.IsFaulted && flow.Exception is AggregateException { InnerExceptions: [Exception failure] })
+                ExceptionDispatchInfo.Throw(late);
+            }
+
+            // --- A released flow's own failure: the first of its exceptions, however many it holds ---
+            foreach (ReleasedFlow released in _released)
+            {
+                if (released.Flow is { IsFaulted: true, Exception: AggregateException { InnerExceptions: [Exception failure, ..] } })
                 {
-                    ExceptionDispatchInfo.Capture(failure).Throw();
+                    ExceptionDispatchInfo.Throw(failure);
                 }
 
-                if (flow.IsCanceled)
+                if (released.Flow.IsCanceled)
                 {
                     throw new OperationCanceledException("A task of the action that left its validation rounds was cancelled before the action persisted.");
                 }
+            }
+        }
+
+        /// <summary>
+        ///     The first write the run's tasks composed after reading Persisted: a refused save, update,
+        ///     append or load, recorded whichever flow raised it, or an error reported once the rounds
+        ///     ended; null when none was.
+        /// </summary>
+        /// <returns>The refusal; null when none was.</returns>
+        private Exception? ComposedLate()
+        {
+            return LateRefusal()
+                ?? (_context is not null && _errors.HasErrors
+                    ? new InvalidOperationException("A task of the action reported a validation error after the validation rounds ended, after reading Persisted. Report every error before reading Persisted.")
+                    : null);
+        }
+
+        /// <summary>The first refusal of a save, an update, an append or a load a task composed after reading Persisted; null when none was.</summary>
+        /// <returns>The refusal; null when none was.</returns>
+        private Exception? LateRefusal()
+        {
+            return Volatile.Read(ref _composedLate) ?? _scheduler?.LateFailure;
+        }
+
+        /// <summary>Records the first refusal of a write a task composed after reading Persisted.</summary>
+        /// <param name="refusal">The refusal.</param>
+        private void RecordLate(Exception refusal)
+        {
+            _ = Interlocked.CompareExchange(ref _composedLate, refusal, null);
+        }
+
+        // Spec 0015 §11.2: the hook's and the components' flows that waited for the persist resume
+        // once it committed, as the method's does; a failure of theirs then is the committed action's
+        // to log, and a refused late write is raised with the answer.
+        /// <summary>Waits for every released flow of the hook and the components, logging a failure after the commit.</summary>
+        /// <returns>A task that completes when every released flow returned.</returns>
+        private async Task ResumeReleasedAsync()
+        {
+            foreach (ReleasedFlow released in _released)
+            {
+                if (released.IsMethod)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await released.Flow.ConfigureAwait(false);
+                }
+                catch (Exception failure) when (failure is not OutOfMemoryException)
+                {
+                    // A refused late write is raised with the answer, and logged there.
+                    if (!ReferenceEquals(failure, LateRefusal()))
+                    {
+                        CrudLog.ActionTaskFailedAfterCommit(Services.Logger, released.Name, Resource, OperationName, Activity.Current?.TraceId.ToString(), failure);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Tells the gate of the reading flow's task that it reads Persisted.</summary>
+        /// <param name="scheduler">The rounds the context's tasks run in.</param>
+        /// <param name="late">Records the refusal on the run; null for a re-run.</param>
+        /// <exception cref="InvalidOperationException">
+        ///     The flow carries no task's context while the rounds run, so its task could never leave
+        ///     them; or another flow of its task is parked at a load.
+        /// </exception>
+        private static void ReadPersisted(ValidationScheduler scheduler, Action<Exception>? late)
+        {
+            if (Waiting.Value is PersistGate gate)
+            {
+                gate.Read();
+                return;
+            }
+
+            // A flow started with the execution context suppressed carries no gate: its task would
+            // never leave the rounds, and the persist it waits for would never run.
+            if (scheduler.IsRunning)
+            {
+                InvalidOperationException refusal = new(
+                    "Persisted was read during the action's validation rounds from a flow that carries no task's context, such as one started with the execution context's flow suppressed. Read Persisted from the task's own flows.");
+                late?.Invoke(refusal);
+                throw refusal;
             }
         }
 
@@ -269,7 +380,7 @@ namespace Tellma.Core.Crud.Actions
                 static (_, _) => throw new InvalidOperationException("A re-run of the validators answers from the rounds already run and dispatches none."),
                 metrics: null,
                 _cancellationToken);
-            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, frame, RecordingBatch.Deferred());
+            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, frame, RecordingBatch.Deferred(), scheduler, tracked: false);
             context.Entities = _targets;
 
             // --- The validators, with every round trip refused as stale ---
@@ -298,7 +409,8 @@ namespace Tellma.Core.Crud.Actions
         ///     raised before then fails the rounds rather than race the persist.
         /// </summary>
         /// <param name="scheduler">The rounds the task runs in.</param>
-        private sealed class PersistGate(ValidationScheduler scheduler)
+        /// <param name="late">Records a refusal on the run; null for a re-run's task.</param>
+        private sealed class PersistGate(ValidationScheduler scheduler, Action<Exception>? late)
         {
             /// <summary>Guards the leave, which flows of the task on several threads may race.</summary>
             private readonly Lock _lock = new();
@@ -318,14 +430,19 @@ namespace Tellma.Core.Crud.Actions
             /// <summary>Whether a flow of the task read Persisted: the task composes nothing more.</summary>
             public bool IsLeaving => _leaving;
 
-            /// <summary>Refuses a save, an update or an append from a flow whose task read Persisted.</summary>
+            /// <summary>Records a refusal on the run; null for a re-run's task.</summary>
+            private Action<Exception>? Late { get; } = late;
+
+            /// <summary>Refuses a save, an update or an append from a flow whose task read Persisted, recording the refusal on the run.</summary>
             /// <exception cref="InvalidOperationException">The calling flow's task read Persisted.</exception>
             public static void EnsureComposing()
             {
-                if (Waiting.Value is { IsLeaving: true })
+                if (Waiting.Value is { IsLeaving: true } gate)
                 {
-                    throw new InvalidOperationException(
+                    InvalidOperationException refusal = new(
                         "The action's task read Persisted and then composed more: a save, an update or an append to the action's batch after reading Persisted is refused. Read Persisted where it is awaited, after every load and every write is composed.");
+                    gate.Late?.Invoke(refusal);
+                    throw refusal;
                 }
             }
 
@@ -363,6 +480,12 @@ namespace Tellma.Core.Crud.Actions
                 }
             }
         }
+
+        /// <summary>A flow that left the rounds to wait for the persist.</summary>
+        /// <param name="Name">The task's name.</param>
+        /// <param name="Flow">The flow.</param>
+        /// <param name="IsMethod">Whether the task is the action's method.</param>
+        private readonly record struct ReleasedFlow(string Name, Task Flow, bool IsMethod);
 
         /// <summary>Observes a task's fault, so a flow nobody awaits leaves no unobserved exception.</summary>
         /// <param name="task">The task; null for none.</param>

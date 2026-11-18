@@ -20,19 +20,26 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Binds rows of a table type as a table-valued parameter under a given name, for later statements to name.</summary>
         /// <typeparam name="TRow">The row type: a standalone table type or an entity with a table type.</typeparam>
         /// <param name="rows">The rows.</param>
-        /// <param name="name">The name: a variable of the once-per-batch namespace the batch has not declared.</param>
+        /// <param name="name">The name: a variable of the recordings' namespace the batch has not declared.</param>
         /// <returns>The parameter's name.</returns>
-        /// <exception cref="ArgumentException">The name is no variable of the once-per-batch namespace.</exception>
+        /// <exception cref="ArgumentException">The name is no variable of the recordings' namespace.</exception>
         /// <exception cref="InvalidOperationException">The batch already declared the name, or the row type has no table type.</exception>
         SqlIdentifier Tvp<TRow>(IReadOnlyList<TRow> rows, string name)
             where TRow : class;
 
         /// <summary>Declares an empty table of keys, <c>[Id]</c> its primary key, under a given name.</summary>
         /// <param name="keyType">The keys' type: <see cref="int" /> or <see cref="long" />.</param>
-        /// <param name="name">The name: a variable of the once-per-batch namespace the batch has not declared.</param>
+        /// <param name="name">The name: a variable of the recordings' namespace the batch has not declared.</param>
         /// <returns>The table's name.</returns>
-        /// <exception cref="ArgumentException">The key type is neither int nor long, or the name is no variable of the once-per-batch namespace.</exception>
+        /// <exception cref="ArgumentException">The key type is neither int nor long, or the name is no variable of the recordings' namespace.</exception>
         /// <exception cref="InvalidOperationException">The batch already declared the name.</exception>
         SqlIdentifier DeclareKeyTable(Type keyType, string name);
+
+        /// <summary>
+        ///     Claims the batch's recording names for the one deferred recording replayed onto it, whose
+        ///     tables are named from zero as every recording's are.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Another deferred recording claimed them on the batch.</exception>
+        void ClaimRecordingNames();
     }
 }

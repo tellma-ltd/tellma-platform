@@ -153,6 +153,9 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>The action validation hook, given the action's name; nothing when null.</summary>
         public Func<string, ActionContext<Widget, int>, Task>? ValidateAction { get; set; }
 
+        /// <summary>What the rename action composes onto its batch after its update; nothing when null.</summary>
+        public Action<ActionContext<Widget, int>>? Compose { get; set; }
+
         /// <summary>The names of the targets the rename action saw, by the order it saw them; empty until it runs.</summary>
         public List<string> Renamed { get; } = [];
 
@@ -161,6 +164,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             ValidateDelete = null;
             ValidateAction = null;
+            Compose = null;
             Renamed.Clear();
         }
     }
@@ -176,7 +180,8 @@ namespace Tellma.Core.IntegrationTests.Crud
 
     /// <summary>
     ///     The widget stack's service: its delete and action validation hooks run what the probe
-    ///     arms, and it declares the rename action, which renames the target widgets.
+    ///     arms, and it declares the rename action, which renames the target widgets and composes
+    ///     what the probe arms.
     /// </summary>
     /// <param name="factory">The pipeline factory.</param>
     /// <param name="probe">The probe.</param>
@@ -196,6 +201,7 @@ namespace Tellma.Core.IntegrationTests.Crud
             await context.Loader.LoadAsync();
             probe.Renamed.AddRange(context.Entities.Select(static widget => widget.Name));
             context.Update(new Dictionary<string, object?>(StringComparer.Ordinal) { [nameof(Widget.Name)] = arguments.Name });
+            probe.Compose?.Invoke(context);
         }
 
         /// <inheritdoc />

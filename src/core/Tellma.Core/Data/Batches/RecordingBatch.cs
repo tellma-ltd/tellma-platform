@@ -387,12 +387,23 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>Replays every recorded append onto a recomposed batch, in the first entry's order.</summary>
         /// <param name="inner">The recomposed batch, at the position the first entry recorded from.</param>
-        /// <exception cref="InvalidOperationException">A replayed append named a batch-local table differently than the first entry did.</exception>
+        /// <exception cref="InvalidOperationException">
+        ///     A replayed append named a batch-local table differently than the first entry did, or the
+        ///     batch took another deferred recording's named tables already.
+        /// </exception>
         /// <exception cref="StaleContextException">A result the first entry answered at compose time answers otherwise now.</exception>
         internal void Replay(IDataBatch inner)
         {
             ArgumentNullException.ThrowIfNull(inner);
             _inner = inner;
+
+            // --- A deferred view's table names count from zero in every recording, so one batch takes
+            // the tables of one recording; a second is refused before it declares any ---
+            if (_named > 0)
+            {
+                NamedTablesOf(inner).ClaimRecordingNames();
+            }
+
             CompleteOnCommit(inner);
             foreach (Action<IDataBatch> replay in _replays)
             {
@@ -431,7 +442,7 @@ namespace Tellma.Core.Data.Batches
 
             // --- A deferred view names the table itself, in the once-per-batch namespace no
             // statement's ordinal enters, and every replay declares it under that name ---
-            string name = string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.BatchPrefix}rec{_named++}_{word}");
+            string name = string.Create(CultureInfo.InvariantCulture, $"{ReservedSqlNames.RecordingPrefix}{_named++}_{word}");
             SqlIdentifier chosen = new(name);
             _replays.Add(again => EnsureSame(chosen, named(again, name)));
             return chosen;

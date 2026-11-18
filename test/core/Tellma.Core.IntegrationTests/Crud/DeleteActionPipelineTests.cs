@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
@@ -29,7 +30,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     caller confirmed; a subtree with a row outside the delete grant is refused whole; a row still
     ///     referenced is in use; a delete compares the stamps it is given; the built-in actions
     ///     stamp the rows they change, skip those already in the state, and answer alike on either path;
-    ///     and a custom action whose permissions move before its persist commits once, recomposed.
+    ///     a custom action whose permissions move before its persist commits once, recomposed; and a
+    ///     method's own table, named before the persist batch exists, carries its users' tag bump.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -52,6 +54,9 @@ namespace Tellma.Core.IntegrationTests.Crud
 
         /// <summary>The securable action the widgets' custom action requires.</summary>
         private const string RenameGrant = "Rename";
+
+        /// <summary>The users' preferences table, which carries a user-level tag.</summary>
+        private static readonly TableName UserPreferences = new("core", "UserPreferences");
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -370,6 +375,41 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(1, await CountAsync("[fixture].[Widgets] WHERE [Id] = 541 AND [Name] = N'Recomposed'"));
         }
 
+        // --- A method's own tables, named before the persist batch exists ---
+
+        [Fact]
+        public async Task A_custom_action_whose_method_writes_users_rows_through_a_table_it_named_commits_them_and_moves_those_users_preferences_tag()
+        {
+            fixture.Probe.Reset();
+            await SeedWidgetsAsync(551);
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, RenameGrant, null));
+            await WarmAsync<Widget>(subject);
+            string? before = await PreferencesTagAsync(userId);
+            SqlIdentifier? named = null;
+            fixture.Probe.Compose = context =>
+            {
+                // The method names its users' table, and the write that bumps their tags names it as their ids.
+                SqlIdentifier users = context.Batch.Tvp<IdList>([new() { Id = userId }]);
+                named = users;
+#pragma warning disable TELLMA0006
+                _ = context.Batch.Sql(
+                    $"DELETE FROM [core].[UserPreferences] WHERE [UserId] IN (SELECT [Id] FROM {users});",
+                    new SqlOptions(writes: new HashSet<TableName> { UserPreferences }, userIds: users));
+#pragma warning restore TELLMA0006
+            };
+
+            (EntitiesResult<Widget> renamed, int trips) = await CountedAsync(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [551], new WidgetRename { Name = "Named" }, new ActionOptions(), Token));
+
+            // --- Two round trips; the update and the users' write committed, the users' tag moved ---
+            Assert.Equal([551L], renamed.Ids);
+            Assert.Equal(2, trips);
+            Assert.Equal(ReservedSqlNames.RecordingPrefix + "0_t", named?.Name);
+            Assert.Equal(1, await CountAsync("[fixture].[Widgets] WHERE [Id] = 551 AND [Name] = N'Named'"));
+            Assert.NotEqual(before, await PreferencesTagAsync(userId));
+        }
+
         // --- Helpers ---
 
         /// <summary>Runs a call in a scope of the caller and counts the round trips it took.</summary>
@@ -436,6 +476,14 @@ namespace Tellma.Core.IntegrationTests.Crud
         private Task<int> CountAsync(string where)
         {
             return fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM " + where + ";");
+        }
+
+        /// <summary>A user's preferences tag, as text; null when the user has none.</summary>
+        /// <param name="userId">The user's id.</param>
+        /// <returns>The tag.</returns>
+        private Task<string?> PreferencesTagAsync(int userId)
+        {
+            return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT CONVERT(nvarchar(36), [PreferencesTag]) FROM [core].[UserStamps] WHERE [UserId] = {userId};"));
         }
 
         /// <summary>A lookup's stored stamp, as text with every fractional digit.</summary>

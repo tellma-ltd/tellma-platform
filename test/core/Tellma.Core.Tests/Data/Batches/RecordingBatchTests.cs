@@ -224,6 +224,32 @@ namespace Tellma.Core.Tests.Data.Batches
         }
 
         [Fact]
+        public void A_batch_takes_the_named_tables_of_one_deferred_recording_and_refuses_a_second_before_it_declares_any()
+        {
+            var first = RecordingBatch.Deferred();
+            _ = first.Tvp([new Row { Id = 1 }]);
+            first.Seal();
+            var second = RecordingBatch.Deferred();
+            _ = second.Tvp([new Row { Id = 2 }]);
+            second.Seal();
+            var unnamed = RecordingBatch.Deferred();
+            _ = unnamed.Sql($"SELECT 1;", SqlOptions.None);
+            unnamed.Seal();
+            ScriptedBatch batch = _script.NewBatch(BatchPurpose.Persist);
+
+            first.Replay(batch);
+            int declared = batch.Statements.Count;
+
+            // --- The second recording would name its table as the first did: refused, nothing declared ---
+            _ = Assert.Throws<InvalidOperationException>(() => second.Replay(batch));
+            Assert.Equal(declared, batch.Statements.Count);
+
+            // --- A recording that names no table claims nothing ---
+            unnamed.Replay(batch);
+            Assert.Equal(declared + 1, batch.Statements.Count);
+        }
+
+        [Fact]
         public void A_deferred_views_guard_runs_before_every_append_and_refuses_one_by_throwing()
         {
             bool refusing = false;

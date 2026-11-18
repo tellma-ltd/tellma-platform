@@ -45,6 +45,9 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// <summary>The rows of each table-valued parameter, by its name.</summary>
         private readonly Dictionary<string, IReadOnlyList<object>> _tvps = new(StringComparer.Ordinal);
 
+        /// <summary>Whether a deferred recording claimed the batch's recording names.</summary>
+        private bool _recordingNamesClaimed;
+
         /// <summary>The commit callbacks, in registration order.</summary>
         private readonly List<Action<BatchOutcome>> _committed = [];
 
@@ -282,6 +285,18 @@ namespace Tellma.Core.Tests.Crud.Scripted
             _tvps.Add(name, [.. rows]);
             _ = Append(ScriptedKind.Tvp, typeof(TRow), rows, arguments: null, options: null, name);
             return new SqlIdentifier(name);
+        }
+
+        /// <inheritdoc />
+        public void ClaimRecordingNames()
+        {
+            EnsureComposing();
+            if (_recordingNamesClaimed)
+            {
+                throw new InvalidOperationException("The scripted batch already takes the tables of a deferred recording.");
+            }
+
+            _recordingNamesClaimed = true;
         }
 
         /// <inheritdoc />

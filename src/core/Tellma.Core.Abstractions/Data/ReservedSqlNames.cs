@@ -31,6 +31,8 @@ namespace Tellma.Core.Abstractions.Data
     ///         <item><description>
     ///             <see cref="BatchPrefix" />, the once-per-batch names of the schema guard, the connect
     ///             prologue, the tag guard and the tag bumps, such as <see cref="SchemaFingerprint" />.
+    ///             Within it, <see cref="RecordingPrefix" /> holds the tables a recording composed before
+    ///             its batch existed names itself, which no other once-per-batch name starts with.
     ///         </description></item>
     ///     </list>
     ///     <para><c>{b}</c> is always the statement's batch ordinal.</para>
@@ -45,6 +47,13 @@ namespace Tellma.Core.Abstractions.Data
 
         /// <summary>The prefix of the once-per-batch names, <c>@tm_</c>.</summary>
         public const string BatchPrefix = "@tm_";
+
+        /// <summary>
+        ///     The prefix, within <see cref="BatchPrefix" />, of the tables a recording composed before its
+        ///     batch existed names itself, <c>@tm_rec</c>: <c>@tm_rec{n}_t</c> parameters and
+        ///     <c>@tm_rec{n}_ids</c> tables, the same in every batch the recording is replayed onto.
+        /// </summary>
+        public const string RecordingPrefix = "@tm_rec";
 
         /// <summary>The running model's storage fingerprint, bound once per batch for the schema guard.</summary>
         public const string SchemaFingerprint = "@tm_schema";

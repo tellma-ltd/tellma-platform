@@ -65,6 +65,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The batch-local names the statements declared, which identifiers may name.</summary>
         private readonly HashSet<string> _declared = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Whether a deferred recording claimed the batch's recording names.</summary>
+        private bool _recordingNamesClaimed;
+
         /// <summary>The distinct parameter names bound so far, the schema fingerprint's included.</summary>
         private readonly HashSet<string> _parameterNames = new(StringComparer.OrdinalIgnoreCase) { ReservedSqlNames.SchemaFingerprint };
 
@@ -426,6 +429,19 @@ namespace Tellma.Core.Data.Batches
             draft.Declare(name);
             Append(draft, $"DECLARE {name} TABLE ([Id] {keyword} PRIMARY KEY);");
             return new SqlIdentifier(name);
+        }
+
+        /// <inheritdoc />
+        public void ClaimRecordingNames()
+        {
+            EnsureComposing();
+            if (_recordingNamesClaimed)
+            {
+                throw new InvalidOperationException(
+                    "The batch already takes the tables of a deferred recording; a second recording's tables, named from zero as every recording's are, would collide with them.");
+            }
+
+            _recordingNamesClaimed = true;
         }
 
         /// <inheritdoc />
@@ -1077,16 +1093,16 @@ namespace Tellma.Core.Data.Batches
                 : throw new ArgumentException($"A key table holds int or long keys, not {keyType.Name}.", nameof(keyType));
         }
 
-        /// <summary>Refuses a caller-chosen table name outside the once-per-batch namespace, or one the batch already declared.</summary>
+        /// <summary>Refuses a caller-chosen table name outside the recordings' namespace, or one the batch already declared.</summary>
         /// <param name="name">The name.</param>
-        /// <exception cref="ArgumentException">The name is no variable of the once-per-batch namespace.</exception>
+        /// <exception cref="ArgumentException">The name is no variable of the recordings' namespace.</exception>
         /// <exception cref="InvalidOperationException">The batch already declared the name.</exception>
         private void EnsureFreeName(string name)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
-            if (!SqlNames.IsVariableName(name) || !name.StartsWith(ReservedSqlNames.BatchPrefix, StringComparison.OrdinalIgnoreCase))
+            if (!SqlNames.IsVariableName(name) || !name.StartsWith(ReservedSqlNames.RecordingPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                throw new ArgumentException($"The table name '{name}' is no variable of the batch's once-per-batch namespace ({ReservedSqlNames.BatchPrefix}).", nameof(name));
+                throw new ArgumentException($"The table name '{name}' is no variable of the recordings' namespace ({ReservedSqlNames.RecordingPrefix}).", nameof(name));
             }
 
             if (_declared.Contains(name) || _parameterNames.Contains(name))

@@ -1433,16 +1433,23 @@ no row and every id is not found.
   the method's and the components' recorded appends, the stamped `Update`s of the targets, the
   post-check when the action asks for it, and the read-back. A method composes before the persist
   batch exists: its table-valued parameters and declared tables are named by the recording
-  (`@tm_rec<n>_…`, in the once-per-batch namespace) and keep those names wherever the recording
-  lands, while an append that answers at once from its batch (a raw save or delete, a cache read) is
+  (`ReservedSqlNames.RecordingPrefix`, `@tm_rec<n>_…`) and keep those names wherever the recording
+  lands, one recording's per batch, while an append that answers at once from its batch (a raw save or delete, a cache read) is
   `InvalidOperationException`. `ActionContext.Persisted` holds the method until the persist
   committed and then answers what its appends read: the task that read it leaves the rounds once
-  the reading flow stops running, and from the read on it composes nothing (a load, a save, an
-  update or an append is `InvalidOperationException`, and one raised before the flow stops running
-  fails the rounds, so nothing is sent). A `PartialFailure` the method throws is rethrown once its
-  persist committed. Any other failure of the method after the commit is raised only when the method
-  answers a value of its own; otherwise it is logged (`ActionMethodFailedAfterCommit`) and the
-  action answers its ids. The outcome's stamp is the one the rows `Save` marked carry, else the
+  the thread leaves the reading flow's context, and from the read on it composes nothing (a load,
+  a save, an update or an append is `InvalidOperationException`, and one raised before the flow
+  stops running fails the rounds, so nothing is sent). Every such refusal is recorded on the run,
+  whichever flow raised it: one recorded before the persist is sent abandons the action, and one
+  recorded after it (a flow that awaited something else before composing) is logged
+  (`ActionComposedAfterPersisted`) and raised once the action committed, for every action. A read
+  of `Persisted` during the rounds from a flow that carries no task's context is refused, and a
+  released flow faulted with several exceptions abandons the action with the first it holds. The hook's and
+  the components' released flows are awaited after the commit, as the method is, and a failure of
+  theirs then is logged (`ActionTaskFailedAfterCommit`). A `PartialFailure` the method throws is
+  rethrown once its persist committed. Any other failure of the method after the commit is raised
+  only when the method answers a value of its own; otherwise it is logged
+  (`ActionMethodFailedAfterCommit`) and the action answers its ids. The outcome's stamp is the one the rows `Save` marked carry, else the
   clock at the commit. A re-entered persist re-runs the hooks and components in memory under round
   trip 1's verdicts and replays the recordings; the method is never re-invoked.
 - **A commit whose response was lost**: one the executor's probe proved answers a delete with the

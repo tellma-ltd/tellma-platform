@@ -120,6 +120,7 @@ namespace Tellma.Core.Crud.Actions
             // --- The commit: the method resumes, the post-commit phase runs, then the answer ---
             Services.Accessor.Current.ApplyCultures();
             ExceptionDispatchInfo? failed = await ResumeMethodAsync().ConfigureAwait(false);
+            await ResumeReleasedAsync().ConfigureAwait(false);
             await AfterPersistAsync(outcome).ConfigureAwait(false);
             RaiseAfterCommit(failed);
             _partial?.Throw();
@@ -129,11 +130,27 @@ namespace Tellma.Core.Crud.Actions
         // Spec 0015 §8's rule for a committed write: once the action committed, nothing answers it
         // with an error a caller might retry into a second commit. A method answering no value of its
         // own that fails after the commit is logged, and the action answers its ids; a method
-        // answering a value has no other answer to give, so its failure is raised.
-        /// <summary>Raises, or logs, the method's failure after the action committed.</summary>
+        // answering a value has no other answer to give, so its failure is raised. A write a task
+        // composed after reading Persisted, and the persist committed without, is an authoring bug
+        // and never answered as success: it is logged and raised for every action.
+        /// <summary>Raises, or logs, what failed after the action committed.</summary>
         /// <param name="failed">The method's failure after the commit; null when it returned.</param>
         private void RaiseAfterCommit(ExceptionDispatchInfo? failed)
         {
+            // --- A write the persist committed without ---
+            string? traceId = Activity.Current?.TraceId.ToString();
+            if (ComposedLate() is Exception late)
+            {
+                CrudLog.ActionComposedAfterPersisted(Services.Logger, Resource, OperationName, traceId, late);
+                if (failed is not null && !ReferenceEquals(failed.SourceException, late))
+                {
+                    CrudLog.ActionMethodFailedAfterCommit(Services.Logger, _method?.Name ?? _descriptor.Name, Resource, OperationName, traceId, failed.SourceException);
+                }
+
+                ExceptionDispatchInfo.Throw(late);
+            }
+
+            // --- The method's own failure ---
             if (failed is null)
             {
                 return;
@@ -144,7 +161,7 @@ namespace Tellma.Core.Crud.Actions
                 failed.Throw();
             }
 
-            CrudLog.ActionMethodFailedAfterCommit(Services.Logger, _method?.Name ?? _descriptor.Name, Resource, OperationName, Activity.Current?.TraceId.ToString(), failed.SourceException);
+            CrudLog.ActionMethodFailedAfterCommit(Services.Logger, _method?.Name ?? _descriptor.Name, Resource, OperationName, traceId, failed.SourceException);
         }
 
         // Spec 0015 §11.2 step 4, in this order on every entry; compose performs no I/O, and the
@@ -157,14 +174,18 @@ namespace Tellma.Core.Crud.Actions
         /// <exception cref="NotFoundException">The connected user reads no row of the stack, so every target is hidden.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
-            // --- A re-entry, which the operation's frame counts: the validators re-run in memory under
-            // the fresh user; the first entry is abandoned when a task that left the rounds failed ---
-            bool first = ++_entries == 1;
-            if (first)
+            // --- Every entry is abandoned unsent when a task composed after reading Persisted, a flow
+            // that left the rounds failed, or a task reported an error once the rounds ended ---
+            ThrowIfReleasedFlowFailed();
+            if (_context is not null && _errors.HasErrors)
             {
-                ThrowIfReleasedFlowFailed();
+                throw new ValidationException(_errors.Items);
             }
-            else if (_context is not null)
+
+            // --- A re-entry, which the operation's frame counts: the validators re-run in memory under
+            // the fresh user ---
+            bool first = ++_entries == 1;
+            if (!first && _context is not null)
             {
                 await RevalidateAsync(user).ConfigureAwait(false);
             }
@@ -320,8 +341,9 @@ namespace Tellma.Core.Crud.Actions
         /// <returns>The method's own result, or the target ids and, when asked and the read answered, the rows.</returns>
         private async Task<object?> AfterProvenCommitAsync()
         {
-            // --- The method resumes, and may fail reading what the lost batch never answered ---
+            // --- The method and the released flows resume, and may fail reading what the lost batch never answered ---
             ExceptionDispatchInfo? failed = await ResumeMethodAsync().ConfigureAwait(false);
+            await ResumeReleasedAsync().ConfigureAwait(false);
 
             // --- The read-back over the target ids, when the action answers them ---
             DetailsComposition<TEntity, TKey>? composition = null;

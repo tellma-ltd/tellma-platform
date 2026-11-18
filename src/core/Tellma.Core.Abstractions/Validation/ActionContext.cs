@@ -130,9 +130,13 @@ namespace Tellma.Core.Abstractions.Validation
         ///     Reading this property tells the pipeline the reader is about to wait for the persist: once
         ///     the reading flow stops running, the persist runs without waiting for the reader any longer.
         ///     Read it where it is awaited, after every load and every write is composed: a load, a save,
-        ///     an update or an append to <see cref="Batch" /> after the read is refused, and the action is
-        ///     abandoned unsent when the refusal comes before its persist is sent, as it always does when
-        ///     the reading flow raises it before awaiting anything.
+        ///     an update or an append to <see cref="Batch" /> after the read is refused, whichever flow of
+        ///     the task makes it. The action is abandoned unsent when the refusal comes before its persist
+        ///     is sent, as it always does when the reading flow raises it before awaiting anything. A flow
+        ///     that awaits something else first may compose after the persist was sent: the action then
+        ///     commits without that write, and the refusal is logged and raised once it committed, for an
+        ///     action answering a value or not, rather than answered as success. A read from a flow that
+        ///     carries none of the task's context, while the validation rounds run, is refused.
         /// </remarks>
         public Task Persisted
         {

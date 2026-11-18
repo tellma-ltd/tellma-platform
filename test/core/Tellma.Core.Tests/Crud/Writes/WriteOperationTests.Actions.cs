@@ -288,6 +288,145 @@ namespace Tellma.Core.Tests.Crud.Writes
         }
 
         [Fact]
+        public async Task A_write_composed_after_reading_Persisted_and_awaiting_the_persist_itself_is_raised_after_the_commit_whichever_flow_composed_it()
+        {
+            // The late flows await the persist batch's execution, not Persisted: they compose once it was sent.
+            TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _ = _rig.Script.OnExecute((batch, cancellationToken) =>
+            {
+                if (batch.Purpose == BatchPurpose.Persist)
+                {
+                    _ = sent.TrySetResult();
+                }
+
+                return Task.CompletedTask;
+            });
+            Dictionary<string, object?> late = new() { [nameof(PwTicket.Name)] = "late" };
+
+            // --- The method itself, the service's hook, and a child flow of the method nobody awaits ---
+            Func<ActionContext<PwTicket, int>, Task>[] methods =
+            [
+                async context =>
+                {
+                    await context.Loader.LoadAsync();
+                    Task persisted = context.Persisted;
+                    await sent.Task;
+                    context.Update(late);
+                    await persisted;
+                },
+                static _ => Task.CompletedTask,
+                async context =>
+                {
+                    await context.Loader.LoadAsync();
+                    Task persisted = context.Persisted;
+                    TaskCompletionSource composed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await sent.Task;
+                            context.Update(late);
+                        }
+                        finally
+                        {
+                            _ = composed.TrySetResult();
+                        }
+                    });
+                    await persisted;
+                    await composed.Task;
+                },
+            ];
+            Func<string, ActionContext<PwTicket, int>, Task>?[] hooks =
+            [
+                null,
+                async (_, context) =>
+                {
+                    await context.Loader.LoadAsync();
+                    Task persisted = context.Persisted;
+                    await sent.Task;
+                    context.Update(late);
+                    await persisted;
+                },
+                null,
+            ];
+
+            // --- Each: the persist committed without the write, and the refusal is raised, never success ---
+            for (int run = 0; run < methods.Length; run++)
+            {
+                sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                (_hooks.Close, _hooks.ValidateAction) = (methods[run], hooks[run]);
+
+                InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                    () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+
+                Assert.Contains("read Persisted and then composed more", refused.Message, StringComparison.Ordinal);
+                Assert.Equal(run + 1, _hooks.Outcomes.Count);
+                Assert.Equal(run + 1, _rig.Services.GetFakeLogCollector().GetSnapshot().Count(static record => record.Id.Name == "ActionComposedAfterPersisted" && record.Level == LogLevel.Error));
+            }
+
+            Assert.Equal(3, _rig.Script.Batches.Count(static batch => batch.Purpose == BatchPurpose.Persist && batch.IsExecuted));
+        }
+
+        [Fact]
+        public async Task A_hook_flow_that_left_the_rounds_and_faulted_with_several_exceptions_abandons_the_action_unsent_with_one_of_them()
+        {
+            InvalidOperationException first = new("The first failure.");
+            InvalidOperationException second = new("The second failure.");
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task? both = null;
+            _hooks.ValidateAction = (action, context) =>
+            {
+                // A hook that is no async method: it reads Persisted, then answers two flows that both fault.
+                _ = context.Persisted;
+                both = Task.WhenAll(FailAsync(release.Task, first), FailAsync(release.Task, second));
+                return both;
+            };
+            _hooks.Close = async context =>
+            {
+                await context.Loader.LoadAsync();
+                _ = release.TrySetResult();
+                await both!.ContinueWith(static _ => { }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            };
+
+            InvalidOperationException raised = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+
+            // The aggregate's order follows the flows' completion, so either may come first.
+            Assert.True(ReferenceEquals(first, raised) || ReferenceEquals(second, raised));
+            Assert.All(_rig.Script.Batches, static batch => Assert.Equal(BatchPurpose.Validate, batch.Purpose));
+            Assert.Empty(_hooks.Outcomes);
+
+            static async Task FailAsync(Task wait, Exception failure)
+            {
+                await wait;
+                throw failure;
+            }
+        }
+
+        [Fact]
+        public async Task Persisted_read_during_the_rounds_from_a_flow_that_carries_no_task_context_is_refused_rather_than_never_leaving_them()
+        {
+            _hooks.Close = async context =>
+            {
+                await context.Loader.LoadAsync();
+                Task read;
+                using (ExecutionContext.SuppressFlow())
+                {
+                    read = Task.Run(() => context.Persisted);
+                }
+
+                await read;
+            };
+
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+
+            Assert.Contains("carries no task's context", refused.Message, StringComparison.Ordinal);
+            Assert.All(_rig.Script.Batches, static batch => Assert.Equal(BatchPurpose.Validate, batch.Purpose));
+            Assert.Empty(_hooks.Outcomes);
+        }
+
+        [Fact]
         public async Task A_void_method_failing_after_the_commit_is_logged_and_the_action_answers_its_ids_while_a_value_method_failing_raises()
         {
             InvalidOperationException late = new("The method failed after the commit.");

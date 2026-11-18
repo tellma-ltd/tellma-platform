@@ -88,5 +88,37 @@ namespace Tellma.Core.Crud.Validation
             Level = LogLevel.Error,
             Message = "The method {Method} of {Operation} on {Resource} failed after the action committed, in trace {TraceId}; it answers its ids.")]
         public static partial void ActionMethodFailedAfterCommit(ILogger logger, string method, string resource, string operation, string? traceId, Exception exception);
+
+        /// <summary>
+        ///     A task of an action waiting for its persist, the service's hook or a component, failed after
+        ///     the action committed: the committed action answers as it would without the failure.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="task">The task's name.</param>
+        /// <param name="resource">The stack's resource.</param>
+        /// <param name="operation">The operation, such as <c>action:close</c>.</param>
+        /// <param name="traceId">The operation's trace id; null outside a trace.</param>
+        /// <param name="exception">The task's failure.</param>
+        [LoggerMessage(
+            EventName = "ActionTaskFailedAfterCommit",
+            Level = LogLevel.Error,
+            Message = "The task {Task} of {Operation} on {Resource} failed after the action committed, in trace {TraceId}.")]
+        public static partial void ActionTaskFailedAfterCommit(ILogger logger, string task, string resource, string operation, string? traceId, Exception exception);
+
+        /// <summary>
+        ///     A task of an action composed a write after reading the action's Persisted, and the action
+        ///     committed without it: an authoring bug, raised for every action rather than answered as
+        ///     success.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resource">The stack's resource.</param>
+        /// <param name="operation">The operation, such as <c>action:close</c>.</param>
+        /// <param name="traceId">The operation's trace id; null outside a trace.</param>
+        /// <param name="exception">The refusal of the write.</param>
+        [LoggerMessage(
+            EventName = "ActionComposedAfterPersisted",
+            Level = LogLevel.Error,
+            Message = "A task of {Operation} on {Resource} composed a write after reading Persisted, and the action committed without it, in trace {TraceId}; the refusal is raised.")]
+        public static partial void ActionComposedAfterPersisted(ILogger logger, string resource, string operation, string? traceId, Exception exception);
     }
 }
