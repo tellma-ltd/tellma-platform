@@ -359,6 +359,15 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
+
+- A §4.4 verification of PC-076 confirmed a residual race. An action flow reads `Persisted`, awaits something else (say a slow HTTP call), then composes a write or an `Errors.Add`. RT2 may already have committed without it.
+- Before the verification fixes, this was a silent write loss for void methods, `ValidateActionAsync`, components and child flows: success was answered. A value method raised a 500 after the commit.
+- `Persisted` is a plain `Task`. Awaiting one goes through the non-virtual TaskAwaiter, so nothing distinguishes "suspended on Persisted" from any other await. No fix within the current contract can prevent the loss.
+- Interim: the verification fixes make the loss loud. Every late refusal is recorded on the run and checked before RT2 is sent. After a commit it is raised for void and value actions alike, under a distinct Error event, and the residual is documented in Persisted's remarks.
+- **For Ahmad:** change spec 0015 §7.1 so that `Persisted` is a custom awaitable (or a method such as `await context.PersistAsync()`). RT2 can then wait until the flow actually awaits it. This fully closes the race.
+- Related, still open: D-117 Q5, how a committed action whose result is lost is answered (a closed-set code, or an idempotency rule).
+
 ### D-117 (orchestrator, 2026-11-18): PC-076 implementer's open questions; R1 to judge, for Ahmad
 
 Kept as built until Reviewer 1 judges them; spec 0015 gives no clear answer to any of these.

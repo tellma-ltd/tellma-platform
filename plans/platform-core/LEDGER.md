@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-076 | pc-3 | pc/PC-076 | verify | impl (Opus, high, launched 2026-11-18) | fix1 ac365158 (7 fixed); §4.4 verification of the persist gate and deferred naming, launched 2026-11-18 | 2026-11-18 |
+| PC-076 | pc-3 | pc/PC-076 | vfix+integrate | impl (Opus, high, launched 2026-11-18) | verification 0/1/6 (R1-1 leftover = silent write loss, V-1); verification fixes + integrate resumed 2026-11-18 | 2026-11-18 |
 
 ## Fix items
 
@@ -359,7 +359,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | done | 2f168363, f206fbc2, b1a5382f, 1cdc5f20, ba639bf1, 9b9e4db5; green 44274178855 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
-| PC-076 | 0015-h | 1 | verify | 3ce126e3, ac365158 | | |
+| PC-076 | 0015-h | 1 | vfix+integrate | 3ce126e3, ac365158 | | |
 | PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal |
 | PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass |
 | PC-079 | 0013-h | 1 | todo | | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
