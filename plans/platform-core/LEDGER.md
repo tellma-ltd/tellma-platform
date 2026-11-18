@@ -102,8 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B02 | pc-1 | pc/PC-B02 | integrate (fixes c771eead: 5 fixed, 1 sub-point pushed back; merge-tree clean) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
-| PC-B03 | pc-2 | pc/PC-B03 | held (fixes 3adc83da, verdicts ae8edf62: 6 fixed; merge-tree clean; queued behind PC-B02) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | integrate (released after PC-B02 push 65057698) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
 | PC-072 | pc-3 | pc/PC-072 | fix1 (R1 0/1/4; R1-3 ruled D-111) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
 
 ## Fix items
@@ -172,7 +171,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
-| PC-B02 | 2 (PC-015…PC-031) | fix → hold (finders done at b346ad7c: 5 findings (0/3/2); 924k finder tokens for both batches) | | |
+| PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
 | PC-B03 | 3 (PC-032…PC-061) | fix → hold (finders done at b346ad7c: 6 findings (0/3/3); 924k finder tokens for both batches) | | |
 
 ## Merge-time tasks (before platform-core merges into main)
