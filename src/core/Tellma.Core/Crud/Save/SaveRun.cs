@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
@@ -130,8 +131,12 @@ namespace Tellma.Core.Crud.Save
                 throw new ValidationException(_errors.Items);
             }
 
-            // --- Step 2: the type-level grant ---
+            // --- Step 2: the type-level grant, and the read-back's extras admitted before any round trip ---
             _ = await _operation.Evaluator.RequireAsync(_stack.Resource, AccessActions.Save, _cancellationToken).ConfigureAwait(false);
+            if (_options.ReturnEntities)
+            {
+                DetailsPlanner.Admit(_stack, _options.Details);
+            }
 
             // --- The frame, the context and the loader the hooks and validators see ---
             using ConfirmationFrame frame = _operation.Confirmations.Frame(_stack.Resource, CrudOperationNames.Save);
@@ -192,22 +197,16 @@ namespace Tellma.Core.Crud.Save
                 CheckValueSets();
                 ValidationOutcome.Raise(staleStamp: null, _errors, frame);
 
-                // --- The persist seam ---
-                return Persist();
+                // --- Steps 7 to 10: the persist, its commit and the post-commit phase ---
+                return await PersistAsync().ConfigureAwait(false);
             }
             finally
             {
-                // A save that did not persist returns its ids: nothing outside the process saw them.
+                // A save that never sent its persist returns its ids: nothing outside the process saw
+                // them. Once a persist was attempted, the batch marked the reservation, which then
+                // keeps them whatever the outcome.
                 _reservation?.Dispose();
             }
-        }
-
-        /// <summary>The persist step, which follows a save's validation.</summary>
-        /// <returns>The save's result.</returns>
-        /// <exception cref="NotSupportedException">Always: the persist step is not built yet.</exception>
-        private EntitiesResult<TEntity> Persist()
-        {
-            throw new NotSupportedException($"The pipeline of {_stack.Resource} validates a save but does not persist it yet.");
         }
 
         /// <summary>Opens the save's context: the schema map, the scheduler, the loader and the context the hooks see.</summary>

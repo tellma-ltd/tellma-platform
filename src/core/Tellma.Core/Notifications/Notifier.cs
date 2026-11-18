@@ -118,6 +118,13 @@ namespace Tellma.Core.Notifications
         {
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(requests);
+            // --- A persist participant's recording view: recorded, so a recomposed persist appends it again ---
+            if (batch is RecordingBatch recording)
+            {
+                recording.Record(inner => Notify(inner, requests));
+                return;
+            }
+
             DataBatch data = Writable(batch);
 
             // The jobs a request enqueues commit with its rows and the write they describe, so a
@@ -177,6 +184,13 @@ namespace Tellma.Core.Notifications
         {
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(requests);
+            // --- A persist participant's recording view: recorded, so a recomposed persist appends it again ---
+            if (batch is RecordingBatch recording)
+            {
+                recording.Record(inner => Withdraw(inner, requests));
+                return;
+            }
+
             DataBatch data = Writable(batch);
 
             // --- Every request checked and shaped before anything is appended ---

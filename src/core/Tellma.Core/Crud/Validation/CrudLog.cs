@@ -40,5 +40,21 @@ namespace Tellma.Core.Crud.Validation
             Level = LogLevel.Information,
             Message = "User {UserId} confirmed the warning {Key}, raised outside every write frame, for the rows [{Ids}].")]
         public static partial void ConfirmationAcceptedOutsideFrame(ILogger logger, int? userId, string key, IReadOnlyList<long> ids);
+
+        /// <summary>
+        ///     A post-commit participant failed after its operation committed: the response stands, and
+        ///     nothing retries it.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="component">The failing component's type name.</param>
+        /// <param name="resource">The operation's resource.</param>
+        /// <param name="operation">The operation, such as <c>save</c>.</param>
+        /// <param name="traceId">The operation's trace id; null outside any trace.</param>
+        /// <param name="exception">The failure.</param>
+        [LoggerMessage(
+            EventName = "PostCommitFailed",
+            Level = LogLevel.Error,
+            Message = "The post-commit step of {Component} failed after {Operation} on {Resource} committed, in trace {TraceId}.")]
+        public static partial void EffectFailed(ILogger logger, string component, string resource, string operation, string? traceId, Exception exception);
     }
 }

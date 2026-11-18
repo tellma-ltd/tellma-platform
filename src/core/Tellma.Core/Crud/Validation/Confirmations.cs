@@ -171,12 +171,16 @@ namespace Tellma.Core.Crud.Validation
         /// </summary>
         /// <param name="resource">The resource the frame's operation runs on, for the consent record.</param>
         /// <param name="operation">The frame's operation, such as <c>gl.Invoice:post</c>.</param>
+        /// <param name="audited">
+        ///     Whether the frame counts and records its warnings; false for a re-run of validators whose
+        ///     first run counted and recorded them already.
+        /// </param>
         /// <returns>The frame, whose validation outcome raises its warnings.</returns>
-        public ConfirmationFrame Frame(string resource, string operation)
+        public ConfirmationFrame Frame(string resource, string operation, bool audited = true)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(resource);
             ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-            ConfirmationFrame frame = new(this, resource, operation);
+            ConfirmationFrame frame = new(this, resource, operation, audited);
             lock (_gate)
             {
                 _frames.Add(frame);
@@ -197,7 +201,8 @@ namespace Tellma.Core.Crud.Validation
 
         /// <summary>
         ///     Counts a warning raised under a frame and, when the caller confirmed it, records the
-        ///     consent; the system scope's warnings count as confirmed and record none.
+        ///     consent; the system scope's warnings count as confirmed and record none. A frame that is
+        ///     not audited counts and records nothing.
         /// </summary>
         /// <param name="frame">The frame.</param>
         /// <param name="key">The warning's key.</param>
@@ -206,6 +211,11 @@ namespace Tellma.Core.Crud.Validation
         internal bool Raise(ConfirmationFrame frame, string key, IReadOnlyList<long> rows)
         {
             bool confirmed = IsConfirmed(key);
+            if (!frame.IsAudited)
+            {
+                return confirmed;
+            }
+
             _metrics.CountConfirmation(key, confirmed);
             RequestContext context = _contexts.Current;
             if (confirmed && !context.IsSystem)

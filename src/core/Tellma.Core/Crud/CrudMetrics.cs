@@ -5,16 +5,17 @@
 
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Access;
 
 namespace Tellma.Core.Crud
 {
-    // The instruments are spec 0015 §16.1's operations, duration, discovery, validation-rounds and
-    // confirmations rows; the save, concurrency, effects and enlistment rows join this class as the
-    // operations that raise them land.
+    // The instruments are spec 0015 §16.1's rows but the enlistments', which join this class with the
+    // enlisted writes.
     /// <summary>
     ///     The pipeline's instruments on the <c>Tellma.Core</c> meter: the operations and how long
     ///     each took, the argument discoveries a query's cache missed, the validation rounds each
-    ///     operation dispatched and the confirmation warnings raised.
+    ///     operation dispatched, the confirmation warnings raised, the entities each save wrote, the
+    ///     concurrency conflicts and overrides, the post-commit failures and the re-entered composes.
     /// </summary>
     internal sealed class CrudMetrics
     {
@@ -36,6 +37,15 @@ namespace Tellma.Core.Crud
         /// <summary>The <c>crud.outcome</c> of a warning the caller confirmed, or that the system scope confirms.</summary>
         public const string ConfirmationConfirmed = "confirmed";
 
+        /// <summary>The <c>crud.kind</c> of a conflict on a row whose stamp moved.</summary>
+        public const string StampConflict = "stamp";
+
+        /// <summary>The <c>crud.kind</c> of a conflict on a row that vanished.</summary>
+        public const string MissingConflict = "missing";
+
+        /// <summary>The <c>crud.kind</c> of a conflict between two saves that together closed a tree's cycle.</summary>
+        public const string CycleConflict = "cycle";
+
         /// <summary>The operations, by operation, outcome and source.</summary>
         private readonly Counter<long> _operations;
 
@@ -50,6 +60,21 @@ namespace Tellma.Core.Crud
 
         /// <summary>The confirmation warnings raised.</summary>
         private readonly Counter<long> _confirmations;
+
+        /// <summary>The entities each committed save wrote, by source and lane.</summary>
+        private readonly Histogram<long> _saveEntities;
+
+        /// <summary>The concurrency conflicts, by kind.</summary>
+        private readonly Counter<long> _conflicts;
+
+        /// <summary>The committed saves that overrode the stamp comparison.</summary>
+        private readonly Counter<long> _overrides;
+
+        /// <summary>The post-commit hooks, effects and callbacks that failed, by component.</summary>
+        private readonly Counter<long> _effectFailures;
+
+        /// <summary>The composes the guarded runner re-entered, by the tag that moved.</summary>
+        private readonly Counter<long> _staleReruns;
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
@@ -83,6 +108,31 @@ namespace Tellma.Core.Crud
                 CrudTelemetryNames.Confirmations,
                 "{warning}",
                 "Confirmation warnings raised, by key and by whether the caller had confirmed them.");
+
+            _saveEntities = meter.CreateHistogram<long>(
+                CrudTelemetryNames.SaveEntities,
+                "{entity}",
+                "The entities one committed save wrote, at every depth, by source and lane.");
+
+            _conflicts = meter.CreateCounter<long>(
+                CrudTelemetryNames.ConcurrencyConflicts,
+                "{conflict}",
+                "Concurrency conflicts, by whether the row's stamp moved, the row vanished, or two saves closed a tree's cycle.");
+
+            _overrides = meter.CreateCounter<long>(
+                CrudTelemetryNames.ConcurrencyOverrides,
+                "{save}",
+                "Committed saves that skipped the stamp comparison.");
+
+            _effectFailures = meter.CreateCounter<long>(
+                CrudTelemetryNames.EffectFailures,
+                "{failure}",
+                "Post-commit hooks, effects and commit callbacks that failed, by component.");
+
+            _staleReruns = meter.CreateCounter<long>(
+                CrudTelemetryNames.StaleContextReruns,
+                "{rerun}",
+                "Batches recomposed because a tag they rested on moved, by the tag, or by the guard for one the persist transaction refused.");
         }
 
         /// <summary>The <c>crud.source</c> of a write from who asked for it.</summary>
@@ -157,6 +207,62 @@ namespace Tellma.Core.Crud
                 rounds,
                 new KeyValuePair<string, object?>(CrudTelemetryNames.OperationTag, operation),
                 new KeyValuePair<string, object?>(CrudTelemetryNames.OutcomeTag, exceeded ? RoundsExceeded : RoundsOk));
+        }
+
+        /// <summary>Records the entities one committed save wrote.</summary>
+        /// <param name="entities">The entities, at every depth.</param>
+        /// <param name="source">The <c>crud.source</c> value.</param>
+        /// <param name="lane">The <c>crud.lane</c> value.</param>
+        public void RecordSaveEntities(int entities, string source, string lane)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(source);
+            ArgumentException.ThrowIfNullOrWhiteSpace(lane);
+            _saveEntities.Record(
+                entities,
+                new KeyValuePair<string, object?>(CrudTelemetryNames.SourceTag, source),
+                new KeyValuePair<string, object?>(CrudTelemetryNames.LaneTag, lane));
+        }
+
+        /// <summary>Counts concurrency conflicts of one kind.</summary>
+        /// <param name="kind">The <c>crud.kind</c> value: <see cref="StampConflict" />, <see cref="MissingConflict" /> or <see cref="CycleConflict" />.</param>
+        /// <param name="count">The conflicts.</param>
+        public void CountConflicts(string kind, int count)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+            if (count > 0)
+            {
+                _conflicts.Add(count, new KeyValuePair<string, object?>(CrudTelemetryNames.KindTag, kind));
+            }
+        }
+
+        /// <summary>Counts one committed save that skipped the stamp comparison.</summary>
+        public void CountOverride()
+        {
+            _overrides.Add(1);
+        }
+
+        /// <summary>Counts one post-commit failure.</summary>
+        /// <param name="effect">The <c>crud.effect</c> value: the failing component's type name.</param>
+        public void CountEffectFailure(string effect)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(effect);
+            _effectFailures.Add(1, new KeyValuePair<string, object?>(CrudTelemetryNames.EffectTag, effect));
+        }
+
+        /// <summary>Counts one recomposed batch.</summary>
+        /// <param name="cause">What made the runner re-enter the compose.</param>
+        /// <exception cref="ArgumentOutOfRangeException">The cause is not one the runner notes.</exception>
+        public void CountStaleRerun(RecomposeCause cause)
+        {
+            string tag = cause switch
+            {
+                RecomposeCause.Permissions => "permissions",
+                RecomposeCause.Settings => "settings",
+                RecomposeCause.Entity => "entity",
+                RecomposeCause.Guard => "guard",
+                _ => throw new ArgumentOutOfRangeException(nameof(cause), cause, "The cause is not one the guarded runner notes."),
+            };
+            _staleReruns.Add(1, new KeyValuePair<string, object?>(CrudTelemetryNames.TagTag, tag));
         }
 
         /// <summary>Counts one warning raised.</summary>

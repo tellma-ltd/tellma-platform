@@ -25,11 +25,13 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///     </para>
     ///     <para>
     ///         The double keeps no SQL semantics: identical read statements are recorded twice rather
-    ///         than collapsed, an assertion never fails on its own, and no authority or version tag is
-    ///         checked. A script that needs a failure throws it from its execution hook.
+    ///         than collapsed, an assertion never fails on its own, and no version tag is checked. The
+    ///         one authority it checks is the script's owned tables against a raw statement's declared
+    ///         writes, as a real batch refuses a write outside the appender's authority. A script that
+    ///         needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchAuthority
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -108,7 +110,15 @@ namespace Tellma.Core.Tests.Crud.Scripted
         public IReadOnlySet<TableName> WrittenTables => _written;
 
         /// <inheritdoc />
-        public IReadOnlySet<TableName> CallerAuthority => _script.CallerAuthority;
+        /// <remarks>The script's authority until the pipeline sets the current appender's.</remarks>
+        public IReadOnlySet<TableName> CallerAuthority
+        {
+            get => field ?? _script.CallerAuthority;
+            private set;
+        }
+
+        /// <summary>Whether the batch executed without its guard passing, so nothing it held ran.</summary>
+        public bool IsRefused { get; private set; }
 
         /// <summary>The rows bound to a table-valued parameter this batch declared.</summary>
         /// <typeparam name="TRow">The row type.</typeparam>
@@ -225,6 +235,17 @@ namespace Tellma.Core.Tests.Crud.Scripted
         {
             ArgumentNullException.ThrowIfNull(sql);
             BatchResult<RawResult> result = new();
+
+            // --- A declared write of a table the script says a stack owns, outside the appender's authority ---
+            foreach (TableName table in options?.Writes.Where(_script.Owners.ContainsKey) ?? [])
+            {
+                if (!CallerAuthority.Contains(table))
+                {
+                    throw new InvalidOperationException(
+                        $"The statement writes {table}, which the stack '{_script.Owners[table]}' owns and the current caller may not write. Enlist the write with '{_script.Owners[table]}', so it runs under that stack's authority.");
+                }
+            }
+
             ScriptedStatement statement = Append(ScriptedKind.Sql, entity: null, sql, arguments: null, options, name: null);
             if (options is not null)
             {
@@ -337,6 +358,32 @@ namespace Tellma.Core.Tests.Crud.Scripted
             }
 
             return outcome;
+        }
+
+        /// <inheritdoc />
+        public void SetCallerAuthority(IReadOnlySet<TableName> authority)
+        {
+            ArgumentNullException.ThrowIfNull(authority);
+            CallerAuthority = authority;
+        }
+
+        /// <summary>
+        ///     Executes the batch as one whose guard failed: the round trip is counted, and no statement
+        ///     runs, so no result completes and no commit callback runs.
+        /// </summary>
+        /// <returns>A task that completes when the round trip was counted.</returns>
+        /// <exception cref="InvalidOperationException">The batch already executed.</exception>
+        public Task RefuseAsync()
+        {
+            if (IsExecuted)
+            {
+                throw new InvalidOperationException($"Batch {Number} already executed; a batch executes once.");
+            }
+
+            IsExecuted = true;
+            IsRefused = true;
+            _script.CountRoundTrip();
+            return Task.CompletedTask;
         }
 
         /// <summary>Records a call.</summary>

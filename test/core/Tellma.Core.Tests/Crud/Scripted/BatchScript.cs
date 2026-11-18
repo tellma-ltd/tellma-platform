@@ -40,6 +40,9 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// <summary>The stack-owned tables a caller statement may write; none by default.</summary>
         public IReadOnlySet<TableName> CallerAuthority { get; init; } = new HashSet<TableName>();
 
+        /// <summary>The tables a stack owns, by table, with the owning stack's resource: a raw write of one is refused outside the appender's authority.</summary>
+        public Dictionary<TableName, string> Owners { get; } = [];
+
         /// <summary>The batches handed out, in order.</summary>
         public IReadOnlyList<ScriptedBatch> Batches
         {

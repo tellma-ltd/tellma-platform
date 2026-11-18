@@ -29,12 +29,17 @@ namespace Tellma.Core.Crud.Validation
         /// <param name="scope">The scope's confirmations.</param>
         /// <param name="resource">The resource the frame's operation runs on.</param>
         /// <param name="operation">The frame's operation.</param>
-        internal ConfirmationFrame(Confirmations scope, string resource, string operation)
+        /// <param name="audited">Whether the frame counts and records its warnings.</param>
+        internal ConfirmationFrame(Confirmations scope, string resource, string operation, bool audited = true)
         {
             _scope = scope;
             Resource = resource;
             Operation = operation;
+            IsAudited = audited;
         }
+
+        /// <summary>Whether the frame counts its warnings and records the consent to them.</summary>
+        public bool IsAudited { get; }
 
         /// <summary>The resource the frame's operation runs on.</summary>
         public string Resource { get; }

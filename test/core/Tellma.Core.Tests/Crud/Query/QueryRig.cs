@@ -59,13 +59,16 @@ namespace Tellma.Core.Tests.Crud.Query
         {
             IServiceCollection services = TestComposition.Compose(compose);
             _ = services.Replace(ServiceDescriptor.Scoped<IScopeConnection>(_ => new Connection(this)));
-            _ = services.Replace(ServiceDescriptor.Scoped<IGuardedBatchRunner>(_ => new Runner(this)));
+            _ = services.Replace(ServiceDescriptor.Scoped<IGuardedBatchRunner>(provider => new Runner(this, provider.GetService<RecomposeLog>())));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantDatabase>(provider => new Database(this, provider.GetRequiredService<IQueryexSchemaProvider>())));
             _ = services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
             configure?.Invoke(services);
             _root = services.BuildServiceProvider(validateScopes: true);
             User = Connected(UserAccess.System);
         }
+
+        /// <summary>The state of the caller's tenant; active by default.</summary>
+        public TenantState TenantState { get; set; } = TenantState.Active;
 
         /// <summary>The batches every query hands over, and their scripted answers.</summary>
         public BatchScript Script { get; } = new();
@@ -276,7 +279,7 @@ namespace Tellma.Core.Tests.Crud.Query
         {
             return RequestContext.Tenantless(new GregorianCalendarSystem(), Now) with
             {
-                Tenant = new TenantDescriptor(1, "Acme", null, null, ["en"], TenantCategory.Live, TenantState.Active, null),
+                Tenant = new TenantDescriptor(1, "Acme", null, null, ["en"], TenantCategory.Live, TenantState, null),
                 Kind = PrincipalKind.User,
                 Subject = "sub-42",
                 UserId = UserId,
@@ -374,7 +377,8 @@ namespace Tellma.Core.Tests.Crud.Query
         ///     the rig names a fresh set, the batch's guard fails once and the runner composes again for it.
         /// </summary>
         /// <param name="rig">The rig.</param>
-        private sealed class Runner(QueryRig rig) : IGuardedBatchRunner
+        /// <param name="recompositions">Receives the cause of the recomposition; null in a composition that counts none.</param>
+        private sealed class Runner(QueryRig rig, RecomposeLog? recompositions) : IGuardedBatchRunner
         {
             /// <inheritdoc />
             public async Task<TResult> RunAsync<TResult>(
@@ -385,21 +389,21 @@ namespace Tellma.Core.Tests.Crud.Query
             {
                 ScriptedBatch batch = rig.Script.NewBatch(purpose);
                 await compose(rig.User, batch);
-                BatchOutcome outcome = await batch.ExecuteAsync(cancellationToken);
 
-                // --- A moved tag: the batch ran, its guard failed, and the runner composes afresh. The
-                // scope's cached caller stays the stale one, so only a decision taken for the user
-                // handed to the composition sees the fresh set ---
+                // --- A moved tag: the batch's guard failed, so its body never ran, and the runner
+                // composes afresh. The scope's cached caller stays the stale one, so only a decision
+                // taken for the user handed to the composition sees the fresh set ---
                 if (rig.Recomposed is ConnectedUser fresh)
                 {
                     rig.Recomposed = null;
+                    await batch.RefuseAsync();
+                    recompositions?.Note(RecomposeCause.Permissions);
                     batch = rig.Script.NewBatch(purpose);
                     await compose(fresh, batch);
-                    outcome = await batch.ExecuteAsync(cancellationToken);
-                    return read(fresh, outcome);
+                    return read(fresh, await batch.ExecuteAsync(cancellationToken));
                 }
 
-                return read(rig.User, outcome);
+                return read(rig.User, await batch.ExecuteAsync(cancellationToken));
             }
         }
 

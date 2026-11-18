@@ -84,6 +84,12 @@ namespace Tellma.Core.Jobs
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(requests);
 
+            // --- A persist participant's recording view: recorded, so a recomposed persist appends it again ---
+            if (batch is RecordingBatch recording)
+            {
+                return recording.RecordResult(inner => Enqueue(inner, requests));
+            }
+
             // --- The batch: one a tenant database created, still composing, and one that writes ---
             DataBatch data = batch as DataBatch
                 ?? throw new ArgumentException("The batch is not one a tenant database created, so the enqueue statement cannot ride it.", nameof(batch));

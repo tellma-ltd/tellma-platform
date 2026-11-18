@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Queries;
@@ -77,6 +78,9 @@ namespace Tellma.Core.Crud.Validation
 
         /// <summary>The keyed, children and ancestor caches, by the entity class and what they key on.</summary>
         private readonly Dictionary<(Type Entity, string Kind), object> _caches = [];
+
+        /// <summary>Whether the loader answers only from the rounds already run, as a re-run of the validators in memory does.</summary>
+        private bool _answersOnly;
 
         /// <summary>Creates a loader.</summary>
         /// <param name="metadata">The entities' metadata.</param>
@@ -332,6 +336,27 @@ namespace Tellma.Core.Crud.Validation
                 ?? throw new InvalidOperationException($"A visible load of {metadata.Name} is composed, but this loader serves no read decisions.");
         }
 
+        // Spec 0015 §5.1: a re-entered persist re-runs the validators in memory, the loader answering
+        // only from the rounds already run; a request those rounds did not serve raises
+        // StaleContextException instead of a round trip.
+        /// <summary>
+        ///     Answers every request from now on from the rounds already run, refusing one they did not
+        ///     serve as stale.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">A request is pending, so a round is still due.</exception>
+        internal void AnswerOnly()
+        {
+            lock (_gate)
+            {
+                if (_pending.Count > 0)
+                {
+                    throw new InvalidOperationException("The loader answers only from the rounds already run once no request is pending; a pending request still needs its round.");
+                }
+
+                _answersOnly = true;
+            }
+        }
+
         /// <summary>
         ///     Takes every pending request as one round: requests made from now on wait for the next.
         /// </summary>
@@ -549,8 +574,15 @@ namespace Tellma.Core.Crud.Validation
         /// <param name="key">The structural key.</param>
         /// <param name="open">Opens the group.</param>
         /// <returns>The group.</returns>
+        /// <exception cref="StaleContextException">The loader answers only from the rounds already run, which did not serve the request.</exception>
         private LoadGroup Pending(object key, Func<LoadGroup> open)
         {
+            // Every request the caches cannot answer reaches this point: a re-run refuses it.
+            if (_answersOnly)
+            {
+                throw new StaleContextException([]);
+            }
+
             if (!_pending.TryGetValue(key, out LoadGroup? group))
             {
                 group = open();

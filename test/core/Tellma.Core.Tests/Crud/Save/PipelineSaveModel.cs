@@ -24,7 +24,8 @@ namespace Tellma.Core.Tests.Crud.Save
     // serial, references to a guarded category whose read is sensitive, to an unguarded tag, to
     // another document, to a line (a child with a query surface) and to a sub-line (a child
     // without one), lines with a code unique within their document and a barcode unique across
-    // documents, sub-lines below them, a warning a validator may raise, and a tree.
+    // documents, sub-lines below them, a warning a validator may raise, and a tree. Two persist
+    // effects and the service's persist hooks report to one shared body a test sets.
 
     /// <summary>Composes the save pipeline suite's model.</summary>
     internal static class PipelineSaveModel
@@ -63,6 +64,8 @@ namespace Tellma.Core.Tests.Crud.Save
                 .Entity<PsTag>()
                 .Entity<PsNode>()
                 .Validator<PsDocument, PsDocumentValidator>()
+                .PersistEffect<PsDocument, PsFirstEffect>()
+                .PersistEffect<PsDocument, PsSecondEffect>()
                 .Model<PsLineConfiguration>()
                 .Confirmation(Recost)
                 .ValueSet(new ValueSetDescriptor(Colors, [new ValueSetEntry("Red", null, "Red"), new ValueSetEntry("Blue", null, "Blue")]))
@@ -250,7 +253,8 @@ namespace Tellma.Core.Tests.Crud.Save
 
     /// <summary>The documents' service, whose hooks a test sets.</summary>
     /// <param name="factory">The pipeline factory.</param>
-    public sealed class PsDocumentService(IEntityPipelineFactory factory) : EntityService<PsDocument>(factory)
+    /// <param name="persistence">The persist hooks' body, which a test sets; null in a rig that sets none.</param>
+    public sealed class PsDocumentService(IEntityPipelineFactory factory, PsPersistence? persistence = null) : EntityService<PsDocument>(factory)
     {
         /// <summary>The preprocessing hook; nothing when null.</summary>
         public Func<SaveContext<PsDocument>, Task>? Preprocess { get; set; }
@@ -268,6 +272,71 @@ namespace Tellma.Core.Tests.Crud.Save
         protected override Task ValidateAsync(SaveContext<PsDocument> context)
         {
             return Validate?.Invoke(context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        protected override Task ContributeAsync(PersistContext<PsDocument> context)
+        {
+            return persistence?.Contribute?.Invoke(PsPersistence.Service, context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        protected override Task AfterCommitAsync(PersistOutcome<PsDocument> outcome)
+        {
+            return persistence?.AfterCommit?.Invoke(PsPersistence.Service, outcome) ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>What the documents' persist participants do, which a test sets: shared by the rig's scopes.</summary>
+    public sealed class PsPersistence
+    {
+        /// <summary>The name the service's hooks report under.</summary>
+        public const string Service = "service";
+
+        /// <summary>The name the first effect reports under.</summary>
+        public const string First = "first";
+
+        /// <summary>The name the second effect reports under.</summary>
+        public const string Second = "second";
+
+        /// <summary>Each participant's contribution, given the participant's name; nothing when null.</summary>
+        public Func<string, PersistContext<PsDocument>, Task>? Contribute { get; set; }
+
+        /// <summary>Each participant's post-commit step, given the participant's name; nothing when null.</summary>
+        public Func<string, PersistOutcome<PsDocument>, Task>? AfterCommit { get; set; }
+    }
+
+    /// <summary>The documents' first persist effect, reporting to the shared body.</summary>
+    /// <param name="persistence">The body; null in a rig that sets none.</param>
+    public sealed class PsFirstEffect(PsPersistence? persistence = null) : IPersistEffect<PsDocument>
+    {
+        /// <inheritdoc />
+        public Task ContributeAsync(PersistContext<PsDocument> context)
+        {
+            return persistence?.Contribute?.Invoke(PsPersistence.First, context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task AfterCommitAsync(PersistOutcome<PsDocument> outcome)
+        {
+            return persistence?.AfterCommit?.Invoke(PsPersistence.First, outcome) ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The documents' second persist effect, reporting to the shared body.</summary>
+    /// <param name="persistence">The body; null in a rig that sets none.</param>
+    public sealed class PsSecondEffect(PsPersistence? persistence = null) : IPersistEffect<PsDocument>
+    {
+        /// <inheritdoc />
+        public Task ContributeAsync(PersistContext<PsDocument> context)
+        {
+            return persistence?.Contribute?.Invoke(PsPersistence.Second, context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task AfterCommitAsync(PersistOutcome<PsDocument> outcome)
+        {
+            return persistence?.AfterCommit?.Invoke(PsPersistence.Second, outcome) ?? Task.CompletedTask;
         }
     }
 

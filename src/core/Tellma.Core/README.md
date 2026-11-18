@@ -1099,10 +1099,9 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 (`tellma.crud.operations`) and timed (`tellma.crud.operation.duration`, with its `crud.lane`) under
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
 `crud.source`. The reads are built so far (the query, the details reads, the rows of a tree by
-parent and every row of a cacheable stack), and the save up to its persist step (see
-[The save pipeline](#the-save-pipeline)): an operation the stack does not serve is an authoring bug
-(`InvalidOperationException`), and the others are `NotSupportedException`, as is a save whose
-validation passed.
+parent and every row of a cacheable stack), and the save through its commit and post-commit phase
+(see [The save pipeline](#the-save-pipeline)): an operation the stack does not serve is an
+authoring bug (`InvalidOperationException`), and the others are `NotSupportedException`.
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1266,8 +1265,7 @@ pipeline drives them:
 ### The save pipeline
 
 `SaveOperation` (scoped) runs a stack's save in the frame of `CrudOperations` under the save's
-`crud.source` and lane, and stops where the persist step will start: a save whose validation passed
-throws `NotSupportedException`. Exhausted retries on any of its round trips are
+`crud.source` and lane. Exhausted retries on any of its round trips are
 `DependencyUnavailableException`. Each save is one `SaveRun`, in order:
 
 1. **The shape**, then the type-level `Save` grant, before any round trip.
@@ -1313,6 +1311,53 @@ throws `NotSupportedException`. Exhausted retries on any of its round trips are
 6. **The validators' rounds**, then the value sets (a new or changed value outside its set is
    `Validation.ValueNotInSet` unless an error is already recorded at its path), then
    `ValidationOutcome.Raise`. A save that does not persist returns its ids to the buffer.
+7. **The tenant-state verdict** (`PersistVerdict`), before the persist is composed: a `Frozen`
+   tenant refuses every persist (`tenant-frozen`); a `ReadOnly` one refuses a mutation that does not
+   allow the state (`tenant-read-only`), unless a `WriteFrame` the scope's `WriteFrames` holds
+   admits it (a read-only-safe API action, a job whose handler runs on a read-only tenant, a
+   provisioning step); an API action frame that does not admit it refuses whatever the nested
+   operation allows.
+8. **The persist**, one guarded `Persist` batch under the pipeline's compilation limits, composed
+   between the executor's fixed prefix and suffix in this order: the access guards' lock when the
+   stack writes a security table; the emitter's save under the stack's authority; the service's
+   `ContributeAsync`, then each `IPersistEffect<T>` in registration order, through a
+   `RecordingBatch`; the caller's `SaveOptions.OnPersist`, under the caller's own authority, so a
+   write to a table another stack owns is refused at append; the guards' invariants; under a
+   filtered `Save` grant, the post-check over the saved ids (`RowSecurity`, expecting every root);
+   and, when asked for, the read-back over the saved ids in details shape. A participant only
+   appends: a round trip of its own while it contributes (`ComposeFence`), executing the batch, or
+   setting its mode or limits is `InvalidOperationException`, and a commit callback it registers is
+   contained like a post-commit failure. The tags of the `entity:*` lists the validation rounds were
+   served from ride the persist's guard. Once sent, the persist completes whatever the caller's
+   token says.
+9. **A re-entered compose** (a moved tag the guard or the re-check found) calls no participant
+   again: the validators re-run in memory for the fresh user, the loader answering only from the
+   rounds already run (a load they did not serve is `StaleContextException`; a new error is
+   `ValidationException`, a new unconfirmed warning `ConfirmationRequiredException`, neither
+   counted nor logged twice), the pipeline's own statements are recomposed under the fresh grants,
+   and the recording is replayed: each batch-local name must come out the same, and a result a
+   participant read at compose time (a cache hit) must answer alike. The re-run is counted by its
+   cause (`tellma.crud.stale_context.reruns`, `crud.tag`).
+10. **The translation** of the persist's failures (`PersistFailures`): the emitter's conflict rows
+    name each modifier in the content language, falling back to the primary name
+    (`ConcurrencyException`), unless every row is missing (`NotFoundException`); the post-check is
+    `ForbiddenException` (`OutsideFilter`); `50404` is `NotFoundException` with the ids the batch
+    found missing; `50422` and a distribution's `50600` to `50699` are `ValidationException` at the
+    root with the assertion's code (`Blob.NotAttachable` with `reason` `persist`); a cycle or a depth
+    the tree fence finds is `Tree.Cycle` or `Tree.TooDeep` at the root; a unique index of the stack's
+    tables is `Unique` (`Blob.NotAttachable` for a blob reference's, `Assignments.Concurrent` for the
+    open assignment's) at the one payload row carrying the value, else at the root naming the
+    property; a foreign key of the stack's tables is `Fk.NotFound` the same way; anything else
+    passes through. Conflicts are counted by kind (`tellma.crud.concurrency.conflicts`: `stamp`,
+    `missing`, `cycle`). A commit whose response was lost and that the executor's probe proved is
+    read back as a plain read and goes on to its post-commit phase; any other ambiguous end is
+    `DependencyUnavailableException` (`database`, one second).
+11. **The post-commit phase**, after the commit and outside any transaction: the saved rows are
+    recorded (`tellma.crud.save.entities`, at every depth) and a committed override of a stored row
+    counted (`tellma.crud.concurrency.overrides`); then the service's `AfterCommitAsync` and each
+    effect's, in order. A failure is logged (`PostCommitFailed`, with the operation's trace id) and
+    counted by the failing component's type name (`tellma.crud.effects.failures`, `crud.effect`),
+    and never changes the response.
 
 ## The route model
 

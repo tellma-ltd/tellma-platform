@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Numerics;
 using Tellma.Core.Abstractions.Access;
@@ -14,6 +15,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Ids;
@@ -21,13 +23,13 @@ using Tellma.Core.Data.Queries;
 
 namespace Tellma.Core.Crud.Save
 {
-    // The save is spec 0015 §6. This operation runs its front half, §6.1 steps 1 to 6: the shape,
-    // the type-level grant, preprocessing, the ids, round trip 1 and the ordered validation of §6.6.
-    // The persist batch, its round trip, the read-back and the post-commit effects (steps 7 to 10)
-    // follow it; until they are built, a save that passes validation stops at the persist seam.
+    // The save is spec 0015 §6: §6.1 steps 1 to 6 (the shape, the type-level grant, preprocessing,
+    // the ids, round trip 1 and the ordered validation of §6.6), then steps 7 to 10 (the persist
+    // batch of §6.7, its round trip, the read-back of §6.9 and the post-commit phase of §13.2).
     /// <summary>
     ///     The save of a stack: shapes, preprocesses and validates a payload, assigns its new rows'
-    ///     ids, and loads what the validation needs in shared rounds. Scoped.
+    ///     ids, loads what the validation needs in shared rounds, then persists the payload in one
+    ///     batch and runs the post-commit phase. Scoped.
     /// </summary>
     /// <param name="evaluator">The caller's access decisions.</param>
     /// <param name="securables">The registered securables, which the decisions on references are taken over.</param>
@@ -47,6 +49,11 @@ namespace Tellma.Core.Crud.Save
     /// <param name="services">The scope's services, which hold each entity's validators.</param>
     /// <param name="stepUp">The assurance bar of the sensitive securables, which a reference to a sensitive target is held to.</param>
     /// <param name="time">The clock the access decisions are taken at.</param>
+    /// <param name="details">The details planner, which composes the read-back.</param>
+    /// <param name="guards">The access guards of the security tables.</param>
+    /// <param name="frames">The write frames the scope's persists may be nested in.</param>
+    /// <param name="recompositions">What made the runner re-enter a compose.</param>
+    /// <param name="logger">The log of the post-commit failures.</param>
     internal sealed class SaveOperation(
         AccessEvaluator evaluator,
         ISecurableRegistry securables,
@@ -65,7 +72,12 @@ namespace Tellma.Core.Crud.Save
         IValueSetRegistry valueSets,
         IServiceProvider services,
         StepUpBar stepUp,
-        TimeProvider time)
+        TimeProvider time,
+        DetailsPlanner details,
+        IAccessGuards guards,
+        WriteFrames frames,
+        RecomposeLog recompositions,
+        ILogger<SaveOperation> logger)
     {
         /// <summary>The dependency a data-access failure names.</summary>
         private const string DatabaseDependency = "database";
@@ -123,6 +135,24 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The clock.</summary>
         internal TimeProvider Time { get; } = time;
+
+        /// <summary>The details planner.</summary>
+        internal DetailsPlanner Details { get; } = details;
+
+        /// <summary>The access guards of the security tables.</summary>
+        internal IAccessGuards AccessGuards { get; } = guards;
+
+        /// <summary>The write frames the scope's persists may be nested in.</summary>
+        internal WriteFrames Frames { get; } = frames;
+
+        /// <summary>What made the runner re-enter a compose.</summary>
+        internal RecomposeLog Recompositions { get; } = recompositions;
+
+        /// <summary>The log of the post-commit failures.</summary>
+        internal ILogger Logger { get; } = logger;
+
+        /// <summary>The data layer's large-batch threshold, which picks a save's lane.</summary>
+        internal int LargeBatchThreshold => data.Value.LargeBatchThreshold;
 
         /// <summary>The entity whose child collection holds a child entity, and the child's navigation to that entity's row.</summary>
         /// <param name="child">The child entity.</param>

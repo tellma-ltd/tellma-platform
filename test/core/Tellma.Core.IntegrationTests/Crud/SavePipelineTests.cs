@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
@@ -16,12 +17,12 @@ using Tellma.Testing.Entities;
 namespace Tellma.Core.IntegrationTests.Crud
 {
     /// <summary>
-    ///     The save pipeline up to its persist step against a real tenant database, through the real
-    ///     connect prologue, runner, evaluator and id allocator: a save whose validation passes takes
-    ///     its ids from the reservation that rode its one round trip with the before images and the
-    ///     uniqueness reads, a unique value is refused as the collation meets it, a stale stamp names
-    ///     who changed the row, a refused save gives its reserved ids back for the next save, and a
-    ///     tree's cycle is judged against the stored parents.
+    ///     The save pipeline's validation against a real tenant database, through the real connect
+    ///     prologue, runner, evaluator and id allocator: a save whose validation passes takes its ids
+    ///     from the reservation that rode its validation round trip with the before images and the
+    ///     uniqueness reads, then commits on one more, a unique value is refused as the collation
+    ///     meets it, a stale stamp names who changed the row, a refused save gives its reserved ids
+    ///     back for the next save, and a tree's cycle is judged against the stored parents.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -37,7 +38,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Fact]
-        public async Task A_save_whose_validation_passes_takes_its_ids_from_the_reservation_that_rode_its_one_round_trip()
+        public async Task A_save_takes_its_ids_from_the_reservation_that_rode_its_validation_round_trip_and_commits_on_a_second()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
 
@@ -55,16 +56,24 @@ namespace Tellma.Core.IntegrationTests.Crud
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
             int before = access.RoundTrips;
-            NotSupportedException stopped = await Assert.ThrowsAsync<NotSupportedException>(() => WidgetService(scope).SaveAsync([stored, created], new SaveOptions(), Token));
+            EntitiesResult<Widget> saved = await WidgetService(scope).SaveAsync([stored, created], new SaveOptions(), Token);
 
-            // --- One round trip; every new row has its id from the sequences, its parent key from the nesting ---
-            Assert.Contains("does not persist", stopped.Message, StringComparison.Ordinal);
-            Assert.Equal(1, access.RoundTrips - before);
+            // --- The validation round trip, then the persist; every new row has its id from the
+            // sequences, its parent key from the nesting ---
+            Assert.Equal(2, access.RoundTrips - before);
             Assert.True(created.Id >= 1000, $"The new widget's id {created.Id} is not from its sequence.");
             WidgetPart added = stored.Parts[^1];
             Assert.True(added.Id >= 1000, $"The new part's id {added.Id} is not from its sequence.");
             Assert.Equal((3, created.Id), (added.WidgetId, created.Parts[0].WidgetId));
             Assert.Equal(added.Id, Assert.Single(added.PartNotes!).WidgetPartId);
+
+            // --- The rows read back are the committed ones, in payload order ---
+            Assert.Equal([3L, created.Id], saved.Ids);
+            Assert.Equal(["Gamma 2", "New"], saved.Entities.Select(static widget => widget.Name));
+            Assert.Equal([1, 2], saved.Entities[0].Parts!.Select(static part => part.Ordinal).Order());
+            Assert.Equal(
+                "new",
+                await fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT [Text] FROM [fixture].[WidgetPartNotes] WHERE [WidgetPartId] = {added.Id};")));
         }
 
         [Fact]
@@ -117,7 +126,7 @@ namespace Tellma.Core.IntegrationTests.Crud
             Widget next = new() { Code = "W-next", Kind = WidgetKind.Plain, Name = "Next", Subject = "s-next" };
             await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
             {
-                _ = await Assert.ThrowsAsync<NotSupportedException>(() => WidgetService(scope).SaveAsync([next], new SaveOptions(), Token));
+                _ = await WidgetService(scope).SaveAsync([next], new SaveOptions { ReturnEntities = false }, Token);
             }
 
             Assert.Equal(refused.Id, next.Id);

@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Caching;
 using Tellma.Core.Data;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Access
@@ -29,6 +30,7 @@ namespace Tellma.Core.Access
     /// <param name="metrics">The access instruments.</param>
     /// <param name="loggerFactory">Creates the access logger.</param>
     /// <param name="tagMetrics">The version-tag instruments, which meter an exhausted re-run; null in a composition without them.</param>
+    /// <param name="recompositions">Receives the cause of every re-entered compose; null in a composition that counts none.</param>
     internal sealed class GuardedBatchRunner(
         IScopeConnection connection,
         ITenantDatabase database,
@@ -36,7 +38,8 @@ namespace Tellma.Core.Access
         IEnumerable<IRequestContextInitializer> initializers,
         AccessMetrics metrics,
         ILoggerFactory loggerFactory,
-        VersionTagMetrics? tagMetrics = null) : IGuardedBatchRunner
+        VersionTagMetrics? tagMetrics = null,
+        RecomposeLog? recompositions = null) : IGuardedBatchRunner
     {
         /// <summary>The access logger.</summary>
         private readonly ILogger _logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(AccessEvents.Category);
@@ -50,6 +53,9 @@ namespace Tellma.Core.Access
         {
             ArgumentNullException.ThrowIfNull(compose);
             ArgumentNullException.ThrowIfNull(read);
+
+            // A compose that may perform no I/O refuses the round trip before the connection is asked.
+            ComposeFence.ThrowIfClosed();
             if (purpose == BatchPurpose.Maintenance || !Enum.IsDefined(purpose))
             {
                 throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "A guarded batch is a read, a validation or a persist; a maintenance batch carries no connect prologue.");
@@ -94,6 +100,7 @@ namespace Tellma.Core.Access
 
                     // The guard names no tag: a cold re-connect returns every fresh part.
                     recomposed = true;
+                    recompositions?.Note(RecomposeCause.Guard);
                     user = await connection.ReconnectColdAsync(cancellationToken).ConfigureAwait(false);
                     await RefreshAsync(user, cancellationToken).ConfigureAwait(false);
                     holder.Current.ApplyCultures();
@@ -115,6 +122,7 @@ namespace Tellma.Core.Access
                     }
 
                     recomposed = true;
+                    recompositions?.Note(Cause(stale.Dependencies));
                     continue;
                 }
 
@@ -133,6 +141,7 @@ namespace Tellma.Core.Access
                 }
 
                 recomposed = true;
+                recompositions?.Note(result.PermissionsStale || !result.SettingsStale ? RecomposeCause.Permissions : RecomposeCause.Settings);
                 await RefreshAsync(user, cancellationToken).ConfigureAwait(false);
 
                 // The thread cultures follow the refreshed context for the rest of this call: the
@@ -140,6 +149,16 @@ namespace Tellma.Core.Access
                 // not flow back here, so it is applied in this method.
                 holder.Current.ApplyCultures();
             }
+        }
+
+        /// <summary>The cause a stale read or validation names: the permissions or settings tag when it lists one, else a list's.</summary>
+        /// <param name="dependencies">The dependencies the refusal names.</param>
+        /// <returns>The cause.</returns>
+        private static RecomposeCause Cause(IReadOnlyList<VersionTagDependency> dependencies)
+        {
+            return dependencies.Any(static dependency => dependency.Name == VersionTagNames.Permissions) ? RecomposeCause.Permissions
+                : dependencies.Any(static dependency => dependency.Name == VersionTagNames.Settings) ? RecomposeCause.Settings
+                : RecomposeCause.Entity;
         }
 
         /// <summary>The <c>settings</c> tag a connected user's batch composes under.</summary>

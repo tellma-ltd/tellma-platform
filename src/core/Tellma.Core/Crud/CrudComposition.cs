@@ -96,6 +96,7 @@ namespace Tellma.Core.Crud
             services.TryAddSingleton<DetailsProjections>();
             services.TryAddScoped<DetailsPlanner>();
             services.TryAddScoped<DetailsOperation>();
+            services.TryAddScoped<WriteFrames>();
             services.TryAddScoped<SaveOperation>();
 
             // --- The checks, in the order they report, after the built-in checks of the record ---

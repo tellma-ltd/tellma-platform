@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchAuthority
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -463,6 +463,8 @@ namespace Tellma.Core.Data.Batches
         /// <inheritdoc />
         public Task<BatchOutcome> ExecuteAsync(CancellationToken cancellationToken = default)
         {
+            // A compose that may perform no I/O refuses the round trip before anything is sent.
+            ComposeFence.ThrowIfClosed();
             EnsureNotBroken();
             if (_stage == Stage.Sealed)
             {
@@ -823,6 +825,12 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(authority);
             CallerAuthority = authority.ToFrozenSet();
+        }
+
+        /// <inheritdoc />
+        void IBatchAuthority.SetCallerAuthority(IReadOnlySet<TableName> authority)
+        {
+            SetCallerAuthority(authority);
         }
 
         /// <summary>Adds the users a platform write affects, for the user-level bumps.</summary>

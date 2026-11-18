@@ -223,7 +223,8 @@ namespace Tellma.Core.Crud.Save
                 return;
             }
 
-            // --- The conflict, with each modifier's name ---
+            // --- The conflict, counted, with each modifier's name ---
+            _operation.Metrics.CountConflicts(CrudMetrics.StampConflict, conflicts.Count);
             IReadOnlyDictionary<int, string?> names = await ModifierNamesAsync([.. conflicts.Select(static conflict => conflict.ModifiedById).Distinct()]).ConfigureAwait(false);
             throw new ConcurrencyException(
                 ConflictCode,

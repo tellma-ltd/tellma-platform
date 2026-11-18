@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Collections;
 using System.Data;
 using System.Data.Common;
 using Tellma.Core.Abstractions.Access;
@@ -27,15 +28,15 @@ using Tellma.Core.Tests.Crud.Validation;
 namespace Tellma.Core.Tests.Crud.Save
 {
     /// <summary>
-    ///     The save pipeline up to its persist step, over the scripted batch: the shape and the grant
-    ///     before any round trip, preprocessing, the ids at once or riding round trip 1, the before
-    ///     images and the save grant's count, existence and early concurrency, ownership and the
-    ///     active flag, child synchronisation, references and visible loads with their step-up and
-    ///     their owners' filters, a round recomposed for a moved permissions tag, uniqueness in the
-    ///     persist's statement order, cycles, value sets, the validators' rounds and their warnings.
-    ///     A save whose validation passes stops at the persist step, which is not built yet.
+    ///     The save pipeline over the scripted batch: the shape and the grant before any round trip,
+    ///     preprocessing, the ids at once or riding round trip 1, the before images and the save
+    ///     grant's count, existence and early concurrency, ownership and the active flag, child
+    ///     synchronisation, references and visible loads with their step-up and their owners'
+    ///     filters, a round recomposed for a moved permissions tag, uniqueness in the persist's
+    ///     statement order, cycles, value sets, the validators' rounds and their warnings; then the
+    ///     persist, its re-entry, the translation of its failures and the post-commit phase.
     /// </summary>
-    public sealed class SaveOperationTests : IAsyncDisposable
+    public sealed partial class SaveOperationTests : IAsyncDisposable
     {
         /// <summary>The fixture tenant.</summary>
         private const int Tenant = 1;
@@ -46,8 +47,17 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The stamp every stored document carries.</summary>
         private static readonly DateTimeOffset Stamp = new(2026, 11, 16, 8, 30, 0, 123, TimeSpan.FromHours(3));
 
+        /// <summary>The stamp the persist's save statement reports.</summary>
+        private static readonly DateTimeOffset Committed = new(2026, 11, 17, 9, 0, 0, 456, TimeSpan.Zero);
+
         /// <summary>The documents' validator's body, shared with the rig's scopes.</summary>
         private readonly PsValidation _validation = new();
+
+        /// <summary>The documents' persist participants' body, shared with the rig's scopes.</summary>
+        private readonly PsPersistence _persistence = new();
+
+        /// <summary>The rows a read-back finds, whatever ids it reads.</summary>
+        private readonly List<PsDocument> _readBack = [];
 
         /// <summary>The stored documents the before-image query finds, each built afresh per query, by id.</summary>
         private readonly Dictionary<int, Func<PsDocument>> _stored = [];
@@ -88,6 +98,8 @@ namespace Tellma.Core.Tests.Crud.Save
             _rig = new QueryRig(PipelineSaveModel.Compose, services =>
             {
                 _ = services.AddSingleton(_validation);
+                _ = services.AddSingleton(_persistence);
+                _ = services.AddFakeLogging();
                 _ = services.AddSingleton(static provider => new TestIds(provider.GetRequiredService<IdAllocator>()));
                 _ = services.Replace(ServiceDescriptor.Singleton<IIdAllocator>(static provider => provider.GetRequiredService<TestIds>()));
                 _ = services.Replace(ServiceDescriptor.Singleton<IIdBuffer>(static provider => provider.GetRequiredService<TestIds>()));
@@ -97,9 +109,10 @@ namespace Tellma.Core.Tests.Crud.Save
 
             // --- Every read the save may make: the before images, the codes and the serials, the line
             // codes and barcodes, the referenced ids, the tree, the modifiers' names and the save
-            // grant's count; and the validators' visible loads of categories and sub-lines ---
+            // grant's count; the validators' visible loads of categories and sub-lines; the read-back
+            // beside the persist or after it; and every persist's save and raw statements ---
             _ = _rig.Script
-                .OnQuery(statement => Restriction(statement.Query<PsDocument>().Restrictions) switch
+                .OnQuery(statement => statement.Batch.Purpose != BatchPurpose.Validate ? _readBack : Restriction(statement.Query<PsDocument>().Restrictions) switch
                 {
                     "Id" => [.. statement.KeySet<IdList>().Where(row => _stored.ContainsKey(row.Id)).Select(row => _stored[row.Id]())],
                     "Serial" => _serials,
@@ -111,11 +124,20 @@ namespace Tellma.Core.Tests.Crud.Save
                     : [.. statement.KeySet<IdList>().Select(static row => new PsCategory { Id = row.Id, Name = "C" })])
                 .OnQuery<PsSubLine>(static _ => [new PsSubLine { Id = 31, LineId = 12, Note = "N" }])
                 .OnRows(Rows)
-                .OnCount(_ => _saveCount ?? throw new InvalidOperationException("The test scripts no save count."));
+                .OnCount(_ => _saveCount ?? throw new InvalidOperationException("The test scripts no save count."))
+                .OnSave<PsDocument>(Attempted)
+                .OnSave<PsNode>(Attempted)
+                .OnSql(static _ => RawResult.Empty);
         }
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+        /// <summary>The batches of the validation rounds, in order: every batch but the persists and their read-backs.</summary>
+        private ScriptedBatch[] ValidationBatches => [.. _rig.Script.Batches.Where(static batch => batch.Purpose == BatchPurpose.Validate)];
+
+        /// <summary>The round trips the validation rounds made.</summary>
+        private int ValidationTrips => ValidationBatches.Count(static batch => batch.IsExecuted);
 
         /// <inheritdoc />
         public ValueTask DisposeAsync()
@@ -126,7 +148,7 @@ namespace Tellma.Core.Tests.Crud.Save
         // --- Ids and rounds ---
 
         [Fact]
-        public async Task A_create_on_a_warm_buffer_validates_with_its_final_ids_and_no_round_trip_then_returns_them()
+        public async Task A_create_on_a_warm_buffer_validates_with_its_final_ids_before_any_round_trip_and_persists_on_its_one()
         {
             Warm();
             (long Id, int Round)? seen = null;
@@ -136,14 +158,17 @@ namespace Tellma.Core.Tests.Crud.Save
                 return Task.CompletedTask;
             };
 
-            await ValidatedAsync(New(-1, "A"));
+            EntitiesResult<PsDocument> saved = await SaveAsync(IdsOnly(), New(-1, "A"));
 
             Assert.Equal<(long, int)?>((101L, 1), seen);
-            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.Equal([101L], saved.Ids);
+            Assert.Empty(saved.Entities);
             Assert.Empty(_ids.Reserved);
 
-            // The persist step did not run: the id goes back to the buffer.
-            Assert.Equal(99, _ids.Allocator.Buffered(Tenant, typeof(PsDocument)));
+            // --- One round trip, the persist's: the id it committed is spent ---
+            Assert.Equal((0, 1), (ValidationTrips, _rig.Script.RoundTrips));
+            Assert.Equal(BatchPurpose.Persist, Assert.Single(_rig.Script.Batches).Purpose);
+            Assert.Equal(98, _ids.Allocator.Buffered(Tenant, typeof(PsDocument)));
         }
 
         [Fact]
@@ -165,12 +190,12 @@ namespace Tellma.Core.Tests.Crud.Save
             await ValidatedAsync(New(-1, "A", categoryId: 3));
 
             // --- Round trip 1: the reservation and the reference, no validator's load; round trip 2: the validator's ---
-            Assert.Equal(2, _rig.Script.RoundTrips);
-            ScriptedBatch first = _rig.Script.Batches[0];
+            Assert.Equal(2, ValidationTrips);
+            ScriptedBatch first = ValidationBatches[0];
             Assert.Same(first, Assert.Single(_ids.Reserved));
             Assert.Empty(first.Of(ScriptedKind.Query));
             Assert.Equal(PipelineSaveModel.Categories, Assert.Single(first.Of(ScriptedKind.Rows)).Spec.Root.Name);
-            _ = Assert.Single(_rig.Script.Batches[1].Of(ScriptedKind.Query));
+            _ = Assert.Single(ValidationBatches[1].Of(ScriptedKind.Query));
             Assert.Equal<(long, int)?>((101L, 1), started);
             Assert.Equal(2, resumed);
         }
@@ -192,8 +217,8 @@ namespace Tellma.Core.Tests.Crud.Save
 
             await ValidatedAsync(New(-1, "A", categoryId: 3));
 
-            ScriptedBatch batch = Assert.Single(_rig.Script.Batches);
-            Assert.Equal((BatchPurpose.Validate, 1), (batch.Purpose, _rig.Script.RoundTrips));
+            ScriptedBatch batch = Assert.Single(ValidationBatches);
+            Assert.Equal((BatchPurpose.Validate, 1), (batch.Purpose, ValidationTrips));
             Assert.Same(QueryexProfiles.PipelineLimits, batch.Limits);
             _ = Assert.Single(batch.Of(ScriptedKind.Rows));
             _ = Assert.Single(batch.Of(ScriptedKind.Query));
@@ -215,9 +240,9 @@ namespace Tellma.Core.Tests.Crud.Save
             await ValidatedAsync(New(-1, "A", categoryId: 3));
 
             // The stale composition read nothing of the denied target; the fresh one reads it.
-            Assert.Equal(2, _rig.Script.RoundTrips);
-            Assert.Empty(_rig.Script.Batches[0].Of(ScriptedKind.Rows));
-            Assert.Equal(PipelineSaveModel.Categories, Assert.Single(_rig.Script.Batches[1].Of(ScriptedKind.Rows)).Spec.Root.Name);
+            Assert.Equal(2, ValidationTrips);
+            Assert.Empty(ValidationBatches[0].Of(ScriptedKind.Rows));
+            Assert.Equal(PipelineSaveModel.Categories, Assert.Single(ValidationBatches[1].Of(ScriptedKind.Rows)).Spec.Root.Name);
         }
 
         [Fact]
@@ -230,9 +255,9 @@ namespace Tellma.Core.Tests.Crud.Save
             ValidationException refused = await RefusedAsync(New(-1, "A", categoryId: 3));
 
             Assert.Equal(["[0].CategoryId Fk.NotFound"], Lines(refused));
-            Assert.Equal(2, _rig.Script.RoundTrips);
-            _ = Assert.Single(_rig.Script.Batches[0].Of(ScriptedKind.Rows));
-            Assert.Empty(_rig.Script.Batches[1].Of(ScriptedKind.Rows));
+            Assert.Equal(2, ValidationTrips);
+            _ = Assert.Single(ValidationBatches[0].Of(ScriptedKind.Rows));
+            Assert.Empty(ValidationBatches[1].Of(ScriptedKind.Rows));
         }
 
         [Fact]
@@ -251,13 +276,13 @@ namespace Tellma.Core.Tests.Crud.Save
             await ValidatedAsync(New(-1, "A"));
 
             // --- Each composition reserved on its own batch; the first gave its id back before the
-            // second reserved, so the second received it and nothing leaked ---
-            Assert.Equal(2, _rig.Script.RoundTrips);
+            // second reserved, so the second received it, the persist spent it, and nothing leaked ---
+            Assert.Equal(2, ValidationTrips);
             Assert.Equal(2, _ids.Reserved.Count);
-            Assert.Same(_rig.Script.Batches[0], _ids.Reserved[0]);
-            Assert.Same(_rig.Script.Batches[1], _ids.Reserved[1]);
+            Assert.Same(ValidationBatches[0], _ids.Reserved[0]);
+            Assert.Same(ValidationBatches[1], _ids.Reserved[1]);
             Assert.Equal(101L, seen);
-            Assert.Equal(99, _ids.Allocator.Buffered(Tenant, typeof(PsDocument)));
+            Assert.Equal(98, _ids.Allocator.Buffered(Tenant, typeof(PsDocument)));
         }
 
         // --- Shape, grant and preprocessing ---
@@ -283,7 +308,7 @@ namespace Tellma.Core.Tests.Crud.Save
             }
 
             Assert.False(validated);
-            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.Equal(0, ValidationTrips);
         }
 
         [Fact]
@@ -348,7 +373,7 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Equal((201, 101, 202), (line.Id, line.DocumentId, other.Id));
             Assert.Equal((301, 201), (sub.Id, sub.LineId));
             Assert.Equal(101, second.RelatedId);
-            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.Equal(0, ValidationTrips);
         }
 
         [Fact]
@@ -380,7 +405,7 @@ namespace Tellma.Core.Tests.Crud.Save
             await ValidatedAsync(withLines, without);
 
             // --- One round trip: the images with the present collections, ordered by key, and the count ---
-            ScriptedBatch batch = Assert.Single(_rig.Script.Batches);
+            ScriptedBatch batch = Assert.Single(ValidationBatches);
             ScriptedStatement images = Assert.Single(batch.Of(ScriptedKind.Query));
             EntityQuery<PsDocument> query = images.Query<PsDocument>();
             Assert.True(query.AllProperties);
@@ -447,8 +472,8 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.False(resumed);
 
             // The names cost a round trip of their own, unfiltered, keyed by the modifiers.
-            Assert.Equal(2, _rig.Script.RoundTrips);
-            ScriptedStatement names = Assert.Single(_rig.Script.Batches[1].Of(ScriptedKind.Rows));
+            Assert.Equal(2, ValidationTrips);
+            ScriptedStatement names = Assert.Single(ValidationBatches[1].Of(ScriptedKind.Rows));
             Assert.Equal(CoreResources.User, names.Spec.Root.Name);
             Assert.Null(names.Spec.Filter);
             Assert.Equal([Modifier], names.KeySet<IdList>().Select(static row => row.Id));
@@ -463,7 +488,7 @@ namespace Tellma.Core.Tests.Crud.Save
 
             await ValidatedAsync(new SaveOptions { Concurrency = ConcurrencyMode.Override }, stale);
 
-            Assert.Equal(1, _rig.Script.RoundTrips);
+            Assert.Equal(1, ValidationTrips);
         }
 
         // --- Ownership, child synchronisation and references ---
@@ -565,7 +590,7 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Equal((PipelineSaveModel.Categories, 4L), (category.Arguments["entity"], category.Arguments["id"]));
 
             // --- One read per target: the category under its filter, the tag for existence alone ---
-            ScriptedStatement[] reads = [.. Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows)];
+            ScriptedStatement[] reads = [.. Assert.Single(ValidationBatches).Of(ScriptedKind.Rows)];
             ScriptedStatement categories = Assert.Single(reads, static read => read.Spec.Root.Name == PipelineSaveModel.Categories);
             Assert.Equal([3, 4], categories.KeySet<IdList>().Select(static row => row.Id).Order());
             Assert.Contains("Name != 'hidden'", QueryRig.Render(categories.Spec.Filter), StringComparison.Ordinal);
@@ -582,7 +607,7 @@ namespace Tellma.Core.Tests.Crud.Save
             ValidationException refused = await RefusedAsync(New(-1, "A", categoryId: 3));
 
             Assert.Equal(["[0].CategoryId Fk.NotFound"], Lines(refused));
-            Assert.Empty(Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows));
+            Assert.Empty(Assert.Single(ValidationBatches).Of(ScriptedKind.Rows));
         }
 
         [Fact]
@@ -627,7 +652,7 @@ namespace Tellma.Core.Tests.Crud.Save
 
             // --- The line's query surface composes its owner's filter; the sub-line, which has none,
             // is read under the line's, through its own navigation ---
-            ScriptedStatement[] reads = [.. Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows)];
+            ScriptedStatement[] reads = [.. Assert.Single(ValidationBatches).Of(ScriptedKind.Rows)];
             QuerySpec lines = Assert.Single(reads, static read => read.Spec.Root.Name == PipelineSaveModel.Lines).Spec;
             QuerySpec subLines = Assert.Single(reads, static read => read.Spec.Root.Name == PipelineSaveModel.SubLines).Spec;
             Assert.Contains("via Document(", QueryRig.Render(lines.Filter), StringComparison.Ordinal);
@@ -663,7 +688,7 @@ namespace Tellma.Core.Tests.Crud.Save
 
             // --- The rule's filter, conjoined with the documents' read seen through the line ---
             Assert.Equal([31], loaded!.Select(static subLine => subLine.Id));
-            ScriptedStatement read = Assert.Single(Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Query));
+            ScriptedStatement read = Assert.Single(Assert.Single(ValidationBatches).Of(ScriptedKind.Query));
             string filter = QueryRig.Render(read.Query<PsSubLine>().Filter);
             Assert.Contains("Note != 'x'", filter, StringComparison.Ordinal);
             Assert.Contains("via Line(", filter, StringComparison.Ordinal);
@@ -686,7 +711,7 @@ namespace Tellma.Core.Tests.Crud.Save
             // --- Below the bar, the round fails the save before any row reaches the validator ---
             StepUpRequiredException asked = await Assert.ThrowsAsync<StepUpRequiredException>(() => SaveAsync(New(-1, "A")));
             Assert.Equal(StepUpBar.DefaultAcr, asked.Acr);
-            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.Equal(0, ValidationTrips);
             Assert.False(categories!.IsLoaded);
 
             // --- At the bar, the rows load ---
@@ -728,7 +753,7 @@ namespace Tellma.Core.Tests.Crud.Save
                 Lines(refused));
 
             // --- The stored holders load by value, one grouped read per entity and property ---
-            ScriptedBatch batch = Assert.Single(_rig.Script.Batches);
+            ScriptedBatch batch = Assert.Single(ValidationBatches);
             Assert.Equal(
                 ["Code", "Id"],
                 batch.Of(ScriptedKind.Query).Where(static statement => statement.Entity == typeof(PsDocument)).Select(static statement => Restriction(statement.Query<PsDocument>().Restrictions)).Order());
@@ -801,7 +826,7 @@ namespace Tellma.Core.Tests.Crud.Save
 
             Assert.Equal(["[0].ParentId Tree.Cycle", "[1].ParentId Tree.Cycle"], Lines(refused));
             Assert.Equal((401, 402, 402, 401), (first.Id, second.Id, first.ParentId, second.ParentId));
-            Assert.Equal(PipelineSaveModel.Nodes, Assert.Single(Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows)).Spec.Root.Name);
+            Assert.Equal(PipelineSaveModel.Nodes, Assert.Single(Assert.Single(ValidationBatches).Of(ScriptedKind.Rows)).Spec.Root.Name);
         }
 
         [Fact]
@@ -1025,22 +1050,42 @@ namespace Tellma.Core.Tests.Crud.Save
             return await service.SaveAsync(documents, options, Token);
         }
 
-        /// <summary>Saves documents whose validation passes, which stops at the persist step.</summary>
+        /// <summary>Saves documents whose validation passes, which then persist on one round trip of their own.</summary>
         /// <param name="documents">The documents.</param>
-        /// <returns>A task that completes when the save stopped.</returns>
+        /// <returns>A task that completes when the save committed.</returns>
         private Task ValidatedAsync(params PsDocument[] documents)
         {
             return ValidatedAsync(new SaveOptions(), documents);
         }
 
-        /// <summary>Saves documents whose validation passes under options, which stops at the persist step.</summary>
-        /// <param name="options">The save's options.</param>
+        /// <summary>
+        ///     Saves documents whose validation passes under options, returning their ids alone, and
+        ///     checks that the save sent one persist, after every validation round, returning the
+        ///     payload's final ids.
+        /// </summary>
+        /// <param name="options">The save's options, which this sets to return ids alone.</param>
         /// <param name="documents">The documents.</param>
-        /// <returns>A task that completes when the save stopped.</returns>
+        /// <returns>A task that completes when the save committed.</returns>
         private async Task ValidatedAsync(SaveOptions options, params PsDocument[] documents)
         {
-            NotSupportedException stopped = await Assert.ThrowsAsync<NotSupportedException>(() => SaveAsync(options, documents));
-            Assert.Contains("does not persist", stopped.Message, StringComparison.Ordinal);
+            // The read-back is the persist tests' concern: a validated save returns its ids alone.
+            options.ReturnEntities = false;
+            int before = _rig.Script.Batches.Count;
+
+            EntitiesResult<PsDocument> saved = await SaveAsync(options, documents);
+
+            ScriptedBatch[] sent = [.. _rig.Script.Batches.Skip(before)];
+            ScriptedBatch persist = Assert.Single(sent, static batch => batch.Purpose == BatchPurpose.Persist);
+            Assert.Same(persist, sent[^1]);
+            Assert.True(persist.IsExecuted);
+            Assert.Equal(documents.Select(static document => (long)document.Id), saved.Ids);
+        }
+
+        /// <summary>Options that save and return the ids alone.</summary>
+        /// <returns>The options.</returns>
+        private static SaveOptions IdsOnly()
+        {
+            return new SaveOptions { ReturnEntities = false };
         }
 
         /// <summary>Saves documents whose validation fails.</summary>
@@ -1097,8 +1142,9 @@ namespace Tellma.Core.Tests.Crud.Save
         }
 
         /// <summary>
-        ///     Answers a row read: the modifiers' names, the tree's parents (none stored), or the
-        ///     referenced ids its target holds of those it asks for.
+        ///     Answers a row read: the modifiers' names, a read-back's visible ids (the rows it finds)
+        ///     and its related rows (none), the tree's parents (none stored), or the referenced ids
+        ///     its target holds of those it asks for.
         /// </summary>
         /// <param name="statement">The read.</param>
         /// <returns>The page.</returns>
@@ -1110,6 +1156,11 @@ namespace Tellma.Core.Tests.Crud.Save
                 return new RowPage(Names(statement.Spec.Select.Split(',')), null, null, null);
             }
 
+            if (statement.Batch.Purpose != BatchPurpose.Validate)
+            {
+                return statement.Options is RowQueryOptions { CaptureKeys: true } ? QueryRig.Page([.. _readBack.Select(static document => document.Id)]) : QueryRig.Page();
+            }
+
             if (root == PipelineSaveModel.Nodes)
             {
                 return new RowPage(ValidationRig.IntRows(["Id", "ParentId"]), null, null, null);
@@ -1117,6 +1168,22 @@ namespace Tellma.Core.Tests.Crud.Save
 
             int[] held = _visible.GetValueOrDefault(root, []);
             return QueryRig.Page([.. statement.KeySet<IdList>().Select(static row => row.Id).Where(held.Contains)]);
+        }
+
+        /// <summary>
+        ///     Answers a persist's save statement, marking its rows' reservation as attempted, as a
+        ///     real batch marks it once it sends the persist: the ids are then kept whatever the outcome.
+        /// </summary>
+        /// <param name="statement">The save statement.</param>
+        /// <returns>The receipt.</returns>
+        private SaveReceipt Attempted(ScriptedStatement statement)
+        {
+            foreach (object row in (IEnumerable)statement.Statement!)
+            {
+                _ = _ids.Allocator.HoldOf(row)?.TryMarkPersistAttempted();
+            }
+
+            return new SaveReceipt(Committed, 1, 0, 0);
         }
 
         /// <summary>The modifier's row: its id, then its name in each name column the read selects, the primary one only filled.</summary>

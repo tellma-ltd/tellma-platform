@@ -54,6 +54,7 @@ namespace Tellma.Core.Access
             services.TryAddScoped<UserConnector>();
             services.TryAddScoped<IUserConnector>(static provider => provider.GetRequiredService<UserConnector>());
             services.TryAddScoped<IScopeConnection>(static provider => provider.GetRequiredService<UserConnector>());
+            services.TryAddScoped<RecomposeLog>();
             services.TryAddScoped<IGuardedBatchRunner, GuardedBatchRunner>();
 
             // --- The connect initializer at 100, and the connected profile the negotiation at 200 reads (§7.8) ---
