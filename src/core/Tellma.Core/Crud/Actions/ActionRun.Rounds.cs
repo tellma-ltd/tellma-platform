@@ -110,7 +110,7 @@ namespace Tellma.Core.Crud.Actions
 
             // The ids are known, so the frame composes from the start; a flow whose task read
             // Persisted composes nothing more, an enlistment included.
-            _frame = new PipelineFrame(Services, _stack, OperationName, frame, OpenWriteFrame.SourceOf(Services.Accessor.Current), PersistGate.EnsureComposing);
+            _frame = new PipelineFrame(Services, _stack, OperationName, frame, OpenWriteFrame.SourceOf(Services.Accessor.Current), PersistGate.EnsureComposing, _descriptor.Name);
             using IDisposable flow = FrameFlow.Enter(_frame);
             _frame.BeginComposing(scheduler, _loader, _map, _errors, _cancellationToken);
             _context = NewContext(_loader, _errors, _frame, _recording, scheduler, tracked: true);
@@ -189,18 +189,21 @@ namespace Tellma.Core.Crud.Actions
         private void Start(ValidationScheduler scheduler, ActionContext<TEntity, TKey> context, bool withMethod)
         {
             // --- A re-run's flows wait on a context that never persists, so only the first run's count;
-            // the first run's tasks run inside the action's frame ---
+            // the first run's tasks run inside the action's frame. The hook and the components run at
+            // the same slots on both, so a re-run's enlistments are matched to the first run's by the
+            // task that made them; the method, which a re-run never invokes, runs at none ---
             string name = _descriptor.Name;
             EnlistmentFrame? frame = withMethod ? _frame : null;
-            Gated(scheduler, _behavior.GetType().Name, InFrame(frame, () => _behavior.ValidateActionAsync(name, context)), tracked: withMethod, isMethod: false);
+            Gated(scheduler, _behavior.GetType().Name, InFrame(frame, () => _behavior.ValidateActionAsync(name, context)), tracked: withMethod, slot: 0);
+            int slot = 1;
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                Gated(scheduler, validator.GetType().Name, InFrame(frame, () => validator.ValidateActionAsync(name, context)), tracked: withMethod, isMethod: false);
+                Gated(scheduler, validator.GetType().Name, InFrame(frame, () => validator.ValidateActionAsync(name, context)), tracked: withMethod, slot++);
             }
 
             if (withMethod && _method is MethodInfo method)
             {
-                Gated(scheduler, method.Name, InFrame(frame, () => _methodTask = InvokeAsync(method, context)), tracked: true, isMethod: true);
+                Gated(scheduler, method.Name, InFrame(frame, () => _methodTask = InvokeAsync(method, context)), tracked: true, slot: null);
             }
         }
 
@@ -224,9 +227,10 @@ namespace Tellma.Core.Crud.Actions
         ///     Whether the flow, once it left the rounds, abandons the action by failing before the persist
         ///     is sent, is awaited once it committed, and has its refusals recorded on the run.
         /// </param>
-        /// <param name="isMethod">Whether the task is the action's method, which the commit awaits on its own.</param>
-        private void Gated(ValidationScheduler scheduler, string name, Func<Task> body, bool tracked, bool isMethod)
+        /// <param name="slot">The task's slot among the action's own tasks; null for the action's method, which the commit awaits on its own.</param>
+        private void Gated(ValidationScheduler scheduler, string name, Func<Task> body, bool tracked, int? slot)
         {
+            bool isMethod = slot is null;
             scheduler.Run(name, async () =>
             {
                 // The gate flows into the task's body, and no further than it.
@@ -246,7 +250,7 @@ namespace Tellma.Core.Crud.Actions
                 }
 
                 Observe(flow);
-            });
+            }, slot);
         }
 
         /// <summary>
@@ -424,7 +428,8 @@ namespace Tellma.Core.Crud.Actions
                 static (_, _) => throw new InvalidOperationException("A re-run of the validators answers from the rounds already run and dispatches none."),
                 metrics: null,
                 _cancellationToken);
-            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, new RerunHost(_frame!, frame, Services.Metadata), RecordingBatch.Deferred(), scheduler, tracked: false);
+            RerunHost host = new(_frame!, scheduler, frame, Services.Metadata);
+            ActionContext<TEntity, TKey> context = NewContext(_loader, errors, host, RecordingBatch.Deferred(), scheduler, tracked: false);
             context.Entities = _targets;
 
             // --- The validators, with every round trip refused as stale ---
@@ -443,7 +448,9 @@ namespace Tellma.Core.Crud.Actions
                 _ = context.FaultPersisted(new OperationCanceledException("A re-run of an action's validators persists nothing of its own."));
             }
 
+            // --- What they report, then every first-run enlistment of theirs matched by its task ---
             ValidationOutcome.Raise(staleStamp: null, errors, frame);
+            host.EnsureMatched();
         }
 
         /// <summary>

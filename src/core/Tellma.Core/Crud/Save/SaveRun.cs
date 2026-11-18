@@ -556,20 +556,25 @@ namespace Tellma.Core.Crud.Save
         private void StartValidators()
         {
             _validatorsStarted ??= _scheduler.Dispatches;
-            RunTask(_behavior.GetType().Name, () => _behavior.ValidateAsync(_context));
-            foreach (IEntityValidator<TEntity> validator in _operation.Services.GetServices<IEntityValidator<TEntity>>())
-            {
-                RunTask(validator.GetType().Name, () => validator.ValidateAsync(_context));
-            }
+            EnlistmentFrame frame = ParticipantFrame;
+            StartValidators(_scheduler, _context, task => () => FrameFlow.RunInAsync(frame, task));
         }
 
-        /// <summary>Runs a task of the rounds inside the frame the save's participants run in.</summary>
-        /// <param name="name">The task's name.</param>
-        /// <param name="task">The task's body.</param>
-        private void RunTask(string name, Func<Task> task)
+        // Spec 0015 §5.1: the first run and a re-run register the same tasks in the same order, each
+        // at its slot (the hook first, then each validator), so a re-run's enlistments are matched to
+        // the first run's by the task that made them.
+        /// <summary>Starts the service's validation hook, then every validator of the entity, as tasks of a run's rounds, each at its slot.</summary>
+        /// <param name="scheduler">The run's scheduler.</param>
+        /// <param name="context">The context the tasks see.</param>
+        /// <param name="wrap">Wraps a task's body, such as to run it inside the save's frame.</param>
+        private void StartValidators(ValidationScheduler scheduler, SaveContext<TEntity> context, Func<Func<Task>, Func<Task>> wrap)
         {
-            EnlistmentFrame frame = ParticipantFrame;
-            _scheduler.Run(name, () => FrameFlow.RunInAsync(frame, task));
+            scheduler.Run(_behavior.GetType().Name, wrap(() => _behavior.ValidateAsync(context)), slot: 0);
+            int slot = 1;
+            foreach (IEntityValidator<TEntity> validator in _operation.Services.GetServices<IEntityValidator<TEntity>>())
+            {
+                scheduler.Run(validator.GetType().Name, wrap(() => validator.ValidateAsync(context)), slot++);
+            }
         }
 
         // Spec 0015 §6.6 step 8: a new or changed value outside its set, unless a validator already

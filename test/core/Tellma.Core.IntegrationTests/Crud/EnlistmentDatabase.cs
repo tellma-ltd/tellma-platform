@@ -20,8 +20,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     widget stack runs through <see cref="EnlistingWidgetService" />, which enlists shipments,
     ///     and whose shipment stack runs through <see cref="EnlistedShipmentService" />, which enlists
     ///     its own shipments from its API action. The first tenant's database carries two references
-    ///     the fixture's schema does not declare, one each way between widgets and shipments, and is
-    ///     seeded with three stored shipments.
+    ///     by id the fixture's schema does not declare, one each way between widgets and shipments,
+    ///     and is seeded with three stored shipments.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class EnlistmentDatabase(SqlServerFixture sql) : IAsyncLifetime
@@ -35,17 +35,21 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>The stored shipment a caller without the restamp action's securable asks it to change.</summary>
         public const long ForbiddenShipment = 9003;
 
-        /// <summary>A widget whose code starts with this references the shipment whose payload is that code.</summary>
+        /// <summary>A widget whose code starts with this references the shipment whose id follows it.</summary>
         public const string WidgetReferencePrefix = "ref:";
 
-        /// <summary>A shipment whose payload starts with this references the widget whose code follows it.</summary>
+        /// <summary>A shipment whose payload starts with this references the widget whose id follows it.</summary>
         public const string ShipmentReferencePrefix = "of:";
+
+        /// <summary>A job id no job carries, which a shipment's job reference breaks on.</summary>
+        public const int MissingJob = 999_999;
 
         // The fixture's schema holds no reference between widgets and shipments, and the serialized
         // fixture model is not this suite's to change. Each reference stands as a check constraint
-        // over a function that reads the other table: SQL Server checks it row by row as the
-        // statement writes, as it checks a foreign key, so a statement that writes a referencing
-        // row before its referenced row fails as a foreign key would.
+        // over a function that looks the other table up by the id the row names: SQL Server checks
+        // it row by row as the statement writes, as it checks a foreign key, so a statement that
+        // writes a referencing row before its referenced row, or names another row's id, fails as a
+        // foreign key would.
         /// <summary>
         ///     The two references and the stored shipments, seeded ahead of every allocation so the
         ///     sequence heals past them before it hands out an id.
@@ -53,24 +57,26 @@ namespace Tellma.Core.IntegrationTests.Crud
         private static readonly string[] Seed =
         [
             """
-            CREATE FUNCTION [fixture].[HasShipmentWithPayload] (@payload nvarchar(64)) RETURNS bit AS
+            CREATE FUNCTION [fixture].[HasShipment] (@id bigint) RETURNS bit AS
             BEGIN
-                RETURN CASE WHEN EXISTS (SELECT 1 FROM [fixture].[Shipments] WHERE [Payload] = @payload) THEN 1 ELSE 0 END;
+                RETURN CASE WHEN EXISTS (SELECT 1 FROM [fixture].[Shipments] WHERE [Id] = @id) THEN 1 ELSE 0 END;
             END;
             """,
             """
-            CREATE FUNCTION [fixture].[HasWidgetWithCode] (@code varchar(50)) RETURNS bit AS
+            CREATE FUNCTION [fixture].[HasWidget] (@id int) RETURNS bit AS
             BEGIN
-                RETURN CASE WHEN EXISTS (SELECT 1 FROM [fixture].[Widgets] WHERE [Code] = @code) THEN 1 ELSE 0 END;
+                RETURN CASE WHEN EXISTS (SELECT 1 FROM [fixture].[Widgets] WHERE [Id] = @id) THEN 1 ELSE 0 END;
             END;
             """,
-            $"""
+            FormattableString.Invariant($"""
             ALTER TABLE [fixture].[Widgets] ADD CONSTRAINT [CK_Widgets_ReferencedShipment]
-                CHECK ([Code] IS NULL OR [Code] NOT LIKE '{WidgetReferencePrefix}%' OR [fixture].[HasShipmentWithPayload]([Code]) = 1);
-            """,
+                CHECK ([Code] IS NULL OR [Code] NOT LIKE '{WidgetReferencePrefix}%'
+                    OR [fixture].[HasShipment](TRY_CAST(SUBSTRING([Code], {WidgetReferencePrefix.Length + 1}, 20) AS bigint)) = 1);
+            """),
             FormattableString.Invariant($"""
             ALTER TABLE [fixture].[Shipments] ADD CONSTRAINT [CK_Shipments_ReferencedWidget]
-                CHECK ([Payload] IS NULL OR [Payload] NOT LIKE '{ShipmentReferencePrefix}%' OR [fixture].[HasWidgetWithCode](SUBSTRING([Payload], {ShipmentReferencePrefix.Length + 1}, 50)) = 1);
+                CHECK ([Payload] IS NULL OR [Payload] NOT LIKE '{ShipmentReferencePrefix}%'
+                    OR [fixture].[HasWidget](TRY_CAST(SUBSTRING([Payload], {ShipmentReferencePrefix.Length + 1}, 20) AS int)) = 1);
             """),
             DataQueryDatabase.Stamped(
                 "[fixture].[Shipments]",

@@ -1320,12 +1320,14 @@ pipeline drives them:
    provisioning step); an API action frame that does not admit it refuses whatever the nested
    operation allows.
 8. **The persist**, one guarded `Persist` batch under the pipeline's compilation limits, composed
-   between the executor's fixed prefix and suffix in this order: the access guards' lock when the
-   stack's root or a collection at any depth maps to `core.Users`, `Roles`, `RoleMemberships` or
-   `Permissions` and the context is not the system's; the emitter's save under the stack's authority; the service's
+   between the executor's fixed prefix and suffix in this order: the emitter's save under the stack's authority; the service's
    `ContributeAsync`, then each `IPersistEffect<T>` in registration order, through a
    `RecordingBatch`; the caller's `SaveOptions.OnPersist`, under the caller's own authority, so a
-   write to a table another stack owns is refused at append; the guards' invariants; under a
+   write to a table another stack owns is refused at append; the access guards, when the context is
+   not the system's and the batch writes `core.Users`, `Roles`, `RoleMemberships` or `Permissions`
+   (the stack's root or a collection at any depth, a group enlisted with it, or any statement's
+   declared writes): their lock, which the executor takes first in the transaction, and their
+   invariants; under a
    filtered `Save` grant, the post-check over the saved ids (`RowSecurity`, expecting every root);
    and, when asked for, the read-back over the saved ids in details shape. A participant only
    appends: a round trip of its own while it contributes (`ComposeFence`), executing the batch, or
@@ -1465,8 +1467,11 @@ no row and every id is not found.
 Every write runs in a frame. Each save, delete and action runs in a pipeline frame (`IWriteHost`,
 handed to its hooks as `context.Host`); an `[ApiAction]` method, a job handler and a provisioning
 step run in an open frame, which the scoped `IOpenWriteHost` resolves to (the innermost open frame
-of the flow). A frame names its kind and its `Operation`: `<Resource>:<op>`, `job:<key>` or
-`provisioning:<step>`.
+of the flow). A frame names its kind and its `Operation`: `<Resource>:<op>` (an entity action's
+or an API action's by the action's name, such as `gl.Invoice:post`), `job:<key>` or
+`provisioning:<step>`. A write nested in an open frame meets a read-only tenant's verdict as that
+frame's descriptor judges it: admitted in an API action that is no mutation or allows a read-only
+tenant, in a job that runs on one and in a provisioning step, refused in any other API action.
 
 - **Enlisting.** A writer that declares `IEnlists<TTarget>` adds a save (`EnlistSaveAsync`) or a
   delete by ids (`EnlistDelete`) of the target's stack to a frame. The frame admits it only for a
@@ -1490,18 +1495,27 @@ of the flow). A frame names its kind and its `Operation`: `<Resource>:<op>`, `jo
 - **The persist** is the host's one batch. Each group's statements sit ahead of (`BeforeHost`) or
   after (`AfterHost`, the default) its immediate host's own, so a group's own groups nest: B
   enlisted ahead of A, with C after B, composes B, C, A. Each group appends under its target's
-  authority, the access guards cover every write, and a failure is attributed by its statement's
-  ordinal to the group that raised it, translated by that group and re-rooted onto the host's
-  paths. After the commit the host's post-commit phase runs first, then each group's in
+  authority, the access guards join once every statement composed when any table the batch writes
+  is a security table (a group's at any depth included), and a failure is attributed by its
+  statement's ordinal to the group that raised it, translated by that group and re-rooted onto the
+  host's paths. After the commit the host's post-commit phase runs first, then each group's in
   composition order. Each enlisted write is counted once (`tellma.crud.enlistments`) under the
-  host's operation and outcome.
+  host's operation (every kind of delete as `delete`) and outcome.
+- **A re-entry** re-runs the host's validators in memory, and each enlistment of the re-run is
+  answered from the group the same task (the hook, or one validator component) enlisted at the
+  same step of the first run, with that group's ids, whatever order the tasks ran in. A step the
+  first run had no such group for, or took while another flow of its task was parked at a load, or
+  a first-run enlistment the re-run never makes, is `StaleContextException`; the groups an entity
+  action's method enlisted are replayed as they are, since a re-run never invokes the method.
 - **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
   `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
   while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
   runs a pipeline frame of its own, and the open frame's `PersistAsync` is refused while it composes.
 - **Open frames** run their work as a task of their own rounds. `PersistAsync` is called once, from
   the work itself: it waits for the groups' rounds, raises their errors and then their warnings,
-  and sends every group in one persist batch (none enlisted: no round trip). Work that returns with
+  and sends every group in one persist batch (none enlisted: no round trip). Its outcome's stamp is
+  the one the batch's saves stamped; a batch that saved no row, a commit whose response was lost
+  and a job's frame report the frame's clock instead, which no stored row carries. Work that returns with
   groups it never persisted is `InvalidOperationException`, and nothing is sent. A job's frame
   appends its groups to the completion batch the worker composes, after the outcome statement, and
   runs their post-commit phase once the worker reports the commit. A provisioning step runs inside

@@ -228,6 +228,7 @@ namespace Tellma.Core.Crud.Delete
 
             // --- The deleted ids, as the receipt read them; a proven commit's were never read ---
             IReadOnlyList<TKey> deleted = handle.Receipt.IsCompleted ? Deleted(handle.Receipt.Value) : _ids;
+            // A delete stamps no row, so its outcome carries the clock, as the front door's delete does.
             DeletePersistOutcome<TEntity, TKey> outcome = new()
             {
                 Entities = [],

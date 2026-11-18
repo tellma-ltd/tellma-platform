@@ -84,7 +84,8 @@ namespace Tellma.Core.Crud.Enlistment
             _rounds.Close(complete: true);
             ValidationOutcome.Raise(staleStamp: null, _errors, _confirmations!);
 
-            // --- Nothing enlisted: nothing to send; else the groups, on the job's batch or one of their own ---
+            // --- Nothing enlisted: nothing to send, and no stamp but the frame's clock; else the
+            // groups, on the job's batch or one of their own ---
             return _rounds.Groups.Count == 0
                 ? new EnlistmentOutcome(_services.Time.GetUtcNow(), _run.Tags(committed: null), UserVersionTags: null)
                 : _completion is IDataBatch completion
@@ -145,6 +146,10 @@ namespace Tellma.Core.Crud.Enlistment
             // --- The commit: each group's post-commit phase, in the order the batch composed them ---
             _services.Accessor.Current.ApplyCultures();
             await AfterGroupsCommitAsync(outcome).ConfigureAwait(false);
+
+            // --- The stamp a save statement of the batch reported. A batch of deletes alone stamped no
+            // row, and a commit whose response was lost reported none: the frame's clock stands in,
+            // as the outcome's contract says, never mistaken for a stored stamp ---
             DateTimeOffset stamp = Rounds.Groups.Select(static group => group.Stamp).FirstOrDefault(static stamp => stamp is not null) ?? _services.Time.GetUtcNow();
             return new EnlistmentOutcome(stamp, _run.Tags(outcome), outcome?.UserVersionTags);
         }
@@ -171,7 +176,7 @@ namespace Tellma.Core.Crud.Enlistment
             return ComposeOntoAsync(user, batch);
         }
 
-        /// <summary>Composes every group onto a batch, between the access guards' lock and their invariants when a group writes a security table.</summary>
+        /// <summary>Composes every group onto a batch, then the access guards when the batch writes a security table.</summary>
         /// <param name="user">The connected user the batch is composed for; null when the batch names none.</param>
         /// <param name="batch">The batch.</param>
         /// <returns>A task that completes when the batch is composed.</returns>
@@ -183,23 +188,14 @@ namespace Tellma.Core.Crud.Enlistment
             _run.Prepare(user, batch, first);
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
 
-            // --- The access guards' lock, ahead of every group, when one writes a security table ---
-            bool guarded = !_services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(Rounds.GroupTables);
-            if (guarded)
-            {
-                _services.AccessGuards.ContributeLock(batch);
-            }
-
             // --- The groups: those ahead of the host, then those after it, each with its own nested ---
             await ComposeGroupsAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             await ComposeGroupsAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The guards' invariants, after every group, under the caller's authority again ---
+            // --- The access guards, after every group, under the caller's authority again, when the
+            // batch writes a security table: a group's at any depth, or any statement's declared writes ---
             FrameRun.AuthorizeFor(batch, callers);
-            if (guarded)
-            {
-                _services.AccessGuards.ContributeInvariants(batch);
-            }
+            _ = PersistGuards.Contribute(_services.AccessGuards, _services.Accessor.Current, batch, Rounds.GroupTables);
         }
 
         /// <summary>The write steps an open frame shares with the pipeline: its rounds' dispatch, its reads' decisions and its persist's preparation.</summary>

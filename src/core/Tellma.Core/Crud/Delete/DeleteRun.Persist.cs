@@ -31,7 +31,7 @@ namespace Tellma.Core.Crud.Delete
     // memory, keeps round trip 1's verdicts, recomposes the delete under the fresh grants and replays
     // the recording (§5.1). The groups the validators enlisted (§13.3) sit around the delete: the
     // BeforeHost ones ahead of it, the AfterHost ones after its participants, and the access guards
-    // run over every table any of them writes. The executor's failures are translated by §14.2, a
+    // join once the batch is composed, over every table any statement of it writes. The executor's failures are translated by §14.2, a
     // group's against the group, and a committed delete runs its post-commit phase (§13.2), then its
     // groups'.
     /// <summary>One delete of one stack: its validation rounds, its persist and its post-commit phase.</summary>
@@ -98,21 +98,25 @@ namespace Tellma.Core.Crud.Delete
         /// <param name="frame">The frame the validators run in; null for a re-run, which enlists nothing of its own.</param>
         private void StartValidators(ValidationScheduler scheduler, DeleteContext<TEntity, TKey> context, EnlistmentFrame? frame)
         {
-            Run(scheduler, frame, _behavior.GetType().Name, () => _behavior.ValidateDeleteAsync(context));
+            // Spec 0015 §5.1: each task at the same slot on both runs, so a re-run's enlistments are
+            // matched to the first run's by the task that made them.
+            Run(scheduler, frame, _behavior.GetType().Name, () => _behavior.ValidateDeleteAsync(context), slot: 0);
+            int slot = 1;
             foreach (IEntityValidator<TEntity> validator in Services.Services.GetServices<IEntityValidator<TEntity>>())
             {
-                Run(scheduler, frame, validator.GetType().Name, () => validator.ValidateDeleteAsync(context));
+                Run(scheduler, frame, validator.GetType().Name, () => validator.ValidateDeleteAsync(context), slot++);
             }
         }
 
-        /// <summary>Runs a task of the rounds, inside a frame when one is given.</summary>
+        /// <summary>Runs a task of the rounds at its slot, inside a frame when one is given.</summary>
         /// <param name="scheduler">The rounds' scheduler.</param>
         /// <param name="frame">The frame; null to run the task as it is.</param>
         /// <param name="name">The task's name.</param>
         /// <param name="task">The task's body.</param>
-        private static void Run(ValidationScheduler scheduler, EnlistmentFrame? frame, string name, Func<Task> task)
+        /// <param name="slot">The task's slot among the delete's own tasks.</param>
+        private static void Run(ValidationScheduler scheduler, EnlistmentFrame? frame, string name, Func<Task> task, int slot)
         {
-            scheduler.Run(name, frame is null ? task : () => FrameFlow.RunInAsync(frame, task));
+            scheduler.Run(name, frame is null ? task : () => FrameFlow.RunInAsync(frame, task), slot);
         }
 
         // Spec 0015 §5.1 step 1 of a re-entry, as a save's: the validators run again over the loaded
@@ -138,13 +142,14 @@ namespace Tellma.Core.Crud.Delete
                 static (_, _) => throw new InvalidOperationException("A re-run of the validators answers from the rounds already run and dispatches none."),
                 metrics: null,
                 _cancellationToken);
+            RerunHost host = new(_frame!, scheduler, frame, Services.Metadata);
             DeleteContext<TEntity, TKey> context = new()
             {
                 Ids = _ids,
                 Context = Services.Accessor.Current,
                 Loader = _loader,
                 Errors = errors,
-                Host = new RerunHost(_frame!, frame, Services.Metadata),
+                Host = host,
                 CancellationToken = _cancellationToken,
                 Entities = _targets,
             };
@@ -156,7 +161,9 @@ namespace Tellma.Core.Crud.Delete
                 _ = await scheduler.RunAsync().ConfigureAwait(false);
             }
 
+            // --- What they report, then every first-run enlistment of theirs matched by its task ---
             ValidationOutcome.Raise(staleStamp: null, errors, frame);
+            host.EnsureMatched();
         }
 
         /// <summary>Persists the delete, commits it, and runs the post-commit phase.</summary>
@@ -239,14 +246,6 @@ namespace Tellma.Core.Crud.Delete
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack or a group enlisted with it writes a security table ---
-            IEnumerable<TableName> written = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(written);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeLock(batch);
-            }
-
             // --- The groups enlisted ahead of the delete, then the delete, under the stack's authority ---
             await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             Authorize(batch, StackTables);
@@ -281,12 +280,11 @@ namespace Tellma.Core.Crud.Delete
             // --- The groups enlisted after the delete ---
             await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The guards' invariants, after every contribution ---
+            // --- The access guards, after every contribution, when the batch writes a security table:
+            // the stack's, a group's at any depth, or any statement's declared writes ---
             Authorize(batch, callers);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeInvariants(batch);
-            }
+            IEnumerable<TableName> composed = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
+            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, composed);
         }
 
         // Spec 0015 §10.1 to §10.3: by ids and with descendants, the ids are counted under the caller's

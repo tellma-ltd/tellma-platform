@@ -5,6 +5,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Jobs;
@@ -15,12 +16,13 @@ using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Crud.Enlistment
 {
-    // The enlistment suite's model: an order whose service enlists notes and its own orders and
-    // declares two API actions (one under the order's Save, one for any member), a note whose
-    // service enlists tags, a tag, and an other stack whose service also enlists notes, so a writer
-    // can declare the pair yet take no part in an order's frame. A job handler enlists notes from
-    // its own frame, and a provisioning step from its. Every hook and method runs what one shared
-    // body sets.
+    // The enlistment suite's model: an order whose service enlists notes, users (a security table)
+    // and its own orders, declares two API actions (one under the order's Save, one for any member)
+    // and an entity action a read-only tenant admits, and whose validator component enlists notes
+    // too; a note whose service enlists tags, a tag, and an other stack whose service also enlists
+    // notes, so a writer can declare the pair yet take no part in an order's frame. A job handler
+    // enlists notes from its own frame, and a provisioning step from its. Every hook and method runs
+    // what one shared body sets.
 
     /// <summary>Composes the enlistment suite's model.</summary>
     internal static class EnlistmentModel
@@ -43,6 +45,12 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <summary>The order action any member may call.</summary>
         public const string Ping = "ping";
 
+        /// <summary>The order's entity action, which a read-only tenant admits.</summary>
+        public const string Touch = "touch";
+
+        /// <summary>The securable the order's entity action runs under.</summary>
+        public const string TouchAction = "Touch";
+
         /// <summary>The job handler's key.</summary>
         public const string SweepKey = "en.sweep";
 
@@ -55,6 +63,7 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         {
             _ = tellma.AddFeature(new TestFeature<Tag.C>("enlistment", contribute: static contribution => contribution
                 .Entity<EnOrder, EnOrderService>()
+                .Validator<EnOrder, EnOrderRules>()
                 .Entity<EnNote, EnNoteService>()
                 .Entity<EnTag>()
                 .Entity<EnOther, EnOtherService>()
@@ -84,6 +93,11 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         [Required]
         [MaxLength(20)]
         public string? Text { get; set; }
+
+        /// <summary>Where the note came from, which the platform alone writes unless a writer supplies it.</summary>
+        [ServerOwned]
+        [MaxLength(20)]
+        public string? Origin { get; set; }
     }
 
     /// <summary>The model's tag, which accepts enlisted writes.</summary>
@@ -129,6 +143,18 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <summary>The order persist hook; nothing when null.</summary>
         public Func<EnOrderService, PersistContext<EnOrder>, Task>? OrderContribute { get; set; }
 
+        /// <summary>The order action validation hook; nothing when null.</summary>
+        public Func<EnOrderService, ActionContext<EnOrder, int>, Task>? OrderValidateAction { get; set; }
+
+        /// <summary>The order delete validation hook; nothing when null.</summary>
+        public Func<EnOrderService, DeleteContext<EnOrder, int>, Task>? OrderValidateDelete { get; set; }
+
+        /// <summary>The order validator component's save rules; nothing when null.</summary>
+        public Func<EnOrderRules, SaveContext<EnOrder>, Task>? OrderRules { get; set; }
+
+        /// <summary>The order entity action's method; nothing when null.</summary>
+        public Func<EnOrderService, ActionContext<EnOrder, int>, Task>? Touch { get; set; }
+
         /// <summary>The note validation hook; nothing when null.</summary>
         public Func<EnNoteService, SaveContext<EnNote>, Task>? NoteValidate { get; set; }
 
@@ -162,7 +188,7 @@ namespace Tellma.Core.Tests.Crud.Enlistment
     /// <param name="hooks">The shared body.</param>
     /// <param name="host">The open frame of the action that runs.</param>
     public sealed class EnOrderService(IEntityPipelineFactory factory, EnHooks hooks, IOpenWriteHost host)
-        : EntityService<EnOrder>(factory), IEnlists<EnNote>, IEnlists<EnOrder>
+        : EntityService<EnOrder>(factory), IEnlists<EnNote>, IEnlists<EnOrder>, IEnlists<User>
     {
         /// <summary>Stamps something under the order's Save.</summary>
         /// <param name="body">The body.</param>
@@ -185,6 +211,17 @@ namespace Tellma.Core.Tests.Crud.Enlistment
             return hooks.Ping?.Invoke(this, host) ?? Task.FromResult(0);
         }
 
+        /// <summary>Touches the orders; a read-only tenant admits it.</summary>
+        /// <param name="context">The action's context.</param>
+        /// <returns>A task that completes when the action composed.</returns>
+        [EntityAction(EnlistmentModel.Touch, AllowWhenReadOnly = true)]
+        public Task TouchAsync(ActionContext<EnOrder, int> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            hooks.Calls.Add(EnlistmentModel.Touch);
+            return hooks.Touch?.Invoke(this, context) ?? Task.CompletedTask;
+        }
+
         /// <inheritdoc />
         protected override Task PreprocessAsync(SaveContext<EnOrder> context)
         {
@@ -195,6 +232,18 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         protected override Task ValidateAsync(SaveContext<EnOrder> context)
         {
             return hooks.OrderValidate?.Invoke(this, context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        protected override Task ValidateActionAsync(string action, ActionContext<EnOrder, int> context)
+        {
+            return hooks.OrderValidateAction?.Invoke(this, context) ?? Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        protected override Task ValidateDeleteAsync(DeleteContext<EnOrder, int> context)
+        {
+            return hooks.OrderValidateDelete?.Invoke(this, context) ?? Task.CompletedTask;
         }
 
         /// <inheritdoc />
@@ -239,6 +288,17 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         {
             hooks.Committed.Add(EnlistmentModel.Notes);
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The orders' validator component, which enlists notes from its own task of the rounds.</summary>
+    /// <param name="hooks">The shared body.</param>
+    public sealed class EnOrderRules(EnHooks hooks) : IEntityValidator<EnOrder>, IEnlists<EnNote>
+    {
+        /// <inheritdoc />
+        public Task ValidateAsync(SaveContext<EnOrder> context)
+        {
+            return hooks.OrderRules?.Invoke(this, context) ?? Task.CompletedTask;
         }
     }
 

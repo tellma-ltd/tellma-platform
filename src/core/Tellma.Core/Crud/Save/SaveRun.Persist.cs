@@ -29,7 +29,7 @@ namespace Tellma.Core.Crud.Save
     // caller's OnPersist, the guards' invariants, the post-check of §9.3 and the read-back of §6.9.
     // The groups enlisted with the save (§13.3) sit around its own statements: the BeforeHost ones
     // ahead of its emitter, the AfterHost ones after its effects and before OnPersist, and the access
-    // guards run over every table any of them writes. A re-entered compose re-runs the validators in
+    // guards join once the batch is composed, over every table any statement of it writes. A re-entered compose re-runs the validators in
     // memory, recomposes the pipeline's own statements under the fresh grants and replays the
     // recording (§5.1). The executor's failures are translated by §14.2, a group's against the
     // group, and a committed save runs its post-commit phase (§13.2), then its groups', whatever the
@@ -57,6 +57,13 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The tables of the stack: the root's and every child collection's, at every depth.</summary>
         private IReadOnlySet<TableName> StackTables => field ??= StackTableSet.Of(_root);
+
+        /// <summary>The tables the save's own statements write: its stack's, and every group's enlisted with it at any depth.</summary>
+        /// <returns>The tables.</returns>
+        private IEnumerable<TableName> ComposedTables()
+        {
+            return Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
+        }
 
         /// <summary>Persists the validated payload, commits it, and runs the post-commit phase.</summary>
         /// <returns>The saved rows' ids, and the rows when asked for.</returns>
@@ -144,15 +151,6 @@ namespace Tellma.Core.Crud.Save
             // --- The tags the validation rounds were served under, held by the persist's guard ---
             DependOnServed(batch);
 
-            // --- Step 4, ahead of item 1: the access guards' lock, when the stack or a group enlisted
-            // with it writes a security table ---
-            IEnumerable<TableName> written = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-            bool guarded = !_operation.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(written);
-            if (guarded)
-            {
-                _operation.AccessGuards.ContributeLock(batch);
-            }
-
             // --- Step 1: the groups enlisted ahead of the save, then the emitter, under the stack's authority ---
             await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             Authorize(batch, StackTables);
@@ -188,12 +186,10 @@ namespace Tellma.Core.Crud.Save
                 appends.Replay(batch);
             }
 
-            // --- Step 4: the guards' invariants, after every contribution ---
+            // --- Step 4: the access guards, after every contribution, when the batch writes a security
+            // table: the stack's, a group's at any depth, or any statement's declared writes ---
             Authorize(batch, callers);
-            if (guarded)
-            {
-                _operation.AccessGuards.ContributeInvariants(batch);
-            }
+            _ = PersistGuards.Contribute(_operation.AccessGuards, _operation.Accessor.Current, batch, ComposedTables());
 
             // --- Step 5: the post-check over the saved ids, under a filtered grant ---
             if (save.Outcome == AccessOutcome.Filtered)
@@ -279,6 +275,7 @@ namespace Tellma.Core.Crud.Save
                 static (_, _) => throw new InvalidOperationException("A re-run of the validators answers from the rounds already run and dispatches none."),
                 metrics: null,
                 _cancellationToken);
+            RerunHost host = new(_frame!, scheduler, frame, _operation.Metadata);
             SaveContext<TEntity> context = new()
             {
                 Entities = _entities,
@@ -286,26 +283,23 @@ namespace Tellma.Core.Crud.Save
                 Context = _operation.Accessor.Current,
                 Loader = _loader,
                 Errors = errors,
-                Host = new RerunHost(_frame!, frame, _operation.Metadata),
+                Host = host,
                 CancellationToken = _cancellationToken,
                 NewRows = _context.NewRows,
                 BeforeImages = _context.BeforeImages,
                 Round = _context.Round,
             };
 
-            // --- The validators, with every round trip refused as stale ---
+            // --- The validators at the first run's slots, with every round trip refused as stale ---
             using (ComposeFence.Close(static () => new StaleContextException([])))
             {
-                scheduler.Run(_behavior.GetType().Name, () => _behavior.ValidateAsync(context));
-                foreach (IEntityValidator<TEntity> validator in _operation.Services.GetServices<IEntityValidator<TEntity>>())
-                {
-                    scheduler.Run(validator.GetType().Name, () => validator.ValidateAsync(context));
-                }
-
+                StartValidators(scheduler, context, static task => task);
                 _ = await scheduler.RunAsync().ConfigureAwait(false);
             }
 
+            // --- What they report, then every first-run enlistment of theirs matched by its task ---
             ValidationOutcome.Raise(staleStamp: null, errors, frame);
+            host.EnsureMatched();
         }
 
         // Spec 0015 §8: a save whose response was lost around COMMIT, and whose inserted rows the

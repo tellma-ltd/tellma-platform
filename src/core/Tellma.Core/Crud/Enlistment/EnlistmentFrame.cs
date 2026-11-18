@@ -146,6 +146,12 @@ namespace Tellma.Core.Crud.Enlistment
         /// <exception cref="InvalidOperationException">The frame admits no enlistment now.</exception>
         protected abstract void EnsureAdmits(Type writer);
 
+        /// <summary>Records who enlisted a group the frame just admitted, on the writer's own flow; nothing by default.</summary>
+        /// <param name="group">The group.</param>
+        protected virtual void OnEnlisted(IEnlistedGroup group)
+        {
+        }
+
         /// <summary>Whether the frame admits a pair onto the writer's own stack: only an open frame its own API action opened.</summary>
         /// <param name="target">The target stack, the writer's own.</param>
         /// <returns>True when it does.</returns>
@@ -239,6 +245,7 @@ namespace Tellma.Core.Crud.Enlistment
             }
 
             Rounds.Add(group);
+            OnEnlisted(group);
         }
     }
 

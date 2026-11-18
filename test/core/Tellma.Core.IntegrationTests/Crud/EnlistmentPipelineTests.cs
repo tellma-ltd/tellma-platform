@@ -21,13 +21,13 @@ namespace Tellma.Core.IntegrationTests.Crud
 {
     /// <summary>
     ///     Enlisted writes against a real tenant database: a widget save enlists shipments ahead of and
-    ///     after its own statement in its one transaction, so references each way hold, at no round
-    ///     trip of their own, with the shipment stack's own stages run; a shipment's errors come back
-    ///     on the widget's paths naming the shipment stack; an enlisted update under Check refuses a
-    ///     default stamp; a statement a caller or another stack's effect appends that writes the
-    ///     shipments' table is refused at append; and the shipment stack's API action that loads a
-    ///     shipment and enlists it with its own frame commits on three round trips, refused for a caller
-    ///     without its securable.
+    ///     after its own statement in its one transaction, so references by id each way hold, at no
+    ///     round trip of their own, with the shipment stack's own stages run; a shipment's errors, and
+    ///     a reference its row breaks, come back on the widget's paths naming the shipment stack; an
+    ///     enlisted update under Check refuses a default stamp; a statement a caller or another stack's
+    ///     effect appends that writes the shipments' table is refused at append; and the shipment
+    ///     stack's API action that loads a shipment and enlists it with its own frame commits on three
+    ///     round trips, refused for a caller without its securable.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -66,28 +66,34 @@ namespace Tellma.Core.IntegrationTests.Crud
             // --- A plain create: the round trips the enlistments must not add to ---
             (_, int plain) = await CountedAsync(subject, scope => Service(scope).SaveAsync([NewWidget("plain-1")], IdsOnly, Token));
 
-            // --- The widget references the shipment enlisted ahead of it, whose payload the shipment
-            // stack's preprocessing trims; the shipment enlisted after it references the widget ---
-            const string code = EnlistmentDatabase.WidgetReferencePrefix + "both-1";
-            const string referencing = EnlistmentDatabase.ShipmentReferencePrefix + code;
+            // --- The widget references, by the id its enlistment answers, the shipment enlisted ahead
+            // of it, whose payload the shipment stack's preprocessing trims; the shipment enlisted after
+            // it references the widget by the widget's own id ---
+            (long Ahead, int Widget) ids = default;
             fixture.Probe.ValidateWidgets = async (service, context) =>
             {
-                _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = $"  {code}  " }], new EnlistSaveOptions { Order = EnlistOrder.BeforeHost });
-                _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = referencing }]);
+                EnlistedSave<Shipment> ahead = await service.EnlistSaveAsync(
+                    context.Host, [new Shipment { Payload = "  ahead-1  " }], new EnlistSaveOptions { Order = EnlistOrder.BeforeHost });
+                ids = (ahead.Rows[0].Id, context.Entities[0].Id);
+                context.Entities[0].Code = Invariant($"{EnlistmentDatabase.WidgetReferencePrefix}{ids.Ahead}");
+                _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = Invariant($"{EnlistmentDatabase.ShipmentReferencePrefix}{ids.Widget}") }]);
             };
-            (_, int trips) = await CountedAsync(subject, scope => Service(scope).SaveAsync([NewWidget(code)], IdsOnly, Token));
+            (_, int trips) = await CountedAsync(subject, scope => Service(scope).SaveAsync([NewWidget("both-1")], IdsOnly, Token));
 
-            // --- No round trip of their own, so the three rows committed on the save's one persist ---
+            // --- No round trip of their own, so the three rows committed on the save's one persist,
+            // each reference naming the id the other row was stored under ---
+            string referencing = Invariant($"{EnlistmentDatabase.ShipmentReferencePrefix}{ids.Widget}");
             Assert.Equal(plain, trips);
-            Assert.Equal(1, await CountAsync(Invariant($"[fixture].[Widgets] WHERE [Code] = '{code}'")));
-            Assert.Equal(2, await CountAsync(Invariant($"[fixture].[Shipments] WHERE [Payload] IN (N'{code}', N'{referencing}')")));
+            Assert.Equal(Invariant($"{EnlistmentDatabase.WidgetReferencePrefix}{ids.Ahead}"), await ScalarAsync<string>(Invariant($"SELECT [Code] FROM [fixture].[Widgets] WHERE [Id] = {ids.Widget};")));
+            Assert.Equal("ahead-1", await ScalarAsync<string>(Invariant($"SELECT [Payload] FROM [fixture].[Shipments] WHERE [Id] = {ids.Ahead};")));
+            Assert.Equal(1, await CountAsync(Invariant($"[fixture].[Shipments] WHERE [Payload] = N'{referencing}'")));
 
             // --- The shipment stack's own stages ran for both, its post-commit once committed; the two
             // groups run side by side, so each stage's lines are compared in ordinal order ---
             Assert.Equal(
                 [
-                    $"preprocess {referencing}", $"preprocess {code}", $"validate {referencing}", $"validate {code}",
-                    $"contribute {referencing}", $"contribute {code}", $"committed {referencing}", $"committed {code}",
+                    "preprocess ahead-1", $"preprocess {referencing}", "validate ahead-1", $"validate {referencing}",
+                    "contribute ahead-1", $"contribute {referencing}", "committed ahead-1", $"committed {referencing}",
                 ],
                 fixture.Probe.Shipments.Order(StringComparer.Ordinal).OrderBy(Stage));
         }
@@ -98,16 +104,19 @@ namespace Tellma.Core.IntegrationTests.Crud
             fixture.Probe.Reset();
             (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
 
-            // --- The control: the reference holds only because of the order ---
-            const string code = EnlistmentDatabase.WidgetReferencePrefix + "late-1";
-            fixture.Probe.ValidateWidgets = async (service, context) => _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = code }]);
+            // --- The control: the reference by id holds only because of the order ---
+            fixture.Probe.ValidateWidgets = async (service, context) =>
+            {
+                EnlistedSave<Shipment> late = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = "late-1" }]);
+                context.Entities[0].Code = Invariant($"{EnlistmentDatabase.WidgetReferencePrefix}{late.Rows[0].Id}");
+            };
 
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
-            DataAccessException failed = await Assert.ThrowsAsync<DataAccessException>(() => Service(scope).SaveAsync([NewWidget(code)], IdsOnly, Token));
+            DataAccessException failed = await Assert.ThrowsAsync<DataAccessException>(() => Service(scope).SaveAsync([NewWidget("late-1")], IdsOnly, Token));
 
             Assert.Contains("CK_Widgets_ReferencedShipment", failed.Message, StringComparison.Ordinal);
-            Assert.Equal(0, await CountAsync(Invariant($"[fixture].[Widgets] WHERE [Code] = '{code}'")));
-            Assert.Equal(0, await CountAsync(Invariant($"[fixture].[Shipments] WHERE [Payload] = N'{code}'")));
+            Assert.Equal(0, await CountAsync("[fixture].[Widgets] WHERE [Subject] = 'late-1'"));
+            Assert.Equal(0, await CountAsync("[fixture].[Shipments] WHERE [Payload] = N'late-1'"));
             Assert.DoesNotContain(fixture.Probe.Shipments, static line => line.StartsWith("committed", StringComparison.Ordinal));
         }
 
@@ -129,6 +138,31 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal([$"[0].Shipments[1].Payload {EnlistedShipmentService.RefusedCode} {Shipments}"], Lines(refused));
             Assert.Equal(0, await CountAsync("[fixture].[Widgets] WHERE [Code] = 'errors-1'"));
             Assert.Equal(0, await CountAsync("[fixture].[Shipments] WHERE [Payload] = N'accepted-1'"));
+        }
+
+        [Fact]
+        public async Task A_reference_an_enlisted_row_breaks_is_translated_by_its_group_onto_the_widgets_path_naming_the_shipment_stack()
+        {
+            fixture.Probe.Reset();
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+
+            // --- The writer supplies the server-owned job reference, to a job that does not exist ---
+            fixture.Probe.ValidateWidgets = async (service, context) => _ = await service.EnlistSaveAsync(
+                context.Host,
+                [new Shipment { Payload = "orphan-1", JobId = EnlistmentDatabase.MissingJob }],
+                new EnlistSaveOptions
+                {
+                    ServerOwned = new HashSet<string>(StringComparer.Ordinal) { nameof(Shipment.JobId) },
+                    MapPath = Under(ValidationPath.Root.Index(0).Property("Shipments")),
+                });
+
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => Service(scope).SaveAsync([NewWidget("orphan-1")], IdsOnly, Token));
+
+            // --- The shipment's own translation, at the widget's path, naming the shipment stack ---
+            Assert.Equal([$"[0].Shipments[0].JobId {ValidationCodes.FkNotFound} {Shipments}"], Lines(refused));
+            Assert.Equal(0, await CountAsync("[fixture].[Widgets] WHERE [Subject] = 'orphan-1'"));
+            Assert.Equal(0, await CountAsync("[fixture].[Shipments] WHERE [Payload] = N'orphan-1'"));
         }
 
         [Fact]

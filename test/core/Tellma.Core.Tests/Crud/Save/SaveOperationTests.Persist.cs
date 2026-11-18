@@ -767,7 +767,7 @@ namespace Tellma.Core.Tests.Crud.Save
         // --- The access guards ---
 
         [Fact]
-        public async Task A_stack_writing_a_security_table_takes_the_guards_lock_before_its_emitter_and_their_invariants_after_every_contribution()
+        public async Task A_stack_writing_a_security_table_joins_the_guards_after_every_contribution_and_before_the_post_check()
         {
             WarmRoles();
             _rig.Grant([.. Grants(categories: null), (CoreResources.Role, AccessActions.Read, null), (CoreResources.Role, AccessActions.Save, "IsPublic = false")]);
@@ -775,7 +775,8 @@ namespace Tellma.Core.Tests.Crud.Save
 
             _ = await SaveRolesAsync(options, new Role { Name = "Clerks" });
 
-            // --- The lock, the emitter, the caller's statement, the invariants, the post-check, the read-back ---
+            // --- The emitter, the caller's statement, then the guards (whose lock the executor takes
+            // first in the transaction), the post-check, the read-back ---
             ScriptedBatch persist = Assert.Single(_rig.Script.Batches, static batch => batch.Purpose == BatchPurpose.Persist);
             int Text(string text)
             {
@@ -784,9 +785,9 @@ namespace Tellma.Core.Tests.Crud.Save
 
             int[] order =
             [
-                Text(PsGuards.Lock),
                 Assert.Single(persist.Of(ScriptedKind.Save)).Ordinal,
                 Text("caller"),
+                Text(PsGuards.Lock),
                 Text(PsGuards.Invariants),
                 Assert.Single(persist.Of(ScriptedKind.Assert)).Ordinal,
                 Assert.Single(persist.Of(ScriptedKind.Query)).Ordinal,

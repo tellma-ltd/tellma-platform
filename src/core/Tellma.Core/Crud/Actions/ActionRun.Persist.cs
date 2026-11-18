@@ -32,8 +32,8 @@ namespace Tellma.Core.Crud.Actions
     // answers the target ids. A re-entered compose re-runs the validators in memory, recomposes the
     // pipeline's own statements under the fresh grants and replays the rest (§5.1). The groups the
     // tasks enlisted (§13.3) sit around the action's statements: the BeforeHost ones ahead of the
-    // stack's own writes, the AfterHost ones after its participants, and the access guards run over
-    // every table any of them writes. The method's Persisted completes once the batch committed,
+    // stack's own writes, the AfterHost ones after its participants, and the access guards join
+    // once the batch is composed, over every table any statement of it writes. The method's Persisted completes once the batch committed,
     // before the post-commit phase (§13.2), whose groups' part follows the action's own.
     /// <summary>One action of one stack: the persist, its translation and its post-commit phase.</summary>
     internal sealed partial class ActionRun<TEntity, TKey>
@@ -212,14 +212,6 @@ namespace Tellma.Core.Crud.Actions
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack or a group enlisted with it writes a security table ---
-            IEnumerable<TableName> written = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(written);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeLock(batch);
-            }
-
             // --- The groups enlisted ahead of the action, then the stack's own writes, under its
             // authority: the emitter, the target ids, the updates ---
             await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
@@ -249,12 +241,11 @@ namespace Tellma.Core.Crud.Actions
             // --- The groups enlisted after the action ---
             await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The guards' invariants, after every contribution ---
+            // --- The access guards, after every contribution, when the batch writes a security table:
+            // the stack's, a group's at any depth, or any statement's declared writes ---
             Authorize(batch, callers);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeInvariants(batch);
-            }
+            IEnumerable<TableName> composed = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
+            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, composed);
 
             // --- The post-check over the marked and the updated ids, when the action asks for it ---
             if (_descriptor.PostCheck && granted.Outcome == AccessOutcome.Filtered)

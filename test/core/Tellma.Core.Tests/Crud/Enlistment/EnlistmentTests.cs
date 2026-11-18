@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Tests.Crud.Query;
+using Tellma.Core.Tests.Crud.Save;
 using Tellma.Core.Tests.Crud.Scripted;
 
 namespace Tellma.Core.Tests.Crud.Enlistment
@@ -39,8 +40,20 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <summary>The stamp a persist's save statements report.</summary>
         private static readonly DateTimeOffset Committed = new(2026, 11, 17, 9, 0, 0, 456, TimeSpan.Zero);
 
+        /// <summary>The caller's grants: the orders' Save, Read, Delete and the entity action's securable.</summary>
+        private static readonly (string Resource, string Action, string? Filter)[] Grants =
+        [
+            (EnlistmentModel.Orders, AccessActions.Save, null),
+            (EnlistmentModel.Orders, AccessActions.Read, null),
+            (EnlistmentModel.Orders, AccessActions.Delete, null),
+            (EnlistmentModel.Orders, EnlistmentModel.TouchAction, null),
+        ];
+
         /// <summary>The model's hooks and methods, shared with the rig's scopes.</summary>
         private readonly EnHooks _hooks = new();
+
+        /// <summary>The access guards, which record their calls and append a statement each.</summary>
+        private readonly PsGuards _guards = new();
 
         /// <summary>The composed model.</summary>
         private readonly QueryRig _rig;
@@ -57,7 +70,7 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <summary>The services of the scope the current operation runs in; null between operations.</summary>
         private IServiceProvider? _scoped;
 
-        /// <summary>Composes the model with the test's ids and interceptors, grants the orders, and scripts every statement.</summary>
+        /// <summary>Composes the model with the test's ids, interceptors and guards, grants the orders, and scripts every statement.</summary>
         public EnlistmentTests()
         {
             _rig = new QueryRig(EnlistmentModel.Compose, services =>
@@ -69,22 +82,27 @@ namespace Tellma.Core.Tests.Crud.Enlistment
                 _ = services.Replace(ServiceDescriptor.Singleton<IIdBuffer>(static provider => provider.GetRequiredService<EnIds>()));
                 _ = services.AddSingleton<IApiActionInterceptor>(new RecordingInterceptor("outer", _hooks));
                 _ = services.AddSingleton<IApiActionInterceptor>(new RecordingInterceptor("inner", _hooks));
+                _ = services.Replace(ServiceDescriptor.Singleton<IAccessGuards>(_guards));
             });
             _ids = _rig.Services.GetRequiredService<EnIds>();
             _ids.Allocator.Replenish(Tenant, typeof(EnOrder), 101, 199);
             _ids.Allocator.Replenish(Tenant, typeof(EnNote), 201, 299);
             _ids.Allocator.Replenish(Tenant, typeof(EnTag), 301, 399);
-            _rig.Grant((EnlistmentModel.Orders, AccessActions.Save, null), (EnlistmentModel.Orders, AccessActions.Read, null));
+            _ids.Allocator.Replenish(Tenant, typeof(User), 401, 499);
+            _rig.Grant(Grants);
 
             // --- Every statement a frame may append: the rows the loads find, unfiltered, and every
             // persist's saves, deletes and raw statements ---
             _ = _rig.Script
                 .OnQuery(statement => (IReadOnlyList<EnNote>)[.. statement.KeySet<IdList>().Where(row => _storedNotes.Contains(row.Id)).Select(static row => StoredNote(row.Id))])
                 .OnQuery(statement => (IReadOnlyList<EnOrder>)[.. statement.KeySet<IdList>().Where(row => _storedOrders.Contains(row.Id)).Select(static row => StoredOrder(row.Id))])
+                .OnQuery<User>(static _ => [])
                 .OnSave<EnOrder>(static _ => new SaveReceipt(Committed, 1, 0, 0))
                 .OnSave<EnNote>(static _ => new SaveReceipt(Committed, 1, 0, 0))
                 .OnSave<EnTag>(static _ => new SaveReceipt(Committed, 1, 0, 0))
+                .OnSave<User>(static _ => new SaveReceipt(Committed, 1, 0, 0))
                 .OnDelete<EnNote>(static statement => new DeleteReceipt(new HashSet<object>(((DeleteSpec<EnNote>.ByIds)statement.Statement!).Ids)))
+                .OnDelete<EnOrder>(static statement => new DeleteReceipt(new HashSet<object>(((DeleteSpec<EnOrder>.ByIds)statement.Statement!).Ids)))
                 .OnSql(static _ => RawResult.Empty);
         }
 
@@ -443,7 +461,7 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <returns>The note.</returns>
         private static EnNote StoredNote(int id)
         {
-            return new EnNote { Id = id, Text = "stored", CreatedAt = Stamp, CreatedById = 7, ModifiedAt = Stamp, ModifiedById = 7 };
+            return new EnNote { Id = id, Text = "stored", Origin = "stored", CreatedAt = Stamp, CreatedById = 7, ModifiedAt = Stamp, ModifiedById = 7 };
         }
 
         /// <summary>A stored order as a load finds it.</summary>
@@ -519,14 +537,15 @@ namespace Tellma.Core.Tests.Crud.Enlistment
             return (_scoped ?? throw new InvalidOperationException("No operation runs.")).GetRequiredService<T>();
         }
 
-        /// <summary>Makes the next persist batch fail at the first save of an entity, as the executor attributes a server error.</summary>
+        /// <summary>Makes the next persist batch fail at a save of an entity, as the executor attributes a server error.</summary>
         /// <param name="entity">The entity whose save raises the error.</param>
         /// <param name="failure">Creates the failure from the statement's ordinal.</param>
-        private void FailPersistAt(Type entity, Func<int, DataAccessException> failure)
+        /// <param name="occurrence">Which of the entity's saves raises it, from 0 for the first.</param>
+        private void FailPersistAt(Type entity, Func<int, DataAccessException> failure, int occurrence = 0)
         {
             _ = _rig.Script.OnExecute((batch, _) => batch.Purpose != BatchPurpose.Persist
                 ? Task.CompletedTask
-                : throw failure(batch.Of(ScriptedKind.Save).First(statement => statement.Entity == entity).Ordinal));
+                : throw failure(batch.Of(ScriptedKind.Save).Where(statement => statement.Entity == entity).ElementAt(occurrence).Ordinal));
         }
 
         /// <summary>The options of a save that answers ids only.</summary>
