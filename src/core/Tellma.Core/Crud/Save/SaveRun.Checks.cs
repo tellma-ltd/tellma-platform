@@ -14,7 +14,6 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Trees;
 using Tellma.Core.Queryex;
-using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Save
 {
@@ -380,7 +379,6 @@ namespace Tellma.Core.Crud.Save
         /// <exception cref="IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
         private void CheckReferences()
         {
-            RequestContext context = _operation.Accessor.Current;
             foreach ((SaveRow row, ReferenceMetadata reference, long value) in _references)
             {
                 // An update row that matched no stored row is reported already.
@@ -395,9 +393,9 @@ namespace Tellma.Core.Crud.Save
                 }
 
                 // --- The step-up of a sensitive target, as a direct read of it asks for it ---
-                if (!context.IsSystem && _sensitive.Contains(reference.Target))
+                if (_sensitive.Contains(reference.Target))
                 {
-                    AssuranceCheck.Ensure(context, _operation.StepUp.Requirement, _operation.Time.GetUtcNow());
+                    EnsureStepUp();
                 }
 
                 if (!(_visible.TryGetValue(reference.Target, out HashSet<long>? visible) && visible.Contains(value)))

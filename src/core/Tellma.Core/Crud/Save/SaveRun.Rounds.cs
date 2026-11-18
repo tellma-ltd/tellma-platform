@@ -6,8 +6,10 @@
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Save
 {
@@ -206,10 +208,10 @@ namespace Tellma.Core.Crud.Save
                 ? KeyTables.Bind(batch, [.. ids.Select(static id => checked((int)id))])
                 : KeyTables.Bind(batch, [.. ids]);
             BatchResult<RowPage> rows = batch.Rows(
-                new QuerySpec { Root = descriptor, Select = key, Filter = read.Filter, Restrictions = [new KeySetRestriction(key, table.Name)] },
+                new QuerySpec { Root = descriptor, Select = key, Filter = read.Decision.Filter, Restrictions = [new KeySetRestriction(key, table.Name)] },
                 arguments: null,
                 options: null);
-            bool sensitive = read.Securable is { IsSensitive: true };
+            bool sensitive = read.IsSensitive;
             return () =>
             {
                 _visible[target] = Keys(rows.Value.Rows);
@@ -218,12 +220,13 @@ namespace Tellma.Core.Crud.Save
         }
 
         /// <summary>
-        ///     The connected user's read of a reference target: its own read decision when a securable
-        ///     guards it, its owner's seen through the navigation to the owner's row for a child entity
-        ///     without one, and no restriction for an entity no grant can reach.
+        ///     The connected user's read of an entity, as a reference to it or a visible load of it is
+        ///     judged: its own read decision when a securable guards it, its owner's seen through the
+        ///     navigation to the owner's row for a child entity without one, and no restriction for an
+        ///     entity no grant can reach.
         /// </summary>
         /// <param name="user">The connected user.</param>
-        /// <param name="target">The target entity.</param>
+        /// <param name="target">The entity.</param>
         /// <returns>The read.</returns>
         /// <exception cref="InvalidOperationException">A child entity on the way declares no navigation through its parent key.</exception>
         private TargetRead ReadOf(ConnectedUser user, EntityMetadata target)
@@ -231,21 +234,22 @@ namespace Tellma.Core.Crud.Save
             // --- A securable of its own: a stack's, or a child query surface's, whose owner the evaluator composes ---
             if (_operation.Securables.ForResource(target.Name).Count > 0)
             {
-                AccessDecision decision = Decide(user, target.Name, AccessActions.Read);
-                return new TargetRead(decision.Outcome == AccessOutcome.Denied, decision.Filter, _operation.Securables.Find(target.Name, AccessActions.Read));
+                return new TargetRead(Decide(user, target.Name, AccessActions.Read), _operation.Securables.Find(target.Name, AccessActions.Read));
             }
 
             // --- A child without one: its owner's read, the owner's filter rebased onto the child's navigation ---
             if (_operation.OwnerOf(target) is EntityOwner owner)
             {
                 string navigation = owner.Navigation ?? throw new InvalidOperationException(
-                    $"The child entity {target.Name} has no navigation through its parent key {owner.ParentKey.Name}, so a reference to it cannot be judged under the read of {owner.Entity.Name}.");
+                    $"The child entity {target.Name} has no navigation through its parent key {owner.ParentKey.Name}, so a read of it cannot be judged under the read of {owner.Entity.Name}.");
                 TargetRead above = ReadOf(user, owner.Entity);
-                return above.Filter is FilterTree filter ? above with { Filter = FilterTree.Via(navigation, filter) } : above;
+                AccessDecision decision = above.Decision;
+                FilterTree? filter = decision.Filter is FilterTree held ? FilterTree.Via(navigation, held) : null;
+                return above with { Decision = new AccessDecision(target.Name, AccessActions.Read, decision.Outcome, filter, decision.Grants, decision.Problems) };
             }
 
             // --- No grant reaches it ---
-            return new TargetRead(IsDenied: false, Filter: null, Securable: null);
+            return new TargetRead(new AccessDecision(target.Name, AccessActions.Read, AccessOutcome.Unrestricted, null, [], []), Securable: null);
         }
 
         /// <summary>Every collection the payload carries on an update root, at any depth, dotted, parents first.</summary>
@@ -315,12 +319,36 @@ namespace Tellma.Core.Crud.Save
             return keys;
         }
 
+        // Spec 0015 §7.4 loads the references through the visible load, so a validator's visible load
+        // is decided as a reference target's read is: a child without a securable of its own under its
+        // owner's decision, and a sensitive read asking for the step-up a direct read asks for (spec
+        // 0014 §4.3) before its rows reach the validator. A denied read loads nothing and asks nothing.
         /// <summary>The caller's read decision on an entity, for the user the current round is composed for.</summary>
         /// <param name="entityType">The entity's class.</param>
         /// <returns>The decision.</returns>
+        /// <exception cref="StepUpRequiredException">The entity is read under a sensitive securable, below the step-up bar.</exception>
+        /// <exception cref="IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
         private AccessDecision ReadDecision(Type entityType)
         {
-            return Decide(Composer, _operation.Metadata.Get(entityType).Name, AccessActions.Read);
+            TargetRead read = ReadOf(Composer, _operation.Metadata.Get(entityType));
+            if (read.IsSensitive)
+            {
+                EnsureStepUp();
+            }
+
+            return read.Decision;
+        }
+
+        /// <summary>Asks for the step-up a direct read of a sensitive securable asks for, of every caller but the platform's own work.</summary>
+        /// <exception cref="StepUpRequiredException">The caller's sign-in is below the step-up bar.</exception>
+        /// <exception cref="IndividualRequiredException">The caller is a service account, which cannot step up.</exception>
+        private void EnsureStepUp()
+        {
+            RequestContext context = _operation.Accessor.Current;
+            if (!context.IsSystem)
+            {
+                AssuranceCheck.Ensure(context, _operation.StepUp.Requirement, _operation.Time.GetUtcNow());
+            }
         }
 
         /// <summary>The connected user's decision on a securable.</summary>
@@ -335,11 +363,20 @@ namespace Tellma.Core.Crud.Save
                 : _operation.Evaluator.Unknown(resource, action);
         }
 
-        /// <summary>The caller's read of a reference target.</summary>
-        /// <param name="IsDenied">Whether the caller reads no row of the target, so every reference to it is not found.</param>
-        /// <param name="Filter">The rows the caller reads, rebased onto the target; null for every row.</param>
-        /// <param name="Securable">The read securable the decision was taken on, whose sensitivity asks for a step-up; null when no grant reaches the target.</param>
-        private readonly record struct TargetRead(bool IsDenied, FilterTree? Filter, SecurableDescriptor? Securable);
+        /// <summary>The caller's read of a reference target or of a visible load's entity.</summary>
+        /// <param name="Decision">
+        ///     The decision on the entity: its own, its owner's with the filter rebased onto it, or
+        ///     unrestricted for an entity no grant can reach.
+        /// </param>
+        /// <param name="Securable">The read securable the decision was taken on, whose sensitivity asks for a step-up; null when no grant reaches the entity.</param>
+        private readonly record struct TargetRead(AccessDecision Decision, SecurableDescriptor? Securable)
+        {
+            /// <summary>Whether the caller reads no row of the entity, so every reference to it is not found.</summary>
+            public bool IsDenied => Decision.Outcome == AccessOutcome.Denied;
+
+            /// <summary>Whether the read is allowed under a sensitive securable, so it asks for the step-up a direct read asks for.</summary>
+            public bool IsSensitive => !IsDenied && Securable is { IsSensitive: true };
+        }
 
         /// <summary>The pipeline's own loads of round trip 1, composed beside the hook's and the validators'.</summary>
         /// <param name="run">The save, whose state the loads' results fill.</param>

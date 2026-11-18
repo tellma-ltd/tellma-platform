@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Access;
@@ -21,7 +23,8 @@ namespace Tellma.Core.Tests.Crud.Save
     // set, a display-name prefix, whitespace kept or trimmed), a unique code and a unique write-once
     // serial, references to a guarded category whose read is sensitive, to an unguarded tag, to
     // another document, to a line (a child with a query surface) and to a sub-line (a child
-    // without one), lines unique within their document with sub-lines below them, and a tree.
+    // without one), lines with a code unique within their document and a barcode unique across
+    // documents, sub-lines below them, a warning a validator may raise, and a tree.
 
     /// <summary>Composes the save pipeline suite's model.</summary>
     internal static class PipelineSaveModel
@@ -47,6 +50,9 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The colours' value set.</summary>
         public const string Colors = "ps.Color";
 
+        /// <summary>The warning the documents' validator may raise.</summary>
+        public const string Recost = "Ps.Recost";
+
         /// <summary>Adds the model's feature.</summary>
         /// <param name="tellma">The composition's builder.</param>
         public static void Compose(TellmaBuilder tellma)
@@ -57,6 +63,8 @@ namespace Tellma.Core.Tests.Crud.Save
                 .Entity<PsTag>()
                 .Entity<PsNode>()
                 .Validator<PsDocument, PsDocumentValidator>()
+                .Model<PsLineConfiguration>()
+                .Confirmation(Recost)
                 .ValueSet(new ValueSetDescriptor(Colors, [new ValueSetEntry("Red", null, "Red"), new ValueSetEntry("Blue", null, "Blue")]))
                 .Securables(static securables => securables.MarkSensitive(Categories, AccessActions.Read))));
         }
@@ -171,6 +179,10 @@ namespace Tellma.Core.Tests.Crud.Save
         [Unique]
         public string? LineCode { get; set; }
 
+        /// <summary>A barcode unique across every document, through the configuration's index.</summary>
+        [MaxLength(10)]
+        public string? Barcode { get; set; }
+
         /// <summary>The line's category.</summary>
         [References(typeof(PsCategory))]
         public int? CategoryId { get; set; }
@@ -178,6 +190,16 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The sub-lines.</summary>
         [NotMapped]
         public List<PsSubLine>? SubLines { get; set; }
+    }
+
+    /// <summary>The lines' configuration: an index that makes the barcode unique across every document.</summary>
+    public sealed class PsLineConfiguration : IEntityTypeConfiguration<PsLine>
+    {
+        /// <inheritdoc />
+        public void Configure(EntityTypeBuilder<PsLine> builder)
+        {
+            _ = builder.HasIndex(static line => line.Barcode).IsUnique().HasDatabaseName("UX_Lines_Barcode");
+        }
     }
 
     /// <summary>A line's sub-line, with no query surface, so no securable of its own.</summary>

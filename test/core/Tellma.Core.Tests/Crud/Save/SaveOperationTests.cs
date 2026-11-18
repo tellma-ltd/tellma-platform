@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
+using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Queryex;
@@ -29,9 +30,9 @@ namespace Tellma.Core.Tests.Crud.Save
     ///     The save pipeline up to its persist step, over the scripted batch: the shape and the grant
     ///     before any round trip, preprocessing, the ids at once or riding round trip 1, the before
     ///     images and the save grant's count, existence and early concurrency, ownership and the
-    ///     active flag, child synchronisation, references with their step-up and their owners'
-    ///     filters, uniqueness in the persist's statement order, cycles, value sets, and the
-    ///     validators' rounds.
+    ///     active flag, child synchronisation, references and visible loads with their step-up and
+    ///     their owners' filters, a round recomposed for a moved permissions tag, uniqueness in the
+    ///     persist's statement order, cycles, value sets, the validators' rounds and their warnings.
     ///     A save whose validation passes stops at the persist step, which is not built yet.
     /// </summary>
     public sealed class SaveOperationTests : IAsyncDisposable
@@ -60,6 +61,9 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The stored lines holding a line code, which the uniqueness load finds.</summary>
         private readonly List<PsLine> _lineCodes = [];
 
+        /// <summary>The stored lines holding a barcode, which the uniqueness load finds.</summary>
+        private readonly List<PsLine> _barcodes = [];
+
         /// <summary>The ids each referenced entity's read finds, by entity name.</summary>
         private readonly Dictionary<string, int[]> _visible = new(StringComparer.Ordinal);
 
@@ -75,6 +79,9 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The documents' preprocessing hook for the next save; nothing when null.</summary>
         private Func<SaveContext<PsDocument>, Task>? _preprocess;
 
+        /// <summary>The warnings the next save's caller confirmed.</summary>
+        private string[] _confirmed = [];
+
         /// <summary>Composes the model with the test's ids, grants the documents, nodes and categories, and scripts every read.</summary>
         public SaveOperationTests()
         {
@@ -89,7 +96,8 @@ namespace Tellma.Core.Tests.Crud.Save
             Grant(categories: null);
 
             // --- Every read the save may make: the before images, the codes and the serials, the line
-            // codes, the referenced ids, the tree, the modifiers' names and the save grant's count ---
+            // codes and barcodes, the referenced ids, the tree, the modifiers' names and the save
+            // grant's count; and the validators' visible loads of categories and sub-lines ---
             _ = _rig.Script
                 .OnQuery(statement => Restriction(statement.Query<PsDocument>().Restrictions) switch
                 {
@@ -97,8 +105,11 @@ namespace Tellma.Core.Tests.Crud.Save
                     "Serial" => _serials,
                     _ => _codes,
                 })
-                .OnQuery(_ => _lineCodes)
-                .OnQuery<PsCategory>(static statement => [.. statement.KeySet<IdList>().Select(static row => new PsCategory { Id = row.Id, Name = "C" })])
+                .OnQuery(statement => Restriction(statement.Query<PsLine>().Restrictions) == nameof(PsLine.Barcode) ? _barcodes : _lineCodes)
+                .OnQuery<PsCategory>(static statement => statement.Query<PsCategory>().Restrictions is []
+                    ? [new PsCategory { Id = 3, Name = "C" }]
+                    : [.. statement.KeySet<IdList>().Select(static row => new PsCategory { Id = row.Id, Name = "C" })])
+                .OnQuery<PsSubLine>(static _ => [new PsSubLine { Id = 31, LineId = 12, Note = "N" }])
                 .OnRows(Rows)
                 .OnCount(_ => _saveCount ?? throw new InvalidOperationException("The test scripts no save count."));
         }
@@ -189,6 +200,64 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Empty(_ids.Reserved);
             Assert.Equal<(long, int)?>((101L, 1), started);
             Assert.Equal(2, resumed);
+        }
+
+        // --- A round recomposed for a moved permissions tag ---
+
+        [Fact]
+        public async Task A_read_granted_since_the_scope_cached_its_caller_admits_the_reference_once_the_round_is_recomposed()
+        {
+            Warm();
+            _visible[PipelineSaveModel.Categories] = [3];
+            _rig.Grant(WithoutCategories());
+            _rig.GrantOnRecompose(Grants(categories: null));
+
+            await ValidatedAsync(New(-1, "A", categoryId: 3));
+
+            // The stale composition read nothing of the denied target; the fresh one reads it.
+            Assert.Equal(2, _rig.Script.RoundTrips);
+            Assert.Empty(_rig.Script.Batches[0].Of(ScriptedKind.Rows));
+            Assert.Equal(PipelineSaveModel.Categories, Assert.Single(_rig.Script.Batches[1].Of(ScriptedKind.Rows)).Spec.Root.Name);
+        }
+
+        [Fact]
+        public async Task A_read_revoked_since_the_scope_cached_its_caller_refuses_the_reference_once_the_round_is_recomposed()
+        {
+            Warm();
+            _visible[PipelineSaveModel.Categories] = [3];
+            _rig.GrantOnRecompose(WithoutCategories());
+
+            ValidationException refused = await RefusedAsync(New(-1, "A", categoryId: 3));
+
+            Assert.Equal(["[0].CategoryId Fk.NotFound"], Lines(refused));
+            Assert.Equal(2, _rig.Script.RoundTrips);
+            _ = Assert.Single(_rig.Script.Batches[0].Of(ScriptedKind.Rows));
+            Assert.Empty(_rig.Script.Batches[1].Of(ScriptedKind.Rows));
+        }
+
+        [Fact]
+        public async Task A_recomposed_cold_round_gives_back_the_first_reservation_and_validates_with_the_ids_of_the_second()
+        {
+            Warm();
+            _ids.Cold = true;
+            _rig.GrantOnRecompose(Grants(categories: null));
+            long? seen = null;
+            _validation.Validate = context =>
+            {
+                seen = context.Entities[0].Id;
+                return Task.CompletedTask;
+            };
+
+            await ValidatedAsync(New(-1, "A"));
+
+            // --- Each composition reserved on its own batch; the first gave its id back before the
+            // second reserved, so the second received it and nothing leaked ---
+            Assert.Equal(2, _rig.Script.RoundTrips);
+            Assert.Equal(2, _ids.Reserved.Count);
+            Assert.Same(_rig.Script.Batches[0], _ids.Reserved[0]);
+            Assert.Same(_rig.Script.Batches[1], _ids.Reserved[1]);
+            Assert.Equal(101L, seen);
+            Assert.Equal(99, _ids.Allocator.Buffered(Tenant, typeof(PsDocument)));
         }
 
         // --- Shape, grant and preprocessing ---
@@ -577,6 +646,61 @@ namespace Tellma.Core.Tests.Crud.Save
             }
         }
 
+        [Fact]
+        public async Task A_visible_load_of_a_child_without_a_query_surface_is_read_under_its_owners_filter_through_its_navigation()
+        {
+            Warm();
+            Grant(categories: null, read: "Name != 'secret'", save: "Name != 'secret'");
+            IReadOnlyList<PsSubLine>? loaded = null;
+            _validation.Validate = async context =>
+            {
+                ContextRef<IReadOnlyList<PsSubLine>> subLines = context.Loader.Visible<PsSubLine>(FilterTree.Leaf("Note != 'x'"));
+                await context.Loader.LoadAsync();
+                loaded = subLines.Value;
+            };
+
+            await ValidatedAsync(New(-1, "A"));
+
+            // --- The rule's filter, conjoined with the documents' read seen through the line ---
+            Assert.Equal([31], loaded!.Select(static subLine => subLine.Id));
+            ScriptedStatement read = Assert.Single(Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Query));
+            string filter = QueryRig.Render(read.Query<PsSubLine>().Filter);
+            Assert.Contains("Note != 'x'", filter, StringComparison.Ordinal);
+            Assert.Contains("via Line(", filter, StringComparison.Ordinal);
+            Assert.Contains("via Document(", filter, StringComparison.Ordinal);
+            Assert.Contains("Name != 'secret'", filter, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_visible_load_of_a_sensitive_target_asks_for_the_step_up_a_direct_read_asks_for_unless_it_is_denied()
+        {
+            Warm();
+            _rig.Assurance = null;
+            ContextRef<IReadOnlyList<PsCategory>>? categories = null;
+            _validation.Validate = async context =>
+            {
+                categories = context.Loader.Visible<PsCategory>(FilterTree.Leaf("Name != 'x'"));
+                await context.Loader.LoadAsync();
+            };
+
+            // --- Below the bar, the round fails the save before any row reaches the validator ---
+            StepUpRequiredException asked = await Assert.ThrowsAsync<StepUpRequiredException>(() => SaveAsync(New(-1, "A")));
+            Assert.Equal(StepUpBar.DefaultAcr, asked.Acr);
+            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.False(categories!.IsLoaded);
+
+            // --- At the bar, the rows load ---
+            _rig.Assurance = new AuthenticationAssurance(StepUpBar.DefaultAcr, QueryRig.Now, QueryRig.Now);
+            await ValidatedAsync(New(-1, "A"));
+            Assert.Equal([3], categories!.Value.Select(static category => category.Id));
+
+            // --- A target the caller may not read loads nothing and asks nothing ---
+            _rig.Assurance = null;
+            _rig.Grant(WithoutCategories());
+            await ValidatedAsync(New(-1, "A"));
+            Assert.Empty(categories!.Value);
+        }
+
         // --- Uniqueness, cycles and value sets ---
 
         [Fact]
@@ -635,6 +759,35 @@ namespace Tellma.Core.Tests.Crud.Save
         }
 
         [Fact]
+        public async Task A_value_held_by_a_child_the_synchronisation_deletes_may_be_taken_and_an_empty_collection_deletes_every_child()
+        {
+            Warm();
+            Store(5, lines: [Line(12, code: "L1", documentId: 5, barcode: "B1")]);
+            Store(6, lines: []);
+            _lineCodes.Add(Line(12, code: "L1", documentId: 5)());
+            _barcodes.Add(Line(12, documentId: 5, barcode: "B1")());
+
+            // --- Line 12 left out of its document's lines is deleted, so a new line takes its code ---
+            PsDocument replaced = Update(5, "A");
+            replaced.Lines = [new PsLine { LineCode = "L1" }];
+            await ValidatedAsync(replaced);
+
+            // --- An empty collection deletes every line, so another document's new line takes the
+            // barcode; an absent one deletes none, so the barcode is still held ---
+            PsDocument emptied = Update(5, "A");
+            emptied.Lines = [];
+            PsDocument taker = Update(6, "B");
+            taker.Lines = [new PsLine { Barcode = "B1" }];
+            await ValidatedAsync(emptied, taker);
+
+            PsDocument untouched = Update(5, "A");
+            PsDocument refusedTaker = Update(6, "B");
+            refusedTaker.Lines = [new PsLine { Barcode = "B1" }];
+            ValidationException refused = await RefusedAsync(untouched, refusedTaker);
+            Assert.Equal(["[1].Lines[0].Barcode Unique"], Lines(refused));
+        }
+
+        [Fact]
         public async Task A_tree_whose_payload_closes_a_cycle_is_refused_at_the_parents()
         {
             Warm();
@@ -678,6 +831,43 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Equal("Blue", written.Color);
         }
 
+        // --- Warnings ---
+
+        [Fact]
+        public async Task A_validators_warning_fails_the_save_until_confirmed_and_an_error_wins_over_it()
+        {
+            Warm();
+            string? operation = null;
+            bool invalid = false;
+            _validation.Validate = context =>
+            {
+                operation = context.Host.Operation;
+                context.Host.Confirmations.Require(PipelineSaveModel.Recost, [context.Entities[0].Id]);
+                if (invalid)
+                {
+                    context.Errors.Add(ValidationPath.Root.Index(0).Property(nameof(PsDocument.Name)), ValidationCodes.Required);
+                }
+
+                return Task.CompletedTask;
+            };
+
+            // --- Unconfirmed, the warning the validator raised fails the save, naming its rows ---
+            ConfirmationRequiredException warned = await Assert.ThrowsAsync<ConfirmationRequiredException>(() => SaveAsync(New(-1, "A")));
+            ConfirmationRequest request = Assert.Single(warned.Requests);
+            Assert.Equal((PipelineSaveModel.Recost, 101L), (request.Key, Assert.Single(request.Ids)));
+            Assert.Equal($"{PipelineSaveModel.Documents}:save", operation);
+
+            // --- An error wins over the warning ---
+            invalid = true;
+            ValidationException refused = await RefusedAsync(New(-1, "A"));
+            Assert.Equal(["[0].Name Required"], Lines(refused));
+
+            // --- Confirmed, the save validates ---
+            invalid = false;
+            _confirmed = [PipelineSaveModel.Recost];
+            await ValidatedAsync(New(-1, "A"));
+        }
+
         // --- Failures of the data access ---
 
         [Fact]
@@ -699,12 +889,31 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <param name="save">The filter of the documents' save; every document when null.</param>
         private void Grant(string? categories, string? read = null, string? save = null)
         {
-            _rig.Grant(
+            _rig.Grant(Grants(categories, read, save));
+        }
+
+        /// <summary>The documents and the nodes, and reading the categories.</summary>
+        /// <param name="categories">The filter of the categories' read; every category when null.</param>
+        /// <param name="read">The filter of the documents' read; every document when null.</param>
+        /// <param name="save">The filter of the documents' save; every document when null.</param>
+        /// <returns>The grants.</returns>
+        private static (string Resource, string Action, string? Filter)[] Grants(string? categories, string? read = null, string? save = null)
+        {
+            return
+            [
                 (PipelineSaveModel.Documents, AccessActions.Read, read),
                 (PipelineSaveModel.Documents, AccessActions.Save, save),
                 (PipelineSaveModel.Categories, AccessActions.Read, categories),
                 (PipelineSaveModel.Nodes, AccessActions.Read, null),
-                (PipelineSaveModel.Nodes, AccessActions.Save, null));
+                (PipelineSaveModel.Nodes, AccessActions.Save, null),
+            ];
+        }
+
+        /// <summary>The documents and the nodes, without reading the categories.</summary>
+        /// <returns>The grants.</returns>
+        private static (string Resource, string Action, string? Filter)[] WithoutCategories()
+        {
+            return [.. Grants(categories: null).Where(static grant => grant.Resource != PipelineSaveModel.Categories)];
         }
 
         /// <summary>Fills the buffers of every table the model saves: documents from 101, lines from 201, sub-lines from 301, nodes from 401.</summary>
@@ -746,14 +955,16 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <param name="subLines">The ids of its stored sub-lines; none when null.</param>
         /// <param name="code">Its line code.</param>
         /// <param name="documentId">Its document.</param>
+        /// <param name="barcode">Its barcode.</param>
         /// <returns>The line's factory.</returns>
-        private static Func<PsLine> Line(int id, int[]? subLines = null, string? code = null, int documentId = 0)
+        private static Func<PsLine> Line(int id, int[]? subLines = null, string? code = null, int documentId = 0, string? barcode = null)
         {
             return () => new PsLine
             {
                 Id = id,
                 DocumentId = documentId,
                 LineCode = code,
+                Barcode = barcode,
                 SubLines = subLines is null ? null : [.. subLines.Select(subLine => new PsSubLine { Id = subLine, LineId = id })],
             };
         }
@@ -803,6 +1014,12 @@ namespace Tellma.Core.Tests.Crud.Save
         private async Task<EntitiesResult<PsDocument>> SaveAsync(SaveOptions options, params PsDocument[] documents)
         {
             await using AsyncServiceScope scope = _rig.Scope();
+            if (_confirmed.Length > 0)
+            {
+                // The entry point seeds the warnings the caller confirmed, once per scope.
+                scope.ServiceProvider.GetRequiredService<Confirmations>().Seed(_confirmed);
+            }
+
             PsDocumentService service = Documents(scope);
             service.Preprocess = _preprocess;
             return await service.SaveAsync(documents, options, Token);

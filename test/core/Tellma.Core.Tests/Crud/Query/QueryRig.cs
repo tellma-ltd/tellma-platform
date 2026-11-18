@@ -91,6 +91,12 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The deny re-checks the scopes' connections ran.</summary>
         public int Revalidations { get; private set; }
 
+        /// <summary>
+        ///     The set the next batch's guard finds in place of the caller's, as a moved permissions tag
+        ///     would; null while every guard passes.
+        /// </summary>
+        public ConnectedUser? Recomposed { get; private set; }
+
         /// <summary>What connecting the caller throws, as a connect that failed would; null while it connects.</summary>
         public Exception? ConnectFailure { get; set; }
 
@@ -119,6 +125,17 @@ namespace Tellma.Core.Tests.Crud.Query
         public void Grant(params (string Resource, string Action, string? Filter)[] grants)
         {
             User = Connect(grants);
+        }
+
+        /// <summary>
+        ///     Makes the next batch's guard find the caller's permissions tag moved, the fresh set holding
+        ///     grants: the runner executes the batch it composed, then composes another for the fresh set,
+        ///     as a permission saved since the scope cached its caller would.
+        /// </summary>
+        /// <param name="grants">The grants the fresh set holds.</param>
+        public void GrantOnRecompose(params (string Resource, string Action, string? Filter)[] grants)
+        {
+            Recomposed = Connect(grants);
         }
 
         /// <summary>Makes the next deny re-check find the caller with grants, as a grant saved since would.</summary>
@@ -352,7 +369,10 @@ namespace Tellma.Core.Tests.Crud.Query
             }
         }
 
-        /// <summary>A guarded runner that composes one scripted batch for the rig's caller and executes it.</summary>
+        /// <summary>
+        ///     A guarded runner that composes one scripted batch for the rig's caller and executes it; when
+        ///     the rig names a fresh set, the batch's guard fails once and the runner composes again for it.
+        /// </summary>
         /// <param name="rig">The rig.</param>
         private sealed class Runner(QueryRig rig) : IGuardedBatchRunner
         {
@@ -366,6 +386,19 @@ namespace Tellma.Core.Tests.Crud.Query
                 ScriptedBatch batch = rig.Script.NewBatch(purpose);
                 await compose(rig.User, batch);
                 BatchOutcome outcome = await batch.ExecuteAsync(cancellationToken);
+
+                // --- A moved tag: the batch ran, its guard failed, and the runner composes afresh. The
+                // scope's cached caller stays the stale one, so only a decision taken for the user
+                // handed to the composition sees the fresh set ---
+                if (rig.Recomposed is ConnectedUser fresh)
+                {
+                    rig.Recomposed = null;
+                    batch = rig.Script.NewBatch(purpose);
+                    await compose(fresh, batch);
+                    outcome = await batch.ExecuteAsync(cancellationToken);
+                    return read(fresh, outcome);
+                }
+
                 return read(rig.User, outcome);
             }
         }

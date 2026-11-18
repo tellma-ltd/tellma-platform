@@ -78,6 +78,13 @@ namespace Tellma.Core.Abstractions.Validation
         ContextRef<IReadOnlyList<T>> Query<T>(FilterTree filter, QueryArguments? arguments = null, string? select = null);
 
         /// <summary>Loads the rows a filter selects that the caller may read: the caller's read grant is conjoined.</summary>
+        /// <remarks>
+        ///     The grant is the one a read of the entity is judged under: a child entity without a query
+        ///     surface of its own is read under its owner's grant, seen through its navigation to the
+        ///     owner's row. A caller with no such grant loads nothing. A read under a sensitive securable
+        ///     asks for the step-up a direct read asks for: below the bar, the round fails the operation
+        ///     with <see cref="Tenancy.StepUpRequiredException" /> before any row reaches the validator.
+        /// </remarks>
         /// <typeparam name="T">The rows' entity type.</typeparam>
         /// <param name="filter">The filter.</param>
         /// <param name="arguments">The values of the parameters the filter mentions; null for none.</param>

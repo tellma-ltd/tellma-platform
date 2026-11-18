@@ -174,7 +174,7 @@ only where a convention or Core's configuration declares it, under the platform'
 | `SiblingConvention` | `[Sibling]` → `FK_<Table>_Id` to the owner's leaf, `ON DELETE CASCADE` |
 | `TableIndexConvention` | `[TableIndex(…)]` → `IX_<Table>_<Columns>` in the declared order |
 | `TreeConvention` | `ParentId` → `FK_<Table>_ParentId` to the table itself and `IX_<Table>_ParentId`; shadow `Node hierarchyid NOT NULL`, `UX_<Table>_Node`, left out of the table type; subtree counts default 1; the maximum depth recorded |
-| `ActivatableConvention` | `IsActive` defaults 1, `DF_<Table>_IsActive` |
+| `ActivatableConvention` | `IsActive` defaults 1, `DF_<Table>_IsActive`, for inserts outside the save pipeline (which sets new rows active itself) |
 | `JobEntityConvention` | `JobId` → `FK_<Table>_JobId` to `core.Jobs` `ON DELETE SET NULL`, `UX_<Table>_JobId` where not null |
 | `UniqueConvention` | `[Unique]`, `[NaturalKey]` → `UX_<Table>_<Column>`, filtered when nullable; on a child `(ParentKey, Column)` |
 | `BlobReferenceConvention` | `[BlobReference]` → `FK_<Table>_<Column>` to `core.Blobs`, `UX_<Table>_<Column>` where not null |
@@ -1226,7 +1226,9 @@ pipeline drives them:
   unless the request selects more, which reads it again under the union. `Query`, `Rows`, `Count`,
   `Exists` (which shares the cap-0 count) and `Sql` merge identical requests; `Visible` conjoins the
   entity's read decision, taken when its round is composed for the connected user, reading nothing
-  when it is denied; `Ancestors` reads a tree's ancestor ids. `ByValues` (internal) groups the rows
+  when it is denied (in a save, the decision a reference target's read is judged under, including
+  its owner's read for a child without a query surface and the step-up of a sensitive read);
+  `Ancestors` reads a tree's ancestor ids. `ByValues` (internal) groups the rows
   holding each of a property's values, unique or not, as the collation meets them: the save's
   uniqueness check reads through it. `Sql` is read-only: a statement declaring a write is refused when it is requested. A round
   (`BeginRound`, `DispatchAsync`) appends every pending request to one batch and completes the refs
@@ -1287,7 +1289,10 @@ throws `NotSupportedException`. Exhausted retries on any of its round trips are
    its owner's decision, seen through its navigation to the owner's row; an entity no grant can
    reach is checked for existence alone); the rows holding every unique value; and a tree's
    parents. The batch's prologue validates the set the decisions came from, so a moved
-   permissions tag recomposes the round from the fresh set.
+   permissions tag recomposes the round from the fresh set: its decisions are taken again and a
+   deferred reservation is given back and taken afresh. A validator's `Visible` load is decided as
+   a reference target's read is, a sensitive one asking for the step-up before any row reaches
+   it.
 5. **The ordered checks**, before any validator resumes: an update root missing or hidden is
    `NotFoundException` naming the ids, one outside the save filter `ForbiddenException`
    (`OutsideFilter`); under `ConcurrencyMode.Check`, an update without a stamp is

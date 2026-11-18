@@ -12,8 +12,8 @@ namespace Tellma.Core.Data.Conventions
 {
     /// <summary>
     ///     Gives the <c>IsActive</c> column of every <see cref="IActivatable" /> table the default 1,
-    ///     <c>DF_&lt;Table&gt;_IsActive</c>: every row is created active, and the insert writes the
-    ///     column's default rather than the payload's value.
+    ///     <c>DF_&lt;Table&gt;_IsActive</c>, which backs the inserts made outside the save pipeline: the
+    ///     pipeline sets the flag on every new row itself, and its insert writes that value.
     /// </summary>
     internal sealed class ActivatableConvention : IModelFinalizingConvention
     {

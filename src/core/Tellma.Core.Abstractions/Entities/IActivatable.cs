@@ -11,10 +11,12 @@ namespace Tellma.Core.Abstractions.Entities
     /// </summary>
     /// <remarks>
     ///     <see cref="IsActive" /> is server-owned by derivation, because attributes on interface members
-    ///     do not reach implementing properties. Every row is created active: the insert writes the
-    ///     column's default (1) and ignores the payload, and the column changes only through the
-    ///     activate and deactivate actions and the platform's own fixed statements. A client value on a
-    ///     save or an import is overwritten silently.
+    ///     do not reach implementing properties. Every row is created active: the save pipeline sets the
+    ///     flag on every new row, whatever the payload or the class's initialiser holds, and its insert
+    ///     writes that value; the column's default (1) backs only inserts made outside the pipeline. An
+    ///     update keeps the stored flag, which changes only through the activate and deactivate actions
+    ///     and the platform's own fixed statements. A client value on a save or an import is overwritten
+    ///     silently.
     /// </remarks>
     public interface IActivatable
     {
