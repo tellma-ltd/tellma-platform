@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
+
+- Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
+- Spec 0015 §6.6: blob columns are exempt from the uniqueness rule that their UX_ index had triggered. R1 judged the exemption narrow and correct.
+- Carry: persist blob refusals raised by enlisted groups are counted by whichever of PC-077 and PC-084 integrates second (R1-6).
+
 ### D-122 (orchestrator, 2026-11-18): PC-077 R2 rulings; for Ahmad
 
 - R2-1 (major, fixed in fix 2): the open write frame re-decides the [ApiAction] securable for the fresh ConnectedUser on every compose, as the other pipeline hosts do. A revoked grant must not commit enlisted writes on a permissions re-entry.
