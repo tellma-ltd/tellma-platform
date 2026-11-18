@@ -371,6 +371,12 @@ Format, one entry per ruling:
 - Q3: the bootstrap does not reactivate an existing inactive user. The spec is silent.
 - Q4: users' and roles' saves are sensitive, so every fixture that writes them supplies aal2 step-up.
 - Q5: PC-078 places the guards on the stack's own tables only. The union over enlisted groups is PC-077's, being built in parallel; PC-077 was told.
+- R1 (0/1/5) and interim rulings for fix 1:
+  - Q1: users' and roles' delete-by-query is refused with a closed-set error before any round trip (R1-1; spec 0015 §16.2's budget row). Today it skips CannotDeleteSelf and OnlyNewUsersDeletable for a user that no audit foreign key references.
+  - Q3: the bootstrap never silently restores privileges. An inactive existing administrator fails the step with an actionable error (R1-6). **For Ahmad:** reactivate or fail.
+  - Q5 / R1-2: the guard decision covers batch.WrittenTables ∪ StackTables. It lands in PC-078 if WrittenTables exists on platform-core; otherwise it carries to PC-077.
+  - R1-4: duplicate-permission collapse (spec 0014 §3.7) is owned by no checkpoint. PC-078 does it if contained; otherwise it carries to a later checkpoint.
+  - **For Ahmad:** spec 0014 §3.4's "DELETE half" deletes the wrong keys for delete actions. PC-078's fix is right, and the spec wording needs amending.
 - Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
 
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
