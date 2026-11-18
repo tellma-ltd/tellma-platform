@@ -276,9 +276,10 @@ namespace Tellma.Core.Crud.Save
 
         // Spec 0015 §6.2 and §6.3, before the hook: the expected stamp is read before the server-owned
         // columns are reset; derived and server-owned columns are reset on every row (an update's
-        // server-owned values are restored from its before image after round trip 1); strings are
-        // trimmed; nested children take their parent key from the nesting; unconfigured twins are
-        // dropped; value-set values take the set's spelling.
+        // server-owned values are restored from its before image after round trip 1), and a new
+        // row of an activatable entity is active (§12.2); strings are trimmed; nested children take
+        // their parent key from the nesting; unconfigured twins are dropped; value-set values take
+        // the set's spelling.
         /// <summary>Prepares one row for the hook.</summary>
         /// <param name="row">The row.</param>
         private void Normalize(SaveRow row)
@@ -294,6 +295,13 @@ namespace Tellma.Core.Crud.Save
 
             row.Entity.ResetDerived(entity);
             row.Entity.ResetServerOwned(entity);
+
+            // Every row is created active, whatever its class initialises the flag to: the insert
+            // writes the row's value, so the reset to a fresh instance's default is not enough.
+            if (row.IsNew && entity is IActivatable activatable)
+            {
+                activatable.IsActive = true;
+            }
 
             // --- Trimming: an empty nullable string is null ---
             foreach (PropertyMetadata property in rules.Trimmed)

@@ -13,7 +13,9 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Access;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Queryex;
@@ -26,8 +28,10 @@ namespace Tellma.Core.Tests.Crud.Save
     /// <summary>
     ///     The save pipeline up to its persist step, over the scripted batch: the shape and the grant
     ///     before any round trip, preprocessing, the ids at once or riding round trip 1, the before
-    ///     images and the save grant's count, existence and early concurrency, ownership, child
-    ///     synchronisation, references, uniqueness, cycles, value sets, and the validators' rounds.
+    ///     images and the save grant's count, existence and early concurrency, ownership and the
+    ///     active flag, child synchronisation, references with their step-up and their owners'
+    ///     filters, uniqueness in the persist's statement order, cycles, value sets, and the
+    ///     validators' rounds.
     ///     A save whose validation passes stops at the persist step, which is not built yet.
     /// </summary>
     public sealed class SaveOperationTests : IAsyncDisposable
@@ -49,6 +53,9 @@ namespace Tellma.Core.Tests.Crud.Save
 
         /// <summary>The stored documents holding a code, which the uniqueness load finds.</summary>
         private readonly List<PsDocument> _codes = [];
+
+        /// <summary>The stored documents holding a serial, which the uniqueness load finds.</summary>
+        private readonly List<PsDocument> _serials = [];
 
         /// <summary>The stored lines holding a line code, which the uniqueness load finds.</summary>
         private readonly List<PsLine> _lineCodes = [];
@@ -81,12 +88,15 @@ namespace Tellma.Core.Tests.Crud.Save
             _ids = _rig.Services.GetRequiredService<TestIds>();
             Grant(categories: null);
 
-            // --- Every read the save may make: the before images and the codes, the line codes, the
-            // referenced ids, the tree, the modifiers' names and the save grant's count ---
+            // --- Every read the save may make: the before images, the codes and the serials, the line
+            // codes, the referenced ids, the tree, the modifiers' names and the save grant's count ---
             _ = _rig.Script
-                .OnQuery(statement => Restriction(statement.Query<PsDocument>().Restrictions) == "Id"
-                    ? [.. statement.KeySet<IdList>().Where(row => _stored.ContainsKey(row.Id)).Select(row => _stored[row.Id]())]
-                    : _codes)
+                .OnQuery(statement => Restriction(statement.Query<PsDocument>().Restrictions) switch
+                {
+                    "Id" => [.. statement.KeySet<IdList>().Where(row => _stored.ContainsKey(row.Id)).Select(row => _stored[row.Id]())],
+                    "Serial" => _serials,
+                    _ => _codes,
+                })
                 .OnQuery(_ => _lineCodes)
                 .OnQuery<PsCategory>(static statement => [.. statement.KeySet<IdList>().Select(static row => new PsCategory { Id = row.Id, Name = "C" })])
                 .OnRows(Rows)
@@ -416,6 +426,27 @@ namespace Tellma.Core.Tests.Crud.Save
         }
 
         [Fact]
+        public async Task A_new_row_is_created_active_whatever_it_sends_and_an_update_keeps_its_stored_flag()
+        {
+            Warm();
+            Store(5, configure: static stored => stored.IsActive = false);
+            PsDocument created = New(-1, "A");
+            PsDocument updated = Update(5, "B");
+            (created.IsActive, updated.IsActive) = (false, true);
+            bool[]? seen = null;
+            _validation.Validate = async context =>
+            {
+                await AfterRoundTripAsync(context);
+                seen = [context.Entities[0].IsActive, context.Entities[1].IsActive];
+            };
+
+            await ValidatedAsync(created, updated);
+
+            // The class leaves the flag false: only the pipeline makes the new row active.
+            Assert.Equal([true, false], seen!);
+        }
+
+        [Fact]
         public async Task A_present_collection_matches_its_children_by_id_and_a_child_its_parent_does_not_hold_is_not_found()
         {
             Warm();
@@ -485,6 +516,67 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Empty(Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows));
         }
 
+        [Fact]
+        public async Task A_new_or_changed_reference_to_a_sensitive_target_asks_for_the_step_up_a_direct_read_of_it_asks_for()
+        {
+            Warm();
+            Store(5, configure: static stored => stored.CategoryId = 4);
+            _visible[PipelineSaveModel.Categories] = [3, 4];
+            _rig.Assurance = null;
+
+            // --- Below the bar: an unchanged reference is not judged and asks nothing; a new one asks ---
+            PsDocument unchanged = Update(5, "A");
+            unchanged.CategoryId = 4;
+            await ValidatedAsync(unchanged);
+            StepUpRequiredException asked = await Assert.ThrowsAsync<StepUpRequiredException>(() => SaveAsync(New(-1, "B", categoryId: 3)));
+            Assert.Equal(StepUpBar.DefaultAcr, asked.Acr);
+
+            // --- At the bar, the same reference is judged ---
+            _rig.Assurance = new AuthenticationAssurance(StepUpBar.DefaultAcr, QueryRig.Now, QueryRig.Now);
+            await ValidatedAsync(New(-1, "B", categoryId: 3));
+
+            // --- A target the caller may not read tells nothing, so it asks nothing: the reference is not found ---
+            _rig.Assurance = null;
+            _rig.Grant((PipelineSaveModel.Documents, AccessActions.Read, null), (PipelineSaveModel.Documents, AccessActions.Save, null));
+            ValidationException hidden = await RefusedAsync(New(-1, "C", categoryId: 3));
+            Assert.Equal(["[0].CategoryId Fk.NotFound"], Lines(hidden));
+        }
+
+        [Fact]
+        public async Task A_reference_to_a_child_row_is_read_under_its_owners_filter_seen_through_the_navigation_to_the_owners_row()
+        {
+            Warm();
+            Grant(categories: null, read: "Name != 'secret'", save: "Name != 'secret'");
+            _visible[PipelineSaveModel.Lines] = [12];
+            _visible[PipelineSaveModel.SubLines] = [31];
+            PsDocument document = New(-1, "A");
+            (document.LineRefId, document.SubLineRefId) = (12, 32);
+
+            ValidationException refused = await RefusedAsync(document);
+
+            Assert.Equal(["[0].SubLineRefId Fk.NotFound"], Lines(refused));
+
+            // --- The line's query surface composes its owner's filter; the sub-line, which has none,
+            // is read under the line's, through its own navigation ---
+            ScriptedStatement[] reads = [.. Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows)];
+            QuerySpec lines = Assert.Single(reads, static read => read.Spec.Root.Name == PipelineSaveModel.Lines).Spec;
+            QuerySpec subLines = Assert.Single(reads, static read => read.Spec.Root.Name == PipelineSaveModel.SubLines).Spec;
+            Assert.Contains("via Document(", QueryRig.Render(lines.Filter), StringComparison.Ordinal);
+            Assert.Contains("Name != 'secret'", QueryRig.Render(lines.Filter), StringComparison.Ordinal);
+            Assert.StartsWith("via Line(", QueryRig.Render(subLines.Filter), StringComparison.Ordinal);
+            Assert.Contains("via Document(", QueryRig.Render(subLines.Filter), StringComparison.Ordinal);
+
+            // --- Both reads compile over the tenant's schema ---
+            QueryexEngine engine = _rig.Services.GetRequiredService<QueryexEngine>();
+            foreach (QuerySpec spec in (QuerySpec[])[lines, subLines])
+            {
+                QueryexResult<CompiledQuery> compiled = engine.CompileQuery(
+                    spec with { Restrictions = [] },
+                    new QueryCompilationOptions { Schema = _rig.Schema, QueryexVersion = QueryexLanguage.Version, Limits = QueryexProfiles.PipelineLimits });
+                Assert.True(compiled.Succeeded, string.Join(", ", compiled.Diagnostics.Select(static diagnostic => diagnostic.Code + "@" + diagnostic.Location)));
+            }
+        }
+
         // --- Uniqueness, cycles and value sets ---
 
         [Fact]
@@ -517,6 +609,29 @@ namespace Tellma.Core.Tests.Crud.Save
                 ["Code", "Id"],
                 batch.Of(ScriptedKind.Query).Where(static statement => statement.Entity == typeof(PsDocument)).Select(static statement => Restriction(statement.Query<PsDocument>().Restrictions)).Order());
             Assert.Equal("LineCode", Restriction(Assert.Single(batch.Of(ScriptedKind.Query), static statement => statement.Entity == typeof(PsLine)).Query<PsLine>().Restrictions));
+        }
+
+        [Fact]
+        public async Task A_new_root_may_not_take_a_value_an_updated_root_gives_up_or_keeps_though_a_new_child_may()
+        {
+            Warm();
+            Store(5, configure: static stored => (stored.Code, stored.Serial) = ("A", "S1"), lines: [Line(12, code: "L1")]);
+            _codes.Add(Code(5, "A"));
+            _serials.Add(new PsDocument { Id = 5, Serial = "S1", Name = "Stored", Title = "T" });
+            _lineCodes.Add(Line(12, code: "L1", documentId: 5)());
+
+            // Document 5 gives its code up and keeps its write-once serial, which it does not send;
+            // its line 12 gives its code up to a new line of the same document.
+            PsDocument renamed = Update(5, "R", code: "B");
+            renamed.Lines = [new PsLine { Id = 12, LineCode = "L9" }, new PsLine { LineCode = "L1" }];
+            PsDocument created = New(-1, "N", code: "a");
+            created.Serial = "S1";
+
+            ValidationException refused = await RefusedAsync(renamed, created);
+
+            // The new root's insert runs before the existing root's update, while row 5 still holds
+            // both values; a child's synchronisation updates before it inserts.
+            Assert.Equal(["[1].Code Unique", "[1].Serial Unique"], Lines(refused));
         }
 
         [Fact]

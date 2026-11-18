@@ -5,6 +5,8 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
@@ -14,11 +16,12 @@ using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Crud.Save
 {
-    // The save pipeline suite's model: a document whose columns carry every ownership the pipeline
-    // judges (server-owned, write-once, derived, defaulted, multilingual twins, a value set, a
-    // display-name prefix, whitespace kept or trimmed), a unique code, references to a guarded
-    // category, to an unguarded tag and to another document, lines unique within their document
-    // with sub-lines below them, and a tree.
+    // The save pipeline suite's model: an activatable document whose columns carry every ownership
+    // the pipeline judges (server-owned, write-once, derived, defaulted, multilingual twins, a value
+    // set, a display-name prefix, whitespace kept or trimmed), a unique code and a unique write-once
+    // serial, references to a guarded category whose read is sensitive, to an unguarded tag, to
+    // another document, to a line (a child with a query surface) and to a sub-line (a child
+    // without one), lines unique within their document with sub-lines below them, and a tree.
 
     /// <summary>Composes the save pipeline suite's model.</summary>
     internal static class PipelineSaveModel
@@ -31,6 +34,12 @@ namespace Tellma.Core.Tests.Crud.Save
 
         /// <summary>The tags' entity, which no securable guards.</summary>
         public const string Tags = "ps.PsTag";
+
+        /// <summary>The lines' entity, a child query surface of the documents.</summary>
+        public const string Lines = "ps.PsLine";
+
+        /// <summary>The sub-lines' entity, a child with no query surface.</summary>
+        public const string SubLines = "ps.PsSubLine";
 
         /// <summary>The nodes' resource.</summary>
         public const string Nodes = "ps.PsNode";
@@ -48,15 +57,16 @@ namespace Tellma.Core.Tests.Crud.Save
                 .Entity<PsTag>()
                 .Entity<PsNode>()
                 .Validator<PsDocument, PsDocumentValidator>()
-                .ValueSet(new ValueSetDescriptor(Colors, [new ValueSetEntry("Red", null, "Red"), new ValueSetEntry("Blue", null, "Blue")]))));
+                .ValueSet(new ValueSetDescriptor(Colors, [new ValueSetEntry("Red", null, "Red"), new ValueSetEntry("Blue", null, "Blue")]))
+                .Securables(static securables => securables.MarkSensitive(Categories, AccessActions.Read))));
         }
     }
 
-    /// <summary>The model's document.</summary>
+    /// <summary>The model's document, activatable.</summary>
     [Table("Documents", Schema = "ps")]
     [TableType]
     [DisplayNameSource(nameof(Name), Prefix = nameof(Prefix))]
-    public class PsDocument : TopLevelEntity
+    public class PsDocument : TopLevelEntity, IActivatable
     {
         /// <summary>The code, unique on its own.</summary>
         [MaxLength(10)]
@@ -97,6 +107,12 @@ namespace Tellma.Core.Tests.Crud.Save
         [WriteOnce]
         public string? Handler { get; set; }
 
+        /// <summary>A serial, set once on insert and unique on its own.</summary>
+        [MaxLength(10)]
+        [WriteOnce]
+        [Unique]
+        public string? Serial { get; set; }
+
         /// <summary>A title the service fills when the client sends none.</summary>
         [MaxLength(50)]
         [Defaulted]
@@ -123,6 +139,17 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>Another document.</summary>
         [References(typeof(PsDocument))]
         public int? RelatedId { get; set; }
+
+        /// <summary>A line of a document, a child with a query surface of its own.</summary>
+        [References(typeof(PsLine))]
+        public int? LineRefId { get; set; }
+
+        /// <summary>A sub-line of a document, a child with no query surface.</summary>
+        [References(typeof(PsSubLine))]
+        public int? SubLineRefId { get; set; }
+
+        /// <summary>Whether the document is active; left without an initialiser, so only the pipeline makes a new one active.</summary>
+        public bool IsActive { get; set; }
 
         /// <summary>The lines.</summary>
         [NotMapped]
@@ -153,9 +180,10 @@ namespace Tellma.Core.Tests.Crud.Save
         public List<PsSubLine>? SubLines { get; set; }
     }
 
-    /// <summary>A line's sub-line.</summary>
+    /// <summary>A line's sub-line, with no query surface, so no securable of its own.</summary>
     [Table("SubLines", Schema = "ps")]
     [TableType]
+    [ApiResource(Queryable = false)]
     public class PsSubLine : ChildEntity
     {
         /// <summary>The line.</summary>
@@ -167,7 +195,7 @@ namespace Tellma.Core.Tests.Crud.Save
         public string? Note { get; set; }
     }
 
-    /// <summary>A category, guarded by its stack's securables.</summary>
+    /// <summary>A category, guarded by its stack's securables, its read sensitive.</summary>
     [Table("Categories", Schema = "ps")]
     [TableType]
     public class PsCategory : TopLevelEntity

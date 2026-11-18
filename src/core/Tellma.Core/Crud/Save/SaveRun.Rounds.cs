@@ -29,6 +29,9 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The referenced ids each target holds under the caller's read decision, once round trip 1 ran.</summary>
         private readonly Dictionary<EntityMetadata, HashSet<long>> _visible = new(ReferenceEqualityComparer.Instance);
 
+        /// <summary>The targets read under a sensitive securable, whose new or changed references ask for the step-up a direct read asks for.</summary>
+        private readonly HashSet<EntityMetadata> _sensitive = new(ReferenceEqualityComparer.Instance);
+
         /// <summary>Whether the checks that follow round trip 1 ran.</summary>
         private bool _settled;
 
@@ -170,27 +173,30 @@ namespace Tellma.Core.Crud.Save
         }
 
         // Spec 0015 §7.4: a reference loads under its target's Read decision, a denied target making
-        // every reference to it not found. A target no securable guards at all, such as a child
-        // entity, is checked for existence alone: no grant could ever reach it.
+        // every reference to it not found. A child entity without a read securable of its own (one
+        // with no query surface) is read under its owner's decision, seen through its navigation to
+        // the owner's row, up to the first owner that has one, as a read of the owner's details
+        // would reach it. Only an entity no grant can reach (no stack serves it, or its stack
+        // serves no operation) is checked for existence alone. The decision comes from the set the
+        // batch is composed under, which the batch's prologue validates: a moved permissions tag
+        // recomposes the round from the fresh set, so a stale denial never stands (spec 0014 §6.4).
         /// <summary>Composes the referenced rows of one target, under the caller's read decision on it.</summary>
         /// <param name="batch">The round's batch.</param>
         /// <param name="user">The connected user.</param>
         /// <param name="target">The target entity.</param>
         /// <param name="ids">The referenced ids.</param>
-        /// <returns>Reads the ids the caller sees into the save.</returns>
+        /// <returns>Reads the ids the caller sees, and whether the read is sensitive, into the save.</returns>
         private Action ComposeTargets(IDataBatch batch, ConnectedUser user, EntityMetadata target, HashSet<long> ids)
         {
-            // --- The decision: none for an unguarded target, nothing to load for a denied one ---
-            FilterTree? filter = null;
-            if (_operation.Securables.ForResource(target.Name).Count > 0)
+            // --- The decision: nothing to load for a denied target ---
+            TargetRead read = ReadOf(user, target);
+            if (read.IsDenied)
             {
-                AccessDecision read = Decide(user, target.Name, AccessActions.Read);
-                if (read.Outcome == AccessOutcome.Denied)
+                return () =>
                 {
-                    return () => _visible[target] = [];
-                }
-
-                filter = read.Filter;
+                    _visible[target] = [];
+                    _ = _sensitive.Remove(target);
+                };
             }
 
             // --- The ids the target holds under the decision ---
@@ -200,10 +206,46 @@ namespace Tellma.Core.Crud.Save
                 ? KeyTables.Bind(batch, [.. ids.Select(static id => checked((int)id))])
                 : KeyTables.Bind(batch, [.. ids]);
             BatchResult<RowPage> rows = batch.Rows(
-                new QuerySpec { Root = descriptor, Select = key, Filter = filter, Restrictions = [new KeySetRestriction(key, table.Name)] },
+                new QuerySpec { Root = descriptor, Select = key, Filter = read.Filter, Restrictions = [new KeySetRestriction(key, table.Name)] },
                 arguments: null,
                 options: null);
-            return () => _visible[target] = Keys(rows.Value.Rows);
+            bool sensitive = read.Securable is { IsSensitive: true };
+            return () =>
+            {
+                _visible[target] = Keys(rows.Value.Rows);
+                _ = sensitive ? _sensitive.Add(target) : _sensitive.Remove(target);
+            };
+        }
+
+        /// <summary>
+        ///     The connected user's read of a reference target: its own read decision when a securable
+        ///     guards it, its owner's seen through the navigation to the owner's row for a child entity
+        ///     without one, and no restriction for an entity no grant can reach.
+        /// </summary>
+        /// <param name="user">The connected user.</param>
+        /// <param name="target">The target entity.</param>
+        /// <returns>The read.</returns>
+        /// <exception cref="InvalidOperationException">A child entity on the way declares no navigation through its parent key.</exception>
+        private TargetRead ReadOf(ConnectedUser user, EntityMetadata target)
+        {
+            // --- A securable of its own: a stack's, or a child query surface's, whose owner the evaluator composes ---
+            if (_operation.Securables.ForResource(target.Name).Count > 0)
+            {
+                AccessDecision decision = Decide(user, target.Name, AccessActions.Read);
+                return new TargetRead(decision.Outcome == AccessOutcome.Denied, decision.Filter, _operation.Securables.Find(target.Name, AccessActions.Read));
+            }
+
+            // --- A child without one: its owner's read, the owner's filter rebased onto the child's navigation ---
+            if (_operation.OwnerOf(target) is EntityOwner owner)
+            {
+                string navigation = owner.Navigation ?? throw new InvalidOperationException(
+                    $"The child entity {target.Name} has no navigation through its parent key {owner.ParentKey.Name}, so a reference to it cannot be judged under the read of {owner.Entity.Name}.");
+                TargetRead above = ReadOf(user, owner.Entity);
+                return above.Filter is FilterTree filter ? above with { Filter = FilterTree.Via(navigation, filter) } : above;
+            }
+
+            // --- No grant reaches it ---
+            return new TargetRead(IsDenied: false, Filter: null, Securable: null);
         }
 
         /// <summary>Every collection the payload carries on an update root, at any depth, dotted, parents first.</summary>
@@ -292,6 +334,12 @@ namespace Tellma.Core.Crud.Save
                 ? _operation.Evaluator.DecideFrom(user.Access, securable, _operation.Time.GetUtcNow())
                 : _operation.Evaluator.Unknown(resource, action);
         }
+
+        /// <summary>The caller's read of a reference target.</summary>
+        /// <param name="IsDenied">Whether the caller reads no row of the target, so every reference to it is not found.</param>
+        /// <param name="Filter">The rows the caller reads, rebased onto the target; null for every row.</param>
+        /// <param name="Securable">The read securable the decision was taken on, whose sensitivity asks for a step-up; null when no grant reaches the target.</param>
+        private readonly record struct TargetRead(bool IsDenied, FilterTree? Filter, SecurableDescriptor? Securable);
 
         /// <summary>The pipeline's own loads of round trip 1, composed beside the hook's and the validators'.</summary>
         /// <param name="run">The save, whose state the loads' results fill.</param>

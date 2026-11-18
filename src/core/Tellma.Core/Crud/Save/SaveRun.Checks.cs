@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Trees;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Save
 {
@@ -44,6 +45,7 @@ namespace Tellma.Core.Crud.Save
         /// <exception cref="NotFoundException">An update root is missing or hidden.</exception>
         /// <exception cref="ForbiddenException">An update root lies outside the save grant's filter.</exception>
         /// <exception cref="ConcurrencyException">An update root's stamp already differs from the stored one.</exception>
+        /// <exception cref="StepUpRequiredException">A new or changed reference names a sensitive target, below the step-up bar.</exception>
         private async Task SettleAsync()
         {
             _settled = true;
@@ -369,10 +371,16 @@ namespace Tellma.Core.Crud.Save
         }
 
         // Spec 0015 §7.4: a new or changed reference names a row its target holds under the caller's
-        // read decision, or it is not found at the property.
+        // read decision, or it is not found at the property. Judging one tells the caller whether a
+        // row exists, so a target read under a sensitive securable asks for the step-up a direct read
+        // of it asks for (spec 0014 §4.3) before any reference to it is judged; an unchanged
+        // reference is not judged and asks nothing, and neither does the platform's own work.
         /// <summary>Refuses each new or changed reference whose row the caller cannot see.</summary>
+        /// <exception cref="StepUpRequiredException">A new or changed reference names a sensitive target, below the step-up bar.</exception>
+        /// <exception cref="IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
         private void CheckReferences()
         {
+            RequestContext context = _operation.Accessor.Current;
             foreach ((SaveRow row, ReferenceMetadata reference, long value) in _references)
             {
                 // An update row that matched no stored row is reported already.
@@ -386,6 +394,12 @@ namespace Tellma.Core.Crud.Save
                     continue;
                 }
 
+                // --- The step-up of a sensitive target, as a direct read of it asks for it ---
+                if (!context.IsSystem && _sensitive.Contains(reference.Target))
+                {
+                    AssuranceCheck.Ensure(context, _operation.StepUp.Requirement, _operation.Time.GetUtcNow());
+                }
+
                 if (!(_visible.TryGetValue(reference.Target, out HashSet<long>? visible) && visible.Contains(value)))
                 {
                     _errors.Add(row.At(reference.ForeignKey.Name), ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("id", value)));
@@ -394,15 +408,32 @@ namespace Tellma.Core.Crud.Save
         }
 
         // Spec 0015 §6.6 step 5: duplicates within the payload, scoped by parent for a property
-        // unique within its parent, then values a stored row already holds: not the row itself,
-        // not a row the payload updates (its own value is checked as the payload's), not a child the
-        // synchronisation deletes. One error per row and property.
+        // unique within its parent, then values a stored row already holds, except where the
+        // persist batch's order frees the value first. The persist inserts the new roots before it
+        // updates the existing ones, and synchronises children by deleting, then updating, then
+        // inserting. So a stored holder does not count when it is the row itself; when it is a
+        // child the synchronisation deletes; or when the payload updates it to another value
+        // (after ownership restored what the server keeps) and the row taking the value is an
+        // update of the same statement or a child. A new root taking a value an updated root gives
+        // up would meet the stored value in the insert, so that holder counts. One error per row
+        // and property.
         /// <summary>Refuses the payload's duplicate values, and the values stored rows already hold.</summary>
         private void CheckUniqueness()
         {
             foreach (UniqueProbe probe in _probes)
             {
-                HashSet<long> updated = [.. _rows.Where(row => ReferenceEquals(row.Rules, probe.Rules) && !row.IsNew).Select(static row => row.OriginalId)];
+                // The payload's update rows of the probe's entity that matched a stored row, by id:
+                // what each holds after ownership. An unmatched one updates nothing (it is reported).
+                Dictionary<long, SaveRow> updated = [];
+                foreach (SaveRow row in _rows)
+                {
+                    if (ReferenceEquals(row.Rules, probe.Rules) && !row.IsNew && row.Before is not null)
+                    {
+                        _ = updated.TryAdd(row.OriginalId, row);
+                    }
+                }
+
+                bool child = !ReferenceEquals(probe.Rules.Entity, _root);
                 HashSet<SaveRow> flagged = [];
 
                 // --- Within the payload, by scope then value ---
@@ -442,17 +473,30 @@ namespace Tellma.Core.Crud.Save
 
                     long id = row.Id;
                     long? scope = probe.ParentKey is null ? null : row.Owner?.Id;
+                    bool freesFirst = child || !row.IsNew;
                     bool taken = probe.Loaded(value).Any(stored =>
                         stored.Id != id
-                        && !updated.Contains(stored.Id)
                         && !_deleted.Contains((probe.Rules.Entity, stored.Id))
-                        && (probe.ParentKey is null || stored.ParentId == scope));
+                        && (probe.ParentKey is null || stored.ParentId == scope)
+                        && !(freesFirst && GivesUp(updated, stored.Id, probe, value)));
                     if (taken)
                     {
                         _errors.Add(row.At(probe.Property.Name), ValidationCodes.Unique);
                     }
                 }
             }
+        }
+
+        /// <summary>Whether the payload updates a stored row away from a value: the row's value after ownership is another one.</summary>
+        /// <param name="updated">The payload's update rows of the probe's entity, by id.</param>
+        /// <param name="id">The stored row's id.</param>
+        /// <param name="probe">The uniqueness check, whose comparer compares the values.</param>
+        /// <param name="value">The value the stored row holds.</param>
+        /// <returns>True when the payload updates the row and its value no longer matches.</returns>
+        private static bool GivesUp(Dictionary<long, SaveRow> updated, long id, UniqueProbe probe, object value)
+        {
+            return updated.TryGetValue(id, out SaveRow? holder)
+                && !(probe.Property.Getter(holder.Row) is object held && probe.Comparer.Equals(held, value));
         }
     }
 }

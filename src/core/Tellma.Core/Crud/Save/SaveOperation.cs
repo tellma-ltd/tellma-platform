@@ -44,6 +44,7 @@ namespace Tellma.Core.Crud.Save
     /// <param name="buffer">The id allocator's buffer, which serves a reservation before any batch exists.</param>
     /// <param name="valueSets">The value sets the payload's values are checked against.</param>
     /// <param name="services">The scope's services, which hold each entity's validators.</param>
+    /// <param name="stepUp">The assurance bar of the sensitive securables, which a reference to a sensitive target is held to.</param>
     /// <param name="time">The clock the access decisions are taken at.</param>
     internal sealed class SaveOperation(
         AccessEvaluator evaluator,
@@ -61,6 +62,7 @@ namespace Tellma.Core.Crud.Save
         IIdBuffer buffer,
         IValueSetRegistry valueSets,
         IServiceProvider services,
+        StepUpBar stepUp,
         TimeProvider time)
     {
         /// <summary>The dependency a data-access failure names.</summary>
@@ -68,6 +70,9 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The wait a caller is told before retrying a save the database could not serve.</summary>
         private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
+
+        /// <summary>The owner of each child entity, by the child's name; built on first use.</summary>
+        private Dictionary<string, EntityOwner>? _owners;
 
         /// <summary>The caller's access decisions.</summary>
         internal AccessEvaluator Evaluator { get; } = evaluator;
@@ -108,8 +113,21 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The scope's services.</summary>
         internal IServiceProvider Services { get; } = services;
 
+        /// <summary>The assurance bar of the sensitive securables.</summary>
+        internal StepUpBar StepUp { get; } = stepUp;
+
         /// <summary>The clock.</summary>
         internal TimeProvider Time { get; } = time;
+
+        /// <summary>The entity whose child collection holds a child entity, and the child's navigation to that entity's row.</summary>
+        /// <param name="child">The child entity.</param>
+        /// <returns>The owner; null for an entity no collection holds.</returns>
+        internal EntityOwner? OwnerOf(EntityMetadata child)
+        {
+            ArgumentNullException.ThrowIfNull(child);
+            _owners ??= Owners(Metadata);
+            return _owners.GetValueOrDefault(child.Name);
+        }
 
         /// <summary>Saves a payload of a stack's rows: inserts the new ones, updates the others, synchronises their children.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
@@ -159,6 +177,25 @@ namespace Tellma.Core.Crud.Save
             }
         }
 
+        /// <summary>Maps every child entity to the entity whose collection holds it.</summary>
+        /// <param name="metadata">The tenant model's entity metadata.</param>
+        /// <returns>The owners, by the child's name.</returns>
+        private static Dictionary<string, EntityOwner> Owners(IEntityMetadataProvider metadata)
+        {
+            Dictionary<string, EntityOwner> owners = new(StringComparer.Ordinal);
+            foreach (EntityMetadata entity in metadata.All)
+            {
+                foreach (ChildCollectionMetadata collection in entity.Children)
+                {
+                    // A child's one parent key names one owner, whichever of the owner's collections holds it.
+                    string? navigation = collection.Child.References.FirstOrDefault(reference => reference.ForeignKey.Name == collection.ParentKey.Name)?.Navigation;
+                    _ = owners.TryAdd(collection.Child.Name, new EntityOwner(entity, collection.ParentKey, navigation));
+                }
+            }
+
+            return owners;
+        }
+
         /// <summary>Counts a payload's rows at every depth, skipping a null row, which the first check refuses.</summary>
         /// <param name="entity">The rows' entity.</param>
         /// <param name="rows">The rows.</param>
@@ -186,4 +223,10 @@ namespace Tellma.Core.Crud.Save
             return count;
         }
     }
+
+    /// <summary>The entity whose child collection holds a child entity, and how the child reaches that entity's row.</summary>
+    /// <param name="Entity">The owning entity.</param>
+    /// <param name="ParentKey">The child's parent key, which references the owner's row.</param>
+    /// <param name="Navigation">The child's navigation through its parent key; null when the child declares none.</param>
+    internal sealed record EntityOwner(EntityMetadata Entity, PropertyMetadata ParentKey, string? Navigation);
 }

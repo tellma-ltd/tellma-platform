@@ -1268,7 +1268,8 @@ throws `NotSupportedException`. Exhausted retries on any of its round trips are
 
 1. **The shape**, then the type-level `Save` grant, before any round trip.
 2. **Preprocessing.** On every row: the echoed stamp is kept, derived and server-owned columns are
-   reset, strings are trimmed (an empty nullable one becomes null) unless the property carries
+   reset (and a new row of an activatable entity is made active, whatever its class initialises
+   `IsActive` to), strings are trimmed (an empty nullable one becomes null) unless the property carries
    `[PreserveWhitespace]`, a nested child takes its parent key from the nesting, the twins of a
    language the tenant has not configured are dropped (refused under an import as
    `Import.LanguageNotConfigured`), and a value-set value takes its set's spelling. Then the
@@ -1282,8 +1283,11 @@ throws `NotSupportedException`. Exhausted retries on any of its round trips are
    the validators' loads: the update roots' before images under the `Read` filter with every
    collection the payload carries (a denied read loads none, so every update id is not found);
    the `Save` filter's count over the same ids; each reference target's ids under its `Read`
-   decision (a denied target loads nothing; a target no securable guards is checked for existence
-   alone); the rows holding every unique value; and a tree's parents.
+   decision (a denied target loads nothing; a child entity without a query surface is read under
+   its owner's decision, seen through its navigation to the owner's row; an entity no grant can
+   reach is checked for existence alone); the rows holding every unique value; and a tree's
+   parents. The batch's prologue validates the set the decisions came from, so a moved
+   permissions tag recomposes the round from the fresh set.
 5. **The ordered checks**, before any validator resumes: an update root missing or hidden is
    `NotFoundException` naming the ids, one outside the save filter `ForbiddenException`
    (`OutsideFilter`); under `ConcurrencyMode.Check`, an update without a stamp is
@@ -1293,9 +1297,12 @@ throws `NotSupportedException`. Exhausted retries on any of its round trips are
    children by id and deletes the rest) and primed into the loader; server-owned values are
    restored, a write-once value is kept or refused as `WriteOnce`, and a prefix holding `" - "` is
    `DisplayName.PrefixSeparator`; an update child its parent does not hold is `Entity.NotFound`; a
-   new or changed reference the caller cannot see is `Fk.NotFound`; a unique value repeated in the
-   payload (per parent for a child) or held by a stored row the save neither updates nor deletes is
-   `Unique`; a tree's cycles and depth are judged.
+   new or changed reference to a target read under a sensitive securable asks for the step-up a
+   direct read asks for, and one the caller cannot see is `Fk.NotFound`; a unique value repeated in
+   the payload (per parent for a child) or held by another stored row is `Unique`, unless the
+   persist frees it first: a child the synchronisation deletes, or a row the payload updates to
+   another value when the row taking it is an update or a child (a new root's insert runs before
+   the roots' update); a tree's cycles and depth are judged.
 6. **The validators' rounds**, then the value sets (a new or changed value outside its set is
    `Validation.ValueNotInSet` unless an error is already recorded at its path), then
    `ValidationOutcome.Raise`. A save that does not persist returns its ids to the buffer.

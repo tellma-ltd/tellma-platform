@@ -9,6 +9,8 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Data.Ids;
+using Tellma.Core.IntegrationTests.Access;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Crud
@@ -18,7 +20,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     connect prologue, runner, evaluator and id allocator: a save whose validation passes takes
     ///     its ids from the reservation that rode its one round trip with the before images and the
     ///     uniqueness reads, a unique value is refused as the collation meets it, a stale stamp names
-    ///     who changed the row, and a tree's cycle is judged against the stored parents.
+    ///     who changed the row, a refused save gives its reserved ids back for the next save, and a
+    ///     tree's cycle is judged against the stored parents.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -91,6 +94,33 @@ namespace Tellma.Core.IntegrationTests.Crud
                 Assert.Equal(stamp, DateTimeOffset.Parse(only.ModifiedAt!, CultureInfo.InvariantCulture));
                 Assert.False(string.IsNullOrEmpty(only.ModifiedByName));
             }
+        }
+
+        [Fact]
+        public async Task A_cold_save_that_validation_refuses_gives_back_the_ids_its_reservation_took_and_the_next_save_receives_them()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+            IdAllocator allocator = fixture.Instance.GetRequiredService<IdAllocator>();
+
+            // --- A cold buffer: the reservation rides round trip 1, and the code is widget 1's ---
+            allocator.ForgetTenant(ConnectDatabase.TenantA);
+            Widget refused = new() { Code = "w1", Kind = WidgetKind.Plain, Name = "Taken", Subject = "s-cold" };
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                ValidationException unique = await Assert.ThrowsAsync<ValidationException>(() => WidgetService(scope).SaveAsync([refused], new SaveOptions(), Token));
+                Assert.Equal(["[0].Code Unique"], unique.Errors.Select(static error => $"{error.Path} {error.Code}"));
+            }
+
+            // --- The reserved id went back to the buffer, and the next save receives it at once ---
+            Assert.True(refused.Id >= 1000, $"The refused widget's id {refused.Id} is not from its sequence.");
+            Assert.True(allocator.Buffered(ConnectDatabase.TenantA, typeof(Widget)) >= 1, "The refused save kept its reserved id.");
+            Widget next = new() { Code = "W-next", Kind = WidgetKind.Plain, Name = "Next", Subject = "s-next" };
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                _ = await Assert.ThrowsAsync<NotSupportedException>(() => WidgetService(scope).SaveAsync([next], new SaveOptions(), Token));
+            }
+
+            Assert.Equal(refused.Id, next.Id);
         }
 
         [Fact]
