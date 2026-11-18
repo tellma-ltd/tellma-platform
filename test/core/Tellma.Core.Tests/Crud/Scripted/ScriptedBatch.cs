@@ -6,6 +6,7 @@
 using System.Globalization;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Tests.Crud.Scripted
@@ -28,7 +29,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///         checked. A script that needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -44,6 +45,9 @@ namespace Tellma.Core.Tests.Crud.Scripted
 
         /// <summary>The commit callbacks, in registration order.</summary>
         private readonly List<Action<BatchOutcome>> _committed = [];
+
+        /// <summary>The key-capture table of each rows handle whose statement captured its keys.</summary>
+        private readonly Dictionary<object, SqlIdentifier> _captured = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>The union of the raw statements' declared writes.</summary>
         private readonly HashSet<TableName> _written = [];
@@ -145,6 +149,12 @@ namespace Tellma.Core.Tests.Crud.Scripted
             BatchResult<RowPage> result = new();
             ScriptedStatement statement = Append(ScriptedKind.Rows, entity: null, spec, arguments, options, name: null);
             Expect(statement, recorded => result.Complete(_script.Answer<RowPage>(recorded)));
+            if (options is { CaptureKeys: true } or { IncludeAncestors: true })
+            {
+                // Named as the platform's batch names a captured table: the statement's ordinal, then the word.
+                _captured[result] = new SqlIdentifier(string.Create(CultureInfo.InvariantCulture, $"@tb{statement.Ordinal}_keys"));
+            }
+
             return result;
         }
 
@@ -240,10 +250,25 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// <inheritdoc />
         public SqlIdentifier DeclareIdTable()
         {
+            return DeclareKeyTable(typeof(int));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>The statement's options hold the keys' type.</remarks>
+        public SqlIdentifier DeclareKeyTable(Type keyType)
+        {
+            ArgumentNullException.ThrowIfNull(keyType);
             EnsureComposing();
             string name = string.Create(CultureInfo.InvariantCulture, $"@ids{_statements.Count}");
-            _ = Append(ScriptedKind.DeclareIdTable, entity: null, statement: null, arguments: null, options: null, name);
+            _ = Append(ScriptedKind.DeclareIdTable, entity: null, statement: null, arguments: null, keyType, name);
             return new SqlIdentifier(name);
+        }
+
+        /// <inheritdoc />
+        public SqlIdentifier? KeysOf(object handle)
+        {
+            ArgumentNullException.ThrowIfNull(handle);
+            return _captured.GetValueOrDefault(handle);
         }
 
         /// <inheritdoc />

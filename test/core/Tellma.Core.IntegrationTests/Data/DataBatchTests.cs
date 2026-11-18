@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Testing.Entities;
@@ -78,7 +79,7 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
-        public async Task A_database_that_does_not_list_the_running_fingerprint_refuses_a_read_a_validate_and_a_persist_batch_with_50501()
+        public async Task A_database_that_does_not_list_the_running_fingerprint_refuses_a_read_a_validate_and_a_persist_batch_as_schema_behind()
         {
             FixtureTenant tenant = fixture.Tenant;
             await SqlServerFixture.ExecuteAsync(tenant.ConnectionString, "UPDATE [dbo].[__TellmaSchema] SET [Fingerprint] = REPLICATE('0', 64);");
@@ -95,9 +96,10 @@ namespace Tellma.Core.IntegrationTests.Data
                     _ = batch.Sql(InsertJob, new SqlOptions(writes: Set(Jobs)));
                 }
 
-                BatchAssertionFailedException refused = await Assert.ThrowsAsync<BatchAssertionFailedException>(() => batch.ExecuteAsync(Token));
-                Assert.Equal(TellmaSqlErrors.SchemaBehind, refused.Number);
-                Assert.Equal((TellmaSqlErrors.SchemaBehindCode, null), (refused.Code, refused.StatementOrdinal));
+                // The tenant's verdict, final: the guard's 50501 is carried, never retried.
+                TenantUnavailableException refused = await Assert.ThrowsAsync<TenantUnavailableException>(() => batch.ExecuteAsync(Token));
+                Assert.Equal((FixtureTenant.TenantId, TenantProblemCodes.SchemaBehind, null, TimeSpan.FromSeconds(30)), (refused.TenantId, refused.Code, refused.State, refused.RetryAfter));
+                Assert.Equal(TellmaSqlErrors.SchemaBehind, Assert.IsType<SqlException>(refused.InnerException).Number);
                 Assert.False(count.IsCompleted, purpose.ToString());
             }
 

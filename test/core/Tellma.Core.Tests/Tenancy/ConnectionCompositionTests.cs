@@ -39,6 +39,20 @@ namespace Tellma.Core.Tests.Tenancy
             Assert.Equal(new TenantLocation("tcp:sql01.database.windows.net,1433", "tellma-acme.7", "default"), tenant.Location);
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("Connect Retry Count=3;Connect Retry Interval=10;")]
+        public void The_client_library_s_own_connect_retry_is_off_whatever_the_profile_says(string retry)
+        {
+            // The executor owns retry; SqlClient's would wait its interval inside every open first.
+            TellmaSqlOptions sql = Sql($"{retry}Authentication=Active Directory Managed Identity;Encrypt=True;Max Pool Size=20");
+            TenantRowComposer composer = new(sql, isDevelopment: false, "acme");
+
+            Assert.True(composer.TryCompose(FakeCatalogReader.Row(1), out TenantInfo tenant, out _));
+
+            Assert.Equal(0, new SqlConnectionStringBuilder(tenant.ConnectionString).ConnectRetryCount);
+        }
+
         [Fact]
         public void Each_row_takes_the_profile_it_names()
         {

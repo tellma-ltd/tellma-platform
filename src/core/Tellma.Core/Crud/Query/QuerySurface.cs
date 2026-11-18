@@ -53,7 +53,8 @@ namespace Tellma.Core.Crud.Query
             Resource = resource;
             IsChild = isChild;
             DefaultSelect = defaultSelect;
-            DefaultOrderBy = string.IsNullOrWhiteSpace(defaultOrderBy) ? FallbackOrderBy : defaultOrderBy;
+            DeclaredOrderBy = string.IsNullOrWhiteSpace(defaultOrderBy) ? null : defaultOrderBy;
+            DefaultOrderBy = DeclaredOrderBy ?? FallbackOrderBy;
             Searchable = searchable ?? throw new ArgumentNullException(nameof(searchable));
             DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             KeyType = keyType ?? throw new ArgumentNullException(nameof(keyType));
@@ -74,6 +75,9 @@ namespace Tellma.Core.Crud.Query
 
         /// <summary>The ordering of a request that sends none.</summary>
         public string DefaultOrderBy { get; }
+
+        /// <summary>The ordering the root declares; null when it declares none.</summary>
+        public string? DeclaredOrderBy { get; }
 
         /// <summary>The searchable columns, the convention already applied; empty when the root has none.</summary>
         public IReadOnlyList<(string Property, SearchKind Kind)> Searchable { get; }

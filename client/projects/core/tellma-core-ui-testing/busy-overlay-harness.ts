@@ -17,7 +17,10 @@ export class TmBusyOverlayHarness extends ComponentHarness {
   /** The selector for the busy overlay's host. */
   static hostSelector = '.tm-busy-overlay';
 
-  /** Whether a run is in progress: the page is blocked. */
+  /**
+   * Whether the page is blocked: a run is in progress and the overlay is
+   * not standing aside for a modal opened during it.
+   */
   async isActive(): Promise<boolean> {
     return (await this.host()).hasClass('tm-busy-overlay--active');
   }

@@ -472,7 +472,7 @@ namespace Tellma.Core.Data.Batches
 
                         if (errors is not null && kind is FailureKind.Final or FailureKind.Defect && result.Sent)
                         {
-                            throw DataErrors.Translate(errors, failure, assembly, result.Cursor);
+                            throw DataErrors.Translate(errors, failure, assembly, result.Cursor, run.TenantId);
                         }
 
                         ExceptionDispatchInfo.Throw(failure);
@@ -501,7 +501,7 @@ namespace Tellma.Core.Data.Batches
                             Settle(run, result, DataMetrics.Failed);
                             if (errors is not null)
                             {
-                                throw DataErrors.Translate(errors, failure, assembly, result.Cursor);
+                                throw DataErrors.Translate(errors, failure, assembly, result.Cursor, run.TenantId);
                             }
 
                             ExceptionDispatchInfo.Throw(failure);

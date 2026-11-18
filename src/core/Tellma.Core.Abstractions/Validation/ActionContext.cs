@@ -135,7 +135,7 @@ namespace Tellma.Core.Abstractions.Validation
         internal IAssignments? AssignmentsService { get; init; }
 
         /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
-        internal TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>The rows <see cref="Save" /> marked, in marking order.</summary>
         internal IReadOnlyList<TEntity> SavedRows
@@ -239,6 +239,33 @@ namespace Tellma.Core.Abstractions.Validation
             {
                 _closed = true;
             }
+        }
+
+        /// <summary>Completes <see cref="Persisted" />: the action's persist committed.</summary>
+        /// <returns>True when this call completed it; false when it was already completed or faulted.</returns>
+        internal bool CompletePersisted()
+        {
+            return PersistedSource.TrySetResult();
+        }
+
+        /// <summary>
+        ///     Faults <see cref="Persisted" /> with what ended the action, and observes the fault: a
+        ///     method that never awaited <see cref="Persisted" /> leaves no unobserved task exception to
+        ///     surface when the task is collected.
+        /// </summary>
+        /// <param name="exception">What ended the action.</param>
+        /// <returns>True when this call faulted it; false when it was already completed or faulted.</returns>
+        internal bool FaultPersisted(Exception exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            if (!PersistedSource.TrySetException(exception))
+            {
+                return false;
+            }
+
+            // Reading the exception marks the fault observed; a method awaiting the task still sees it.
+            _ = PersistedSource.Task.Exception;
+            return true;
         }
 
         /// <summary>Refuses a write composed after the persist batch was assembled.</summary>

@@ -21,6 +21,7 @@ import {
 } from '@angular/core';
 
 import { TM_NOW, TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { ɵtmKeepAboveModals, ɵtmRaiseTopLayer } from '@tellma/core-ui/overlay';
 
 import { TmToastHost } from './internal/tm-toast-host';
 import type {
@@ -253,8 +254,11 @@ export class TmToasts {
   /** The host, once the first toast has shown. */
   private host: ComponentRef<TmToastHost> | null = null;
 
-  /** Re-raises the host when a modal opens over it. */
+  /** Re-raises the page-wide layers when a modal opens over them. */
   private overlayObserver: MutationObserver | null = null;
+
+  /** Ends keeping the host above the modals. */
+  private releaseLayer: (() => void) | null = null;
 
   /** Set once the service is destroyed. */
   private destroyed = false;
@@ -286,6 +290,7 @@ export class TmToasts {
       clearTimeout(this.announceTimers.polite);
       clearTimeout(this.announceTimers.assertive);
       this.overlayObserver?.disconnect();
+      this.releaseLayer?.();
       document.removeEventListener('visibilitychange', this.onVisibilityChange);
       const element = this.host?.location.nativeElement as HTMLElement | undefined;
       this.host?.destroy();
@@ -503,24 +508,12 @@ export class TmToasts {
     this.host = host;
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     // Modals open in the overlay container as top-layer popovers too, and
-    // the latest shown sits on top: re-showing the host keeps the toasts
-    // above every modal.
-    this.overlayObserver = new MutationObserver(() => this.raise());
+    // the latest shown sits on top: the page-wide layers are re-raised in
+    // their one order, which keeps the toasts above every modal and a
+    // blocking busy overlay above the toasts.
+    this.releaseLayer = ɵtmKeepAboveModals(element, 1, () => true);
+    this.overlayObserver = new MutationObserver(() => ɵtmRaiseTopLayer());
     this.overlayObserver.observe(this.overlayContainer.getContainerElement(), { childList: true });
-  }
-
-  /** Re-shows the host at the top of the top layer, keeping focus where it was. */
-  private raise(): void {
-    const element = this.host?.location.nativeElement as HTMLElement | undefined;
-    if (element === undefined || !element.matches(':popover-open')) {
-      return;
-    }
-    const active = document.activeElement;
-    element.hidePopover();
-    element.showPopover();
-    if (active instanceof HTMLElement && document.activeElement !== active && active.isConnected) {
-      active.focus({ preventScroll: true });
-    }
   }
 }
 

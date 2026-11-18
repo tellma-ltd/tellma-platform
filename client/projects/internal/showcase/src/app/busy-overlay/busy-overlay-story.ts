@@ -7,6 +7,8 @@ import { Component, inject, signal } from '@angular/core';
 
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmConfirm } from '@tellma/core-ui/confirm';
+import { TmToasts } from '@tellma/core-ui/toast';
 
 /** Work that settles after `ms` milliseconds. */
 function work(ms: number): Promise<void> {
@@ -17,9 +19,12 @@ function work(ms: number): Promise<void> {
  * TmBusyOverlay: a save whose button shows it busy in the click's frame
  * (the scrim follows at 200 ms), a fast save that never shows the scrim, a
  * sign-out with no visible trigger (`immediate`), nested runs whose label
- * changes as the work goes on, and a ten-second import that keeps the
- * scrim up long enough to inspect it. A counter button and a text field
- * show that the pointer and the keyboard are held while the page is busy.
+ * changes as the work goes on, a ten-second import that keeps the scrim up
+ * long enough to inspect it, and a save whose write asks for a
+ * confirmation halfway, which the overlay stands aside for. A sticky toast
+ * shows that the overlay stays above the toasts. A counter button and a
+ * text field show that the pointer and the keyboard are held while the
+ * page is busy.
  */
 @Component({
   imports: [TmButton],
@@ -46,6 +51,10 @@ function work(ms: number): Promise<void> {
       </button>
       <button tmButton type="button" data-testid="nested" (click)="nested()">Nested runs</button>
       <button tmButton type="button" data-testid="import" (click)="import()">Import (10 s)</button>
+      <button tmButton type="button" data-testid="save-confirm" (click)="saveWithConfirmation()">
+        Save with a confirmation
+      </button>
+      <button tmButton type="button" data-testid="toast" (click)="toast()">Show a sticky toast</button>
     </section>
 
     <!-- What must not react while the page is busy. -->
@@ -72,6 +81,8 @@ function work(ms: number): Promise<void> {
 })
 export class BusyOverlayStory {
   private readonly busy = inject(TmBusyOverlay);
+  private readonly confirmations = inject(TmConfirm);
+  private readonly toasts = inject(TmToasts);
 
   /** The save button shows it busy for as long as its save runs. */
   protected readonly saving = signal(false);
@@ -117,6 +128,33 @@ export class BusyOverlayStory {
   protected async import(): Promise<void> {
     await this.busy.run(work(10_000), { label: 'Importing…' });
     this.log('imported');
+  }
+
+  /**
+   * A save whose write asks for a confirmation after 300 ms, answered in a
+   * dialog while the run waits; once confirmed, it writes for 300 ms more.
+   */
+  protected async saveWithConfirmation(): Promise<void> {
+    const saved = await this.busy.run(
+      work(300).then(async () => {
+        const confirmed = await this.confirmations.confirm({
+          title: 'Confirm to continue',
+          message: 'This center has open documents.',
+          confirmLabel: 'Continue',
+        });
+        if (confirmed) {
+          await work(300);
+        }
+        return confirmed;
+      }),
+      { label: 'Saving…' },
+    );
+    this.log(saved ? 'saved after confirmation' : 'save cancelled');
+  }
+
+  /** A toast that stays until closed. */
+  protected toast(): void {
+    this.toasts.show({ tone: 'warning', title: 'Upload paused', duration: 'sticky' });
   }
 
   /** Records an event for the log line. */

@@ -82,7 +82,9 @@ Installs the pipeline in this order and nothing else:
 7. the in-proc identity engine's middleware, in in-proc mode;
 8. authentication, then authorization;
 9. the CSRF control;
-10. the tenant middleware.
+10. the tenant middleware, which binds a tenant request's tenant and principal and hands the
+    request's aborted token to the scope's `DataCancellation`, so a client that goes away cancels
+    its reads, validations and retry waits.
 
 The web API's compression, rate limiting, timeouts, output caching and contract middleware take
 their places in this order when those features are composed. A distribution's own middleware goes between `UseTellma` and `MapTellma`.

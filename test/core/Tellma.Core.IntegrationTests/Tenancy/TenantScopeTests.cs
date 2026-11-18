@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
+using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Tenancy;
@@ -211,6 +212,50 @@ namespace Tellma.Core.IntegrationTests.Tenancy
             }
         }
 
+        [Fact]
+        public async Task A_tenant_whose_database_is_missing_fails_its_open_at_once_rather_than_after_a_connect_retry_wait()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_missing");
+
+            // Registered on a database nobody created: every login to it fails with 4060.
+            TenantDescriptor tenant = await host.Catalog.RegisterAsync(
+                new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, sql.NewDatabaseName("scope_absent"), "default")), "migrator", cancellationToken: Token);
+            _ = await host.Catalog.SetStateAsync(tenant.Id, TenantState.Active, null, "migrator", Token);
+            await using TenantScope scope = await host.Scopes.CreateScopeAsync(
+                new RequestContextSnapshot(tenant.Id, PrincipalKind.User, "sub-1", 5, "worker", null), cancellationToken: Token);
+
+            // SqlClient's own connect retry would sleep its 10 s interval before failing; the data
+            // executor owns retry, so the open fails as soon as the server answers.
+            var elapsed = Stopwatch.StartNew();
+            SqlException refused = await Assert.ThrowsAsync<SqlException>(() => DatabaseOfAsync(scope));
+            elapsed.Stop();
+
+            Assert.Equal(4060, refused.Number);
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5), $"The open failed after {elapsed.Elapsed}.");
+        }
+
+        [Fact]
+        public async Task A_pooled_connection_whose_session_ended_while_idle_is_replaced_on_the_next_open()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_pooled");
+            string database = sql.NewDatabaseName("scope_pooled");
+            await SqlDatabaseCreation.CreateAsync(sql.MasterConnectionString, database, cancellationToken: Token);
+            TenantDescriptor tenant = await host.Catalog.RegisterAsync(
+                new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, database, "default")), "migrator", cancellationToken: Token);
+            _ = await host.Catalog.SetStateAsync(tenant.Id, TenantState.Active, null, "migrator", Token);
+            await using TenantScope scope = await host.Scopes.CreateScopeAsync(
+                new RequestContextSnapshot(tenant.Id, PrincipalKind.User, "sub-1", 5, "worker", null), cancellationToken: Token);
+
+            // --- A session returned to the pool, then ended by the server (a failover, an idle cut) ---
+            short session = await SessionOfAsync(scope);
+            await SqlServerFixture.ExecuteAsync(sql.MasterConnectionString, string.Create(CultureInfo.InvariantCulture, $"KILL {session};"));
+            await Task.Delay(TimeSpan.FromMilliseconds(200), Token);
+
+            // Without SqlClient's connect retry, the pool still finds the dead connection when it hands
+            // it out and opens a fresh one, so the next unit of work never sees the ended session.
+            Assert.Equal(database, await DatabaseOfAsync(scope));
+        }
+
         /// <summary>Registers the stand-in for the user connection, which a system snapshot relies on to bind its user.</summary>
         /// <param name="services">The composed services.</param>
         private static void AddSystemConnection(IServiceCollection services)
@@ -243,6 +288,17 @@ namespace Tellma.Core.IntegrationTests.Tenancy
             await using SqlCommand command = connection.CreateCommand();
             command.CommandText = "SELECT DB_NAME();";
             return await command.ExecuteScalarAsync(Token) as string ?? throw new InvalidOperationException("The server named no database.");
+        }
+
+        /// <summary>The server session of a connection of the scope's, which goes back to the pool when this returns.</summary>
+        /// <param name="scope">The scope.</param>
+        /// <returns>The session id.</returns>
+        private static async Task<short> SessionOfAsync(TenantScope scope)
+        {
+            await using SqlConnection connection = await scope.Services.GetRequiredService<ITenantConnectionProvider>().OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT @@SPID;";
+            return (short)(await command.ExecuteScalarAsync(Token) ?? throw new InvalidOperationException("The server named no session."));
         }
 
         /// <summary>A stand-in for the user connection: binds the platform's own principal to a fixed user, and leaves every other principal as the snapshot named it.</summary>

@@ -96,13 +96,15 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-12 20:00 | 59 | 19 | 2026-11-17 20:00 | ΔU 11 since 11:50 (≈1.4/h, 5 heavy agents, Opus only). R 41: in flight PC-026/PC-033/PC-034 fix+int, PC-073/PC-036 impl; next ready PC-051, PC-057, PC-075 |
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
+| 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F56 | pc-1 | pc/PC-F56 | integrated 6f6390ce (CI pending; confirms console logger + xUnit diagnostics in CI logs) | PC-068 impl resumed (Opus, xhigh) | R1 done (Opus, high) | 2026-11-17 |
-| PC-070 | pc-3 | pc/PC-070 | integrate (released after PC-F56 push 6f6390ce); D-109 | impl (Opus, high, launched 2026-11-17) | R1 done (Opus, high) | 2026-11-17 |
+| PC-B02 | pc-1 | pc/PC-B02 | integrate (fixes c771eead: 5 fixed, 1 sub-point pushed back; merge-tree clean) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | held (fixes 3adc83da, verdicts ae8edf62: 6 fixed; merge-tree clean; queued behind PC-B02) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | fix1 (R1 0/1/4; R1-3 ruled D-111) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
 
 ## Fix items
 
@@ -162,7 +164,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F53 | CI red on 99123772 (client, Linux PR-tier e2e chromium; client-windows green): additions-forced-colors.spec.ts :97 checked segment highlight px >440 got 130, :113 switch track >149 got 39, :129 counter tones >300 got 125 (and 0 got 2), :148 drop-target outline; fail on retry. Likely the PC-F51 class (Linux forced-colors Highlight translucent); the tests must still fail on broken CSS | done (880b58d7; CI 44019377406 green; line reopened) | 6b9bea3e, 5af9309e, 880b58d7 (pc/PC-F53) | | from PC-151 integration (CI 43994567778) |
 | PC-F54 | forced-colors sweep (D-103): checkbox, date-popup, entity-picker, select/multi-select and tree stylesheets set color: HighlightText without forced-color-adjust: none, so Chromium's Canvas backplate may hide the ink (as PC-F53 R1-1 found on the checked segment). Check each, fix the ones that hide ink, and add forced-colors legibility checks that fail on the broken CSS | done (ea71a9f8; CI 44038078823 green, Linux ink checks pass) | dbadf1ac, 6b41b8dd, ea71a9f8 (pc/PC-F54) | | from PC-F53 R1-1 |
 | PC-F55 | CI red on a3fc777e (client, Linux PR-tier e2e chromium; client-windows green): chart-bidi.spec.ts :77 and :90 fail in open() :74, bidi-drawn stays "drawing" past 5 s on try and retry; deterministic on Linux. The test must still fail when runs are not drawn apart; line stopped (§8.3) | done (ae550897; CI 44100453494 green; line reopened) | 4c7e1259, 0818687f, e6d1955b, ae550897 (pc/PC-F55) | | from PC-194 integration (CI 44086742988) |
-| PC-F56 | CI red on 1e9332ad (integration-windows, LocalDB; ubuntu integration green; all-checks-passed green as it does not cover integration-windows): Tellma.Core.IntegrationTests passed 395/398 (3 ModelLock skips) then "[Test Assembly Cleanup Failure] Xunit.Sdk.TestPipelineException", exit 1; first Windows hit; PC-068 added integration fixtures (one-tick FastDenyWindow instance, GrantAsync). Find the cause, fix it; flake: next run 44113932638 on 05467a2f all green, so the line reopened (PC-F52 precedent) | integrated (6f6390ce; CI pending) | fd88ced2, ce4a9384, be61035a, 6f6390ce (pc/PC-F56) | | from PC-068 integration (CI 44110298098) |
+| PC-F56 | CI red on 1e9332ad (integration-windows, LocalDB; ubuntu integration green; all-checks-passed green as it does not cover integration-windows): Tellma.Core.IntegrationTests passed 395/398 (3 ModelLock skips) then "[Test Assembly Cleanup Failure] Xunit.Sdk.TestPipelineException", exit 1; first Windows hit; PC-068 added integration fixtures (one-tick FastDenyWindow instance, GrantAsync). Find the cause, fix it; flake: next run 44113932638 on 05467a2f all green, so the line reopened (PC-F52 precedent) | done (6f6390ce; CI 44149790190 green, verbose test logs live) | fd88ced2, ce4a9384, be61035a, 6f6390ce (pc/PC-F56) | | from PC-068 integration (CI 44110298098) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -170,6 +172,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Batch | Phase | Status | Commit | Findings |
 |---|---|---|---|---|
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
+| PC-B02 | 2 (PC-015…PC-031) | fix → hold (finders done at b346ad7c: 5 findings (0/3/2); 924k finder tokens for both batches) | | |
+| PC-B03 | 3 (PC-032…PC-061) | fix → hold (finders done at b346ad7c: 6 findings (0/3/3); 924k finder tokens for both batches) | | |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -350,9 +354,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-067 | 0024-b | 1 | done | 8a98924, f391cbd (pc, fast-forward) | 12.66M (impl+fix 10.39, r1 2.27; Opus) | CI 42988536575 green |
 | PC-068 | 0015-d | 1 | done (1e9332ad; CI 44110298098 integration-windows assembly-cleanup flake → PC-F56; green 44113932638 on 05467a2f) | 51ecfbf, 9c09560, adca5f3, 0184fa4, 43c2b4b, 8b799be, 1e9332a (pc/PC-068) | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-069 | 0024-c | 1 | done | f3d5dc9, b72fb2a, 6357ff2, e6d89fa (pc) | 20.68M (impl+fix+int 17.55 Opus, r2 3.13 Fable; r1 in impl figure) | CI 43076418506 green; boot '.' 3,072 B English-only = zero headroom (WATCHLIST ## 0024); merged-tree e2e 611/644 under load, all 33 timeouts passed on rerun |
-| PC-070 | 0015-e | 1 | integrate | f77c6f9, 5b9c29b, c7589a3 (pc/PC-070) | | carry from PC-062: observe the faulted ActionContext.Persisted task |
+| PC-070 | 0015-e | 1 | done (906264cb; CI 44158133741 green) | f77c6f9, 5b9c29b, c7589a3, 906264c (pc/PC-070) | | carry from PC-062: observe the faulted ActionContext.Persisted task |
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
-| PC-072 | 0015-f | 1 | todo | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
+| PC-072 | 0015-f | 1 | impl | | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | todo | | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |

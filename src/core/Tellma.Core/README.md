@@ -312,8 +312,9 @@ sent persist's; a cancellation that leaves a write's outcome unknown surfaces as
 cancelled before its commit was rolled back and surfaces the cancellation. A final error
 becomes the data layer's exception for it, carrying the statement's ordinal: the
 `Tellma.Core.Data` exceptions for row security, conflicts, uniqueness, foreign keys, trees and
-arithmetic, `BatchAssertionFailedException` for any other assigned platform or distribution number,
-`InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
+arithmetic, `TenantUnavailableException` (`tenant-schema-behind`, retry after 30 s) for the schema
+guard's refusal, `BatchAssertionFailedException` for any other assigned platform or distribution
+number, `InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
 for the rest. A number outside the bands in a batch that commits its own transaction may come from
 a `RAISERROR`, which does not abort the batch, so it is probed (or reported unknown) as a defect
 before it surfaces. A statement's reader stages its results on the cursor, so only the attempt that
@@ -457,7 +458,7 @@ connection string and no secret: a tenant row names a server, a database and a c
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
 | `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. A host that loads no snapshot at startup (the migrator) refreshes only after its own first load, so it never reads a catalog it has yet to create. |
 | The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development (a login the server cuts off before saying why is settled by asking `master` whether the database exists); an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
-| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
+| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`, with SqlClient's connect retry off (`Connect Retry Count=0`) because the executor owns retry; and the catalog's. No string is cached twice or logged. |
 | `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
 | `ITenantCatalog` | Registration (`Provisioning`, the sequence's id or a requested one in 1–999), state transitions against the state table, renames and relocations of frozen or provisioning tenants. Each is one transaction that bumps the catalog version and whose own precondition settles a race (`THROW 50409` translated to `TenantStateException`), then refreshes the local registry. |
 | `ITenantMembershipDirectory` | A subject's memberships in one query; the best-effort upsert of the hint writers, never thrown; and the per-tenant reconciliation that also deletes the tenant's stale hints, through the membership table type bound by `TableTypeBinder`. Internally, one tenant's hints in subject order, for the control plane's member list. |
@@ -1093,8 +1094,9 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 `DataAccessScope.Operation` `<Resource>:<operation>`, and every operation is counted
 (`tellma.crud.operations`) and timed (`tellma.crud.operation.duration`, with its `crud.lane`) under
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
-`crud.source`. The query is the one operation built so far: an operation the stack does not serve is
-an authoring bug (`InvalidOperationException`), and the others are `NotSupportedException`.
+`crud.source`. The reads are built so far (the query, the details reads, the rows of a tree by
+parent and every row of a cacheable stack): an operation the stack does not serve is an authoring
+bug (`InvalidOperationException`), and the others are `NotSupportedException`.
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1140,6 +1142,51 @@ missing value bound to null, a value no clause mentions ignored, and any other f
 `BadRequestException` naming the parameter; while a search applies, a caller's parameter named as
 any the search can bind (`search`, `searchId`, `left`, `right`) is refused, whichever the search
 text binds.
+
+`QueryOperation` also reads the rows of a tree by parent (`get_by_parent_ids`): the type-level
+check, then more than `MaxIds` parents refused before any round trip, then one guarded read with the
+query's admission and planning. Without parents it reads the roots (a `ParentId = null` conjunct);
+with parents, the rows whose parent key the distinct parents restrict; and with `IncludeRoots` too,
+the rows whose key a batch-local key table holds, filled from both seeks in the same batch. It reads
+`MaxTake + 1` rows from row 0 in the declared ordering, else `Id`, with no count and no ancestors,
+and a level of more than `MaxTake` rows is `LimitExceededException` (`MaxTake`). An arithmetic
+failure and exhausted retries translate as the query's do.
+
+`DetailsOperation` serves `get`, `get_by_ids` and `all`. A read by ids runs the type-level check,
+then refuses more than `MaxIds` ids, more than `MaxExtras` distinct extras, or an extra the stack
+does not serve (`BadRequestException` naming it), before any round trip; then `DetailsPlanner`
+composes one guarded round trip:
+
+1. **The main ids**: the stack's key under the caller's `Read` filter, restricted to the requested
+   ids and captured into a key table. Row-level security decides visibility here and nowhere else,
+   so a hidden row reads as a missing one: `get` throws `NotFoundException`, and `get_by_ids` returns
+   the visible rows, a repeated id once, in request order.
+2. **The rows**: every mapped property, every child collection at any depth, and the related
+   projection of each navigation the stack's details expansion follows from the root (up to
+   `MaxExpandDepth` navigations), restricted to the captured ids. What a collection's rows point at
+   is read by one grouped read per collection level and leading navigation, keyed back to the
+   visible ids, so each target is read once however many rows point at it, and merged into the
+   related entities, each entity once (`DetailsProjections`, cached per stack and schema).
+3. **The extras**: the service's `ContributeDetails` when it declares a requested extra, then each
+   `IDetailsContributor<T>` given the requested extras it declares. An extra added that its class
+   does not declare, that the request does not include, or twice, raw text that declares a write or
+   no result set, and a requested extra its declaring class did not add are authoring bugs
+   (`InvalidOperationException`). Each extra is returned under its name in request order, a computed
+   one serialised under `TellmaJson.Options` after the batch over the visible rows.
+4. **The `permissions` extra**: per visible row, the granted abilities it refuses (`save`, `delete`,
+   `activate`, and `action:<name>` per entity action). Each filtered grant adds one keyed read of the
+   visible ids under its filter; a row it misses refuses the ability as `outside-filter`, and the
+   service's `RefuseOnRecord` judges the rest after the batch. An ability the caller is not granted
+   is not listed.
+
+The steps after the round trip run in the cultures of the context the batch was composed under.
+Exhausted retries are `DependencyUnavailableException` as the query's are, while an arithmetic
+failure in a details read passes through as the fault it is: no caller's Queryex text is involved.
+`all` reads a cacheable stack's list from `ICacheableEntities` with no round trip when it is warm,
+each row a shallow copy of the cached one in a list of the call's own, so a caller's edits never
+reach the rows the tenant's other readers are served; requested extras ride one details round trip
+over the cached ids, and a table beyond the cache's row limit is read whole, in key order, on every
+call.
 
 The search (`QuerySearch`) is one disjunction over declared parameters, so its filter takes a few
 constant shapes per root: each searchable column by its kind (`contains` or `startsWith`), or the
@@ -1580,7 +1627,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
-| `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations, the traversal rule, the query operation and the child query service. |
+| `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
+| `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |

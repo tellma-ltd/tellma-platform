@@ -6,6 +6,7 @@
 using System.Data;
 using System.Data.Common;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 
@@ -22,6 +23,9 @@ namespace Tellma.Core.Tests.Data.Batches
 
         /// <summary>The line of the statement at ordinal 1, which composes for <see cref="Node" />.</summary>
         private const int SecondLine = 6;
+
+        /// <summary>The tenant the translated round trips ran against.</summary>
+        private const int TenantId = 17;
 
         /// <summary>The provider's exception the translations carry.</summary>
         private static readonly Exception Provider = new InvalidDataException("The provider's exception.");
@@ -117,7 +121,6 @@ namespace Tellma.Core.Tests.Data.Batches
         [InlineData(TellmaSqlErrors.LimitExceeded, "Delete.CapExceeded")]
         [InlineData(TellmaSqlErrors.Invariant, "Ledger.Unbalanced")]
         [InlineData(TellmaSqlErrors.CountMismatch, "Rows.Count")]
-        [InlineData(TellmaSqlErrors.SchemaBehind, TellmaSqlErrors.SchemaBehindCode)]
         [InlineData(TellmaSqlErrors.Transient, "Busy")]
         [InlineData(TellmaSqlErrors.DistroMin, "Distribution.Rule")]
         [InlineData(TellmaSqlErrors.DistroMax, "Distribution.Other")]
@@ -197,7 +200,20 @@ namespace Tellma.Core.Tests.Data.Batches
             Assert.Null(Translate<DataAccessException>(Error(208, line: SecondLine, procedure: "trg_Widgets")).StatementOrdinal);
 
             // The frame's own lines resolve to no statement.
-            Assert.Null(Translate<BatchAssertionFailedException>(Error(TellmaSqlErrors.SchemaBehind, message: TellmaSqlErrors.SchemaBehindCode, line: 3)).StatementOrdinal);
+            Assert.Null(Translate<BatchAssertionFailedException>(Error(TellmaSqlErrors.CallerInvalid, message: TellmaSqlErrors.CallerInvalidCode, line: 3)).StatementOrdinal);
+        }
+
+        [Fact]
+        public void The_schema_guard_s_refusal_becomes_the_tenant_s_schema_behind_verdict_with_a_thirty_second_retry()
+        {
+            // Raised from the frame's own lines, before any statement ran.
+            TenantUnavailableException behind = Translate<TenantUnavailableException>(
+                Error(TellmaSqlErrors.SchemaBehind, message: TellmaSqlErrors.SchemaBehindCode, line: 3));
+
+            Assert.Equal(TenantId, behind.TenantId);
+            Assert.Equal(TenantProblemCodes.SchemaBehind, behind.Code);
+            Assert.Null(behind.State);
+            Assert.Equal(TimeSpan.FromSeconds(30), behind.RetryAfter);
         }
 
         [Fact]
@@ -211,7 +227,7 @@ namespace Tellma.Core.Tests.Data.Batches
             await withConflicts.ReadConflictsAsync(set, Token);
 
             ConcurrencyConflictException conflict = Assert.IsType<ConcurrencyConflictException>(
-                DataErrors.Translate([Error(TellmaSqlErrors.Concurrency, line: FirstLine)], Provider, Assembly, withConflicts));
+                DataErrors.Translate([Error(TellmaSqlErrors.Concurrency, line: FirstLine)], Provider, Assembly, withConflicts, TenantId));
             Assert.Equal([(7L, false, "Alice"), (9L, true, null)], conflict.Conflicts.Select(static row => (row.Id, row.IsMissing, row.Name)));
             Assert.Equal(0, conflict.StatementOrdinal);
 
@@ -225,7 +241,7 @@ namespace Tellma.Core.Tests.Data.Batches
             await withMissing.ReadMissingIdsAsync(Assert.IsAssignableFrom<DbDataReader>(await withMissing.NextIfAsync(static _ => true, Token)), Token);
 
             BatchAssertionFailedException notFound = Assert.IsType<BatchAssertionFailedException>(
-                DataErrors.Translate([Error(TellmaSqlErrors.NotFound, message: TellmaSqlErrors.NotFoundCode)], Provider, Assembly, withMissing));
+                DataErrors.Translate([Error(TellmaSqlErrors.NotFound, message: TellmaSqlErrors.NotFoundCode)], Provider, Assembly, withMissing, TenantId));
             Assert.Equal([4L, 6L], notFound.MissingIds);
 
             // --- Without the reported rows, each is a defect of the statement's reader ---
@@ -240,7 +256,7 @@ namespace Tellma.Core.Tests.Data.Batches
         private static T Translate<T>(SqlErrorInfo error)
             where T : Exception
         {
-            T translated = Assert.IsType<T>(DataErrors.Translate([error], Provider, Assembly, cursor: null));
+            T translated = Assert.IsType<T>(DataErrors.Translate([error], Provider, Assembly, cursor: null, TenantId));
             Assert.Same(Provider, translated.InnerException);
             return translated;
         }

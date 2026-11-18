@@ -26,6 +26,9 @@ namespace Tellma.Core.Crud.Query
         /// <summary>The page size of a request that sends none.</summary>
         public const int DefaultTake = 50;
 
+        /// <summary>The ordering of a tree read whose root declares none: by key.</summary>
+        public const string KeyOrder = "Id";
+
         /// <summary>Creates a shape; through <see cref="Admit" /> only.</summary>
         private QueryShape()
         {
@@ -69,6 +72,55 @@ namespace Tellma.Core.Crud.Query
 
         /// <summary>Whether the select is an aggregation.</summary>
         public bool Aggregate { get; private init; }
+
+        /// <summary>The ordering of a shape that sends none, in place of the surface's; null keeps the surface's.</summary>
+        public string? DefaultOrderBy { get; private init; }
+
+        /// <summary>The platform's own conjuncts beside the caller's, such as the roots-only leaf of a tree read; empty for a query.</summary>
+        public IReadOnlyList<FilterTree> PlatformFilters { get; private init; } = [];
+
+        /// <summary>
+        ///     Admits a get-by-parent-ids request against its tree surface: no paging, no search, no
+        ///     count and no ancestors; the read takes one row beyond the page-size ceiling, so a tree
+        ///     level beyond it is told from one that fills it.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <param name="surface">The tree surface it runs on.</param>
+        /// <param name="platformFilters">The platform's conjuncts that pick the rows, such as the roots-only leaf.</param>
+        /// <returns>The shape.</returns>
+        /// <exception cref="BadRequestException">Two arguments whose names differ only in case.</exception>
+        /// <exception cref="InvalidQueryException">A named filter the surface does not declare.</exception>
+        public static QueryShape AdmitParentIds(ParentIdsRequest request, QuerySurface surface, IReadOnlyList<FilterTree> platformFilters)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(surface);
+            ArgumentNullException.ThrowIfNull(platformFilters);
+
+            // --- The clauses: blank text is a clause not sent ---
+            List<(int, string)> filters = [];
+            for (int index = 0; index < (request.Filters?.Count ?? 0); index++)
+            {
+                if (Text(request.Filters![index]) is string filter)
+                {
+                    filters.Add((index, filter));
+                }
+            }
+
+            // --- The ordering of a request that sends none: the declared one, else the key (spec 0015 §5.4) ---
+            return new QueryShape
+            {
+                Select = Text(request.Select),
+                Filters = filters,
+                NamedFilters = Named(request.NamedFilters, surface),
+                OrderBy = Text(request.OrderBy),
+                DefaultOrderBy = surface.DeclaredOrderBy ?? KeyOrder,
+                Skip = 0,
+                Take = surface.Limits.MaxTake == int.MaxValue ? int.MaxValue : surface.Limits.MaxTake + 1,
+                Arguments = ByName(request.Arguments),
+                IncludeInactive = request.IncludeInactive,
+                PlatformFilters = [.. platformFilters],
+            };
+        }
 
         /// <summary>Admits a request against its surface.</summary>
         /// <param name="request">The request.</param>
