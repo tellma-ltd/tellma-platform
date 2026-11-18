@@ -252,6 +252,50 @@ stack fixture.Lookup
   feature: fixture
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
+stack fixture.BlobOwner
+  segment: blob-owners
+  entity: Tellma.Testing.Entities.BlobOwner
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.BlobOwner, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: blobs, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, FileId:Editable, PhotoId:Editable
+  children: Files(BlobOwnerFile by BlobOwnerId, max 10000)
+  searchable: -
+  natural-keys: -
+  default-select: Id, Name, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy, File, Photo, Files.File
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
+stack fixture.BlobFolder
+  segment: blob-folders
+  entity: Tellma.Testing.Entities.BlobFolder
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.BlobFolder, int>
+  key: int
+  description: -
+  operations: All
+  capabilities: tree, blobs, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, ParentId:Editable, SubtreeCount:ServerOwned, Name:Editable, IconId:Editable
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id, Name, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy, Parent, Icon
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: fixture
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership

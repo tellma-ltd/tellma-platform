@@ -5,6 +5,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Testing.Entities
@@ -233,6 +234,64 @@ namespace Tellma.Testing.Entities
 
         /// <inheritdoc />
         public bool IsActive { get; set; } = true;
+    }
+
+    /// <summary>
+    ///     An owner of blobs: two blob-reference columns of two kinds on one row, and a child table
+    ///     with a third, so the blob suites attach, replace and release on a root and on a child.
+    /// </summary>
+    [Table("BlobOwners", Schema = FixtureSchema.Name)]
+    [TableType]
+    public class BlobOwner : TopLevelEntity
+    {
+        /// <summary>The owner's name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The owner's file.</summary>
+        [BlobReference("fixture-file")]
+        public int? FileId { get; set; }
+
+        /// <summary>The owner's photo.</summary>
+        [BlobReference("fixture-photo", BlobPreset.Photo)]
+        public int? PhotoId { get; set; }
+
+        /// <summary>The owner's files, saved with it.</summary>
+        [NotMapped]
+        public List<BlobOwnerFile>? Files { get; set; }
+    }
+
+    /// <summary>
+    ///     A child of <see cref="BlobOwner" /> holding one file. It has no query surface of its own,
+    ///     so its kind is owned by the owner's stack through the <c>BlobOwner</c> navigation.
+    /// </summary>
+    [Table("BlobOwnerFiles", Schema = FixtureSchema.Name)]
+    [TableType]
+    [ApiResource(Queryable = false)]
+    public class BlobOwnerFile : ChildEntity
+    {
+        /// <summary>The owner.</summary>
+        [ParentKey]
+        public int BlobOwnerId { get; set; }
+
+        /// <summary>The file: a child table's blob reference.</summary>
+        [BlobReference("fixture-child-file")]
+        public int? FileId { get; set; }
+    }
+
+    /// <summary>A tree whose rows each hold an icon, so a delete with descendants releases the subtree's blobs.</summary>
+    [Table("BlobFolders", Schema = FixtureSchema.Name)]
+    [Tree(MaxDepth = 4)]
+    [TableType]
+    public class BlobFolder : TreeEntity
+    {
+        /// <summary>The folder's name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The folder's icon.</summary>
+        [BlobReference("fixture-folder-icon")]
+        public int? IconId { get; set; }
     }
 
     /// <summary>The fixture schema's name.</summary>

@@ -73,10 +73,13 @@ namespace Tellma.Core.Crud.Save
             HashSet<PropertyMetadata> blobs = new(entity.BlobReferences.Select(static blob => blob.Property), ReferenceEqualityComparer.Instance);
             References = [.. entity.References.Where(reference => Written(reference.ForeignKey) && !blobs.Contains(reference.ForeignKey))];
 
-            // --- Uniqueness: every unique property but the key, of a type a key-set table holds ---
+            // --- Uniqueness: every unique property but the key and the blob columns, of a type a key-set table holds ---
+            // A blob column's unique index guards the race alone; a repeated id in the payload is the
+            // blob validator's to refuse, and one held elsewhere is no longer staged (spec 0017 §4.2).
             Unique = [.. entity.Properties.Where(property =>
                 property.IsUnique
                 && !ReferenceEquals(property, entity.Key)
+                && !blobs.Contains(property)
                 && property.Ownership is PropertyOwnership.Editable or PropertyOwnership.WriteOnce or PropertyOwnership.Derived
                 && KeyableTypes.Contains(Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType))];
         }
@@ -111,7 +114,7 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The references whose foreign key the client sets: no audit, derived, database-owned or blob column.</summary>
         public ReferenceMetadata[] References { get; }
 
-        /// <summary>The unique properties but the key whose values a key-set table holds.</summary>
+        /// <summary>The unique properties but the key and the blob columns whose values a key-set table holds.</summary>
         public PropertyMetadata[] Unique { get; }
 
         /// <summary>The rules of an entity.</summary>

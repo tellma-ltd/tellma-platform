@@ -604,6 +604,38 @@ tellma.Blobs(blobs => blobs
   `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments
   alone have the `Tellma.Blobs` meter); never a tenant, a user or a file name.
 
+## Blobs: attaching, releasing and downloading
+
+- **The pair.** Every stack whose aggregate carries a `[BlobReference]` column, on its root or on a
+  child at any depth, runs `BlobReferenceValidator<T>` and `BlobReferenceEffect<T>`, attached by
+  `core` ahead of every other validator and effect. Nothing registers them by hand.
+- **The attach rule.** A value is newly attached when it is non-null on an inserted row (a child
+  row whose key the stored collection lacks counts as inserted) or differs from the stored value
+  on an updated one. Each must name a `Staged`, unexpired blob of the column's kind that the saving
+  user uploaded, once in the whole payload; otherwise the row's property is refused with
+  `Blob.NotAttachable` and a `reason` argument (`missing`, `not-staged`, `kind`, `uploader`,
+  `expired`) or `Blob.DuplicateReference`. The blob rows load on the validation round the save
+  runs for its update rows anyway; an insert-only save that attaches loads them on a round of its
+  own. A blob column is never checked as a reference, so attaching needs no grant on `core.Blob`.
+- **The persist.** For each column the effect releases the blobs the capture's old values name
+  where the value changed or was cleared (`Released`, due at once), then confirms the new ones
+  (`Committed`, no deadline) under the same conditions the validator checked, and throws
+  `Blob.NotAttachable` (reason `persist`) when any new value was not confirmed: a blob that expired,
+  was claimed or was taken by another row after the validation round rolls the whole save back. A
+  delete of any shape releases its rows' blobs and their children's. The old values come from the
+  rows as written, so an override save releases what the row actually held.
+- **Downloading.** `IBlobService.ResolveAsync(kind, id, variant)` decides the caller's read of the
+  kind's owner resource, then reads, on one read round trip, the owner row holding the id under that
+  read (through the owner path for a child kind whose entity has no query surface) and the blob
+  row. A committed blob is served when the owner row is visible; a staged one to its uploader alone;
+  a variant only when the row lists it and the kind declares its format. Missing, hidden, released
+  and another kind's blobs are all `null`, logged at debug level as `BlobDownloadNotFound`; a
+  malformed variant is a `BadRequestException`.
+- **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
+  owner row references and that were committed more than a day ago, and returns how many.
+- **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason
+  (`duplicate` and `persist` beside the reasons above).
+
 ## Calendars
 
 `CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over

@@ -11,7 +11,9 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Metadata;
 
@@ -19,8 +21,8 @@ namespace Tellma.Core.Blobs
 {
     /// <summary>
     ///     Registers what blobs need beyond the host's store: the options, validated by the startup
-    ///     gate; the scratch directory; the kind registry built from the realised model; the scoped
-    ///     staging service; and the <c>blobs</c> check.
+    ///     gate; the scratch directory; the upload and attach instruments; the kind registry built from
+    ///     the realised model; the scoped staging and download service; and the <c>blobs</c> checks.
     /// </summary>
     internal static class BlobsRuntimeComposition
     {
@@ -39,9 +41,10 @@ namespace Tellma.Core.Blobs
             services.TryAddSingleton(ScratchDirectory.From(record.Configuration));
             services.AddSingleton(new BlobRegistrations(services));
 
-            // --- The upload instruments, on the host's meter factory ---
+            // --- The upload and attach instruments, on the host's meter factory ---
             services.AddMetrics();
             services.TryAddSingleton<BlobUploadMetrics>();
+            services.TryAddSingleton<BlobAttachMetrics>();
 
             // --- The kind registry, one per process, over the model's metadata and the stacks ---
             // Factories, so the container's build-time validation leaves the dependencies to the gate.
@@ -49,9 +52,9 @@ namespace Tellma.Core.Blobs
                 provider.GetRequiredService<EntityMetadataSource>(), provider.GetRequiredService<IStackRegistry>()));
             services.TryAddSingleton<IBlobKindRegistry>(static provider => provider.GetRequiredService<BlobKindRegistry>());
 
-            // --- The staging service, per scope: it reads the scope's tenant and user ---
-            // A factory too: a host without a store fails the blobs.deployment check, not the container's validation.
-            services.TryAddScoped<IBlobService>(static provider => new BlobService(
+            // --- The staging and download service, per scope: it reads the scope's tenant and user ---
+            // Factories too: a host without a store fails the blobs.deployment check, not the container's validation.
+            services.TryAddScoped(static provider => new BlobStager(
                 provider.GetRequiredService<IBlobKindRegistry>(),
                 provider.GetRequiredService<IBlobStore>(),
                 provider.GetService<IImageProcessor>(),
@@ -60,7 +63,19 @@ namespace Tellma.Core.Blobs
                 provider.GetRequiredService<IOptions<BlobOptions>>().Value,
                 provider.GetRequiredService<ScratchDirectory>(),
                 provider.GetRequiredService<BlobUploadMetrics>(),
-                provider.GetRequiredService<ILogger<BlobService>>()));
+                provider.GetRequiredService<ILogger<BlobStager>>()));
+            services.TryAddScoped(static provider => new BlobResolver(
+                provider.GetRequiredService<IBlobKindRegistry>(),
+                provider.GetRequiredService<AccessEvaluator>(),
+                provider.GetRequiredService<ISecurableRegistry>(),
+                provider.GetRequiredService<IGuardedBatchRunner>(),
+                provider.GetRequiredService<IRequestContextAccessor>(),
+                provider.GetRequiredService<IQueryexSchemaProvider>(),
+                provider.GetRequiredService<IEntityMetadataProvider>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<BlobResolver>>()));
+            services.TryAddScoped<IBlobService>(static provider => new BlobService(
+                provider.GetRequiredService<BlobStager>(), provider.GetRequiredService<BlobResolver>()));
 
             // --- The checks, after the built-in checks registered before them: the composition's, then the deployment's ---
             foreach (IStartupCheck check in new[] { new BlobsCheck(record, deployment: false), new BlobsCheck(record, deployment: true) })

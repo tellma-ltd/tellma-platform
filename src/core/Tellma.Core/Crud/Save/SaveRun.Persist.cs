@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Blobs;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
@@ -85,6 +86,9 @@ namespace Tellma.Core.Crud.Save
                 _operation.Accessor.Current.ApplyCultures();
                 if (PersistFailures.Translate(failure, FailureContext(), _operation.Metrics) is Exception translated)
                 {
+                    // A blob the persist refused refuses every attach of the save with it (spec 0017 §10.1).
+                    BlobAttachments.CountPersistRefusal(
+                        translated, _roots.Select(static root => (root.Entity, root.Row, root.Before, root.Path)), _operation.Services.GetService<BlobAttachMetrics>());
                     throw translated;
                 }
 
