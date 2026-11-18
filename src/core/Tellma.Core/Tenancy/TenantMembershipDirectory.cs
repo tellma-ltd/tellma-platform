@@ -172,12 +172,14 @@ namespace Tellma.Core.Tenancy
         }
 
         /// <summary>
-        ///     The catalog's clock, which a reconciliation reads before it reads a tenant's users: the
-        ///     hints stamped from then on are newer than the read. The catalog's own clock, so the
+        ///     The instant a reconciliation takes before it reads a tenant's users: every hint stamped
+        ///     before it is below it, and every hint stamped after it returns is at or above it, at the
+        ///     stamps' millisecond precision. It waits for the catalog's clock to pass the millisecond it
+        ///     was called in, so it may take a millisecond or two. The catalog's own clock, so the
         ///     stamps and the instant compare on one clock whatever the instances' skew.
         /// </summary>
         /// <param name="cancellationToken">Cancels the read.</param>
-        /// <returns>The catalog's time.</returns>
+        /// <returns>The instant.</returns>
         public async Task<DateTimeOffset> CatalogTimeAsync(CancellationToken cancellationToken)
         {
             SqlConnection connection = await connections.OpenCatalogAsync(cancellationToken).ConfigureAwait(false);

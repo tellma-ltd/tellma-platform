@@ -3,10 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Tenancy;
@@ -155,6 +157,26 @@ namespace Tellma.Core.IntegrationTests.Catalog
         }
 
         [Fact]
+        public async Task The_catalog_time_splits_a_hint_stamped_just_before_it_from_one_stamped_just_after()
+        {
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "members_split");
+            int[] ids = await RegisterAsync(host, 1);
+            await host.Directory.RecordAsync([Hint(ids[0], "alice", true), Hint(ids[0], "bob", true)], Token);
+
+            // One round trip stamps alice, takes the time, then stamps bob, as the writers' upsert
+            // stamps a hint, all within a millisecond or two: alice is older than the time, bob newer.
+            string restamp = string.Create(
+                CultureInfo.InvariantCulture,
+                $"UPDATE [catalog].[TenantMemberships] SET [UpdatedAt] = SYSUTCDATETIME() WHERE [TenantId] = {ids[0]} AND [Subject] = @subject;");
+            for (int i = 0; i < 20; i++)
+            {
+                (DateTimeOffset before, DateTimeOffset readAt, DateTimeOffset after) = await SplitAsync(host, restamp);
+                Assert.True(before < readAt, $"A stamp of {before:O} written before the time {readAt:O} is not older than it.");
+                Assert.True(after >= readAt, $"A stamp of {after:O} written after the time {readAt:O} is older than it.");
+            }
+        }
+
+        [Fact]
         public async Task A_hint_written_after_the_users_were_read_survives_the_reconciliation()
         {
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "members_race");
@@ -174,6 +196,30 @@ namespace Tellma.Core.IntegrationTests.Catalog
             Assert.Equal(1, changed);
             IReadOnlyList<TenantMemberHint> members = await host.Directory.ListMembersAsync(ids[0], Token);
             Assert.Equal([("alice", true), ("dave", true), ("erin", false)], members.Select(static member => (member.Subject, member.IsActive)));
+        }
+
+        /// <summary>
+        ///     Stamps alice's hint, takes the catalog's time, then stamps bob's, in one round trip, and
+        ///     reads the three back.
+        /// </summary>
+        /// <param name="host">The host.</param>
+        /// <param name="restamp">The statement that stamps the hint of <c>@subject</c>.</param>
+        /// <returns>Alice's stamp, the time, and bob's stamp.</returns>
+        private static async Task<(DateTimeOffset Before, DateTimeOffset ReadAt, DateTimeOffset After)> SplitAsync(CatalogHost host, string restamp)
+        {
+            await using SqlConnection connection = new(host.ConnectionString);
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = string.Join(
+                "\n",
+                restamp.Replace("@subject", "N'alice'", StringComparison.Ordinal),
+                "DECLARE @time TABLE ([At] datetimeoffset(3));",
+                "INSERT INTO @time EXEC (N'" + CatalogStatements.CatalogTime.Replace("'", "''", StringComparison.Ordinal) + "');",
+                restamp.Replace("@subject", "N'bob'", StringComparison.Ordinal),
+                "SELECT (SELECT [UpdatedAt] FROM [catalog].[TenantMemberships] WHERE [Subject] = N'alice'), (SELECT [At] FROM @time), (SELECT [UpdatedAt] FROM [catalog].[TenantMemberships] WHERE [Subject] = N'bob');");
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            _ = await reader.ReadAsync(Token);
+            return (reader.GetDateTimeOffset(0), reader.GetDateTimeOffset(1), reader.GetDateTimeOffset(2));
         }
 
         /// <summary>Registers tenants.</summary>

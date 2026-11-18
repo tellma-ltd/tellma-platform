@@ -177,11 +177,15 @@ namespace Tellma.Core.Tenancy
             """;
 
         /// <summary>
-        ///     The catalog's clock, rounded as the hints' <c>UpdatedAt</c> stamps are: a stamp taken at or
-        ///     after the clock never rounds below it.
+        ///     The instant that splits the hints written before a read from those written after it, at
+        ///     the millisecond the hints' <c>UpdatedAt</c> stamps keep: one millisecond past the
+        ///     catalog's clock, so every stamp already written is below it, returned only once the
+        ///     clock has reached it, so every stamp written from then on is at or above it.
         /// </summary>
         public const string CatalogTime = """
-            SELECT CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3));
+            DECLARE @readAt datetimeoffset(3) = DATEADD(MILLISECOND, 1, CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3)));
+            WHILE CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3)) < @readAt WAITFOR DELAY '00:00:00.001';
+            SELECT @readAt;
             """;
 
         /// <summary>
