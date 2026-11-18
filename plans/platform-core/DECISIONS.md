@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-121 (orchestrator, 2026-11-18): PC-077 and PC-078 meet at the access guards; the later to integrate reconciles
+
+- PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
+- PC-078 places the guards on a stack's own tables. Its fix 1 may move the decision to batch.WrittenTables ∪ StackTables (D-119 R1-2).
+- Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
+- Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
+
 ### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
 
 - Ruling: PC-083 built spec 0017 §6.4 BlobContainerStep (`core.blob-container`, order 20). D-096 had given it to PC-089. R1 accepted the build, and it is kept as PC-083 deviation 8. PC-089 no longer owns §6.4.
