@@ -359,6 +359,19 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-117 (orchestrator, 2026-11-18): PC-076 implementer's open questions; R1 to judge, for Ahmad
+
+Kept as built until Reviewer 1 judges them; spec 0015 gives no clear answer to any of these.
+
+1. Any `ValidateActionAsync` override, in a service or a component, sends both built-in actions (activate and deactivate) to the general path. There is no per-action rule.
+2. A deferred action batch refuses appends that answer a batch-local name or a result at once (Save/Delete/Tvp/DeclareIdTable/DeclareKeyTable/FromCache). Methods write stack rows through `context.Save`/`Update`.
+3. Persisted gating uses an AsyncLocal gate. Reading `Persisted` releases the reader, so a later load is refused.
+4. Stamped deletes of long-keyed stacks stay refused by the data layer.
+5. After a proven commit:
+   - A void method's failure is logged, and the ids answer it (the D-116 principle).
+   - A value-returning method has nothing to answer with, so its failure is raised. That may invite a duplicating retry.
+6. The Read-Denied → NotFound branch is reachable on cacheable stacks. Read takes no filter there, so a filtered write grant implies no read.
+
 ### D-116 (orchestrator, 2026-11-18): PC-074 R2 open questions; interim rulings, for Ahmad
 
 - R2-2: a re-entered persist keeps round trip 1's row-level verdicts (before images under Read, the Save-grant pre-check, reference visibility), even if the stack's Read or Save filter narrowed in between. So an edit that moves another user's row into a just-narrowed Save filter can commit. Spec 0015 §5.1 is silent on this for a save's pre-check. Interim: kept as built and noted as a deviation. Ahmad to decide whether a changed filter should raise StaleContextException.
