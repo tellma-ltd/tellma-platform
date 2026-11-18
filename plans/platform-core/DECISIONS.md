@@ -386,6 +386,10 @@ Format, one entry per ruling:
   - Q5 / R1-2: the guard decision covers batch.WrittenTables ∪ StackTables. It lands in PC-078 if WrittenTables exists on platform-core; otherwise it carries to PC-077.
   - R1-4: duplicate-permission collapse (spec 0014 §3.7) is owned by no checkpoint. PC-078 does it if contained; otherwise it carries to a later checkpoint.
   - **For Ahmad:** spec 0014 §3.4's "DELETE half" deletes the wrong keys for delete actions. PC-078's fix is right, and the spec wording needs amending.
+- R2 (fable, 0/2/3) and interim rulings for fix 2. All three D-119 rulings held under R2.
+  - R2-1: the bootstrap step is no longer recorded as done when it bootstrapped nobody. A later run that names an administrator then performs it, including `provision --admin-email` on an Active tenant. **For Ahmad:** spec 0014 §8.3's recovery path depends on spec 0011's provisioning record. The two specs need one owner for that path.
+  - R2-4: fail closed. Changing the email of a New user that has memberships needs the same rights as those memberships, or is refused. **For Ahmad:** spec 0014 needs a line on this escalation.
+  - R2-5: DeleteByQuery is removed from the users' and roles' stack operations.
 - Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
 
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
