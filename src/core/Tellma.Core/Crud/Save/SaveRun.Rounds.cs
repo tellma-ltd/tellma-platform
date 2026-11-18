@@ -5,11 +5,7 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Abstractions.Errors;
-using Tellma.Core.Abstractions.Tenancy;
-using Tellma.Core.Crud.Validation;
 using Tellma.Core.Queryex;
-using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Crud.Save
 {
@@ -37,14 +33,6 @@ namespace Tellma.Core.Crud.Save
         /// <summary>Whether the checks that follow round trip 1 ran.</summary>
         private bool _settled;
 
-        /// <summary>The connected user the current round is composed for.</summary>
-        /// <exception cref="InvalidOperationException">Read before any round was composed.</exception>
-        private ConnectedUser Composer
-        {
-            get => field ?? throw new InvalidOperationException("A save's access decisions are taken while a round is composed, for the user it is composed for.");
-            set;
-        }
-
         /// <summary>Dispatches one round: its loads on one guarded batch, then, after the first, the ordered checks.</summary>
         /// <param name="round">The round's 1-based number.</param>
         /// <param name="cancellationToken">Cancels the round.</param>
@@ -52,32 +40,7 @@ namespace Tellma.Core.Crud.Save
         private async Task DispatchAsync(int round, CancellationToken cancellationToken)
         {
             // --- The round's loads, composed for the user the runner connects; a round with none sends nothing ---
-            ContextLoader.ContextRound loads = _loader.BeginRound();
-            if (!loads.IsEmpty)
-            {
-                // The batch that executed, whose entity tags the persist re-declares (§6.7).
-                IDataBatch? served = null;
-                _ = await _operation.Runner.RunAsync(
-                    BatchPurpose.Validate,
-                    (user, batch) =>
-                    {
-                        // A recomposition composes the round afresh, its decisions taken again; the
-                        // operation's frame counts it by the tag that moved.
-                        Composer = user;
-                        batch.Limits = QueryexProfiles.PipelineLimits;
-                        loads.Compose(batch);
-                        served = batch;
-                        return ValueTask.CompletedTask;
-                    },
-                    static (_, _) => true,
-                    cancellationToken).ConfigureAwait(false);
-
-                // The runner may have refreshed the context in its own frame: the checks and the
-                // validators resume in the cultures of the context the batch was composed under.
-                _operation.Accessor.Current.ApplyCultures();
-                Served(served!);
-                loads.Complete();
-            }
+            await DispatchRoundAsync(_loader, cancellationToken).ConfigureAwait(false);
 
             // --- The round the validators resume in; a deferred first round is the pipeline's alone ---
             _context.Round = _deferred ? round : round + 1;
@@ -113,7 +76,11 @@ namespace Tellma.Core.Crud.Save
             TKey[] updates = [.. _roots.Where(static row => !row.IsNew).Select(static row => ((TEntity)row.Row).Id)];
             if (updates.Length > 0)
             {
-                readers.Add(ComposeBeforeImages(batch, user, updates));
+                readers.Add(ComposeTargets<TEntity, TKey>(batch, user, _map, _root, updates, AccessActions.Save, PresentCollections(), (images, count) =>
+                {
+                    _stored = images;
+                    _saveCount = count;
+                }));
             }
 
             // --- The referenced rows of every reference, by target ---
@@ -128,54 +95,6 @@ namespace Tellma.Core.Crud.Save
                 {
                     read();
                 }
-            };
-        }
-
-        // Spec 0015 §9.2: the before images load under the caller's Read filter and the same ids are
-        // counted under the Save grant's filter, compared in C# once the round ran. A grant without a
-        // filter needs no count: it admits every row the images hold.
-        /// <summary>Composes the update roots' before images and the save grant's count over them.</summary>
-        /// <param name="batch">The round's batch.</param>
-        /// <param name="user">The connected user.</param>
-        /// <param name="ids">The update roots' ids.</param>
-        /// <returns>Reads the images and the count into the save.</returns>
-        /// <exception cref="ForbiddenException">The connected user's set no longer grants a save of the stack.</exception>
-        private Action ComposeBeforeImages(IDataBatch batch, ConnectedUser user, TKey[] ids)
-        {
-            // --- The decisions, for the user the batch is composed for ---
-            AccessDecision save = Decide(user, _stack.Resource, AccessActions.Save);
-            if (save.Outcome == AccessOutcome.Denied)
-            {
-                throw new ForbiddenException(ForbiddenCode, save.Resource, save.Action, ForbiddenReason.NoGrant);
-            }
-
-            AccessDecision read = Decide(user, _stack.Resource, AccessActions.Read);
-            EntityDescriptor root = _map.Descriptor(_root);
-            string key = root.Key.Name;
-            IReadOnlyList<KeySetRestriction> restrictions = [new KeySetRestriction(key, KeyTables.Bind(batch, ids).Name)];
-
-            // --- The images, unless the caller reads no row of the stack: then every update id is not found ---
-            BatchResult<EntityQueryResult<TEntity>>? images = read.Outcome == AccessOutcome.Denied
-                ? null
-                : batch.Query(new EntityQuery<TEntity>
-                {
-                    Select = string.Join(", ", _map.Declared(_root).Select(static property => property.Name)),
-                    AllProperties = true,
-                    Filter = read.Filter,
-                    Restrictions = restrictions,
-                    Children = PresentCollections(),
-                    OrderBy = key,
-                });
-
-            // --- The count under the save grant's filter ---
-            BatchResult<int>? count = save.Outcome == AccessOutcome.Filtered
-                ? batch.Count(new QuerySpec { Root = root, Select = key, Filter = save.Filter, Restrictions = restrictions }, arguments: null, cap: ids.Length)
-                : null;
-
-            return () =>
-            {
-                _stored = images?.Value.Entities ?? [];
-                _saveCount = count?.Value;
             };
         }
 
@@ -222,39 +141,6 @@ namespace Tellma.Core.Crud.Save
                 _visible[target] = Keys(rows.Value.Rows);
                 _ = sensitive ? _sensitive.Add(target) : _sensitive.Remove(target);
             };
-        }
-
-        /// <summary>
-        ///     The connected user's read of an entity, as a reference to it or a visible load of it is
-        ///     judged: its own read decision when a securable guards it, its owner's seen through the
-        ///     navigation to the owner's row for a child entity without one, and no restriction for an
-        ///     entity no grant can reach.
-        /// </summary>
-        /// <param name="user">The connected user.</param>
-        /// <param name="target">The entity.</param>
-        /// <returns>The read.</returns>
-        /// <exception cref="InvalidOperationException">A child entity on the way declares no navigation through its parent key.</exception>
-        private TargetRead ReadOf(ConnectedUser user, EntityMetadata target)
-        {
-            // --- A securable of its own: a stack's, or a child query surface's, whose owner the evaluator composes ---
-            if (_operation.Securables.ForResource(target.Name).Count > 0)
-            {
-                return new TargetRead(Decide(user, target.Name, AccessActions.Read), _operation.Securables.Find(target.Name, AccessActions.Read));
-            }
-
-            // --- A child without one: its owner's read, the owner's filter rebased onto the child's navigation ---
-            if (_operation.OwnerOf(target) is EntityOwner owner)
-            {
-                string navigation = owner.Navigation ?? throw new InvalidOperationException(
-                    $"The child entity {target.Name} has no navigation through its parent key {owner.ParentKey.Name}, so a read of it cannot be judged under the read of {owner.Entity.Name}.");
-                TargetRead above = ReadOf(user, owner.Entity);
-                AccessDecision decision = above.Decision;
-                FilterTree? filter = decision.Filter is FilterTree held ? FilterTree.Via(navigation, held) : null;
-                return above with { Decision = new AccessDecision(target.Name, AccessActions.Read, decision.Outcome, filter, decision.Grants, decision.Problems) };
-            }
-
-            // --- No grant reaches it ---
-            return new TargetRead(new AccessDecision(target.Name, AccessActions.Read, AccessOutcome.Unrestricted, null, [], []), Securable: null);
         }
 
         /// <summary>Every collection the payload carries on an update root, at any depth, dotted, parents first.</summary>
@@ -322,82 +208,6 @@ namespace Tellma.Core.Crud.Save
             }
 
             return keys;
-        }
-
-        // Spec 0015 §7.4 loads the references through the visible load, so a validator's visible load
-        // is decided as a reference target's read is: a child without a securable of its own under its
-        // owner's decision, and a sensitive read asking for the step-up a direct read asks for (spec
-        // 0014 §4.3) before its rows reach the validator. A denied read loads nothing and asks nothing.
-        /// <summary>The caller's read decision on an entity, for the user the current round is composed for.</summary>
-        /// <param name="entityType">The entity's class.</param>
-        /// <returns>The decision.</returns>
-        /// <exception cref="StepUpRequiredException">The entity is read under a sensitive securable, below the step-up bar.</exception>
-        /// <exception cref="IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
-        private AccessDecision ReadDecision(Type entityType)
-        {
-            TargetRead read = ReadOf(Composer, _operation.Metadata.Get(entityType));
-            if (read.IsSensitive)
-            {
-                EnsureStepUp();
-            }
-
-            return read.Decision;
-        }
-
-        /// <summary>Asks for the step-up a direct read of a sensitive securable asks for, of every caller but the platform's own work.</summary>
-        /// <exception cref="StepUpRequiredException">The caller's sign-in is below the step-up bar.</exception>
-        /// <exception cref="IndividualRequiredException">The caller is a service account, which cannot step up.</exception>
-        private void EnsureStepUp()
-        {
-            RequestContext context = _operation.Accessor.Current;
-            if (!context.IsSystem)
-            {
-                AssuranceCheck.Ensure(context, _operation.StepUp.Requirement, _operation.Time.GetUtcNow());
-            }
-        }
-
-        /// <summary>The connected user's decision on a securable.</summary>
-        /// <param name="user">The connected user.</param>
-        /// <param name="resource">The resource.</param>
-        /// <param name="action">The action.</param>
-        /// <returns>The decision; a denial when the securable is not registered.</returns>
-        private AccessDecision Decide(ConnectedUser user, string resource, string action)
-        {
-            return _operation.Securables.Find(resource, action) is SecurableDescriptor securable
-                ? _operation.Evaluator.DecideFrom(user.Access, securable, _operation.Time.GetUtcNow())
-                : _operation.Evaluator.Unknown(resource, action);
-        }
-
-        /// <summary>The caller's read of a reference target or of a visible load's entity.</summary>
-        /// <param name="Decision">
-        ///     The decision on the entity: its own, its owner's with the filter rebased onto it, or
-        ///     unrestricted for an entity no grant can reach.
-        /// </param>
-        /// <param name="Securable">The read securable the decision was taken on, whose sensitivity asks for a step-up; null when no grant reaches the entity.</param>
-        private readonly record struct TargetRead(AccessDecision Decision, SecurableDescriptor? Securable)
-        {
-            /// <summary>Whether the caller reads no row of the entity, so every reference to it is not found.</summary>
-            public bool IsDenied => Decision.Outcome == AccessOutcome.Denied;
-
-            /// <summary>Whether the read is allowed under a sensitive securable, so it asks for the step-up a direct read asks for.</summary>
-            public bool IsSensitive => !IsDenied && Securable is { IsSensitive: true };
-        }
-
-        /// <summary>The pipeline's own loads of round trip 1, composed beside the hook's and the validators'.</summary>
-        /// <param name="run">The save, whose state the loads' results fill.</param>
-        private sealed class FirstRound(SaveRun<TEntity, TKey> run) : ContextLoader.LoadGroup
-        {
-            /// <inheritdoc />
-            public override Action Compose(IDataBatch batch)
-            {
-                return run.ComposeFirstRound(batch);
-            }
-
-            /// <inheritdoc />
-            public override void Finish()
-            {
-                // The readers fill the save's own state: no ref waits on this group.
-            }
         }
     }
 }

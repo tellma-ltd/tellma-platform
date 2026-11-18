@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
@@ -15,7 +16,11 @@ namespace Tellma.Core.Data.Batches
     // the pipeline replays the recording into the new batch at its original position, so no
     // participant runs twice. The append order is the first entry's, so every batch-local name a
     // participant holds is unchanged, and every result a participant holds reads the batch that
-    // executes: the view hands out results of its own and completes them from that batch.
+    // executes: the view hands out results of its own and completes them from that batch. An action's
+    // method composes before its persist batch exists (spec 0015 §11.2): a deferred view records its
+    // appends without a batch and composes them all on the first replay; an append that names a
+    // batch-local table for the statements after it cannot answer that name before the batch exists,
+    // so a deferred view refuses it.
     /// <summary>
     ///     A recording view of a persist batch for its participants: every append reaches the batch
     ///     and is recorded, so the recording can be replayed into a recomposed batch without calling
@@ -39,6 +44,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Whether the participants returned, so the view takes no more appends.</summary>
         private bool _sealed;
 
+        /// <summary>The batch the appends reach; null for a deferred view before its first replay.</summary>
+        private IDataBatch? _inner;
+
         /// <summary>Creates a view over a persist batch being composed.</summary>
         /// <param name="inner">The batch.</param>
         /// <param name="callbackFailed">
@@ -48,44 +56,69 @@ namespace Tellma.Core.Data.Batches
         public RecordingBatch(IDataBatch inner, Action<Action<BatchOutcome>, Exception>? callbackFailed = null)
         {
             ArgumentNullException.ThrowIfNull(inner);
-            Inner = inner;
+            _inner = inner;
             _callbackFailed = callbackFailed;
             CompleteOnCommit(inner);
         }
 
+        /// <summary>Creates a deferred view, whose appends reach no batch until its first replay.</summary>
+        /// <param name="callbackFailed">Receives a commit callback that failed; null to let the executor log it.</param>
+        private RecordingBatch(Action<Action<BatchOutcome>, Exception>? callbackFailed)
+        {
+            _callbackFailed = callbackFailed;
+        }
+
         /// <summary>The batch the appends reach: the first entry's, then each replay's.</summary>
-        public IDataBatch Inner { get; private set; }
+        /// <exception cref="InvalidOperationException">A deferred view that was never replayed.</exception>
+        public IDataBatch Inner => _inner ?? throw new InvalidOperationException("The deferred recording reaches a batch only once it is replayed onto one.");
+
+        /// <summary>Whether the view records without a batch until its first replay.</summary>
+        public bool IsDeferred => _inner is null;
+
+        /// <summary>
+        ///     Creates a deferred view: its appends are recorded without reaching a batch, and composed
+        ///     onto the batch of its first replay, then again onto each later one.
+        /// </summary>
+        /// <param name="callbackFailed">Receives a commit callback that failed, which then fails no other callback; null to let the executor log it.</param>
+        /// <returns>The view.</returns>
+        public static RecordingBatch Deferred(Action<Action<BatchOutcome>, Exception>? callbackFailed = null)
+        {
+            return new RecordingBatch(callbackFailed);
+        }
 
         /// <summary>The appends recorded.</summary>
         public int Recorded => _replays.Count;
 
         /// <inheritdoc />
-        public BatchPurpose Purpose => Inner.Purpose;
+        public BatchPurpose Purpose => _inner?.Purpose ?? BatchPurpose.Persist;
 
         /// <inheritdoc />
         /// <exception cref="InvalidOperationException">Set by a participant: the pipeline owns the mode.</exception>
         public TransactionMode TransactionMode
         {
-            get => Inner.TransactionMode;
+            get => _inner?.TransactionMode ?? TransactionMode.Auto;
             set => throw new InvalidOperationException("A persist participant appends to the operation's batch; its transaction mode is the pipeline's.");
         }
 
         /// <inheritdoc />
-        public bool IsComposing => !_sealed && Inner.IsComposing;
+        public bool IsComposing => !_sealed && (_inner?.IsComposing ?? true);
 
         /// <inheritdoc />
         /// <exception cref="InvalidOperationException">Set by a participant: the pipeline owns the limits.</exception>
         public QueryexLimits Limits
         {
-            get => Inner.Limits;
+            get => _inner?.Limits ?? QueryexProfiles.PipelineLimits;
             set => throw new InvalidOperationException("A persist participant appends to the operation's batch; its compilation limits are the pipeline's.");
         }
 
         /// <inheritdoc />
-        public IReadOnlySet<TableName> WrittenTables => Inner.WrittenTables;
+        public IReadOnlySet<TableName> WrittenTables => _inner?.WrittenTables ?? NoTables;
 
         /// <inheritdoc />
-        public IReadOnlySet<TableName> CallerAuthority => Inner.CallerAuthority;
+        public IReadOnlySet<TableName> CallerAuthority => _inner?.CallerAuthority ?? NoTables;
+
+        /// <summary>The tables of a deferred view before its first replay: none written, none authorised yet.</summary>
+        private static IReadOnlySet<TableName> NoTables { get; } = new HashSet<TableName>();
 
         /// <inheritdoc />
         public BatchResult<EntityQueryResult<TEntity>> Query<TEntity>(EntityQuery<TEntity> query)
@@ -122,6 +155,7 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(rows);
             EnsureOpen();
+            EnsureBatch(nameof(Save));
 
             // --- The first entry's handle, its receipt replaced by one the view completes ---
             SaveHandle first = Inner.Save(rows, concurrency);
@@ -153,6 +187,7 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(spec);
             EnsureOpen();
+            EnsureBatch(nameof(Delete));
 
             // --- As a save: the first entry's handle with a receipt of the view's ---
             DeleteHandle first = Inner.Delete(spec);
@@ -212,8 +247,9 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(handle);
 
-            // A query, not an append: answered from the batch's own result behind the one handed out.
-            return _sources.TryGetValue(handle, out object? source) ? KeyTablesOf(Inner).KeysOf(source) : null;
+            // A query, not an append: answered from the batch's own result behind the one handed out;
+            // a deferred view holds no batch result before its first replay.
+            return _inner is IDataBatch inner && _sources.TryGetValue(handle, out object? source) ? KeyTablesOf(inner).KeysOf(source) : null;
         }
 
         /// <inheritdoc />
@@ -229,7 +265,9 @@ namespace Tellma.Core.Data.Batches
             where TEntity : class
         {
             // A hit answers at once, so the participant may have composed on it: a replay must hit the
-            // same version, or what it composed rests on a list that moved.
+            // same version, or what it composed rests on a list that moved. A deferred view answers
+            // nothing at once, so it refuses the read rather than hand out a result that never hits.
+            EnsureBatch(nameof(FromCache));
             return RecordResult(
                 static inner => inner.FromCache<TEntity>(),
                 static (first, again) => first.Tag == again.Tag && first.Outcome == again.Outcome);
@@ -283,7 +321,11 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(append);
             EnsureOpen();
-            append(Inner);
+            if (_inner is IDataBatch inner)
+            {
+                append(inner);
+            }
+
             _replays.Add(append);
         }
 
@@ -300,7 +342,9 @@ namespace Tellma.Core.Data.Batches
         {
             ArgumentNullException.ThrowIfNull(append);
             EnsureOpen();
-            Link<T> link = HandOut(append(Inner));
+
+            // A deferred view hands out a result no batch answers until the first replay.
+            Link<T> link = _inner is IDataBatch inner ? HandOut(append(inner)) : Pending<T>();
             _replays.Add(inner =>
             {
                 BatchResult<T> again = append(inner);
@@ -313,7 +357,11 @@ namespace Tellma.Core.Data.Batches
                 link.Source = again;
                 _sources[link.Proxy] = again;
             });
-            _sources[link.Proxy] = link.Source;
+            if (link.Source is BatchResult<T> source)
+            {
+                _sources[link.Proxy] = source;
+            }
+
             return link.Proxy;
         }
 
@@ -330,7 +378,7 @@ namespace Tellma.Core.Data.Batches
         internal void Replay(IDataBatch inner)
         {
             ArgumentNullException.ThrowIfNull(inner);
-            Inner = inner;
+            _inner = inner;
             CompleteOnCommit(inner);
             foreach (Action<IDataBatch> replay in _replays)
             {
@@ -357,6 +405,7 @@ namespace Tellma.Core.Data.Batches
         private SqlIdentifier RecordName(Func<IDataBatch, SqlIdentifier> append)
         {
             EnsureOpen();
+            EnsureBatch("a batch-local table");
             SqlIdentifier first = append(Inner);
             _replays.Add(inner => EnsureSame(first, append(inner)));
             return first;
@@ -369,6 +418,16 @@ namespace Tellma.Core.Data.Batches
         private Link<T> HandOut<T>(BatchResult<T> source)
         {
             Link<T> link = new(source.IsCompleted ? new BatchResult<T>(source.Value) : new BatchResult<T>()) { Source = source };
+            _links.Add(link);
+            return link;
+        }
+
+        /// <summary>Hands out a result of the view's own that no batch answers yet: a deferred view's, completed once a replayed batch commits.</summary>
+        /// <typeparam name="T">The result's value.</typeparam>
+        /// <returns>The link, its source set by the first replay.</returns>
+        private Link<T> Pending<T>()
+        {
+            Link<T> link = new(new BatchResult<T>()) { Source = null };
             _links.Add(link);
             return link;
         }
@@ -391,6 +450,18 @@ namespace Tellma.Core.Data.Batches
             {
                 throw new InvalidOperationException(
                     "The persist batch takes a participant's statements only while the participant is called. Append them from ContributeAsync, the action method or OnPersist, never after it returned.");
+            }
+        }
+
+        /// <summary>Refuses, on a deferred view, an append that answers a batch-local name or a result at once: no batch exists to answer it.</summary>
+        /// <param name="append">The append, for the message.</param>
+        /// <exception cref="InvalidOperationException">The view is deferred.</exception>
+        private void EnsureBatch(string append)
+        {
+            if (_inner is null)
+            {
+                throw new InvalidOperationException(
+                    $"An action's batch takes {append} only once its persist batch exists, after the validation rounds. Pass the rows a statement needs in its own text, and write the stack's rows through the context's Save and Update.");
             }
         }
 
@@ -443,15 +514,15 @@ namespace Tellma.Core.Data.Batches
             /// <summary>The result handed out.</summary>
             public BatchResult<T> Proxy { get; } = proxy;
 
-            /// <summary>The batch's own result: the first entry's, then each replay's.</summary>
-            public required BatchResult<T> Source { get; set; }
+            /// <summary>The batch's own result: the first entry's, then each replay's; null for a deferred view's before its first replay.</summary>
+            public required BatchResult<T>? Source { get; set; }
 
             /// <inheritdoc />
             public void Complete()
             {
-                if (!Proxy.IsCompleted && Source.IsCompleted)
+                if (!Proxy.IsCompleted && Source is { IsCompleted: true } source)
                 {
-                    Proxy.Complete(Source.Value);
+                    Proxy.Complete(source.Value);
                 }
             }
         }

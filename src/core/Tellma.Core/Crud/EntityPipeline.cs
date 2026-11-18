@@ -9,6 +9,8 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Crud.Actions;
+using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
@@ -23,9 +25,9 @@ namespace Tellma.Core.Crud
     ///     outcome.
     /// </summary>
     /// <remarks>
-    ///     The query, the details reads and the tree read run here. The save runs its validation
-    ///     and stops before it persists; it, the deletes, the actions and the Excel row source refuse
-    ///     with <see cref="NotSupportedException" /> until their steps are built.
+    ///     The query, the details reads, the tree read, the save, the deletes and the actions run
+    ///     here. The Excel row source refuses with <see cref="NotSupportedException" /> until its
+    ///     steps are built.
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -35,8 +37,17 @@ namespace Tellma.Core.Crud
     /// <param name="queries">The scope's query operation.</param>
     /// <param name="details">The scope's details reads.</param>
     /// <param name="save">The scope's save operation.</param>
+    /// <param name="deletes">The scope's deletes.</param>
+    /// <param name="actions">The scope's actions.</param>
     internal sealed class EntityPipeline<TEntity, TKey>(
-        StackDescriptor descriptor, IEntityBehavior<TEntity, TKey> behavior, QuerySurfaces surfaces, QueryOperation queries, DetailsOperation details, SaveOperation save)
+        StackDescriptor descriptor,
+        IEntityBehavior<TEntity, TKey> behavior,
+        QuerySurfaces surfaces,
+        QueryOperation queries,
+        DetailsOperation details,
+        SaveOperation save,
+        DeleteOperation deletes,
+        ActionOperation actions)
         : IEntityPipeline<TEntity, TKey>
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
@@ -95,29 +106,37 @@ namespace Tellma.Core.Crud
         /// <inheritdoc />
         public Task<AffectedResult> DeleteByIdsAsync(IReadOnlyList<TKey> ids, IReadOnlyList<DateTimeOffset?>? expectedStamps, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(ids);
             Require(StackOperations.Delete, CrudOperationNames.Delete);
-            throw NotBuilt(CrudOperationNames.Delete);
+            return deletes.DeleteByIdsAsync(Descriptor, behavior, ids, expectedStamps, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             Require(StackOperations.Delete, CrudOperationNames.DeleteByQuery);
-            throw NotBuilt(CrudOperationNames.DeleteByQuery);
+            return deletes.DeleteByQueryAsync(Descriptor, behavior, request, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<EntitiesResult<TEntity>> ExecuteActionAsync(
             string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken)
         {
-            throw NotBuilt(CrudOperationNames.Action);
+            ArgumentException.ThrowIfNullOrWhiteSpace(action);
+            ArgumentNullException.ThrowIfNull(ids);
+            ArgumentNullException.ThrowIfNull(options);
+            return actions.ExecuteAsync(Descriptor, behavior, action, ids, arguments, options, cancellationToken);
         }
 
         /// <inheritdoc />
         public Task<TResult> ExecuteActionAsync<TResult>(
             string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken)
         {
-            throw NotBuilt(CrudOperationNames.Action);
+            ArgumentException.ThrowIfNullOrWhiteSpace(action);
+            ArgumentNullException.ThrowIfNull(ids);
+            ArgumentNullException.ThrowIfNull(options);
+            return actions.ExecuteAsync<TEntity, TKey, TResult>(Descriptor, behavior, action, ids, arguments, options, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -131,8 +150,9 @@ namespace Tellma.Core.Crud
         /// <inheritdoc />
         public Task<AffectedResult> DeleteWithDescendantsAsync(IReadOnlyList<TKey> ids, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(ids);
             Require(StackOperations.Delete, CrudOperationNames.DeleteWithDescendants, TreeCapability);
-            throw NotBuilt(CrudOperationNames.DeleteWithDescendants);
+            return deletes.DeleteWithDescendantsAsync(Descriptor, behavior, ids, cancellationToken);
         }
 
         /// <inheritdoc />

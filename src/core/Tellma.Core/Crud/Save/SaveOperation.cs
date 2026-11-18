@@ -80,7 +80,7 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The dependency a data-access failure names.</summary>
         private const string DatabaseDependency = "database";
 
-        /// <summary>The wait a caller is told before retrying a save the database could not serve.</summary>
+        /// <summary>The wait a caller is told before retrying a write the database could not serve.</summary>
         private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
 
         /// <summary>The owner of each child entity, by the child's name; built on first use.</summary>
@@ -190,11 +190,11 @@ namespace Tellma.Core.Crud.Save
                 cancellationToken);
         }
 
-        /// <summary>Runs a save's steps with an exhausted retry translated into what the caller can act on.</summary>
-        /// <typeparam name="TResult">What the save returns.</typeparam>
-        /// <param name="steps">The save's steps.</param>
-        /// <returns>What the save returned.</returns>
-        private static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
+        /// <summary>Runs a write's steps with an exhausted retry translated into what the caller can act on.</summary>
+        /// <typeparam name="TResult">What the write returns.</typeparam>
+        /// <param name="steps">The write's steps.</param>
+        /// <returns>What the write returned.</returns>
+        internal static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
         {
             try
             {

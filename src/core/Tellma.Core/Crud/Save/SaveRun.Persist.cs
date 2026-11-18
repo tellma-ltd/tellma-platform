@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Assignments;
@@ -34,18 +33,6 @@ namespace Tellma.Core.Crud.Save
     /// <summary>One save of one stack: the persist, its translation and its post-commit phase.</summary>
     internal sealed partial class SaveRun<TEntity, TKey>
     {
-        /// <summary>The dependency a data-access failure names.</summary>
-        private const string DatabaseDependency = "database";
-
-        /// <summary>The code the post-check throws with, which the executor raises as a row-security failure.</summary>
-        private const string RowSecurityCode = "RowSecurity";
-
-        /// <summary>The wait a caller is told before reloading after a commit the database could not confirm.</summary>
-        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
-
-        /// <summary>The <c>entity:*</c> dependencies the validation rounds were served under, by name, each as first served.</summary>
-        private readonly Dictionary<string, VersionTagDependency> _served = new(StringComparer.Ordinal);
-
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
 
@@ -140,10 +127,7 @@ namespace Tellma.Core.Crud.Save
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
 
             // --- The tags the validation rounds were served under, held by the persist's guard ---
-            if (_served.Count > 0)
-            {
-                batch.DependsOn([.. _served.Values]);
-            }
+            DependOnServed(batch);
 
             // --- Step 4, ahead of item 1: the access guards' lock, when the stack writes a security table ---
             bool guarded = !_operation.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
@@ -231,17 +215,7 @@ namespace Tellma.Core.Crud.Save
                 AssignmentsService = _operation.Services.GetService<IAssignments>(),
             };
 
-            // A participant only appends: a round trip of its own is refused before it is sent.
-            using (ComposeFence.Close(static () => new InvalidOperationException(
-                "A persist participant appends to the operation's batch and performs no I/O of its own. Load what it needs in the validation rounds, or append a read whose result it reads after the commit.")))
-            {
-                await _behavior.ContributeAsync(context).ConfigureAwait(false);
-                foreach (IPersistEffect<TEntity> effect in _operation.Services.GetServices<IPersistEffect<TEntity>>())
-                {
-                    await effect.ContributeAsync(context).ConfigureAwait(false);
-                }
-            }
-
+            await ContributeAsync(_behavior, context).ConfigureAwait(false);
             _participants.Seal();
         }
 
@@ -259,11 +233,7 @@ namespace Tellma.Core.Crud.Save
         private async Task RevalidateAsync(ConnectedUser user)
         {
             // --- A served tag the fresh snapshot moved past: what the validators read is stale ---
-            VersionTagDependency[] moved = [.. _served.Values.Where(served => user.TenantTags.TryGetValue(served.Name, out Guid fresh) && fresh != served.ExpectedTag.Value)];
-            if (moved.Length > 0)
-            {
-                throw new StaleContextException(moved);
-            }
+            EnsureServedTagsHold(user);
 
             // --- The hydrated context, its errors and frame fresh, its loader answering from the rounds run ---
             Composer = user;
@@ -359,7 +329,7 @@ namespace Tellma.Core.Crud.Save
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
                 // The save committed: the ids answer it, and the post-commit phase runs on the default stamp.
-                CrudLog.ProvenCommitReadFailed(_operation.Logger, _stack.Resource, CrudOperationNames.Save, Activity.Current?.TraceId.ToString(), failure);
+                ProvenCommitReadFailed(failure);
             }
 
             await AfterCommitAsync(outcome, stamp).ConfigureAwait(false);
@@ -383,8 +353,7 @@ namespace Tellma.Core.Crud.Save
             }
 
             // Without an answer, the tags are this instance's last snapshot of the tenant's.
-            VersionTagSnapshot tags = committed?.VersionTags
-                ?? _operation.Services.GetRequiredService<IVersionTagSnapshots>().Current(_operation.Accessor.Current.RequireTenant().Id);
+            VersionTagSnapshot tags = TagsAfter(committed);
 
             // --- The hook, then every effect, each failure contained ---
             SavePersistOutcome<TEntity> outcome = new()
@@ -397,11 +366,7 @@ namespace Tellma.Core.Crud.Save
                 Options = _options,
                 BeforeImages = _context.BeforeImages,
             };
-            await ContainedAsync(_behavior.GetType(), () => _behavior.AfterCommitAsync(outcome)).ConfigureAwait(false);
-            foreach (IPersistEffect<TEntity> effect in _operation.Services.GetServices<IPersistEffect<TEntity>>())
-            {
-                await ContainedAsync(effect.GetType(), () => effect.AfterCommitAsync(outcome)).ConfigureAwait(false);
-            }
+            await AfterCommitAsync(_behavior, outcome).ConfigureAwait(false);
         }
 
         /// <summary>Whether an update root overwrote a stored row whose stamp differed from the one the caller echoed.</summary>
@@ -413,65 +378,6 @@ namespace Tellma.Core.Crud.Save
                 && root.Rules.Stamp is PropertyMetadata stamp
                 && root.Before is object stored
                 && (DateTimeOffset?)stamp.Getter(stored) != _stamps[root.RootIndex];
-        }
-
-        /// <summary>Runs one post-commit participant, logging and counting its failure instead of raising it.</summary>
-        /// <param name="component">The participant's type.</param>
-        /// <param name="step">The participant's step.</param>
-        /// <returns>A task that completes when the step returned or failed.</returns>
-        private async Task ContainedAsync(Type component, Func<Task> step)
-        {
-            try
-            {
-                await step().ConfigureAwait(false);
-            }
-            catch (Exception failure) when (failure is not OutOfMemoryException)
-            {
-                // A post-commit failure never changes the response: the save committed.
-                Failed(component, failure);
-            }
-        }
-
-        /// <summary>Logs and counts a commit callback a participant registered that failed.</summary>
-        /// <param name="callback">The callback.</param>
-        /// <param name="failure">Its failure.</param>
-        private void CallbackFailed(Action<BatchOutcome> callback, Exception failure)
-        {
-            // A lambda's method lives on a closure class nested in the component that wrote it.
-            Type? component = callback.Method.DeclaringType;
-            while (component is { IsNested: true } && component.Name.StartsWith('<'))
-            {
-                component = component.DeclaringType;
-            }
-
-            Failed(component ?? callback.GetType(), failure);
-        }
-
-        /// <summary>Logs and counts one post-commit failure.</summary>
-        /// <param name="component">The failing component's type.</param>
-        /// <param name="failure">The failure.</param>
-        private void Failed(Type component, Exception failure)
-        {
-            _operation.Metrics.CountEffectFailure(component.Name);
-            CrudLog.EffectFailed(_operation.Logger, component.Name, _stack.Resource, CrudOperationNames.Save, Activity.Current?.TraceId.ToString(), failure);
-        }
-
-        /// <summary>Records the <c>entity:*</c> dependencies a validation round's batch was served under, keeping each first served tag.</summary>
-        /// <param name="batch">The round's batch, once composed.</param>
-        private void Served(IDataBatch batch)
-        {
-            if (batch is not IBatchDependencies declared)
-            {
-                return;
-            }
-
-            foreach (VersionTagDependency dependency in declared.Dependencies)
-            {
-                if (dependency.Name.StartsWith(VersionTagNames.EntityPrefix, StringComparison.Ordinal))
-                {
-                    _ = _served.TryAdd(dependency.Name, dependency with { OnMismatch = VersionTagMismatchPolicy.Rerun });
-                }
-            }
         }
 
         /// <summary>Refuses a recomposed emitter whose batch-local names differ from those the participants hold.</summary>
@@ -519,17 +425,6 @@ namespace Tellma.Core.Crud.Save
                 Ids = [.. _entities.Select(static entity => long.CreateChecked(entity.Id))],
                 Entities = [],
             };
-        }
-
-        /// <summary>Sets the authority of the appender the batch is composed for next, on a batch that takes one.</summary>
-        /// <param name="batch">The batch.</param>
-        /// <param name="tables">The stack-owned tables the appender may write.</param>
-        private static void Authorize(IDataBatch batch, IReadOnlySet<TableName> tables)
-        {
-            if (batch is IBatchAuthority authority)
-            {
-                authority.SetCallerAuthority(tables);
-            }
         }
     }
 }

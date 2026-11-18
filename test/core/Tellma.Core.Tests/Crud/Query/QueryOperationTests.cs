@@ -780,8 +780,8 @@ namespace Tellma.Core.Tests.Crud.Query
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.GetAllCachedAsync(new DetailsRequest(), Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.GetByParentIdsAsync(new ParentIdsRequest(null, null, null, null), Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.DeleteWithDescendantsAsync([1], Token));
-            _ = await Assert.ThrowsAsync<NotSupportedException>(() => accounts.DeleteByIdsAsync([1], null, Token));
-            _ = await Assert.ThrowsAsync<NotSupportedException>(() => nodes.DeleteWithDescendantsAsync([1], Token));
+            _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.ExecuteActionAsync("archive", [1], null, new ActionOptions(), Token));
+            _ = Assert.Throws<NotSupportedException>(() => nodes.CreateExcelRowSource(new ExportSource.All()));
         }
 
         /// <summary>Runs one query in a scope of its own and returns its one row read.</summary>

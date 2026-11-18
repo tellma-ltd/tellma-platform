@@ -1099,10 +1099,11 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 `DataAccessScope.Operation` `<Resource>:<operation>`, and every operation is counted
 (`tellma.crud.operations`) and timed (`tellma.crud.operation.duration`, with its `crud.lane`) under
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
-`crud.source`. The reads are built so far (the query, the details reads, the rows of a tree by
-parent and every row of a cacheable stack), and the save through its commit and post-commit phase
-(see [The save pipeline](#the-save-pipeline)): an operation the stack does not serve is an
-authoring bug (`InvalidOperationException`), and the others are `NotSupportedException`.
+`crud.source`. The reads (the query, the details reads, the rows of a tree by parent and every
+row of a cacheable stack), the save (see [The save pipeline](#the-save-pipeline)), and the deletes
+and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built: an
+operation the stack does not serve is an authoring bug (`InvalidOperationException`), and the Excel
+row source is `NotSupportedException`.
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1380,6 +1381,66 @@ pipeline drives them:
     in order. A failure is logged (`PostCommitFailed`, with the operation's trace id) and counted by
     the failing component's type name (`tellma.crud.effects.failures`, `crud.effect`), and never
     changes the response.
+
+### The delete and action pipelines
+
+`DeleteOperation` and `ActionOperation` (scoped) run a stack's deletes and actions in the frame of
+`CrudOperations`; each run shares `WriteRun` with the save: the access decisions taken for the user
+each batch is composed for, the entity tags its rounds were served under, the persist's guard and
+re-entry, the translation of its failures (`PersistFailures`) and the post-commit phase. Every id
+list is de-duplicated in request order; an empty one takes no round trip on a delete or the
+one-round-trip activate and deactivate, while a general action still runs its hooks and method;
+more ids than the stack's
+`MaxIds` is `LimitExceededException`; a write without its grant is `ForbiddenException` (`NoGrant`)
+before any round trip. On every id-addressed write an id the caller cannot read, or that does not
+exist, is `NotFoundException` naming those ids alone, before a visible row outside the grant is
+`ForbiddenException` (`OutsideFilter`): both checks run inside the persist's transaction, or, on a
+validated path, on round trip 1 beside the validators' first loads (and again in the persist). A
+cacheable stack's Read takes no filter, so a caller holding only a filtered write grant there reads
+no row and every id is not found.
+
+- **Whether a write validates** (`HookOverrides`): the service overriding `ValidateDeleteAsync` or
+  `ValidateActionAsync`, or a component of the stack's entity overriding the interface's default, is
+  a fact of the classes, inspected once each. A delete by ids or with descendants that nothing
+  validates is one round trip; one that is validated is two, the first carrying the two-stage
+  check and the validators' first round.
+- **A delete by ids** compares the stamps it is given, parallel to the ids (a null one is
+  `Concurrency.StampRequired` at `Ids[<i>]`, another count than the ids' is `BadRequestException`), and
+  a stale stamp is `ConcurrencyException`. **With descendants**, the roots are checked under the
+  Read filter and the whole closure under the Delete grant: a subtree holding a row outside it is
+  refused whole.
+- **A delete by query** refuses a blank filter and a negative expected count (`BadRequestException`),
+  compiles the filter before any round trip (its diagnostics at `filter`), runs no validation hook,
+  and, in one round trip, counts the rows it matches beside the capped delete: more than
+  `MaxDeleteByQueryRows` is `LimitExceededException` and another count than the caller confirmed
+  `CountMismatchException`, both raised inside the transaction, so nothing is deleted.
+- **A row still referenced** (`ForeignKeyViolationException.Conflict` on the delete side) is
+  `Fk.InUse` naming the referencing entity and property, at `Ids[0]` for one id, at `Ids` for several,
+  and at the root by query.
+- **Activate and deactivate** that nothing validates are one SQL-only round trip: one stamped
+  update of `IsActive` under the read filter and the Activate grant, which leaves rows already in the
+  state unstamped. Otherwise they take the general path, and answer alike.
+- **The general action path**: the action resolves by name, the overload must match its method
+  (`ExecuteActionAsync<TResult>` for a method returning a value, the other for one returning none:
+  else `InvalidOperationException`, before any round trip), a single-target action takes exactly one
+  id (`BadRequestException`), and the arguments, as JSON or as the action's record, are
+  deserialised and walked for their attributes at `Arguments.<Property>`. Round trip 1 loads the
+  targets and checks them under the grant beside the validators' first loads; the validation hook,
+  the components and the method run over one `ActionContext` with their rounds; then one persist:
+  the method's and the components' recorded appends (a method composes before the persist batch
+  exists, so an append that answers a batch-local name or a result at once is
+  `InvalidOperationException`), the stamped `Update`s of the targets, the post-check when the action
+  asks for it, and the read-back. `ActionContext.Persisted` holds the method until the persist
+  committed and then answers what its appends read. A `PartialFailure` the method throws is
+  rethrown once its persist committed. A re-entered persist re-runs the hooks and components in
+  memory under round trip 1's verdicts and replays the recordings; the method is never re-invoked.
+- **A commit whose response was lost**: one the executor's probe proved answers a delete with the
+  rows it was asked to delete and an action with its ids (and, when asked, the rows read back by a
+  plain read). A failure then, of that read or of a method reading a result the lost batch never
+  answered, is logged (`ProvenCommitReadFailed`) and never answers the committed write with an
+  error a caller might retry, except that a method answering a value of its own has none to give,
+  so its failure is raised. Any other ambiguous end is `DependencyUnavailableException`
+  (`database`, one second).
 
 ## The route model
 
@@ -1761,7 +1822,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
-| `Crud/Save/` | Internally: [the save pipeline](#the-save-pipeline) up to its persist step: the operation, one save's run (its steps, its rounds and its ordered checks), the per-entity row rules, the payload's rows, the uniqueness probes and the write host. |
+| `Crud/Save/` | Internally: [the save pipeline](#the-save-pipeline) up to its persist step: the operation, one save's run (its steps, its rounds and its ordered checks), the per-entity row rules, the payload's rows, the uniqueness probes the write host, and the run every write shares. |
+| `Crud/Delete/` | Internally: [the deletes](#the-delete-and-action-pipelines): the operation and one delete's run (its round trip 1, its rounds and its persist). |
+| `Crud/Actions/` | Internally: [the actions](#the-delete-and-action-pipelines): the operation, one action's run (its arguments, its rounds and its persist) and the method invoker. |
 | `Data/` | `TellmaDbContext`, `UseTellmaSqlServer`, `TableTypeSweepScopes`; internally the model definition and factory, the platform's own tables and the entity-contract reflection. |
 | `Data/Conventions/` | The model conventions above, the plugin that installs them, and the constraint names. |
 | `Data/TableTypes/` | `TableTypeBinder`, its bindings and the store-type metadata. |

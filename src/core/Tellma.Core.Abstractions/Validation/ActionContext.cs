@@ -91,9 +91,17 @@ namespace Tellma.Core.Abstractions.Validation
 
         /// <summary>
         ///     The action's persist batch: statements appended here carry declared writes and commit with
-        ///     the action. A statement writing a table another stack owns is refused when appended; such
-        ///     rows are enlisted through <see cref="Host" />.
+        ///     the action. A statement writing a table another stack owns is refused when the persist
+        ///     batch is assembled; such rows are enlisted through <see cref="Host" />.
         /// </summary>
+        /// <remarks>
+        ///     The persist batch is assembled once the validation rounds end, so the appends are recorded
+        ///     and composed onto it then, in order; a result read from an append completes once the action
+        ///     committed (await <see cref="Persisted" /> first). An append that names a batch-local table
+        ///     for the statements after it (a table-valued parameter, a declared id or key table, a raw
+        ///     save or delete, a cache read) is refused: a statement passes its rows in its own text, and
+        ///     the stack's rows are written through <see cref="Save" /> and <see cref="Update" />.
+        /// </remarks>
         /// <exception cref="ArgumentNullException">Set to null.</exception>
         public required IDataBatch Batch
         {
@@ -117,7 +125,19 @@ namespace Tellma.Core.Abstractions.Validation
         ///     action: the persist's, or the validation failure that kept it from running. A method that
         ///     must read a batch result it appended awaits this before returning.
         /// </summary>
-        public Task Persisted => PersistedSource.Task;
+        /// <remarks>
+        ///     Reading this property tells the pipeline the reader is about to wait for the persist, so
+        ///     the persist runs without waiting for the reader any longer. Read it where it is awaited,
+        ///     after every load and every write is composed: a load awaited after it is refused.
+        /// </remarks>
+        public Task Persisted
+        {
+            get
+            {
+                PersistedRead?.Invoke();
+                return PersistedSource.Task;
+            }
+        }
 
         /// <summary>
         ///     The assignments of rows of the stack, appended to <see cref="Batch" />.
@@ -133,6 +153,9 @@ namespace Tellma.Core.Abstractions.Validation
 
         /// <summary>The scope's assignments service; null while the host registers none.</summary>
         internal IAssignments? AssignmentsService { get; init; }
+
+        /// <summary>Tells the pipeline that the flow reading <see cref="Persisted" /> waits for the persist; set by the pipeline.</summary>
+        internal Action? PersistedRead { get; init; }
 
         /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
         private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

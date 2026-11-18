@@ -42,12 +42,10 @@ namespace Tellma.Core.Crud.Save
     /// <param name="cancellationToken">Cancels the save.</param>
     internal sealed partial class SaveRun<TEntity, TKey>(
         SaveOperation operation, StackDescriptor stack, IEntityBehavior<TEntity, TKey> behavior, IReadOnlyList<TEntity> entities, SaveOptions options, CancellationToken cancellationToken)
+        : WriteRun(operation, stack.Resource, CrudOperationNames.Save)
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
     {
-        /// <summary>The code of every refusal the save raises for a missing grant.</summary>
-        private const string ForbiddenCode = "forbidden";
-
         /// <summary>The value sets' spellings, by value ignoring case, built once per set.</summary>
         private static readonly ConditionalWeakTable<ValueSetDescriptor, FrozenDictionary<string, string>> Spellings = [];
 
@@ -168,7 +166,7 @@ namespace Tellma.Core.Crud.Save
                 // --- Steps 5 and 6: round trip 1, the ordered checks, the validators and their rounds ---
                 if (NeedsFirstRound())
                 {
-                    _loader.Enqueue(this, new FirstRound(this));
+                    _loader.Enqueue(this, new PipelineLoad(ComposeFirstRound));
                 }
 
                 if (_loader.HasPending)

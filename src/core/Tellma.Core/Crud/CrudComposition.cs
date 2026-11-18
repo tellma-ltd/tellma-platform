@@ -11,7 +11,9 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
+using Tellma.Core.Crud.Actions;
 using Tellma.Core.Crud.Checks;
+using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
@@ -100,6 +102,8 @@ namespace Tellma.Core.Crud
             services.TryAddScoped<DetailsOperation>();
             services.TryAddScoped<WriteFrames>();
             services.TryAddScoped<SaveOperation>();
+            services.TryAddScoped<DeleteOperation>();
+            services.TryAddScoped<ActionOperation>();
 
             // --- The checks, in the order they report, after the built-in checks of the record ---
             IStartupCheck[] checks =

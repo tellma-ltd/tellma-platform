@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Data.Batches;
@@ -146,6 +147,54 @@ namespace Tellma.Core.Tests.Data.Batches
             Assert.Same(failing, callback);
             Assert.Same(thrown, failure);
             Assert.True(ran);
+        }
+
+        // --- A deferred view: an action's method composes before its persist batch exists ---
+
+        [Fact]
+        public async Task A_deferred_view_records_without_a_batch_and_composes_the_recording_onto_its_first_replay_whose_commit_completes_the_results()
+        {
+            RawResult answered = new([]);
+            _ = _script.OnSql(_ => answered);
+            var view = RecordingBatch.Deferred();
+
+            // --- Before any batch: the appends are recorded, their results pending ---
+            BatchResult<RawResult> result = view.Sql($"SELECT 1", SqlOptions.None);
+            view.BumpVersionTag("entity:ps.PsCategory");
+            Assert.True(view.IsDeferred);
+            Assert.Equal((2, BatchPurpose.Persist, true), (view.Recorded, view.Purpose, view.IsComposing));
+            Assert.Same(QueryexProfiles.PipelineLimits, view.Limits);
+            Assert.Empty(view.WrittenTables);
+            _ = Assert.Throws<InvalidOperationException>(() => view.Inner);
+            Assert.False(result.IsCompleted);
+            view.Seal();
+
+            // --- The first replay composes every append, in order; its commit completes the result ---
+            ScriptedBatch batch = _script.NewBatch(BatchPurpose.Persist);
+            view.Replay(batch);
+            Assert.False(view.IsDeferred);
+            Assert.Equal([ScriptedKind.Sql, ScriptedKind.BumpVersionTag], batch.Statements.Select(static statement => statement.Kind));
+            Assert.False(result.IsCompleted);
+
+            _ = await batch.ExecuteAsync(Token);
+
+            Assert.Same(answered, result.Value);
+        }
+
+        [Fact]
+        public void A_deferred_view_refuses_an_append_that_answers_a_batch_local_name_or_a_result_at_once()
+        {
+            var view = RecordingBatch.Deferred();
+
+            InvalidOperationException save = Assert.Throws<InvalidOperationException>(() => view.Save([new Row()]));
+            _ = Assert.Throws<InvalidOperationException>(() => view.Delete(new DeleteSpec<Row>.ByIds([1], null, null, null)));
+            _ = Assert.Throws<InvalidOperationException>(() => view.Tvp([new Row()]));
+            _ = Assert.Throws<InvalidOperationException>(view.DeclareIdTable);
+            _ = Assert.Throws<InvalidOperationException>(() => view.DeclareKeyTable(typeof(int)));
+            _ = Assert.Throws<InvalidOperationException>(view.FromCache<Row>);
+
+            Assert.Contains("persist batch exists", save.Message, StringComparison.Ordinal);
+            Assert.Equal(0, view.Recorded);
         }
 
         /// <summary>A row the tests save.</summary>

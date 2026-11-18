@@ -14,11 +14,11 @@ using Tellma.Core.Data.Ids;
 namespace Tellma.Core.Crud
 {
     // Spec 0015 §14.2: the executor raises spec 0012's internal data-layer exceptions, and the
-    // pipeline translates those a persist raises into the closed set. The rows here are the save's
-    // and the action's, with the delete row's Fk.InUse for a row the save's child synchronisation
-    // deletes; the delete-by-query cap and count join them with the deletes. Retries exhausted and
-    // the ambiguous commit are the operation's own, as are 50412 and 50401, which the guarded runner
-    // raises and every operation passes through.
+    // pipeline translates those a persist raises into the closed set. The rows here are the save's,
+    // the delete's and the action's: the delete row's Fk.InUse serves a delete and a row the save's
+    // child synchronisation deletes, and the delete by query adds its cap (50413) and its count
+    // (50428). Retries exhausted and the ambiguous commit are the operation's own, as are 50412 and
+    // 50401, which the guarded runner raises and every operation passes through.
     /// <summary>Translates the data layer's failures of a persist into the exceptions a caller acts on.</summary>
     internal static class PersistFailures
     {
@@ -123,6 +123,15 @@ namespace Tellma.Core.Crud
 
                 // A distribution's guard: its message is the code.
                 >= TellmaSqlErrors.DistroMin and <= TellmaSqlErrors.DistroMax => AtRoot(assertion.Code, Arguments()),
+
+                // A delete by query's cap and the count the caller confirmed, checked inside the
+                // transaction. The count rides before the delete, so a failed batch still hands it
+                // over; past the cap it is at least one more than the cap, and a mismatch whose count
+                // was never read passes through rather than report a count nobody read.
+                TellmaSqlErrors.LimitExceeded when assertion.Code == TellmaSqlErrors.DeleteCapExceededCode && context.DeleteCounts is QueryDeleteCounts counts
+                    => new LimitExceededException(LimitNames.MaxDeleteByQueryRows, counts.Counted.IsCompleted ? counts.Counted.Value : counts.Cap + 1, counts.Cap),
+                TellmaSqlErrors.CountMismatch when assertion.Code == TellmaSqlErrors.DeleteCountMismatchCode && context.DeleteCounts is { Counted.IsCompleted: true } counts
+                    => new CountMismatchException(counts.ExpectedCount, counts.Counted.Value),
                 _ => null,
             };
         }
@@ -368,13 +377,28 @@ namespace Tellma.Core.Crud
         /// <summary>Every entity of the tenant model, whose references may point at a row the persist deletes; null for the stack's own.</summary>
         public IReadOnlyList<EntityMetadata>? Model { get; init; }
 
-        /// <summary>The entities whose stored rows the persist's child synchronisation deletes, each with the payload collection that dropped them.</summary>
+        /// <summary>
+        ///     The entities whose stored rows the persist deletes, each with the path a reference still
+        ///     holding one is reported at: a save's payload collection that dropped them, or a delete's ids.
+        /// </summary>
         public IReadOnlyList<DroppedRows> Drops { get; init; } = [];
+
+        /// <summary>The cap, the confirmed count and the actual count of a delete by query; null for any other persist.</summary>
+        public QueryDeleteCounts? DeleteCounts { get; init; }
     }
 
-    /// <summary>Stored rows of an entity a save's child synchronisation deletes, and the payload collection that dropped them or their ancestor.</summary>
+    /// <summary>The counts a delete by query's persist checks, for the translation of its cap and its count.</summary>
+    /// <param name="Cap">The most rows the delete may match.</param>
+    /// <param name="ExpectedCount">The count the caller confirmed.</param>
+    /// <param name="Counted">The count of the rows the delete matched, capped one past <paramref name="Cap" />, which the batch reads before the delete.</param>
+    internal sealed record QueryDeleteCounts(int Cap, int ExpectedCount, BatchResult<int> Counted);
+
+    /// <summary>Stored rows of an entity a persist deletes, and the path a reference still holding one is reported at.</summary>
     /// <param name="Entity">The deleted rows' entity.</param>
-    /// <param name="Collection">The payload collection's path, such as <c>[0].Lines</c>.</param>
+    /// <param name="Collection">
+    ///     The path: a save's payload collection that dropped the rows or their ancestor, such as
+    ///     <c>[0].Lines</c>, or a delete's ids, such as <c>Ids[0]</c>.
+    /// </param>
     internal readonly record struct DroppedRows(EntityMetadata Entity, ValidationPath Collection);
 
     /// <summary>One payload row of a persist.</summary>

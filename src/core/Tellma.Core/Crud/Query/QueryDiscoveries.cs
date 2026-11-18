@@ -109,7 +109,7 @@ namespace Tellma.Core.Crud.Query
         /// </summary>
         /// <param name="result">The discovery.</param>
         /// <returns>The declarations.</returns>
-        private static List<QueryexParameterDeclaration> Declarations(DiscoveryResult result)
+        internal static List<QueryexParameterDeclaration> Declarations(DiscoveryResult result)
         {
             return [.. result.Parameters
                 .Where(static parameter => parameter.InferredType is not null && parameter.Conflicts.Count == 0)
