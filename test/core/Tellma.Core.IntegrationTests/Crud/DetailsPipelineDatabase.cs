@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
@@ -12,14 +13,15 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Crud
 {
     /// <summary>
     ///     The two tenant databases of <see cref="ConnectDatabase" />, served by an instance that adds
-    ///     a details contributor and the save probe's validator and effect to the widget, with the
-    ///     first tenant seeded once with the rows the
+    ///     a details contributor and the save probe's validator and effect to the widget, and taps each
+    ///     scope's connections, with the first tenant seeded once with the rows the
     ///     details reads cover: four widgets with parts, a small tree of nodes with links between
     ///     them, a root with more children than a level may return, and two lookups, and the second
     ///     tenant with more lookups than the list's cache holds. Each test seeds its own caller and
@@ -107,7 +109,16 @@ namespace Tellma.Core.IntegrationTests.Crud
             await Connect.ExecuteAsync(ConnectDatabase.TenantA, Seed);
             await Connect.ExecuteAsync(ConnectDatabase.TenantB, OversizedSeed);
             _instance = Connect.CreateInstance(
-                configure: services => services.AddSingleton(Probe),
+                configure: services =>
+                {
+                    _ = services.AddSingleton(Probe);
+
+                    // --- The scope's connections, opened through the fixture's provider and tapped ---
+                    Func<IServiceProvider, object> open = services.Last(static descriptor => descriptor.ServiceType == typeof(ITenantConnectionProvider)).ImplementationFactory
+                        ?? throw new InvalidOperationException("The fixture composes its tenant connection provider from a factory.");
+                    _ = services.AddScoped(scope => new TappedConnectionProvider((ITenantConnectionProvider)open(scope)));
+                    _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(static scope => scope.GetRequiredService<TappedConnectionProvider>()));
+                },
                 compose: static tellma => tellma.AddFeature(new WidgetDetailsFeature()));
         }
 

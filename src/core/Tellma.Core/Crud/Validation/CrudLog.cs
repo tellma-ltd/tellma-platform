@@ -56,5 +56,21 @@ namespace Tellma.Core.Crud.Validation
             Level = LogLevel.Error,
             Message = "The post-commit step of {Component} failed after {Operation} on {Resource} committed, in trace {TraceId}.")]
         public static partial void EffectFailed(ILogger logger, string component, string resource, string operation, string? traceId, Exception exception);
+
+        /// <summary>
+        ///     The read after a commit the probe proved, whose response the connection lost, failed: the
+        ///     operation answers its ids alone, never an error a caller might retry, and its post-commit
+        ///     phase runs on an unknown stamp.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resource">The operation's resource.</param>
+        /// <param name="operation">The operation, such as <c>save</c>.</param>
+        /// <param name="traceId">The operation's trace id; null outside any trace.</param>
+        /// <param name="exception">The read's failure.</param>
+        [LoggerMessage(
+            EventName = "ProvenCommitReadFailed",
+            Level = LogLevel.Warning,
+            Message = "The read after {Operation} on {Resource} committed with its response lost failed, in trace {TraceId}; it answers its ids alone.")]
+        public static partial void ProvenCommitReadFailed(ILogger logger, string resource, string operation, string? traceId, Exception exception);
     }
 }

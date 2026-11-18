@@ -168,6 +168,21 @@ namespace Tellma.Core.Tests.Data.Batches
             Assert.Contains("CK_Jobs_Id", check.Message, StringComparison.Ordinal);
         }
 
+        [Theory]
+        [InlineData("The INSERT statement conflicted with the FOREIGN KEY constraint \"FK_Links_OtherNodeId\". The conflict occurred in database \"fx\", table \"fixture.Nodes\", column 'Id'.", ForeignKeyConflict.MissingTarget)]
+        [InlineData("The DELETE statement conflicted with the REFERENCE constraint \"FK_Links_OtherNodeId\". The conflict occurred in database \"fx\", table \"fixture.Links\", column 'OtherNodeId'.", ForeignKeyConflict.StillReferenced)]
+        [InlineData("The DELETE statement conflicted with the SAME TABLE REFERENCE constraint \"FK_Nodes_ParentId\". The conflict occurred in database \"fx\", table \"fixture.Nodes\", column 'ParentId'.", ForeignKeyConflict.StillReferenced)]
+        [InlineData("Die DELETE-Anweisung steht in Konflikt mit der REFERENCE-Einschränkung \"FK_Links_OtherNodeId\". Datenbank \"fx\", Tabelle \"fixture.Links\".", ForeignKeyConflict.StillReferenced)]
+        [InlineData("Konflikt mit der Einschränkung \"FK_Links_OtherNodeId\". Datenbank \"fx\", Tabelle \"fixture.Nodes\".", ForeignKeyConflict.MissingTarget)]
+        [InlineData("Konflikt mit der Einschränkung \"FK_Links_OtherNodeId\". Datenbank \"fx\", Tabelle \"fixture.Links\".", ForeignKeyConflict.Unknown)]
+        [InlineData("Konflikt mit der Einschränkung \"FK_Links_OtherNodeId\".", ForeignKeyConflict.Unknown)]
+        public void A_foreign_key_violation_names_the_side_its_message_tells_by_keyword_else_by_the_conflicts_table(string message, ForeignKeyConflict conflict)
+        {
+            ForeignKeyViolationException violation = Translate<ForeignKeyViolationException>(Error(547, message: message));
+
+            Assert.Equal((DataErrors.ForeignKeyName(message), conflict), (violation.ConstraintName, violation.Conflict));
+        }
+
         [Fact]
         public void Index_names_are_found_in_a_message_of_another_language_by_their_quotes()
         {

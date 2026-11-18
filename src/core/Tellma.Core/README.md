@@ -404,7 +404,8 @@ roots with every row under their nodes, captured under U locks, the roots checke
 the whole closure against the grant filter. A tree's old nodes are kept for the recount of their ancestors. The
 `DeleteHandle` names the deleted keys and one capture table per blob-reference column, which a
 later statement of the batch may read. A reference from another row is `547`,
-`ForeignKeyViolationException`. A check that embeds a compiled filter takes a statement of its own,
+`ForeignKeyViolationException`, whose `Conflict` is `StillReferenced` (a write's reference naming
+no row is `MissingTarget`). A check that embeds a compiled filter takes a statement of its own,
 so one update or delete is one to two statements; every statement of a call carries
 `OPTION (RECOMPILE)` above `Tellma:Data:LargeBatchThreshold` ids or when a compiled filter asks for
 it. Updates and deletes, like saves, need their batch in one transaction; the executor meters
@@ -1354,17 +1355,23 @@ pipeline drives them:
     the tree fence finds is `Tree.Cycle` or `Tree.TooDeep` at the root; a unique index of the stack's
     tables is `Unique` (`Blob.NotAttachable` for a blob reference's, `Assignments.Concurrent` for the
     open assignment's) at the one payload row carrying the value, else at the root naming the
-    property; a foreign key of the stack's tables that a payload row writes is `Fk.NotFound` the
-    same way; a foreign key of any table that references a row the save's child synchronisation
-    deleted is `Fk.InUse` naming the referencing entity and property, at the payload collection that
-    dropped the row when one alone dropped rows of the referenced entity, else at the root; anything
-    else passes through. Conflicts are counted by kind (`tellma.crud.concurrency.conflicts`:
-    `stamp`, `missing`, `cycle`). A commit whose response was lost and that the executor's probe
-    proved is read back as a plain read over the final ids, whatever the caller's read filter
-    admits: the roots' stamp, and the rows in details shape when asked for. The post-commit phase
-    runs whether or not that read succeeds; the lost batch's commit callbacks do not run, and a
-    participant's recorded result there stays unanswered. Any other ambiguous end is
-    `DependencyUnavailableException` (`database`, one second).
+    property; a foreign key violation names its side (`ForeignKeyViolationException.Conflict`, read
+    from the server's message: a write conflicts with the `FOREIGN KEY` constraint, a delete with the
+    `REFERENCE` one, else the table the conflict occurred in decides what it can): a write of the
+    stack's tables is `Fk.NotFound` the same way, and a delete, which only the save's child
+    synchronisation makes, is `Fk.InUse` naming the referencing entity and property, at the payload
+    collection that dropped the row when one alone dropped rows of the referenced entity, else at
+    the root; a side the message does not tell is `Fk.InUse` when the synchronisation deleted rows
+    the key references, else `Fk.NotFound`; anything else passes through. Conflicts are counted by
+    kind (`tellma.crud.concurrency.conflicts`: `stamp`, `missing`, `cycle`). A commit whose response
+    was lost and that the executor's probe proved is read back as a plain read over the final ids,
+    whatever the caller's read filter admits: the roots' stamp, and the rows in details shape when
+    asked for. A failure of that read never answers the committed save with an error a caller
+    might retry: it is logged (`ProvenCommitReadFailed`) and the save answers its ids alone. The
+    post-commit phase runs either way; the lost batch's commit callbacks do not run, and a
+    participant's recorded result there stays unanswered. Any other ambiguous end, an update-only
+    save's, which no inserted row can prove, is `DependencyUnavailableException` (`database`, one
+    second): the caller reloads to learn whether it committed.
 11. **The post-commit phase**, after the commit and outside any transaction, before the response
     is assembled (whose extras run contributor code that may fail): the saved rows are recorded
     (`tellma.crud.save.entities`, at every depth) and a committed override counted when an updated

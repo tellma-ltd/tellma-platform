@@ -35,6 +35,22 @@ namespace Tellma.Core.Data
     {
         /// <summary>The foreign key, from which the pipeline derives the table and column.</summary>
         public string ConstraintName { get; } = constraintName;
+
+        /// <summary>Which side of the foreign key the statement conflicted on; unknown when the server's message does not say.</summary>
+        public ForeignKeyConflict Conflict { get; init; }
+    }
+
+    /// <summary>Which side of a foreign key a violation conflicted on.</summary>
+    public enum ForeignKeyConflict
+    {
+        /// <summary>The server's message does not tell the sides apart.</summary>
+        Unknown,
+
+        /// <summary>A written reference names no row of the referenced table.</summary>
+        MissingTarget,
+
+        /// <summary>A deleted row, or a changed key, is still referenced.</summary>
+        StillReferenced,
     }
 
     /// <summary>A tree statement found a parent chain that loops back on itself.</summary>

@@ -247,7 +247,7 @@ namespace Tellma.Core.Data.Batches
                     ? new UniqueConstraintViolationException(index, ordinal, exception)
                     : new DataAccessException(primary.Message, ordinal, exception),
                 ConstraintViolation => ForeignKeyName(code) is string constraint
-                    ? new ForeignKeyViolationException(constraint, ordinal, exception)
+                    ? new ForeignKeyViolationException(constraint, ordinal, exception) { Conflict = ForeignKeyConflictOf(code, constraint) }
                     : new DataAccessException(primary.Message, ordinal, exception),
                 RecursionExhausted => new TreeDepthExceededException(entityType, ordinal, exception),
                 DivideByZero => new ArithmeticFailureException(ArithmeticFailureException.DivideByZero, ordinal, exception),
@@ -289,6 +289,45 @@ namespace Tellma.Core.Data.Batches
 
             string name = quoted.Groups["name"].Value;
             return name.StartsWith("CK_", StringComparison.Ordinal) || message.Contains(" CHECK constraint ", StringComparison.Ordinal) ? null : name;
+        }
+
+        /// <summary>
+        ///     Which side of its foreign key a 547 error conflicted on. A write conflicts with the
+        ///     <c>FOREIGN KEY</c> constraint and a delete with the <c>REFERENCE</c> constraint, and a
+        ///     message naming exactly one of the two keywords is decided by it. Otherwise the table the
+        ///     conflict occurred in decides what it can: a table other than the constraint's own is the
+        ///     referenced table a write names; the constraint's own is a delete's, or a write's on a key
+        ///     that references its own table, so it stays unknown.
+        /// </summary>
+        /// <param name="message">The error's message.</param>
+        /// <param name="constraint">The foreign key the message names, <c>FK_&lt;Table&gt;_&lt;Column&gt;</c>.</param>
+        /// <returns>The side; unknown when the message does not tell.</returns>
+        internal static ForeignKeyConflict ForeignKeyConflictOf(string message, string constraint)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+            ArgumentNullException.ThrowIfNull(constraint);
+
+            // --- The statement's keyword, outside the quoted names ---
+            string bare = DoubleQuotedPattern().Replace(message, "\"\"");
+            bool write = ForeignKeyKeywordPattern().IsMatch(bare);
+            bool delete = ReferenceKeywordPattern().IsMatch(bare);
+            if (write != delete)
+            {
+                return write ? ForeignKeyConflict.MissingTarget : ForeignKeyConflict.StillReferenced;
+            }
+
+            // --- The conflict's table, the last schema-qualified quoted name after the constraint's ---
+            string? table = DoubleQuotedPattern().Matches(message)
+                .Skip(1)
+                .Select(static match => match.Groups["name"].Value)
+                .LastOrDefault(static name => name.Contains('.', StringComparison.Ordinal));
+            if (table is null)
+            {
+                return ForeignKeyConflict.Unknown;
+            }
+
+            string name = table[(table.LastIndexOf('.') + 1)..];
+            return constraint.StartsWith($"FK_{name}_", StringComparison.OrdinalIgnoreCase) ? ForeignKeyConflict.Unknown : ForeignKeyConflict.MissingTarget;
         }
 
         /// <summary>The refusal of a number outside the two bands, or of an unassigned platform number: a defect.</summary>
@@ -347,5 +386,15 @@ namespace Tellma.Core.Data.Batches
         /// <returns>The pattern.</returns>
         [GeneratedRegex("\"(?<name>[^\"]+)\"", RegexOptions.CultureInvariant)]
         private static partial Regex DoubleQuotedPattern();
+
+        /// <summary>The keyword of a 547 a write raises: its reference names no row.</summary>
+        /// <returns>The pattern.</returns>
+        [GeneratedRegex(@"\bFOREIGN KEY\b", RegexOptions.CultureInvariant)]
+        private static partial Regex ForeignKeyKeywordPattern();
+
+        /// <summary>The keyword of a 547 a delete raises: its row is still referenced.</summary>
+        /// <returns>The pattern.</returns>
+        [GeneratedRegex(@"\bREFERENCE\b", RegexOptions.CultureInvariant)]
+        private static partial Regex ReferenceKeywordPattern();
     }
 }

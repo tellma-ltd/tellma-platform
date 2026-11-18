@@ -59,6 +59,9 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The access guards, which record where each persist called them.</summary>
         private readonly PsGuards _guards = new();
 
+        /// <summary>The documents' bespoke criteria, read at every decision; none by default.</summary>
+        private readonly DocumentCriteria _criteria = new();
+
         /// <summary>The rows a read-back finds, whatever ids it reads.</summary>
         private readonly List<PsDocument> _readBack = [];
 
@@ -103,6 +106,7 @@ namespace Tellma.Core.Tests.Crud.Save
                 _ = services.AddSingleton(_validation);
                 _ = services.AddSingleton(_persistence);
                 _ = services.Replace(ServiceDescriptor.Singleton<IAccessGuards>(_guards));
+                _ = services.AddSingleton<IAccessCriteriaProvider>(_criteria);
                 _ = services.AddFakeLogging();
                 _ = services.AddSingleton(static provider => new TestIds(provider.GetRequiredService<IdAllocator>()));
                 _ = services.Replace(ServiceDescriptor.Singleton<IIdAllocator>(static provider => provider.GetRequiredService<TestIds>()));
@@ -1220,6 +1224,16 @@ namespace Tellma.Core.Tests.Crud.Save
             }
 
             return builder.Build();
+        }
+
+        /// <summary>The documents' bespoke criteria, which a test sets.</summary>
+        private sealed class DocumentCriteria : IAccessCriteriaProvider
+        {
+            /// <inheritdoc />
+            public string Resource => PipelineSaveModel.Documents;
+
+            /// <summary>The criteria every decision reads.</summary>
+            public IReadOnlyList<AccessCriterion> Criteria { get; set; } = [];
         }
 
         /// <summary>

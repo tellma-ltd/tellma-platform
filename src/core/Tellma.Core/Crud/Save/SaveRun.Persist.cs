@@ -308,11 +308,13 @@ namespace Tellma.Core.Crud.Save
         // Spec 0015 §8: a save whose response was lost around COMMIT, and whose inserted rows the
         // executor's probe found, committed. A plain Read re-issues the read-back over the final ids,
         // as the one inside the transaction reads the saved ids, so every id is answered whatever the
-        // caller's Read filter admits, and reads the roots' stamp with it. The post-commit phase runs
-        // whether or not that read succeeds, and whatever the caller's token says. The batch's commit
-        // callbacks do not run: the executor never read the lost batch's results.
+        // caller's Read filter admits, and reads the roots' stamp with it. A failure of that read
+        // never answers the committed save with an error a caller might retry, writing its rows
+        // again: it is logged, and the save answers its ids alone. The post-commit phase runs either
+        // way, and whatever the caller's token says. The batch's commit callbacks do not run: the
+        // executor never read the lost batch's results.
         /// <summary>Reads back a save whose commit the probe proved, then runs its post-commit phase.</summary>
-        /// <returns>The saved rows' ids, and the rows when asked for.</returns>
+        /// <returns>The saved rows' ids, and the rows when asked for and the read answered.</returns>
         private async Task<EntitiesResult<TEntity>> AfterProvenCommitAsync()
         {
             TKey[] ids = FinalIds();
@@ -321,6 +323,7 @@ namespace Tellma.Core.Crud.Save
             BatchResult<EntityQueryResult<TEntity>>? stamps = null;
             BatchOutcome? outcome = null;
             DateTimeOffset stamp = default;
+            bool answered = false;
             try
             {
                 outcome = await _operation.Runner.RunAsync(
@@ -350,13 +353,17 @@ namespace Tellma.Core.Crud.Save
                         stamp = modified;
                     }
                 }
+
+                answered = true;
             }
-            finally
+            catch (Exception failure) when (failure is not OutOfMemoryException)
             {
-                await AfterCommitAsync(outcome, stamp).ConfigureAwait(false);
+                // The save committed: the ids answer it, and the post-commit phase runs on the default stamp.
+                CrudLog.ProvenCommitReadFailed(_operation.Logger, _stack.Resource, CrudOperationNames.Save, Activity.Current?.TraceId.ToString(), failure);
             }
 
-            return composition?.Complete() ?? IdsOnly();
+            await AfterCommitAsync(outcome, stamp).ConfigureAwait(false);
+            return answered && composition is not null ? composition.Complete() : IdsOnly();
         }
 
         // Spec 0015 §13.2: the hook, then every effect, after the commit is acknowledged and outside

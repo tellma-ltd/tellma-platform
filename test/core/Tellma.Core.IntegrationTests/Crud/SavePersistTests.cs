@@ -3,7 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using System.Data.Common;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -12,6 +14,8 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Data;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
 using Tellma.Testing.Entities;
@@ -23,12 +27,15 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     trip and an update on two, each returning the rows it committed; an update keeps what the
     ///     server owns; a row another connection changed, deleted, took the unique value of or whose
     ///     reference it deleted between the validation round trip and the persist is refused as the
-    ///     caller can act on it, a tree move closed into a cycle among them; a move re-paths and
-    ///     recounts the rows outside the payload; the caller's statements commit with the save, and a
-    ///     distribution's guard rolls both back; a moved permissions tag recomposes the persist once,
-    ///     re-running the validators in memory, and a second move or a load the first run never made
-    ///     is stale; a read-only tenant refuses it; and a persist once sent commits whatever the
-    ///     caller's token says.
+    ///     caller can act on it, a tree move closed into a cycle among them; a filtered save grant's
+    ///     post-check refuses whole a payload any of whose rows it leaves outside the filter, a create
+    ///     or an update; a move re-paths and recounts the rows outside the payload; the caller's
+    ///     statements commit with the save, and a distribution's guard rolls both back; a moved
+    ///     permissions tag recomposes the persist once, re-running the validators in memory, and a
+    ///     second move or a load the first run never made is stale; a read-only tenant refuses it; a
+    ///     persist once sent commits whatever the caller's token says; and a commit whose response
+    ///     the connection lost is proved by its inserted rows and read back, while an update-only one
+    ///     cannot be proved and asks the caller to reload.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -340,6 +347,58 @@ namespace Tellma.Core.IntegrationTests.Crud
         }
 
         [Fact]
+        public async Task A_filtered_save_grant_commits_the_rows_its_filter_admits_and_refuses_whole_a_payload_leaving_any_outside_it()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Save, "Name != 'outside'"));
+            await WarmAsync(subject);
+
+            // --- Inside the filter: the post-check rides the create's one round trip with its read-back ---
+            int id;
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+                int before = access.RoundTrips;
+                EntitiesResult<Export> saved = await ExportService(scope).SaveAsync([new Export { Name = "admitted" }], new SaveOptions(), Token);
+
+                Assert.Equal(1, access.RoundTrips - before);
+                id = Assert.Single(saved.Entities).Id;
+                Assert.Equal("admitted", await NameAsync(id));
+            }
+
+            // --- A create outside it: no stored row could have refused it; the post-check does ---
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(
+                    () => ExportService(scope).SaveAsync([new Export { Name = "outside" }], new SaveOptions(), Token));
+
+                Assert.Equal((Exports, AccessActions.Save, ForbiddenReason.OutsideFilter), (refused.Resource, refused.Action, refused.Reason));
+            }
+
+            // --- An update moving a stored row out of it: the stored row is inside, the saved one is not ---
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                Export moving = await ExportAsync(scope, id);
+                moving.Name = "outside";
+
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => ExportService(scope).SaveAsync([moving], new SaveOptions(), Token));
+
+                Assert.Equal(ForbiddenReason.OutsideFilter, refused.Reason);
+                Assert.Equal("admitted", await NameAsync(id));
+            }
+
+            // --- Several roots, one outside: none commits ---
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(
+                    () => ExportService(scope).SaveAsync([new Export { Name = "beside" }, new Export { Name = "outside" }], new SaveOptions { ReturnEntities = false }, Token));
+
+                Assert.Equal(ForbiddenReason.OutsideFilter, refused.Reason);
+            }
+
+            Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Name] IN (N'outside', N'beside');"));
+        }
+
+        [Fact]
         public async Task A_read_only_tenant_refuses_the_persist_of_a_save()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Save, null));
@@ -375,6 +434,93 @@ namespace Tellma.Core.IntegrationTests.Crud
             Export committed = Assert.Single(saved.Entities);
             Assert.Equal("aborted", committed.Name);
             Assert.Equal("aborted", await NameAsync(committed.Id));
+        }
+
+        [Fact]
+        public async Task A_commit_whose_response_the_connection_lost_is_proved_by_its_inserted_rows_and_read_back_while_an_update_alone_asks_for_a_reload()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Save, null));
+            await WarmAsync(subject);
+
+            // --- A create: the probe finds its row, and a plain read answers the committed save ---
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                SaveOptions options = new() { OnPersist = LoseConnectionOnceCommitted(scope, "SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Name] = N'lost';") };
+
+                EntitiesResult<Export> saved = await ExportService(scope).SaveAsync([new Export { Name = "lost" }], options, Token);
+
+                Export committed = Assert.Single(saved.Entities);
+                Assert.Equal((Assert.Single(saved.Ids), "lost"), (committed.Id, committed.Name));
+                Assert.NotEqual(default, committed.ModifiedAt);
+            }
+
+            Assert.Equal(1, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Name] = N'lost';"));
+
+            // --- An update alone: nothing to probe, so the caller is told to reload, though it committed ---
+            int id = await CreateExportAsync(subject, "kept");
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                Export moving = await ExportAsync(scope, id);
+                moving.Name = "moved";
+                SaveOptions options = new() { OnPersist = LoseConnectionOnceCommitted(scope, Invariant($"SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Id] = {id} AND [Name] = N'moved';")) };
+
+                DependencyUnavailableException unavailable = await Assert.ThrowsAsync<DependencyUnavailableException>(() => ExportService(scope).SaveAsync([moving], options, Token));
+
+                Assert.Equal(CommitVerdict.Unknown, Assert.IsType<DataAccessAmbiguousException>(unavailable.InnerException).Verdict);
+            }
+
+            Assert.Equal("moved", await NameAsync(id));
+        }
+
+        /// <summary>
+        ///     The caller's statements of a save whose response the connection loses once it committed:
+        ///     a statement whose reader, run while the server goes on to its COMMIT, waits until another
+        ///     connection counts the committed row, then closes the connection the batch runs on.
+        /// </summary>
+        /// <param name="scope">The save's scope, whose connections are tapped.</param>
+        /// <param name="committed">A count that is 1 once the save committed.</param>
+        /// <returns>The caller's statements.</returns>
+        private Action<IDataBatch> LoseConnectionOnceCommitted(AsyncServiceScope scope, string committed)
+        {
+            TappedConnectionProvider connections = scope.ServiceProvider.GetRequiredService<TappedConnectionProvider>();
+            return batch =>
+            {
+                // The pipeline hands its caller a recording view; the statement goes to the batch itself,
+                // and its NOWAIT message flushes the row to the reader while the server goes on.
+                var data = (DataBatch)((RecordingBatch)batch).Inner;
+                StatementDraft draft = data.Begin();
+                int ordinal = draft.Ordinal;
+                data.Append(
+                    draft,
+                    "SELECT 1 AS [Ready];\nRAISERROR(N'', 0, 1) WITH NOWAIT;",
+                    reader: async (cursor, cancellationToken) =>
+                    {
+                        DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken);
+                        _ = await set.ReadAsync(cancellationToken);
+                        cursor.CountRows(1);
+                        SqlConnection running = connections.Last ?? throw new InvalidOperationException("The batch runs on no tapped connection.");
+                        await WaitUntilAsync(async () => await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, committed) == 1);
+                        running.Close();
+                    });
+            };
+        }
+
+        /// <summary>Waits until a condition holds, for 30 seconds at most.</summary>
+        /// <param name="condition">The condition.</param>
+        /// <returns>A task that completes when the condition holds.</returns>
+        /// <exception cref="TimeoutException">The condition did not hold in time.</exception>
+        private static async Task WaitUntilAsync(Func<Task<bool>> condition)
+        {
+            DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!await condition())
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    throw new TimeoutException("The condition did not hold within 30 seconds.");
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(25), Token);
+            }
         }
 
         /// <summary>

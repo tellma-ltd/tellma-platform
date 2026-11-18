@@ -19,6 +19,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Data;
+using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Crud.Query;
 using Tellma.Core.Tests.Crud.Scripted;
 
@@ -651,8 +652,10 @@ namespace Tellma.Core.Tests.Crud.Save
             Assert.Equal([.. new[] { PsPersistence.Service, PsPersistence.First, PsPersistence.Second }.Select(static participant => $"{participant} {Committed:O}")], after);
         }
 
-        [Fact]
-        public async Task A_proven_commit_whose_read_fails_still_runs_its_post_commit_phase_before_the_failure_surfaces()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task A_proven_commit_whose_read_fails_answers_its_ids_alone_logs_the_failure_and_still_runs_its_post_commit_phase(bool returnEntities)
         {
             Warm();
             List<string> after = [];
@@ -667,8 +670,13 @@ namespace Tellma.Core.Tests.Crud.Save
                 ? Task.FromException(new DataAccessAmbiguousException(new TimeoutException("The connection dropped."), CommitVerdict.Committed))
                 : batch.Purpose == BatchPurpose.Read ? Task.FromException(dropped) : Task.CompletedTask);
 
-            Assert.Same(dropped, await Assert.ThrowsAsync<TimeoutException>(() => SaveAsync(New(-1, "A"))));
+            EntitiesResult<PsDocument> saved = await SaveAsync(new SaveOptions { ReturnEntities = returnEntities }, New(-1, "A"));
 
+            // --- Never an error a caller might retry: the committed ids, the failure logged ---
+            Assert.Equal([101L], saved.Ids);
+            Assert.Empty(saved.Entities);
+            FakeLogRecord logged = Assert.Single(_rig.Services.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Name == "ProvenCommitReadFailed");
+            Assert.Same(dropped, logged.Exception);
             Assert.Equal([PsPersistence.Service, PsPersistence.First, PsPersistence.Second], after);
         }
 
@@ -686,6 +694,27 @@ namespace Tellma.Core.Tests.Crud.Save
             _ = Assert.Single(persist.Of(ScriptedKind.Assert));
             _ = Assert.Single(persist.Of(ScriptedKind.Query));
             Assert.Equal(101, Assert.Single(saved.Entities).Id);
+        }
+
+        [Fact]
+        public async Task A_caller_saving_through_a_criterion_alone_is_refused_a_save_that_reads_its_rows_back_before_any_round_trip_and_commits_one_that_does_not()
+        {
+            Warm();
+            _rig.Grant([.. Grants(categories: null).Where(static grant => grant.Resource != PipelineSaveModel.Documents)]);
+            _criteria.Criteria = [new AccessCriterion(AccessActions.Save, FilterTree.Leaf("Name != 'locked'"), "bespoke")];
+
+            // --- A criterion grants its own action alone: the read-back finds no read and fails closed ---
+            ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => SaveAsync(New(-1, "A")));
+            Assert.Equal((PipelineSaveModel.Documents, AccessActions.Read, ForbiddenReason.NoGrant), (refused.Resource, refused.Action, refused.Reason));
+            Assert.Equal(0, _rig.Script.RoundTrips);
+
+            // --- Without the rows, the filtered save commits with its post-check ---
+            EntitiesResult<PsDocument> saved = await SaveAsync(IdsOnly(), New(-1, "B"));
+
+            _ = Assert.Single(saved.Ids);
+            ScriptedBatch persist = Assert.Single(_rig.Script.Batches, static batch => batch.IsExecuted);
+            _ = Assert.Single(persist.Of(ScriptedKind.Assert));
+            Assert.Empty(persist.Of(ScriptedKind.Query));
         }
 
         [Fact]
@@ -874,6 +903,26 @@ namespace Tellma.Core.Tests.Crud.Save
             FailPersist(unknown);
             dropping.Lines = [];
             Assert.Same(unknown, await Assert.ThrowsAsync<ForeignKeyViolationException>(() => SaveAsync(IdsOnly(), dropping)));
+        }
+
+        [Theory]
+        [InlineData(ForeignKeyConflict.Unknown, "[0].Lines Fk.InUse")]
+        [InlineData(ForeignKeyConflict.StillReferenced, "[0].Lines Fk.InUse")]
+        [InlineData(ForeignKeyConflict.MissingTarget, "[0].LineRefId Fk.NotFound")]
+        public async Task The_side_a_violation_names_decides_between_in_use_and_not_found_when_a_payload_row_writes_the_column_its_save_dropped_rows_of(
+            ForeignKeyConflict conflict, string expected)
+        {
+            Store(5, lines: [Line(11, documentId: 5)]);
+            _visible[PipelineSaveModel.Lines] = [13];
+            FailPersist(new ForeignKeyViolationException("FK_Documents_LineRefId", statementOrdinal: 1) { Conflict = conflict });
+            PsDocument carrying = Update(5, "A");
+            carrying.Lines = [];
+            carrying.LineRefId = 13;
+
+            // --- A delete is in use, as is an untold one with rows of the target dropped; a write names no row ---
+            ValidationException refused = await RefusedAsync(IdsOnly(), carrying);
+
+            Assert.Equal([expected], Lines(refused));
         }
 
         // --- Persist helpers ---

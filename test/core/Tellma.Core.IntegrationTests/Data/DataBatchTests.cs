@@ -176,7 +176,7 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = violating.Sql($"INSERT INTO [fixture].[WidgetExtras] ([Id], [Note])\nVALUES ({123456}, N'orphan');", new SqlOptions(writes: Set(extras)));
 
             ForeignKeyViolationException violated = await Assert.ThrowsAsync<ForeignKeyViolationException>(() => violating.ExecuteAsync(Token));
-            Assert.Equal((5, "FK_WidgetExtras_Id"), (violated.StatementOrdinal, violated.ConstraintName));
+            Assert.Equal((5, "FK_WidgetExtras_Id", ForeignKeyConflict.MissingTarget), (violated.StatementOrdinal, violated.ConstraintName, violated.Conflict));
             Assert.Equal(547, Assert.IsType<SqlException>(violated.InnerException).Number);
 
             // The in-text transaction rolled the earlier inserts back.

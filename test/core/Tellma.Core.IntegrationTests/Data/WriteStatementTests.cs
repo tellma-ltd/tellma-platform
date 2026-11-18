@@ -167,6 +167,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 () => RunAsync(batch => batch.Delete(new DeleteSpec<Node>.ByIds([target.Id], null, null))));
 
             Assert.Contains("Links", violation.ConstraintName, StringComparison.Ordinal);
+            Assert.Equal(ForeignKeyConflict.StillReferenced, violation.Conflict);
 
             // The referrer goes with its own link.
             _ = await RunAsync(batch => batch.Delete(new DeleteSpec<Node>.ByIds([referrer.Id], null, null)));
@@ -457,8 +458,11 @@ namespace Tellma.Core.IntegrationTests.Data
         {
             (Node root, _, _) = await ChainAsync();
 
-            _ = await Assert.ThrowsAsync<ForeignKeyViolationException>(() => RunAsync(batch => batch.Delete(new DeleteSpec<Node>.ByIds([root.Id], null, null))));
+            ForeignKeyViolationException violation = await Assert.ThrowsAsync<ForeignKeyViolationException>(
+                () => RunAsync(batch => batch.Delete(new DeleteSpec<Node>.ByIds([root.Id], null, null))));
 
+            // --- A self-reference: the message's keyword alone tells the side ---
+            Assert.Equal(ForeignKeyConflict.StillReferenced, violation.Conflict);
             Assert.Equal(3, await CountAsync("[fixture].[Nodes]"));
         }
 

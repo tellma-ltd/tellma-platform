@@ -189,18 +189,36 @@ namespace Tellma.Core.Crud
         }
 
         // Spec 0015 §14.2: SQL Server raises 547 on the referencing table's FK_<Table>_<Column> for an
-        // insert or update that names no row and for a delete of a row still referenced. A reference
-        // a payload row writes is the former, Fk.NotFound; a reference no payload row writes can only
-        // have failed on a row the save's child synchronisation deleted, so it is the delete row's
-        // Fk.InUse, naming the referencing entity and property, at the payload collection that
-        // dropped the row when one alone dropped rows of the referenced entity, else at the root.
+        // insert or update that names no row and for a delete of a row still referenced, and its
+        // message tells the two apart. A write is the save row's Fk.NotFound; a delete, which only
+        // the save's child synchronisation makes, is the delete row's Fk.InUse. When the message does
+        // not tell, a reference to rows the synchronisation deleted is in use (round trip 1 proved
+        // every written reference, so a missing target needs a delete in the window), and any other
+        // a payload row writes names no row.
         /// <summary>Translates a foreign key violation of a persist into the reference that names no row or the row still referenced.</summary>
         /// <param name="foreignKey">The violation.</param>
         /// <param name="context">What the operation knows.</param>
         /// <returns>The exception to raise; null for a constraint the persist cannot have violated.</returns>
         private static ValidationException? ForeignKey(ForeignKeyViolationException foreignKey, PersistFailureContext context)
         {
-            // --- A reference of the stack's tables that a payload row writes: the target names no row ---
+            return foreignKey.Conflict switch
+            {
+                ForeignKeyConflict.MissingTarget => MissingTarget(foreignKey, context),
+                ForeignKeyConflict.StillReferenced => StillReferenced(foreignKey, context),
+                ForeignKeyConflict.Unknown => StillReferenced(foreignKey, context) ?? MissingTarget(foreignKey, context),
+                _ => throw new ArgumentOutOfRangeException(nameof(foreignKey), foreignKey.Conflict, "The violation names a side the translation does not know."),
+            };
+        }
+
+        /// <summary>
+        ///     Translates a written reference that names no row: <c>Fk.NotFound</c> at the one payload row
+        ///     carrying a value, else at the root naming the property.
+        /// </summary>
+        /// <param name="foreignKey">The violation.</param>
+        /// <param name="context">What the operation knows.</param>
+        /// <returns>The exception to raise; null for a constraint of no table the stack writes.</returns>
+        private static ValidationException? MissingTarget(ForeignKeyViolationException foreignKey, PersistFailureContext context)
+        {
             foreach (EntityMetadata entity in Entities(context.Root))
             {
                 if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
@@ -215,15 +233,22 @@ namespace Tellma.Core.Crud
                     return new ValidationException([new ValidationError(at, ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("id", PayloadRows.ValueOf(reference.ForeignKey, row!))))]);
                 }
 
-                if (context.Rows.Any(candidate => ReferenceEquals(candidate.Entity, entity) && reference.ForeignKey.Getter(candidate.Row) is not null))
-                {
-                    return AtRoot(ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("property", reference.ForeignKey.Name)));
-                }
-
-                break;
+                return AtRoot(ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("property", reference.ForeignKey.Name)));
             }
 
-            // --- A reference, of any table, to a row the child synchronisation deleted: still in use ---
+            return null;
+        }
+
+        /// <summary>
+        ///     Translates a reference, of any table, to a row the child synchronisation deleted:
+        ///     <c>Fk.InUse</c> naming the referencing entity and property, at the payload collection that
+        ///     dropped the rows when one alone dropped rows of the referenced entity, else at the root.
+        /// </summary>
+        /// <param name="foreignKey">The violation.</param>
+        /// <param name="context">What the operation knows.</param>
+        /// <returns>The exception to raise; null when the save deleted no row the constraint references.</returns>
+        private static ValidationException? StillReferenced(ForeignKeyViolationException foreignKey, PersistFailureContext context)
+        {
             foreach (EntityMetadata entity in context.Model ?? [.. Entities(context.Root)])
             {
                 if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
